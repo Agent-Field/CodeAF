@@ -451,7 +451,7 @@ func cursorToModelSlot(t *testing.T, a *app) {
 		a.sheet.cursor, a.sheet.top = 0, 0
 		a.sheet.build()
 		for i, item := range a.sheet.items {
-			if !item.heading() && item.row.Kind == config.SettingModel {
+			if item.restful() && item.row.Kind == config.SettingModel {
 				a.sheet.cursor = i
 				return
 			}

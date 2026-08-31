@@ -55,7 +55,11 @@ go test ./internal/manual/ && go test -run Manual ./internal/tui3/ ./internal/se
 `ci-full.yml`, four jobs:
 
 - **`full tests`** — every package except `internal/swepro`, minus the ledger
-  below.
+  below, split round-robin across three runners. Not for speed first: the
+  free-plan runner has seven gigabytes, this repository's test binaries are
+  heavy, and the suite's first run was killed under the link load of its last
+  eight packages. Three machines carrying a third each stay inside their memory.
+  Each `go test` carries `-timeout 8m` so a hang names its package.
 - **`cross build`** — all six shipped targets compile. The only job here whose
   answer is identical on every machine and every run, which is why it is the one
   that blocks a promotion.
@@ -81,10 +85,11 @@ but it is a reviewable line in the same pull request as the reason it was needed
 never something a build quietly acquired. `SIZE-BUDGET` carries the same rule for
 bytes and says why at length.
 
-The list was seeded from `CLAUDE.md` and has not yet been trued up against a real
-Linux run — `CLAUDE.md` also names four `cmd/harness-design` tests without
-spelling them, and at least one entry may pass on Linux. **The first full run
-will say. Correct the file from what it shows.**
+The list was seeded from `CLAUDE.md` and trued up against the first real Linux
+run on 2026-08-31, which named the four `cmd/harness-design` tests and exposed
+six untracked reds — five Linux-only, and one
+(`TestTheEnginesStandingStoreAnswersOverTheWire`) red on every platform. The
+file's own comments say which is which.
 
 ## What blocks a merge
 

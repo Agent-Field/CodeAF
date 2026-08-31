@@ -85,9 +85,13 @@ things, and only one of them has a chat inside it.
   `nothing on this page yet — it fills in as the task works`.
 - **A background job** — anything `bash background:true` started, a watch, a video render —
   has none of that. There is no agent inside a job and nothing was ever journaled for it,
-  so its page shows the log line `job 4 · log /path/…` and, under it,
-  `a background job keeps a log, not a transcript`. Reading that log is how you see its
-  output; `jobs output 4` prints it too.
+  so its page shows the log line `job 4 · log /path/…` and, under it, the end of that log
+  itself: the last 200 lines, newest at the bottom, re-read four times a second while the
+  job runs, under a foot reading `this log grows as the job works — esc to return`. A job
+  whose log is empty or unreadable says `a background job keeps a log, not a transcript`
+  and nothing else — never an error over work that is going fine. `jobs output 4` prints
+  the log too, and over `--host` it is the only way: a far job's log lives on the far
+  machine and the page draws the path rather than the file.
 
 A job's row is easy to tell apart before you open it: it is the row whose dim under-line
 starts with `job` and a number.

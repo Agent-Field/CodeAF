@@ -714,6 +714,25 @@ const (
 	markHere
 )
 
+// overlayNoteRoom is HOW MANY CELLS A ROW'S NOTE MAY HAVE, given the label in
+// front of it and the width of the frame.
+//
+// It is a function rather than four lines inside [overlayRowTinted] because a
+// list that RANKS ITS FACTS has to know the answer before it composes the note:
+// rowfit.go drops whole facts rather than cutting one in half, and it can only
+// do that if it is told the budget it is fitting into. The settings sheet's
+// money rows are the first callers (settingspend.go) and the arithmetic is the
+// one below, unchanged and in one place, so the budget a caller fits into is by
+// construction the budget this row will hand it.
+func overlayNoteRoom(label string, width int) int {
+	room := width - 2
+	floor := ansi.StringWidth(label)
+	if half := room - room/2; floor > half {
+		floor = half
+	}
+	return room - floor - rowGutter
+}
+
 func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
 	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
@@ -738,11 +757,7 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 		// EVERY LIST THAT RANKS ITS FACTS HANDS US A NOTE THAT ALREADY FITS
 		// (rowfit.go drops whole facts rather than cutting one in half), so this
 		// is the floor under the lists that pass a note they did not budget.
-		floor := ansi.StringWidth(label)
-		if half := room - room/2; floor > half {
-			floor = half
-		}
-		note = fit(note, room-floor-rowGutter)
+		note = fit(note, overlayNoteRoom(label, width))
 	}
 	if note != "" {
 		room -= ansi.StringWidth(note) + rowGutter
@@ -1522,7 +1537,20 @@ func (a *app) switchModel(id string, window int) {
 	// THE ID IS THE WHOLE OF THIS LINE (payload.go). `model ·` is a label a person
 	// already knows they asked for; the id is the one thing here they cannot see
 	// anywhere else at this moment, so it steps to ink and the label stays dim.
-	a.noteFacts("model · "+a.model, a.model)
+	//
+	// AND WHEN WORK IS RUNNING, THE LINE SAYS WHAT THE SWITCH DID NOT TOUCH. A
+	// task's model is frozen when it is admitted (task_run.go's runModel reads
+	// the spec, never the live dial), so a person who switches mid-task and
+	// then watches the task keep answering in the old voice has been told
+	// nothing unless it is said here, at the moment they acted. New tasks
+	// started after this line follow the switch (taskmodel.go's
+	// defaultTaskModel reads the live dial), which is why the sentence is
+	// about the running ones only.
+	note := "model · " + a.model
+	if a.deckRunning() > 0 {
+		note += " — tasks already running keep the model they started on"
+	}
+	a.noteFacts(note, a.model)
 	a.noticeEvent(eventModelSwitched)
 }
 

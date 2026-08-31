@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -73,8 +74,15 @@ func TestTheCheckerRunsTheCheckTheWorkDeclaredAndNothingElse(t *testing.T) {
 // A WILDCARD THE WORK WROTE IS A WILDCARD THE DOOR HONOURS. A brief that names
 // its check as `run_tests.*` is naming one check whose extension it did not want
 // to spell, and a door that took the star literally would open onto nothing.
+//
+// THE STAR IS STILL RESOLVED AGAINST A REAL TREE, because a declared span only
+// becomes a door if the checker could run it where it stands ([runnableHere]) —
+// and a wildcard matching nothing under the auditor's own feet is a word, not a
+// check.
 func TestADeclaredCheckKeepsTheWildcardTheWorkWroteIt(t *testing.T) {
-	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"), auditPlace{})
+	dir := checkedTree(t, "run_tests.sh")
+	door := auditDoorFor(checkedNode("`run_tests.*` scores the implementation", "it scores"),
+		auditPlace{ground: dir, ran: dir})
 	if refusal, ok := auditRefusal("run_tests.sh", door.allowed); !ok {
 		t.Fatalf("the wildcard the work wrote does not admit the file it names: %s", refusal)
 	}
@@ -96,6 +104,91 @@ func TestOnlyCommandShapedTextBecomesADeclaredCheck(t *testing.T) {
 	}
 	if refusal, ok := auditRefusal("make check", door.allowed); !ok {
 		t.Fatalf("the check the brief actually names is refused: %s", refusal)
+	}
+}
+
+// A DECLARED DOOR IS SOMETHING THAT CAN ACTUALLY RUN, AND PROSE BACKTICKS A
+// GREAT DEAL THAT CANNOT.
+//
+// This is the third measured failure in one table. A real acceptance backticked
+// what prose backticks — a remote, a branch, a repository, a rule identifier, a
+// line out of somebody's test — every one of which has the shape of a command,
+// so the door offered them: "You may run: origin, main, Agent-Field/agentfield,
+// …". The checker ran them in order, collected the shell's 126s and 127s, and
+// wrote "Ran the named checks: all refused or exit 126/127" into a finding a
+// person then read as the state of the work.
+//
+// The two halves that are really runnable — a program the shell would find, and
+// a file the tree the checker stands in really holds — are still doors, because
+// this is a question about what can run and not a narrower reading of what a
+// check is.
+func TestOnlyARunnableSpanBecomesADeclaredCheck(t *testing.T) {
+	tree := checkedTree(t, "run_tests.sh")
+	bare := t.TempDir()
+	for _, one := range []struct {
+		what   string
+		ground string
+		span   string
+		door   bool
+		needs  string
+	}{
+		// The measured acceptance, span by span.
+		{what: "a remote", ground: tree, span: "origin"},
+		{what: "a branch", ground: tree, span: "main"},
+		{what: "a repository", ground: tree, span: "Agent-Field/agentfield"},
+		{what: "a rule identifier", ground: tree, span: "js/polynomial-redos"},
+		{what: "a branch with slashes in it", ground: tree, span: "fix/codeql-56-url-substring-test"},
+		{what: "an assertion lifted out of a test", ground: tree, span: `"api.openai.com" in caplog.text`},
+		// And the spans that name something the checker could really start.
+		{what: "a script the tree holds", ground: tree, span: "run_tests.sh", door: true},
+		{what: "the same script with no such file under the checker", ground: bare, span: "run_tests.sh"},
+		{
+			what: "a program the shell finds", ground: bare, needs: "gh", door: true,
+			span: "gh pr list --repo Agent-Field/agentfield --state open",
+		},
+		{
+			what: "an interpreter and the module it is handed", ground: bare, needs: "python", door: true,
+			span: "python -m pytest sdk/python/tests/test_execution_logger.py",
+		},
+		{
+			what: "the same, spelled the way the machine has it", ground: bare, needs: "python3", door: true,
+			span: "python3 -m pytest sdk/python/tests/test_execution_logger.py",
+		},
+	} {
+		if one.needs != "" {
+			if _, err := exec.LookPath(one.needs); err != nil {
+				t.Logf("%s: skipped, %s is not on this machine's PATH", one.what, one.needs)
+				continue
+			}
+		}
+		got := declaredChecks("Check it with `"+one.span+"`, please.", one.ground)
+		if one.door && len(got) != 1 {
+			t.Errorf("%s (%q) is runnable here and did not become a check: %q", one.what, one.span, got)
+		}
+		if !one.door && len(got) != 0 {
+			t.Errorf("%s (%q) became a check the checker cannot run: %q", one.what, one.span, got)
+		}
+	}
+
+	// AND THE DOOR THE MEASURED ACCEPTANCE PRODUCES NAMES NONE OF THEM. The
+	// refusal is read by a model that will type whatever it is offered, so a word
+	// on that list is a command that is about to be run.
+	measured := checkedNode("port the rule across",
+		"the fix is on `origin`, cut from `main`, in `Agent-Field/agentfield`, and "+
+			"`js/polynomial-redos` no longer fires on `fix/codeql-56-url-substring-test`")
+	door := auditDoorFor(measured, auditPlace{ground: tree, ran: tree})
+	if len(door.checks) != 0 {
+		t.Fatalf("the measured acceptance still opens doors onto words: %q", door.checks)
+	}
+	for _, word := range []string{"origin", "main", "Agent-Field/agentfield", "js/polynomial-redos"} {
+		if strings.Contains(door.offer(), word) {
+			t.Errorf("the checker is still told it may run %q:\n%s", word, door.offer())
+		}
+	}
+	// AND IT IS TOLD IT HAS NOTHING TO RUN, which is the honest reading of that
+	// acceptance and the one that ends the audit instead of spinning it.
+	if !strings.Contains(door.line(), "NOTHING THIS WORK DECLARES OR RAN") {
+		t.Fatalf("a node with no runnable check is not told so:\n%s", door.line())
 	}
 }
 

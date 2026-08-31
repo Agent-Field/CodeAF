@@ -70,11 +70,28 @@ const (
 	tabSession = "Session"
 	// tabContext is what a model carries — the context law, whole.
 	tabContext = "Context"
-	// tabWorkspace is what aforge may do and spend while it works for you.
+	// tabWorkspace is this machine and this project: what aforge does with its
+	// own time here, and what it may reach on your behalf. It is NOT where money
+	// lives any more, and that is the whole of docs/design/spending/DESIGN.md's
+	// first complaint — twenty rows answering four questions, with the dollar
+	// figures filed between `workers` and `memory floor`.
 	tabWorkspace = "Workspace"
 	// tabDisplay is how the surface draws itself and what it remembers of your
 	// typing.
 	tabDisplay = "Display"
+	// tabSpending is MONEY AND NOTHING ELSE: what aforge may spend, per day, per
+	// conversation, per plan, and on its own practice — with what the day has
+	// actually cost at the top of it. It is the one editor money has, and every
+	// door on this surface that names a rail lands on one of its rows
+	// (settingspend.go).
+	tabSpending = "Spending"
+	// tabSafety is what aforge may do without asking you first: the gate, its
+	// exceptions, the model that answers for you, and the two clocks that answer
+	// when nobody does.
+	tabSafety = "Safety"
+	// tabTasks is how work you can walk away from is run — how it starts, how it
+	// is checked, how much of it happens at once, and on whose hands.
+	tabTasks = "Tasks"
 	// tabProviders is which model answers what.
 	tabProviders = "Providers"
 )
@@ -83,7 +100,27 @@ const (
 // this profile has connected and what each of them may do (connectcaps.go). It
 // is last because the five before it are one object read five ways, and a
 // person walking the bar meets the knobs before their accounts.
-var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay, tabProviders, tabConnections}
+// Spending, Safety and Tasks stand between Display and Providers, and Spending
+// leads the three: "what may it spend" is asked before "on which machine", and
+// before either of the two questions that used to share its tab.
+var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay,
+	tabSpending, tabSafety, tabTasks, tabProviders, tabConnections}
+
+// settingTabCategory is the ONE-TO-ONE map between the three new tabs and the
+// three registry categories behind them, and it is the seam that keeps the skin
+// honest about the one source of truth.
+//
+// The other tabs are a reading of the ROWS and not of the categories — "session
+// ceiling" is a dollar figure that answers "what may THIS conversation do" — and
+// that stays true of them. These three are different: the registry's own words
+// for them (`spending`, `safety`, `tasks`) are already the product's words for
+// them, so a row that is filed under one and drawn under another would be two
+// answers to one question. chrome_test.go pins the map in both directions.
+var settingTabCategory = map[string]string{
+	tabSpending: config.CategorySpending,
+	tabSafety:   config.CategorySafety,
+	tabTasks:    config.CategoryTasks,
+}
 
 // settingWidget is how a row is ANSWERED, which is not quite how it reads.
 // The registry's [config.SettingKind] says what a value is; this says what the
@@ -144,12 +181,12 @@ type settingMeta struct {
 var settingUI = map[string]settingMeta{
 	// ── Session ─────────────────────────────────────────────────────────────
 	config.KeyToolApprovalMode: {
-		tab: tabSession, label: "ask before running", widget: widgetCycle,
+		tab: tabSafety, label: "ask before running", widget: widgetCycle,
 		about: "what happens when the model asks to run a tool. Dangerous shell " +
 			"commands are asked about whichever way this is set.",
 	},
 	config.KeyToolApprovals: {
-		tab: tabSession, label: "tool exceptions", widget: widgetText,
+		tab: tabSafety, label: "tool exceptions", widget: widgetText,
 		about: "exceptions to the answer above, one per tool: read:allow, bash:prompt.",
 	},
 	// And under the tool exceptions, the exceptions for the one tool a per-tool
@@ -157,7 +194,7 @@ var settingUI = map[string]settingMeta{
 	// approval question lands, so it is also where a person comes to take one
 	// back: this is the row the card's receipt sends them to.
 	config.KeyBashApprovals: {
-		tab: tabSession, label: "shell command rules", widget: widgetText,
+		tab: tabSafety, label: "shell command rules", widget: widgetText,
 		about: "answers for single shell commands, first match wins: " +
 			"allow git status*, deny rm -rf *.",
 	},
@@ -165,7 +202,7 @@ var settingUI = map[string]settingMeta{
 	// is: not a fourth approval mode but a filter in front of the one above —
 	// it can only spare you a question, never answer one those rows refuse.
 	config.KeyGuardian: {
-		tab: tabSession, label: "guardian", widget: widgetCycle,
+		tab: tabSafety, label: "guardian", widget: widgetCycle,
 		about: "asks a small model first whether a call is plainly safe, so you " +
 			"are only asked about the rest.",
 	},
@@ -175,7 +212,7 @@ var settingUI = map[string]settingMeta{
 	// question, this one refuses on your behalf — which is why it sits here and
 	// not beside the task countdown it otherwise looks like.
 	config.KeyConsentTimeout: {
-		tab: tabSession, label: "approval countdown", widget: widgetText,
+		tab: tabSafety, label: "approval countdown", widget: widgetText,
 		about: "seconds an approval question waits before it answers no for you. " +
 			"Any key stops the clock; 0 turns it off.",
 	},
@@ -217,13 +254,13 @@ var settingUI = map[string]settingMeta{
 	// whether their brief is READ for width before that worker starts, and the row
 	// is written as that question rather than as a switch over machinery.
 	config.KeyTaskStart: {
-		tab: tabSession, label: "starting a task", widget: widgetCycle,
+		tab: tabTasks, label: "starting a task", widget: widgetCycle,
 		about: "what /task does with your brief: sized reads it for width first, so " +
 			"the one worker that starts can hand the parts out once it has opened the " +
 			"material, single starts that worker without reading the brief at all.",
 	},
 	config.KeyTaskAudit: {
-		tab: tabSession, label: "check task work", widget: widgetCycle,
+		tab: tabTasks, label: "check task work", widget: widgetCycle,
 		about: "each task's work is checked over before it merges. " +
 			"Off merges on the task's own word.",
 	},
@@ -233,7 +270,7 @@ var settingUI = map[string]settingMeta{
 	// is spelled the way the card and the roster spell it, "needs your look",
 	// rather than as the machinery that could not answer.
 	config.KeyTaskSettle: {
-		tab: tabSession, label: "who settles work that needs a look", widget: widgetCycle,
+		tab: tabSafety, label: "who settles work that needs a look", widget: widgetCycle,
 		about: "ask puts it on the landed card for you. auto lets the chat read the " +
 			"work and decide, and ask you only when it cannot tell.",
 	},
@@ -246,14 +283,14 @@ var settingUI = map[string]settingMeta{
 	// does: it is not a fourth approval mode but the OTHER clock in the room —
 	// how long a proposed task waits for you before it starts on its own.
 	config.KeyTaskAutoApprove: {
-		tab: tabSession, label: "task countdown", widget: widgetText,
+		tab: tabSafety, label: "task countdown", widget: widgetText,
 		about: "seconds a proposed task waits for you before it starts. " +
 			"0 waits for your answer instead.",
 	},
 	// And under the countdown, what happens at the OTHER end of a task: how many
 	// times work that came back with something missing is sent back to finish it.
 	config.KeyTaskRepairRounds: {
-		tab: tabSession, label: "task repair rounds", widget: widgetText,
+		tab: tabTasks, label: "task repair rounds", widget: widgetText,
 		about: "times a task that came back with something missing is sent back to " +
 			"finish it before it lands as incomplete. 0 lets the first gap end it.",
 	},
@@ -261,17 +298,17 @@ var settingUI = map[string]settingMeta{
 	// name, and the two readings of the machine that hold the next one back
 	// whatever you named.
 	config.KeyTaskParallel: {
-		tab: tabSession, label: "tasks at once", widget: widgetText,
+		tab: tabTasks, label: "tasks at once", widget: widgetText,
 		about: "how many tasks may run at the same time. Blank is no limit — the machine " +
 			"and the provider are the real ceilings.",
 	},
 	config.KeyTaskMaxLoad: {
-		tab: tabSession, label: "busy machine", widget: widgetText,
+		tab: tabTasks, label: "busy machine", widget: widgetText,
 		about: "the load per core at which new tasks wait instead of starting. Running " +
 			"tasks are never touched. 0 stops watching.",
 	},
 	config.KeyTaskMinFreeMB: {
-		tab: tabSession, label: "memory floor", widget: widgetText,
+		tab: tabTasks, label: "memory floor", widget: widgetText,
 		about: "MB of memory that must be free before another task starts. 0 stops " +
 			"watching.",
 	},
@@ -280,7 +317,7 @@ var settingUI = map[string]settingMeta{
 	// rows below it and for the same reason — a row that asks "which model" and
 	// offers a blank line is asking a person to be the catalog.
 	config.KeyTaskModel: {
-		tab: tabSession, label: "task model", widget: widgetSelect,
+		tab: tabTasks, label: "task model", widget: widgetSelect,
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
@@ -292,7 +329,7 @@ var settingUI = map[string]settingMeta{
 	// the workers rather than as the machinery, because "specialist" is the
 	// word somebody uses and "subharness" is the word the code uses.
 	config.KeyWorkers: {
-		tab: tabWorkspace, label: "workers", widget: widgetText,
+		tab: tabTasks, label: "workers", widget: widgetText,
 		about: "which workers may be handed a piece of work, separated by commas. " +
 			"Blank is all of them. The general-purpose worker is always there and is " +
 			"never on the list.",
@@ -363,11 +400,6 @@ var settingUI = map[string]settingMeta{
 			"repeated, alphabets mixed inside words — throws it away and asks " +
 			"once more. Code blocks are never judged.",
 	},
-	config.KeySpendRail: {
-		tab: tabSession, label: "session ceiling", widget: widgetText,
-		about: "what one conversation may spend before it stops starting turns. " +
-			"0 removes the ceiling; the turn in flight always finishes.",
-	},
 
 	// ── Context ─────────────────────────────────────────────────────────────
 	//
@@ -430,23 +462,52 @@ var settingUI = map[string]settingMeta{
 			"work unauthenticated.",
 	},
 
-	// ── Workspace ───────────────────────────────────────────────────────────
+	// ── Spending ────────────────────────────────────────────────────────────
 	//
-	// What aforge may spend and do while it works for you, and what it does with
-	// its own time when you are not here.
+	// MONEY, AND NOTHING THAT IS NOT MONEY. The four rows are the four rails a
+	// person can actually turn, and the label of each one is THE SCOPE it bounds
+	// — per day, per conversation, per plan, practice — because that is the
+	// question being asked and `daily budget` / `session ceiling` are the names
+	// of the keys behind it. The order they read in, and the three readings that
+	// stand between them, are settingspend.go's ([spendingItems]).
+	//
+	// EVERY HINT ENDS WITH WHAT HAPPENS AT THE LINE. A rail whose consequence is
+	// unstated is a surprise rather than a setting, so each of these says what
+	// the moment of reaching it looks like — waits, asks, refuses, stops — and
+	// the registry's own hint says the same thing at more length.
 	config.KeyDailyBudget: {
-		tab: tabWorkspace, label: "daily budget", widget: widgetText,
-		about: "what aforge may spend on your work in a day. 0 removes the rail.",
+		tab: tabSpending, label: "per day", widget: widgetText,
+		about: "what aforge may spend on your work in a day. When the day's calls " +
+			"reach it, new work waits for midnight or for you to raise it here. " +
+			"none removes the limit.",
 	},
 	config.KeyPlanConsent: {
-		tab: tabWorkspace, label: "ask before spending", widget: widgetText,
-		about: "above this estimate a planned job quotes its price and waits for " +
-			"your go-ahead. 0 never asks.",
+		tab: tabSpending, label: "per plan", widget: widgetText,
+		about: "above this estimate a planned job quotes its step count and its " +
+			"price and waits for your go-ahead — it asks, it does not stop. " +
+			"none never asks.",
 	},
 	config.KeyPracticeBudget: {
-		tab: tabWorkspace, label: "practice budget", widget: widgetText,
-		about: "the slice of the day reserved for aforge practicing on itself.",
+		tab: tabSpending, label: "practice", widget: widgetText,
+		about: "the slice of the day aforge may spend practicing on itself. When " +
+			"it is gone practice stops until tomorrow and your own work is " +
+			"untouched. 0 here turns practice off rather than uncapping it.",
 	},
+	// It is `per conversation` and not `session ceiling` for this tab's whole
+	// reason: the label is the SCOPE and the person is reading a column of
+	// scopes. It sat on Session for four waves, one tab away from every other
+	// figure it is compared against.
+	config.KeySpendRail: {
+		tab: tabSpending, label: "per conversation", widget: widgetText,
+		about: "what one conversation may spend before it stops starting turns. " +
+			"The turn in flight always finishes and your message stays yours to " +
+			"send again. none removes the limit.",
+	},
+
+	// ── Workspace ───────────────────────────────────────────────────────────
+	//
+	// This machine and this project: what aforge does with its own time here,
+	// and what it may reach on your behalf.
 	config.KeyPracticeIdle: {
 		tab: tabWorkspace, label: "quiet before practice", widget: widgetText,
 		about: "how long the room stays quiet before aforge starts practicing.",
@@ -511,14 +572,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "keep drafts", widget: widgetToggle,
 		about: "keeps the half-typed message in the box across a restart, per directory.",
 	},
-	config.KeyNerdFont: {
-		tab: tabDisplay, label: "nerd font", widget: widgetToggle,
-		about: "draws the chrome with Nerd Font icons. Turn it off if icons show as boxes.",
-	},
-	config.KeyLinearMode: {
-		tab: tabDisplay, label: "linear mode", widget: widgetToggle,
-		about: "single column, no motion, no spinners — the accessible rendering.",
-	},
 	config.KeyTaskColumn: {
 		tab: tabDisplay, label: "task column", widget: widgetToggle,
 		about: "stands the task roster beside the chat. ctrl+g closes it and " +
@@ -533,11 +586,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
 		about: "one-line tips above the box until you have used what each one " +
 			"teaches. Off silences them, and what's-new lines with them.",
-	},
-	config.KeyRailState: {
-		tab: tabDisplay, label: "sidebar", widget: widgetCycle,
-		about: "how much of the right rail stands beside the chat: the full " +
-			"column, a one-column handle, or nothing.",
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,
@@ -763,9 +811,21 @@ type sheetItem struct {
 	conn *connRow
 	// role is set on the rows of the roles section, on exactly those terms.
 	role *roleRow
+	// read is set on a row of the Spending tab that is a RECEIPT and not a
+	// setting — `today`, and the two rails this build has but does not keep a
+	// registry row for (settingspend.go). It hangs here for [sheetItem.conn]'s
+	// reason: an item is an item, and only what draws it and what the cursor
+	// does with it ask which kind this one is.
+	read *railReading
 }
 
 func (i sheetItem) heading() bool { return i.head != "" }
+
+// restful reports whether the CURSOR MAY STOP HERE. A heading is a label, and a
+// reading is a fact — neither is a thing `enter` could do anything to — so the
+// walk steps over both, which is the whole of what makes `today` "not
+// selectable" (DESIGN.md, the Spending tab's first rule).
+func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 
 // sheet is the panel's whole state. The zero value is closed and costs the
 // frame nothing.
@@ -805,6 +865,14 @@ type sheet struct {
 	// and while one is, it owns the keyboard.
 	edit *sheetEdit
 	sel  *sheetSelect
+
+	// today is the Spending tab's first row: what the day has cost, against what
+	// it is allowed. It is TAKEN ONCE, when the panel opens (settingspend.go's
+	// [app.readDayCost]), for the reason [sheet.sessionModel] is taken once — the
+	// rows below it are about settings, and a figure that moved under a person
+	// reading them would be a list that changed while they looked at it. Nil is
+	// a day nothing has counted, and the row is then absent.
+	today *railReading
 
 	// msg is the last refusal, in the registry's own words.
 	msg string
@@ -930,6 +998,12 @@ func (a *app) registry() *config.Settings {
 			a.switchModel(slug, 0)
 			return nil
 		},
+		// THE TWO MONEY RECEIPTS: what the day has cost, and what this
+		// conversation has. They are seams and not reads this package makes,
+		// because a receipt is derived from a LIVE reading and internal/config
+		// has no way to ask a running surface what it has spent.
+		SpentTodayUSD:       a.spentTodayUSD,
+		SpentThisSessionUSD: a.spentThisSessionUSD,
 		// The `background checks` row's own hand: this machine's timer, read for
 		// the row's value and turned by its write. Nil on a machine that cannot
 		// have one, and the row is then absent rather than present and refusing
@@ -943,6 +1017,12 @@ func (a *app) registry() *config.Settings {
 			a.touch()
 			if key == config.KeyAPIKey {
 				a.handAPIKey()
+			}
+			// AND THE CONVERSATION'S OWN CEILING IS RE-READ HERE and nowhere
+			// else, so the status line's warm ink follows an edit without the
+			// paint ever touching the disk (moneydoor.go).
+			if key == config.KeySpendRail {
+				a.readSpendRail()
 			}
 		},
 	})
@@ -987,11 +1067,15 @@ func (a *app) raiseSettings() {
 	if a.hosted() {
 		a.note(settingsRemoteWord)
 	}
+	// The day's own figure, read once for the whole of this visit (see
+	// [app.spentTodayUSD]).
+	a.readDayCost()
 	a.sheet = sheet{
 		registry:     a.registry(),
 		conns:        a.conns,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
+		today:        a.todayReading(),
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
@@ -1068,6 +1152,15 @@ func (s *sheet) build() {
 		return
 	}
 	if query == "" {
+		// THE SPENDING TAB LAYS ITSELF OUT, because three of its rows are not
+		// registry rows at all and the order of the rest is a reading of how
+		// often a person worries about each one rather than of registry order
+		// (settingspend.go).
+		if settingTabs[s.tab] == tabSpending {
+			s.items = append(s.items, s.spendingItems()...)
+			s.cursor = s.clampCursor(s.cursor)
+			return
+		}
 		for _, row := range s.tabRows() {
 			meta, _ := settingMetaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
@@ -1180,16 +1273,16 @@ func (s *sheet) clampCursor(at int) int {
 	if at >= len(s.items) {
 		at = len(s.items) - 1
 	}
-	if !s.items[at].heading() {
+	if s.items[at].restful() {
 		return at
 	}
 	for i := at; i < len(s.items); i++ {
-		if !s.items[i].heading() {
+		if s.items[i].restful() {
 			return i
 		}
 	}
 	for i := at; i >= 0; i-- {
-		if !s.items[i].heading() {
+		if s.items[i].restful() {
 			return i
 		}
 	}
@@ -1216,7 +1309,7 @@ func (s *sheet) move(delta int) {
 				next = at
 				break
 			}
-			if !s.items[next].heading() {
+			if s.items[next].restful() {
 				break
 			}
 		}
@@ -1234,7 +1327,7 @@ func abs(n int) int {
 
 // current is the row under the cursor.
 func (s *sheet) current() (sheetItem, bool) {
-	if s.cursor < 0 || s.cursor >= len(s.items) || s.items[s.cursor].heading() {
+	if s.cursor < 0 || s.cursor >= len(s.items) || !s.items[s.cursor].restful() {
 		return sheetItem{}, false
 	}
 	return s.items[s.cursor], true
@@ -2353,6 +2446,20 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if item.role != nil {
 		return s.roleRowLines(item.role, selected, hovered, width, pal)
 	}
+	// A READING IS A ROW WITH NOTHING TO EDIT — `today`, and the two rails this
+	// build enforces somewhere a settings row cannot reach (settingspend.go). It
+	// draws like every other row and the cursor steps over it, which is the whole
+	// of "not selectable".
+	if item.read != nil {
+		return overlayLines(item.read.name, s.readingNote(item, width), false, false, hovered, width, pal)
+	}
+	// AND A MONEY ROW RANKS ITS OWN FACTS. The value, the pin that froze it and
+	// the receipt are three facts in priority order, fitted by rowfit into the
+	// cells the label leaves — so a narrow frame drops the receipt whole rather
+	// than cutting a figure in half (settingspend.go's [sheet.spendNote]).
+	if item.row.Category == config.CategorySpending && item.row.Kind == config.SettingDollars {
+		return overlayLines(item.meta.label, s.spendNote(item, width, pal.ascii), selected, false, hovered, width, pal)
+	}
 	value := item.row.Value()
 	if value == "" {
 		value = "—"
@@ -2374,30 +2481,14 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if word := s.laneWord(item); word != "" {
 		value += " · " + word
 	}
-	// AND A MONEY ROW SAYS WHAT A BARE "$0" CANNOT. Zero on a ceiling is the
-	// person's own instruction, and the thing it spells is the OPPOSITE of what
-	// the figure reads as at a glance: "no money at all" where the code means
-	// "no ceiling at all". See [sheet.railWord].
-	if word := s.railWord(item); word != "" {
-		value += " · " + word
+	// AND EVERY OTHER ROW THAT CARRIES A RECEIPT SAYS IT HERE. A receipt is a
+	// live fact standing beside a value and never a second value
+	// ([config.Setting.Receipt]); the money rows have their own ranked layout
+	// above, and this is every other row that has something true to add.
+	if receipt := item.row.Receipt(); receipt != "" {
+		value += " · " + receipt
 	}
 	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
-}
-
-// railWord is the dim tail on a spending row.
-//
-// IT DECIDES NOTHING. The registry already owns what zero means on each of these
-// rows — every money row carries a receipt written for exactly this
-// ([config.Setting.Receipt]) — and the words differ between them: the daily rail
-// and the session ceiling say `no limit`, the consent gate says `never asks`,
-// and the practice carve-out says `practice off`, because zero there switches
-// practice off rather than uncapping it. A surface that worked any of that out
-// again would be a second place for those three sentences to drift apart.
-func (s *sheet) railWord(item sheetItem) string {
-	if item.row.Category != config.CategorySpending {
-		return ""
-	}
-	return item.row.Receipt()
 }
 
 // laneWord is the tail on the conversation's model row: `auto (cloudflare now)`

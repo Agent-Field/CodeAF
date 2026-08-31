@@ -203,6 +203,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
+| `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
+| `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
@@ -614,6 +617,32 @@ hits.
 ```
 nothing spent yet — this session has not sent a turn.
 ```
+
+## /budget — setting a limit from the message box
+
+`/budget` (alias `/limits`) is the keyboard door onto the limits, and it writes through
+the same row the Spending tab writes through.
+
+| What you type | What it does |
+| --- | --- |
+| `/budget` | opens the Spending tab on `per day` |
+| `/budget 50` | sets the day's limit to $50 |
+| `/budget none` | removes the day's limit — the row then reads `no limit` |
+| `/budget plan 20` | sets one row by name |
+| `/budget plan` | a row named with no figure opens the tab on that row |
+
+The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
+`session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
+edited. There is deliberately **no `/budget task`**: a task has no dollar limit of its
+own, so a command that accepted one would be writing a number nothing reads.
+
+A write says back what it landed, in the tab's own words for that row — `per day · $50`,
+or `per day · no limit`. A figure it cannot read is refused in the row's own words with
+the rows listed after it: `that's not a dollar amount — a number, or none for no limit ·
+rows: day, conversation, plan, practice`. A row this machine does not have answers `that
+limit is not on this machine`.
+
+The `$` is optional, and the amount can be a word — see the next section.
 
 ## /cache — the build cache, disk space, and why aforge is using so much disk
 
@@ -1082,9 +1111,10 @@ tail. Every row has the same thin left line and one space of padding:
 The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
 The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
 `/task solo <brief>` and a `single` starting setting begin at shaping because they skip
-sizing. When work starts, the thin line and scaffold disappear
-in the same frame and the normal started-task row takes their place. If starting fails,
-only the error sentence remains.
+sizing. Once shaping starts writing, a fourth dim row appears under the phase row with the
+newest words of the brief on it — see *Can I see the brief while it is being written*. When
+work starts, the thin line and scaffold disappear in the same frame and the normal
+started-task row takes their place. If starting fails, only the error sentence remains.
 
 ## Why is there a line next to my task
 
@@ -1092,6 +1122,72 @@ The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the 
 into one thing being formed. It is a single left hairline, not a box or a task-status
 border. It exists only while a `/task` command is in flight and disappears when that
 command becomes the ordinary started-task row or an error line.
+
+## Can I see the brief while it is being written — the preview line under shaping the brief
+
+Yes. While `shaping the brief…` is up, one extra dim row hangs under it carrying the newest
+part of the brief as the model writes it:
+
+```text
+▏ task
+▏ "write the release notes"
+▏ ⠙ shaping the brief… · 13s
+▏ ▸ the failure this kind of work has is a release note that lists comm
+```
+
+It is **one row, always**. It never grows into a second row and never pushes the
+conversation up the screen — the words on it change, the height does not. It is the last
+line the brief lays out to at your terminal's width, so it fills up left to right and then
+starts again, and the end of it is where the model's pen is.
+
+**While the model is still thinking, the row shows its thinking, in italics.** The shaper
+runs on the careful-work model and is allowed to reason before it writes, and on some models
+that is most of the wait — so the row shows whatever is actually being produced. Italic is
+the model working; upright is your brief. **The brief takes the row the moment there is a
+brief and never gives it back**, so nothing you have started reading is un-said.
+
+**It appears only when there is something to show.** Before the model has produced anything
+there is no fourth row at all, and a task you approved from a proposal card never grows one
+— that brief was written before you were asked, so there is no stream behind the wait.
+
+**`▸` on the row means there is more behind it.** Press the row, or press `→` with an empty
+box, and the one line becomes the last six lines of the brief so far; `←` or another press
+shuts it again and `▾` goes back to `▸`. No new key is involved — it is the same fold every
+block on this surface has.
+
+Nothing about the preview is kept. The reasoning in particular is never written anywhere,
+never sent anywhere, and is not part of the brief the worker is given.
+
+The preview is **telemetry about a wait, not a transcript**. When the brief lands, the
+preview and the whole forming block disappear in the same frame, and what stays is the
+ordinary started-task row. Nothing of the preview is kept, and the shaped brief itself is
+readable in full in the task's own room.
+
+## Several tasks forming at once — one block with a row each
+
+Two `/task` commands can be shaping at the same time. They share **one** block rather than
+stacking two four-row blocks at the tail of the transcript:
+
+```text
+▏ tasks · 3 forming
+▏ ⠙ write the release notes · 13s
+▏ ⠙ fix the nil-map crash in the loader · 9s
+▏ ▸ Reproduce the crash from the stack trace in issue #94, then write a
+▏ ⠙ write the docs for /task · 2s
+```
+
+The head counts them. Each task is one compact row: the same spinning mark, its name or the
+opening of what you typed, and its own clock. **Only the row you are pointed at shows a
+preview under it**, so the block stays the same height however long the briefs get.
+
+`↑` and `↓` with an empty box move between the rows — the keys that walk rows in the
+transcript already — and the preview follows. `→` opens that row's window, `←` shuts it.
+Clicking a row you are not on points at it and opens it; clicking the row you are on shuts
+it again. Walking off either end of the block hands the arrows back to whatever they do
+next, so nothing else you press changes meaning.
+
+**With one task forming, none of this appears.** No head that counts, no rows to walk: the
+block is `task`, your words, the phase row and the preview, exactly as above.
 
 ## /history — the task history command: past tasks, every task this project has run
 
@@ -1310,45 +1406,60 @@ Refusals inside the panel, exactly as written:
 - A search that matches nothing says `nothing matches`. The `Connections` tab has its own
   sentences.
 
-## The six settings tabs
+## The nine settings tabs
 
 The tabs, in order:
 
-**Session** — what this conversation may run and spend. Rows include "ask before running",
-"tool exceptions", "shell command rules", "guardian", "approval countdown",
-"starting a task", "check task work", "who settles work that needs a look", "memory",
-"task countdown", "task repair rounds", "tasks at once",
-"busy machine", "memory floor", "task model", "fallback models", "session ceiling".
+```
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+```
+
+**Session** — the rows this conversation carries that belong nowhere else: "memory",
+"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
+"ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
-errands on two screens.
+errands on two screens. Neither is the conversation's own money limit here any more: it is
+`per conversation` on **Spending**.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "jina key".
 
-**Workspace** — what aforge may do and spend while it works for you. Rows: "daily
-budget", "ask before spending", "practice budget", "workers", "quiet before practice",
-"arrival brief after", "tenure after", "background checks", "attribution", "google
-sign-in id", "google sign-in secret".
-
-**"workers"** is which workers this install may hand a piece of work to, separated by
-commas — blank is all of them, which is the default. It is how you turn a specialist off;
-*How work on its own actually runs* has the whole of it.
+**Workspace** — this machine and this project: what aforge does with its own time here, and
+what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
+"tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
+secret", "slack sign-in id". **It holds no money row at all** — every one of those moved to
+Spending.
 
 **"background checks"** is on by default: one small timer under your own login checks
 your reminders, watches and routines every 5 minutes with no window open. Off removes it
 and nothing standing is lost — see *Keeping an eye on things* for the whole of it.
 
-**Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
-"timestamps", "hints" — the one-line tips above the message box, and the what's-new lines
-with them (see *Hints and tips*).
+**Spending** — money, and nothing that is not money. Seven lines: the reading `today`, then
+"per day", "per conversation", "per plan", the readings "per task" and "per standing run",
+and "practice". `/budget` and `/limits` open it. *Models, context, and what it costs* has
+every row and every door onto them.
 
-There is no "chat width" row here. The task roster is a fixed column whose width the
-frame decides — full, slim, or drawn over the conversation on a narrow terminal — so
-there is no share of the frame to set, and a row that could only refuse is not shown.
+**Safety** — what aforge may do without asking you first. Rows: "ask before running",
+"tool exceptions", "shell command rules", "guardian", "approval countdown", "task
+countdown", "who settles work that needs a look".
+
+**Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
+work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task model",
+"workers".
+
+**"workers"** is which workers this install may hand a piece of work to, separated by
+commas — blank is all of them, which is the default. It is how you turn a specialist off;
+*How work on its own actually runs* has the whole of it.
+
+**Display** — how the surface draws itself and what it remembers of your typing. Rows:
+"input history", "keep drafts", "task column", "hints" — the one-line tips above the
+message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
+"mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
+need no patched font anywhere on this surface, and the accessible single-column rendering
+is the `--linear` flag at launch rather than a persisted setting.
 
 **Providers** — which model answers what. It leads with the **Models section**, in this
 order:

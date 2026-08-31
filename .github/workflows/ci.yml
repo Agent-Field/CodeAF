@@ -85,6 +85,7 @@ jobs:
         if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
+          PRNUM: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           go run ./cmd/aforge-changes check
@@ -104,7 +105,11 @@ jobs:
           capability. No tool can derive that from a diff, which is why it is
           asked for here.
 
-            make changelog-new PR=<this PR> KIND=changed SLUG=<a-short-slug>
+          MSG
+          # The number is spelled out so the command pastes unedited — a message
+          # that can be pasted unedited is a message that gets pasted.
+          echo "  make changelog-new PR=${PRNUM} KIND=changed SLUG=<a-short-slug>"
+          cat <<'MSG'
 
           Kinds: added changed renamed fixed removed internal. A one-line
           `kind: internal` entry is perfectly legitimate and takes ten seconds.

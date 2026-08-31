@@ -98,12 +98,13 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	return rows
 }
 
-// stops is every item of the current section that is a row rather than a
-// heading — the walk `↑↓` takes.
+// stops is every item of the current section the cursor may rest on — the walk
+// `↑↓` takes. A heading is a label and a reading is a fact, and neither is
+// something `enter` could do anything to ([sheetItem.restful]).
 func (placeSettings) stops(a *app) []int {
 	out := make([]int, 0, len(a.sheet.items))
 	for i, item := range a.sheet.items {
-		if !item.heading() {
+		if item.restful() {
 			out = append(out, i)
 		}
 	}

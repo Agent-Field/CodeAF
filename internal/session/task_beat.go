@@ -68,13 +68,13 @@ import (
 )
 
 // The phases a running node can be in, in the plain words every other file here
-// writes. They are the node's three lives and not the machinery's names for
-// them: the check is "checking" and never "audit", for task_audit.go's
-// vocabulary law — this file is read by other programs, but the words a program
-// reads end up on somebody's screen.
+// writes. They are the node's lives and not the machinery's names for them: the
+// check is "checking" and never "audit", for task_audit.go's vocabulary law —
+// this file is read by other programs, but the words a program reads end up on
+// somebody's screen.
 //
 // THE WORDS ARE THE CONTRACT'S, not this file's. task_contract.go exports the
-// same three strings for the surface that draws them off [EventTaskPhase], and a
+// same strings for the surface that draws them off [EventTaskPhase], and a
 // pulse on disk saying one thing while a card says another would be two accounts
 // of one moment — so there is one spelling and these are names for it.
 const (
@@ -84,6 +84,9 @@ const (
 	taskBeatChecking = TaskPhaseChecking
 	// taskBeatRepairing is a repair round closing named gaps.
 	taskBeatRepairing = TaskPhaseRepairing
+	// taskBeatSizing is the reading that decides whether the work is handed out
+	// in parts, and how.
+	taskBeatSizing = TaskPhaseSizing
 )
 
 // taskBeatSuffix names the sidecar. It is not `.jsonl` and it is not `_<id>`,
@@ -96,7 +99,7 @@ type taskBeatRow struct {
 	// Node is the node's id, and Title what a reader would call it.
 	Node  uint64 `json:"node"`
 	Title string `json:"title,omitempty"`
-	// Phase is one of the three words above.
+	// Phase is one of the words above.
 	Phase string `json:"phase"`
 	// Started is when the node began, so a reader can age the whole run and not
 	// only the last request.

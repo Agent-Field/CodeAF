@@ -1713,36 +1713,66 @@ func (n *TaskNode) beatPhase(name string) func() {
 	return n.beatWriter().phase(name)
 }
 
-// enterPhase moves the node into one of its three lives EVERYWHERE AT ONCE — the
-// pulse other windows read off disk (task_beat.go) and the event this session's
-// own surface draws from ([EventTaskPhase]) — and hands back the way out, so a
+// enterPhase moves the node into one of its lives EVERYWHERE AT ONCE — the pulse
+// other windows read off disk (task_beat.go) and the event this session's own
+// surface draws from ([EventTaskPhase]) — and hands back the way out, so a
 // caller writes `defer a.enterPhase(node, x, …)()`.
 //
-// ONE MOVE, ONE CALL, AND NO SECOND STATE MACHINE. The phase already had exactly
-// two sites — the check and a repair round — and both of them were already
-// spelling the move as a deferred pair. Anything that tracked the phase a second
-// time in order to publish it would be a second thing to keep in step with those
-// two lines, and the first minute they disagreed the card would be lying about
-// work the pulse had right.
+// ONE MOVE, ONE CALL, AND NO SECOND STATE MACHINE. Every site that moves the
+// phase — the check, a repair round, and the reading that decides whether the
+// work divides (task_divide.go) — spells the move as this one pair. Anything
+// that tracked the phase a second time in order to publish it would be a second
+// thing to keep in step with those lines, and the first minute they disagreed
+// the card would be lying about work the pulse had right.
 //
 // THE WAY OUT IS ALWAYS BACK TO WORKING, and that is a fact about the callers
-// rather than an assumption made here: the check and a repair round are SIBLINGS
-// and never nested — [Agent.auditWithRepair] runs one, then the other, then the
-// first again — so each of them is entered from a node that is working and left
-// to a node that is working. The pulse restores whatever it actually saved; this
-// says the word that is true either way.
+// rather than an assumption made here: the check, a repair round and a sizing
+// reading are SIBLINGS and never nested — [Agent.auditWithRepair] runs one, then
+// the other, then the first again, and a division is read while the node's own
+// worker holds the turn — so each of them is entered from a node that is working
+// and left to a node that is working. The pulse restores whatever it actually
+// saved; this says the word that is true either way.
 func (a *Agent) enterPhase(node *TaskNode, phase string, round, rounds int, text string) func() {
 	if node == nil {
 		return func() {}
 	}
+	teller := node.phaseTeller(a)
 	restore := node.beatPhase(phase)
 	node.living(phase)
-	a.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: phase, Round: round, Rounds: rounds, Text: text})
+	teller.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: phase, Round: round, Rounds: rounds, Text: text})
 	return func() {
 		restore()
 		node.living(TaskPhaseWorking)
-		a.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: TaskPhaseWorking})
+		teller.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: TaskPhaseWorking})
 	}
+}
+
+// phaseTeller is the agent a phase move is ANNOUNCED FROM: the conversation
+// whose graph this node is in, and never merely whoever noticed the move.
+//
+// IT MATTERS BECAUSE NOT EVERY MOVE IS NOTICED BY THE SAME AGENT. A check and a
+// repair round are run by the agent that OWNS the node, which for a node the
+// conversation started is the conversation itself — so for two sites this
+// changes nothing. A DIVISION IS READ BY THE NODE'S OWN WORKER
+// (task_divide.go), and a worker's only lanes are its room's: a move announced
+// from there reaches somebody standing inside the task and nobody at all on the
+// rail, the card or the home row, which is every surface the phase was built
+// for. The same is true of a PART's check, whose owner is its parent's worker.
+//
+// So it goes the way a node's ordinary updates already go — the conversation's
+// own hub and its standing subscription ([TaskGraph.reportHome],
+// [Agent.TaskUpdates]) — and the receiver stands in only for a graph that has no
+// conversation behind it, which is every scripted graph in the tests.
+func (n *TaskNode) phaseTeller(noticed *Agent) *Agent {
+	if n == nil || n.graph == nil {
+		return noticed
+	}
+	// home is written once, before any node can run, and read without the
+	// graph's lock exactly as [TaskGraph.runner] and [Agent.familyPlace] read it.
+	if home := n.graph.home; home != nil {
+		return home
+	}
+	return noticed
 }
 
 // living records the node's phase on the node itself, under the graph's lock, so
@@ -2969,8 +2999,23 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// A NODE WITH NOTHING DRAWN, A ROAD THAT IS OFF, AND A DIVISION THE GATES OR
 		// THE REVIEWER REFUSED ALL ANSWER THE SAME EMPTY STRING, and the node then
 		// runs as one worker — which is what every task did before this existed.
+		//
+		// EXCEPT FOR THE ONE ANSWER THAT IS NOT ABOUT THE DIVISION. The reviewer
+		// that reads a drawn division may come back saying the work left over is
+		// not work for any worker at all, and it says so having read the parts, the
+		// brief and the evidence together, before this node has spent anything. It
+		// was measured being thrown away: a task whose whole remainder was an
+		// approving review GitHub only takes from a human ran anyway for nine
+		// minutes and $1.24, fixed a file in an empty repository looking for
+		// something it could do, and was failed by the check. So it lands here
+		// instead, needing a person, with the reader's own sentence as its report
+		// ([Agent.landNeedsPerson]) — and this line is where the saving is, because
+		// everything past it is the run, the check and the repair round.
 		if handedOut == "" {
-			handedOut = child.divideFromSketch(ctx)
+			var person string
+			if handedOut, person = child.divideFromSketch(ctx); person != "" {
+				return a.landNeedsPerson(node, tree, person, log)
+			}
 		}
 
 		var wrote []string

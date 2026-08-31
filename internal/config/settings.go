@@ -43,18 +43,35 @@ const (
 	SettingText
 )
 
-// Category names are the four faint lowercase words the sheet may announce a
-// section with (15). There were seven, and five of them were labels doing
-// structure's job: `rhythm`, `documents & vision` and `sharing` each announced
-// two rows or one, which is a header naming a mechanism rather than a section a
-// reader could otherwise not place. Deleting them is 15's own test — the rows
-// still read, because position and spacing already said what the word said.
+// Category names are the faint lowercase words the sheet may announce a section
+// with (15). There were seven, and five of them were labels doing structure's
+// job: `rhythm`, `documents & vision` and `sharing` each announced two rows or
+// one, which is a header naming a mechanism rather than a section a reader could
+// otherwise not place. Deleting them is 15's own test — the rows still read,
+// because position and spacing already said what the word said.
+//
+// SPENDING IS MONEY AND NOTHING ELSE, and that is why there are six words here
+// rather than four. `spending` had grown to hold twenty rows answering four
+// different questions — what may it spend, what may it run without asking, how
+// does it run tasks, and which workers exist — so a person looking for "how much
+// may it spend" read about load averages and repair rounds first. The three
+// questions are three sections now, and docs/design/spending/DESIGN.md is the
+// argument: a category is what a row is ABOUT, and a category that answers four
+// questions is a drawer rather than a section.
 const (
 	// CategoryModels is what runs the work: one row per role the router has,
 	// then the capability models beside them.
 	CategoryModels = "models"
-	// CategorySpending is every dollar the product will spend without asking.
+	// CategorySpending is every dollar the product will spend without asking,
+	// and NOTHING that is not a dollar.
 	CategorySpending = "spending"
+	// CategorySafety is what aforge may do without asking you first: the
+	// approval gate, its exceptions, the model that stands in for you, and the
+	// two clocks that answer when nobody does.
+	CategorySafety = "safety"
+	// CategoryTasks is how work you can walk away from is run — how it starts,
+	// how it is checked, how much of it happens at once, and on whose hands.
+	CategoryTasks = "tasks"
 	// CategoryPractice is what aforge does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
@@ -72,9 +89,12 @@ const (
 	CategoryAppearance = CategoryInterface
 )
 
-// SettingCategories is the render order of the sheet.
+// SettingCategories is the render order of the sheet. Spending leads the three
+// new sections because "what may it spend" is the question people arrive with;
+// safety and tasks follow it in the order the design's own hierarchy names.
 var SettingCategories = []string{
-	CategoryModels, CategorySpending, CategoryPractice, CategoryInterface,
+	CategoryModels, CategorySpending, CategorySafety, CategoryTasks,
+	CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -90,9 +110,6 @@ const (
 	KeyVisionModel    = "vision_model"
 	KeyAttribution    = "attribution"
 	KeySplitPct       = "split_pct"
-	KeyLinearMode     = "linear_mode"
-	KeyNerdFont       = "nerd_font"
-	KeyRailState      = "rail_state"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
 	// what was typed, and what was half-typed. They are one pair of questions —
@@ -198,13 +215,12 @@ const (
 	KeyTimestamps = "ui.timestamps"
 
 	// KeyTaskColumn is whether the v3 chat opens with the task roster's column
-	// standing beside the conversation. It is a BOOLEAN where the v2 sidebar
-	// ([KeyRailState]) is a choice, because the v3 column has no middle rung: its
-	// two narrower tiers are decided by the frame's own width, and the one answer
-	// a person gives it by hand is whether the column is there at all.
+	// standing beside the conversation. It is a BOOLEAN — the column has no
+	// middle rung: its two narrower tiers are decided by the frame's own width,
+	// and the one answer a person gives it by hand is whether the column is
+	// there at all.
 	//
-	// It is a separate row from the v2 sidebar and must stay one. They are two
-	// surfaces with two shapes, and a person who put v3's column away has said
+	// A person who put v3's column away has said
 	// nothing whatever about v2's three rungs.
 	KeyTaskColumn = "ui.task_column"
 	// KeyQuickSwitch is whether the conversation switcher (internal/tui3's
@@ -457,27 +473,6 @@ const (
 	KeyContextReuse      = "context_reuse_pct"
 )
 
-// RailStates are the three rungs the v2 right rail collapses through, in the
-// order the chord walks them.
-//
-// IT IS A CHOICE AND NOT A BOOLEAN, and that is the whole reason it is not
-// shaped like [KeyLinearMode]. The rail used to be a drawer with two positions
-// — there, or not there — and the middle rung is what makes the third state
-// worth persisting: a slim handle keeps the ONE thing a hidden rail cannot say
-// (something landed in a conversation you are not in) without keeping the
-// twenty-eight columns that made the open rail read as clutter.
-var RailStates = []string{RailOpen, RailSlim, RailHidden}
-
-// The three rungs by name. They are the strings on disk and in the environment,
-// so they are spelled once here and never quoted anywhere else.
-const (
-	// RailOpen is the full column: threads over work, roughly 30 columns.
-	RailOpen = "open"
-	// RailSlim is the handle: one column carrying at most the unseen dot.
-	RailSlim = "slim"
-	// RailHidden is no rail at all.
-	RailHidden = "hidden"
-)
 
 // ToolApprovalModes are the three answers the tool gate can be set to, in the
 // order they widen: ask about everything, run everything, refuse everything.
@@ -969,34 +964,17 @@ var OperatorEnvPins = []string{
 	// The subharness sets it on the children it spawns; a user who set it
 	// would simply lose their own program.
 	"AFORGE_SWEPRO",
-	// AFORGE_CHAT_V2 selects the chat surface being built beside the current
-	// one, and with it the resident's room-addressing policy. It is plumbing
-	// for the same reason AFORGE_SWEPRO is — it decides which program the
-	// binary is before anything reads a preference — and it is temporary
-	// besides: it disappears one wave after the new surface becomes the
-	// default, which is exactly the lifetime a persisted setting must not have.
-	"AFORGE_CHAT_V2",
-	// AFORGE_CHAT_TRACE turns on the v2 chat surface's journal-versus-screen
-	// trace (internal/tui2/chat/engine.go), which writes into the chat.log the
-	// entry point already opens. It is plumbing rather than a setting for the
-	// reason the whole list exists: it changes nothing about the product, only
-	// how much the build says about itself while a fault is being chased, and a
-	// preference the sheet offered to persist would be a preference for a
-	// noisier log forever. The one line that reports an actual divergence is not
-	// behind it — that one is always on, because a condition that eats replies
-	// does not get to wait for an operator to opt in.
-	"AFORGE_CHAT_TRACE",
 	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,
 	// because there is no question a person using aforge would ask that it
-	// answers. It is plumbing for the same reason AFORGE_CHAT_TRACE is —
-	// diagnostic output a preference sheet has no business persisting.
+	// answers. It is plumbing: diagnostic output a preference sheet has no
+	// business persisting.
 	"AFORGE_WIRE_LOG",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
-	// plumbing for the reason AFORGE_CHAT_V2 is — a wave's escape hatch, not a
+	// plumbing for the reason AFORGE_SWEPRO is — a wave's escape hatch, not a
 	// preference — and it has the same lifetime: it disappears once the gate
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
@@ -1006,7 +984,7 @@ var OperatorEnvPins = []string{
 	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
 	// task's worker carries divide_work, and the sizing judgments read measured
 	// overrun base rates. Set it to 0 and the tree is byte-identical to before
-	// the wave. It is plumbing for the reason AFORGE_CHAT_V2 is — it decides
+	// the wave. It is plumbing for the reason AFORGE_SWEPRO is — it decides
 	// which decomposition doctrine the binary runs, not a preference the
 	// product has an opinion about — and it has the same lifetime: it
 	// disappears when nobody has a reason to turn the default off any more,
@@ -1076,20 +1054,6 @@ const (
 	DefaultSplitPct = 80
 	MinSplitPct     = 25
 	MaxSplitPct     = 85
-
-	// DefaultLinearMode leaves the full v2 surface running: most people want
-	// the motion and the layout, so the accessible single-column rendering
-	// (10.1.5) is a door someone walks through on purpose, not a default they
-	// have to walk back out of.
-	DefaultLinearMode = false
-
-	// DefaultNerdFont draws the v2 chrome with Nerd Font icons, because that is
-	// what the user asked the surface to look like (12.7). Default-on is only
-	// defensible because turning it off costs nothing: the plain tier is not a
-	// degradation but the designed floor — same segments, same order, same
-	// tints, same widths, asserted by a parity gate rather than hoped for — so
-	// a user whose font is not patched loses one keystroke and no layout.
-	DefaultNerdFont = true
 
 	// DefaultHistoryEnabled remembers what was typed, because a prompt is the
 	// most expensive sentence in the product to re-type and the up arrow is the
@@ -1190,20 +1154,9 @@ const (
 	// pinned six months ago and forgot.
 	DefaultSearchProvider = SearchProviderAuto
 
-	// DefaultRailState opens the rail on a window that has never been told
-	// otherwise, and the reason is the one thing a hidden default cannot do:
-	// THE RAIL TEACHES BY EXISTING. A first-run window with no column beside it
-	// is a window whose threads and whose running work are facts the reader has
-	// to be told about in prose; a column that is simply there is the same
-	// sentence said once, in furniture. After the reader collapses it we never
-	// open it again on their behalf — the handle's dot is the only attention
-	// ask this surface has left.
-	DefaultRailState = RailOpen
-
 	// DefaultTaskColumn stands the v3 task column up on a session that has never
-	// been told otherwise, for [DefaultRailState]'s reason said about a different
-	// surface: the column is how a person finds out that this chat runs work you
-	// can walk away from. Once they put it away we never stand it up again on
+	// been told otherwise: THE COLUMN TEACHES BY EXISTING — it is how a person
+	// finds out that this chat runs work you can walk away from. Once they put it away we never stand it up again on
 	// their behalf — the strip is what keeps running work reachable from a frame
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
@@ -1308,7 +1261,7 @@ func (s Setting) Accepts() string {
 	case SettingModel:
 		return "a model id, like anthropic/claude-opus-5"
 	case SettingDollars:
-		return "an amount in dollars, like 5 or 2.50"
+		return "an amount in dollars, like 5 or 2.50 — or none for no limit"
 	case SettingDuration:
 		return "a length of time, like 20m or 4h, or 0"
 	case SettingPercent:
@@ -1379,6 +1332,12 @@ type SettingsOptions struct {
 	// ceiling. The bool separates "spent nothing" from "nobody counted"
 	// (10.2.8); nil leaves the receipt off rather than printing $0.00.
 	SpentTodayUSD func() (float64, bool)
+
+	// SpentThisSessionUSD is what the conversation in front of the reader has
+	// spent, for the receipt beside its own ceiling. Nil on every door that is
+	// not a live conversation, and the bool carries the same distinction
+	// [SettingsOptions.SpentTodayUSD] carries: not counted is not zero.
+	SpentThisSessionUSD func() (float64, bool)
 
 	// ModelCost is what the provider table knows about one model's price. It is
 	// a hint beside a model row and never a filter: an unpriced model is the
@@ -1630,46 +1589,50 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
+			EmptyLabel: noLimitWord,
 			Hint: "what aforge may spend on your work in a day. It starts large — " +
 				"it is a backstop against a runaway, not a budget — so set it to what " +
-				"you actually want to spend. 0 removes the rail. " +
-				"A change lands at the next rail check.",
-			read:    func() string { return formatDollars(resolvedDollars(DailyBudgetUSDAt(dir))) },
+				"you actually want to spend. When the day's calls reach it, new work " +
+				"waits for midnight or for you to raise it here. " +
+				"Say none for no limit. A change lands at the next rail check.",
+			read:    func() string { return moneyValue(resolvedDollars(DailyBudgetUSDAt(dir))) },
 			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
-			receipt: s.dailyBudgetReceipt,
+			receipt: s.spentTodayReceipt,
 		},
 		Setting{
 			Key: KeyPlanConsent, Category: CategorySpending, Kind: SettingDollars,
 			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
+			EmptyLabel: "never asks",
 			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
-				"the step count and the price and waits for your go-ahead. 0 never asks.",
-			read:    func() string { return formatDollars(resolvedDollars(PlanConsentUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
-			receipt: func() string { return noLimitReceipt(resolvedDollars(PlanConsentUSDAt(dir)), "never asks") },
+				"the step count and the price and waits for your go-ahead — it asks, it " +
+				"does not stop. Say none and it never asks.",
+			read:  func() string { return moneyValue(resolvedDollars(PlanConsentUSDAt(dir))) },
+			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
 		},
 		Setting{
 			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
-			Hint: "the slice of the day reserved for aforge practicing on itself. " +
+			EmptyLabel: "practice off",
+			Hint: "the slice of the day reserved for aforge practicing on itself. When it " +
+				"is spent, practice stops until tomorrow and your own work is untouched. " +
 				"0 is the one money row that does not mean no limit: it turns practice " +
 				"off. A change lands the next time aforge starts.",
-			read:    func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
-			write:   func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
-			receipt: func() string { return noLimitReceipt(resolvedDollars(PracticeBudgetUSDAt(dir)), "practice off") },
+			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
+			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
-		// And beside the three rails on the MONEY, the one on the MACHINERY:
-		// which workers this install may hand a piece of work to at all. It sits
-		// here rather than beside the task rows because it is not about the work
-		// that leaves one conversation — a worker takes leaves on every surface
-		// there is — and because the specialists are the expensive way of taking
-		// a job, which is the subject the three rows above it are already on.
+		// WHICH HANDS THIS INSTALL HAS: the workers this install may hand a piece
+		// of work to at all. It is a TASK row and not a money one — it was filed
+		// under spending because specialists are the expensive way of taking a
+		// job, which is a reason to think about it and not a reason to look for
+		// it there. A person on the spending tab is asking what may be spent, and
+		// a roster of workers is not an answer to that.
 		//
 		// Its receipt names the build's own workers rather than the hint, because
 		// the hint is written once and the workers are whatever the binary ships
 		// — a sentence listing them here would be the copy that goes stale.
 		Setting{
-			Key: KeyWorkers, Category: CategorySpending, Kind: SettingText,
+			Key: KeyWorkers, Category: CategoryTasks, Kind: SettingText,
 			Label: "workers", EmptyLabel: "every worker installed", Env: EnvWorkers,
 			Hint: "which workers this install may hand a piece of work to, separated by " +
 				"commas. Blank is all of them, which is the default. The general-purpose " +
@@ -1685,7 +1648,7 @@ func (s *Settings) build() []Setting {
 		// question about a different currency: what may aforge do without
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
-			Key: KeyToolApprovalMode, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
 			Label: "ask before running", Choices: ToolApprovalModes,
 			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
 				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
@@ -1694,7 +1657,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},
 		Setting{
-			Key: KeyToolApprovals, Category: CategorySpending, Kind: SettingText,
+			Key: KeyToolApprovals, Category: CategorySafety, Kind: SettingText,
 			Label: "tool approvals", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
@@ -1705,7 +1668,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
 		},
 		Setting{
-			Key: KeyBashApprovals, Category: CategorySpending, Kind: SettingText,
+			Key: KeyBashApprovals, Category: CategorySafety, Kind: SettingText,
 			Label: "shell command rules", EmptyLabel: "none",
 			Hint: "answers for single shell commands, first match wins: " +
 				"`allow git status*, deny rm -rf *`. A `*` matches anything; an allow " +
@@ -1717,7 +1680,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBashApprovals(dir, raw) },
 		},
 		Setting{
-			Key: KeyGuardian, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyGuardian, Category: CategorySafety, Kind: SettingChoice,
 			Label: "guardian", Choices: GuardianModes,
 			Hint: "when on, a small model is asked first whether a call is plainly safe — " +
 				"read-only, inside this directory, reversible — and you are only asked about the rest. " +
@@ -1726,7 +1689,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
 		},
 		Setting{
-			Key: KeyConsentTimeout, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
 			Label: "approval countdown",
 			Hint: "how many seconds an approval question waits for you before it answers itself. " +
 				"It answers no — the call is refused and the model is told, never approved — " +
@@ -1810,7 +1773,7 @@ func (s *Settings) build() []Setting {
 		// says what STARTS when you type /task, the audit row says what has to be
 		// true before what started is allowed to land.
 		Setting{
-			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskStart, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "starting a task", Choices: TaskStartModes,
 			Hint: "what /task <brief> pays to find out. sized is the default: the brief " +
 				"is read for width first and one worker starts either way, and a brief with " +
@@ -1821,7 +1784,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},
 		Setting{
-			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
 			Hint: "when on, every task node's work is checked by an independent read-only " +
 				"auditor — it runs the repo's own verification and reads the diff — before " +
@@ -1834,7 +1797,7 @@ func (s *Settings) build() []Setting {
 		// And directly under it, the other end of the same question: what happens
 		// when the check above came back with nothing at all.
 		Setting{
-			Key: KeyTaskSettle, Category: CategorySpending, Kind: SettingChoice,
+			Key: KeyTaskSettle, Category: CategorySafety, Kind: SettingChoice,
 			Label: "who settles a task nobody could check", Choices: TaskSettleModes,
 			Hint: "who decides about a task that finished with nobody able to say whether " +
 				"it holds. ask is the default and means you do: the landed card offers " +
@@ -1863,7 +1826,7 @@ func (s *Settings) build() []Setting {
 		// aforge may DO without asking, this says how long you get to say
 		// something about work it has already decided to hand off.
 		Setting{
-			Key: KeyTaskAutoApprove, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskAutoApprove, Category: CategorySafety, Kind: SettingCount,
 			Label: "task countdown",
 			Hint: "how many seconds a proposed task waits for you before it starts on its own. " +
 				"The countdown is your window to redirect it or wave it off, not a gate — " +
@@ -1875,7 +1838,7 @@ func (s *Settings) build() []Setting {
 		// work you handed off: how many times a task that came back with gaps is
 		// sent back to close them before it is called incomplete.
 		Setting{
-			Key: KeyTaskRepairRounds, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskRepairRounds, Category: CategoryTasks, Kind: SettingCount,
 			Label: "task repair rounds",
 			Hint: "how many times a task that came back with something missing is sent back " +
 				"to finish the job — same working copy, same brief, with the gaps in front of " +
@@ -1889,7 +1852,7 @@ func (s *Settings) build() []Setting {
 		// depths: the number you may name, and the two things the machine itself
 		// will say no to whatever you named.
 		Setting{
-			Key: KeyTaskParallel, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskParallel, Category: CategoryTasks, Kind: SettingCount,
 			Label: "tasks at once", EmptyLabel: "no limit",
 			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
 				"default: what actually runs out is this machine — the two rows below hold new " +
@@ -1904,7 +1867,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeOptionalCount(dir, KeyTaskParallel, raw) },
 		},
 		Setting{
-			Key: KeyTaskMaxLoad, Category: CategorySpending, Kind: SettingText,
+			Key: KeyTaskMaxLoad, Category: CategoryTasks, Kind: SettingText,
 			Label: "busy machine",
 			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
 				"default, which is where the machine is handing out slices rather than running " +
@@ -1914,7 +1877,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeProfileNumber(dir, KeyTaskMaxLoad, raw) },
 		},
 		Setting{
-			Key: KeyTaskMinFreeMB, Category: CategorySpending, Kind: SettingCount,
+			Key: KeyTaskMinFreeMB, Category: CategoryTasks, Kind: SettingCount,
 			Label: "memory floor",
 			Hint: "how many MB of memory must be available before another task may start — " +
 				"1536 by default, roughly what one more task and its build need. Under it, new " +
@@ -1930,7 +1893,7 @@ func (s *Settings) build() []Setting {
 		// in — and none of them is a rule about how this conversation's own calls
 		// are made.
 		Setting{
-			Key: KeyTaskModel, Category: CategorySpending, Kind: SettingText,
+			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "follows the conversation",
 			Hint: "the model a task runs on when you have not asked for another one — " +
 				"`anthropic/claude-opus-5`. Leave it blank and a task rides the model you " +
@@ -1941,13 +1904,14 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
-			Label: "session ceiling",
+			Label: "session ceiling", EmptyLabel: noLimitWord,
 			Hint: "what one conversation may spend before it stops starting new turns. " +
-				"0 removes the ceiling; the turn in flight always finishes. " +
-				"A change lands on the next session.",
-			read:    func() string { return formatDollars(SpendRailUSDAt(dir)) },
+				"When it is reached the next turn is refused and your message is still " +
+				"yours to send again once you raise it; the turn in flight always " +
+				"finishes. Say none for no limit. A change lands on the next session.",
+			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
-			receipt: func() string { return noLimitReceipt(SpendRailUSDAt(dir), noLimitWord) },
+			receipt: s.spentThisSessionReceipt,
 		},
 
 		Setting{
@@ -2141,33 +2105,6 @@ func (s *Settings) build() []Setting {
 
 	rows = append(rows,
 		Setting{
-			Key: KeyNerdFont, Category: CategoryInterface, Kind: SettingBool,
-			Label: "nerd font", Env: "AFORGE_NERD_FONT",
-			Hint: "draw the v2 chrome with Nerd Font icons instead of the plain glyphs. " +
-				"Turn it off if icons show as boxes — nothing moves, the same marks are drawn " +
-				"as plain characters. Patched fonts work best in their Mono variant. " +
-				"A change lands the next time aforge starts.",
-			read:  func() string { return formatBool(NerdFontAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyNerdFont, raw) },
-		},
-		Setting{
-			Key: KeyLinearMode, Category: CategoryInterface, Kind: SettingBool,
-			Label: "linear mode", Env: "AFORGE_CHAT_LINEAR",
-			Hint: "single column, no motion, no spinners — the accessible rendering (10.1.5) " +
-				"in the v2 chat surface. A change lands the next time aforge starts.",
-			read:  func() string { return formatBool(LinearModeAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
-		},
-		Setting{
-			Key: KeyRailState, Category: CategoryInterface, Kind: SettingChoice,
-			Label: "sidebar", Env: "AFORGE_RAIL", Choices: RailStates,
-			Hint: "how much of the right rail stands beside the chat: open is the full column, " +
-				"slim is a one-column handle that still shows the unseen dot, hidden is nothing. " +
-				"ctrl+o walks the three; this is where the answer is remembered.",
-			read:  func() string { return RailStateAt(dir) },
-			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
-		},
-		Setting{
 			Key: KeyTaskColumn, Category: CategoryInterface, Kind: SettingBool,
 			Label: "task column",
 			Hint: "whether the task roster stands in a column on the right of the chat: the " +
@@ -2275,34 +2212,55 @@ func (s *Settings) build() []Setting {
 // dollar row cannot borrow one, because its reading is a formatted number and
 // therefore never empty. So the word goes where a row already says the dim true
 // thing beside its value: the receipt.
-const noLimitWord = "no limit"
+//
+// It is EXPORTED because the surfaces say it too — the v3 spend place's pointer
+// line and the settings tab's `today` reading both have to spell "nothing bounds
+// this" and there is one spelling of it.
+const NoLimitWord = "no limit"
 
-// noLimitReceipt is that word, or nothing at all. The word is a parameter
-// because two of the four money rows mean something narrower by zero than "no
-// ceiling" — the consent gate never asks, and the practice carve-out switches
-// practice off — and a receipt that said "no limit" about either would be the
-// same lie in a smaller size.
-func noLimitReceipt(value float64, word string) string {
-	if value != 0 {
+// noLimitWord is the package-internal spelling of the same word.
+const noLimitWord = NoLimitWord
+
+// moneyValue is how EVERY dollar row reads, and the whole of what it adds is
+// that it never returns "$0".
+//
+// A row whose figure is zero returns NOTHING, which hands the reading to
+// [Setting.EmptyLabel] — the mechanism every other kind of row already uses for
+// its off state, and the one place each rail's own word for zero is written
+// down: `no limit` on the day and the conversation, `never asks` on the consent
+// gate, `practice off` on the carve-out, whose zero switches practice off rather
+// than uncapping it. Two things follow for free, and both are the reason it is
+// spelled this way rather than as a second receipt:
+//
+//   - THE EDIT BOX OPENS EMPTY on a row that holds nothing. Every surface
+//     already blanks the empty label before it seeds the box, so a person
+//     editing "no limit" is offered a place to type a number rather than a
+//     sentence to delete first.
+//   - THE RECEIPT IS FREED FOR A FACT. `no limit` is not a receipt — it is the
+//     value — and while it sat in the receipt column there was nowhere left to
+//     say what the row is actually doing right now ($4.25 today, this one $0.41).
+func moneyValue(value float64) string {
+	if value == 0 {
 		return ""
 	}
-	return word
+	return formatDollars(value)
 }
 
-// dailyBudgetReceipt is the daily rail's own receipt: the day's spend, and —
-// when the rail has been removed — the word that says so. Both, when both are
-// true, because "no limit" without today's figure hides the number a person
-// came to this row to see, and the figure without the word leaves them reading
-// a bare "$0" ceiling.
-func (s *Settings) dailyBudgetReceipt() string {
-	parts := make([]string, 0, 2)
-	if word := noLimitReceipt(resolvedDollars(DailyBudgetUSDAt(s.options.ProfileDir)), noLimitWord); word != "" {
-		parts = append(parts, word)
+// spentFigure is how a SPEND is written, which is not how a LIMIT is written.
+//
+// A limit is a figure somebody typed and [formatDollars] writes it back the
+// shortest way that is still the same number — right for a config file and right
+// for `$500`. A spend is a measurement nobody chose, and the shortest honest
+// form of one is a disaster: four fifths of a tenth of a cent came out of the
+// provider as 0.0005688764200000001 and went onto the row exactly like that,
+// twenty-two digits of float noise where a person wanted to read a price. So a
+// spend is cents, and four decimals under a cent — the same ladder the surface's
+// own money word uses, so the receipt and the figure beside it agree.
+func spentFigure(usd float64) string {
+	if usd < 0.01 {
+		return fmt.Sprintf("$%.4f", usd)
 	}
-	if spent := s.spentTodayReceipt(); spent != "" {
-		parts = append(parts, spent)
-	}
-	return strings.Join(parts, " · ")
+	return fmt.Sprintf("$%.2f", usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
@@ -2313,10 +2271,32 @@ func (s *Settings) spentTodayReceipt() string {
 		return ""
 	}
 	spent, counted := s.options.SpentTodayUSD()
-	if !counted {
+	// AND A DAY THAT HAS COST NOTHING SAYS NOTHING. Counted-zero and
+	// not-counted are different facts about the seam and the SAME fact about
+	// the money: no call has been paid for today, and `$0 today` beside a limit
+	// is the emptiness law broken on the one row that exists to state a figure.
+	if !counted || spent <= 0 {
 		return ""
 	}
-	return formatDollars(spent) + " today"
+	return spentFigure(spent) + " today"
+}
+
+// spentThisSessionReceipt is the conversation ceiling's own receipt: what THIS
+// conversation has spent against it.
+//
+// It is the same seam as the day's and answers with the same pair, for the same
+// reason: a door with no conversation behind it — the v2 sheet, the model's own
+// settings tool, a headless read — has not counted zero, it has not counted, and
+// the row draws nothing rather than a $0.00 nobody earned.
+func (s *Settings) spentThisSessionReceipt() string {
+	if s.options.SpentThisSessionUSD == nil {
+		return ""
+	}
+	spent, counted := s.options.SpentThisSessionUSD()
+	if !counted || spent <= 0 {
+		return ""
+	}
+	return "this one " + spentFigure(spent)
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {
@@ -2720,27 +2700,10 @@ func AttributionAt(profileDir string) bool {
 	return DefaultAttribution
 }
 
-// LinearModeAt resolves whether the v2 chat surface renders in the accessible
-// single-column mode (10.1.5): one column, no motion, no spinners. A
-// malformed pin reads as the default rather than refusing a launch over a
-// rendering preference.
-func LinearModeAt(profileDir string) bool {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_CHAT_LINEAR")); raw != "" {
-		if value, err := parseBool(raw); err == nil {
-			return value
-		}
-		return DefaultLinearMode
-	}
-	if value, ok := persistedBool(profileDir, KeyLinearMode); ok {
-		return value
-	}
-	return DefaultLinearMode
-}
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
-// into ~/.aforge/v3/history.jsonl. It is shaped exactly like [LinearModeAt],
-// including the forgiveness: a malformed pin reads as the default rather than
-// refusing a launch over a recall list.
+// into ~/.aforge/v3/history.jsonl. A malformed pin reads as the default
+// rather than refusing a launch over a recall list.
 func HistoryEnabledAt(profileDir string) bool {
 	if raw := strings.TrimSpace(os.Getenv("AFORGE_HISTORY")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
@@ -2769,44 +2732,7 @@ func DraftPersistAt(profileDir string) bool {
 	return DefaultDraftPersist
 }
 
-// RailStateAt resolves how much of the v2 right rail this window opens with.
-// It is shaped exactly like [LinearModeAt], including the forgiveness: a
-// spelling nobody recognises reads as the default rather than refusing a launch
-// over a rendering preference.
-//
-// The environment PINS it, which is the ordinary registry contract and is worth
-// one sentence here because of what it means for the chord: while AFORGE_RAIL
-// is set, ctrl+o still moves the rail for this window and [SaveRailState] still
-// writes what the reader chose — the pin decides where the NEXT window opens,
-// not what this one may do. A key that stopped working because a variable was
-// exported would be the affordance lying (5.20).
-func RailStateAt(profileDir string) string {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_RAIL")); raw != "" {
-		if state := strings.ToLower(raw); knownRailState(state) {
-			return state
-		}
-		return DefaultRailState
-	}
-	if value, ok := persistedString(profileDir, KeyRailState); ok {
-		if state := strings.ToLower(strings.TrimSpace(value)); knownRailState(state) {
-			return state
-		}
-	}
-	return DefaultRailState
-}
 
-// SaveRailState records the rung the reader collapsed to.
-//
-// It is EXPORTED where [writeBool] and friends are not, because this row is the
-// one interface setting whose value is chosen by a keystroke rather than by
-// visiting the sheet. The surface has no profile directory of its own — the
-// entry point wires the reader and the writer as a pair, the way
-// [Options.SaveSplitPct] already does for the divider — so this is that pair's
-// other half, and it goes through the same [writeChoice] the sheet's own row
-// does. Two doors, one validation.
-func SaveRailState(profileDir, state string) error {
-	return writeChoice(profileDir, KeyRailState, state, RailStates)
-}
 
 // TaskColumnAt resolves whether the v3 chat stands its task column up, default
 // on. A row that will not parse reads as the default rather than as off, for
@@ -2821,7 +2747,7 @@ func TaskColumnAt(profileDir string) bool {
 
 // SaveTaskColumn records what the person did to the column with their hands.
 //
-// It is EXPORTED for [SaveRailState]'s reason, and it is the v3 half of the same
+// It is EXPORTED because the surface writes it from a chord, and it is the v3 half of the same
 // bargain: this is the one interface row whose value is normally chosen by a
 // keystroke rather than by visiting the sheet, so the key needs a door to disk
 // that goes through the same writer the row's own does. Two doors, one
@@ -2851,61 +2777,8 @@ func HintsAt(profileDir string) bool {
 	return DefaultHints
 }
 
-func knownRailState(state string) bool {
-	for _, known := range RailStates {
-		if known == state {
-			return true
-		}
-	}
-	return false
-}
 
-// NerdFontAt resolves whether the v2 chat surface draws its chrome with Nerd
-// Font icons (12.7). It is shaped exactly like [LinearModeAt], including the
-// forgiveness: a malformed pin reads as the default rather than refusing a
-// launch over a rendering preference.
-//
-// This is only the persisted layer of the answer. The command line outranks it,
-// and two things outrank everything: linear mode forces the plain tier — a
-// screen reader reads a private-use codepoint as nothing or as garbage, and a
-// tier that made the accessible mode less accessible would be the affordance
-// lying — and a terminal that cannot draw private use at all vetoes it. See
-// cmd/aforge/chatv2_nerdfont.go, which is where those four layers meet.
-func NerdFontAt(profileDir string) bool {
-	value, _ := NerdFontChosenAt(profileDir)
-	return value
-}
 
-// The sources [NerdFontChosenAt] can name, and the empty string it returns when
-// nobody has chosen at all.
-const (
-	NerdFontSourceNone      = ""
-	NerdFontSourceEnv       = "AFORGE_NERD_FONT"
-	NerdFontSourcePersisted = KeyNerdFont
-)
-
-// NerdFontChosenAt is [NerdFontAt] that also says WHO chose, so a launcher can
-// tell a decision from a default. It matters for exactly one reason: the
-// terminal veto (tokens.DetectGlyphSet) sits BELOW a human's choice and above
-// the built-in default, and a resolver that could not tell the two apart would
-// either override a user or never veto anything.
-//
-// The source is empty when nobody chose — including when the pin is set to
-// something unparseable, because a value nobody can read is not a choice, and
-// it is not a reason to refuse a launch either: it reads as the default,
-// exactly where [LinearModeAt] stops.
-func NerdFontChosenAt(profileDir string) (bool, string) {
-	if raw := strings.TrimSpace(os.Getenv("AFORGE_NERD_FONT")); raw != "" {
-		if value, err := parseBool(raw); err == nil {
-			return value, NerdFontSourceEnv
-		}
-		return DefaultNerdFont, NerdFontSourceNone
-	}
-	if value, ok := persistedBool(profileDir, KeyNerdFont); ok {
-		return value, NerdFontSourcePersisted
-	}
-	return DefaultNerdFont, NerdFontSourceNone
-}
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {
@@ -3993,11 +3866,28 @@ func writeTenure(profileDir, raw string) error {
 // Parsers. Their errors are the words the row shows under itself, so they read
 // like a person talking rather than a validator.
 
+// noLimitWords are every way a person spells "take the limit off" on a money
+// row, and they all land the same zero.
+//
+// NO LIMIT IS A WORD AND A NUMBER IS A NUMBER. `0` has always been the
+// instruction, and `0` is the one spelling of it that reads at a glance as its
+// own opposite — "no money at all" where the code means "no ceiling at all". A
+// person who wants the rail gone types what they mean, and every word they might
+// reach for is here rather than in a refusal that tells them to type a digit.
+// The row then READS `no limit` ([Setting.EmptyLabel]), so what was typed and
+// what is shown agree.
+var noLimitWords = []string{"none", "no", "off", "unlimited", "∞", "no limit", "nolimit", "never"}
+
 func parseDollars(raw string) (float64, error) {
 	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "$"))
+	for _, word := range noLimitWords {
+		if strings.EqualFold(text, word) {
+			return 0, nil
+		}
+	}
 	value, err := strconv.ParseFloat(text, 64)
 	if err != nil || value < 0 {
-		return 0, fmt.Errorf("that's not a dollar amount")
+		return 0, fmt.Errorf("that's not a dollar amount — a number, or none for no limit")
 	}
 	return value, nil
 }
