@@ -195,6 +195,11 @@ type taskNode struct {
 	// replacing it — a stopped node still settles as failed — and it is what the
 	// roster's ⊘ and the header's "stopped" are drawn from (stop.go).
 	stopped bool
+	// ending is WHY a failed node stopped where it did, as the engine said it
+	// (session's TaskNotice.Ending), and "" when it gave no reason — which is
+	// every row from an older engine or checkpoint, drawn as it always was
+	// (taskending.go).
+	ending session.TaskEnding
 	// began is the moment the node started, derived once from the update's own
 	// Elapsed so the clock is the frame's and not the event's. met is when this
 	// surface first heard of the node at all, which is the honest spawn time for
@@ -4570,8 +4575,13 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// way a node wears this word is that a person stopped it, or that it
 			// ran out of the steps it was given, and neither of those is a failure
 			// of anything. The row says what is true and what to do about it —
-			// nothing went wrong, and the work is still on that branch.
-			text = taskStoppedKept + " · " + node.branch
+			// nothing went wrong, and the work is still on that branch — and where
+			// the engine said WHY it stopped, the row leads with that instead
+			// (taskending.go), because "stopped" was measured true of none of six.
+			text = endingKept(node.ending) + " · " + node.branch
+			if halted(node.ending) {
+				paint = a.pal.warn
+			}
 		default:
 			// THE MERGE WORD, AND WHAT THE WORK COST TO GET THERE. A node that came
 			// home clean is the one settled row with nothing to act on, so it is the
@@ -4583,6 +4593,19 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// engine published one and only when the row has the cells for both: a
 			// column too narrow for "merged · $0.42" says "merged", never "$0.42".
 			text = node.merge
+			// A FAILED NODE WITH NO BRANCH TO KEEP — a non-git workspace ran it in
+			// the person's own tree — still leads with why it stopped, when the
+			// engine said (taskending.go): "inplace" alone is a row that names
+			// where the work is and not what happened to it.
+			if word := endingWord(node.ending); word != "" && node.state == session.TaskFailed {
+				text = word
+				if node.merge != "" {
+					text += railSep + node.merge
+				}
+				if halted(node.ending) {
+					paint = a.pal.warn
+				}
+			}
 			if spent := node.spent(); text != "" && spent > 0 {
 				if priced := text + railSep + dollars(spent); ansi.StringWidth(priced) <= width {
 					text = priced
@@ -4977,6 +5000,12 @@ func (a *app) taskStateMark(node *taskNode) string {
 	if mark, stopped := a.stoppedGlyph(node); stopped {
 		return mark
 	}
+	// AND ! IS THE NEXT: a node the wire, a threshold, a loop or another task's
+	// copy halted settles as `failed` on the wire too, and the cross would be
+	// the same finding nobody made (taskending.go).
+	if mark, halted := a.haltedGlyph(node); halted {
+		return mark
+	}
 	// AND NOTHING SPINS WHILE IT IS WAITING ON YOU. A spinner is this surface's
 	// one promise that something is happening this instant, and a design at
 	// "awaiting your look" is the one running row where nothing is
@@ -5010,6 +5039,9 @@ func (a *app) taskStateMark(node *taskNode) string {
 func (a *app) taskStateInk(node *taskNode) func(string) string {
 	if _, stopped := a.stoppedGlyph(node); stopped {
 		return a.pal.dim
+	}
+	if _, halted := a.haltedGlyph(node); halted {
+		return a.pal.warn
 	}
 	if taskAwaitsPerson(node) {
 		return a.pal.warn
@@ -5206,6 +5238,11 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// cannot arrive twice — nothing on the engine's side ever un-stops a node.
 	if notice.Stopped {
 		node.stopped = true
+	}
+	// AND WHY, kept on the same rule: an ending is a fact about how the work
+	// ended, and no later update un-ends it.
+	if notice.Ending != "" {
+		node.ending = notice.Ending
 	}
 	if notice.Report != "" {
 		node.report = notice.Report
