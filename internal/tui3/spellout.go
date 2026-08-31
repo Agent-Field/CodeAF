@@ -316,7 +316,9 @@ func (a *app) spellAsk() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	draft := a.input.String()
+	// The helper reads the draft as the model would — every paste unfolded —
+	// and spends nothing: the chips are still the person's (pastechip.go).
+	draft := a.pastesUnfolded(a.input.String())
 	a.spell = spellState{asking: true, at: append([]rune(nil), a.input.value...)}
 	ctx := a.ctx
 	a.touch()
