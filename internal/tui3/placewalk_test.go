@@ -205,10 +205,14 @@ func TestTheLaunchHomeAndTheOpenedHomeAreBuiltTheSameWay(t *testing.T) {
 	}
 	// AND EVERY MAP IT WRITES TO EXISTS. A nil map on this view is a write away
 	// from taking the whole surface down.
+	//
+	// THE DELIVERABLES INDEX IS NOT ONE OF THEM ANY MORE. It stopped being a map
+	// per row and became ONE reading for the whole screen, assigned whole and
+	// never written into (homeband_deliverables.go), so an unread one is a read
+	// waiting to happen rather than a panic waiting to happen.
 	for name, ok := range map[string]bool{
 		"last": launched.last != nil, "news": launched.news != nil,
-		"deliverables": launched.deliverables != nil,
-		"expanded":     launched.expanded != nil, "itemsOpen": launched.itemsOpen != nil,
+		"expanded": launched.expanded != nil, "itemsOpen": launched.itemsOpen != nil,
 	} {
 		if !ok {
 			t.Fatalf("the launch home has no %s map", name)

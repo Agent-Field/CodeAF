@@ -621,11 +621,16 @@ type homeView struct {
 	// Reading one is a scan of the file ([session.Peek]) and the cursor moves
 	// on every arrow key, so the second look at a row is free.
 	last map[string]session.Summary
-	// news and deliverables cache disk-backed bands by transcript. Both expire
-	// with home's refresh clock so another window's arrivals become visible
-	// without either index being read on the paint clock.
-	news         map[string]homeNewsCache
-	deliverables map[string]homeDeliverablesCache
+	// news caches one disk-backed band by transcript. It expires with home's
+	// refresh clock so another window's arrivals become visible without the
+	// inbox being read on the paint clock.
+	news map[string]homeNewsCache
+	// artifacts is THE ONE READING of the machine's deliverables index, filed by
+	// the conversation that made each file (homeband_deliverables.go). It is one
+	// reading for the whole screen and not one per row, because the index is one
+	// file for the whole machine: a cache keyed by the row over a reading that is
+	// global multiplies a megabyte of JSON by every row a person walks past.
+	artifacts homeArtifactIndex
 
 	// msg is the last refusal, in this surface's own words. msgPath is the
 	// directory that refusal NAMES, kept beside it rather than dug back out of
@@ -759,20 +764,19 @@ func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
 	a.home = homeView{
-		why:          a.homeWhyEmpty(),
-		world:        a.readWorld(),
-		known:        a.worldKnown(),
-		far:          a.hosted(),
-		seen:         session.LastLook(a.looksRoot()),
-		bucket:       homeBucketOf(a.file),
-		here:         homeSessionDirOf(a.file),
-		tier:         a.homeTierNow(),
-		hover:        -1,
-		last:         map[string]session.Summary{},
-		news:         map[string]homeNewsCache{},
-		deliverables: map[string]homeDeliverablesCache{},
-		expanded:     map[string]bool{},
-		itemsOpen:    map[string]bool{},
+		why:       a.homeWhyEmpty(),
+		world:     a.readWorld(),
+		known:     a.worldKnown(),
+		far:       a.hosted(),
+		seen:      session.LastLook(a.looksRoot()),
+		bucket:    homeBucketOf(a.file),
+		here:      homeSessionDirOf(a.file),
+		tier:      a.homeTierNow(),
+		hover:     -1,
+		last:      map[string]session.Summary{},
+		news:      map[string]homeNewsCache{},
+		expanded:  map[string]bool{},
+		itemsOpen: map[string]bool{},
 		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
 		// this screen and nothing else does, which is why they are seeded from
 		// the app rather than kept here (place_home.go).
@@ -789,6 +793,10 @@ func (a *app) raiseHome() tea.Cmd {
 	// beat (place_home.go's [app.readSwitchLedger]).
 	a.readSwitchLedger()
 	a.readPlaceSummaries()
+	// AND THE FILES CONVERSATIONS HAVE MADE, as ONE reading for the whole screen
+	// rather than one per card (homeband_deliverables.go). It is taken here, with
+	// the other readings, because that index is a file and a card is a draw.
+	a.readHomeArtifacts()
 	// THE FOLDERS ARE STATTED WITH THE WORLD AND NEVER SEPARATELY, and after the
 	// bands, because a project home knows only through a watch is one of the
 	// projects this has to answer for ([homeView.readGone]).
@@ -1086,15 +1094,14 @@ func (a *app) newHomeView(world session.World) homeView {
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
 		// whether a row's door can open at all; the session is the one row that
 		// wears `here` instead of an age (place_home.go).
-		bucket:       homeBucketOf(a.file),
-		here:         homeSessionDirOf(a.file),
-		tier:         a.homeTierNow(),
-		hover:        -1,
-		last:         map[string]session.Summary{},
-		news:         map[string]homeNewsCache{},
-		deliverables: map[string]homeDeliverablesCache{},
-		expanded:     map[string]bool{},
-		itemsOpen:    map[string]bool{},
+		bucket:    homeBucketOf(a.file),
+		here:      homeSessionDirOf(a.file),
+		tier:      a.homeTierNow(),
+		hover:     -1,
+		last:      map[string]session.Summary{},
+		news:      map[string]homeNewsCache{},
+		expanded:  map[string]bool{},
+		itemsOpen: map[string]bool{},
 		// AND THE TWO VIEWS THE PERSON LAST CHOSE. `alt+g` and `alt+q` outlive
 		// this screen and nothing else does, which is why they are seeded from
 		// the app rather than kept here (place_home.go).
@@ -1199,6 +1206,11 @@ func (a *app) refreshHome() {
 	// it yet.
 	a.readStandBands()
 	a.readSwitchLedger()
+	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
+	// has been written and re-reads the file only when something has
+	// (homeband_deliverables.go). A resting screen used to re-parse the whole
+	// index every three seconds, per row it had ever drawn a card for.
+	a.readHomeArtifacts()
 	// AND WHAT EACH PLACE HOLDS, on the same beat, because the typed drop-up
 	// offers places beside conversations and a row built while somebody is
 	// typing may not go to a seam for its own margin (homeplaces.go).
