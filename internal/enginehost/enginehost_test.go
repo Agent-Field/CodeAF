@@ -331,3 +331,30 @@ func TestTheSpliceCarriesBytesBothWaysAndEndsWithThePipe(t *testing.T) {
 type writerFunc func([]byte) (int, error)
 
 func (w writerFunc) Write(p []byte) (int, error) { return w(p) }
+
+// ASKING WHETHER A HOST IS THERE MAKES NOTHING. Every plain `aforge chat` puts
+// this question before it opens anything, so a Dial that made a directory would
+// leave one under every workspace anybody ever ran aforge in.
+func TestAskingWhetherAHostIsThereLeavesNothingBehind(t *testing.T) {
+	root := shortHome(t)
+	workspace := t.TempDir()
+
+	if _, err := SocketPath(workspace); err != nil {
+		t.Fatalf("name this workspace's socket: %v", err)
+	}
+	if conn, err := Dial(workspace); err == nil {
+		_ = conn.Close()
+		t.Fatal("something answered a socket nothing is listening on")
+	}
+	if _, err := os.Stat(filepath.Join(root, "v3", "hosts")); !os.IsNotExist(err) {
+		t.Fatalf("the question left a hosts directory behind: %v", err)
+	}
+
+	// And the doors that are about to write something still make it themselves.
+	if _, err := Dir(workspace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "v3", "hosts")); err != nil {
+		t.Fatalf("Dir did not make the directory a host lives in: %v", err)
+	}
+}

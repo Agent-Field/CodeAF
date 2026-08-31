@@ -39,6 +39,12 @@ type standInHost struct {
 
 func standIn(t *testing.T, workspace string, self remote.HostSelf, older bool) *standInHost {
 	t.Helper()
+	// A real host makes the directory it listens in ([enginehost.Run] takes Dir
+	// before SocketPath), because naming the socket makes nothing — asking
+	// whether a host is there must not build one a house.
+	if _, err := enginehost.Dir(workspace); err != nil {
+		t.Fatalf("make somewhere for a host to live: %v", err)
+	}
 	socket, err := enginehost.SocketPath(workspace)
 	if err != nil {
 		t.Fatalf("resolve the socket: %v", err)

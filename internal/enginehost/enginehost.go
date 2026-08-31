@@ -88,22 +88,38 @@ func SocketPathFits(path string) bool { return len(path) <= socketLimit }
 // spend all of it — so the name is short by construction and the readable
 // answer is written INSIDE the directory instead ([placeName]).
 func Dir(workspace string) (string, error) {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
-		return "", errors.New("engine host: no workspace to hold")
+	dir, err := where(workspace)
+	if err != nil {
+		return "", err
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
-	dir := home.Join("v3", "hosts", hex.EncodeToString(sum[:8]))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("engine host: %w", err)
 	}
 	return dir, nil
 }
 
+// where is the same answer WITHOUT making the directory, and the split is not a
+// tidy-up: ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. Every
+// plain `aforge chat` now puts one question to [Dial] before it opens anything
+// (cmd/aforge's v3HostRoad), and a Dial that created a directory would leave one
+// behind under every workspace anybody ever ran aforge in — litter proving only
+// that a question was asked. The doors that are about to WRITE something — the
+// host's own listener, the spawn lock, the wait for a host to go — call [Dir]
+// and make it themselves.
+func where(workspace string) (string, error) {
+	workspace = strings.TrimSpace(workspace)
+	if workspace == "" {
+		return "", errors.New("engine host: no workspace to hold")
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
+	return home.Join("v3", "hosts", hex.EncodeToString(sum[:8])), nil
+}
+
 // SocketPath is the socket one workspace's host listens on, refused up front
-// when the path is longer than a unix socket may be.
+// when the path is longer than a unix socket may be. It makes nothing — see
+// [where] — so a caller that is going to listen on it takes [Dir] as well.
 func SocketPath(workspace string) (string, error) {
-	dir, err := Dir(workspace)
+	dir, err := where(workspace)
 	if err != nil {
 		return "", err
 	}

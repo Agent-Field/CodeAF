@@ -561,32 +561,70 @@ were in stays open. The lock the door would otherwise meet is our own.
 A conversation another *terminal* is holding open is reported rather than worked around. See
 the section on two terminals in the same folder.
 
-## Two terminals in the same folder
+## Two terminals in the same folder — continue a chat in another terminal
 
-**Yes, you can run more than one aforge at once in the same workspace.** Each gets its own
-conversation file. What they cannot do is share one.
+**Yes, you can run more than one aforge at once in the same workspace.** What you usually
+want, though, is not two windows on one conversation — it is to **continue** a conversation
+somewhere else: you started it in one terminal, you are in another one now, and you want it
+here.
 
-That is true of conversations on **this** machine, and it is the opposite of what happens
-over `--host`: a conversation on another machine is held by a process over there and your
-terminals attach to it, so two windows really can share one. The keyboard follows the
-newest of them and the rest keep watching — *Staying on that machine* is the page for it.
+That is a **move**, and the second terminal offers it to you on the way in. `aforge` in a
+folder whose conversation is open in another window comes up on **home, with that row
+pointed and already armed**, so one `enter` moves the conversation here — the transcript,
+the tasks, and your unsent sentence — and the window that had it says `moved to another
+window`. `esc` gets on with the new conversation this terminal opened instead. Nothing is
+copied and nothing is duplicated: one conversation, in one place, and you choose which
+place. *Continue a conversation from another terminal*, on the home page, is the whole of
+what the two presses do and what they cost.
 
-Opening a journal takes a non-blocking exclusive lock on the file before anything is
-replayed, so the second window fails at the door rather than paying for a replay it cannot
-use. But it does not fail *you*. The second launch quietly names a new session file, opens
-that instead, and shows one notice reading exactly:
+**Two live windows on one conversation at the same time is a different thing**, and it is the
+`--host` story rather than this one: a conversation held by a session host can have several
+windows attached, one keyboard between them, the newest window typing. That happens locally
+too when a host is already holding this workspace — a `--host` or `--at` connection into this
+machine, or somebody's `aforge engine`. See *Staying on that machine*. A plain `aforge chat`
+never starts a host of its own; it opens in this terminal's own process, which is what keeps
+adaptive runs, harness building and subharness intake cards working in it.
+
+## It used to start a new conversation in the second terminal — why it doesn't now
+
+Opening a conversation takes a non-blocking exclusive lock on its file before anything is
+replayed, so a second window meets that lock at the door. It used to quietly name a new
+session file, open that instead, and say:
 
 ```
 session open elsewhere — started a new one
 ```
 
-In a `--once` run the same notice goes to stderr as `<notice>: <new session file>`.
+**That sentence is gone, and so is what it described.** It sounded like an explanation and
+was really a dead end: the conversation you came back for was still running a few inches
+away, and you were handed a different one instead, with no way back to it. A second terminal
+still opens a fresh conversation — that is what `esc` leaves you in, and nothing about it is
+lost — but it opens **on home with the held row armed**, so the conversation you actually
+came for is one keystroke away instead of nowhere.
 
-**There is one place this fallback deliberately does not apply: picking one by name.** If
-you pick a conversation another window is holding open — from the resume picker or the
-welcome box — it is reported rather than worked around, because *"a person who picked a
-conversation by name means that one"*. Nothing is opened, and the conversation you are in is
-left exactly as it was. The sentence is:
+**Where nobody can press anything, you get a sentence instead.** A headless `--once` run has
+no screen to offer a row on, so it refuses and says what to do:
+
+```
+this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace /home/you/api to let go of it
+```
+
+The directory in it is the workspace, spelled out because `aforge engine --stop` with no
+`--workspace` means your home directory. That half of the sentence is for the other case
+entirely: something is holding the workspace that you cannot move it away from — an older
+aforge, or a window that has stopped answering. It closes what is holding that workspace and
+flushes every transcript first, and if nothing is holding it, it says `nothing is holding
+/home/you/api here` and changes nothing.
+
+To start a fresh conversation on purpose, `/new` inside a window, or `--session` with a path
+of your own.
+
+## Picking a conversation by name that another window is holding
+
+**Picking one by name from the resume picker or the welcome box is reported rather than
+worked around**, and always has been. Nothing is opened and the conversation you are in is
+left exactly as it was, because *"a person who picked a conversation by name means that
+one"*. The sentence is:
 
 ```
 open in another window — go there, or start a new conversation here
