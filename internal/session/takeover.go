@@ -1,0 +1,208 @@
+package session
+
+// takeover.go is how a conversation open in ANOTHER WINDOW is moved to this one.
+//
+// A local conversation lives inside the process of the terminal that opened it,
+// and its journal is held under a flock nothing else can take (sessionfile.go).
+// A second terminal cannot join it; it can only ask the holder to let go. This
+// file is that ask, and it is the shape answers.go already is: ONE FILE in the
+// session's own folder, written by whoever asked, picked up by the holding
+// session on the heartbeat it already runs.
+//
+// ── THE FOUR LAWS ──
+//
+//   - THE HOLDER DECIDES NOTHING. A request found on the tick is announced to
+//     the surface drawing that session and nothing else happens here: the
+//     surface detaches and closes the conversation the way /new does, its
+//     tasks land "paused — it resumes", and the window that asked resumes them
+//     from the checkpoint. The engine never closes itself from inside a tick.
+//
+//   - A REPLY IS NEVER CUT. A request that arrives while a turn is running is
+//     left where it is and looked at again on the next tick; it is answered at
+//     the first tick after the turn ends. The window that asked is waiting on
+//     the flock and says so, and the person who walked to it was not typing in
+//     the other one — so the cost of waiting is nothing and the cost of cutting
+//     is a reply that was almost finished.
+//
+//   - A REQUEST IS TAKEN OFF DISK BEFORE IT IS ANNOUNCED, so a holder that is
+//     slow to let go is asked once and never a second time on the next beat,
+//     and a request left by a window that gave up ([CancelTakeover] removes it,
+//     and a stale one is ignored by age) is not found by a session opened a
+//     week later.
+//
+//   - IT RIDES THE TASK LANE. The standing lane is the one subscription that
+//     outlives every turn on every surface — the front conversation pumps it
+//     and a kept one drains it (internal/tui3's keeper.go) — and standing news
+//     already rides it for exactly that reason ([Agent.emitStandingNews]). A
+//     lane of its own would be a third subscription for one event a session
+//     sees at most once.
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// takeoverName is the request, inside one session's folder, beside presence.json.
+const takeoverName = "takeover.json"
+
+// takeoverStale is how old a request may be and still be answered. A window that
+// asked and was closed removes its request ([CancelTakeover]); one that was
+// killed cannot, and this is what stops its ask outliving it by a week. It is
+// generous because a holder mid-reply waits for the turn to end before it looks
+// again, and a long reply is minutes, not seconds.
+const takeoverStale = 10 * time.Minute
+
+// TakeoverWord is the one sentence a surface says about a conversation another
+// window took, and the engine spells it so the event and the surface agree.
+const TakeoverWord = "moved to another window"
+
+// ErrNoSessionDir is [AskTakeover] on a conversation with no folder — a
+// memory-only one, or the legacy flat layout — which nothing could ever read.
+var ErrNoSessionDir = errors.New("this conversation has no folder to leave a request in")
+
+// TakeoverPath is where a request for the session in dir is written.
+func TakeoverPath(sessionDir string) string {
+	return filepath.Join(strings.TrimSpace(sessionDir), takeoverName)
+}
+
+// takeoverRequest is the file's whole content: when it was asked. Who asked is
+// not recorded because the holder cannot act on it — every window on this
+// machine looks the same from inside a process — and a fact nobody can act on
+// is bookkeeping.
+type takeoverRequest struct {
+	At time.Time `json:"at"`
+}
+
+// AskTakeover asks the window holding the session in dir to let go of it.
+//
+// TEMP-AND-RENAME, like presence.json beside it, so the holder's tick never
+// reads half a request. Whether anybody is there to read it is not this
+// function's to say: the caller watches the journal's flock ([InUse]) and
+// decides by that.
+func AskTakeover(sessionDir string) error {
+	dir := strings.TrimSpace(sessionDir)
+	if dir == "" {
+		return ErrNoSessionDir
+	}
+	raw, err := json.Marshal(takeoverRequest{At: time.Now()})
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".takeover-*.json")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, TakeoverPath(dir)); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
+}
+
+// CancelTakeover withdraws a request the asking window no longer wants
+// answered — it stopped waiting. A request already taken is nothing to remove,
+// and that is not an error.
+func CancelTakeover(sessionDir string) {
+	if strings.TrimSpace(sessionDir) == "" {
+		return
+	}
+	_ = os.Remove(TakeoverPath(sessionDir))
+}
+
+// takeoverAsked reports whether a live request is waiting for the session in
+// dir, WITHOUT taking it. A request older than [takeoverStale] is a window that
+// died asking, and it is removed here so it is never answered.
+func takeoverAsked(sessionDir string, now time.Time) bool {
+	if strings.TrimSpace(sessionDir) == "" {
+		return false
+	}
+	path := TakeoverPath(sessionDir)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var request takeoverRequest
+	if err := json.Unmarshal(raw, &request); err != nil || request.At.IsZero() || now.Sub(request.At) > takeoverStale {
+		_ = os.Remove(path)
+		return false
+	}
+	return true
+}
+
+// takeTakeover removes the request for the session in dir and reports whether
+// there was one to remove.
+func takeTakeover(sessionDir string) bool {
+	if strings.TrimSpace(sessionDir) == "" {
+		return false
+	}
+	return os.Remove(TakeoverPath(sessionDir)) == nil
+}
+
+// drainTakeover is the beat's look for a request (taskpresence.go). It runs on
+// the TICK and never on a nudge, for the reason answers are drained there: a
+// nudge fires under the agent's own lock.
+//
+// A TURN IN FLIGHT LEAVES THE REQUEST WHERE IT IS (the second law above). The
+// running flag is read under the lock and released before anything touches the
+// disk, which is this package's standing rule about holding a.mu across a call
+// that may take a while.
+func (a *Agent) drainTakeover() {
+	if a.config.InTask {
+		return
+	}
+	dir := a.config.Place.Dir
+	if !takeoverAsked(dir, time.Now()) {
+		return
+	}
+	a.mu.Lock()
+	running, closed, told := a.running, a.closed, a.takenOver
+	a.mu.Unlock()
+	if running || closed || told {
+		return
+	}
+	if !takeTakeover(dir) {
+		return
+	}
+	a.announceTakeover()
+}
+
+// announceTakeover tells every surface on this session that another window has
+// asked for it, once, and remembers that it did — so a surface that looks later
+// (a kept conversation waking on its stir) still finds the fact.
+func (a *Agent) announceTakeover() {
+	a.mu.Lock()
+	if a.closed || a.takenOver {
+		a.mu.Unlock()
+		return
+	}
+	a.takenOver = true
+	watchers := make([]*eventStream, len(a.taskWatchers))
+	copy(watchers, a.taskWatchers)
+	a.mu.Unlock()
+	event := Event{Kind: EventTakeover, Text: TakeoverWord}
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
+}
+
+// TakeoverAsked reports that another window has asked for this session and it
+// has not been let go of yet. It is what a surface that missed the event asks.
+func (a *Agent) TakeoverAsked() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.takenOver
+}
