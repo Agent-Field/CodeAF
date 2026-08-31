@@ -1162,7 +1162,9 @@ func (a *app) takeChoice(at int) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	a.answerTask(true, text)
+	// The engine reads the paste and the card's row keeps the tag (pastechip.go).
+	a.answerTask(true, a.pastesUnfolded(text))
+	a.pastes = nil
 	return a.edited()
 }
 

@@ -300,12 +300,58 @@ func (a *app) pasteEditorFrame(width, height int) (string, int, int) {
 	return strings.Join(out, "\n"), left + x, top + 2 + y
 }
 
-func (a *app) expandPastes(text string) string {
-	for _, held := range a.pastes {
+// ── WHAT THE MODEL READS IS NEVER THE TAG ───────────────────────────────────
+//
+// A paste chip is TWO texts: the tag the screen shows, `[paste 1 · 42 lines]`,
+// and the forty-two lines it stands for. Every door that carries the box's
+// words to the model must hand over the second, and every row that draws them
+// keeps the first — and there was one function that did the unfolding, called
+// from one door. A message parked over a running turn and then steered into it
+// went through neither, so the model read the tag, said "I cannot see the
+// paste", and worked from what it could guess. So the unfolding is one PURE
+// function over one message's own chips, and each door asks it about the text
+// it is about to send.
+
+// unfoldPastes replaces every chip's tag in text with the text it holds, fenced
+// and numbered so the words around it can still refer to "paste 2". It spends
+// nothing: the chips it reads belong to the caller.
+func unfoldPastes(text string, pastes []pasteChip) string {
+	for _, held := range pastes {
 		token := pasteToken(held.n, pasteLineCount(held.text))
 		wrapped := fmt.Sprintf("paste %d:\n```text\n%s\n```", held.n, held.text)
 		text = strings.ReplaceAll(text, token, wrapped)
 	}
-	a.pastes = nil
 	return text
+}
+
+// pastesUnfolded is [unfoldPastes] over the box's own chips, WITHOUT spending them: for
+// a reader that needs the words as the model would see them while the person is
+// still composing (spellout.go).
+func (a *app) pastesUnfolded(text string) string {
+	return unfoldPastes(text, a.pastes)
+}
+
+// composed is THE DOOR between the box and anything that speaks for the person:
+// the text as the model reads it, the text as the screen keeps it, and the box's
+// chips spent — they went with the message. Every door that sends the box's
+// words to the model, wherever that is (a reply, a steer into a running turn, a
+// task's room, a card's answer), asks this and nothing else.
+func (a *app) composed(text string) (spoken, shown string) {
+	spoken = unfoldPastes(text, a.pastes)
+	a.pastes = nil
+	return spoken, text
+}
+
+// spoken is [app.composed]'s spoken half for a door that has already kept the
+// shown text in its own hands.
+func (a *app) spoken(text string) string {
+	spoken, _ := a.composed(text)
+	return spoken
+}
+
+// expandPastes is [app.composed]'s spoken half, kept under the name the submit
+// door has always called it by.
+func (a *app) expandPastes(text string) string {
+	spoken, _ := a.composed(text)
+	return spoken
 }

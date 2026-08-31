@@ -78,6 +78,8 @@ func (a *app) followUp() tea.Cmd {
 		return nil
 	}
 	agent := a.agent
+	// The model reads the paste and the queue's row keeps the tag (pastechip.go).
+	spoken, line := a.composed(line)
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
@@ -88,7 +90,7 @@ func (a *app) followUp() tea.Cmd {
 	a.stick = true
 	a.touch()
 	return func() tea.Msg {
-		ch, err := agent.FollowUp(line)
+		ch, err := agent.FollowUp(spoken)
 		return followMsg{text: line, ch: ch, err: err}
 	}
 }

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"strings"
 	"testing"
 )
@@ -61,5 +62,63 @@ func TestSmallAndSlashPastesStayTextAndBackspaceDropsAChip(t *testing.T) {
 func TestPasteThresholdIsTheManualsThreshold(t *testing.T) {
 	if pasteChipLines != 3 {
 		t.Fatalf("manual says three lines; threshold is %d", pasteChipLines)
+	}
+}
+
+// THE MODEL READS THE PASTE WHEREVER THE MESSAGE GOES. A message parked over a
+// running turn and then steered into it used to reach the model as its tag —
+// `[paste 2 · 20 lines]` — and the model said, honestly, that it could not see
+// the paste. The screen keeps the tag; the wire carries the lines.
+func TestAPasteParkedAndSteeredReachesTheModelWholeAndTheRowKeepsTheTag(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	pasted := "alpha\nbeta\ngamma\ndelta"
+	a.paste(pasted)
+	parkLine(t, a, "look at this")
+	if len(a.parks) != 1 || !strings.Contains(a.parks[0].text, "[paste 1 · 4 lines]") || len(a.parks[0].pastes) != 1 {
+		t.Fatalf("the message did not park with its chip: %+v", a.parks)
+	}
+	a.input.reset()
+	drive(t, a, key("right"))
+	if len(agent.steered) != 1 || !strings.Contains(agent.steered[0], "paste 1:\n```text\n") || !strings.Contains(agent.steered[0], pasted) {
+		t.Fatalf("the steer reached the model as %q", agent.steered)
+	}
+	for _, e := range a.entries {
+		if strings.Contains(e.text, "beta") {
+			t.Fatalf("the screen unfolded the paste: %q", e.text)
+		}
+	}
+}
+
+// A STEER THE SESSION REFUSED GOES BACK WHOLE, chip and all, so the next door it
+// takes still has the lines to send.
+func TestARefusedSteerPutsTheMessageBackWithItsPaste(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	agent.steerErr = session.ErrNothingToSteer
+	a.paste("alpha\nbeta\ngamma\ndelta")
+	parkLine(t, a, "look at this")
+	a.input.reset()
+	drive(t, a, key("right"))
+	if len(a.parks) != 1 || len(a.parks[0].pastes) != 1 || !strings.Contains(a.parks[0].text, "[paste 1") {
+		t.Fatalf("the refused message came back without its chip: %+v", a.parks)
+	}
+}
+
+// AND A TASK'S ROOM IS ANOTHER DOOR ON THE SAME BOX: the worker reads the lines,
+// the page keeps the tag.
+func TestAPasteSteeredIntoARoomReachesTheWorkerWhole(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	clickRail(t, a, 0)
+	pasted := "alpha\nbeta\ngamma\ndelta"
+	a.paste(pasted)
+	typeInto(t, a, "fix this")
+	drive(t, a, key("enter"))
+	if len(agent.steered) != 1 || !strings.Contains(agent.steered[0].text, pasted) || !strings.Contains(agent.steered[0].text, "paste 1:\n```text\n") {
+		t.Fatalf("the room's steer reached the worker as %+v", agent.steered)
+	}
+	if got := roomText(a); !strings.Contains(got, "[paste 1 · 4 lines]") || strings.Contains(got, "beta") {
+		t.Fatalf("the room drew %q", got)
+	}
+	if len(a.pastes) != 0 {
+		t.Fatal("the chip was not spent with the line")
 	}
 }

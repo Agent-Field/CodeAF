@@ -69,6 +69,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it added details I didn't ask for", "keys"},
 		{"how do I attach a screenshot", "keys"},
 		{"why did my paste turn into a tag", "attaching-files"},
+		{"does the model see my whole paste or just the tag", "attaching-files"},
+		{"the model says it cannot see what I pasted", "attaching-files"},
 		{"how much text becomes a paste chip", "attaching-files"},
 		{"how do I edit what I pasted", "attaching-files"},
 		{"how do I stop it mid answer", "keys"},

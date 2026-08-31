@@ -25,6 +25,13 @@ Move the pointer over a paste chip to tint it. Click it to edit it. With the chi
 `enter` opens it instead of sending; `enter` sends normally whenever no paste chip is
 selected.
 
+**The model always gets the whole paste, wherever the message goes.** The tag is what the
+screen shows; what is sent is `paste 1:` followed by the full text in a fenced block — on an
+ordinary reply, on a message that waited and was steered into the running answer, on a
+line typed into a task's room, on a card's redirect or change, and on a follow-up queued
+with `ctrl+q`. The transcript, the waiting strip and the room keep the tag. If the model
+ever says it cannot see a paste, that is a bug and not a setting.
+
 ## Edit what I pasted
 
 Click a paste chip, or use `left` or `right` to select it and press `enter`. A centered
