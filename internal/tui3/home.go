@@ -666,6 +666,13 @@ type homeView struct {
 	msg     string
 	msgPath string
 
+	// armed is the transcript of the row whose SECOND enter moves a conversation
+	// out of the window that is holding it (takeover.go). One enter arms it and
+	// says what the next one will do and what it costs; anything that moves the
+	// cursor, esc, and any rebuild that loses the row all clear it, because an
+	// arming a person cannot see is a keystroke with a memory.
+	armed string
+
 	// tier is which of home's three shapes this frame has room for — the list
 	// alone, the list and a card, or the zones in a column of their own beside
 	// both (homebridge.go's [homeTierAt]) — settled by the draw before the column
@@ -2235,6 +2242,20 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
+	// ANYTHING BUT A SECOND ENTER DISARMS A HELD ROW. The arming is a promise
+	// made by the sentence on the foot line, and that sentence has just been
+	// cleared — an arming a person can no longer see is a keystroke with a
+	// memory, and the keystroke it changes the meaning of is the one that ends
+	// another window (takeover.go).
+	if msg.String() != "enter" {
+		h.armed = ""
+	}
+	// AND A WAIT THAT IS STILL RUNNING SAYS SO AGAIN. The line above is cleared
+	// because a REFUSAL is about the key just pressed; a request out on the disk
+	// is a condition, still true, and the foot is where this screen says it.
+	if word := a.takeoverLine(); word != "" {
+		h.say(word, "")
+	}
 	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
 	// person back here is about the key they just pressed; the next key is a new
 	// question, and a sentence that outlived it would be an answer to nothing
@@ -2305,6 +2326,13 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// in it is cleared first, and the second esc leaves. A person who typed
 		// a search and meant to keep looking must not be thrown back into the
 		// conversation for pressing the key that means "undo that".
+		//
+		// A REQUEST OUT ON THE DISK IS THE INNERMOST LAYER OF ALL, because it is
+		// the only one that is doing something to another window while it stands
+		// (takeover.go's [app.cancelTakeover]).
+		if a.cancelTakeover() {
+			return nil
+		}
 		if !h.box.empty() {
 			h.box.reset()
 			h.build()
@@ -2862,9 +2890,28 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// it genuinely cannot know beforehand; home can, and a screen that
 		// offers a door it has already established goes nowhere is a screen that
 		// wastes a keystroke and a second of somebody's attention on a raw error.
+		//
+		// AND ON THIS MACHINE IT IS NOT THE END OF THE ROAD. The conversation
+		// can be MOVED here — asked for, let go of when the other window's reply
+		// ends, and then opened by the ordinary door below (takeover.go). Over
+		// --host it is: the holder is a window on this laptop and the journal is
+		// on the far machine, so there is nobody to ask.
+		if !a.hosted() {
+			return a.homeTakeoverEnter(line)
+		}
 		h.say(sessionBusyWord, "")
 		return nil
 	}
+	return a.homeOpenDoor(line)
+}
+
+// homeOpenDoor is the ORDINARY open, from the folder check onward, and it is on
+// its own because there are two roads to it now: enter on a free row, and a row
+// whose other window has just let go of it (takeover.go's [app.freedRow]). Two
+// spellings of "open the row" is two answers to whether a folder that vanished
+// is checked, and the second road is the one where the most time has passed.
+func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
+	h := &a.home
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
