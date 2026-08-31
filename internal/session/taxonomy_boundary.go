@@ -231,6 +231,24 @@ func (a *Agent) movesForFailure(node *TaskNode, runErr error, log io.Writer) boo
 	return true
 }
 
+// diedOnTheWire says a run's error was the connection to the model and not a
+// verdict about the request or the work: a transport failure that carried no
+// status ([terminalProviderFailure] answers for those), was not a person's
+// cancel, and reads as the wire (loop.go's [isRetryable]). It is the question
+// the second worker and the ending both ask, so it is one function — and it
+// lives here because [terminalProviderFailure] is the boundary's to ask
+// (taxonomy_law_test.go).
+func diedOnTheWire(err error) bool {
+	if err == nil || terminalProviderFailure(err) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	if _, cut := provider.CutFrom(err); cut {
+		return true
+	}
+	message := err.Error()
+	return !isContextOverflow(message) && isRetryable(message)
+}
+
 // escalateNodeModel is the only caller of [Agent.nextNodeModel] in this package,
 // and the structural test says so.
 func (a *Agent) escalateNodeModel(node *TaskNode) (string, bool) {

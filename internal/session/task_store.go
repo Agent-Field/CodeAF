@@ -175,6 +175,11 @@ type taskRecord struct {
 
 	State  TaskState `json:"state"`
 	Report string    `json:"report,omitempty"`
+	// Ending is why a failed node stopped where it did (task_contract.go's
+	// [TaskEnding]), and absent on every node that finished and on every
+	// checkpoint written before the field existed — which a surface draws as it
+	// always did, "stopped — branch kept".
+	Ending TaskEnding `json:"ending,omitempty"`
 
 	// Claim is the WORK'S OWN account of itself, kept beside the composed report
 	// so that a verdict landing after a resume can rebuild the card without
@@ -605,6 +610,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Depth:       n.depth,
 		State:       n.state,
 		Report:      n.report,
+		Ending:      n.endingLocked(),
 		Claim:       n.claim,
 		Changed:     changed,
 		Wrote:       wrote,
@@ -1079,6 +1085,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		state:       record.State,
 		report:      record.Report,
+		ending:      record.Ending,
 		kind:        record.Kind,
 		claim:       record.Claim,
 		changed:     record.Changed,

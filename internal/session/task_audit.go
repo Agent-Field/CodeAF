@@ -1899,6 +1899,7 @@ func (a *Agent) refuteTask(node *TaskNode, why string) error {
 	}
 	defer node.releaseSettle()
 	report, changed, branch, merge := node.leavings()
+	node.end(TaskEndingRefused)
 	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
 	node.graph.resettle(node, TaskFailed)
 	return nil
@@ -1999,6 +2000,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// has already landed once and been handed to a person, and starting a
 		// worker inside their answer would be the harness spending on a decision
 		// they made rather than carrying it out.
+		node.end(TaskEndingRefused)
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:

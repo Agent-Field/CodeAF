@@ -125,6 +125,43 @@ func TaskKindWord(kind TaskKind) string {
 	return ""
 }
 
+// TaskEnding is WHY a node that settled `failed` stopped where it did — the one
+// word under the state that tells a person whether to look for a fault, wait,
+// or steer. A `failed` node carries exactly one, or none; the report's first
+// line says the same thing in a sentence.
+//
+// THEY ARE THREE KINDS OF NEWS, and a surface draws them as three. A person
+// stopped it: nothing is wrong. The connection, a threshold, a loop or another
+// task's working copy ended it: nothing is known to be wrong, and the work can
+// go on from its branch. The check did not accept it, or it broke: something
+// is wrong, and the report says what.
+type TaskEnding string
+
+const (
+	// TaskEndingStopped says a person ended it ([Agent.Cancel]).
+	TaskEndingStopped TaskEnding = "stopped"
+	// TaskEndingWire says the run ended on the connection to the model rather
+	// than on the work — a stream that reset, a socket that closed — after the
+	// retries and the second worker (task_run.go) were spent too.
+	TaskEndingWire TaskEnding = "wire"
+	// TaskEndingCircling says the worker's own loop guard ended its turn
+	// (looped.go's loopLeftUndoneNote): it kept making the same calls.
+	TaskEndingCircling TaskEnding = "circling"
+	// TaskEndingBlocked is [TaskEndingCircling] with a known cause: the calls it
+	// kept making were writes into a working copy another task holds, and every
+	// one was refused (treehold.go).
+	TaskEndingBlocked TaskEnding = "blocked"
+	// TaskEndingSteps says a step, progress or time threshold ended the run and
+	// the work did not hold when it was checked ([Agent.landStopped]).
+	TaskEndingSteps TaskEnding = "steps"
+	// TaskEndingRefused says the run finished and the check did not accept what
+	// it made — gaps were named, or a person refuted it.
+	TaskEndingRefused TaskEnding = "refused"
+	// TaskEndingError is everything else: a working copy that could not be
+	// made, a worker that would not start, an error nobody classified.
+	TaskEndingError TaskEnding = "error"
+)
+
 // TaskState is where one node is in its life.
 type TaskState string
 
@@ -386,6 +423,16 @@ type TaskNotice struct {
 	// surface reading this draws the stop while it can and falls back to the
 	// failure afterwards.
 	Stopped bool
+	// Ending is WHY a node that did not finish stopped where it did, in one word
+	// a surface can draw a row from ([TaskEnding]). It is set only on a node
+	// that settled `failed` and is "" on every other — and on every failed node
+	// checkpointed before the field existed, which a surface draws exactly as it
+	// always did. It exists because every ending that keeps a branch used to wear
+	// the one sentence "stopped — branch kept", and six rows of that on a rail
+	// were, when the records were read, a connection that dropped, a worker that
+	// gave up going in circles, a check that did not accept the work, and not one
+	// person pressing stop.
+	Ending TaskEnding
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that
