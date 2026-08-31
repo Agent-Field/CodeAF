@@ -309,8 +309,21 @@ func (a *app) attachFilePath(raw string) {
 		a.note("no such file: " + raw)
 		return
 	}
+	// A FOLDER USED TO BE A REFUSAL AND IS NOW THE DOOR. `<name> is a folder ·
+	// attach a file` was this surface answering a perfectly clear gesture with a
+	// correction: somebody who typed a directory after /attach was pointing at
+	// somewhere they wanted the conversation to be about, and the only thing
+	// wrong with it was that nothing here could hold that. Now something can, so
+	// the path goes to the one seam every road onto a directory comes out of
+	// (folderplace.go's [app.referPlace]) and the tray keeps its own job —
+	// files, which is what a tray is for.
+	//
+	// The DROP road still says the old sentence, and deliberately: a folder
+	// dropped on the window is a gesture nobody typed, and turning it into a
+	// choice about where this conversation is would be inferring a lot from a
+	// mouse (dropkeys.go).
 	if info.IsDir() {
-		a.note(filepath.Base(path) + " is a folder · attach a file")
+		a.referPlace(chosenPlace{Path: path, Door: placeFromAttach})
 		return
 	}
 	if isImagePath(path) {

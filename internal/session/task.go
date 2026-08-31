@@ -472,6 +472,13 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		return stand.ask + "\nAsk the person which, then propose this again with `ground` set to their answer.", true, nil
 	}
 	spec.ground, spec.mode = stand.dir, stand.mode
+	// AND THE CONVERSATION REMEMBERS WHERE IT IS ABOUT. A ground resolved here —
+	// the model's own `ground`, the person's answer to the two-places question
+	// arriving as the next proposal's argument, or the repository this
+	// conversation has plainly been working in — is written onto the session as a
+	// referred place (places.go), so the ladder's next climb finds it at SAID and
+	// nobody is asked the same question twice.
+	a.keepGround(stand)
 	graph := a.graph()
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan

@@ -964,9 +964,14 @@ than sending the first.
 
 ## Completing a path with `@`
 
-Type `@` and aforge offers **tasks first, then files**, in one list under the message
-box. It opens on the bare `@` — you do not have to type a letter first. It closes on
-`esc`, on committing, or when the token stops being one.
+Type `@` and aforge offers **tasks first, then files and folders**, in one list under
+the message box. It opens on the bare `@` — you do not have to type a letter first. It
+closes on `esc`, on committing, or when the token stops being one.
+
+**Folders are on the list too**, spelled with a trailing slash — `internal/tui3/` — and
+marked `folder` on the right the way a picture row is marked `img`. Choosing one puts
+its path into your sentence exactly as choosing a file does. It does not choose that
+folder as a place; `/folder` is what does that.
 
 The token is found by walking back from the caret to a space, a newline, or the start
 of the message; that run must **begin** with `@`. So an `@` in the middle of a word —
@@ -995,6 +1000,7 @@ reads `  no file matches`. Only the file half waits — the task index lands fir
 - **A file:** the path replaces what you typed after the `@`, and **the `@` stays**.
   Nothing is read at this point. `@internal/session/agent.go` is sent exactly as it
   stands, and aforge's read tool resolves it if it wants to.
+- **A folder:** the same thing, with the trailing slash kept — `@internal/tui3/`.
 - **An image:** the whole half-typed `@token` is removed and the file is attached
   instead.
 - **A task:** the task's name goes in after the `@`. The pointer block is minted when

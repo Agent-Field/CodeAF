@@ -524,6 +524,13 @@ func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []stri
 	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
 	for _, band := range [][]string{
 		a.homeCardPlace(row, width, pal),
+		// AND WHAT IT IS ABOUT BESIDES, directly under where it is standing,
+		// because the two lines are one question asked twice over
+		// (homeband_folders.go). It is the registry's own band called by hand
+		// rather than a second drawing of the same fact: this card is an
+		// explicit list and not the registry, and two spellings of one band
+		// would be two things to keep in step.
+		drawFoldersBand(a, ctx),
 		a.homeCardAnswer(ctx),
 		a.homeCardWork(ctx),
 		a.homeCardMade(ctx),

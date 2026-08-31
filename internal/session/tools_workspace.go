@@ -4,18 +4,20 @@ package session
 // OWN HISTORY — the files, as they were — rather than on the conversation.
 //
 // THEY ARE furrow's, AND furrow IS SOMEBODY ELSE'S PROGRAM. It is a separate
-// tool the person installs themselves (Agent-Field/furrow, Apache-2.0), it is
-// written in another language, and the only thing this tree does with it is run
-// its command line. internal/furrow owns every fact about that; this file owns
-// one decision, which is whether the verbs are on the belt at all.
+// tool (Agent-Field/furrow, Apache-2.0) written in another language, carried
+// inside this binary and written out on first need, and the only thing this
+// tree does with it is run its command line. internal/furrow owns every fact
+// about that; this file owns one decision, which is whether the verbs are on
+// the belt at all.
 //
 // AND THAT DECISION IS THE ABSENCE LAW, IN ITS SHARPEST FORM. A model told it
 // can restore a workspace will plan a whole reply around being able to — it
 // will offer to try something risky, promise the person their .env is
 // recoverable, and only discover at the call that nothing is there. So a
-// machine with no furrow on it, or a folder furrow is not watching, is handed
-// NO VERB: [furrow.Tools] answers nil and this appends nothing. There is no
-// second check to remember and no tool that exists in order to fail.
+// folder furrow is not watching — or the rare machine where the carried binary
+// could not be written out at all — is handed NO VERB: [furrow.Tools] answers
+// nil and this appends nothing. There is no second check to remember and no
+// tool that exists in order to fail.
 //
 // WHY THE NAMES ARE `workspace_` AND NOT `rewind_`. aforge already has a
 // rewind, and it is an edit of the CONVERSATION that touches no file on disk

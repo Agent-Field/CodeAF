@@ -905,8 +905,8 @@ var OperatorEnvPins = []string{
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// AFORGE_BASE_URL is.
 	"AFORGE_RELAY",
-	// AFORGE_FURROW names the furrow binary on a machine where PATH would not
-	// find it (internal/furrow). A path to a program is plumbing.
+	// AFORGE_FURROW names a furrow to use instead of the one aforge carries
+	// (internal/furrow). A path to a program is plumbing.
 	"AFORGE_FURROW",
 	// The three site-attribution pins — a URL, an app name, a category list —
 	// used to sit here, and they are gone rather than moved: the OpenRouter app

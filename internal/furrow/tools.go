@@ -13,13 +13,16 @@ import (
 // The four verbs furrow puts on the belt, and the one line that decides whether
 // any of them are there.
 //
-// THEY ARE CONDITIONAL IN THE SHARPEST WAY THIS CODEBASE HAS: not on a
-// configuration aforge could fix, but on another program being installed. A
-// belt is a promise — every tool on it is something the model has been told it
-// can do — and a `workspace_restore` that answers "furrow is not installed"
-// costs the model a call, reads as temporary, and stays in its plan for the
-// rest of the turn. A model that was never told about these simply says the
-// files cannot be put back, which is true and free.
+// THEY ARE CONDITIONAL ON SOMETHING NO CONFIGURATION CAN FIX: whether this
+// folder has been attached with `furrow watch`. The binary itself is no longer
+// in question — aforge carries furrow inside it (internal/furrowbin) — so the
+// half that used to vary by machine does not, and the half that remains is the
+// one a person decides per project. A belt is a promise, though: every tool on
+// it is something the model has been told it can do, and a `workspace_restore`
+// that answers "this repository is not watched" costs the model a call, reads
+// as temporary, and stays in its plan for the rest of the turn. A model that
+// was never told about these simply says the files cannot be put back, which is
+// true and free.
 //
 // The names all begin `workspace_` for a second reason, and it is not tidiness.
 // aforge already has a rewind, and it is an edit of the CONVERSATION that

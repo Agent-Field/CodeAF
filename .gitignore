@@ -1,4 +1,9 @@
 bin/
+# The furrow the build fetches, and the copy it stages for go:embed. Both are
+# six megabytes of somebody else's release; internal/furrowbin/pin.json is the
+# committed, auditable half and these are rebuilt from it by `make furrow`.
+third_party/
+internal/furrowbin/cache/furrow-*.gz
 .obs/
 *.log
 .claude/

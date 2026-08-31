@@ -1,13 +1,11 @@
 # Forking and syncing a workspace
 
-## Is furrow required, and what happens if I do not have it
+## Do I need to install furrow — is furrow required, and do I have it
 
-**furrow is a separate program you install yourself, and aforge does not need it.**
-Nothing on this page exists on a machine that does not have it — and that is by
-design, not a gap. With no furrow installed, `workspace_snapshots`,
-`workspace_restore`, `workspace_fork` and `workspace_merge` are **not on the tool
-list at all**. They are not present and failing; the verbs simply do not exist, so
-aforge will tell you it cannot put files back rather than trying and refusing.
+**You already have it. furrow ships inside aforge, so there is nothing to
+install.** Every copy of aforge carries the furrow it was built against and
+writes it out to `~/.aforge/bin/` the first time something needs it. There is no
+machine where aforge has this and yours does not.
 
 furrow is open source, Apache-2.0, from Agent-Field:
 **https://github.com/Agent-Field/furrow**. It copy-on-write forks a whole
@@ -15,25 +13,46 @@ workspace — every file, dependency, `.env`, the dev database, git's own mutabl
 state — into a byte-exact copy in about a second, and continuously seals that
 workspace into an immutable timeline you can put back.
 
-There are **two halves** and both have to be true:
+**One thing is still yours to do, and it is per folder: attach it.** Until you
+do, `workspace_snapshots`, `workspace_restore`, `workspace_fork` and
+`workspace_merge` are **not on the tool list at all** — not present and refusing,
+simply absent, so aforge tells you it cannot put files back rather than trying.
+furrow's own words are what you get if you ask: *"this repository is not watched;
+run `furrow watch` first"*.
 
-1. **furrow is on this machine.** Install it yourself.
-2. **This folder is attached to it.** Run `furrow watch` once, in the folder:
+Attaching is one command, run once, in the folder. aforge's copy is not on your
+`PATH`, so name it:
 
-   ```
-   cd my-project && furrow watch
-   ```
+```
+ls ~/.aforge/bin                       # the copy aforge carries, named for its version
+cd my-project && ~/.aforge/bin/furrow-<version> watch
+```
 
-Install furrow but never run `furrow watch` here and the four tools are still
-absent — furrow itself says *"this repository is not watched; run `furrow watch`
-first"*, and aforge takes that as the answer.
+If you would rather have `furrow` as a command of your own, install it yourself
+from the link above; that copy is what your terminal will use, and aforge will
+still use the one it carries.
 
-If furrow is installed somewhere a spawned program would not find it, set
-`AFORGE_FURROW` to the full path of the binary. A value that names nothing is an
-error rather than a quiet fall back to whatever is on `PATH`.
+Set `AFORGE_FURROW` to the full path of a binary to make aforge use that one
+instead — your own build, or a newer furrow than this aforge is pinned to. A
+value that names nothing is an error rather than a quiet fall back.
 
 Nothing about furrow is switched on for you, nothing is uploaded anywhere, and
 aforge never runs `furrow watch` on a folder by itself.
+
+## Where is the furrow that aforge carries
+
+`~/.aforge/bin/`, in a file named for its version — `furrow-0.1.0`. It is
+written out the first time aforge needs it and then left alone; a new aforge with
+a newer furrow writes a **new** file beside the old one rather than over it, so
+nothing that is running is ever replaced underneath itself.
+
+That folder is not on your `PATH` and aforge does not put it there. Running
+furrow's own commands — `furrow watch`, `furrow ui`, `furrow forks`,
+`furrow remote add` — means naming that path, or installing furrow yourself.
+
+On the rare machine where that file cannot be written — a read-only home — the
+four workspace tools are absent, exactly as they were on a machine with no furrow
+at all.
 
 ## Undo what the agent did to my files — restoring the workspace
 
@@ -41,8 +60,8 @@ aforge never runs `furrow watch` on a folder by itself.
 sessions and rewind page and it stays true: rewind takes back what was *said*, and
 a file the dropped turn wrote stays written.
 
-Putting **files** back is a different thing, and it exists only with furrow
-installed and this folder attached (see "Is furrow required"). Then:
+Putting **files** back is a different thing, and it exists only in a folder that
+is attached to furrow (see "Do I need to install furrow"). Then:
 
 - `workspace_snapshots` lists the restore points — moments the whole folder was
   sealed, newest first, each with an id, when it was sealed and what it was
@@ -76,8 +95,8 @@ a bad script, or an agent tidying too enthusiastically takes out `.env`, the loc
 SQLite database, ignored build state, and git's own index — none of which git is
 protecting. furrow's timeline holds all of it.
 
-With furrow installed and `furrow watch` run in this folder (see "Is furrow
-required"), ask for one path back rather than the whole folder:
+In a folder `furrow watch` has been run in (see "Do I need to install furrow"),
+ask for one path back rather than the whole folder:
 
 - `workspace_snapshots` to find a restore point from before it broke.
 - `workspace_restore` with that id and `paths` set to `.env` — **newer work in
@@ -88,12 +107,12 @@ and git's mutable state. Every restore point declares how exactly it can be put
 back; aforge shows that declaration beside the id, as furrow words it, rather than
 promising something furrow did not.
 
-Without furrow, none of this exists: no restore points, no `.env` back. aforge
-will say so instead of pretending.
+In a folder nobody has attached, none of this exists: no restore points, no
+`.env` back. aforge will say so instead of pretending.
 
 ## Try something risky without breaking my project
 
-With furrow installed and this folder attached (see "Is furrow required"),
+In a folder attached to furrow (see "Do I need to install furrow"),
 `workspace_fork` runs a command inside a **copy-on-write fork of the entire
 workspace** — files, dependencies, `.env`, the dev database — ready in about a
 second. A dependency upgrade, a destructive migration, a wide refactor, a script
@@ -143,18 +162,20 @@ Two things are worth knowing before you rely on it:
   and `furrow ui`, run yourself, are where you see every universe, its real disk
   cost and its live conflicts.
 
-Without furrow installed, two aforge sessions in one folder share that folder
-exactly as they always have — see "Two terminals in the same folder" on the
-sessions and rewind page. Nothing about that changes, and no fork is available.
+In a folder nobody has attached, two aforge sessions share that folder exactly as
+they always have — see "Two terminals in the same folder" on the sessions and
+rewind page. Nothing about that changes, and no fork is available.
 
 ## Sync my folder to the other machine — my laptop's files over there
 
 If you want a folder that lives on your laptop to exist on the machine aforge is
 running on, **aforge does not have its own file-sync**, and does not try to grow
-one. What it does is offer furrow's pairing, when furrow is installed on both
-machines.
+one. What it does is offer furrow's pairing. Every machine running aforge already
+has furrow; a machine that is not running aforge needs its own copy.
 
-Run these yourself, in the folder, on the machine that has it:
+Run these yourself, in the folder, on the machine that has it — furrow's own
+commands are not on your `PATH`, so name aforge's copy in `~/.aforge/bin/` or
+install furrow yourself:
 
 ```
 furrow remote add ssh://dev@machine-a.tailnet --name my-project
@@ -193,8 +214,8 @@ If the project you actually want to work on is on your own machine, there are tw
 honest options:
 
 1. **Copy it over and work there.** Simplest, and it is what most people mean.
-2. **Pair the folder with furrow**, if furrow is installed on both machines — see
-   "Sync my folder to the other machine". That gives the far machine your
+2. **Pair the folder with furrow** — see "Sync my folder to the other machine".
+   Both machines run aforge, so both already have furrow. That gives the far machine your
    *current* state, not your last commit, and keeps it warm both ways with
    `furrow sync --follow`.
 
@@ -203,8 +224,8 @@ edge: cross-machine divergence is preserved and reported, never merged for you,
 so let one machine be the one that writes — and over a connection, that is the
 machine aforge is running on.
 
-Without furrow installed, option 2 does not exist and aforge will say so rather
-than offering a sync it does not have.
+Option 2 still needs the folder attached on both ends, and aforge will say so
+rather than offering a sync that is not set up.
 
 ## When one of the workspace tools cannot do something
 
@@ -234,8 +255,9 @@ Two more limits worth knowing:
 
 Plainly, so you do not find out the hard way:
 
-- **It does not install furrow, and it does not attach a folder.** `furrow watch`
-  is yours to run. A folder aforge was never told to attach stays unattached.
+- **It does not attach a folder.** aforge carries furrow, so nothing is yours to
+  install — but `furrow watch` is yours to run, and a folder nobody has attached
+  stays unattached.
 - **It does not pair machines.** `furrow remote add`, `furrow sync` and
   `furrow clone` are yours to run, because pairing prints the recovery key.
 - **It does not restore anything without your explicit yes.** `workspace_restore`

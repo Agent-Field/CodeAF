@@ -209,7 +209,9 @@ func TestEveryOtherRefusalAttachCanGive(t *testing.T) {
 	for _, test := range []struct{ arg, want string }{
 		{"", "/attach takes a path · try /attach server.log"},
 		{"nope.txt", "no such file: nope.txt"},
-		{"sub", "sub is a folder · attach a file"},
+		// `sub` USED TO BE HERE, AND IT IS NOT A REFUSAL ANY MORE. A directory
+		// after /attach is now the folder door
+		// (TestAttachOnAFolderTakesTheFolderDoorInsteadOfRefusing).
 	} {
 		a.entries = nil
 		a.attachFilePath(test.arg)

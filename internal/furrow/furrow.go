@@ -1,5 +1,5 @@
-// Package furrow is aforge's optional seam onto `furrow`, a separate program
-// the person installs themselves (Agent-Field, Apache-2.0,
+// Package furrow is aforge's seam onto `furrow`, a separate program aforge
+// carries inside itself (Agent-Field, Apache-2.0,
 // https://github.com/Agent-Field/furrow).
 //
 // furrow copy-on-write forks a whole workspace — files, dependencies, `.env`,
@@ -10,13 +10,20 @@
 // which is fine, because the CLI is furrow's declared API: `--json` everywhere,
 // stable IDs, and destructive operations gated on an explicit ID plus `--yes`.
 //
+// EVERY AFORGE IS AN AFORGE WITH FURROW. The binary rides inside this one and
+// is written out on first need (internal/furrowbin), so the half of the answer
+// that used to vary by machine — is furrow installed — no longer does. What
+// still varies is the half a person controls per project: a folder nobody ran
+// `furrow watch` in is a folder furrow will not act on.
+//
 // THE LAW THIS WHOLE PACKAGE IS WRITTEN TO IS THE CODEBASE'S OWN: A CAPABILITY
-// THAT CANNOT WORK IS ABSENT, NOT BROKEN. No furrow on this machine, or a
-// folder furrow was never pointed at, and [Tools] returns nothing at all — the
-// model is never handed a verb whose every call would be a refusal, and no
-// other part of aforge notices this package exists. Everything here hangs off
-// [Detect], which is why [Detect] is the first thing in the file and the most
-// carefully cached: it is asked far more often than anything else is done.
+// THAT CANNOT WORK IS ABSENT, NOT BROKEN. A folder furrow was never pointed at
+// — or the rare machine where the binary could not be written out at all — and
+// [Tools] returns nothing at all: the model is never handed a verb whose every
+// call would be a refusal, and no other part of aforge notices this package
+// exists. Everything here hangs off [Detect], which is why [Detect] is the
+// first thing in the file and the most carefully cached: it is asked far more
+// often than anything else is done.
 //
 // It is also written to be wrong about furrow safely. furrow's JSON is furrow's
 // to change, and a version this package has never seen must degrade to "I could
@@ -39,12 +46,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
 )
 
-// Binary is the program this package shells out to. It is looked up on PATH,
-// and AFORGE_FURROW overrides that for a machine — an engine machine reached
-// over --host is the usual one — where furrow is installed somewhere a login
-// shell would find and a spawned process would not.
+// Binary is the program this package shells out to. It is normally the copy
+// aforge carries and writes out itself; PATH is the fall-back, and
+// AFORGE_FURROW overrides both for somebody who means a particular binary —
+// their own build, or a newer furrow than this aforge is pinned to.
+// [lookBinary] has the order and the reason for it.
 const (
 	Binary       = "furrow"
 	BinaryEnvVar = "AFORGE_FURROW"
@@ -74,7 +84,11 @@ const detectTTL = 30 * time.Second
 // something wants to say WHICH of the two halves is missing, because "install
 // furrow" and "run furrow watch here" are completely different sentences.
 type Presence struct {
-	// Installed reports that a furrow binary was found, and Path is where.
+	// Installed reports that a furrow binary was found, and Path is where. On
+	// an ordinary build this is true everywhere — the binary is carried — and
+	// the field is kept because the two halves are still separately
+	// interesting: a state root that could not be written to is a machine
+	// where it is false, and that is a fault worth being able to name.
 	Installed bool
 	Path      string
 
@@ -210,10 +224,29 @@ func detect(ctx context.Context, root string) Presence {
 	return presence
 }
 
-// lookBinary finds furrow, preferring an explicitly configured path over PATH.
-// An AFORGE_FURROW that names something missing is an error and not a quiet
-// fall back to PATH: somebody who set that variable meant that binary, and
+// embedded is the road to the furrow aforge carries inside itself, and it is a
+// variable for exactly one reason: the tests in this package have to be able to
+// say "a machine with no furrow at all", which on a shipped build is a state
+// that no longer exists. Nothing in the product reassigns it.
+var embedded = furrowbin.Ensure
+
+// lookBinary finds furrow. Three roads, in this order: the path somebody
+// configured, the copy aforge carries, then PATH.
+//
+// AFORGE_FURROW stays first because it is the only one a person chose. An
+// AFORGE_FURROW that names something missing is an error and not a quiet fall
+// back to the others: somebody who set that variable meant that binary, and
 // silently running a different one is the kind of help nobody asked for.
+//
+// THE EMBEDDED COPY COMES BEFORE PATH, AND THAT IS THE NO-VARIANCE RULING. The
+// version riding inside this binary is the one this aforge was built and tested
+// against; whatever a machine happens to have on its PATH is a different
+// program with the same name, possibly older, possibly newer than the JSON the
+// decoders here were written for. PATH remains as the fall-back for a build
+// that carries nothing — a plain `go build ./...`, or an extraction that could
+// not write — which is also why a failure here is never fatal: it is one more
+// road not taken, and if none of them answer the seam is absent exactly as it
+// always was.
 func lookBinary() (string, error) {
 	if configured := strings.TrimSpace(os.Getenv(BinaryEnvVar)); configured != "" {
 		info, err := os.Stat(configured)
@@ -224,6 +257,9 @@ func lookBinary() (string, error) {
 			return "", fmt.Errorf("%s names a directory: %s", BinaryEnvVar, configured)
 		}
 		return configured, nil
+	}
+	if carried, err := embedded(); err == nil {
+		return carried, nil
 	}
 	return exec.LookPath(Binary)
 }

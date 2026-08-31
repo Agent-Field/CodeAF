@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed test test-swepro test-remote vet check size clean \
+.PHONY: all build debug demo-home embed furrow test test-swepro test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -44,6 +44,39 @@ all: build
 embed:
 	go generate $(PACKED_PKGS)
 
+# ── the furrow that rides inside ────────────────────────────────────────────
+#
+# EVERY AFORGE IS AN AFORGE WITH FURROW, so the build fetches furrow before it
+# can produce one. This step downloads the release pinned in
+# internal/furrowbin/pin.json for whatever platform is being built for, checks
+# it against the sha256 the pin names, keeps it in a gitignored third_party/
+# cache, and stages it gzipped where go:embed picks it up. Six megabytes of
+# binary is not committed — every clone would carry it forever — but the pin
+# beside it is, so what shipped is auditable from the repository alone.
+#
+# It is a prerequisite of `build` and not a thing anybody remembers to run. A
+# fetch that cannot happen STOPS THE BUILD, loudly, with the command to run: the
+# failure mode this ordering exists to make impossible is a quietly successful
+# build that produced an aforge without furrow inside it.
+#
+# On a machine with no network, point it at an artifact already on disk — the
+# sha256 is checked either way, so this is an offline road and not a looser one:
+#
+#   make furrow FURROW_ARTIFACT=~/.agentfield/bin/furrow
+#
+# THE TARGET IS READ FIRST AND THEN UNSET. A cross-compiling build sets GOOS and
+# GOARCH for aforge, and the fetcher has to know them — but it must not be built
+# FOR them, or the build machine tries to run a Linux tool and reports an exec
+# format error where it meant to report a download. So the two are captured as
+# the platform to fetch and taken out of the environment the tool is built in.
+FURROW_GOOS := $(shell go env GOOS)
+FURROW_GOARCH := $(shell go env GOARCH)
+
+furrow:
+	@env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
+		-goos=$(FURROW_GOOS) -goarch=$(FURROW_GOARCH) \
+		$(if $(FURROW_ARTIFACT),-from "$(FURROW_ARTIFACT)")
+
 # The symbol table and DWARF are a third of the shipped binary and nothing at
 # runtime reads them. Stripping costs symbolized panic traces, which is exactly
 # what `debug` keeps — build that when a stack trace is what you need.
@@ -56,10 +89,10 @@ embed:
 # to find vendor/bin/<tool>. There is no vendor/ in this repository, and a
 # shipped binary's compiled-in root never exists on the machine running it, so
 # both lookups already fell through to the cwd copy and then to PATH.
-build: embed
+build: furrow embed
 	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
-debug: embed
+debug: furrow embed
 	go build -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 test:

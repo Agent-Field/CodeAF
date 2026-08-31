@@ -226,6 +226,7 @@ const (
 	bandOrderNextUp      = 60  // the standing items that will wake, and when
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
+	bandOrderFolders     = 85  // the folders it is about beyond the one it stands in
 	bandOrderSpend       = 90  // what it has cost
 	bandOrderThinking    = 93  // a standing item: the rung it thinks at
 	bandOrderKeys        = 100 // what the keyboard does here, always last

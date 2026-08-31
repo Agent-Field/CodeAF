@@ -257,6 +257,20 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// home forever.
 		agent.stampRestoredSpend(agent.usage)
 	}
+	// AND WHERE THIS CONVERSATION IS ABOUT. The referred places ride on the same
+	// meta.json everything else about the session's identity does (places.go), so
+	// a conversation reopened tomorrow still knows the folders it turned out to
+	// be about and the ground ladder still answers for them without asking
+	// anybody again. It is read here rather than at the door because there is
+	// only one road in and no launch flag names it; a session with no folder — a
+	// headless run, a task node, a test — reads nothing and accrues nothing.
+	agent.places = loadPlaces(config.Place.Dir)
+	// AND THE WORK THAT HAS NOT LANDED YET. A conversation closed with changes
+	// waiting in its own copy of a folder comes back holding them, and the
+	// composer's chip says so again (standingtree.go). A record whose copy is no
+	// longer on disk is dropped on the way in, so what is read back is what can
+	// actually be landed.
+	agent.trees = loadStandingTrees(config.Place.Dir)
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named
 	// by the same string, and a memory-only session has the one this constructor

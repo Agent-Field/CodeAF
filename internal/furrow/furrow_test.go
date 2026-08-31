@@ -10,14 +10,18 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/furrowbin"
 )
 
 // Every test here runs against a FAKE furrow: a shell script on PATH that
 // prints canned `--json` answers copied from the shapes furrow's own source
-// emits. THE REAL BINARY IS NEVER REQUIRED, which is the only way a seam onto
-// an optional program can be tested at all — the machine running these tests is
-// exactly the machine this package must behave correctly on when furrow is not
-// installed.
+// emits. THE REAL BINARY IS NEVER REQUIRED, and that is deliberate twice over.
+// It is the only way to drive furrow's answers — an unreadable status, a merge
+// with conflicts, a newer version's unknown fields — without a furrow that
+// produces them on demand. And it keeps the tests honest about the shape of a
+// build: `go test` in a fresh clone carries no furrow at all, `go test` after
+// `make build` carries the real one, and both must run the fake. See
+// [carryNothing] for how the second is arranged.
 
 // fakeScript is the whole fake, dispatching on the argument layout this package
 // actually builds: `--version`, or `--repo <root> --json <subcommand> …`. The
@@ -94,10 +98,27 @@ hook)
 esac
 `
 
+// carryNothing takes the embedded furrow out of the picture for one test.
+//
+// IT EXISTS BECAUSE THE STATE IT PRODUCES NO LONGER OCCURS. aforge carries
+// furrow inside it, so "this machine has no furrow" and "the furrow answering
+// is the fake I just wrote" are both, on a shipped build, impossible — and they
+// are exactly the two states this file has to be able to put the package in.
+// Every helper below starts here, which keeps the tests about what they were
+// always about: what happens when the binary is absent, and what happens when
+// it answers a particular way.
+func carryNothing(t *testing.T) {
+	t.Helper()
+	restore := embedded
+	embedded = func() (string, error) { return "", furrowbin.ErrNotEmbedded }
+	t.Cleanup(func() { embedded = restore })
+}
+
 // installFake puts the fake furrow on PATH and clears the detection cache, so
 // one test's answer can never be another's.
 func installFake(t *testing.T, mode string) string {
 	t.Helper()
+	carryNothing(t)
 	dir := t.TempDir()
 	script := filepath.Join(dir, Binary)
 	if err := os.WriteFile(script, []byte(fakeScript), 0o755); err != nil {
@@ -112,8 +133,12 @@ func installFake(t *testing.T, mode string) string {
 }
 
 // removeFake is the case that matters most: a machine with no furrow at all.
+// On an embedded build that is no longer a machine anybody has, but it is
+// still a machine this package must survive — an extraction that could not
+// write into a read-only state root leaves the seam in exactly this state.
 func removeFake(t *testing.T) {
 	t.Helper()
+	carryNothing(t)
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv(BinaryEnvVar, "")
 	Forget()
@@ -638,6 +663,49 @@ func TestDocumentsReadsAStreamAndSurvivesATrailingFragment(t *testing.T) {
 	}
 	if err := decodeLast([]byte("not json"), &last); err == nil {
 		t.Fatal("decodeLast accepted a stream with no JSON on it")
+	}
+}
+
+// THE CARRIED FURROW BEATS WHATEVER IS ON PATH, WHICH IS THE NO-VARIANCE
+// RULING IN ONE ASSERTION. The version riding inside this binary is the one it
+// was built and tested against; a furrow on PATH is a different program with
+// the same name, and preferring it would put the decoders here in front of JSON
+// nobody chose. AFORGE_FURROW still beats both, because that one a person set.
+func TestTheFurrowAforgeCarriesIsPreferredToTheOneOnPath(t *testing.T) {
+	onPath := installFake(t, "ok")
+	carried := filepath.Join(t.TempDir(), "furrow-carried")
+	if err := os.WriteFile(carried, []byte(fakeScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	embedded = func() (string, error) { return carried, nil }
+
+	binary, err := lookBinary()
+	if err != nil {
+		t.Fatalf("lookBinary with a carried furrow: %v", err)
+	}
+	if binary != carried {
+		t.Fatalf("lookBinary chose %s; want the carried %s, not the one on PATH in %s", binary, carried, onPath)
+	}
+
+	configured := filepath.Join(t.TempDir(), "furrow-chosen")
+	if err := os.WriteFile(configured, []byte(fakeScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(BinaryEnvVar, configured)
+	if binary, err := lookBinary(); err != nil || binary != configured {
+		t.Fatalf("lookBinary chose (%q, %v); %s is set and must win over the carried copy", binary, err, BinaryEnvVar)
+	}
+}
+
+// A carried furrow that could not be written out — a read-only state root — is
+// one road not taken and never a fault the caller has to handle. PATH answers
+// next, and if nothing answers the seam is absent exactly as it always was.
+func TestAnExtractionThatFailedFallsBackToPathRatherThanRefusing(t *testing.T) {
+	installFake(t, "ok")
+	embedded = func() (string, error) { return "", furrowbin.ErrNotEmbedded }
+
+	if !Detect(context.Background(), t.TempDir()).Available() {
+		t.Fatal("with no carried furrow the seam went absent instead of looking on PATH")
 	}
 }
 
