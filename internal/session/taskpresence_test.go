@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -404,4 +405,133 @@ func TestATaskNodesAgentKeepsNoPresence(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, presenceName)); !os.IsNotExist(err) {
 		t.Fatalf("a task node's agent wrote a presence file (stat err %v)", err)
 	}
+}
+
+// ── which life a running node is in ─────────────────────────────────────────
+
+// A NODE'S STATE IS `running` FOR MINUTES IN WHICH ITS WORKER IS NOT WORKING —
+// the check reading what it left, a repair round closing what the check found —
+// and every window but the one holding the graph drew a bare `running` for all
+// of it, because the phase was on the node and the node is in another process.
+//
+// The beat carries it now, in the words task_contract.go exports, and the
+// emptiness law decides which of them are written at all: a node getting on with
+// the work is the row it always was, so `working` is written as nothing.
+func TestPresenceSaysWhichLifeARunningNodeIsIn(t *testing.T) {
+	bucket := t.TempDir()
+	agent, dir := newPresenceSession(t, bucket, "cccc3333cccc3333")
+
+	// A node nothing runs, so this test moves its lives itself — through the one
+	// call that moves them everywhere at once ([Agent.enterPhase]), which is what
+	// the check and a repair round do to a real one.
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Port the parser", brief: "b", acceptance: "a"})
+	node := graph.node(id)
+	if node == nil {
+		t.Fatal("the node was not admitted")
+	}
+
+	// ── working writes nothing at all ──
+	agent.nudgePresence()
+	working := waitForPresenceTask(t, dir, "1")
+	if working.Phase != "" {
+		t.Fatalf("a working node wrote the phase %q; the ordinary life is the row it always was", working.Phase)
+	}
+	// AND NOT AS AN EMPTY FIELD EITHER. The file is read by builds that have
+	// never heard of this key, and a key written for every row is a key every
+	// reader has to have an opinion about.
+	if raw := presenceBytes(t, dir); strings.Contains(raw, `"phase"`) {
+		t.Fatalf("a working node put a phase key in the file:\n%s", raw)
+	}
+
+	// ── the check, and then a repair round ──
+	for _, life := range []string{TaskPhaseChecking, TaskPhaseRepairing, TaskPhaseSizing} {
+		leave := agent.enterPhase(node, life, 1, 1, "")
+		agent.nudgePresence()
+		if got := waitForPresencePhase(t, dir, "1", life); got != life {
+			t.Fatalf("a node under %s says %q", life, got)
+		}
+		leave()
+		agent.nudgePresence()
+		if got := waitForPresencePhase(t, dir, "1", ""); got != "" {
+			t.Fatalf("the node came back to its work and the file still says %q", got)
+		}
+	}
+}
+
+// AND A FILE WRITTEN BEFORE THIS EXISTED READS AS A WORKING ROW. Presence files
+// are read across builds — the window that wrote one may be a release behind the
+// window reading it — so the absent key has to mean what it means everywhere
+// else here: nothing to say.
+func TestAPresenceFileWithNoPhaseReadsAsTheRowItAlwaysWas(t *testing.T) {
+	dir := t.TempDir()
+	older := `{"schema":` + itoa(presenceSchema) + `,"sessionId":"dddd4444dddd4444","workspace":"/work",` +
+		`"pid":4242,"updatedAt":"` + time.Now().Format(time.RFC3339Nano) + `","state":"working",` +
+		`"runningTasks":[{"id":"3","title":"Port the parser","state":"running"}]}`
+	if err := os.WriteFile(filepath.Join(dir, presenceName), []byte(older+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	presence, ok := ReadSessionPresence(dir, time.Now())
+	if !ok {
+		t.Fatal("a file from a build with no phase was refused outright")
+	}
+	if len(presence.RunningTasks) != 1 || presence.RunningTasks[0].Title != "Port the parser" {
+		t.Fatalf("the row did not survive the read: %+v", presence.RunningTasks)
+	}
+	if got := presence.Phase("3"); got != "" {
+		t.Fatalf("a row with no phase answered %q", got)
+	}
+	if !presence.Holds("3") {
+		t.Fatal("the row stopped being work this session has out")
+	}
+}
+
+// presenceBytes is the file exactly as it was written, for the assertions that
+// are about the JSON rather than about what a reader makes of it.
+func presenceBytes(t *testing.T, dir string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, presenceName))
+	if err != nil {
+		t.Fatalf("read presence: %v", err)
+	}
+	return string(raw)
+}
+
+// waitForPresenceTask polls until one node's row is in the file, because the
+// heartbeat writes on a goroutine of its own.
+func waitForPresenceTask(t *testing.T, dir, id string) PresenceTask {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		presence, ok := ReadSessionPresence(dir, time.Now())
+		if ok {
+			for _, task := range presence.RunningTasks {
+				if task.ID == id {
+					return task
+				}
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("no row for node %s appeared in %s", id, dir)
+	return PresenceTask{}
+}
+
+// waitForPresencePhase polls until one node's row says a phase, and answers
+// whatever it says when the wait runs out — so the failure names what was
+// actually written rather than "it timed out".
+func waitForPresencePhase(t *testing.T, dir, id, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	last := ""
+	for time.Now().Before(deadline) {
+		last = waitForPresenceTask(t, dir, id).Phase
+		if last == want {
+			return last
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return last
 }

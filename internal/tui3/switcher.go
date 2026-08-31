@@ -313,7 +313,18 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 	if row.Tasks.Running > 0 {
 		note := fmt.Sprintf("%d %s running", row.Tasks.Running, switcherPlural(row.Tasks.Running, "task", "tasks"))
 		for _, entry := range row.Tasks.Rows {
-			if row.Runs(entry) && strings.TrimSpace(entry.Activity) != "" {
+			if !row.Runs(entry) {
+				continue
+			}
+			// THE PHASE OUTRANKS THE ACTIVITY WHEREVER BOTH ARE KNOWN, for
+			// taskphase.go's reason: through a check and a repair round the
+			// activity is the worker's last call sitting there finished, and the
+			// phase is what is actually happening. It is also the only one of the
+			// two that crosses a window at all (session's [session.PresenceTask.Phase]).
+			if phase := taskPhaseWords(row.Phase(entry), 0, 0); phase != "" {
+				return note + " · " + phase
+			}
+			if strings.TrimSpace(entry.Activity) != "" {
 				return note + " · " + switcherFirstLine(entry.Activity)
 			}
 		}
