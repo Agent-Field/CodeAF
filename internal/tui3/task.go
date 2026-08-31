@@ -4768,7 +4768,7 @@ func (a *app) railJobLog(node *taskNode, width int) []string {
 // `job N` handle stays unchanged; only the path after the stable log label is a
 // place, and prefixing the whole sentence would turn the machine into a job id.
 func (a *app) hostedJobLog(report string) string {
-	const logSep = " · log "
+	const logSep = jobReportLogSep
 	if !a.hosted() {
 		return report
 	}
@@ -5355,6 +5355,18 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// (session's task_contract.go).
 		node.elapsed = notice.Elapsed
 		a.landPilot(notice.ID)
+		// AND A BACKGROUND JOB'S OPEN PAGE LANDS WITH ITS ROW. A job has no lane
+		// to close (session's jobrow.go), so the [roomClosedMsg] that ends every
+		// other room never comes for one, and the row settling is the only word
+		// there is that the process is over — without this, a page opened on a job
+		// whose report named no log would say `this log grows as the job works` for
+		// as long as it stayed open. An ordinary node is deliberately NOT ended
+		// here: its page is ended by its lane, which may still have its last events
+		// in flight when the state moves.
+		if a.room != nil && a.room.id == notice.ID && node.kind == session.TaskKindJob {
+			a.room.done = true
+			a.roomTouched()
+		}
 		// A CHILD LANDS ON THE ROSTER AND NOT IN THE CONVERSATION. The card is how
 		// work a person HANDED OVER reports back, one card per decision they made;
 		// an adaptive run's nodes are cut by its planner, there are a dozen of them,

@@ -296,6 +296,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"task page is empty", "reading-a-task-page"},
 		{"the task page is stuck at the top", "reading-a-task-page"},
 		{"what does scroll up or ctrl+o mean", "reading-a-task-page"},
+		// A ROOM THAT WAS DEAD WHILE THE WORK WAS ALIVE. The first is the exact
+		// sentence the screenshot provoked — a running job's page drawing the
+		// landed foot — and the second is what the person wanted the page to be
+		// doing instead. The third is how somebody says it before they have
+		// noticed which of the two is wrong.
+		{"the task page says finished but it is still running", "reading-a-task-page"},
+		{"can I watch a background job's log", "reading-a-task-page"},
+		{"the task page looks stuck", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
