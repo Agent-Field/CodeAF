@@ -130,14 +130,18 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
+	// ([homeView.build]), so the row the card is about may be a row nothing has
+	// read for. It is an arrival like a key (homecardread.go).
+	asked := a.refreshHomeCard(a.now())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
 	// it stop by the same test).
 	if a.homeAnimating() {
-		return tea.Batch(homeTick(a.homeGen), a.wake())
+		return tea.Batch(asked, homeTick(a.homeGen), a.wake())
 	}
-	return homeTick(a.homeGen)
+	return tea.Batch(asked, homeTick(a.homeGen))
 }
 
 // homeAnimating reports whether something on home is truly MOVING: a row on the
@@ -532,6 +536,10 @@ type homeView struct {
 	// beat the bands are read on so that building the typed drop-up costs no
 	// seam at all ([app.readPlaceSummaries], homeplaces.go).
 	says map[page]string
+	// painted is the last frame this screen drew, kept for the pointer
+	// ([app.homeHover]). It is written by the draw for the same reason the hit
+	// maps below it are.
+	painted homePainted
 	// pane is, for each SCREEN row, which row of the right pane was drawn there
 	// (-1 for none). It is the second half of [app.homeFrame]'s hit map — the
 	// first half answers for the left column — and it exists for the same
@@ -763,10 +771,11 @@ func (a *app) openHome() tea.Cmd { return a.showPage(pageHome) }
 func (a *app) raiseHome() tea.Cmd {
 	a.closeLists()
 	a.dismissWelcome()
+	world, known := a.readWorldKnown()
 	a.home = homeView{
 		why:       a.homeWhyEmpty(),
-		world:     a.readWorld(),
-		known:     a.worldKnown(),
+		world:     world,
+		known:     known,
 		far:       a.hosted(),
 		seen:      session.LastLook(a.looksRoot()),
 		bucket:    homeBucketOf(a.file),
@@ -803,15 +812,18 @@ func (a *app) raiseHome() tea.Cmd {
 	a.home.readGone()
 	a.home.build()
 	a.home.openAt(a.file)
-	a.refreshHomeRepo(time.Now())
+	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
+	// (homecardread.go). The repository among them is a command, so it is asked
+	// for rather than waited on and comes back as a message.
+	asked := a.refreshHomeCard(time.Now())
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
 	// page cannot make them ([app.homeAnimating]).
 	if a.homeAnimating() {
-		return tea.Batch(homeTick(a.homeGen), a.wake())
+		return tea.Batch(asked, homeTick(a.homeGen), a.wake())
 	}
-	return homeTick(a.homeGen)
+	return tea.Batch(asked, homeTick(a.homeGen))
 }
 
 // ── the landing ─────────────────────────────────────────────────────────────
@@ -885,7 +897,7 @@ func (a *app) landHome() {
 	if !a.landing || a.pickSession {
 		return
 	}
-	world := a.readWorld()
+	world, known := a.readWorldKnown()
 	if !worldHasElsewhere(world, a.file) {
 		return
 	}
@@ -893,7 +905,7 @@ func (a *app) landHome() {
 	// different about this road is only WHEN it runs — inside [newApp], before
 	// bubbletea exists — and the world it hands in, which was already read above
 	// to answer whether there is anywhere else to go.
-	a.home = a.newHomeView(world)
+	a.home = a.newHomeView(world, known)
 	// AND THE ROUTER IS TOLD WHERE THIS WINDOW IS STANDING. This is the one door
 	// that does not go through [app.showPage], because it runs inside [newApp]
 	// before bubbletea exists and the room it is raising is already furnished by
@@ -978,16 +990,30 @@ func worldHasElsewhere(world session.World, here string) bool {
 // The surface hands over what it knows about itself — the title the session
 // gave itself, the workspace, the model — and the folder adds the rest.
 func (a *app) readWorld() session.World {
+	world, _ := a.readWorldKnown()
+	return world
+}
+
+// readWorldKnown is that same reading and WHETHER IT IS AN ANSWER, taken
+// together, and it is the door every caller that wants both goes through.
+//
+// THE WALK IS THE EXPENSIVE THING ON THIS SCREEN AND IT IS TAKEN ONCE. Asking
+// [app.readWorld] and then [app.worldKnown] reads the disk TWICE for one beat —
+// [session.ReadWorld] opens every project's index and every session's meta.json,
+// so the second walk is the whole cost of the first, spent to re-learn a boolean
+// the first already knew. It ran on every three-second tick and on every open of
+// this screen, on the update loop, in front of the keys.
+func (a *app) readWorldKnown() (session.World, bool) {
 	world, known := a.worldOf()
 	if !known {
-		return session.World{}
+		return session.World{}, false
 	}
 	if file := strings.TrimSpace(a.file); file != "" {
 		world.Adopt(a.worldRoot(), session.SessionRow{
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
-	return world
+	return world, true
 }
 
 // worldOf is THE SEAM: the walk, and whether it is an answer.
@@ -1085,10 +1111,10 @@ func (a *app) dropHome() {
 // that refuses. Three caches and the two remembered views had drifted the same
 // way. So there is one constructor, and a field added to the view is a field
 // both roads get.
-func (a *app) newHomeView(world session.World) homeView {
+func (a *app) newHomeView(world session.World, known bool) homeView {
 	return homeView{
 		world: world,
-		known: a.worldKnown(),
+		known: known,
 		far:   a.hosted(),
 		seen:  session.LastLook(a.looksRoot()),
 		// WHERE THIS WINDOW IS STANDING, broad and exact. The bucket decides
@@ -1199,7 +1225,7 @@ func (a *app) refreshHome() {
 	if !a.at(pageHome) {
 		return
 	}
-	a.home.world, a.home.known = a.readWorld(), a.worldKnown()
+	a.home.world, a.home.known = a.readWorldKnown()
 	// THE BANDS ARE READ WITH THE WORLD AND NEVER SEPARATELY. An item's row and
 	// the conversation rows above it are one triage order, and two readings taken
 	// a beat apart would sort a firing item against a world that had not heard of
@@ -2196,21 +2222,21 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.closeHome()
 		return nil
 
+	// THE FOUR KEYS THAT MOVE THE CURSOR ASK FOR NOTHING HERE. What the card
+	// under it needs is asked for after EVERY key, by the door this switch was
+	// reached through (place_home.go's [placeHome.key]) — because a filter, a
+	// regroup and an opened fold move the card just as surely as `↓` does.
 	case "up", "ctrl+p":
 		h.move(-1)
-		a.refreshHomeRepo(time.Now())
 		return nil
 	case "down", "ctrl+n":
 		h.move(1)
-		a.refreshHomeRepo(time.Now())
 		return nil
 	case "pgup":
 		h.move(-homeShown)
-		a.refreshHomeRepo(time.Now())
 		return nil
 	case "pgdown":
 		h.move(homeShown)
-		a.refreshHomeRepo(time.Now())
 		return nil
 
 	case "enter":
@@ -3382,17 +3408,32 @@ func (a *app) homeStacked() (*homeExchange, bool) {
 // homeHover records which line the pointer is over, repainting only when the
 // answer changed. It reads BOTH columns: the list's rows, and the one row in the
 // pane a pointer can act on (homeexchange.go's [app.exchangeHover]).
-func (a *app) homeHover(x, y int) {
+//
+// AND IT BUILDS NO FRAME OF ITS OWN. What the pointer is pointing AT is the
+// frame that is on the screen, and that frame was built by the last paint and
+// kept ([homeView.painted]); building a second one here made every answered
+// motion cost TWO whole home frames — one to hit-test against and one for the
+// repaint the hover asks for — on a surface in AllMotion, where a pointer
+// crossing the window is answered sixty times a second (coalesce.go). It is
+// also the more honest of the two answers: a frame built inside this function
+// is a frame nobody has ever seen.
+func (a *app) homeHover(x, y int) tea.Cmd {
 	if !a.at(pageHome) {
-		return
+		return nil
 	}
 	// phone lane: there is no hover on glass, so motion is dropped rather than
 	// hit-tested per cell (homephone.go).
 	if a.homePhone() {
-		return
+		return nil
 	}
 	width, height := a.size()
-	lines, hits, _, _ := a.homeFrame(width, height)
+	lines, hits := a.home.painted.lines, a.home.painted.hits
+	if a.home.painted.width != width || a.home.painted.height != height || len(lines) == 0 {
+		// NOTHING HAS BEEN PAINTED AT THIS SIZE YET — the first motion after a
+		// resize, or before the first frame. One frame is built, and it is the
+		// frame the paint below would have built anyway.
+		lines, hits, _, _ = a.homeFrame(width, height)
+	}
 	// AND THE CARD'S OWN DOORS LIGHT UNDER THE POINTER, resolved against THIS
 	// frame's paint — the fold lines and the work rows both, through the one
 	// registry a press reads (carddoors.go's [app.hoverCardDoor]). It is asked
@@ -3427,9 +3468,11 @@ func (a *app) homeHover(x, y int) {
 		// is behind the same cache and the same one-second bound the cursor's
 		// own arrival is, and it is taken here rather than on every motion event
 		// because this is the only branch where the answer changed.
-		a.refreshHomeRepo(time.Now())
+		asked := a.refreshHomeCard(time.Now())
 		a.touch()
+		return asked
 	}
+	return nil
 }
 
 // ── the drawing ─────────────────────────────────────────────────────────────
@@ -3442,6 +3485,11 @@ func (a *app) homeHover(x, y int) {
 // hover both index what this returned, so a click cannot land on a row the
 // draw did not put there.
 func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
+	// ONE COUNTER, AND IT EXISTS FOR ONE PIN. PERF.md's doctrine gates on work
+	// rather than on the clock, and "a pointer motion builds ONE home frame"
+	// is a fact about the code that a stopwatch could only guess at
+	// ([TestAPointerMotionOnHomeBuildsOneFrame]). It is an int and an increment.
+	a.homeFrames++
 	// HOME IS A PLACE, SO IT PAINTS FROM THE PLACE LADDER (styles.go's
 	// [palette.onPlaces] — the conversation's inks, with the three roles THE
 	// ONE-ACCENT LAW retires re-pointed). The swap is made here as well as in
@@ -3496,7 +3544,22 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		rows[i], panes[i] = mark.line, mark.pane
 	}
 	a.home.pane = panes
+	// AND THE FRAME IS KEPT, because the pointer resolves against what is ON THE
+	// SCREEN and this is it ([app.homeHover]). It is the same reasoning the hit
+	// maps above are written down for, one step further: the maps say which row
+	// a screen line belongs to and the lines themselves are what the card's doors
+	// are found by (carddoors.go), so keeping one without the other would be half
+	// a frame to hit-test against.
+	a.home.painted = homePainted{width: width, height: height, lines: lines, hits: rows}
 	return lines, rows, caretX, caretY
+}
+
+// homePainted is the last frame this screen drew, kept so that a pointer can be
+// resolved against it without building another.
+type homePainted struct {
+	width, height int
+	lines         []string
+	hits          []int
 }
 
 // homeMark is what one row of home answers the pointer with: which line of the

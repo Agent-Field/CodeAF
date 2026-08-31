@@ -295,7 +295,7 @@ func TestTheMoveClauseIsAbsentWhereThereIsNowhereToMoveTo(t *testing.T) {
 	if strings.Contains(layerText(a), composerMoveWord) {
 		t.Fatalf("the layer named a key with nothing to do:\n%s", layerText(a))
 	}
-	if a.composerMove() {
+	if _, moved := a.composerMove(); moved {
 		t.Fatal("alt+w moved a task with nowhere to move it to")
 	}
 }

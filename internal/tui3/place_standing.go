@@ -809,7 +809,7 @@ func (a *app) readStandingElsewhere() {
 	if a.stands.Items == nil {
 		return
 	}
-	a.home.world, a.home.known = a.readWorld(), a.worldKnown()
+	a.home.world, a.home.known = a.readWorldKnown()
 	a.readStandBands()
 }
 
