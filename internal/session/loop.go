@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -405,8 +406,21 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// is somewhere else — and speed is worth nothing to it. It routes by price
 	// instead (internal/provider's velocity.go), which is the only thing said
 	// here: an explicit routing row still wins over both.
+	//
+	// AND WHAT THAT WAIT IS WORTH, in the unit the lane chooser trades in: λ,
+	// seconds per dollar (internal/lane's Lambda). Who is waiting and what their
+	// waiting costs are two different facts and the router needs both — the
+	// first decides whether to ask for speed at all, the second decides how much
+	// a second of it may cost. A turn is worth a person's attention. A task node
+	// is off anybody's critical path as far as this build can yet see it, so its
+	// λ is zero and price wins outright, which is exactly what its background
+	// intent already asked for; it is said rather than inferred for the reason
+	// WithRoutingIntent is said rather than inferred.
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
+		ctx = provider.WithValueOfTime(ctx, lane.Lambda(false, false, 0, 0, 0))
+	} else {
+		ctx = provider.WithValueOfTime(ctx, lane.Lambda(true, false, 0, 0, 0))
 	}
 
 	// The slot the adapter writes each answer's endpoint into. It is per turn and
