@@ -213,19 +213,3 @@ func sinceCut(window []billed, cut time.Time) []billed {
 	}
 	return keep
 }
-
-// ── IS THERE A ROUTER HERE AT ALL ───────────────────────────────────────────
-
-// Chooses reports whether a real chooser has been wired into the registry.
-//
-// It is the feature check the transport asks before doing anything a person
-// could be billed for. The empty chooser has no opinion, so a build in which
-// nothing has been wired must behave exactly as it did before this package
-// existed — not "have an opinion nobody filled in". A caller cannot answer this
-// for itself: every accessor on the registry returns something usable, which is
-// the property that makes the seams safe and also the property that hides
-// whether anybody is home.
-func Chooses() bool {
-	_, empty := Default().Chooser().(*chooser)
-	return !empty
-}
