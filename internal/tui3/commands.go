@@ -712,35 +712,65 @@ func (a *app) runMenu() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	e := &a.input
+	word, ran := chooseCommand(&a.input, &a.menu, chosen)
+	if !ran {
+		return a.edited()
+	}
+	// It goes into the recall list exactly as if it had been typed out and
+	// entered, because from the person's side it was: the list is a shortcut
+	// for typing, not a second door with different rules (see [app.enter]).
+	//
+	// THIS HALF IS THE CHAT BOX'S OWN and is not in [chooseCommand] with the
+	// rest. Home's composer runs the same rows through the same helper and has
+	// no recall list and no draft to drop — ↑ there walks the drop-up rather
+	// than a history — so the two lines below would be two no-ops and a lie
+	// about what that surface keeps (homeslash.go's [app.homeRunCommand]).
+	a.remember(word)
+	a.dropDraft()
+	return a.slash(word)
+}
+
+// chooseCommand is the mechanics of [app.runMenu] over WHATEVER box and
+// WHATEVER list are handed to it: the token is rewritten with the chosen
+// command's word, the list is put away, and the answer says whether what is
+// left is a command to run. It is one function because it is one gesture — home
+// offers the same rows over its own box (homeslash.go), and a second copy of
+// this surgery is a second answer to what choosing a row does.
+//
+// It returns the word that was written and whether the caller should RUN it.
+// False is a token rewritten inside a sentence, or a command left in the box
+// waiting for the words it takes; true is a box that now holds the command and
+// nothing else, and has been emptied ready for the dispatch. What happens after
+// the dispatch is the caller's, because the two surfaces keep different things.
+func chooseCommand(e *editor, m *menu, chosen command) (string, bool) {
 	// The token's start is CLAMPED to the draft as it stands. The lists follow
 	// edits and not caret moves, so there are gestures — a history recall, a
 	// draft restored under an open list — that can leave this index pointing
 	// past the end of a draft that has since got shorter, and an index into a
 	// slice is not a thing to be optimistic about.
-	at := min(max(a.menu.at, 0), len(e.value))
+	at := min(max(m.at, 0), len(e.value))
 	end := tokenEnd(e.value, at)
+	// THE NAME AND NEVER [command.typed]. The row on the list reads
+	// "/model <slug>" because that is what the command wants said to it, but the
+	// placeholder is a thing to READ and never a thing to leave in somebody's
+	// box — a draft holding a literal "<slug>" is a command nobody meant and one
+	// the dispatcher would refuse.
 	word := "/" + chosen.name
 	if at != 0 || strings.TrimSpace(string(e.value[end:])) != "" {
 		head := append([]rune(nil), e.value[:at]...)
 		tail := append([]rune(nil), e.value[end:]...)
 		e.value = append(append(head, []rune(word)...), tail...)
 		e.cursor = at + len([]rune(word))
-		a.menu.dismiss(at)
-		return a.edited()
+		m.dismiss(at)
+		return word, false
 	}
-	a.menu.close()
+	m.close()
 	if chosen.args != "" {
 		e.setText(word + " ")
-		return a.edited()
+		return word, false
 	}
 	e.reset()
-	// It goes into the recall list exactly as if it had been typed out and
-	// entered, because from the person's side it was: the list is a shortcut
-	// for typing, not a second door with different rules (see [app.enter]).
-	a.remember(word)
-	a.dropDraft()
-	return a.slash(word)
+	return word, true
 }
 
 // helpText renders the same table the list draws, plus the two keys that have

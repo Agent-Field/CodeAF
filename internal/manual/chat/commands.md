@@ -44,6 +44,12 @@ from the list records it as `/<name>`, exactly as if you had typed it.
 While a panel is up — settings, the model picker, resume, connect, harness, permissions,
 copy mode, rewind — typing `/` does nothing. Those states take the key first.
 
+**Home's box has the same list.** Typing `/` on the home screen opens the same ranked
+list over its box, and `↑` walks to a row and `enter` runs it, exactly as in a chat. A
+slash line typed in full and entered from home's typing row is run too — `/settings`
+opens the settings place rather than starting a conversation with the word in it.
+Commands that act on a conversation act on the one home holds behind the screen.
+
 ## Why a file path does not pop up the command list
 
 Typing `/Users/santosh/notes.md` or `/tmp/log` into the message box does not leave the
@@ -819,7 +825,10 @@ right half shows whatever the cursor is on — its tasks, what it spent, the las
 **Typing does two things at once**: what you type is a new conversation waiting to be sent
 AND a live search over every project on the machine. The top row — `start a new
 conversation: "…"` — holds the cursor, so type-and-enter still starts a chat; one `↓` steps
-onto the matches and `enter` opens one instead. The foot reads exactly
+onto the matches and `enter` opens one instead. **A line that starts with `/` is the third
+thing typing can be**: it is a command, not a conversation — the command list opens over
+the box while it is typed, and enter runs it (see *Typing a slash to see the command list*).
+The foot reads exactly
 `type to search or start something new · ↑↓ pick · enter open`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —

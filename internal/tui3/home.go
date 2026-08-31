@@ -313,6 +313,12 @@ const (
 	// fresh one, and the manual has said "conversation" since before home
 	// existed.
 	homeStartWord = "start a new conversation"
+	// homeRunWord is what that same row says instead when the box holds a
+	// COMMAND rather than a sentence. Enter dispatches a "/" line and never
+	// sends it ([app.homeEnter]), so a row still offering to start a
+	// conversation with it would be the one row on this screen that names the
+	// wrong key's meaning — see [homeView.runLabel].
+	homeRunWord = "run"
 	// homeStartGlyph marks it. A plain `+` on purpose: it is the one row on the
 	// column that is not a thing that exists yet, and every other glyph here is
 	// a state something is in.
@@ -486,6 +492,11 @@ type homeLine struct {
 	// the card beside it can never disagree about whether something is firing.
 	view StandingItemView
 	item standing.Item
+	// cmd is the command a [homeCommand] row offers — a pointer into the one
+	// command table (commands.go), which is built once at init and never
+	// rewritten, so a row can hold it without the staleness a world index would
+	// carry ([homeLine.row] states that law).
+	cmd *command
 }
 
 // homeBare is one project home knows only through the things keeping an eye on
@@ -560,6 +571,13 @@ type homeView struct {
 	// type-and-enter starts a chat exactly as it always did; one ↓ sets it, and
 	// then the list is being chosen from.
 	picked bool
+	// cmd is the command list's own state — the chat composer's [menu],
+	// synced against this box rather than chat's (homeslash.go). It is held here
+	// and not built per keystroke because the seal a chosen row leaves is a
+	// memory that must survive the rebuild: a person who picked "/model" out
+	// of the list mid-sentence has said what they meant, and the list reopening
+	// under the rewritten token would be the surface asking again.
+	cmd menu
 	// expanded is the projects somebody opened by hand, by bucket directory.
 	// It outlives a rescan and a query, because folding is a thing a person did
 	// and not a thing the data said.
@@ -1275,6 +1293,13 @@ func (h *homeView) build() {
 	// number would take the exchange off the screen at the instant it asked a
 	// question (homeexchange.go).
 	previousExchange := h.focusedExchange()
+	// AND THE ROW ITSELF, WHATEVER KIND OF ROW IT IS. The four followers above
+	// each know one kind of thing, and the drop-up a typed query raises is made
+	// of rows none of them can see: an offered place, an offered command, `ask
+	// here` (homeplaces.go, homeslash.go, homeexchange.go). This is the whole
+	// line, matched back afterwards by what it STANDS FOR rather than by its
+	// number ([homeLine.sameRow]).
+	previousLine, hadLine := h.focusedLine()
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -1296,15 +1321,27 @@ func (h *homeView) build() {
 	// before this box could also search (see [homeAction]).
 	h.cursor, h.top = h.clamp(0), 0
 	if h.searching() {
-		h.picked = h.picked && h.pointable(previous.Transcript)
+		// THE ROW A PERSON WALKED ONTO IS THE ROW THEY ARE STILL ON, and it does
+		// not have to be a conversation. `picked` is the decision to stop writing
+		// and start choosing ([homeView.move] states it), and the question asked
+		// here used to be the narrower "is that CONVERSATION still on the list" —
+		// which is false for every other row the drop-up offers, so a cursor
+		// resting on a place or a command was forgotten by every rebuild. The slow
+		// tick rebuilds three seconds at a time ([app.refreshHome]), so a person
+		// who had stopped typing and touched nothing watched the selection walk
+		// back down to the action row on its own, over and over.
+		h.picked = h.picked && hadLine && h.pointSame(previousLine)
 		if !h.picked {
 			// AND THE ACTION ROW IS AT THE BOTTOM NOW, so resting on it is no
 			// longer the same thing as resting at the top of the list ([homeAction]
 			// says why it moved). It is found rather than counted to: how many rows
 			// a query left above it is not a number this function knows.
 			h.pointAction()
-			return
 		}
+		// Either way the cursor is where it belongs: [homeView.pointSame] put it
+		// back on the row that was chosen, and the followers below are about a
+		// list nobody is filtering.
+		return
 	}
 	if previousExchange != nil {
 		h.pointExchange(previousExchange)
@@ -1544,6 +1581,12 @@ func (h *homeView) buildWorld() {
 		// words match it, so it is the row nearest what somebody is reading
 		// upward from (homeplaces.go).
 		h.lines = append(h.lines, h.placeLines(query)...)
+		// THE COMMAND OFFERS SIT BETWEEN THE PLACES AND THE ERRAND ROWS, best match
+		// last of all (homeslash.go's [homeView.commandLines]). A slash query leaves
+		// the places empty (homeplaces.go's [placeMatches]), so the two never compete
+		// for the column; and a command is what the fingers are reaching for when a
+		// "/" was typed, so it is the first thing read out of the box.
+		h.lines = append(h.lines, h.commandLines()...)
 		h.lines = append(h.lines, homeLine{kind: homeAskHere})
 		h.lines = append(h.lines, homeLine{kind: homeAction})
 		return
@@ -1762,13 +1805,61 @@ func (h *homeView) query() string {
 // searching reports whether anything is typed at all.
 func (h *homeView) searching() bool { return h.query() != "" }
 
-// pointable reports whether a transcript is still a row on this list.
-func (h *homeView) pointable(transcript string) bool {
-	if transcript == "" {
+// sameRow reports whether two lines stand for THE SAME THING. Not the same line
+// number — the list is rebuilt and re-sorted under the cursor constantly — and
+// not the same painted text either, since a row's margin changes as the work
+// behind it does. It is what lets a cursor be put back where a person left it
+// ([homeView.pointSame]).
+//
+// EVERY STOP THIS COLUMN HAS IS ANSWERED HERE, and that is the law rather than
+// an implementation detail: a kind this switch does not know is a row somebody
+// can walk onto and then be walked off again by the next rebuild, which is
+// exactly the defect this function was written to end. So a new cursor stop
+// gets its case here in the same change that gives it its case in
+// [homeLine.stop].
+//
+// The identity is whatever the row is ABOUT — a conversation is its transcript,
+// a project or a fold is its directory, a place or a `since you left` line is
+// its place word, a command is its entry in the one command table
+// (homeslash.go), an errand is the live exchange itself. The two rows that
+// stand for a thing that does not exist yet — the action row and `ask here` —
+// are their kind and nothing else, because there is only ever one of each.
+func (l homeLine) sameRow(other homeLine) bool {
+	if l.kind != other.kind {
 		return false
 	}
-	for _, line := range h.lines {
-		if line.kind == homeSession && line.row.Transcript == transcript {
+	switch l.kind {
+	case homeSession:
+		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript
+	case homeItem:
+		return l.item.ID != "" && l.item.ID == other.item.ID
+	case homeQuiet, homeItemFold, homeProject:
+		return l.dir != "" && l.dir == other.dir
+	case homeExchangeRow:
+		return l.ex != nil && l.ex == other.ex
+	// the router's lane: an offered place and an offered command
+	// (homeplaces.go, homeslash.go).
+	case homePlace:
+		return l.project != "" && l.project == other.project
+	case homeCommand:
+		return l.cmd != nil && l.cmd == other.cmd
+	// the switcher's and the phone's own rows (place_home.go, homephone.go).
+	case homeLedger, homePhoneNews, homePhoneMore:
+		return l.project != "" && l.project == other.project && l.dir == other.dir
+	case homeAction, homeAskHere, homeSwitchFold:
+		return true
+	}
+	return false
+}
+
+// pointSame puts the cursor back on the row a person had chosen, and reports
+// whether that row is still on the list at all. A false answer is the row
+// having gone — the conversation filtered away, the command no longer matching
+// the word — and the caller decides where the cursor goes instead.
+func (h *homeView) pointSame(want homeLine) bool {
+	for at, line := range h.lines {
+		if line.sameRow(want) {
+			h.cursor = at
 			return true
 		}
 	}
@@ -2030,8 +2121,8 @@ func (l homeLine) stop() bool {
 		homeProject, homeExchangeRow:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
-	// column (homeplaces.go).
-	case homePlace:
+	// column (homeplaces.go), and an offered command is one too (homeslash.go).
+	case homePlace, homeCommand:
 		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
@@ -2656,6 +2747,24 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeAction:
 		// The row the cursor rests on while something is typed, which is what
 		// makes type-and-enter mean today what it meant yesterday.
+		//
+		// A SLASH LINE IS DISPATCHED AND NEVER SENT. Chat's composer answers a
+		// line that starts with "/" by running it (input.go's [app.enterLine]);
+		// home's used to start a conversation with it, which is the one screen
+		// where a command typed in full did nothing it promised. The same
+		// dispatcher runs it here, so every command does on home what it does in
+		// chat — and the conversation-scoped ones act on the conversation this
+		// window holds behind the screen, which is parity rather than a
+		// limitation: the window always holds one.
+		// AND A FOLDER THAT EXISTS IS STILL A FOLDER. An absolute path begins with
+		// a slash too, and `/tmp/alpha` is a place this row has opened a
+		// conversation in since long before it could dispatch anything. Which of
+		// the two a leading slash means is [homeView.runLabel]'s one question,
+		// asked here and by the row itself, so the screen cannot promise one
+		// meaning while the key takes the other.
+		if line := strings.TrimSpace(h.box.String()); h.runLabel(line) != "" {
+			return a.homeSlash(line)
+		}
 		return a.homeStart(strings.TrimSpace(h.box.String()))
 	case homePlace:
 		// ENTER GOES THERE, AND GOING TO A PLACE LEAVES YOU THERE (SCREEN 1g).
@@ -2666,6 +2775,13 @@ func (a *app) homeEnter() tea.Cmd {
 			return a.showPage(id)
 		}
 		return nil
+	case homeCommand:
+		// ENTER RUNS THE ROW THE WAY CHAT'S LIST RUNS ITS OWN (commands.go's
+		// [app.runMenu]): the token is rewritten with the chosen word, and then
+		// the one thing enter can mean on a command row is the thing the row
+		// says — run it bare, or hold the box for the words it takes
+		// (homeslash.go's [app.homeRunCommand]).
+		return a.homeRunCommand(line)
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
@@ -3014,7 +3130,48 @@ func (h *homeView) startLabel() string {
 	if place := h.typedPlace(text); place != "" {
 		return homeStartWord + " in " + place
 	}
+	// THE SAME QUESTION IN THE SAME ORDER [app.homeEnter] ASKS IT, which is the
+	// whole reason this label exists: a row that ranked the two readings of a
+	// leading slash differently from the key would be wrong about the one line
+	// it is there to be right about.
+	if word := h.runLabel(text); word != "" {
+		return word
+	}
 	return homeStartWord + ": " + strconv.Quote(text)
+}
+
+// runLabel is the action row's label when what is typed is a COMMAND, and "" for
+// everything else — which makes it the one question `is this line a command`,
+// asked by the label, by the foot and by enter itself so that the three cannot
+// come to disagree ([app.homeEnter], [app.homeHintWords], homephone.go's narrow
+// column).
+//
+// A LEADING SLASH IS NOT ENOUGH, because `/tmp/alpha` is a place. The two are
+// separated in THE ORDER THE DISPATCHER ITSELF SEPARATES THEM (app.go's
+// [app.slash]): a word the table knows is a command whatever else it might also
+// be — `/home` is the command even on a machine that has a `/home` directory,
+// because the table is a short list a person chose to learn and the disk is not
+// — and only then is a line that resolves to a real folder the path row's
+// ([homeView.typedPlace] resolves and never creates). What is neither is still a
+// command, so an unknown one is refused in the dispatcher's own words rather
+// than quietly becoming the first message of a conversation.
+//
+// THE LINE IS NOT QUOTED, unlike the sentence a conversation would be started
+// with. Quotes there mark words being carried somewhere as text; a command is
+// not being carried anywhere, it is being run, and `run "/settings"` would read
+// as a quoting that a command line does not do.
+func (h *homeView) runLabel(text string) string {
+	if !strings.HasPrefix(text, "/") {
+		return ""
+	}
+	word := strings.TrimPrefix(text, "/")
+	if at := strings.IndexAny(word, " \t"); at >= 0 {
+		word = word[:at]
+	}
+	if !knownCommand(word) && h.typedPlace(text) != "" {
+		return ""
+	}
+	return homeRunWord + " " + text
 }
 
 // homeHeld reports whether another window is holding this conversation, from
@@ -3869,6 +4026,10 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homePlace:
 		// A PLACE, OFFERED BECAUSE THE WORDS MATCH ITS NAME (homeplaces.go).
 		return a.homePlaceRow(line, at, width, pal)
+	case homeCommand:
+		// A COMMAND, OFFERED BECAUSE THE WORDS MATCH ITS NAME OR AN ALIAS
+		// (homeslash.go).
+		return a.homeCommandRow(line, at, width, pal)
 	case homeAskHere:
 		// The same shape as the action row under it and the same words quoted
 		// back, because they are the two readings of one sentence
@@ -4634,6 +4795,13 @@ func (a *app) homeHintWords() string {
 		// would be this line lying about the next keystroke. It names the arrow
 		// and not a count, because the row it passes through on the way is the
 		// one named two clauses earlier.
+		// AND A COMMAND IS THE THIRD READING, so the foot says so rather than
+		// promising a conversation the key will not start. `ask here` is still
+		// true of a "/" line — the words can be asked about as words — so the
+		// clause that changes is the one that stopped being true.
+		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
+			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
+		}
 		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
