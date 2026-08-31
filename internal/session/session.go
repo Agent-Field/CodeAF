@@ -474,6 +474,23 @@ const (
 	// its own, and the stream the steer was sent on carries that turn when it
 	// starts (steer.go states the whole law).
 	EventSteerFellThrough
+	// EventTaskPhase says one running node has moved between its three lives —
+	// its worker, the check that reads what the worker left, a repair round
+	// closing the gaps the check named (task_audit.go). TaskPhase carries the
+	// node's id, the word, the round numbers while a repair runs, and the
+	// check's one-line finding.
+	//
+	// IT RIDES THE TASK LANE beside EventTaskUpdate — the turn's hub AND the
+	// standing [Agent.TaskUpdates] subscription — because a check that takes
+	// four minutes takes them long after the turn that proposed the work ended.
+	//
+	// IT IS NEWS AND NEVER A ROW. The node's state does not move: it was
+	// running before the check and it is running after it, so a surface folds
+	// this into the row an update already gave it and never opens one from it.
+	// A surface that ignores this kind is what it was — which is what the
+	// evidence in #76 §5 describes: minutes of check and repair drawn as
+	// nothing at all, and a person concluding the work hung.
+	EventTaskPhase
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -633,6 +650,14 @@ type Event struct {
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
 	// is the token a surface hands back to [Agent.ResolveTask].
 	Task *TaskNotice
+
+	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
+	// running node moved into which of its three lives. It is nil on every
+	// other kind, and it is its OWN payload rather than more fields on
+	// TaskNotice because a phase is not a row — it names no state, no elapsed
+	// and no cost, and a surface that mistook one for an update would redraw a
+	// card from a value that never carried those.
+	TaskPhase *TaskPhaseNotice
 
 	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
 	// (standing_contract.go). It is nil on every other kind.
