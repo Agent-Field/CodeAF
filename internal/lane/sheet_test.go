@@ -84,7 +84,11 @@ func scripted() []lanestub.Lane {
 			Rates:  [4]float64{24, 33, 48, 61},
 		}},
 		{Name: "AtlasCloud", Profile: lanestub.Profile{
-			Quant: "fp4", Context: 393_000, MaxOut: 65_000, Uptime: 100,
+			// The router has derated this one. It is the fp4 lane as well, so the
+			// two facts the gate refuses on ride the same row — but the decode is
+			// asserted on the column itself, which is the part that was missing.
+			Status: -2,
+			Quant:  "fp4", Context: 393_000, MaxOut: 65_000, Uptime: 100,
 			PriceIn: 0.00000014, PriceOut: 0.00000028,
 			TTFTms: [4]float64{1793, 1940, 2109, 3782},
 			Rates:  [4]float64{32, 51, 80, 96},
@@ -161,6 +165,15 @@ func TestTheSheetDecodesEveryLaneTheRouterPublished(t *testing.T) {
 	}
 	if atlas := by["AtlasCloud"]; atlas.Facts.Tools || atlas.Facts.Quant != "fp4" {
 		t.Fatalf("AtlasCloud's facts read %+v", atlas.Facts)
+	}
+	// THE ROUTER'S OWN HEALTH WORD ARRIVES, which it did not until wave 2b: the
+	// column was published, undecoded, and a lane the router had marked down was
+	// invisible to the gate that should have refused it.
+	if atlas := by["AtlasCloud"]; atlas.Facts.Status != -2 {
+		t.Fatalf("AtlasCloud's status read %d, want the router's own -2", atlas.Facts.Status)
+	}
+	if cloudflare.Facts.Status != 0 {
+		t.Fatalf("a healthy lane's status read %d, want zero", cloudflare.Facts.Status)
 	}
 	if core := by["CoreWeave"]; core.Facts.Uptime5m != 99.6 || core.Facts.Caches {
 		t.Fatalf("CoreWeave's facts read %+v", core.Facts)

@@ -102,6 +102,15 @@ func capable(belief Belief, req Request, opts gateOptions) bool {
 	if facts.Uptime5m > 0 && facts.Uptime5m < UptimeFloor {
 		return false
 	}
+	// THE ROUTER'S OWN VERDICT IS A GATE. A non-zero `status` on the sheet is
+	// the operator of the router saying it has derated this endpoint, which is
+	// evidence of a kind nothing this package measures can produce: it is about
+	// the machine rather than about our path to it. A build that routed to a
+	// lane the router itself had marked down would be overruling the only party
+	// with a view of every request that lane serves.
+	if facts.Status != 0 {
+		return false
+	}
 	// QUALITY IS A GATE AND NEVER A WEIGHT. A lane whose believed share of
 	// usable answers is under what this request needs leaves the candidate set
 	// until the belief recovers; it is never traded off against a cheaper price,

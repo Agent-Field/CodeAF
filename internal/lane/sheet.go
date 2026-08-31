@@ -380,6 +380,9 @@ type wireEndpoint struct {
 	SupportsToolChoice struct {
 		Function bool `json:"function"`
 	} `json:"supports_tool_choice"`
+	// Status is the router's own health word for the endpoint: zero is healthy,
+	// and a negative figure is a lane it has derated. See [Facts.Status].
+	Status                int             `json:"status"`
 	UptimeLast5m          float64         `json:"uptime_last_5m"`
 	SupportsImplicitCache bool            `json:"supports_implicit_caching"`
 	LatencyLast30m        wirePercentiles `json:"latency_last_30m"`
@@ -424,6 +427,7 @@ func decodeSheet(model string, body io.Reader) ([]Row, map[ID]string, error) {
 				PriceOut:   price(item.Pricing.Completion),
 				PriceCache: price(item.Pricing.InputCacheRead),
 				Caches:     item.SupportsImplicitCache,
+				Status:     item.Status,
 			},
 			TTFTp50: item.LatencyLast30m.P50,
 			TTFTp75: item.LatencyLast30m.P75,
