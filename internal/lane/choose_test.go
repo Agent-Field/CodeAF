@@ -126,9 +126,9 @@ func measured(sightings float64, at time.Time) *fakeLedger {
 	return ledger
 }
 
-// noon is the moment every request in this file is made at. It is fixed so that
-// the sampling is reproducible: the seed is the moment mixed with the model.
-var noon = time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+// noon — the moment every request in this file is made at — is declared once
+// for the whole package in belief_test.go. It is fixed so that the sampling is
+// reproducible: the seed is the moment mixed with the model.
 
 // talk is a turn somebody is watching: four hundred visible tokens, a
 // conversation's worth of prompt, and a person's attention as λ.

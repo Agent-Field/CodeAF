@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// noon is the moment every scripted sighting in this file happens at or after.
-// The ledger has no clock, so a test that pins one is a test of the arithmetic
-// rather than of the machine it ran on.
+// noon is the moment every scripted sighting and every scripted request in this
+// package happens at or after. The ledger and the chooser have no clock, so a
+// test that pins one is a test of the arithmetic rather than of the machine it
+// ran on, and pinning it once here keeps the chooser's sampling reproducible.
 var noon = time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 
 // cloudflareRow is the sheet's account of one real lane, taken from the
