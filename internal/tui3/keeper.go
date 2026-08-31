@@ -126,6 +126,11 @@ type behindWatch struct {
 	// trace on the agent that says "and it finished just now" — so it is carried
 	// on the watcher and taken by the surface rather than put on the message.
 	landed atomic.Bool
+	// takeover says another window has asked for this conversation
+	// ([session.EventTakeover], takeover.go). It is the ONE thing this watcher
+	// reads the content of a lane for: every other event here is a nudge, and
+	// this one is a conversation that is about to end.
+	takeover atomic.Bool
 }
 
 // stir asks the surface to look, unless it has already been asked.
@@ -230,9 +235,17 @@ func (w *behindWatch) run() {
 		select {
 		case <-w.quit:
 			return
-		case _, ok := <-tasks:
+		case ev, ok := <-tasks:
 			if !ok {
 				tasks = nil
+				break
+			}
+			// THE ONE EVENT ON THIS LANE THAT IS NOT A NUDGE. Another window has
+			// asked for this conversation and the engine has agreed, so the stir
+			// this raises is not "look at the count" — it is "let go of it"
+			// (takeover.go's [app.takeOverKept]).
+			if ev.Kind == session.EventTakeover {
+				w.takeover.Store(true)
 			}
 		case _, ok := <-designs:
 			if !ok {
@@ -316,6 +329,14 @@ func (a *app) behindStir(key string) tea.Cmd {
 	held := a.behind[key]
 	if held == nil {
 		return next
+	}
+	// LETTING GO COMES BEFORE ANYTHING ELSE IS READ. A conversation another
+	// window has asked for is one this process is about to stop holding, and a
+	// banner about a turn that landed in it would be news about a conversation
+	// that is leaving (takeover.go). The agent is asked as well as the flag, for
+	// the surface that woke on a stir raised by something else.
+	if held.watch.takeover.Load() || takenOver(held.conv.Agent) {
+		return tea.Batch(next, a.takeOverKept(key, held))
 	}
 	landed := held.watch.took()
 	// The count on the status line and home's own rows are both read from the

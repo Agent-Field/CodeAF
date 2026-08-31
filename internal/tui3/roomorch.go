@@ -811,7 +811,8 @@ func (a *app) orchSteer() tea.Cmd {
 		a.roomNote(orchUnavailableWord)
 		return nil
 	}
-	if err := doors.SteerOrchestrate(run.id, line); err != nil {
+	// The planner reads the paste and the page keeps the tag (pastechip.go).
+	if err := doors.SteerOrchestrate(run.id, a.pastesUnfolded(line)); err != nil {
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
@@ -819,6 +820,7 @@ func (a *app) orchSteer() tea.Cmd {
 	// exactly: the box on this page is the box in the conversation, and ↑ has to
 	// bring back what you typed wherever you typed it (recall.go).
 	a.remember(line)
+	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()

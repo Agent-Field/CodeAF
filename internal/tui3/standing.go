@@ -729,13 +729,13 @@ func (a *app) takeStanding(at int) tea.Cmd {
 			a.touch()
 			return nil
 		}
-		return a.answerStanding(session.StandingAnswer{Change: text}, standChangedWord, standChangeWord)
+		return a.answerStanding(session.StandingAnswer{Change: a.spoken(text)}, standChangedWord, standChangeWord)
 	}
 	// YES, AND A CORRECTION IN THE BOX IS STILL A CORRECTION. The two chips
 	// converge the moment something is typed, which is the behaviour the task
 	// card's bare lane always had.
 	if text != "" {
-		return a.answerStanding(session.StandingAnswer{Change: text}, standChangedWord, standChangeWord)
+		return a.answerStanding(session.StandingAnswer{Change: a.spoken(text)}, standChangedWord, standChangeWord)
 	}
 	return a.answerStanding(session.StandingAnswer{Approved: true}, standSetWord, standYesWord)
 }

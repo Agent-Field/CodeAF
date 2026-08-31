@@ -145,6 +145,13 @@ func (p parked) steerable() bool {
 	return p.text != "" && len(p.chips) == 0 && !p.standing
 }
 
+// spoken is this message as the model reads it: its own chips unfolded into
+// its own text (pastechip.go's [unfoldPastes]). The chips stay on the message,
+// because a refusal puts it back whole and ↑ pulls it back into the box.
+func (p parked) spoken() string {
+	return unfoldPastes(p.text, p.pastes)
+}
+
 // nextSteerable is the position of the message a promotion would take: the
 // OLDEST that can go, which is the queue's own order and the one esc would send
 // first. It answers -1 when there is nothing to promote.
@@ -341,10 +348,13 @@ func (a *app) promoteParked(at int) tea.Cmd {
 	a.parks = append(a.parks[:at], a.parks[at+1:]...)
 	a.follow()
 	a.touch()
-	words := one.text
+	// THE MODEL READS THE PASTE, THE SCREEN KEEPS THE TAG: what goes down the
+	// wire is the message unfolded, and what the row and a refusal's put-back
+	// carry is the message as it was parked (pastechip.go).
+	spoken := one.spoken()
 	return func() tea.Msg {
-		ch, err := agent.Steer(words)
-		return steeredMsg{words: words, ch: ch, err: err}
+		ch, err := agent.Steer(spoken)
+		return steeredMsg{words: one.text, park: one, ch: ch, err: err}
 	}
 }
 
@@ -354,8 +364,11 @@ func (a *app) promoteParked(at int) tea.Cmd {
 // the same reason.
 type steeredMsg struct {
 	words string
-	ch    <-chan session.Event
-	err   error
+	// park is the message as it was parked — its chips with it — so a refusal
+	// puts back exactly what it took.
+	park parked
+	ch   <-chan session.Event
+	err  error
 }
 
 // tookSteer takes the session's answer.
@@ -373,7 +386,11 @@ type steeredMsg struct {
 // arrived.
 func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 	if errors.Is(msg.err, session.ErrNothingToSteer) {
-		a.parks = append([]parked{{text: msg.words}}, a.parks...)
+		back := msg.park
+		if back.text == "" {
+			back = parked{text: msg.words}
+		}
+		a.parks = append([]parked{back}, a.parks...)
 		a.follow()
 		a.touch()
 		if a.stream != nil {

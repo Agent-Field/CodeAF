@@ -166,6 +166,31 @@ The rest of what you should know about sharing one:
   or, for more than one, `2 other windows are on this conversation — typing is here now`.
   When you are alone — the ordinary case — nothing is said at all.
 
+## Opening aforge in a second terminal here — two terminals on this machine
+
+Sharing is not only for two machines. When a conversation on **this** machine is held by a
+session host, `aforge` typed in a second terminal in the same workspace **joins it** rather
+than opening one of its own — the same room, the same turn, one keyboard.
+
+What the second terminal shows is exactly what a second machine shows. The newest window
+gets the keyboard, so the one you just opened has the composer and the older one drops to
+one dim line reading `typing from another window now · enter takes it back` — `another
+window` rather than a machine name, because there is no other machine in it. The status
+line grows no `via` segment for the same reason.
+
+**A host has to be there already.** A plain `aforge chat` never starts one, on purpose:
+adaptive runs, harness building and subharness intake cards are all off in a hosted
+conversation (*What still does not work*, below), so a terminal that has nobody to share
+with keeps them. A host is there when something asked for one — a `--host` or `--at`
+connection into this machine, or `aforge engine` run on it.
+
+**Without a host, a second terminal offers you the conversation rather than a seat in it.**
+It comes up on home with that row already armed, and one `enter` moves the conversation to
+this terminal — the window that had it says `moved to another window`. One conversation, one
+place, and you say which place — *Continue a conversation from another terminal* on the home
+page, and *Two terminals in the same folder* on the sessions page. `--no-host` opts a window
+out of joining a host at all.
+
 ## What typing from spark now means, and why my input box is one line
 
 It means another window on this conversation has the keyboard, and this one is watching.
@@ -358,18 +383,35 @@ account connections all wait for you now. What is left is not about anybody bein
 room; it is about a road that has not been built. Nothing here half-works: each one is
 absent rather than present and failing.
 
-## Make one connection not use the session host
+## What does --no-host do — make one window not use the session host
 
-`aforge engine --no-host` serves that one connection on the pipe, the old way, without
-looking for or starting a host. Its help text reads:
+There are two of it, one for each end, and they mean the same thing: do not look for a
+session host, do not start one, open this conversation right here.
+
+**`aforge chat --no-host`** and **`aforge resume --no-host`**, typed on the machine you are
+sitting at. Its help text reads:
+
+```
+open this conversation in this process instead of attaching to this workspace's session host
+```
+
+Without it, `aforge chat` joins this workspace's host when one is already up. With it, the
+conversation is built in this terminal's own process whatever is up. The reason to type it
+is that something about the host itself is wrong and you want the floor rather than the
+feature. It changes nothing in a workspace no host is holding, which is most of them.
+
+It cannot be combined with `--host` or `--at`: over those the conversation is on the far
+machine either way, and naming both is refused rather than ignored.
+
+**`aforge engine --no-host`** serves one *connection* on the pipe, the old way. Its help
+text reads:
 
 ```
 serve this conversation on the pipe instead of attaching to a session host
 ```
 
-You would type this on the far machine, or put it in the command yourself, and the only
-reason to is that something about the host itself is wrong on that machine and you want
-the floor rather than the feature.
+You would type that one on the far machine, or put it in the command yourself, for the same
+reason.
 
 There is a second flag beside it, `--daemon`, whose help text reads:
 
