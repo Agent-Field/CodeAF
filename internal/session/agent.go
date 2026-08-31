@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -309,6 +310,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// file on disk could otherwise make (taskpresence.go). It is last of the
 	// three because it describes the state the two lines above just settled.
 	agent.startPresence()
+	// AND THE LANE SHEET STARTS BEATING FOR THIS SESSION'S MODELS. It is the one
+	// thing under here that goes to the network without a person asking, which
+	// is why it is the thing most carefully gated: see [Agent.startLaneBeat] for
+	// the three sessions that run no beat at all.
+	agent.startLaneBeat()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
@@ -320,6 +326,93 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.opened = true
 	agent.mu.Unlock()
 	return agent, nil
+}
+
+// ── THE LANE-SHEET BEAT ─────────────────────────────────────────────────────
+
+// startLaneBeat begins this session's lane-sheet beat, or does nothing at all.
+//
+// The router publishes, per model, one row per machine serving it — first-token
+// latency and throughput over the last half hour — and that is a free prior for
+// every lane this session might be sent to, so nothing is blind on the first
+// call (docs/ARCHITECTURE.md, Decision 10). `internal/lane` decodes it and
+// primes the belief from it, but it starts no goroutine of its own by design:
+// who is fetching, and when, is a question with an answer in the session's own
+// code rather than in a package nobody thought was running.
+//
+// THREE SESSIONS RUN NO BEAT, and each refusal is a different fact.
+//
+//   - ROUTING OFF is a person saying they do not want their endpoints chosen
+//     for them (internal/provider's velocity.go). With the row off, every lane
+//     the belief holds is inert — nothing reads it, nothing is sent from it —
+//     and a background fetch would be work nobody asked for on somebody who
+//     asked for the opposite.
+//   - A BASE THAT IS NOT A ROUTER has no sheet to publish, whatever the model
+//     is spelled. The gate is the provider's own, so that the wire point and
+//     this one cannot drift apart (provider.LaneSheetAvailable).
+//   - AND A SESSION WITH NO MODEL SLOT FILLED has nothing to fetch a sheet
+//     about, which is the constructor's own guard reaching this far.
+//
+// It is called once, from the constructor, before the agent is reachable —
+// which is what lets the field it writes be read afterwards without a lock,
+// exactly as [Agent.presence] is.
+func (a *Agent) startLaneBeat() {
+	if a.config.Routing == provider.RoutingOff {
+		return
+	}
+	if !provider.LaneSheetAvailable(a.config.BaseURL) {
+		return
+	}
+	models := laneBeatModels(a.config)
+	if len(models) == 0 {
+		return
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	a.laneStop = stop
+	// THE INTERVAL IS THE LANE PACKAGE'S OWN AND IS NOT RESTATED HERE. Zero asks
+	// [lanes.Beat] for its default, which is the same five minutes that package
+	// already publishes as the age at which a cached sheet is stale — and a
+	// second spelling of that number here is a number that would drift, so that
+	// one session fetched on a clock the cache disagreed with.
+	go lanes.Beat(ctx, lanes.Default().Sheet(), models, 0)
+}
+
+// laneBeatModels is the models this session actually sends to, deduplicated and
+// without the empties.
+//
+// IT IS THE SLOTS AND NOT THE CATALOG. The conversation's own model is what
+// every turn rides, and the task model is what a node rides when its proposal
+// names none; both are models this session will really open a connection to, so
+// both are worth a prior. The fallback list is deliberately absent: those are
+// models a turn moves to only when no endpoint would take the request at all,
+// and fetching a sheet for every one of them would be paying, on every session,
+// for a refusal that usually never comes.
+//
+// It takes the Config rather than the agent so that the one question worth
+// asking of it — which models does this session mean? — can be asked without
+// building a session.
+func laneBeatModels(config Config) []string {
+	var models []string
+	seen := make(map[string]bool, 2)
+	for _, slot := range []string{config.Model, config.TaskModel} {
+		slot = strings.TrimSpace(slot)
+		if slot == "" || seen[slot] {
+			continue
+		}
+		seen[slot] = true
+		models = append(models, slot)
+	}
+	return models
+}
+
+// stopLaneBeat ends the beat. It is Close's, and it never waits: a fetch in
+// flight is a prior the next session will read off the wire again, and a quit
+// that waited on somebody else's half-hour aggregate would be a quit that hangs
+// on a slow router.
+func (a *Agent) stopLaneBeat() {
+	if a.laneStop != nil {
+		a.laneStop()
+	}
 }
 
 // threadID is the identity this session posts its transcript under — the
@@ -1384,6 +1477,11 @@ func (a *Agent) Close() error {
 	// inbox rather than onto a queue that will never be drained again
 	// (standing_run.go).
 	forgetLiveSession(a)
+	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. It is cut
+	// here, beside the line above and before anything that can take time,
+	// because it is the one background lane that owes nothing to the quit: a
+	// beat holds no write anybody is waiting for.
+	a.stopLaneBeat()
 
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)

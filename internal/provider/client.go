@@ -190,6 +190,12 @@ func NewClient(config Config) (*Client, error) {
 	if err := client.SetAPIKey(config.APIKey); err != nil {
 		return nil, err
 	}
+	// AND THE LANE SHEET LEARNS WHERE THE ROUTER IS, here and nowhere else
+	// (lanes.go). It opens no connection: it hands `internal/lane` the base, the
+	// bearer and the one thing that package may not own, and the fetching is a
+	// beat the session starts and stops. A client pointed somewhere that is not
+	// a router wires nothing, because there is no sheet there to read.
+	client.wireLaneSheet()
 	return client, nil
 }
 

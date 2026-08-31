@@ -2,7 +2,12 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -310,5 +315,147 @@ func TestTheRequestTheChooserSeesIsTheRequestBeingSent(t *testing.T) {
 	work := client.laneRequest(model, callKnobs{intent: IntentBackground}, request, 0)
 	if work.Visible != 0 || work.Hidden != workTokens || work.QualityNeed != workQuality {
 		t.Fatalf("a call nobody is waiting on was shaped as %+v", work)
+	}
+}
+
+// ── THE FETCHER: THE WHOLE OF THE TRANSPORT BEHIND A SHEET ──────────────────
+//
+// [sheetFetcher] is the one thing `internal/lane` may not own, so it is the one
+// thing that package's own tests cannot reach. Three facts are worth pinning
+// and they are the three the sheet depends on: a body it can decode, an error
+// rather than a body when the router refuses, and the bearer actually on the
+// wire — a fetch that quietly dropped the key would keep working right up until
+// the router stopped serving the sheet to strangers.
+
+func TestTheSheetFetcherCarriesTheBearerAndHandsBackTheBody(t *testing.T) {
+	var authorization, referer, accept string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		referer = r.Header.Get("HTTP-Referer")
+		accept = r.Header.Get("Accept")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "  sk-test  ")
+	if err != nil {
+		t.Fatalf("fetch a sheet the router served: %v", err)
+	}
+	defer body.Close()
+	read, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read the body back: %v", err)
+	}
+	if string(read) != `{"data":[]}` {
+		t.Errorf("the body reached the sheet as %q, not the bytes the router wrote", read)
+	}
+	if authorization != "Bearer sk-test" {
+		t.Errorf("Authorization was %q; the key is trimmed and sent as a bearer", authorization)
+	}
+	// And the read is attributed like every other read of the router this
+	// binary makes (attribution.go) — a sheet fetched under no app is spend
+	// nobody can account for.
+	if referer != AppURL {
+		t.Errorf("HTTP-Referer was %q, want %q", referer, AppURL)
+	}
+	if accept != "application/json" {
+		t.Errorf("Accept was %q, want application/json", accept)
+	}
+}
+
+func TestTheSheetFetcherSendsNoBearerWhenThereIsNoKey(t *testing.T) {
+	held := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, held = r.Header["Authorization"]
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "   ")
+	if err != nil {
+		t.Fatalf("fetch the public sheet with no key: %v", err)
+	}
+	body.Close()
+	// AN EMPTY BEARER IS A REAL STATE. The sheet is public and a client may be
+	// built before the person has pasted a key, so `Bearer ` with nothing after
+	// it would turn a request that works into a 401.
+	if held {
+		t.Error("an empty key still sent an Authorization header")
+	}
+}
+
+func TestTheSheetFetcherTurnsARefusalIntoAnError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "the router is having an afternoon", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "sk-test")
+	if err == nil {
+		body.Close()
+		t.Fatal("a 500 handed back a body; the sheet would have decoded an error page as lanes")
+	}
+	if body != nil {
+		t.Error("a refusal handed back a body as well as an error")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("the error was %q and does not say what the router answered", err)
+	}
+}
+
+// TestOnlyARouterBaseWiresTheSheet pins the gate both wire points share. The
+// sheet is fetched FROM THE BASE URL, so a client pointed anywhere else has no
+// sheet to read however its model is spelled — and the session reads the same
+// answer to decide whether to run a beat at all.
+func TestOnlyARouterBaseWiresTheSheet(t *testing.T) {
+	for base, want := range map[string]bool{
+		"https://openrouter.ai/api/v1":   true,
+		" https://OpenRouter.ai/api/v1 ": true,
+		"http://localhost:8080/v1":       false,
+		"https://api.openai.com/v1":      false,
+		"":                               false,
+	} {
+		if got := LaneSheetAvailable(base); got != want {
+			t.Errorf("LaneSheetAvailable(%q) = %v, want %v", base, got, want)
+		}
+	}
+}
+
+// TestConstructionWiresTheSheetAtARouter is the wire point itself: the live
+// sheet cannot fetch until a client that talks to a router hands it a base, a
+// bearer and a transport, and [NewClient] is the one place that happens.
+//
+// It asserts through a CANCELLED context, which is what keeps this test off the
+// network. An unwired sheet refuses with [lanes.ErrNoSheet] whatever the caller
+// passes, because it has nothing to fetch with; a wired one gets as far as the
+// transport and comes back with the context's own error, and the only way to
+// tell those two apart is to have been wired.
+func TestConstructionWiresTheSheetAtARouter(t *testing.T) {
+	defer lanes.Default().Reset()
+
+	lanes.Default().Reset()
+	dead, stop := context.WithCancel(context.Background())
+	stop()
+	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, lanes.ErrNoSheet) {
+		t.Fatalf("a fresh registry's sheet refused with %v, want ErrNoSheet", err)
+	}
+
+	// A base that is not a router wires nothing: there is no sheet there.
+	if _, err := NewClient(Config{BaseURL: "http://localhost:8080/v1", Model: "local/model", APIKey: "sk-test"}); err != nil {
+		t.Fatalf("build a client against a local base: %v", err)
+	}
+	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, lanes.ErrNoSheet) {
+		t.Fatalf("a non-router base wired the sheet; it refused with %v, want ErrNoSheet", err)
+	}
+
+	if _, err := NewClient(Config{BaseURL: "https://openrouter.ai/api/v1", Model: "deepseek/deepseek-v4-flash", APIKey: "sk-test"}); err != nil {
+		t.Fatalf("build a client against the router: %v", err)
+	}
+	err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash")
+	if errors.Is(err, lanes.ErrNoSheet) {
+		t.Fatal("construction against the router left the sheet unwired")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("the wired sheet refused with %v, want the cancelled context's own error", err)
 	}
 }
