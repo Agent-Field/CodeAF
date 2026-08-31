@@ -147,6 +147,84 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+
+	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
+	//
+	// A model id is an address and the LANE is the machine behind it. One id is
+	// served by a dozen endpoints that differ by 7× on the wait before the
+	// first token and by 12× on how fast they write, at roughly the same price,
+	// so a spending row that names only the model cannot answer the question a
+	// person asks after a slow afternoon: was it the model, or was it the
+	// machine we happened to be routed to. These five fields are that answer,
+	// and they are the only ones in this struct that describe HOW rather than
+	// HOW MUCH.
+	//
+	// EVERY ONE OF THEM IS omitempty AND EVERY ZERO MEANS "NOBODY SAID". A call
+	// to an endpoint that is not a router names no lane; a call that was not
+	// timed has no first-token figure; a call that was never hedged has no
+	// waste. The emptiness law is the whole reason they can be added to a file
+	// that already has a year of rows in it: an old row decodes with all five
+	// absent, which reads as "not known", which is the truth about it.
+
+	// Lane is the machine that answered, spelled exactly as the router spelled
+	// it — the `provider` field of a streamed chunk. It is the vendor's own
+	// name and it arrived from the wire; nothing in this build holds a list of
+	// them.
+	Lane string `json:"lane,omitempty"`
+	// TTFTms is the wait before the first token, in milliseconds. It is the
+	// half of a call's duration a person actually feels: the rest of the answer
+	// arrives while they are reading.
+	TTFTms int64 `json:"ttft_ms,omitempty"`
+	// TPS is output tokens per second over the generation window — the first
+	// token to the last, and NOT the whole call, because dividing an answer by
+	// a duration that begins with a queue is how a warm lane behind a long
+	// prompt gets recorded as a slow one.
+	TPS float64 `json:"tps,omitempty"`
+	// Hedged marks a call that was rescued: it went slow, a second request went
+	// to another lane, and one of the two came back first. It is on the row
+	// because a hedge is the one thing in this build that can spend money
+	// twice, and a bill that cannot be told apart from an ordinary one is a
+	// mechanism nobody can audit.
+	Hedged bool `json:"hedged,omitempty"`
+	// HedgeWasteUSD is what the LOSING half of that pair cost. Cancelling a
+	// stream stops the billing on most lanes and on some it does not, so this
+	// is zero on a clean rescue and a real figure on a lane that charged for
+	// the tokens it had already written. It is the number the hedge budget is
+	// judged on: the mechanism is worth having exactly while this stays small
+	// beside the seconds it bought.
+	HedgeWasteUSD float64 `json:"hedge_waste_usd,omitempty"`
+}
+
+// usageFromResponse folds what a finished call taught us about its lane onto
+// the line that records what it cost.
+//
+// IT TAKES PLAIN VALUES AND NOT A PROVIDER TYPE, deliberately. This file is the
+// engine's ledger and the transport is `internal/provider`; a struct passed
+// between them would be a third place that has to agree about units, and the
+// units are exactly where this has gone wrong before (a per-token price read as
+// a per-million one). So: ttft and gen are durations, output is a token count,
+// and the only arithmetic here is the one derivation — tokens per second over
+// the generation window — which lives here so that two callers cannot compute
+// it two ways.
+//
+// THE EMPTINESS LAW IS ENFORCED HERE RATHER THAN TRUSTED. A zero duration
+// writes no first-token figure, an answer too short or too quick to rate writes
+// no rate, and a hedge that wasted nothing writes no waste. That is what keeps
+// an ordinary row exactly as wide as it was before lanes existed, and it is why
+// a reader may take any figure that IS on a row as something somebody measured.
+func usageFromResponse(line UsageLine, lane string, ttft, gen time.Duration, output int, hedged bool, hedgeWaste float64) UsageLine {
+	line.Lane = strings.TrimSpace(lane)
+	if ttft > 0 {
+		line.TTFTms = ttft.Milliseconds()
+	}
+	if output > 0 && gen > 0 {
+		line.TPS = float64(output) / gen.Seconds()
+	}
+	line.Hedged = hedged
+	if hedgeWaste > 0 {
+		line.HedgeWasteUSD = hedgeWaste
+	}
+	return line
 }
 
 // ── the writer ──────────────────────────────────────────────────────────────
@@ -459,7 +537,7 @@ func (a *Agent) recordUsageLine(used Usage, model, role string) {
 	session := a.sessionID()
 	a.mu.Unlock()
 	now := time.Now()
-	RecordUsage(path, UsageLine{
+	line := UsageLine{
 		At:     now,
 		Day:    now.Local().Format(usageDayLayout),
 		Model:  strings.TrimSpace(model),
@@ -477,7 +555,20 @@ func (a *Agent) recordUsageLine(used Usage, model, role string) {
 		Task:      usageTaskID(a.config.taskID),
 		Standing:  strings.TrimSpace(a.config.standingItemID),
 		Workspace: strings.TrimSpace(a.config.Workspace),
-	})
+	}
+
+	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it is empty here
+	// because nothing on this path can honestly name the machine that answered.
+	// `internal/provider` reads the server's name off the first streamed chunk
+	// and times the first token beside it, and folds both into a ledger that is
+	// keyed by MODEL and shared by every agent in the process — so reading that
+	// back from here would credit one agent's lane to another agent's row the
+	// moment two of them work at once, which is precisely the invented
+	// measurement docs/ARCHITECTURE.md Decision 10 forbids. The transport half
+	// of that decision hands the values down the call it made them on; until it
+	// does, all five are absent, and under the emptiness law absent is the true
+	// sentence "nobody said" rather than a zero somebody reads as a figure.
+	RecordUsage(path, usageFromResponse(line, "", 0, 0, used.Output, false, 0))
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers

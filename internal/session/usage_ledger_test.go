@@ -499,3 +499,130 @@ func appendRaw(path, text string) error {
 	_, err = file.WriteString(text)
 	return err
 }
+
+// ── THE LANE HALF OF A ROW ──────────────────────────────────────────────────
+//
+// Five fields were added to a file that already holds a year of spending, and
+// the whole of their safety is the emptiness law: a zero writes nothing, so an
+// ordinary row is exactly as wide as it was, an old row decodes with all five
+// absent, and any figure a reader DOES find on a row is one somebody measured.
+// These four tests hold that, from both directions.
+
+// TestALaneRowCarriesTheMachineAndTheWaitItMade pins the shape on the wire —
+// the field names, not the Go names, because the names on the wire are what a
+// person greps and what every other reader of this file has to agree with.
+func TestALaneRowCarriesTheMachineAndTheWaitItMade(t *testing.T) {
+	at := usageAt(t, "2026-08-25 13:11")
+	line := usageFromResponse(
+		UsageLine{At: at, Day: "2026-08-25", Model: "deepseek/deepseek-v4-flash", Calls: 1, USD: 0.02},
+		"Cloudflare", 768*time.Millisecond, 4*time.Second, 232, true, 0.004,
+	)
+	encoded, err := json.Marshal(line)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for field, want := range map[string]any{
+		"lane":            "Cloudflare",
+		"ttft_ms":         float64(768),
+		"tps":             58.0,
+		"hedged":          true,
+		"hedge_waste_usd": 0.004,
+	} {
+		got, present := wire[field]
+		if !present {
+			t.Fatalf("the row has no %q: %s", field, encoded)
+		}
+		if got != want {
+			t.Fatalf("%q is %v, want %v", field, got, want)
+		}
+	}
+}
+
+// TestAnOrdinaryRowIsExactlyAsWideAsItWas is the emptiness law held on a file.
+//
+// Every call that no lane named itself on — every endpoint that is not a
+// router, every call this build has ever made until Decision 10's transport
+// half lands — must leave the row it always left. A `"lane":""` or a `"tps":0`
+// would be this build claiming to have measured a machine it never saw.
+func TestAnOrdinaryRowIsExactlyAsWideAsItWas(t *testing.T) {
+	at := usageAt(t, "2026-08-25 13:11")
+	plain := UsageLine{At: at, Day: "2026-08-25", Model: "m", Calls: 1, Input: 10, Output: 4, USD: 0.01}
+	before, err := json.Marshal(plain)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	after, err := json.Marshal(usageFromResponse(plain, "", 0, 0, 4, false, 0))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("a call with no lane widened its row:\n before %s\n  after %s", before, after)
+	}
+	for _, word := range []string{"lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd"} {
+		if strings.Contains(string(after), word) {
+			t.Fatalf("the row names %q with nothing to say: %s", word, after)
+		}
+	}
+}
+
+// TestARateIsOnlyWrittenWhenThereWasSomethingToRate keeps the one derivation in
+// this file honest. An answer too short or too quick to rate rates the
+// handshake and not the lane, and a probe's single token is the extreme case of
+// it — so no rate at all is the only true answer there.
+func TestARateIsOnlyWrittenWhenThereWasSomethingToRate(t *testing.T) {
+	base := UsageLine{At: time.Now(), Model: "m", Calls: 1, USD: 0.01}
+	for _, probe := range []struct {
+		name   string
+		gen    time.Duration
+		output int
+		want   float64
+	}{
+		{"no generation window", 0, 400, 0},
+		{"no tokens", 4 * time.Second, 0, 0},
+		{"a real answer", 4 * time.Second, 232, 58},
+	} {
+		got := usageFromResponse(base, "Cloudflare", time.Second, probe.gen, probe.output, false, 0).TPS
+		if got != probe.want {
+			t.Fatalf("%s: the rate is %v, want %v", probe.name, got, probe.want)
+		}
+	}
+	// The first token is separable from the rest for the same reason, and it is
+	// written whenever it was timed at all — including on an answer nobody
+	// could rate.
+	if got := usageFromResponse(base, "Cloudflare", 768*time.Millisecond, 0, 0, false, 0).TTFTms; got != 768 {
+		t.Fatalf("the first-token wait is %dms, want 768", got)
+	}
+}
+
+// TestARowWrittenBeforeLanesExistedStillDecodes is the wire-compatibility half.
+// The ledger is append-only and years long; a reader that could not read what
+// it wrote last August would be a spend page that lies about last August.
+func TestARowWrittenBeforeLanesExistedStillDecodes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spend", UsageLedgerName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("make the directory: %v", err)
+	}
+	const old = `{"at":"2026-08-25T13:11:00Z","day":"2026-08-25","model":"opus-4.1",` +
+		`"calls":1,"in":1200,"out":340,"usd":0.42,"session":"aaaa1111aaaa1111"}`
+	if err := os.WriteFile(path, []byte(old+"\n"), 0o644); err != nil {
+		t.Fatalf("write the old row: %v", err)
+	}
+	lines, err := ReadUsage(path, time.Time{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("read %d lines, want 1", len(lines))
+	}
+	line := lines[0]
+	if line.Model != "opus-4.1" || line.Input != 1200 || line.USD != 0.42 {
+		t.Fatalf("the old row lost its figures: %+v", line)
+	}
+	if line.Lane != "" || line.TTFTms != 0 || line.TPS != 0 || line.Hedged || line.HedgeWasteUSD != 0 {
+		t.Fatalf("a row from before lanes existed came back believing something: %+v", line)
+	}
+}
