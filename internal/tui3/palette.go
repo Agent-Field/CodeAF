@@ -1740,6 +1740,8 @@ func (a *app) overlayHeight() int {
 		want = a.effPick.height()
 	case a.roster.open:
 		want = a.roster.height(width)
+	case a.folder.open:
+		want = a.folder.height(width)
 	case a.shelf.open:
 		want = a.shelf.height(width)
 	case a.connPanel.open:
@@ -1766,7 +1768,7 @@ func (a *app) overlayHeight() int {
 	// conversation — a list that left neither would be a list that took the
 	// screen.
 	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.parkedHeight(); want > room {
+		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight(); want > room {
 		want = room
 	}
 	if want < 0 {
@@ -1793,6 +1795,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.effPick.rows(width, n, a.pal, hover)
 	case a.roster.open:
 		return a.roster.rows(width, n, a.pal, hover)
+	case a.folder.open:
+		return a.folder.rows(width, n, a.pal, hover)
 	case a.shelf.open:
 		return a.shelf.rows(width, n, a.pal, hover)
 	case a.connPanel.open:

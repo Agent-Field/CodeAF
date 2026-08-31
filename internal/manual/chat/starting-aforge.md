@@ -5,7 +5,9 @@
 Aforge is a working colleague in a terminal. You talk to it in ordinary language,
 and it works in the directory you started it in — reading, writing, running
 commands, searching, and handing longer jobs off to run on their own while you
-keep talking.
+keep talking. The window is where you sat down, and it stays there; the
+conversation can go on to be **about** other folders as well, which is how work in
+another project happens without opening another window (see *Choosing a folder*).
 
 It is a conversation you sit in front of. There is one conversation **on screen**
 at a time, it is written down as you go, and you can leave it and come back to it.
@@ -48,8 +50,12 @@ and on a machine whose only conversation is the one already open — though it i
 still there to go to: `space` twice on an empty box, or `/home`, opens it on that
 machine too. The home page covers the whole of it.
 
-Run it in the directory you want it to work in. That directory is what it reads
-and writes, and it is shown in the status line so you can always tell.
+Run it in the directory you want it to work in. That directory is where it stands
+— what a bare filename means, where its `AGENTS.md` and project settings come from
+— and it is shown in the status line so you can always tell. It never moves for
+the life of the conversation. Starting in the "wrong" place is not a dead end,
+though: name the folder you actually meant with `/folder`, and the work goes
+there.
 
 ## The flags you can start it with
 
@@ -116,10 +122,14 @@ built on the far machine, so set them there.
 
 ## Which folder does aforge work in, and where do my files go
 
-It depends on where you started it, and there are exactly two cases.
+It depends on where you started it, and there are two cases. (Where the conversation
+**stands** is one thing; the folders it turns out to be **about** are another, and *Choosing
+a folder* has that half. This section is about where you are standing.)
 
 **You started it inside a project.** Aforge borrows that directory. Its tools read
-and write your repository, exactly where you are standing, and the status line
+and write your repository, exactly where you are standing — and that stays true of it
+however many other folders the conversation turns out to be about, because a folder you
+chose with `/folder` is written through a copy and landed with `/land` instead, and the status line
 shows that directory's name — `app`, `my-site` — until the conversation names
 itself, so you can always tell which project this conversation is about. The full
 path is on `/status` and on the status sheet, under `place`, with the git branch
@@ -165,10 +175,16 @@ standing, and closing the conversation leaves nothing behind anywhere else. It i
 sharp edge — **the work is inside the conversation, so deleting the conversation deletes
 the work.** See *I deleted my chat and lost the files the task made* below.
 
-A **code** task will not use that scratch repository at all. With no place named it stops
-with `this task needs a project; use /workspace <path> or name where it should work`, so
-code work never quietly accumulates somewhere you were not going to look for it. Work that
-is not code work does run in the scratch workspace, and lands its files there.
+**A task is never refused for want of a project.** That scratch workspace is quietly made a
+git repository when the conversation opens, so a code task branches from it and merges home
+exactly as a task in a real project does. An older aforge stopped such a task with `this
+task needs a project; use /workspace <path> or name where it should work`; nothing says that
+any more.
+
+And a conversation that has been somewhere else goes there instead: a folder you named, or
+one this conversation turned out to be about, is where the work stands, and the scratch
+workspace is not used at all. *A task in a conversation with no project* has the whole of
+it.
 
 ## I deleted my chat and lost the files the task made
 
@@ -215,9 +231,16 @@ started in.** `enter` on home opens a row of any project, and typing a path on
 home starts a conversation there — each on **its own** workspace, with that
 project's approval rules, crew, spend ceiling and saved shapes of work, resolved
 the same way this one's were. An unanchored conversation may acquire its project once with
-`/workspace`; otherwise there is simply more than one conversation. The status line's place word is
+`/workspace`. The status line's place word is
 always the folder of the conversation on screen. See home's page under *Open
 another project from home*.
+
+**You do not need a second conversation to work on a second project, though.** Where a
+conversation stands is fixed and one; what it is **about** is not. Name another folder with
+`/folder` or `/attach <dir>`, or name its path when you ask for the work, and the work goes
+there — same conversation, same window. What a second conversation gets you that this does
+not is a second set of project settings, approval rules, crew and ceiling. *Choosing a
+folder* has the distinction in full.
 
 ## Where your conversations are kept
 
