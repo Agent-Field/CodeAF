@@ -409,6 +409,14 @@ type taskDocument struct {
 type taskStore struct {
 	mu   sync.Mutex
 	path string
+	// closed says the session behind this store has left. A write that arrives
+	// after that is not a late checkpoint, it is a goroutine that outlived the
+	// close — a woken turn's hand-off, a job's last transition — and what it
+	// would write is a graph nobody will resume from this process again: the
+	// close already let every waiting writer finish, so anything after it can
+	// only overwrite a settled file with a stale "running". Dropped, silently,
+	// because the log line for it would blame a file that is perfectly fine.
+	closed bool
 }
 
 func newTaskStore(path string) *taskStore {
@@ -432,6 +440,9 @@ func (s *taskStore) save(graph *TaskGraph) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
 
 	document := graph.document()
 	encoded, err := json.MarshalIndent(document, "", "  ")
@@ -454,6 +465,19 @@ func (s *taskStore) save(graph *TaskGraph) {
 		_ = os.Remove(temporary)
 		log.Printf("session: could not write the task checkpoint %s: %v", s.path, err)
 	}
+}
+
+
+// close makes every later save a no-op. It is the session close's to call, and
+// it sits under the same lock as save so a write already on its way to the
+// rename finishes whole before the door shuts behind it.
+func (s *taskStore) close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
 }
 
 // ── the graph, written down ─────────────────────────────────────────────────
