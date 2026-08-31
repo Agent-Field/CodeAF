@@ -53,7 +53,7 @@ keeps exactly the last **3** calls of a turn above a line reading `N earlier too
 ctrl+o`. Scrolling the conversation never opens a fold — `ctrl+o` or a click does — because
 in the conversation the fold is one block among many rather than the whole page.
 
-## Task page is empty, or stuck at the top with a blank below it
+## Task page is empty, looks stuck, or hangs at the top with a blank below it
 
 A page that shows a few rows at the top and empty space beneath is a task that has not
 said much yet: the space is the slack under a short page, the same as a new conversation
@@ -71,9 +71,11 @@ Three things that look like the same picture and are not:
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
   render — sits on the same column, and its page has no chat in it because a job has no
-  agent and writes no transcript. It shows the job's log line and
-  `a background job keeps a log, not a transcript`. Its row is the one whose dim
-  under-line starts with `job` and a number.
+  agent and writes no transcript. What it shows instead is the job's log: the
+  `job 4 · log /path/…` line at the top, and under it the end of that file, re-read four
+  times a second while the job runs. A job that has not written its first line yet says
+  `a background job keeps a log, not a transcript` and nothing else. Its row is the one
+  whose dim under-line starts with `job` and a number.
 
 No task page ever draws an empty body under its header. Whatever is true of the task,
 the page says it in one dim line:
@@ -82,7 +84,9 @@ the page says it in one dim line:
   `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
   `nothing on this page yet — it fills in as the task works`
-- a background job says `a background job keeps a log, not a transcript`
+- a background job whose log is empty or unreadable says
+  `a background job keeps a log, not a transcript` — never an error, because a job that has
+  written nothing yet is a job that started a second ago
 
 The line comes off the moment there is anything to draw, because it answers one question
 — why is there nothing here — and a page with something on it is not asking it.
@@ -91,3 +95,60 @@ If the page is long but the frame is short, scroll: the wheel over the page, `pg
 `↑` over an empty box all move it. `ctrl+l` is not the key here — it returns the
 conversation to its latest line, and inside a task scrolling down to the bottom does the
 same for the task's page.
+
+## Watch a background job's log — the page tails it live
+
+Press `enter` on the job's row, or click it. A background job's page **is** its log:
+
+```
+job 4 · log /Users/you/.aforge/v3/jobs/4.log
+
+  [1/3] fetching sources
+  [2/3] building
+  frame 640 · 22 fps
+this log grows as the job works — esc to return
+```
+
+The top line is the path — the same string the roster draws under the row, and the handle
+`jobs output 4` and `jobs kill 4` take. Under it is the **end** of that file: the last 200
+lines, oldest at the top and newest at the bottom, dim, re-read four times a second for as
+long as the job is running. Colour codes and control characters in the output are stripped
+before anything is drawn.
+
+The page follows the newest line as it grows; scroll up with the wheel, `pgup` or `↑` over
+an empty box to read back, and scrolling to the bottom re-joins the live end.
+
+When the job ends, the page takes **one more reading** — a process writes its last lines
+and then exits, so the reading taken at the moment it exited would be short of the ending —
+and the foot becomes `task finished — esc to return`.
+
+Two limits worth knowing. `enter` inside a job's page does not steer anything: there is no
+agent in a job to read a line, so the words raise the same question a finished task raises
+and offer to send them to the main conversation instead. And over `--host` the page draws
+no log at all — the path belongs to the other machine, so the page shows the far path and
+`a background job keeps a log, not a transcript`; `jobs output 4` is how you read it there.
+
+## Task page says finished but the work is still running
+
+It does not any more. If you are on an older build, this is what you were seeing: a job's
+page drew `task finished — esc to return` under a header whose clock was still counting up
+— `video · working · 32s` over a foot claiming the work was over.
+
+The cause was that a background job is a row and never a task in aforge's own graph, so
+every attempt to open a page for one is refused — which is the **ordinary** answer for a
+job, on a perfectly healthy conversation — and that refusal was read as "the work has
+landed". Now the page asks the row instead, which is the same record the header above it is
+drawn from, and the two cannot disagree.
+
+What each foot means now:
+
+- `this log grows as the job works — esc to return` — a background job that is still
+  running. The lines above it are its log and they are still arriving.
+- `task finished — esc to return` — the work is over, whatever kind it was. Nothing more is
+  coming; scroll up to read what it did.
+- **no foot at all** — an ordinary task still working. There is nothing to say at the bottom
+  of the page, because the next thing to arrive is what happens next.
+
+The header is the other half of the answer and it has always been true: `queued`,
+`working`, `checking what it left`, `closing gaps · round 1 of 2`, `finishing`, `waiting`,
+`stopping`, `done`. If the header says the work is running, it is running.
