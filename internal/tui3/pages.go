@@ -1243,6 +1243,16 @@ func (a *app) placeHintSaid() string {
 	if a.strip.open {
 		return stripHint
 	}
+	// AND A LAYER INSIDE A PLACE OUTRANKS THE ROUTER'S TAIL for exactly the
+	// composer's reason. While the settings panel's value box or its model
+	// picker is up, that layer owns every key — `tab` included, and in the
+	// picker `tab` opens and closes a model's lanes ([placeSettings.owns],
+	// palette.go's [picker.foldKey]) — so the two words the tail would add name
+	// a key the layer has taken, which is SCREEN 3a's clause read the other way
+	// round.
+	if pl := a.showing(); pl != nil && a.sheetLayerOwnsKeys() {
+		return pl.hint(a)
+	}
 	// EVERY PLACE'S OWN SENTENCE, WITH THE ROUTER'S KEYS ON THE END OF IT. The
 	// places that had a keys line of their own keep it — it is about the row a
 	// person is standing on, which is knowledge this file does not have — and the

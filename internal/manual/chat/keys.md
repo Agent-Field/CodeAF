@@ -1030,8 +1030,9 @@ follows what you type. Only these keys are taken from you:
 
 ## Keys in the model picker and the sessions roster
 
-**Model picker** — opened by `/model` with no argument, or by clicking the model name
-in the status row:
+**Model picker** — opened by `/model` with no argument, by clicking the model name
+in the status row, or by `enter` on the **your model** row of the settings panel's
+Providers tab (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
 effort · `tab` and `→` open the lanes under the model the cursor is on, `tab` and

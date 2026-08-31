@@ -87,14 +87,21 @@ type picker struct {
 	// rest of them, and the list is closed long before a terminal could change
 	// its mind about glyphs.
 	ascii bool
-	// folds is whether this door onto the list may open a model's lanes at all.
+	// laneSlot is the CONFIG SLOT whose lane row this list may write, and empty
+	// when there is none.
 	//
-	// ONLY /model MAY. The settings panel's slot rows and the composer's model
-	// chip open the same component to answer a different question — which model
-	// fills this slot — and a fold under one of those rows would offer a pin
-	// that their enter cannot write. One list, several doors, and the doors say
-	// what they are for.
-	folds bool
+	// IT IS THE SUBJECT OF THE FOLD AND NOT THE NAME OF THE DOOR. This was a
+	// `folds bool` set by /model alone, which made the settings panel's `your
+	// model` row a plainer list than the overlay reached by a slash — the same
+	// question, answered two ways, on one surface. It is not the door that
+	// decides whether a fold means anything; it is whether enter inside it has
+	// a row to write. /model and the panel's conversation row both answer
+	// "which model, on which machine", so both carry [talkSlot] and both fold.
+	// A media slot, a role, a task's model carry nothing: the registry has one
+	// lane row ([config.LaneSlotTalk], and lanes.go's [laneSlotForRow] is the
+	// whole map), so a fold under those would offer a gesture their enter could
+	// not honour — and that is the emptiness law, not a door's permission.
+	laneSlot string
 
 	// current is the model in use when the picker opened. It is what the accent
 	// marks, and it is deliberately a snapshot: the mark answers "what am I on",
@@ -437,7 +444,7 @@ func (p *picker) fold() bool {
 // cursor is already inside an open block — leave it open and do nothing, which
 // is what a person pressing the key again means.
 func (p *picker) unfoldHere() bool {
-	if !p.folds || p.cursor < 0 || p.cursor >= len(p.list) {
+	if p.laneSlot == "" || p.cursor < 0 || p.cursor >= len(p.list) {
 		return false
 	}
 	row := p.list[p.cursor]
@@ -483,6 +490,51 @@ func (p *picker) foldHere() bool {
 	}
 	p.follow(pickerRows)
 	return true
+}
+
+// cursorToPin puts the cursor, inside an open fold, on the row the pin names —
+// the lane itself when one is pinned, and the `auto` or `openrouter` row when
+// none is.
+//
+// It is [picker.start]'s rule applied one level down: a list opened AT a
+// setting opens ON that setting's value, so enter with nothing typed confirms
+// rather than changes. The panel's `lane` row is the only caller — /model opens
+// on the MODEL in use and walks into the fold from there.
+func (p *picker) cursorToPin() {
+	for at, row := range p.list {
+		if row.lane != laneNone && p.marked(at) {
+			p.cursor = at
+			p.follow(pickerRows)
+			return
+		}
+	}
+}
+
+// foldKey is `tab`, `→` and `←` over this list — the fold's whole key map, in
+// one place because the list has two doors ([app.pickerKey] and settings.go's
+// [app.sheetSelectKey]) and a gesture that opened the machines from one of them
+// and did nothing from the other is the exact drift [picker.navigate] exists to
+// prevent. It answers whether it took the key; false falls through to the walk.
+//
+// THE ONE COMPROMISE THE FOLD COSTS. `tab` opens and closes outright, because
+// it means nothing else in a box you type into. `→` and `←` are the keys a
+// person reaches for at a tree, and they are ALSO how the caret walks the
+// filter text — so they open and close only from the END and the START of what
+// is typed, where there is no character left to step over. With an empty box,
+// which is where this list spends most of its life, that is every press.
+func (p *picker) foldKey(name string) bool {
+	switch name {
+	case "tab":
+		if !p.unfoldHere() {
+			p.foldHere()
+		}
+		return true
+	case "right":
+		return p.filter.cursor >= len(p.filter.value) && p.unfoldHere()
+	case "left":
+		return p.filter.cursor <= 0 && p.foldHere()
+	}
+	return false
 }
 
 // laneUnder is the lane row the cursor is on: the view, and which of the three
@@ -1266,10 +1318,7 @@ func (a *app) openPicker() {
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
 	// row inside an open fold, and what the row in use says `via`, and neither
 	// of those can change while a modal overlay owns the keyboard.
-	a.pick.pin = config.LaneAt(a.profileDir, laneSlotFor(a.model))
-	a.pick.guard = config.LaneGuardAt(a.profileDir)
-	a.pick.ascii = a.pal.ascii
-	a.pick.folds = true
+	a.armLanes(&a.pick, laneSlotFor(a.model))
 	a.touch()
 }
 
@@ -1484,14 +1533,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 			if chosen.ID != a.model {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
-			switch {
-			case row.lane == laneAutoAt:
-				a.clearLanePin(chosen.ID)
-			case row.lane == laneRoutAt:
-				a.setLaneRouterOnly(chosen.ID)
-			case row.lane >= 0 && row.lane < len(lanes):
-				a.pinLane(chosen.ID, lanes[row.lane].Name)
-			}
+			a.applyLaneChoice(chosen.ID, row, lanes)
 			a.touch()
 			return
 		}
@@ -1512,29 +1554,14 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 	case "ctrl+t":
 		a.cycleReasoning()
 
-	// ── THE FOLD, AND THE ONE COMPROMISE IT COSTS ───────────────────────────
-	//
-	// `tab` opens and closes outright, because it means nothing else in a box
-	// you type into. `→` and `←` are the keys a person reaches for at a tree,
-	// and they are ALSO how the caret walks the filter text — so they open and
-	// close only from the END and the START of what is typed, where there is no
-	// character left to step over. With an empty box, which is where this list
-	// spends most of its life, that is every press.
-	case "tab":
-		if !a.pick.unfoldHere() {
-			a.pick.foldHere()
-		}
-	case "right":
-		if a.pick.filter.cursor < len(a.pick.filter.value) || !a.pick.unfoldHere() {
-			a.pick.navigate(msg)
-		}
-	case "left":
-		if a.pick.filter.cursor > 0 || !a.pick.foldHere() {
-			a.pick.navigate(msg)
-		}
-
+	// THE FOLD IS ITS OWN KEY MAP and it is the list's, not this door's
+	// ([picker.foldKey]) — the settings panel's model row reads the very same
+	// three keys, and a fold that opened from one door and not the other would
+	// be two pickers again.
 	default:
-		a.pick.navigate(msg)
+		if !a.pick.foldKey(msg.String()) {
+			a.pick.navigate(msg)
+		}
 	}
 	a.touch()
 }

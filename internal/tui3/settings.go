@@ -600,14 +600,15 @@ var settingUI = map[string]settingMeta{
 	config.KeyRouting: {
 		tab: tabProviders, label: "routing", widget: widgetCycle,
 		about: "one model is served by many endpoints. latency asks for the fastest and " +
-			"demotes one that keeps being slow; price asks for the cheapest; off asks for nothing.",
+			"demotes one that keeps being slow; price asks for the cheapest; off asks for " +
+			"nothing, measures nothing, and leaves the two rows above it with no machine to name.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
 	config.LaneSettingKey(talkSlot): {
 		tab: tabProviders, label: "lane", widget: widgetLane,
 		about: "which machine behind your model answers you. auto picks the fastest one " +
-			"each answer; pinning holds one; → on a row in the model picker shows them all.",
+			"each answer; enter opens them all with what has been measured of each.",
 	},
 	config.KeyLaneGuard: {
 		tab: tabProviders, label: "speed guard", widget: widgetToggle,
@@ -671,7 +672,23 @@ func crewAbout() string {
 var modelsSection = modelsSectionOrder()
 
 func modelsSectionOrder() []string {
-	order := []string{config.ModelSettingKey(talkSlot), config.KeyCrew}
+	// THE MACHINE COMES DIRECTLY UNDER THE MODEL, and that is the whole of why
+	// this list exists at all. In registry order these three sat at the FOOT of
+	// the tab, under the crew, the four classes and every role aforge has —
+	// forty rows below the one they are about — so a person who changed their
+	// model never met the row saying which endpoint would serve it. They read
+	// narrowest first: which machine answers THIS conversation, what `auto` may
+	// spend to keep an answer moving, and then what every request prefers.
+	//
+	// THEY LIVE HERE AND NOWHERE ELSE. A row on two tabs is two places to look
+	// for one answer and two rows that can disagree on screen.
+	order := []string{
+		config.ModelSettingKey(talkSlot),
+		config.LaneSettingKey(talkSlot),
+		config.KeyLaneGuard,
+		config.KeyRouting,
+		config.KeyCrew,
+	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
 	}
@@ -1695,7 +1712,17 @@ func (a *app) activate() tea.Cmd {
 		a.applySetting(item, choices[at])
 
 	case widgetLane:
-		a.cycleLane(item)
+		// ENTER ON THIS ROW OPENS THE MACHINES. It used to walk four words —
+		// auto, pinned, pinned but borrowable, openrouter — with nothing on
+		// screen saying what pinning would pin or what it would cost, which is
+		// asking a person to choose an endpoint they cannot see. Now it opens
+		// the same fold `→` opens in the picker, on the model in use, with the
+		// cursor on the lane in force. It cycles ONLY when nothing has been
+		// measured, and then auto and openrouter are honestly the only two
+		// answers there are ([app.openLaneList], [app.cycleLane]).
+		if !a.openLaneList() {
+			a.cycleLane(item)
+		}
 
 	case widgetSelect:
 		// The picker opens ON the id the row currently holds, the way /model
@@ -1712,6 +1739,13 @@ func (a *app) activate() tea.Cmd {
 		// handed to the picker as well because that is the door every slot comes
 		// through, and a second application of the same filter is a no-op.
 		sel.pick.startFor(a.modelsFor(sel.keep), item.row.Value(), sel.keep)
+		// AND THIS IS THE SAME LIST /model OPENS, machines and all. A row that
+		// has a lane row behind it (lanes.go's [laneSlotForRow]) folds, shows
+		// the speed column, takes the lane grammar in its filter and pins on
+		// enter; a row that has none — a media slot, a role — is armed with
+		// nothing and folds nothing, which is the emptiness law and not a
+		// second, plainer list.
+		a.armLanes(&sel.pick, laneSlotForRow(item.row.Key))
 		s.sel = sel
 
 	default:
@@ -1730,6 +1764,46 @@ func (a *app) activate() tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// openLaneList is enter on the `lane` row: THE SAME PICKER the model row opens,
+// already unfolded on the model you are talking to, with the cursor on the lane
+// in force.
+//
+// One list and one gesture. The alternative was a lane-shaped list of its own
+// beside a model-shaped list that already draws lanes — two components that
+// would have to be kept saying the same thing about the same machines — and the
+// fold is where a person has already learnt to read them.
+//
+// IT ANSWERS FALSE WHEN THERE IS NOTHING TO OPEN. A session that has measured
+// no lane for this model has no fold ([picker.unfoldAt] refuses one), and the
+// row falls back to the walk between the only two answers that exist without a
+// measurement.
+func (a *app) openLaneList() bool {
+	slot := laneSlotFor(a.model)
+	if slot == "" {
+		return false
+	}
+	sel := &sheetSelect{
+		key: config.ModelSettingKey(talkSlot), label: "lane · " + a.model,
+		keep: filterFor(config.ModelSettingKey(talkSlot)),
+	}
+	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
+	a.armLanes(&sel.pick, slot)
+	// THE FOLD HAS TO BE THE ONE THIS ROW IS ABOUT. [picker.start] leaves the
+	// cursor on row zero when the model in use is not in the list at all — a
+	// catalog that has not loaded, a model nobody publishes — and unfolding
+	// whatever happened to sort first would be this row opening somebody else's
+	// machines.
+	if chosen, ok := sel.pick.choice(); !ok || chosen.ID != a.model {
+		return false
+	}
+	if !sel.pick.unfoldHere() {
+		return false
+	}
+	sel.pick.cursorToPin()
+	a.sheet.sel = sel
+	return true
 }
 
 // cycleLane is enter on the lane row: auto → pinned → pinned but borrowable →
@@ -1852,6 +1926,13 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 	case "esc":
 		s.sel = nil
 	case "enter":
+		// ENTER INSIDE AN OPEN FOLD IS A LANE AND NOT A SLOT. It is read before
+		// anything else for [app.pickerKey]'s reason — closing the list is what
+		// forgets which row the cursor was on.
+		if lane, onLane := sel.pick.laneUnder(); onLane {
+			a.applyLaneFromSheet(sel, lane)
+			return
+		}
 		chosen, ok := sel.choice()
 		row, found := s.registry.Row(sel.key)
 		role := sel.role
@@ -1868,8 +1949,45 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 		meta, _ := settingMetaFor(row)
 		a.applySetting(sheetItem{row: row, meta: meta}, chosen)
 	default:
-		sel.pick.navigate(msg)
+		// The fold's three keys are the LIST's and not this door's
+		// ([picker.foldKey]); everything else is the walk and the filter box.
+		if !sel.pick.foldKey(msg.String()) {
+			sel.pick.navigate(msg)
+		}
 	}
+}
+
+// applyLaneFromSheet is enter on a lane row inside the panel's own copy of the
+// picker: the machine, and — when the fold was opened under a model this
+// conversation is not on — that model too.
+//
+// THE MODEL IS WRITTEN THROUGH THE ROW and not through [app.switchModel]
+// directly, which is the one difference from /model's half of this gesture: in
+// here the slot is a registry row, and the row's own write is what carries the
+// change to the session (the registry's SetModel seam, [app.registry]). Two
+// answers at once for [app.pickerKey]'s reason — a lane pinned under a model
+// somebody is not talking to is a setting that takes effect the next time they
+// happen to switch.
+func (a *app) applyLaneFromSheet(sel *sheetSelect, lane pickRow) {
+	s := &a.sheet
+	chosen, ok := sel.pick.choice()
+	lanes := sel.pick.lanes
+	key, role := sel.key, sel.role
+	s.sel = nil
+	if !ok || role != "" {
+		return
+	}
+	if row, found := s.registry.Row(key); found && row.Value() != chosen.ID {
+		meta, _ := settingMetaFor(row)
+		a.applySetting(sheetItem{row: row, meta: meta}, chosen.ID)
+	}
+	a.applyLaneChoice(chosen.ID, lane, lanes)
+	// THE PANEL RE-READS WHAT IT JUST WROTE. The lane row and the model row's
+	// own tail are two readings of this one fact ([sheet.laneWord]), and a
+	// panel that kept drawing the old word over a pin the person watched
+	// themselves set would be the panel lying about it.
+	s.rows = s.registry.Rows()
+	s.build()
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -2347,6 +2465,12 @@ func (s *sheet) keysLine() string {
 	case s.edit != nil:
 		return "enter save · empty clears · esc cancel"
 	case s.sel != nil:
+		// THE LEGEND SAYS `→ lanes` ONLY WHERE `→` OPENS THEM — on a row that
+		// has a lane row behind it. Offering the key on the drawing slot would
+		// be the foot of the screen promising a gesture that does nothing.
+		if s.sel.pick.laneSlot != "" {
+			return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+		}
 		return "↑↓ move · enter choose · esc cancel · type to filter"
 	case s.onConnections():
 		return s.connKeysLine()
@@ -2359,6 +2483,18 @@ func (s *sheet) keysLine() string {
 		}
 		return "↑↓ move · ←→ tabs · enter change · type to search · esc close"
 	}
+}
+
+// sheetLayerOwnsKeys is whether one of the three layers inside this panel has
+// taken the WHOLE keyboard ([placeSettings.owns]). The foot asks, because a
+// hint line that named the router's `tab` while a layer had it would be naming
+// a key nothing on screen answers (pages.go's [app.placeHintSaid]).
+func (a *app) sheetLayerOwnsKeys() bool {
+	if !a.at(pageSettings) {
+		return false
+	}
+	s := &a.sheet
+	return s.edit != nil || s.sel != nil || (s.conn.entry != nil && s.onConnections())
 }
 
 // hoveredSheetRow is the item the pointer is over, or -1.
