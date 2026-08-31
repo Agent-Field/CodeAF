@@ -70,6 +70,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// after it happens, by somebody who has just watched a token go past.
 		{"does aforge save my API keys", "sessions-and-rewind"},
 		{"I printed a token, is it in the transcript", "sessions-and-rewind"},
+		{"if a task prints a token is it saved", "sessions-and-rewind"},
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
@@ -208,6 +209,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is a task allowed to use gh api", "how-tasks-run"},
 		{"why was my task not allowed to merge main", "how-tasks-run"},
 		{"my task says git merge is not yours to run", "how-tasks-run"},
+		// #85 flagged the token on a task's belt as an open hole; the read is
+		// refused inside a task now, and these are the words somebody meets it in.
+		{"can a task read my github token", "how-tasks-run"},
+		{"my task said gh auth token is not yours to run", "how-tasks-run"},
+		{"does a task have my credentials", "how-tasks-run"},
 		// Written from a real run: a task made a symlink so a scorer would find
 		// its fixtures, measured against the symlink, and reported the work done.
 		// The check now runs somewhere the symlink is not, and these are the

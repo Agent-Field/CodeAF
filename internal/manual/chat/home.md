@@ -312,7 +312,8 @@ thinking or a tool out, with no task ever made. Conversations this terminal is h
 behind the one on screen count, and so does a watch that is firing this instant.
 
 They are ordered **busiest first** — most tasks running — with the longest-running settling
-a tie, and the note says what is actually happening: `2 tasks running · reading filings`.
+a tie, and the note says what is actually happening: `2 tasks running · reading filings`,
+or `· checking what it left` while a node is being looked at, wherever it is being run.
 
 Two other places say the same thing more briefly:
 
@@ -788,6 +789,9 @@ a mark means something is *happening*, and done is the absence of one. Every oth
 leads the second line instead, with the glyph it wears everywhere else here:
 
 - `◐ running · <what it is doing>`
+- `◐ running · checking what it left`, `◐ running · closing gaps` — the minutes when the
+  node's own worker is not the one at it, said here for another window's node as well as
+  for this one's, and never for a window that has gone (the page on how tasks run has both).
 - `◌ incomplete` — work that was under way when the window went
 - `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
 - `✗ failed · <what stopped it>`
