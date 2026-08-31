@@ -1048,11 +1048,17 @@ func (a *app) readWorldKnown() (session.World, bool) {
 // Over --host the door hands a function that reads a cache the connection keeps
 // warm behind itself, and that cache says false until the far machine has
 // replied once (cmd/aforge's [hostWorld], tui3.go's [Options.World]).
-func (a *app) worldOf() (session.World, bool) {
-	if a.world != nil {
-		return a.world()
+func (a *app) worldOf() (session.World, bool) { return worldSeam(a.world, a.placesRoot(), a.hosted()) }
+
+// worldSeam is that same seam with its three inputs handed in, so a COMMAND can
+// take the reading off the loop without a second copy of the branching
+// (hop.go's [app.countConversations] is the caller that needed it). The rules
+// are stated on [app.worldOf] and are unchanged by being written here.
+func worldSeam(door func() (session.World, bool), root string, hosted bool) (session.World, bool) {
+	if door != nil {
+		return door()
 	}
-	if a.hosted() {
+	if hosted {
 		// AND A HOSTED SURFACE WITH NO SEAM READS NOTHING AT ALL. This is the
 		// safety net rather than a state any door produces: the --host door wires
 		// the seam, and a build that forgot to would otherwise fall straight back
@@ -1064,7 +1070,7 @@ func (a *app) worldOf() (session.World, bool) {
 		// somebody else's disk.
 		return session.World{}, false
 	}
-	return session.ReadWorld(a.placesRoot()), true
+	return session.ReadWorld(root), true
 }
 
 // worldKnown is whether the reading behind the places is an ANSWER rather than
@@ -1900,8 +1906,15 @@ const (
 	// so that a strong match in a weak field cannot beat a weak match in a
 	// strong one by more than the gap between them — a name is what a person
 	// remembers, and an outcome sentence is where they end up when they cannot.
+	// A REFERRED FOLDER SITS JUST UNDER THE PROJECT'S OWN NAME, and the gap is
+	// the whole of what it means: both answer "where is this conversation
+	// about", and standing in a folder is a stronger claim on the word than
+	// referring to one. So typing `wisp` still puts the wisp project's own
+	// conversations first, and the chat about wisp that was HELD somewhere else
+	// is on the list under them instead of being unfindable (homefolders.go).
 	homeFieldName    = 10
 	homeFieldProject = 6
+	homeFieldFolder  = 5
 	homeFieldTask    = 5
 	homeFieldOutcome = 3
 
@@ -1938,6 +1951,13 @@ func homeRank(row session.SessionRow, project session.Project, query string, now
 	}
 	name := strings.ToLower(homeName(row))
 	place := strings.ToLower(project.Name)
+	// The folders this conversation is about, lowercased ONCE for the whole
+	// query rather than once per word per row ([session.MatchQuality] takes its
+	// two arguments already folded, for that reason).
+	var folders []string
+	for _, folder := range homeFolderNames(row) {
+		folders = append(folders, strings.ToLower(folder))
+	}
 	total := 0
 	// EVERY WORD MUST LAND SOMEWHERE, which is the roster's rule and the reason
 	// a second word narrows instead of widening. Where each lands is its own
@@ -1950,6 +1970,16 @@ func homeRank(row session.SessionRow, project session.Project, query string, now
 		}
 		if rung, ok := session.MatchQuality(place, token); ok {
 			best = max(best, rung*homeFieldProject)
+		}
+		// AND THE FOLDERS IT IS ABOUT, WHICHEVER BUCKET IT LIVES IN. A person
+		// looking for "the conversation about wisp" types `wisp`, and before
+		// this the only conversations that answered were the ones held INSIDE
+		// wisp — the chat opened in `~` that spent an afternoon on it was
+		// findable by nothing but the title it may never have been given.
+		for _, name := range folders {
+			if rung, ok := session.MatchQuality(name, token); ok {
+				best = max(best, rung*homeFieldFolder)
+			}
 		}
 		for _, entry := range row.Tasks.Rows {
 			if best >= session.MatchWord*homeFieldTask {
@@ -4398,6 +4428,15 @@ func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh 
 	}
 	if age := sinceAt(row.At, now); age != "" {
 		parts = append(parts, age)
+	}
+	// AND WHAT THIS CONVERSATION IS ABOUT BEYOND WHERE IT STANDS, LAST
+	// (homefolders.go). It is the newest fact on the row and the only one that
+	// is not about now, so it is the one a narrow terminal spends first: the
+	// note is cut from its tail (palette.go's [overlayRowTinted]), and a row
+	// that has to choose between saying `also about wisp` and saying how long
+	// ago somebody spoke keeps the age every time.
+	if also := homeAlsoAbout(row); also != "" {
+		parts = append(parts, also)
 	}
 	return strings.Join(parts, " · ")
 }

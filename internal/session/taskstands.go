@@ -22,8 +22,10 @@ package session
 // It is resolved from evidence the conversation already holds, in this order,
 // and the first rung that answers wins:
 //
-//  1. SAID — `propose_task{ground}`, or the place a person named in their own
-//     request. Somebody's own word is never overruled by anything below it.
+//  1. SAID — `propose_task{ground}`, the place a person named in their own
+//     request, or a place THIS CONVERSATION IS ALREADY ABOUT (places.go).
+//     Somebody's own word is never overruled by anything below it, and a folder
+//     the conversation named or resolved once is not asked about twice.
 //  2. TOUCHED — the git roots of every path this conversation's tool calls read,
 //     edited, grepped or wrote, and every `cd` a shell command made, weighted by
 //     recency. One root that dominates is the ground. TWO WITH REAL WEIGHT ARE A
@@ -83,6 +85,15 @@ type taskStand struct {
 	ask string
 	// refusal is an honest sentence about work that cannot be placed at all.
 	refusal string
+	// kept marks a ground that answered at SAID because the CONVERSATION
+	// remembered it rather than because anybody said it out loud — a place this
+	// conversation resolved once and wrote down (places.go's [PlaceKept]).
+	//
+	// The one thing that turns on it is [groundLint]: a ground somebody said is
+	// never second-guessed, and a cached answer is not somebody saying it. So a
+	// brief that names a repository the remembered place is not still re-grounds
+	// the work onto it, exactly as it does for every rung below.
+	kept bool
 }
 
 // The rungs, spelled once so a log line and a test cannot disagree about them.
@@ -150,7 +161,14 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	} else if reground != "" {
 		stand.dir, stand.rung = reground, taskGroundSaid
 	}
-	stand.mode = groundMode(stand, spec, workspace)
+	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every rung leaves this blank and
+	// the mode falls out of the deliverable, which is the law above — except for
+	// a referred place carrying the person's own word about how work happens
+	// there ([PlaceRef.Mode]), and their word is the one thing this file obeys
+	// rather than reads.
+	if stand.mode == "" {
+		stand.mode = groundMode(stand, spec, workspace)
+	}
 	return stand
 }
 
@@ -166,6 +184,11 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 func (a *Agent) taskGroundOrStandingIn(spec taskSpec) taskStand {
 	stand := a.resolveTaskGround(spec)
 	if stand.ask == "" && stand.refusal == "" {
+		// AND THE ANSWER IS KEPT, here rather than in the ladder, for the reason
+		// [Agent.keepGround] states: a ground is written down where it is
+		// CONSUMED, so nothing is remembered out of a reading that a question or
+		// a refusal then threw away.
+		a.keepGround(stand)
 		return stand
 	}
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
@@ -198,7 +221,21 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	// something its own reading of the evidence liked better is a part whose work
 	// can never come home.
 	if spec.parent == 0 {
-		if stand, ok := a.groundFromTouched(workspace); ok {
+		// ONE READING OF THE EVIDENCE, weighed once and handed to both rungs that
+		// want it. The walk stats every path this conversation named and asks git
+		// about every directory it finds; doing it twice for one answer would
+		// double that cost in front of a person waiting on a proposal.
+		weights := groundWeights(touchedPaths(a.snapshot()), workspace)
+		// AND THE PLACES THIS CONVERSATION IS ABOUT ANSWER AT SAID, above the
+		// evidence they were mostly resolved out of. That is the ruling this feed
+		// was built under (docs/design/places/DESIGN.md): a conversation-level
+		// place is EVIDENCE for the one ladder and never a second resolver, so it
+		// arrives here as a said-level answer rather than as a mechanism of its
+		// own — and the question that was asked once is not asked again.
+		if stand, ok := a.groundFromPlaces(spec, workspace, weights); ok {
+			return stand
+		}
+		if stand, ok := groundFromTouched(weights); ok {
 			return stand
 		}
 	}
@@ -210,8 +247,7 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 
 // groundFromTouched weighs the repositories this conversation has actually been
 // working in. The second answer reports false, and the caller climbs on.
-func (a *Agent) groundFromTouched(workspace string) (taskStand, bool) {
-	weights := groundWeights(touchedPaths(a.snapshot()), workspace)
+func groundFromTouched(weights []groundWeight) (taskStand, bool) {
 	if len(weights) == 0 {
 		return taskStand{}, false
 	}
@@ -220,15 +256,168 @@ func (a *Agent) groundFromTouched(workspace string) (taskStand, bool) {
 		second = weights[1]
 	}
 	if second.root != "" && second.weight*taskGroundRunnerUp >= leader.weight {
-		// THE ONE QUESTION THIS FILE ASKS, and it is asked in the two names
-		// themselves: a person reading it recognizes their own projects, and
-		// anything the harness said about "weight" or "evidence" would be
-		// machinery explaining itself instead of asking.
-		return taskStand{ask: "this conversation has been working in two places — " +
-			leader.root + " and " + second.root +
-			" — so say which one this task is about"}, true
+		return taskStand{ask: groundAsk("this conversation has been working in two places",
+			leader.root, second.root)}, true
 	}
 	return taskStand{dir: leader.root, rung: taskGroundTouched}, true
+}
+
+// groundFromPlaces reads the folders THIS CONVERSATION IS ABOUT (places.go) as
+// a said-level answer, and it is the whole of what a referred place does to the
+// ladder: no rung of its own, no second resolver, one more source of evidence
+// for the one decision [Agent.resolveTaskGround] makes.
+//
+// THE ORDER INSIDE IT IS FOUR TIERS, and every one of them is the same idea from
+// a different distance:
+//
+//  1. A place the CONTRACT NAMES that the person also named. Work whose brief
+//     spells out a path inside a folder the person referred to is work plainly
+//     about that folder, and there is nothing left to weigh.
+//  2. A place the contract names that the conversation merely kept.
+//  3. A place the person NAMED. It never expires: said is never overruled, which
+//     is the law this file already keeps about the rung above.
+//  4. A place the conversation KEPT and the evidence has not left behind
+//     ([placeOutweighed]).
+//
+// TWO ANSWERS IN ONE TIER ARE STILL THE QUESTION. A conversation about two
+// projects has not said which one this work is for any more than a conversation
+// that read two of them has — and it is a better question than the touched one,
+// because both names are folders the person already knows they are working in.
+func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []groundWeight) (taskStand, bool) {
+	places := a.referredPlaces()
+	if len(places) == 0 {
+		return taskStand{}, false
+	}
+	var namedSaid, namedKept, said, kept []PlaceRef
+	for _, place := range places {
+		// A PLACE THAT IS NOT THERE IS NOT AN ANSWER, for the reason a `ground`
+		// naming a missing folder is refused: work stands somewhere real. The
+		// record stays on the meta — a folder on a disk that is unplugged today
+		// is a folder again tomorrow — and it is simply not weighed here.
+		if info, err := os.Stat(place.Path); err != nil || !info.IsDir() {
+			continue
+		}
+		// AND THE STANDING PLACE IS NOT A REFERRED ONE. The rungs below answer
+		// for the folder the conversation is standing in, and letting it in here
+		// would move work that was already going somewhere right onto a rung it
+		// did not climb.
+		if place.Path == workspace {
+			continue
+		}
+		named, isSaid := placeNamedIn(place.Path, spec), place.Arrival == PlaceSaid
+		switch {
+		case named && isSaid:
+			namedSaid = append(namedSaid, place)
+		case named:
+			namedKept = append(namedKept, place)
+		case isSaid:
+			said = append(said, place)
+		case placeOutweighed(place.Path, weights):
+			// A KEPT PLACE THE CONVERSATION HAS MOVED ON FROM. It stays on the
+			// meta as history and is out of the running here, so that fresh
+			// evidence about where the work actually is beats last hour's answer.
+		default:
+			kept = append(kept, place)
+		}
+	}
+	for _, tier := range [][]PlaceRef{namedSaid, namedKept, said, kept} {
+		switch len(tier) {
+		case 0:
+		case 1:
+			return placeStand(tier[0]), true
+		default:
+			return taskStand{ask: groundAsk("this conversation is about two places",
+				tier[0].Path, tier[1].Path)}, true
+		}
+	}
+	return taskStand{}, false
+}
+
+// placeStand is one referred place as an answer: the SAID rung, and the person's
+// own word about how work happens there when they said one.
+func placeStand(place PlaceRef) taskStand {
+	return taskStand{
+		dir:  place.Path,
+		mode: TaskMode(place.Mode),
+		rung: taskGroundSaid,
+		kept: place.Arrival == PlaceKept,
+	}
+}
+
+// placeNamedIn reports whether this contract SPELLS OUT a path inside one
+// referred place.
+//
+// IT READS ONLY ABSOLUTE PATHS, which is the difference between it and
+// [groundNamesWorkUnder] and the reason it is a function of its own. That one
+// asks whether work would WRITE under a ground and counts a bare `README.md`
+// that exists there; this one asks which of several folders the work is ABOUT,
+// and a relative name that exists under all of them would make every place look
+// equally named and turn an easy answer into a question.
+//
+// AND IT COMPARES CANONICAL SPELLINGS. A referred place was canonicalized on the
+// way in (places.go) while a path in a brief is spelled however the model wrote
+// it, and on macOS those two spellings of one directory differ by a `/private`
+// nobody typed (place.go's [canonicalPath] states that law).
+func placeNamedIn(place string, spec taskSpec) bool {
+	for _, token := range pathTokens(spec.brief + "\n" + spec.deliverable + "\n" + spec.acceptance) {
+		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
+			continue
+		}
+		dir := canonicalPath(groundDirOf(token, ""))
+		if dir == "" {
+			continue
+		}
+		if _, inside := insideWorkspace(place, dir); inside {
+			return true
+		}
+	}
+	return false
+}
+
+// placeOutweighed reports whether the evidence has left a kept place behind.
+//
+// A KEPT PLACE IS A CACHED ANSWER AND DECAYS BY RECENCY, which is the whole of
+// how the set stays alive: a conversation that resolved one project an hour ago
+// and has spent the last twenty calls in another is about the other one now, and
+// a cache that outranked what the person is visibly doing would be the chore
+// this design was written to remove, wearing the opposite face.
+//
+// It decays against the SAME half-law the two-roots question is asked under
+// ([taskGroundRunnerUp]), so there is one statement of what "dominates" means
+// here. And it is never outweighed by AMBIGUOUS evidence: two roots with real
+// weight is exactly the question somebody already answered, and a kept place is
+// their answer to it.
+func placeOutweighed(path string, weights []groundWeight) bool {
+	if len(weights) == 0 {
+		return false
+	}
+	leader := weights[0]
+	if leader.root == path {
+		return false
+	}
+	if len(weights) > 1 && weights[1].weight*taskGroundRunnerUp >= leader.weight {
+		return false
+	}
+	own := 0
+	for _, weight := range weights {
+		if weight.root == path {
+			own = weight.weight
+			break
+		}
+	}
+	return own*taskGroundRunnerUp < leader.weight
+}
+
+// groundAsk is THE ONE QUESTION THIS FILE ASKS, spelled once so the two rungs
+// that can reach it cannot drift into two different questions.
+//
+// It is asked in the two names themselves: a person reading it recognizes their
+// own projects, and anything the harness said about "weight" or "evidence" would
+// be machinery explaining itself instead of asking. The opening clause is the
+// caller's because the two are true of different things — one conversation has
+// been WORKING in two places, another IS ABOUT two of them.
+func groundAsk(opening, first, second string) string {
+	return opening + " — " + first + " and " + second + " — so say which one this task is about"
 }
 
 // groundWeight is one repository and how much of this conversation happened in
@@ -486,7 +675,12 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 	if stand.dir == "" || spec.parent != 0 {
 		return "", ""
 	}
-	if stand.rung == taskGroundSaid || stand.rung == taskGroundNamed || stand.rung == taskGroundHere {
+	// AND A GROUND THE CONVERSATION MERELY REMEMBERED IS NOT SOMEBODY SAYING IT.
+	// A referred place answers at SAID ([Agent.groundFromPlaces]) so that nobody
+	// is asked twice, but a cached answer has no authority over a brief that
+	// names a repository — only a person's own word does ([taskStand.kept]).
+	if (stand.rung == taskGroundSaid && !stand.kept) ||
+		stand.rung == taskGroundNamed || stand.rung == taskGroundHere {
 		return "", ""
 	}
 	var outside []string

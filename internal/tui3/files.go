@@ -467,6 +467,18 @@ func (c *completion) height(width int) int {
 // surprises people.
 const imageTag = "img"
 
+// folderTag is the same idea for the rows the walk now offers that are not
+// files at all. It says WHAT the row is rather than what choosing it does,
+// because choosing it does exactly what every other path row does — the path
+// goes into the sentence — and the one thing a person cannot tell from
+// `internal/tui3/` alone, on a narrow frame where the tail is what they read,
+// is whether they are pointing at a folder or at something named like one.
+const folderTag = "folder"
+
+// isFolderPath reports whether a row from the walk is a directory. The trailing
+// separator is the marker, and it is the walk's own ([walkFiles]).
+func isFolderPath(path string) bool { return strings.HasSuffix(path, "/") }
+
 // lineNote is the dim tail of one line of this list, and "" for a line that has
 // none — a section rule, or a path that is not a picture. It is what decides
 // the line's height at [tierPhone], so [completion.height] and
@@ -478,6 +490,11 @@ func (c *completion) lineNote(at int) string {
 		return ""
 	case line.task >= 0:
 		return taskNoteWord(c.taskHits[line.task])
+	case isFolderPath(c.all[line.file]):
+		// A FOLDER IS A FOLDER ON BOTH LISTS, `@` and a command's argument
+		// alike — the tag says what the row IS, and that does not change with
+		// the door it was opened from the way the picture's tag does.
+		return folderTag
 	case !c.arg && isImagePath(c.all[line.file]):
 		return imageTag
 	default:
@@ -588,7 +605,16 @@ func (a *app) completeFile() {
 	a.touch()
 }
 
-// walkFiles lists the files under root, relative to it, in walk order, capped.
+// walkFiles lists what is under root, relative to it, in walk order, capped.
+//
+// IT EMITS DIRECTORIES AS WELL AS FILES, and a directory is spelled with a
+// trailing separator — `internal/tui3/`. The walk always VISITED them; what it
+// did not do was offer them, so an `@` reaching for a folder found nothing and
+// a person had to type the whole path. The slash is the marker and there is no
+// parallel slice beside this one: it is what tells a directory row from a file
+// row ([isFolderPath]), it is what the row's own tag is drawn from, and it is
+// what goes into the sentence when the row is chosen — which reads the way
+// somebody would have typed it anyway.
 func walkFiles(root string, limit int) []string {
 	out := make([]string, 0, 512)
 	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -608,6 +634,14 @@ func walkFiles(root string, limit int) []string {
 			}
 			if skipDirs[name] || strings.HasPrefix(name, ".") {
 				return fs.SkipDir
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return nil
+			}
+			out = append(out, filepath.ToSlash(relative)+"/")
+			if len(out) >= limit {
+				return fs.SkipAll
 			}
 			return nil
 		}
