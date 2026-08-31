@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── WHO SERVED, AND HOW FAST ────────────────────────────────────────────────
@@ -215,8 +217,13 @@ func (c *Client) routingFor(intent RoutingIntent) RoutingStrategy {
 // silently drops it, because a planning call that was supposed to think and did
 // not is a wrong answer rather than a slow one.
 type providerPrefs struct {
-	Sort              string    `json:"sort,omitempty"`
-	Order             []string  `json:"order,omitempty"`
+	Sort  string   `json:"sort,omitempty"`
+	Order []string `json:"order,omitempty"`
+	// Only is a DEMAND rather than a ranking: the request goes to exactly these
+	// lanes or it does not go at all. It is what a pin sends, and what the
+	// second request of a hedged pair sends so that the pair cannot both land
+	// on the lane that is already stalling (hedge.go).
+	Only              []string  `json:"only,omitempty"`
 	Ignore            []string  `json:"ignore,omitempty"`
 	AllowFallbacks    *bool     `json:"allow_fallbacks,omitempty"`
 	RequireParameters *bool     `json:"require_parameters,omitempty"`
@@ -296,7 +303,7 @@ func (c *Client) priceCeiling(model string) *maxPrice {
 // It is OpenRouter-only. The field is a router's dialect, and an OpenAI-
 // compatible endpoint that is not a router either ignores it or 400s on it —
 // neither of which is worth risking for a preference it could not honour.
-func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPrefs {
+func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
 	if !c.isOpenRouter() {
 		return nil
 	}
@@ -344,9 +351,17 @@ func (c *Client) providerPreferences(model string, knobs callKnobs) *providerPre
 	// It is a preference and never a demand: `allow_fallbacks` stays true above,
 	// so an endpoint that is busy, gone, or over the ceiling simply does not
 	// answer this one and the router picks by the sort word as before.
-	if held := c.heldEndpoint(knobs.cacheKey, model, prefs.Ignore); held != "" {
+	held := c.heldEndpoint(knobs.cacheKey, model, prefs.Ignore)
+	if held != "" {
 		prefs.Order = append([]string{held}, withoutEndpoint(prefs.Order, held)...)
 	}
+	// AND THE BELIEF SPEAKS LAST (lanes.go). What `internal/lane` has measured
+	// about these endpoints is the same question the ledger's order answers and
+	// a better answer to it — a posterior per lane rather than three thresholds
+	// — so when there is a belief its order replaces the ranking above. When
+	// there is not, and on the first call of every fresh machine there is not,
+	// nothing here changes and the request goes out exactly as it always did.
+	c.applyLaneChoice(prefs, model, knobs, request, held)
 	return prefs
 }
 
@@ -499,11 +514,24 @@ func noteServed(ctx context.Context, served, asked string) {
 // routing preference is not measured either. Measuring it would build a ledger
 // whose only possible use — demoting an endpoint on the next request — is a
 // thing this client has just promised not to do.
-func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration) {
+// cached is how many of the prompt's tokens the ROUTER SAID it read back out
+// of that endpoint's cache, from the usage frame. It is the only direct
+// evidence there is that a lane really held our prefix — every other reading of
+// it is this process's own memory of where it sent the last request — and it is
+// passed through rather than estimated, because an estimate of a cache hit is a
+// discount nobody granted. Zero is "the frame did not say", which is also what
+// a cold prefix looks like; the belief treats them the same and is right to,
+// since neither is evidence of a cache.
+func (c *Client) noteVelocity(model, served string, ttft time.Duration, tokens int, elapsed time.Duration, gap time.Duration, cached int) {
 	if c.velocity == nil || c.routing() == RoutingOff {
 		return
 	}
 	c.velocity.observe(model, served, ttft, tokens, elapsed, gap)
+	// The same answer, folded into the belief that is replacing the table above
+	// (lanes.go). It is one call rather than two seams because the two are the
+	// same fact — who served, and how fast — and the strike ledger keeps its
+	// half only until the belief has been proven against it.
+	c.noteLane(model, served, ttft, tokens, elapsed, gap, cached)
 }
 
 // notePacedProvider folds one provider-named 429 into the ledger, under the

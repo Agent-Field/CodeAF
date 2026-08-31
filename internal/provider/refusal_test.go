@@ -224,6 +224,7 @@ func TestAnUncodedMidStreamErrorIsABadGatewayAndNotASuccess(t *testing.T) {
 // sees it, and these tests are about what the handler is asked for.
 func ledgerClient(t *testing.T, handler http.Handler) *Client {
 	t.Helper()
+	forgetLanes(t)
 	client, err := NewClient(Config{
 		APIKey:     "test-key",
 		BaseURL:    "https://openrouter.ai/api/v1",

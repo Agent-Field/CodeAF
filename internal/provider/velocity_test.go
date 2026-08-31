@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE LEDGER ──────────────────────────────────────────────────────────────
@@ -381,6 +383,7 @@ func TestVelocityKeysOnTheModelNotItsSpelling(t *testing.T) {
 // ledger so one test's measurements cannot reach another's.
 func routedClient(t *testing.T, strategy RoutingStrategy, handler http.Handler) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	client, err := NewClient(Config{
 		APIKey:  "test-key",
@@ -535,7 +538,7 @@ func TestNamedCutRefusesTheEndpointOnTheNextRequest(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences(model, callKnobs{intent: IntentInteractive})
+	prefs := client.providerPreferences(model, callKnobs{intent: IntentInteractive}, &ai.Request{})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) ||
 		!equalStrings(prefs.Ignore, []string{"molasses"}) {
 		t.Fatalf("preferences after cut = %#v, want the named endpoint refused behind the healthy lane", prefs)
@@ -559,7 +562,7 @@ func TestUnnamedCutNotesNothing(t *testing.T) {
 	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatal("the stalled first stream landed, want a guard cut")
 	}
-	prefs := client.providerPreferences("vendor/fast-model", callKnobs{intent: IntentInteractive})
+	prefs := client.providerPreferences("vendor/fast-model", callKnobs{intent: IntentInteractive}, &ai.Request{})
 	if prefs == nil || !equalStrings(prefs.Order, []string{"quicksilver"}) || len(prefs.Ignore) != 0 {
 		t.Fatalf("preferences after unnamed cut = %#v, want no endpoint attributed", prefs)
 	}
@@ -581,6 +584,7 @@ func TestRoutingOffNotesNothingForACut(t *testing.T) {
 // preferences rebuilt after the cut without involving the turn loop's retry.
 func cutThenAnswerClient(t *testing.T, strategy RoutingStrategy, served string) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	t.Cleanup(shortenStallBounds(t, time.Second, 20*time.Millisecond))
 	recorded := &capture{}
 	var mu sync.Mutex

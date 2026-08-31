@@ -1754,6 +1754,36 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
+	// laneStop ends this session's lane-sheet beat (agent.go's
+	// [Agent.startLaneBeat]), and is nil for every session that runs no beat —
+	// routing off, a base that is not a router, no model to fetch a sheet for.
+	//
+	// It is a CANCEL AND NOT A WAIT, which is where it parts company with
+	// memoryStop above. A memory pass owes the store a write and Close waits for
+	// it; a beat owes nothing to anybody — the sheet it was about to fetch is a
+	// prior the next session will fetch again — so a quit cuts it and does not
+	// look back.
+	laneStop context.CancelFunc
+	// laneCtx is the context the beat runs under and the one a probe rides. It
+	// is the SESSION'S life rather than a turn's, deliberately: a probe is
+	// bought while somebody is typing and outlives the keystroke that bought it,
+	// so a turn's context would cancel it exactly when it stopped mattering and
+	// a background one would outlive the window (lanenews.go's [Agent.Typing]).
+	laneCtx context.Context
+	// laneBeating is whether this session actually started a sheet beat. It is
+	// a separate fact from laneStop, which is minted for every session because
+	// a probe rides the same context: the three sessions that run no beat still
+	// have a lane context, and "did a beat start" is the question the gate is
+	// about (agent.go's [Agent.startLaneBeat]).
+	laneBeating bool
+
+	// turnLane is what THIS agent's own last request was served by, and it is
+	// the only honest source there is for the lane half of a usage row
+	// (usage_ledger.go states why the process-wide ledger is not one). It sits
+	// outside mu holding its own lock for chatlog's reason: it is written from
+	// the stream goroutine while a turn holds mu for its own state.
+	turnLane laneWitness
+
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there
