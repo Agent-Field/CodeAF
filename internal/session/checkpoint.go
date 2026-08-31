@@ -558,6 +558,17 @@ const checkpointHandoffAsk = "[handing over] This is being handed to somebody wh
 // a turn that answers it is a turn that simply carries on to its own end.
 const checkpointNothingLeft = "NOTHING LEFT TO DO"
 
+// checkpointBriefingWho is the noun the briefing phase wears on the clock, and
+// with the phase's own word in front of it the row reads `briefing a worker`.
+//
+// IT NAMES THE READER AND NOT THE DOCUMENT. "writing a handoff brief" is the
+// harness describing its own paperwork; what a person watching their turn stop
+// needs to know is that somebody else is about to take the work and is being
+// told what it is. The word is `worker` because that is what this surface calls
+// the thing a task runs (task_run.go, and the manual's own pages), and a second
+// name for it here would be a third vocabulary for one job.
+const checkpointBriefingWho = "a worker"
+
 // ── what the handoff writer is shown, and asked ─────────────────────────────
 
 // The sections of the message [Agent.writeHandoff] puts in front of the
@@ -2559,6 +2570,31 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
 	sketch := read.sketch
 	asked := a.taskRequest()
+	// AND THE PERSON IS TOLD WHAT THE SILENCE IS, because the two calls below are
+	// the longest stretch of this whole road with nothing drawn.
+	//
+	// A handover is two model runs before anything exists to point at — the turn
+	// writing down what it found, and a mastermind turning that into an
+	// instruction — and measured together they are fifteen to thirty seconds
+	// between the last thing the model said and the task appearing on the rail.
+	// The transcript's own notes cannot cover it: they are settled facts, and this
+	// road can still DECLINE below, so a line saying the work was moving would be
+	// a sentence left standing over something that did not happen.
+	//
+	// SO IT IS THE PHASE CLOCK AND NOT A NOTE (phasenews.go). It is the lane this
+	// harness already uses for a wait inside a turn — the same pair loop.go puts
+	// around the readers at the end of a turn — it says only what is true while it
+	// is true, and it takes itself off the screen when the stage ends, whichever
+	// way this ends.
+	//
+	// AND IT IS SAID TWICE, ONCE PER CALL. A surface drops a phase it has not
+	// heard again for fifteen seconds (internal/tui3's phaseWindow) and nothing
+	// here beats, so a single post would go dark halfway through a thirty-second
+	// stage — which is the defect, not the fix. The two calls are the seam this
+	// has, and [briefingSince] is carried into both so the clock a person reads
+	// counts the whole stage rather than restarting at the boundary.
+	briefingSince := time.Now()
+	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
 	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
 	if !remains {
 		if sketch.saysDone() {
@@ -2568,6 +2604,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			// and a file carrying a ladder for a handover that never happened would
 			// say the same thing to whoever reads it afterwards. The ceiling line
 			// written a moment later says the drop and why.
+			//
+			// AND THE CLOCK COMES OFF WITH IT: the stage above was real and is over,
+			// and a phase left standing is the surface drawing work nobody is doing.
+			a.endPhase()
 			return checkpointHandover{decision: checkpointCeilingNothing}
 		}
 		// UNCORROBORATED, so the work moves — and the continuation spent its answer
@@ -2598,7 +2638,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with nothing in any file saying it had happened. So the ladder is walked
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
+	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	a.endPhase()
 	goal, carried := written, carryRungHandoff
 	if strings.TrimSpace(goal) == "" {
 		goal, carried = draft, carryRungDraft
