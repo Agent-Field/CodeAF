@@ -572,9 +572,10 @@ the file it just wrote — anything at all after the last save is the reply havi
 itself, and it is then priced like any other short reply. aforge does not try to tell a build
 from a test from a read; it only asks whether the reply stopped on the change or looked at it.
 
-**What bounds it is the same meter as everything else on this page.** Carrying on counts as a
-round, so it climbs the same three points, and a carried-on reply that reaches the third one
-is handed to a task in the ordinary way. There is no separate limit and no number to raise.
+**What bounds it is the same meter as everything else on this page, and one count of its own.**
+Carrying on counts as a round, so it climbs the same three points, and a carried-on reply that
+reaches the third one is handed to a task in the ordinary way. On top of that, one question is
+carried on at most three times — see *Waiting on something, and the limit on carrying on* below.
 
 **A reply that BROKE is never carried on.** Carrying on is for a reply that stopped early,
 and a reply that ended on a **failed request** did not stop early — it broke. A provider
@@ -587,6 +588,47 @@ crews and what things cost* for what the error line says now.
 **And if nobody can be reached, the reply just ends.** No second model configured, a reader
 that faults, a reader that takes too long: each of those ends the reply as it would have
 ended before this existed.
+
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say "carried on 3 times", it turned my wait into a task
+
+**A reply that ends while something IT started is still running is never carried on.** A
+background command, a watch, a video or music render, a forked hand — while any of those is
+still going, the reply is waiting on it exactly the way a reply that ends on a question is
+waiting on you, and pushing it on would only make it poll.
+
+**For most of them the ending comes back and starts a new reply by itself.** A background
+command exiting, a render landing, a hand coming home: each of those wakes aforge and you get
+the sentence about it without typing anything. **A watch is the exception** — its news waits
+for the next thing you say, so a conversation waiting on a watch does go quiet until you speak.
+`jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
+
+**What that fixes, measured.** A conversation waiting for GitHub's checks on two pull requests
+had a watch of its own running over `gh pr checks`, and said so at the end of every reply.
+Nothing knew that "waiting on the world" was an answer, so the reply was read, found unfinished
+— it *was* unfinished — and carried on. Twenty times in five minutes, each one another poll of
+the very command that was going to report, for about a third of a dollar and no progress, until
+the running-long point moved the wait into a task whose done-condition nobody could ever fail.
+
+**A sub-task of your own is deliberately not one of these.** A task landing wakes a reply and
+that reply *is* read for what remains, however short it was — that is the rule in the section
+above, and going quiet while any sub-task was out would take it away from the reply it was
+written for.
+
+**And one question is carried on at most three times.** A reader that answers "still not
+finished" about the same stopped reply three times running has stopped telling aforge anything
+new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen:
+
+```
+carried on 3 times and it is still not finished · stopping here rather than carrying on again
+```
+
+**You are being told the truth when you read that.** aforge asks before it says it, so the
+reply really is unfinished — it is simply yours to pick up now rather than aforge's to push a
+fourth time. There is no number to raise and no setting that turns it off.
+
+**Three carry-ons can never reach the running-long point by themselves.** That point stands at
+forty rounds and carrying on can add three, so a reply that gets handed to a task got there on
+rounds of its own work, which is exactly the reply that point was written for.
 
 ## Every key the proposal card takes
 
