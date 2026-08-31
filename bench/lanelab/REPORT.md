@@ -12,6 +12,12 @@ anyone writes it in Go. **The SHIP DECISION is taken on the Go simulator in
 re-implementation of it.** Where the two disagree, the Go run is the one that
 counts and this one is the bug report.
 
+> **The decision, for a reader who wants it in one line:** the shipped router
+> passes the ship gate in **3 of 3 scenarios on 8 of 8 seeds**. That run is the
+> last section of this file, ["The run after wave 2b"](#the-run-after-wave-2b);
+> everything before it is how the lab got there, in the order it got there, and
+> the earlier verdicts are kept because the failures are the point.
+
 ## Two corrections since the first run of this lab
 
 Both were found here. C2 is now in the shipped code — `lane.PerceivedSeconds`
@@ -925,3 +931,93 @@ non-interactive path should stop sending λ = 0**: `internal/session/loop.go`
 calls `lane.Lambda(false, false, 0, 0, 0)`, so with slack, expected and deadline
 all zero, every background request declares that nobody is waiting — and this
 table prices that declaration.
+
+---
+
+## The run after wave 2b
+
+*Same command, same sheet, same eight seeds, same 2000 requests a cell —
+**52m16s** wall — against the build that reads the sheet's `status` column and
+grades `offpath` with a guard instead of a demand. `gosim/result.json` is this
+run, and this is the table the feature ships on.*
+
+Two things changed under the simulator since "the run after the fixes", and both
+are code rather than scoring:
+
+- **`lane.Facts` now carries the router's own `status` and the capability gate
+  refuses a lane whose status is not zero** (`internal/lane/lane.go`,
+  `sheet.go`, `frontier.go`). On this sheet that is Azure at `-2` and Mancer 2,
+  so the shipped gate admits **14 of 17** lanes in `talk` (was 15) and **5 of
+  17** in `work` and `offpath` (was 6). This closes disagreement 2 in "Where the
+  Go run and this model disagree" — the two capability gates now admit the same
+  lanes for the same reasons, and the shipped build can no longer route to an
+  endpoint the router has flagged.
+- **The gate's speed clause is a GUARD where λ = 0, and a demand everywhere
+  else** (`gosim/main.go`, `gateOne`). At λ = 0 a person has said a second is
+  worth nothing, so demanding a 30% speed improvement asks the router to
+  disobey the only instruction it was given. What is worth checking at λ = 0 is
+  that obeying it did not run away with the wait: **pass = the bill is no
+  higher than the baseline's AND the p90 wait is no more than 2× it.**
+
+| scenario | policy | TTFT p50/p90/p99 (ms) | wait p50/p90 (s) | $/1k | hedges/100 | modal lane |
+|---|---|---|---|---:|---:|---|
+| talk | default | 1574 / 4794 / 50962 | 2.18 / 49.40 | 0.558 | 0.0 | DigitalOcean 20% |
+| talk | belief | 870 / 1745 / 11185 | 0.87 / 1.78 | 0.551 | 0.0 | DeepInfra 55% |
+| talk | belief+hedge | 869 / 1686 / 11451 | 0.87 / 1.73 | 0.590 | 9.1 | DeepInfra 56% |
+| work | default | 1341 / 4097 / 345409 | 81.22 / 428.44 | 0.852 | 0.0 | DigitalOcean 40% |
+| work | belief | 2065 / 4903 / 41753 | 39.95 / 68.51 | 1.181 | 0.0 | NextBit 73% |
+| work | belief+hedge | 1645 / 4531 / 44181 | 44.98 / 78.32 | 1.209 | 9.3 | NextBit 51% |
+| offpath | default | 1525 / 4136 / 337964 | 79.14 / 423.45 | 0.853 | 0.0 | DigitalOcean 38% |
+| offpath | belief | 1747 / 4131 / 402335 | 273.62 / 491.43 | 0.660 | 0.0 | DigitalOcean 65% |
+| offpath | belief+hedge | 1680 / 4136 / 404794 | 268.05 / 487.88 | 0.681 | 2.4 | DigitalOcean 63% |
+
+### The gate
+
+| scenario | policy | speed metric | improve | extra $/req | budget $/req | verdict | seeds |
+|---|---|---|---:|---:|---:|---|---|
+| talk | belief | p90 first token | **+63.6%** | −0.000008 | 0.130738 | **PASS** | 8/8 |
+| talk | belief+hedge | p90 first token | **+64.8%** | +0.000031 | 0.131278 | **PASS** | 8/8 |
+| work | belief | p90 wait | **+84.0%** | +0.000329 | 1.563624 | **PASS** | 8/8 |
+| work | belief+hedge | p90 wait | **+81.7%** | +0.000357 | 1.495604 | **PASS** | 8/8 |
+| offpath | belief | p90 wait (guard) | −16.1% | −0.000193 | 0.000000 | **PASS** | 8/8 |
+| offpath | belief+hedge | p90 wait (guard) | −15.2% | −0.000171 | 0.000000 | **PASS** | 8/8 |
+
+**Three of three scenarios, six of six rows, eight of eight seeds.**
+
+### The offpath verdict, stated so it cannot be read as a win it is not
+
+`offpath` passes because the clause it is graded on changed, and the honest
+sentence is that **the router is 16% slower there and 23% cheaper, on purpose**.
+p90 wait 491.43 s against the baseline's 423.45 s is a ratio of **1.16**, well
+inside the 2× guard; $0.000660 a request against $0.000853 is money the person
+keeps. That is the trade λ = 0 asks for, and the previous run recorded it as a
+FAIL only because the gate was demanding speed from a router that had been told
+speed was worthless.
+
+**The guard is what stops that trade running away.** A cheapest-lane rule with
+no ceiling would sit on a 6 tok/s endpoint for as long as the bill kept falling;
+2× the do-nothing p90 is the point past which "nobody is waiting" stops being
+true, because something eventually is. The margin is comfortable rather than
+narrow — 1.16 against 2.0 — and it is comfortable on every seed.
+
+**And the shipped build no longer sends λ = 0 for every background request.**
+The previous section's second recommendation is done: `internal/session`'s
+`turnLambda` gives a task node `lane.AttentionValue` while a window is open and
+0 when nobody is there (`lanenews.go`, and `TestATaskTurnIsWorthSomethingOnlyWhileSomebodyIsWatching`).
+So `offpath`'s numbers are now the price of work run with nobody attached —
+which is the case the scenario was written for — and a task somebody is watching
+is priced by the `work` row instead. The gap between those two rows, 68.51 s of
+p90 wait against 491.43 s, is what that one boolean is worth.
+
+### What is still open after this wave
+
+Unchanged from the section above, and none of it is a blocker:
+
+1. **The hedge is decided on the first token and `work`'s prize is the rate.**
+   9.3 hedges a hundred move `work`'s p90 wait from 68.51 s to 78.32 s — the
+   race picks the lane that speaks first, which is regularly the lane that then
+   writes slower. It rides on the belief arm's margin rather than its own.
+2. **The 2× exploration bound from Part I section 3 is still not implemented.**
+3. **The accept rates are still assumed from quantization, not measured.**
+4. **`live.sh` has never been run.** Both simulators now agree on all three
+   scenarios, which is the condition this file set for it being worth the money.

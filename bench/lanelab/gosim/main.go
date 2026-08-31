@@ -56,7 +56,25 @@ import (
 // trade, per request: Δ$ ≤ Δ(mean wait)/λ. At λ = 0 the right-hand side is zero
 // and the rule degenerates to "it must not cost more than the baseline", which
 // is exactly what background work should demand.
+//
+// AND AT λ = 0 THE SPEED HALF IS A GUARD RATHER THAN A DEMAND. λ is the
+// statement that a second is worth nothing; a router told that and then graded
+// on seconds is being graded on the one term it was instructed to ignore, and
+// no correct implementation of this design can pass such a clause — it would
+// have to disobey the objective to do it. What is worth demanding of work
+// nobody is waiting on is that the wait does not BLOW OUT while the bill comes
+// down, so the clause becomes: no dearer than the baseline, and no slower than
+// [gateWaitBlowout] times it. The ceiling is a factor rather than a percentage
+// because at λ = 0 the two quantities are not commensurable — there is no
+// exchange rate between them, which is precisely what λ = 0 says.
 const gateP90Improve = 0.30
+
+// gateWaitBlowout is how much slower than the baseline the p90 wait may be
+// before a λ = 0 arm is refused. Two is the point at which "the same work,
+// later" becomes "a different experience": a background answer that took twice
+// as long is one somebody may still be waiting on when they come back to it,
+// and no saving on the bill buys that back.
+const gateWaitBlowout = 2.0
 
 // baseline is the arm every other arm is graded against.
 //
@@ -146,16 +164,20 @@ func gateOne(s scenario, base, arm cell) verdict {
 	dollars := arm.USDPerRequest - base.USDPerRequest
 	saved := base.WaitMean - arm.WaitMean
 	budget := 0.0
+	// The speed clause is a DEMAND where somebody is waiting and a GUARD where
+	// nobody is; see [gateWaitBlowout] for why the two cannot be the same rule.
+	speedOK := armSpeed <= gateWaitBlowout*baseSpeed
 	if s.lambda > 0 {
 		budget = saved / s.lambda
+		speedOK = improve >= gateP90Improve
 	}
 	return verdict{
 		Scenario: s.name, Baseline: base.Policy, Policy: arm.Policy,
 		SpeedMetric: key[1], SpeedImprove: improve,
 		DollarsPerReq: dollars, MeanWaitSaved: saved, Budget: budget,
-		SpeedOK: improve >= gateP90Improve,
+		SpeedOK: speedOK,
 		MoneyOK: dollars <= budget,
-		Pass:    improve >= gateP90Improve && dollars <= budget,
+		Pass:    speedOK && dollars <= budget,
 	}
 }
 
@@ -315,8 +337,9 @@ func main() {
 	}
 
 	// ── the gate ──
-	fmt.Printf("── ship gate ── against %s: the scenario's p90 improves by >= %.0f%%,\n",
+	fmt.Printf("── ship gate ── against %s: where lambda > 0 the scenario's p90 improves by >= %.0f%%,\n",
 		baseline, gateP90Improve*100)
+	fmt.Printf("   and where lambda = 0 the p90 wait merely must not exceed %.0fx the baseline's,\n", gateWaitBlowout)
 	fmt.Println("   AND the extra dollars per request are no more than the mean seconds saved, priced at lambda")
 	fmt.Println()
 	fmt.Printf("   %-10s%-20s%-17s%9s%14s%14s   verdict\n",

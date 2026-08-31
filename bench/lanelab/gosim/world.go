@@ -394,14 +394,18 @@ func (l worldLane) drawRate(draws *rand.Rand) float64 {
 // rather than a fact; the baseline holds no beliefs, so it gets the whole of
 // the capability half and none of the quality half.
 //
-// Two clauses of `sim.py`'s gate are missing here BECAUSE THE SHIPPED GATE DOES
-// NOT HAVE THEM, and that is a finding rather than an omission: the shipped
-// [lane.Facts] carries no `status` field at all, so a lane the router itself
-// marks unhealthy is invisible to this build, and the shipped gate reads
-// [lane.Request.MaxTokens] where `sim.py` reads the answer length. See
-// REPORT.md.
+// ONE CLAUSE OF `sim.py`'s GATE IS STILL MISSING BECAUSE THE SHIPPED GATE DOES
+// NOT HAVE IT, and that is a finding rather than an omission: the shipped gate
+// reads [lane.Request.MaxTokens] where `sim.py` reads the answer length. The
+// other one — the router's own `status` column — WAS missing on both sides
+// until wave 2b, when [lane.Facts] gained the field and the shipped gate began
+// refusing on it; this mirror follows it, so the line this program prints about
+// "the SHIPPED capability gate" is true again. See REPORT.md.
 func capable(l worldLane, s scenario) bool {
 	if s.tools && !l.tools {
+		return false
+	}
+	if l.status != 0 {
 		return false
 	}
 	if want := s.answer(); want > 0 && l.maxOut > 0 && l.maxOut < want {
