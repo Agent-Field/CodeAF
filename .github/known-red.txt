@@ -35,6 +35,7 @@ TestTheSocketMovesWithTheStateRoot
 # failure here.
 TestOnlyADesignsOwnThreadCarriesTheReviseVerb
 TestInterruptedTurnDoesNotWakeOnTheNoteItDrained
+TestAChangeWithdrawsTheCardRewritesThePageAndAsksAgain
 
 # The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
 # had only been able to say "four cmd/harness-design tests".
