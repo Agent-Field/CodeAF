@@ -384,6 +384,58 @@ func laneAuto(model string, views []laneView, now time.Time) string {
 // call site changing, which is the whole reason it is a function.
 func laneSlotFor(string) string { return talkSlot }
 
+// laneSlotForRow is the lane slot ONE SETTINGS ROW answers for, and empty for a
+// row that has no machine to name. It is [laneSlotFor]'s row-side twin and the
+// whole map: the registry carries exactly one lane row ([config.LaneSlotTalk]),
+// so the conversation's model row folds and the media slots — drawing,
+// speaking, looking — do not, because there is no lane row their enter could
+// write and no sheet of lanes published for them. A second lane slot is one
+// case here and no new list anywhere.
+func laneSlotForRow(key string) string {
+	if key == config.ModelSettingKey(talkSlot) {
+		return talkSlot
+	}
+	return ""
+}
+
+// armLanes gives one open picker everything it needs to DRAW lanes and to WRITE
+// one: the slot its enter would write, the pin that slot is at, the promise the
+// speed guard is making, and this terminal's glyphs.
+//
+// EVERY ONE OF THEM IS A SNAPSHOT, for the reason the model in use is: they
+// answer "what am I on", and none of them can change while a modal list owns
+// the keyboard.
+//
+// A list nobody arms folds nothing, which is the honest reading of "this row
+// has no machine to choose" — a task's model, a role, a media slot.
+func (a *app) armLanes(p *picker, slot string) {
+	if slot == "" {
+		return
+	}
+	p.laneSlot = slot
+	p.pin = config.LaneAt(a.profileDir, slot)
+	p.guard = config.LaneGuardAt(a.profileDir)
+	p.ascii = a.pal.ascii
+}
+
+// applyLaneChoice is enter on a row INSIDE an open fold: the lane the cursor is
+// on, written for the model that fold belongs to.
+//
+// It is one function because the fold now has two doors — /model
+// (palette.go's [app.pickerKey]) and the settings panel's model and lane rows
+// (settings.go's [app.sheetSelectKey]) — and a pin written two ways is a pin
+// that drifts the first time one of the two is fixed.
+func (a *app) applyLaneChoice(model string, row pickRow, lanes []laneView) {
+	switch {
+	case row.lane == laneAutoAt:
+		a.clearLanePin(model)
+	case row.lane == laneRoutAt:
+		a.setLaneRouterOnly(model)
+	case row.lane >= 0 && row.lane < len(lanes):
+		a.pinLane(model, lanes[row.lane].Name)
+	}
+}
+
 // ── THE WORDS ───────────────────────────────────────────────────────────────
 
 // laneSecondsWord is a wait in seconds, one decimal: `0.8s`. Nothing at all for
@@ -772,10 +824,20 @@ func laneNamed(views []laneView, word string) (laneView, bool) {
 // nothing. Over a connection the profile is the far machine's, so the note is
 // the honest half of the truth rather than a claim about a file this laptop
 // never has.
+//
+// AND "OVER A CONNECTION" IS [app.hosted] AND NOT AN EMPTY PROFILE PATH. These
+// three sites read the empty string as "no profile", which is the one thing it
+// has never meant in internal/config: `AFORGE_PROFILE_DIR` unset is the
+// ORDINARY launch, and every reader and writer in that package resolves an
+// empty directory to ~/.aforge. So a pin from the picker, and `/model
+// @cloudflare`, refused to write on every machine nobody had exported that
+// variable on — while the settings row beside them wrote fine, because it goes
+// through the registry, which passes the same empty string down. One fact, two
+// spellings of "where does this land", and only one of them was right.
 func (a *app) pinLane(model, name string) {
 	slot := laneSlotFor(model)
-	if a.profileDir == "" {
-		a.note("this session has no profile to keep a lane in")
+	if a.hosted() {
+		a.note(a.host + " owns the lane · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, slot, name); err != nil {
@@ -790,8 +852,8 @@ func (a *app) pinLane(model, name string) {
 
 // clearLanePin puts the row back to auto.
 func (a *app) clearLanePin(model string) {
-	if a.profileDir == "" {
-		a.note("this session has no profile to keep a lane in")
+	if a.hosted() {
+		a.note(a.host + " owns the lane · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, laneSlotFor(model), config.LaneAuto); err != nil {
@@ -808,8 +870,8 @@ func (a *app) clearLanePin(model string) {
 // the routing row — [config.KeyRouting] is about every request this session
 // makes, and this is about the machines behind one model.
 func (a *app) setLaneRouterOnly(model string) {
-	if a.profileDir == "" {
-		a.note("this session has no profile to keep a lane in")
+	if a.hosted() {
+		a.note(a.host + " owns the lane · change it on that machine")
 		return
 	}
 	if err := config.SetLane(a.profileDir, laneSlotFor(model), config.LaneOpenRouter); err != nil {
@@ -832,11 +894,12 @@ func (a *app) setLaneRouterOnly(model string) {
 // setting a person is looking at.
 //
 // A SURFACE OVER A CONNECTION WRITES NOTHING HERE, because it has already
-// written nothing at all: the pin sites above refuse a session with no profile
-// directory, which is exactly the hosted case, and the far machine's own
-// launch resolved its own row.
+// written nothing at all: the pin sites above refuse a hosted session, and the
+// far machine's own launch resolved its own row. It is [app.hosted] and not an
+// empty profile path for the reason stated over [app.pinLane] — an empty path
+// is the ordinary launch, not the absence of one.
 func (a *app) laneRowChanged() {
-	if a.profileDir == "" {
+	if a.hosted() {
 		return
 	}
 	slot := laneSlotFor(a.model)

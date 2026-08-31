@@ -1345,18 +1345,28 @@ there is no share of the frame to set, and a row that could only refuse is not s
 order:
 
 1. **your model** — the model you are talking to. It is the conversation slot, and picking
-   here is the same road `/model` takes.
-2. **crew** — the four below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
+   here is the same road `/model` takes — the same picker, lanes and all. Its value carries
+   the machine serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
+2. **lane** — which endpoint behind that model answers you. enter opens the machines with
+   what has been measured of each, and enter on one pins it.
+3. **speed guard** — whether an answer slow to start is asked of the next-best machine as
+   well.
+4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
+   With `off` nothing is measured, so the two rows above it have no machine to name.
+5. **crew** — the four below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
    row: enter or space walks it. Answer any of the four yourself and it reads `custom`.
-3. **reflex** — `near-free · reads every turn — memory, titles, safety`
-4. **small work** — `cheap · does the bulk work — run nodes, digests`
-5. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
-6. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-7. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
-   aforge makes for itself, grouped under its class. Those rows come from the running binary
-   rather than the settings registry.
+6. **reflex** — `near-free · reads every turn — memory, titles, safety`
+7. **small work** — `cheap · does the bulk work — run nodes, digests`
+8. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+9. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
+10. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+    aforge makes for itself, grouped under its class. Those rows come from the running binary
+    rather than the settings registry.
 
-Then the rest of the tab: "looking", "reading", "routing", "reply guard" — whether a reply
+The four machine rows lead because the endpoint serving your model is part of the same
+decision as the model, and they used to sit at the foot of the tab, forty rows below it.
+
+Then the rest of the tab: "looking", "reading", "reply guard" — whether a reply
 that has come apart is cut and asked again, on by default (see *Models, context, and what
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
@@ -1389,7 +1399,15 @@ hear, and everything else follows the general chat rule. Its legend is
 `↑↓ move · enter choose · esc cancel · type to filter`.
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
-and its ctrl+t effort knob is true here too.
+and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
+them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
+cursor and `enter` on one pins it, exactly as under `/model`, and the legend says
+`↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`. The media slots
+have no lane row behind them, so nothing unfolds there and the legend does not offer the
+key.
+
+While any of those layers is up — the value box, the model picker, the key box on the
+Connections tab — the foot drops `tab next place`, because the layer has taken that key.
 
 ## The roles rows in settings — pinning a role, and del to unpin
 

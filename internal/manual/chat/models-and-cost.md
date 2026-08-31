@@ -67,6 +67,13 @@ Type to filter. The keys:
 you have typed; with characters to step over they move the caret through the filter
 instead. `tab` always opens and closes.
 
+**This is one list with two doors.** `/model` opens it, and so does the **your model**
+row at the top of the Providers tab in `/settings` — the same rows, the same filter
+grammar, the same lanes under `→`, and `enter` on a lane pins it either way. The media
+slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
+component over their own models, but they have no lane row behind them, so nothing
+unfolds under them and the foot does not offer the key.
+
 The cursor opens **on the model in use**, which is also the marked row, so enter with
 nothing typed confirms rather than changes.
 
@@ -1305,7 +1312,9 @@ Where a model publishes no price, no cap is sent at all rather than one guessed 
 
 Setting **routing** yourself overrides all of that everywhere: `latency` asks for the fastest endpoint (still under the price cap) for every call including background work, `price` asks for the cheapest for every call including your own turns, and `off` sends no preference and stops timing endpoints. A change lands on the next session.
 
-**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row beside it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
+**You can also name the endpoint yourself.** routing says what a request prefers; the **lane** row above it, and `→` on a row in the model picker, say which provider your conversation actually goes to — see "choose a provider" above.
+
+With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
@@ -1318,8 +1327,23 @@ model you picked.
 
 aforge calls one of those endpoints a **lane**, and you can see them and choose one.
 
-In the model picker (`/model`), press `→` or `tab` on a row and the model's lanes open
-underneath it:
+**Three rows on the Providers tab of `/settings` sit directly under **your model**, in
+that order** — **lane**, **speed guard**, **routing** — because the machine that serves
+your model is part of the same decision as the model:
+
+```
+ your model    deepseek/deepseek-v4-flash · auto (cloudflare now)
+ lane          auto
+ speed guard   on
+ routing       latency
+```
+
+The tail on the model row is the machine: `auto (cloudflare now)` when the choosing is
+left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have asked for
+no endpoint at all. A session that has measured nothing shows the model id alone.
+
+In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
+`tab` on a row and the model's lanes open underneath it:
 
 ```
  deepseek-v4-flash        1M · $0.09/$0.18 per M · ▲0.8s 58t/s · via cloudflare
@@ -1340,6 +1364,12 @@ and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no
 at all and lets the router balance on price. If the lanes were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a lane under a name
 means you want that name served from there.
+
+`enter` on the **lane** row opens that same fold directly, on the model you are talking
+to, with the cursor already on the lane in force — so choosing an endpoint is reading
+the measured numbers and pressing enter, never guessing at a word. When nothing has been
+measured there are no machines to list, and the row walks between the only two honest
+answers instead: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
@@ -1426,7 +1456,8 @@ is kept, so a rescue is also a free measurement.
 
 ## Speed guard — what it costs and when to turn it off
 
-**speed guard** is a row on the Providers tab of the settings panel, and it is **on**.
+**speed guard** is a row on the Providers tab of the settings panel, directly under
+**lane** and two rows under your model, and it is **on**.
 
 It hedges **at most one extra call** per answer and stays under **a tenth** of what the
 session spends. It does nothing under `routing: price` — nobody is buying seconds there —

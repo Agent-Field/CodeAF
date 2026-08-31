@@ -1718,7 +1718,9 @@ func (s *Settings) build() []Setting {
 				"memory pass. Choosing here overrides that everywhere: latency asks for the " +
 				"fastest one for everything and times every answer, demoting an endpoint that " +
 				"keeps being slow; price asks for the cheapest for everything; off asks for " +
-				"nothing and measures nothing. A change lands on the next session.",
+				"nothing and measures nothing — and with nothing measured there is no lane " +
+				"to choose, no sheet of them to open and no speed guard. A change lands on " +
+				"the next session.",
 			read:  func() string { return RoutingAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
@@ -1734,8 +1736,9 @@ func (s *Settings) build() []Setting {
 				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
 				"else is asked; `pinned: cloudflare, borrow when slow` keeps the pin but lets " +
 				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
-				"lets the router balance on price. The picker under /model lists them with " +
-				"their measured speeds; → on a row opens them.",
+				"lets the router balance on price. enter on this row opens them with what " +
+				"has been measured of each, and so does → on a model row in the picker — " +
+				"under /model and under `your model` in the settings panel alike.",
 			read:  func() string { return LaneRowWord(dir, LaneSlotTalk) },
 			write: func(raw string) error { return WriteLaneRow(dir, LaneSlotTalk, raw) },
 		},

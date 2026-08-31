@@ -350,38 +350,210 @@ func TestSlashModelPinsAndUnpinsTheLane(t *testing.T) {
 	}
 }
 
+// AN EMPTY PROFILE PATH IS THE ORDINARY LAUNCH AND NOT THE ABSENCE OF ONE.
+// `AFORGE_PROFILE_DIR` is unset on almost every machine, and internal/config
+// resolves the empty string to the default profile for every read and every
+// write in the package. A pin that read it as "nowhere to write" refused on
+// every machine anybody actually runs — while the settings row beside it wrote
+// fine, because the registry passes that same empty string down.
+func TestPinningWritesOnTheProfilePathNobodySet(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := pickerApp(t, &fakeAgent{model: flash}, laneCatalog)
+	a.profileDir = ""
+	typeLine(t, a, "/model")
+
+	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	if name, pinned := config.LanePinned("", talkSlot); !pinned || name != "Cloudflare" {
+		t.Fatalf("the default profile holds %q (pinned=%v)", name, pinned)
+	}
+}
+
+// AND A SURFACE OVER A CONNECTION STILL WRITES NOTHING, which is what that
+// guard was reaching for: the profile this laptop can touch is not the one the
+// far machine resolved its own lane row out of.
+func TestAHostedSurfacePinsNothing(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.host = "blackmac"
+	typeLine(t, a, "/model")
+
+	drive(t, a, key("right"), key("down"), key("down"), key("enter"))
+	if _, pinned := config.LanePinned(a.profileDir, talkSlot); pinned {
+		t.Fatal("a hosted surface wrote a lane pin into this machine's profile")
+	}
+}
+
 // ── 5. the settings rows ────────────────────────────────────────────────────
 
-// THE LANE ROW WALKS ITS FOUR ANSWERS and writes each of them where the picker
-// reads them from, and the speed guard is a plain on/off beside it.
-func TestTheSettingsLaneRowWalksAutoPinnedBorrowAndOpenrouter(t *testing.T) {
-	laneLab(t, threeLanes())
+// laneSheet is the settings panel open on the Providers tab, over a profile of
+// its own, on a frame wide enough to draw a lane row whole.
+func laneSheet(t *testing.T) (*app, string) {
+	t.Helper()
 	a, dir := sheetApp(t)
+	a.width = 120
 	a.model = flash
+	a.sheet.sessionModel = flash
 	a.models = func() []Model { return laneCatalog }
 	a.openSettings()
 	for i := 0; i < 4; i++ {
 		drive(t, a, key("right")) // Providers
 	}
+	return a, dir
+}
+
+// THE THREE ROWS THAT NAME A MACHINE SIT DIRECTLY UNDER THE MODEL, and not at
+// the foot of the tab under forty rows of roles: a person who has just changed
+// their model is exactly the person deciding which endpoint serves it.
+func TestTheLaneRowsSitUnderTheModelRow(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, _ := laneSheet(t)
+
+	want := []string{
+		config.ModelSettingKey(talkSlot),
+		config.LaneSettingKey(talkSlot),
+		config.KeyLaneGuard,
+		config.KeyRouting,
+	}
+	got := make([]string, 0, len(want))
+	for _, item := range a.sheet.items {
+		if !item.heading() && len(got) < len(want) {
+			got = append(got, item.row.Key)
+		}
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("the tab opens on %v, want %v", got, want)
+	}
+	// AND ON ONE TAB ONLY. A row a person can meet in two places is two places
+	// to look for one answer.
+	for _, key := range want[1:] {
+		seen := 0
+		for _, row := range a.sheet.rows {
+			if meta, ok := settingMetaFor(row); ok && row.Key == key && meta.tab != "" {
+				seen++
+			}
+		}
+		if seen != 1 {
+			t.Fatalf("row %q is placed on %d tabs", key, seen)
+		}
+	}
+}
+
+// THE MODEL ROW IN SETTINGS OPENS THE PICKER /model OPENS — machines and all.
+// `→` unfolds the lanes with this ledger's own numbers, and the fold is the
+// same three rungs: auto, the machines, openrouter.
+func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, _ := laneSheet(t)
+
+	cursorTo(t, a, config.ModelSettingKey(talkSlot))
+	drive(t, a, key("enter"))
+	if a.sheet.sel == nil {
+		t.Fatal("enter on the model row opened no picker")
+	}
+	if a.sheet.sel.pick.laneSlot != talkSlot {
+		t.Fatalf("the model row's picker is armed for lane slot %q", a.sheet.sel.pick.laneSlot)
+	}
+	drive(t, a, key("right"))
+	if got := a.sheet.sel.pick.unfold; got != flash {
+		t.Fatalf("→ in the settings picker left the fold at %q", got)
+	}
+	screen := strings.Join(sheetLabels(a), "\n")
+	for _, want := range []string{
+		"auto", "picks the fastest lane each answer",
+		"cloudflare", "0.8s", "58 t/s", "no tools",
+		"coreweave", "0.4s", "deepinfra", "out ≤ 65k",
+		"openrouter", "let the router balance on price",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
+		}
+	}
+	// AND THE FOOT SAYS THE KEY IS THERE, which is the only place this list
+	// explains itself.
+	if !strings.Contains(a.sheet.keysLine(), "tab lanes") {
+		t.Fatalf("the hint does not offer the fold: %q", a.sheet.keysLine())
+	}
+	// `←` closes it again, from the start of an empty filter box.
+	drive(t, a, key("left"))
+	if a.sheet.sel.pick.unfold != "" {
+		t.Fatal("← left the lanes open")
+	}
+}
+
+// AND ENTER ON A LANE INSIDE THAT FOLD PINS IT, exactly as it does under
+// /model — one list, one gesture, one write.
+func TestEnterOnALaneInTheSettingsPickerPins(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, dir := laneSheet(t)
+
+	cursorTo(t, a, config.ModelSettingKey(talkSlot))
+	drive(t, a, key("enter"), key("right"), key("down"), key("down"))
+	row, on := a.sheet.sel.pick.laneUnder()
+	if !on || row.lane != 0 {
+		t.Fatalf("the cursor is not on the first machine: %+v (on=%v)", row, on)
+	}
+	drive(t, a, key("enter"))
+	if a.sheet.sel != nil {
+		t.Fatal("enter on a lane left the list open")
+	}
+	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
+		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
+	}
+	// The row and the model row's tail are two readings of one fact, and both
+	// of them say so on the very next frame.
+	if !sheetHas(a, "pinned: Cloudflare") || !sheetHas(a, "· pinned: cloudflare") {
+		t.Fatalf("the panel did not re-read the pin it just wrote:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+}
+
+// ENTER ON THE `lane` ROW OPENS THE MACHINES rather than walking four words
+// blind: the same fold, on the model in use, with the cursor on the lane in
+// force — which with nothing pinned is `auto`.
+func TestTheLaneRowOpensTheMachines(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, dir := laneSheet(t)
 
 	cursorTo(t, a, config.LaneSettingKey(talkSlot))
 	if !sheetHas(a, "lane") {
 		t.Fatal("the providers tab has no lane row")
 	}
 	drive(t, a, key("enter"))
-	if got := config.LaneRowWord(dir, talkSlot); got != "pinned: Cloudflare" {
-		t.Fatalf("the first step of the walk wrote %q", got)
+	if a.sheet.sel == nil {
+		t.Fatal("enter on the lane row opened no list of machines")
 	}
+	if got := a.sheet.sel.pick.unfold; got != flash {
+		t.Fatalf("the lane row opened the fold at %q", got)
+	}
+	row, on := a.sheet.sel.pick.laneUnder()
+	if !on || row.lane != laneAutoAt {
+		t.Fatalf("the list did not open on the lane in force: %+v (on=%v)", row, on)
+	}
+	// Walking to a machine and pressing enter pins it, and nothing about the
+	// model changed on the way.
+	drive(t, a, key("down"), key("enter"))
+	if name, pinned := config.LanePinned(dir, talkSlot); !pinned || name != "Cloudflare" {
+		t.Fatalf("the profile holds %q (pinned=%v)", name, pinned)
+	}
+	if a.model != flash {
+		t.Fatalf("choosing a lane changed the model to %q", a.model)
+	}
+}
+
+// AND WITH NOTHING MEASURED IT WALKS, because auto and openrouter are honestly
+// the only two answers there are without a machine to name. The speed guard is
+// a plain on/off beside it either way.
+func TestTheLaneRowWalksWhenNothingIsMeasured(t *testing.T) {
+	laneLab(t, nil)
+	a, dir := laneSheet(t)
+
+	cursorTo(t, a, config.LaneSettingKey(talkSlot))
 	drive(t, a, key("enter"))
-	if got := config.LaneRowWord(dir, talkSlot); got != "pinned: Cloudflare, borrow when slow" {
-		t.Fatalf("the second step wrote %q", got)
+	if a.sheet.sel != nil {
+		t.Fatal("a session that has measured nothing opened a list of machines")
 	}
-	if !config.LaneBorrowAt(dir, talkSlot) {
-		t.Fatal("borrow when slow did not reach the profile")
-	}
-	drive(t, a, key("enter"))
 	if got := config.LaneAt(dir, talkSlot); got != config.LaneOpenRouter {
-		t.Fatalf("the third step wrote %q", got)
+		t.Fatalf("the first step of the walk wrote %q", got)
 	}
 	drive(t, a, key("enter"))
 	if got := config.LaneAt(dir, talkSlot); got != config.LaneAuto {
@@ -396,6 +568,48 @@ func TestTheSettingsLaneRowWalksAutoPinnedBorrowAndOpenrouter(t *testing.T) {
 	drive(t, a, key("enter"))
 	if config.LaneGuardAt(dir) {
 		t.Fatal("enter did not turn the speed guard off")
+	}
+}
+
+// A LEDGER THAT KNOWS NOTHING DRAWS NOTHING LANE-ISH ANYWHERE ON THIS PANEL:
+// no tail on the model row, no fold under it in the picker, and no `→ lanes`
+// in the hint offering a key that would do nothing.
+func TestTheSettingsPanelDrawsNoLanesWhenNothingIsKnown(t *testing.T) {
+	laneLab(t, nil)
+	a, _ := laneSheet(t)
+
+	for _, unwanted := range []string{"auto (", "pinned:", "via ", "▲"} {
+		if sheetHas(a, unwanted) {
+			t.Fatalf("an empty ledger drew %q:\n%s", unwanted, strings.Join(sheetLabels(a), "\n"))
+		}
+	}
+	cursorTo(t, a, config.ModelSettingKey(talkSlot))
+	drive(t, a, key("enter"), key("right"))
+	if a.sheet.sel == nil {
+		t.Fatal("the model row opened no picker")
+	}
+	if a.sheet.sel.pick.unfold != "" {
+		t.Fatalf("→ unfolded %q on a ledger that believes nothing", a.sheet.sel.pick.unfold)
+	}
+}
+
+// A MEDIA SLOT HAS NO LANE ROW BEHIND IT, so its picker is armed with nothing
+// and folds nothing — the emptiness law, and the one reason the fold is a slot
+// and not a door.
+func TestAMediaSlotPickerHasNoLanes(t *testing.T) {
+	laneLab(t, threeLanes())
+	a, _ := laneSheet(t)
+
+	cursorTo(t, a, config.KeyVisionModel)
+	drive(t, a, key("enter"))
+	if a.sheet.sel == nil {
+		t.Fatal("the looking row opened no picker")
+	}
+	if a.sheet.sel.pick.laneSlot != "" {
+		t.Fatalf("the looking row's picker is armed for lane slot %q", a.sheet.sel.pick.laneSlot)
+	}
+	if strings.Contains(a.sheet.keysLine(), "tab lanes") {
+		t.Fatalf("the hint offers a fold the looking row does not have: %q", a.sheet.keysLine())
 	}
 }
 
