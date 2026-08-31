@@ -118,6 +118,13 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		what: "a compaction pass",
 		news: PhaseNews{Phase: provider.PhaseTidying, Since: ago(6 * time.Second)},
 		want: "tidying · 6s",
+	}, {
+		// THE MARK'S OWN READING, which is a different wait from `checking`: a
+		// second mind weighing the whole ask against what has been done, in the
+		// middle of the work rather than at the end of an answer.
+		what: "the reading a turn stops for at a mark",
+		news: PhaseNews{Phase: provider.PhaseTakingStock, Since: ago(14 * time.Second)},
+		want: "taking stock · 14s",
 	}} {
 		news := c.news
 		news.Model, news.Role = phaseModel, lane.RoleTalk
@@ -229,6 +236,31 @@ func TestAStalePhaseDrawsNothing(t *testing.T) {
 	}
 	if got := a.servedRider(); strings.Contains(got, "thinking") {
 		t.Fatalf("a dead layer left a clock running: %q", got)
+	}
+}
+
+// AND A STAGE THAT IS STILL RUNNING IS STILL DRAWN, however long it runs.
+//
+// The window above is one half of a bargain and this is the other: every posting
+// layer says its phase again while it lasts — a request off its own stream, a
+// turn's stage off a timer (internal/session's phaseHeldBeat) — so what the desk
+// judges is the moment it was last HEARD and never the moment the stage began.
+// A quarter-hour reading that beats is a quarter-hour clock on the screen; the
+// measured defect was the same reading drawn for fifteen seconds of it.
+func TestAStageThatKeepsSayingItselfIsNeverDropped(t *testing.T) {
+	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
+	a := phaseApp(t, now)
+
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseChecking, Since: now.Add(-15 * time.Minute),
+		Model: phaseModel, Role: lane.RoleTalk, At: now.Add(-time.Second),
+	})
+	live, ok := a.livePhase()
+	if !ok {
+		t.Fatal("a stage said again a second ago was dropped as stale")
+	}
+	if got := phaseWords(live, now); got != "checking · 15m 0s" {
+		t.Fatalf("the stage reads %q, want the whole quarter of an hour it has run", got)
 	}
 }
 

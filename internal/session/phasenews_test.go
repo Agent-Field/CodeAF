@@ -124,19 +124,29 @@ func TestATurnsPhasesArriveInOrderAndEveryOneIsClosed(t *testing.T) {
 	// phase is the end of a story; a second one changes nothing, which is why
 	// the turn's own deferred end is free to fire after the last gate has
 	// already closed its own.
-	open := false
-	for index, one := range news {
+	//
+	// A REPEAT OF THE SAME PHASE FROM THE SAME MOMENT IS THE BEAT AND NOT A NEW
+	// STAGE (phasenews.go's [phaseHeldBeat]). A held stage says itself again
+	// while it lasts, and it is the SAME sentence each time — same word, same
+	// start — so what this law is really about is a DIFFERENT phase begun while
+	// one was still open, and that is what it now says.
+	var open *PhaseNews
+	for index := range news {
+		one := news[index]
 		if one.Phase == "" {
-			open = false
+			open = nil
 			continue
 		}
-		if open {
+		if open != nil {
+			if one.Phase == open.Phase && one.Since.Equal(open.Since) {
+				continue
+			}
 			t.Fatalf("post %d opened a phase over the top of one still running; phases were %v",
 				index, phaseWords(news))
 		}
-		open = true
+		open = &news[index]
 	}
-	if open {
+	if open != nil {
 		t.Fatalf("the turn ended with a clock still running; phases were %v", phaseWords(news))
 	}
 }
@@ -337,5 +347,103 @@ func TestACompactionPassIsVisibleWhileItRuns(t *testing.T) {
 	}
 	if !tidying {
 		t.Fatalf("the pass drew no clock; phases were %v", phaseWords(log.all()))
+	}
+}
+
+// ── THE BEAT ────────────────────────────────────────────────────────────────
+
+// heldSince is how many times one phase was said, and the moment every one of
+// those posts counted from. A held phase says itself again while it lasts and
+// every repeat is the SAME sentence, so a second start moment in this set is the
+// beat restarting a stage rather than continuing it.
+func heldSince(news []PhaseNews, phase provider.Phase) (said int, starts map[time.Time]bool) {
+	starts = map[time.Time]bool{}
+	for _, one := range news {
+		if one.Phase != phase {
+			continue
+		}
+		said++
+		starts[one.Since] = true
+	}
+	return said, starts
+}
+
+// TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds is the defect this beat was
+// written for, measured: the route judge at the end of a turn — one
+// tellPhase(PhaseChecking, …) in loop.go — ran for a quarter of an hour and the
+// screen drew it for fifteen seconds, because a surface drops a phase it has not
+// heard again for [provider.PhaseWindow] and nothing in this package was saying
+// it again.
+//
+// The beat is shortened to milliseconds here for the obvious reason: what is
+// being proved is that a HELD phase repeats and a FINISHED one does not, and
+// neither of those facts is about the length of the interval.
+func TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds(t *testing.T) {
+	log := watchPhases(t)
+	held := phaseHeldBeat
+	phaseHeldBeat = 2 * time.Millisecond
+	t.Cleanup(func() { phaseHeldBeat = held })
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	// A STAGE THAT HAS ALREADY OUTLASTED THE WINDOW. This is the shape the
+	// quarter-hour reading had: begun long ago, still running, and owed a clock
+	// that says how long it has really been.
+	began := time.Now().Add(-provider.PhaseWindow - time.Minute)
+	agent.tellPhase(provider.PhaseChecking, "whether the work is finished", began)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if said, _ := heldSince(log.all(), provider.PhaseChecking); said >= 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			said, _ := heldSince(log.all(), provider.PhaseChecking)
+			t.Fatalf("a stage held open said itself %d times; a surface drops one it has not heard for %s",
+				said, provider.PhaseWindow)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// AND EVERY BEAT IS THE SAME STAGE, counting from where it really began. A
+	// beat that moved the start would draw a clock that restarted every few
+	// seconds, which reads as work going round in circles rather than work
+	// lasting.
+	_, starts := heldSince(log.all(), provider.PhaseChecking)
+	if len(starts) != 1 {
+		t.Fatalf("the stage was said from %d different starts, want the one it began at", len(starts))
+	}
+	if !starts[began] {
+		t.Fatalf("the beat re-said the stage from a start of its own, not from %s", began)
+	}
+
+	agent.endPhase()
+	settled, _ := heldSince(log.all(), provider.PhaseChecking)
+	// SEVERAL BEATS' WORTH OF SILENCE. A beat that outlived its phase would put
+	// a finished stage back on the screen for a whole window, which is the same
+	// defect as a stale clock and harder to see.
+	time.Sleep(20 * time.Millisecond)
+	if after, _ := heldSince(log.all(), provider.PhaseChecking); after != settled {
+		t.Fatalf("the beat said the stage %d more times after it ended", after-settled)
+	}
+	last := log.all()
+	if len(last) == 0 || last[len(last)-1].Phase != "" {
+		t.Fatalf("the stage did not take itself off the screen; phases were %v", phaseWords(last))
+	}
+}
+
+// TestTheBeatIsComfortablyInsideTheWindowASurfaceDrops is the one-source-of-truth
+// law between two packages, checked rather than commented.
+//
+// internal/tui3 draws nothing for a phase it has not heard again for
+// [provider.PhaseWindow]. A beat at or near that window is a stage that blinks
+// on a busy frame; a beat past it is a stage that goes dark while it is still
+// running, which is the whole defect.
+func TestTheBeatIsComfortablyInsideTheWindowASurfaceDrops(t *testing.T) {
+	if phaseHeldBeat <= 0 {
+		t.Fatalf("phaseHeldBeat = %s, which is not a beat at all", phaseHeldBeat)
+	}
+	if phaseHeldBeat*2 >= provider.PhaseWindow {
+		t.Fatalf("phaseHeldBeat = %s against a %s window: a single dropped beat takes a live stage "+
+			"off the screen", phaseHeldBeat, provider.PhaseWindow)
 	}
 }

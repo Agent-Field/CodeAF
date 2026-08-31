@@ -50,15 +50,19 @@ type PhaseNews = session.PhaseNews
 
 // phaseWindow is how long a phase still describes the present.
 //
-// A POSTING LAYER THAT DIED MUST NOT LEAVE A CLOCK RUNNING. Every live phase
-// says itself again about once a second while it lasts (internal/provider's
-// phaseBeat), so fifteen seconds is a very wide margin on a heartbeat that
-// quick — wide enough that a busy frame or a slow machine never blinks the
-// segment, and short enough that a request whose goroutine was killed without
-// posting its end takes the clock off the screen while a person is still
-// looking at it. Past it the segment draws nothing and the older readings
-// underneath take over again.
-const phaseWindow = 15 * time.Second
+// A POSTING LAYER THAT DIED MUST NOT LEAVE A CLOCK RUNNING, and a layer that is
+// STILL ALIVE must not be dropped. Both halves are one bargain, so the number is
+// the posting side's own ([provider.PhaseWindow]) rather than a second figure
+// kept here: a window this file could tune on its own is a stage that goes dark
+// while it is still running, which is exactly what a quarter-hour route judge
+// did on the screen before the beats were derived from it.
+//
+// EVERY LIVE PHASE SAYS ITSELF AGAIN WHILE IT LASTS — a request off its own
+// stream, once a second (internal/provider's phaseBeat), and a turn's own stage
+// off a timer, every third of this window (internal/session's phaseHeldBeat) —
+// so fifteen seconds is a wide margin on either, and past it the segment draws
+// nothing and the older readings underneath take over again.
+const phaseWindow = provider.PhaseWindow
 
 // phaseNewsMsg wakes the loop so a frame is drawn for a phase that changed
 // somewhere other than a keystroke. It carries nothing — [PostPhaseNews] has
@@ -178,6 +182,7 @@ func (a *app) livePhase() (PhaseNews, bool) {
 //	stalled 9s · switching to parasail
 //	running go test · 41s
 //	checking · 3s
+//	taking stock · 14s
 //	tidying · 6s
 //
 // EVERY PART IS DROPPED WHEN IT IS NOT KNOWN, which is the emptiness law read
@@ -275,7 +280,13 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// worker" is the sentence that tells somebody watching their turn stop
 		// what is about to happen to it.
 		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
-	case provider.PhaseChecking, provider.PhaseTidying:
+	case provider.PhaseChecking, provider.PhaseTidying, provider.PhaseTakingStock:
+		// THREE WORDS WITH ONE SHAPE: a stage named by nothing but itself, and
+		// the clock a person is reading it against. `taking stock` shares the arm
+		// because it shares that shape, not because it means the same thing —
+		// what it means is on the manual's own page and in the phase's doc
+		// comment, and a third arm with an identical body is the second one
+		// drifting the first time somebody improves either.
 		return []rowField{rowSay(word), rowSay(countUpWord(since))}
 	}
 	// A PHASE THIS SURFACE HAS NEVER HEARD OF DRAWS NOTHING, rather than its own
