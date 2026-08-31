@@ -67,6 +67,12 @@ type picker struct {
 	// at the top of them.
 	lanes []laneView
 	first string
+	// auto is the lane the CHOOSER would send the next turn to, taken with the
+	// views at the moment the fold opened. It is not [bestLane]'s answer and
+	// must not be: this file's own sort orders the rows a person reads, and the
+	// chooser decides where a request goes — and the `auto` row is a claim about
+	// the second of those. Empty when nothing is believed, which draws no name.
+	auto string
 	// pin is the lane this conversation is held to, empty for auto. It is a
 	// snapshot taken when the list opened, exactly as current is, and for the
 	// same reason: it answers "what am I on", which cannot change while a modal
@@ -210,7 +216,7 @@ func (p *picker) rank() {
 	tokens, terms := splitQuery(p.filter.String())
 	now := timeNow()
 	p.hits = p.hits[:0]
-	p.unfold, p.lanes, p.first = "", nil, ""
+	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
 	for i, id := range p.lower {
 		if len(terms) > 0 && !keepsLanes(p.all[i], terms, now) {
 			continue
@@ -413,7 +419,7 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 			views = lifted
 		}
 	}
-	p.unfold, p.lanes, p.first = model.ID, views, first
+	p.unfold, p.lanes, p.first, p.auto = model.ID, views, first, laneAuto(model.ID, views, now)
 	return true
 }
 
@@ -423,7 +429,7 @@ func (p *picker) fold() bool {
 	if p.unfold == "" {
 		return false
 	}
-	p.unfold, p.lanes, p.first = "", nil, ""
+	p.unfold, p.lanes, p.first, p.auto = "", nil, "", ""
 	return true
 }
 
@@ -1077,8 +1083,13 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		return p.rowText(model, dial, width)
 	case laneAutoAt:
 		note := laneAutoNote
-		if best, ok := bestLane(p.lanes); ok {
-			note += " — " + strings.ToLower(best.Name) + " now"
+		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto picks
+		// the fastest lane each answer — coreweave now" is a claim about where
+		// the NEXT REQUEST would go, and only the chooser answers that; the
+		// order the rows are drawn in is this file's own reading of the same
+		// beliefs and is allowed to differ.
+		if p.auto != "" {
+			note += " — " + strings.ToLower(p.auto) + " now"
 		}
 		note += " · recommended"
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
