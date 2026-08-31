@@ -59,6 +59,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -353,7 +354,13 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 		// IntentBackground is the same fact aimed at the router: a pass that runs
 		// six hours from now is not waiting on the fastest endpoint, it is
 		// waiting on the cheapest one.
-		provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+		// And the role, which is the same fact said where the table can price it:
+		// a consolidation is the memory reflex's slow half, unattended and
+		// judged on nothing but whether its answer is usable (internal/lane's
+		// roles.go).
+		provider.WithRole(
+			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			lane.RoleMemory),
 		[]ai.Message{
 			textMessage("system", consolidatePrompt),
 			textMessage("user", consolidateListing(batch)),

@@ -74,6 +74,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -1017,7 +1018,14 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		//
 		// IntentBackground says the same thing to the router — nobody is
 		// waiting, so route on price rather than on speed.
-		callCtx := provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground)
+		//
+		// And the role says both of those once, in the vocabulary the router and
+		// the phase clock share: a standing run has no one in front of it, so
+		// its wait is worth nothing and its stream is nobody's to watch
+		// (internal/lane's roles.go).
+		callCtx := provider.WithRole(
+			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
+			lane.RoleStanding)
 		if rung := effort.Resolve(effort.Scope{
 			Task: restoredRung(judgment.Item.Does.Effort),
 			Role: effort.RoleSentinel,

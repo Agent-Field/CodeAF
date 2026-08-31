@@ -634,24 +634,28 @@ func TestTheModelRowInSettingsNamesTheLane(t *testing.T) {
 
 // THE THREE READINGS OF THE SERVED SEGMENT, driven through the hook the layer
 // that sends an answer will post on ([PostLaneNews]).
+//
+// Every post names [lane.RoleTalk], because the rider draws only for a role
+// somebody is reading and an unnamed role is a hidden errand by construction
+// (see [LaneNews.Role]). The test right below states that half.
 func TestTheStatusLineSaysWhoServedWhatIsBeingTriedAndWhatWasRescued(t *testing.T) {
 	laneLab(t, threeLanes())
 	a := laneApp(t)
 	a.state = stateWorking
 
-	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", TTFT: 600 * time.Millisecond, Rate: 61})
+	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Role: lane.RoleTalk, TTFT: 600 * time.Millisecond, Rate: 61})
 	if got := a.servedRider(); got != " · via cloudflare · 0.6s · 61 t/s" {
 		t.Fatalf("an ordinary answer reads %q", got)
 	}
 
-	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Trying: true})
+	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Role: lane.RoleTalk, Trying: true})
 	if got := a.servedRider(); got != " · slow · trying coreweave…" {
 		t.Fatalf("a rescue in flight reads %q", got)
 	}
 
 	PostLaneNews(LaneNews{
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Winner: "CoreWeave",
-		Hedged: true, TTFT: 900 * time.Millisecond,
+		Role: lane.RoleTalk, Hedged: true, TTFT: 900 * time.Millisecond,
 	})
 	if got := a.servedRider(); got != " · via coreweave · rescued" {
 		t.Fatalf("a rescued answer reads %q", got)
@@ -660,10 +664,30 @@ func TestTheStatusLineSaysWhoServedWhatIsBeingTriedAndWhatWasRescued(t *testing.
 	// A hedge that LOST is not a rescue: the answer came from where it started.
 	PostLaneNews(LaneNews{
 		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Winner: "Cloudflare",
-		Hedged: true, TTFT: 900 * time.Millisecond, Rate: 58,
+		Role: lane.RoleTalk, Hedged: true, TTFT: 900 * time.Millisecond, Rate: 58,
 	})
 	if got := a.servedRider(); strings.Contains(got, "rescued") {
 		t.Fatalf("a hedge that lost reads %q", got)
+	}
+}
+
+// AND AN ERRAND NOBODY IS READING NEVER MOVES THE RIDER. The title call and the
+// memory reflex both finish on some lane during an ordinary talk turn, and the
+// status line is about the answer the person is waiting for.
+func TestAHiddenRolesAnswerNeverTakesTheServedSegment(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Role: lane.RoleTalk, TTFT: 600 * time.Millisecond, Rate: 61})
+	talk := a.servedRider()
+	if talk == "" {
+		t.Fatal("the talk turn's own answer drew nothing")
+	}
+
+	PostLaneNews(LaneNews{Model: flash, Lane: "CoreWeave", Role: lane.RoleAuxiliary, TTFT: 90 * time.Millisecond, Rate: 400})
+	if got := a.laneRider(); got != "" {
+		t.Fatalf("a naming errand took the status line: %q", got)
 	}
 }
 

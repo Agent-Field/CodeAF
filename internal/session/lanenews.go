@@ -60,6 +60,14 @@ type LaneNews struct {
 	Hedged bool
 	Trying bool
 
+	// Role is who the answer was for (internal/lane's roles.go). A surface
+	// draws only the roles a person is reading: a naming errand and a memory
+	// reflex both answer during an ordinary talk turn, and a status line that
+	// took the lane and the rate from whichever of them finished last was
+	// telling somebody about a machine that had nothing to do with the answer
+	// they were waiting for.
+	Role lane.Role
+
 	At time.Time
 }
 
@@ -140,7 +148,9 @@ func (a *Agent) tellLaneNews(model string, facts laneFacts, report *provider.Hed
 		// once more where a person would have read the result of breaking it.
 		return
 	}
-	postLaneNews(laneNewsFrom(model, facts, report))
+	news := laneNewsFrom(model, facts, report)
+	news.Role = a.laneRole()
+	postLaneNews(news)
 }
 
 // watchLaneRescue arms the slot so that a rescue is reported WHILE IT IS OUT,
@@ -155,7 +165,7 @@ func (a *Agent) watchLaneRescue(model string, report *provider.HedgeReport) {
 // proved in internal/provider, which is the layer that owns one.
 func (a *Agent) laneRescueStarted(model string) func(string) {
 	return func(alt string) {
-		postLaneNews(LaneNews{Model: model, Alt: alt, Trying: true})
+		postLaneNews(LaneNews{Model: model, Alt: alt, Trying: true, Role: a.laneRole()})
 	}
 }
 
@@ -239,9 +249,11 @@ func (a *Agent) probeContext() context.Context {
 // while a person is here to read what it lands, and nothing at all when they
 // are not — and the three durations [lane.Lambda] takes after the first are the
 // plan graph's to supply, which no build yet does.
-func (a *Agent) turnLambda() float64 {
-	if !a.config.InTask {
-		return lane.Lambda(true, false, 0, 0, 0)
-	}
-	return lane.Lambda(someoneIsWatching(), false, 0, 0, 0)
-}
+// IT IS ASKED OF THE ROLE AND NEVER COMPUTED HERE (internal/lane's roles.go).
+// The two answers this function used to give — a conversation is worth a
+// person's attention, a node is worth it while somebody is here — are now two
+// rows of a table that also decides the quality bar, the exploration horizon
+// and whether the status line is this call's to move. Four numbers that must
+// agree about one errand, computed at one site each, is four places for the
+// next fix to land in only one of.
+func (a *Agent) turnLambda() float64 { return a.laneRole().Lambda() }

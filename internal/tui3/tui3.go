@@ -931,6 +931,7 @@ func Run(ctx context.Context, opts Options) error {
 			Rate:   news.Rate,
 			Hedged: news.Hedged,
 			Trying: news.Trying,
+			Role:   news.Role,
 			At:     news.At,
 		})
 		// A status line that has changed is a frame that has to be drawn, and
@@ -940,6 +941,23 @@ func Run(ctx context.Context, opts Options) error {
 		p.Send(laneNewsMsg{})
 	})
 	defer session.OnLaneNews(previousLaneReader)
+	// AND THE SAME DOOR FOR THE PHASE CLOCK. The lane news above says what the
+	// last answer DID; this says what the one in flight is doing right now —
+	// connecting, waiting for the first word, thinking, paced, switching, or
+	// running a tool between requests — and only the layer holding the stream
+	// can see any of it (internal/session's phasenews.go, forwarding
+	// internal/provider's phase.go). It is registered and taken down exactly as
+	// the lane reader is, for exactly the same reason: a second surface in one
+	// process must not inherit the first one's desk.
+	previousPhaseReader := session.OnPhaseNews(func(news session.PhaseNews) {
+		PostPhaseNews(news)
+		// A phase changes on the stream's own goroutine, between two events, and
+		// nothing else on this surface is going to ask for a frame — a clock
+		// that only moved at the next keystroke would be a clock nobody was
+		// watching, which is the whole complaint this seam answers.
+		p.Send(phaseNewsMsg{})
+	})
+	defer session.OnPhaseNews(previousPhaseReader)
 	defer forwardSignals(p)()
 	_, err := p.Run()
 	return err

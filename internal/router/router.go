@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -200,9 +201,28 @@ func (r *Router) Close() error {
 func (r *Router) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	call := provider.CallFrom(ctx)
 	if call.Class() == provider.ClassExecLeaf {
-		return r.leaf(ctx, call, messages, options)
+		// A leaf is a whole conversation running in a room with nobody in it,
+		// and a cascade is a side errand of the work rather than the work — so
+		// the two shapes this router knows about are also two roles, and it is
+		// the last layer that can tell them apart (internal/lane's roles.go).
+		return r.leaf(named(ctx, lane.RoleLeafUnattended), call, messages, options)
 	}
-	return r.cascade(ctx, call, messages, options)
+	return r.cascade(named(ctx, lane.RoleAuxiliary), call, messages, options)
+}
+
+// named says who a call is for WHEN NOBODY ABOVE HAS ALREADY SAID.
+//
+// THE MORE SPECIFIC CLAIM WINS, and a caller's is always the more specific one:
+// this router knows only the shape of the request, while the layer that made it
+// knows whether a person is reading the answer. A conversation that has named
+// itself talk must not be re-labelled a background errand on its way through a
+// panel, because the role is what decides who owns the phase clock and a talk
+// turn demoted here would hand the status line to a naming errand beside it.
+func named(ctx context.Context, role lane.Role) context.Context {
+	if provider.RoleFrom(ctx).Known() {
+		return ctx
+	}
+	return provider.WithRole(ctx, role)
 }
 
 // StreamComplete streams from the first rung and never cascades. A stream is
@@ -211,7 +231,11 @@ func (r *Router) CompleteWithMessages(ctx context.Context, messages []ai.Message
 // streams today; this exists so that the router is a drop-in for the adapter.
 func (r *Router) StreamComplete(ctx context.Context, prompt string, options ...ai.Option) (<-chan ai.StreamChunk, <-chan error) {
 	first := r.rungs[0]
-	return first.client.StreamComplete(first.affinity(ctx), prompt, options...)
+	// A STREAM IS A THING SOMEBODY IS READING. That is the only reason to ask
+	// for one — an answer nobody watches arrive is cheaper and safer whole — so
+	// where the caller named no role this is the one place in this file that
+	// reads as talk rather than as an errand.
+	return first.client.StreamComplete(first.affinity(named(ctx, lane.RoleTalk)), prompt, options...)
 }
 
 // cascade is the policy both labs converged on.

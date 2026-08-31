@@ -41,6 +41,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -350,8 +351,18 @@ func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (Rout
 			known[id] = true
 		}
 	}
+	// A ROUTE QUESTION IS THE TURN'S SIDE ERRAND, which is exactly what
+	// [lane.RoleAuxiliary] is the table's name for: it runs beside a turn a
+	// person is reading and is none of their business, so it is worth little a
+	// second, it has no claim on the status line, and it can simply be asked
+	// again if the answer is unusable (internal/lane's roles.go holds the four
+	// numbers; this file names none of them).
+	//
+	// It is stamped at the door rather than inside [ask] because the three doors
+	// of this package are not all the same errand — see [Extract] and [Decide],
+	// which serve the memory rather than the turn.
 	var result RouteResult
-	err := ask(ctx, c, routePrompt, routeInput(userMsg, index), func(reply string) error {
+	err := ask(provider.WithRole(ctx, lane.RoleAuxiliary), c, routePrompt, routeInput(userMsg, index), func(reply string) error {
 		var wire struct {
 			Inject []string `json:"inject"`
 			Cmd    *struct {
@@ -411,8 +422,12 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 			shown[id] = true
 		}
 	}
+	// THIS ONE IS THE MEMORY'S AND NOT THE TURN'S. What it asks is whether the
+	// exchange held something worth keeping, and what it costs and what it is
+	// worth are the memory reflex's ([lane.RoleMemory]) rather than a side
+	// errand's — the turn has already happened either way.
 	var result ExtractResult
-	err := ask(ctx, c, extractPrompt, extractInput(userMsg, assistantMsg, injected), func(reply string) error {
+	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, extractPrompt, extractInput(userMsg, assistantMsg, injected), func(reply string) error {
 		var wire struct {
 			Mem   int      `json:"mem"`
 			Type  string   `json:"type"`
@@ -482,8 +497,11 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 // enum is what this package validates, and the store is the only thing that
 // knows whether an id is real. A caller that gets one treats it as a skip.
 func Decide(ctx context.Context, c Completer, candidate ExtractResult, neighbors []Neighbor) (DecideResult, error) {
+	// The memory's again, for [Extract]'s reason: this call exists only because
+	// something was already judged worth keeping, and what to do with it is a
+	// question about the store rather than about the turn.
 	var result DecideResult
-	err := ask(ctx, c, decidePrompt, decideInput(candidate, neighbors), func(reply string) error {
+	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, decidePrompt, decideInput(candidate, neighbors), func(reply string) error {
 		var wire struct {
 			Op       string   `json:"op"`
 			TargetID string   `json:"target_id"`
