@@ -1476,6 +1476,12 @@ func (a *Agent) Close() error {
 	file := a.file
 	cancel := a.cancel
 	done := a.done
+	// The graph THIS session owns, and nil for every session that does not: a
+	// task worker reaches its parent's graph through config.tasker, and a nil
+	// here is what keeps its close from shutting a door the parent still
+	// writes through. Read directly rather than through [Agent.graph], which
+	// would build a graph just to close it.
+	tasks := a.tasks
 	// Nothing queued will ever run now, and a caller holding one of those
 	// channels is owed the close rather than a wait that never ends.
 	a.dropFollowUpsLocked()
@@ -1531,6 +1537,19 @@ func (a *Agent) Close() error {
 	// being killed is work another window may still be looking at, and it is
 	// bounded so a quit never waits on a courtesy paid to somebody else's rail.
 	a.stopPresence()
+
+	// THE TASK CHECKPOINT STOPS TAKING WRITES HERE, after the turn was waited
+	// for and the jobs were cut — every closing transition above has landed —
+	// and before anything else can take time. A save that arrives later is a
+	// goroutine that outlived the close (the measured one: a woken turn's
+	// hand-off admitting its task as the test's directory was being removed),
+	// and its graph would overwrite a settled checkpoint with a stale one
+	// (task_store.go says the rest). Only the session that OWNS the graph may
+	// do this — `tasks` was read above precisely so a worker's close cannot
+	// reach the store its parent is still writing.
+	if tasks != nil {
+		tasks.store.close()
+	}
 
 	// The store's copy of the transcript is drained LAST of the writers and
 	// before the file is closed, for the reason the turn is waited for: a
