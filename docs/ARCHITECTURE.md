@@ -375,7 +375,17 @@ stream   →  Watch.Token / Silence     →  a verdict, and at most one hedge
   innovation the filter already computes. Forgetting is losing confidence, never
   changing the estimate, so there is no penalty box and no cooldown timer: a
   belief widens until the sheet or a sampled draw puts the lane back in the
-  running.
+  running — and it widens far enough that a fresh public reading really can
+  outweigh it, which is a number the first build got wrong by exactly the factor
+  it discounts the sheet by.
+- **An order of one is not a ranking.** A ledger that has heard of a single lane
+  has nothing to rank, and the one name it holds is the endpoint that happened to
+  serve rather than the endpoint that should. It says nothing, and the transport
+  sends what it sent before this package existed. The same law reads the other
+  way at the gate: a lane nobody has judged is refused on the upper bound of its
+  quality belief and never on its mean, or the first request of every process
+  refuses every lane for want of evidence and then never sends the request that
+  would have supplied it.
 - **The choice is pure.** `lane.Request` carries its own `Now`. A structural
   test fails the build when a choosing file names `time.Now`.
 
