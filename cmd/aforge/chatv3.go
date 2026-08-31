@@ -293,6 +293,22 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	cfg.HarnessCards = true
 
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
+	// LAUNCH-ON-LOCK. The conversation this terminal asked for is open in
+	// another window, and this door has a screen — so it offers that
+	// conversation rather than refusing or, as it once did, quietly handing over
+	// a different one. A fresh conversation is opened beside it and its
+	// transcript path travels to the surface, which comes up on home with that
+	// row pointed and ARMED: one enter moves the real one here, esc gets on with
+	// the new one (internal/tui3's takeover.go).
+	takeOver := ""
+	var held *sessionHeldElsewhere
+	if errors.As(err, &held) {
+		takeOver = held.transcript
+		agent, cfg, err = v3TakeOverInstead(cfg, workspace)
+		// The session file moved, so everything downstream that names it names
+		// the new one — the same correction the notice below makes.
+		transcript, resumed = cfg.SessionFile, false
+	}
 	if err != nil {
 		return err
 	}
@@ -484,6 +500,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			return conv.Agent, nil
 		},
 		PickSession: pickSession,
+		// THE CONVERSATION THIS LAUNCH COULD NOT OPEN, when another window was
+		// holding its journal. Empty on every ordinary launch; a transcript path
+		// makes the surface come up on home with that row armed, so one enter
+		// moves it here (internal/tui3's takeover.go, and [v3TakeOverInstead]
+		// above for what this window is sitting in meanwhile).
+		TakeOver: takeOver,
 		// WHETHER HOME GREETS THIS LAUNCH. It is a person opening aforge with no
 		// particular conversation in mind: no --session, no picker asked for,
 		// and — by the time this line runs — no --once, which returned above.
@@ -1026,7 +1048,61 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if !errors.Is(err, session.ErrSessionLocked) {
 		return nil, cfg, "", err
 	}
-	return nil, cfg, "", errors.New(sessionHeldElsewhereSentence(workspace))
+	return nil, cfg, "", &sessionHeldElsewhere{
+		transcript: cfg.SessionFile,
+		reason:     sessionHeldElsewhereSentence(workspace),
+	}
+}
+
+// sessionHeldElsewhere is a conversation another window is writing, named so a
+// door with a SCREEN can do something better than print the sentence.
+//
+// A launch that can draw offers the conversation instead: it opens a fresh one
+// beside it and lands on home with this row armed, so one enter moves the real
+// one here ([v3TakeOverInstead], and internal/tui3's takeover.go). A launch with
+// nobody watching — `--once`, `aforge engine` — has nowhere to put an offer, so
+// it prints [sessionHeldElsewhere.Error] and stops. The transcript is carried
+// because the surface needs the PATH and the sentence deliberately does not
+// contain one.
+//
+// It unwraps to [session.ErrSessionLocked], so every existing errors.Is on this
+// road still answers what it always answered.
+type sessionHeldElsewhere struct {
+	transcript string
+	reason     string
+}
+
+func (e *sessionHeldElsewhere) Error() string { return e.reason }
+func (e *sessionHeldElsewhere) Unwrap() error { return session.ErrSessionLocked }
+
+// v3TakeOverInstead is the launch-on-lock road: the conversation this terminal
+// asked for is open in another window, so this one opens a FRESH conversation in
+// the same workspace and hands the surface the row it could not have.
+//
+// THE NEW CONVERSATION IS NOT A CONSOLATION PRIZE AND IT IS NOT A SURPRISE
+// EITHER, which is the whole difference from the fallback this replaces. The old
+// one opened a second conversation and said "started a new one", and a person
+// was left holding something they did not ask for with no road back. This opens
+// the same second conversation — somebody has to be somewhere while they decide
+// — AND points at the one they came for, armed, one keystroke away. `esc` keeps
+// the new one and nothing is lost either way.
+//
+// It is [v3NextSession], the ordinary /new road, for the ordinary reason: a
+// second conversation about this project is a sibling folder in the same bucket.
+func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, session.Config, error) {
+	place, err := v3NextSession(cfg.Place, workspace)
+	if err != nil {
+		return nil, cfg, err
+	}
+	fresh, err := v3PointAt(cfg, place)
+	if err != nil {
+		return nil, cfg, err
+	}
+	agent, err := v3OpenSession(fresh)
+	if err != nil {
+		return nil, cfg, err
+	}
+	return agent, fresh, nil
 }
 
 // sessionHeldElsewhereSentence is what a person reads when the conversation

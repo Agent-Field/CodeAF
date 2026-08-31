@@ -185,10 +185,11 @@ with keeps them. A host is there when something asked for one — a `--host` or 
 connection into this machine, or `aforge engine` run on it.
 
 **Without a host, a second terminal offers you the conversation rather than a seat in it.**
-That is the move: press `enter` on the held row and the conversation comes to this terminal,
-and the window that had it says `moved to another window`. One conversation, one place, and
-you say which place — *Two terminals in the same folder*, on the sessions page. `--no-host`
-opts a window out of joining a host at all.
+It comes up on home with that row already armed, and one `enter` moves the conversation to
+this terminal — the window that had it says `moved to another window`. One conversation, one
+place, and you say which place — *Continue a conversation from another terminal* on the home
+page, and *Two terminals in the same folder* on the sessions page. `--no-host` opts a window
+out of joining a host at all.
 
 ## What typing from spark now means, and why my input box is one line
 
