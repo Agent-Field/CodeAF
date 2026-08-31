@@ -805,6 +805,19 @@ type app struct {
 	title  string
 	cost   float64
 	tokens int
+	// dayCost is what this MACHINE has spent since midnight and dayCosted
+	// whether anything counted it at all — the pair the Spending tab's `today`
+	// receipt is drawn from (settingspend.go). It is a reading taken on the way
+	// into the settings panel and held for as long as the panel is up, so every
+	// row that quotes the day quotes one figure.
+	dayCost   float64
+	dayCosted bool
+	// spendRail is this conversation's own ceiling as the profile last read it,
+	// and railRead whether it has been read at all. The pair is held rather than
+	// asked for because the status line's ink consults it on EVERY paint
+	// (moneydoor.go's [app.moneyNearRail]).
+	spendRail float64
+	railRead  bool
 	// ctxWindow is the model's context in tokens as this surface last set it,
 	// and ctxTokens what the conversation currently weighs. The pair is the
 	// meter in the status line. The window is TRACKED rather than asked for
@@ -930,6 +943,11 @@ type app struct {
 	// (standdoor.go, render.go's [app.statusRows]).
 	keepSpan hudSpan
 	keepRow  int
+	// moneySpan is where the money segment was last drawn, and moneyRow which of
+	// the status row's rows it landed on — the same bargain keepSpan makes, for
+	// the same reason. It is the door onto the Spending tab (moneydoor.go).
+	moneySpan hudSpan
+	moneyRow  int
 	// stripSpans is where the task strip's chips were last drawn, and stripMore
 	// the columns of its overflow mark — the same bargain modelSpan makes, for
 	// the same reason: the row that lays the chips out is the row that knows
@@ -2884,6 +2902,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (standdoor.go).
 			if a.keepingPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
+			}
+			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
+			// for the same reason and in the same way: three segments of one row,
+			// none of them swallowing another's columns (moneydoor.go).
+			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
+				return a, cmd
 			}
 			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name
@@ -5673,6 +5697,13 @@ func (a *app) slash(line string) tea.Cmd {
 		help := helpText(a.hostedPath(a.file), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
 		return nil
+
+	case "budget":
+		// WHAT IT MAY SPEND, AND THE ONE EDITOR FOR IT. Bare it is a door onto
+		// the Spending tab; with a figure it writes through the very row that tab
+		// writes through, so there is no second answer to what the limit is
+		// (budget.go).
+		return a.budget(rest)
 
 	case "copy":
 		a.enterCopy()

@@ -1447,6 +1447,7 @@ func (a *app) statusRows(width int) []string {
 	// (standdoor.go). Every early return below is a row with no keeping segment
 	// on it, and each of them leaves this cleared.
 	a.keepSpan, a.keepRow = hudSpan{}, 0
+	a.moneySpan, a.moneyRow = hudSpan{}, 0
 	if width < 1 {
 		a.modelSpan = hudSpan{}
 		return []string{""}
@@ -1474,6 +1475,7 @@ func (a *app) statusRows(width int) []string {
 	base := width - ansi.StringWidth(plainRight)
 	if wrapped {
 		a.markKeepingDoor(parts, base, 1)
+		a.markMoneyDoor(parts, base, 1)
 		return []string{
 			fit(a.paintIdentity(left, paint), width),
 			rightAlign(right, plainRight, width),
@@ -1488,6 +1490,7 @@ func (a *app) statusRows(width int) []string {
 		return []string{fit(right, width)}
 	}
 	a.markKeepingDoor(parts, base, 0)
+	a.markMoneyDoor(parts, base, 0)
 	return []string{a.paintIdentity(left, paint) + strings.Repeat(" ", gap) + right}
 }
 
@@ -2077,6 +2080,24 @@ func (a *app) paintPart(part hudPart) string {
 			return a.pal.accent(a.keepingWord())
 		}
 		return a.pal.dim(a.keepingWord())
+	case segCost:
+		// MONEY IS A DOOR AND A BOUND, and this is the only segment on the line
+		// that can be both (moneydoor.go).
+		//
+		// It brightens under the pointer for the keeping segment's reason — a
+		// label that is also a control has to say so — and it takes the WARM ink
+		// at four fifths of this conversation's own ceiling, which is a glance
+		// and not an alarm: a bound about to be reached is not a failure and must
+		// not wear the failure hue. The pointer outranks the warning, because
+		// while somebody is about to press it the fact worth saying is that it
+		// opens.
+		switch {
+		case a.hoveringMoney():
+			return a.pal.accent(part.text)
+		case a.moneyNearRail():
+			return a.pal.warn(part.text)
+		}
+		return a.fadeSeg(part.kind, part.text)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.

@@ -1166,9 +1166,16 @@ Type digits while the layer is up and the figure is whatever you typed.
   is the *asks* in the sentence on the line.
 
 **A task started any other way carries whatever this window carries.** `/task <brief>`, the
-proposal card and the model's own hands run under the conversation's own rail — which is off
-unless you set the `spend rail` row in settings — and an adaptive run they start opens on
-the $100.00 default.
+proposal card and the model's own hands run under the conversation's own limit — the
+`per conversation` row on the **Spending** tab of `/settings`, which reads `no limit` until
+you set it — and under the day's limit above it. An adaptive run they start opens on the
+$100.00 default.
+
+**A task has no dollar limit of its own**, which the Spending tab says on its `per task`
+row in those words: `no limit of its own · it spends against the day and this conversation`.
+Its own bounds are steps and time. The composer layer's third line is the one place a
+figure is put on a single piece of work, and there is no per-task money row to edit
+anywhere in settings.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.

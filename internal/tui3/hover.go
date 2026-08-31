@@ -177,6 +177,11 @@ const (
 	// both of ITS subjects with one kind: what lights has to be what the press
 	// acts on, and these two segments open two different things.
 	hoverKeeping
+	// hoverMoney is the money segment of the status row, which is a door onto
+	// the Spending tab (moneydoor.go). It is a kind of its own for
+	// [hoverKeeping]'s reason: three doors on one row that open three different
+	// things, and what lights has to be what the press acts on.
+	hoverMoney
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -560,6 +565,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// onto the picker (standdoor.go).
 			if mark.index == a.keepRow && a.keepSpan.holds(x) {
 				return hoverAt{kind: hoverKeeping}
+			}
+			if mark.index == a.moneyRow && a.moneySpan.holds(x) {
+				return hoverAt{kind: hoverMoney}
 			}
 			if mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
