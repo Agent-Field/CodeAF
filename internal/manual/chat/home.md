@@ -417,7 +417,9 @@ spent $1.63 · 3.6M tokens · thinking high
   The band is absent entirely for a conversation nobody is asking anything of;
 - **`work`** — each task with its mark and what it cost, a run that is not done keeping its
   outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
-  the tasks place** rather than unfolding: a card is not the place that holds them;
+  the tasks place** rather than unfolding: a card is not the place that holds them.
+  **Clicking a task's own row opens that task's record** — the same card `enter` opens on
+  the tasks place;
 - **`made for you`** — the files it left behind, each a door you can click, with what it is
   called and how long ago it landed. A conversation that made nothing has no band at all;
 - **one facts line** — what it cost, the tokens, and the rung work started here would think
@@ -813,6 +815,28 @@ under the fold line with nothing above it saying what it was about.
 
 The project's whole history is somewhere else: `ctrl+g` opens the task page, which is the
 record of everything this project has ever run.
+
+## I clicked a task on home and nothing happened — open a task from the card
+
+**Click the task's own row on the card** — the line carrying its name, its mark and what it
+cost — and the task's **record** opens: what it was asked to do, what it came to, the files
+it touched, and the tail of its own output. It is the same card `enter` opens on a row of
+the tasks place, and the same one a tap opens on a phone, so `esc` comes back one layer at
+a time — the record to the list, and the list to where you were.
+
+Which rows on the card answer a press:
+
+- **a task's name row** — opens that task's record;
+- **a fold line** (`▸ …5 more files`) — opens that band alone;
+- **a file under `made for you`** — opens the file.
+
+The `▸ N more tasks` line at the foot of `work` is **not** one of them. It names the tasks
+place out at the right margin because a card is not the place that holds them; `ctrl+g`, or
+`tab` onto `tasks`, is the way there.
+
+The card is only drawn where the frame is genuinely wide — around 160 columns and up. On a
+narrower window there is no card, and the tasks place (`ctrl+g`) is where the work is
+listed; `enter` or a click on a row there opens the same record.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
