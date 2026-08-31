@@ -2,7 +2,7 @@
 kind: fixed
 title: a declared door is something that can actually run
 pr: 92
-surface: [tasks]
+surface: [engine]
 invalidates:
   - "The check's refusal may list bare backticked words like `origin` or `main` as runnable — no longer true. A declared span becomes a door only if its first word is a program the shell would find or it names a file in the tree the checker stands in."
 ---
