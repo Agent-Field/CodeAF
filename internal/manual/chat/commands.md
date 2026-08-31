@@ -1348,7 +1348,7 @@ Session · Context · Workspace · Display · Spending · Safety · Tasks · Pro
 ```
 
 **Session** — the rows this conversation carries that belong nowhere else: "memory",
-"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
+"fallback models", "background after", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
 "ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with
