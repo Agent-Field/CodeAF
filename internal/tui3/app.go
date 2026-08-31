@@ -1666,6 +1666,13 @@ type app struct {
 	// (hop.go). It is a field of the app rather than of a place because it
 	// belongs to no place: it is drawn over the conversation and over all seven.
 	hop hopCard
+	// hopKnown is how many conversations the last reading of this machine saw,
+	// and it is what lets the switcher be ADVERTISED without a disk walk on the
+	// frame (hop.go's [app.hopAvailable]). It is refreshed off the loop by
+	// [app.countConversations] — once at boot, and again whenever a conversation
+	// is opened or closed — and is zero until that first answer lands, which is
+	// the honest reading of "nobody has looked yet".
+	hopKnown int
 	// frontAt is when the conversation on screen came forward, which is the only
 	// thing the switcher's own row can measure an age from — every other row
 	// measures from the sidecar its detach left (keeper.go's [aside.since]).
@@ -2206,9 +2213,13 @@ func (a *app) Init() tea.Cmd {
 	// AND THE HOSTED LINK'S SLOW CLOCK STARTS HERE. It is a five-second timer,
 	// separate from the paint clock because an idle hosted session still has a
 	// round trip to measure and because no frame is permission to call the wire.
+	// AND HOW MANY CONVERSATIONS THIS MACHINE HAS, ONCE, HERE. It is what the
+	// legend needs before it may name the switcher (hop.go), and it is asked off
+	// the loop for the reason every other reading on this list is: the walk opens
+	// every project's index, and the paint path may never pay for one.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		a.linkPingTick(), a.prefetchReplayedPictures(), tea.RequestBackgroundColor}
+		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2387,6 +2398,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.BlurMsg:
 		a.focused, a.seenFocus = false, true
+		return a, nil
+
+	case hopCountMsg:
+		// HOW MANY CONVERSATIONS THIS MACHINE HAS (hop.go). It decides one thing
+		// and nothing else — whether the legend may name the switcher — so
+		// nothing repaints for it: it lands in the first moments of a session and
+		// the frame that reads it is whatever frame comes next.
+		a.hopKnown = msg.n
 		return a, nil
 
 	case tea.KeyboardEnhancementsMsg:

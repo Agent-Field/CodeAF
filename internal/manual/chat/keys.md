@@ -1204,16 +1204,27 @@ starting work here, so the box is still standing when you come back.
 ## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
 
 **Press `ctrl+k`.** A card appears in the middle of whatever you are looking at, the screen
-behind it dims, and on it is every conversation this terminal has open — most recently in
-front first, with the one you are sitting in last, marked `you are here`.
+behind it dims, and on it is **every conversation on this machine** — the ones this terminal
+already has open above a thin rule, everything else below it.
 
 ```
-3 open                              tab down · shift+tab up · enter go · esc back
+3 open · 6 more on this machine     tab down · shift+tab up · enter go · esc back
 
 1 ● harness dry run on one public…  asking you something      aforge-v2    4m
 2 ○ openrouter price scrape         2 tasks running            research     1d
 3 ○ Refactor the rail scope model   you are here              aforge-v2   40m
+  ────────────────────────────────────────────────────────────────────────────
+4 ◐ The Certificate Rotation        1 task running                 infra   22m
+5 ○ Pricing Research                                        pricing-site    3h
 ```
+
+**Above the rule** is one keystroke away and already running — nothing is started, nothing
+is reloaded. **Below the rule** is a conversation that is not open in this terminal; taking
+one opens it beside the one you are in, exactly as `enter` on home does, and the one you
+are in keeps running.
+
+It works from the **first** session: on a fresh launch you hold one conversation and the
+card still has everywhere else on the machine in it.
 
 | Key | What it does |
 | --- | --- |
@@ -1221,7 +1232,7 @@ front first, with the one you are sitting in last, marked `you are here`.
 | `ctrl+tab` | The same key, on terminals that can send it. See below |
 | `tab` / `↓` | Down one |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
-| `1`…`8` | Go to that row outright — the number is drawn on it |
+| `1`…`9` | Go to that row outright — the number is drawn on the rows that have one |
 | `enter` | Go to the row you are on |
 | `esc` | Put the card away. You are exactly where you were |
 | any other key | Puts the card away, and does nothing else — the key does not land in your message |
@@ -1230,8 +1241,17 @@ It works **in a conversation and on every place** — home, tasks, standing, mem
 search, settings — because it is drawn over the screen rather than being a screen of its
 own. Nothing under it moves by a cell.
 
-**It does nothing when this terminal holds one conversation**, and says so by not being
-there: no card, and the legend above the box does not name it.
+The cursor opens on the **first row you can actually go to**, never on `you are here`, so
+`ctrl+k` `enter` always lands somewhere.
+
+**It does nothing on a machine with one conversation on it** — a first run, and nothing
+else — and says so by not being there: no card, and the legend above the box does not name
+it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
+/ commands`, dropping clauses from the left as the frame narrows.
+
+**Eight conversations is the cap** on what one terminal holds at once. Taking a ninth row
+says `8 open is as many as aforge holds — /quit closes this one` and leaves you where you
+were.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1244,6 +1264,9 @@ Every row says **what changed since you last looked**, not what the conversation
 | `it finished while you were away` | a turn ended in there after you left |
 | `nothing new` | it has been quiet since you left it |
 | `you are here` | the conversation you are sitting in |
+| `open in another window` | another terminal is holding it; `enter` will refuse |
+| `that folder is gone` | the project directory it worked in is not there any more |
+| *(nothing)* | a conversation below the rule with no news — quiet, and not open here |
 
 Then the project it is in and how long ago you left it. That is what makes the switcher
 double as the catch-up: after twenty minutes in one chat, one key says what the other seven
@@ -1276,9 +1299,10 @@ and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS
 before this one, in one key, with no card. Use `tab` to flick between two and `ctrl+k` when
 there are more.
 
-The legend above the box names whichever is worth pressing: `tab last` with two
-conversations open, `ctrl+k switch` with three or more. On a place, the switcher is named on
-the map (`alt+.`) instead, because a place's foot is four fixed clauses.
+The legend above the box names **every door that would act**: `tab last` appears once a
+second conversation is open, `ctrl+k switch` whenever there is anywhere at all to go. On a
+place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
+fixed clauses the design sets word for word.
 
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 

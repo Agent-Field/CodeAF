@@ -2888,38 +2888,33 @@ func (a *app) legendRight(width int) string {
 	// conversation this process is already holding — so a build with no resume
 	// door still has one, and the slot still says so (hop.go).
 	//
-	// It is named from THREE open rather than two: with two, the card would hold
-	// exactly one destination and `tab` reaches it in one key instead of two.
-	switcher := a.hopAvailable() && a.openCount() > 2
+	// IT IS NAMED WHENEVER IT WOULD ACT, AND FROM THE FIRST FRAME. It used to be
+	// held back until three conversations were open, on the reasoning that `tab`
+	// reaches the only other one in a single key — which was true and was the
+	// wrong trade: the card lists every conversation on this machine, not only
+	// the ones already open, so on a fresh session it is the thing that gets you
+	// anywhere at all, and a person who is never told about it never finds it.
+	// THE IDLE SLOT NAMES EVERY DOOR THAT WOULD ACT, IN THE ORDER A PERSON MEETS
+	// THEM: home, the flick back, the switcher, the commands. Each clause is
+	// under its own condition and none of them is under another's — a key that
+	// cannot act says so by not being advertised, and the converse defect is the
+	// one this wave was written to fix: a key that acts and is never named.
+	//
+	// `tab last` needs an empty box, because that is the only state it acts in
+	// (keeper.go's [app.lastConversation]); the switcher needs no box at all and
+	// no door onto sessions, because it re-points the surface at conversations
+	// this machine already has.
+	doors := make([]string, 0, 4)
 	if a.homeDoorShowing() {
-		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
-		// terminal holds only one conversation, which is the emptiness law again:
-		// a key that cannot act says so by not being advertised (keeper.go's
-		// [app.lastConversation]). It sits between the two doors because it is
-		// the same kind of thing — somewhere else to be — and it is dropped first
-		// when the slot is tight, by [app.homeDoorShowing]'s own rule about the
-		// box being empty.
-		if _, ok := a.lastBehind(); ok {
-			// AND WITH THREE OR MORE OPEN THE SLOT NAMES THE SWITCHER INSTEAD OF
-			// THE FLICK (hop.go). Both keys are bound at every size — `tab` still
-			// goes straight to the last one — but the slot has room for one, and
-			// with a third conversation open the card is the key worth teaching:
-			// `tab` can only ever reach one of the others.
-			door := lastDoorWord
-			if switcher {
-				door = hopDoorWord
-			}
-			return homeDoorWord + " · " + door + " · " + microcopy
-		}
-		if switcher {
-			return homeDoorWord + " · " + hopDoorWord + " · " + microcopy
-		}
-		return homeDoorWord + " · " + microcopy
+		doors = append(doors, homeDoorWord)
 	}
-	if switcher {
-		return hopDoorWord + " · " + microcopy
+	if _, ok := a.lastBehind(); ok && a.input.empty() && !a.copy.on && !a.rew.on {
+		doors = append(doors, lastDoorWord)
 	}
-	return microcopy
+	if a.hopAvailable() {
+		doors = append(doors, hopDoorWord)
+	}
+	return strings.Join(append(doors, microcopy), " · ")
 }
 
 // lastDoorWord advertises the key back to the conversation before this one. It

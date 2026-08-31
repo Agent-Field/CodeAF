@@ -1048,11 +1048,17 @@ func (a *app) readWorldKnown() (session.World, bool) {
 // Over --host the door hands a function that reads a cache the connection keeps
 // warm behind itself, and that cache says false until the far machine has
 // replied once (cmd/aforge's [hostWorld], tui3.go's [Options.World]).
-func (a *app) worldOf() (session.World, bool) {
-	if a.world != nil {
-		return a.world()
+func (a *app) worldOf() (session.World, bool) { return worldSeam(a.world, a.placesRoot(), a.hosted()) }
+
+// worldSeam is that same seam with its three inputs handed in, so a COMMAND can
+// take the reading off the loop without a second copy of the branching
+// (hop.go's [app.countConversations] is the caller that needed it). The rules
+// are stated on [app.worldOf] and are unchanged by being written here.
+func worldSeam(door func() (session.World, bool), root string, hosted bool) (session.World, bool) {
+	if door != nil {
+		return door()
 	}
-	if a.hosted() {
+	if hosted {
 		// AND A HOSTED SURFACE WITH NO SEAM READS NOTHING AT ALL. This is the
 		// safety net rather than a state any door produces: the --host door wires
 		// the seam, and a build that forgot to would otherwise fall straight back
@@ -1064,7 +1070,7 @@ func (a *app) worldOf() (session.World, bool) {
 		// somebody else's disk.
 		return session.World{}, false
 	}
-	return session.ReadWorld(a.placesRoot()), true
+	return session.ReadWorld(root), true
 }
 
 // worldKnown is whether the reading behind the places is an ANSWER rather than

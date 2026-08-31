@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -106,6 +107,21 @@ const (
 // where you are", rather than being a circle with no beginning.
 const hopHereWord = "you are here"
 
+// hopShown is how many rows the card holds. TWELVE, because the card is a card:
+// eight is the cap on what can be open at once ([convCap]) and four more is a
+// glance at what else is on the machine — a person who wants the whole list
+// wants home, which is a page and has the room to be one.
+const hopShown = 12
+
+// hopDigits is how many rows wear a number: nine, because `1`…`9` is every digit
+// a single keystroke can be.
+const hopDigits = 9
+
+// hopHeldWord is a conversation another window is holding. It is the one thing a
+// closed row says about itself unprompted, because it is the one that changes
+// what `enter` will do: the door refuses a journal somebody else has locked.
+const hopHeldWord = "open in another window"
+
 // The four things a row can say about what changed since you last looked. They
 // are sentences rather than figures because the question a person is asking when
 // they open this card is "does anything want me", and `0` is not an answer to it.
@@ -128,6 +144,19 @@ type hopRow struct {
 	here    bool
 	needs   bool
 	moving  bool
+	// open says THIS PROCESS is already holding this conversation, which is what
+	// decides whether taking the row is an attach or an open ([app.hopTake]) and
+	// which side of the card's one rule it is drawn on.
+	open bool
+	// where is the folder the conversation works in, and it is only ever read for
+	// a row that is not open yet — the door that opens one needs a workspace, and
+	// a row that is already open has an agent that has had one since it was built.
+	where string
+	// held is another window holding this journal, and gone is a project folder
+	// that is not there any more. Both refuse when they are pressed, and home's
+	// own rows carry the same two facts for the same reason (switcher.go).
+	held bool
+	gone bool
 }
 
 // hopCard is the whole of the switcher's state. The zero value is closed.
@@ -150,19 +179,43 @@ func (a *app) hopShowing() bool { return a.hop.open && len(a.hop.rows) > 0 }
 // right now, which is both the guard and the advertisement's condition — the two
 // may not come apart (render.go's [app.hintWord] states the law).
 func (a *app) hopAvailable() bool {
-	if len(a.behind) == 0 {
-		// One conversation is not a ring. The key is neither bound nor named,
-		// which is the emptiness law said about a keystroke.
+	if !a.hopMayOpen() {
 		return false
 	}
-	// THE TWO LAYERS THAT HAVE ALREADY CLAIMED THE KEYBOARD ARE ASKED ABOUT
-	// HERE, because this claim is read ABOVE the place router and so does not
-	// pass through either of their own arbitration. The composer layer is a
-	// decision with four answers on screen (composerlayer.go) and copy mode is a
-	// frozen viewport (copymode.go); a card that opened over either would be a
-	// card drawn over a gesture somebody is in the middle of.
-	return !a.composer.open && !a.copy.on
+	if len(a.behind) == 0 && a.hopKnown < 2 {
+		// NOWHERE TO GO. One conversation open, and nothing else on the machine
+		// that the last reading saw. The key is neither bound nor named, which is
+		// the emptiness law said about a keystroke.
+		//
+		// IT IS THE REMEMBERED COUNT AND NEVER A FRESH READ, because this
+		// predicate is asked on every frame — it gates the legend's own clause —
+		// and a walk of the disk on the paint path would be a world scan thirty
+		// times a second, or a call to another machine over `--host`.
+		// [app.countConversations] takes that reading off the loop instead.
+		return false
+	}
+	return true
 }
+
+// hopMayOpen is the KEY's own guard, and it is deliberately looser than the
+// advertisement's: the two layers that have already claimed the keyboard, and
+// nothing else.
+//
+// THE COUNT IS NOT ASKED HERE. [app.hopKnown] is a remembered number that lands
+// a moment after boot, and a key gated on it would do nothing for the first
+// frames of a session in which the card would plainly have had rows. The reading
+// is the real answer — [app.hopOpen] refuses a card with nowhere to go — and it
+// can afford to be, because it only runs on the keystroke.
+//
+// It errs in the safe direction the capability law cares about: a key that works
+// slightly before it is named, never a name for a key that does nothing.
+//
+// The composer layer is a decision with four answers on screen
+// (composerlayer.go) and copy mode is a frozen viewport (copymode.go); a card
+// that opened over either would be drawn over a gesture somebody is in the
+// middle of. They are asked HERE because this claim is read above the place
+// router and so does not pass through either of their own arbitration.
+func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // hopOpen builds the reading and raises the card.
 func (a *app) hopOpen() {
@@ -172,8 +225,24 @@ func (a *app) hopOpen() {
 		// the same refusal said where the rows are actually counted.
 		return
 	}
-	a.hop = hopCard{open: true, rows: rows}
+	a.hop = hopCard{open: true, rows: rows, at: hopFirstStop(rows)}
 	a.touch()
+}
+
+// hopFirstStop is where the cursor opens: the first row that is not the one you
+// are already standing in.
+//
+// IT IS NOT SIMPLY ZERO. With conversations in the keeper, row zero is the one
+// `tab` would go to and the cursor belongs there; on a fresh session the only
+// open conversation IS the front one, so zero would open the card with the
+// cursor on `you are here` and make `enter` do nothing.
+func hopFirstStop(rows []hopRow) int {
+	for at, row := range rows {
+		if !row.here {
+			return at
+		}
+	}
+	return 0
 }
 
 // hopClose puts it away and leaves the person exactly where they were.
@@ -195,7 +264,7 @@ func (a *app) hopClose() {
 // about what "the last one" means by construction.
 func (a *app) hopReading() []hopRow {
 	now := a.now()
-	rows := make([]hopRow, 0, len(a.behind)+1)
+	rows := make([]hopRow, 0, hopShown)
 	for at := len(a.prev) - 1; at >= 0; at-- {
 		held := a.behind[a.prev[at]]
 		if held == nil {
@@ -206,7 +275,96 @@ func (a *app) hopReading() []hopRow {
 		rows = append(rows, a.hopKept(held, now))
 	}
 	rows = append(rows, a.hopFront(now))
-	return rows
+	return append(rows, a.hopRest(rows, now)...)
+}
+
+// hopRest is every OTHER conversation on this machine, ranked the way home ranks
+// them, and it is the half of the card that made the key worth binding.
+//
+// THE CARD USED TO HOLD ONLY WHAT WAS ALREADY OPEN, AND THAT WAS THE DEFECT. A
+// person who has just started aforge holds exactly one conversation, so the key
+// did nothing, was advertised nowhere, and could only be discovered by somebody
+// who already knew that `enter` on home opens a second one beside the first.
+// The feature was invisible until you had learned the thing it exists for.
+//
+// THE WORLD IS READ ON THE KEYSTROKE, ONCE, and that is affordable for one
+// reason: this gesture REPLACES pressing `space space`, which takes the same
+// reading and then draws a whole page with it. It can be no slower than what a
+// person does today to answer the same question.
+func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
+	world, known := a.readWorldKnown()
+	if !known {
+		return nil
+	}
+	a.hopKnown = 0
+	// THE SAME LOOK STAMP HOME MEASURES `since you left` FROM (home.go), so a
+	// row's note reads identically in both places.
+	seen := session.LastLook(a.looksRoot())
+	held := make(map[string]bool, len(open))
+	for _, row := range open {
+		if key := a.convKey(row.file); key != "" {
+			held[key] = true
+		}
+	}
+	var all []switcherRow
+	for _, project := range world.Projects {
+		for _, row := range project.Sessions {
+			if row.Archived {
+				continue
+			}
+			a.hopKnown++
+			if held[a.convKey(row.Transcript)] {
+				continue
+			}
+			needs := row.NeedsPerson()
+			all = append(all, switcherRow{
+				kind: switcherConversation, session: row, project: project.Name,
+				title: homeName(row), note: switcherConversationNote(row, seen),
+				age: sinceAt(row.At, now), at: switcherSortAt(row), needs: needs,
+				moving: !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking),
+				// THE LOCK AND NOT THE HEARTBEAT, on switcher.go's own reasoning:
+				// `Open` is another window holding this journal, which is what the
+				// door refuses on.
+				held:  row.Open && strings.TrimSpace(row.Transcript) != "",
+				place: switcherWhere(row, project),
+			})
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return switcherLess(all[i], all[j]) })
+	rest := make([]hopRow, 0, len(all))
+	for _, row := range all {
+		if len(open)+len(rest) >= hopShown {
+			break
+		}
+		rest = append(rest, hopRow{
+			file: row.session.Transcript, title: row.title, project: row.project,
+			note: hopRestNote(row), age: row.age, needs: row.needs, moving: row.moving,
+			where: row.place, held: row.held, gone: !homeFolderThere(row.place),
+		})
+	}
+	return rest
+}
+
+// hopRestNote is what a conversation that is NOT open says about itself. It is
+// home's own note where there is one — a question, work turning — and the plain
+// statement of its state where there is not.
+//
+// `not open yet` IS SAID OUT LOUD rather than left blank, because it is the one
+// fact that changes what `enter` will do on that row: everything above the rule
+// is one keystroke away and everything below it is a conversation being started
+// up again.
+func hopRestNote(row switcherRow) string {
+	switch {
+	case row.gone:
+		return homeGoneWord
+	case row.held:
+		return hopHeldWord
+	}
+	// AND A QUIET ONE SAYS NOTHING AT ALL. `not open yet` on nine rows in a row is
+	// the layout's own fact said nine times — the rule above them already draws
+	// the line between what is running and what would be started up — and the
+	// emptiness law is exactly this: a column repeats news, never state.
+	return strings.TrimSpace(row.note)
 }
 
 // hopKept is one row for a conversation this process holds but is not drawing.
@@ -219,6 +377,7 @@ func (a *app) hopKept(held *kept, now time.Time) hopRow {
 		project: hopProject(held.conv.Place, held.conv.Workspace),
 		needs:   needsPerson(agent),
 		moving:  running > 0,
+		open:    true,
 	}
 	if held.side != nil {
 		row.age = sinceAt(held.side.since, now)
@@ -232,7 +391,7 @@ func (a *app) hopKept(held *kept, now time.Time) hopRow {
 // person has to count their way around.
 func (a *app) hopFront(now time.Time) hopRow {
 	return hopRow{
-		file:    a.file,
+		file: a.file,
 		// THE SURFACE'S OWN SPELLING FOR THE ONE ON SCREEN. It is what the status
 		// line is showing this instant ([app.sessionName]), and a card that named
 		// the conversation you are sitting in differently from the line at the
@@ -242,6 +401,7 @@ func (a *app) hopFront(now time.Time) hopRow {
 		note:    hopHereWord,
 		age:     sinceAt(a.frontAt, now),
 		here:    true,
+		open:    true,
 	}
 }
 
@@ -356,7 +516,7 @@ func runningTasks(agent Agent) int {
 func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	if !a.hop.open {
-		if !a.hopOpens(key) || !a.hopAvailable() {
+		if !a.hopOpens(key) || !a.hopMayOpen() {
 			return nil, false
 		}
 		a.hopOpen()
@@ -383,7 +543,7 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// A DIGIT TAKES ITS ROW OUTRIGHT. Eight is the cap (keeper.go's [convCap]),
 	// so every row this card can hold has a digit, and the digit is drawn on it.
 	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-		if at := int(key[0] - '1'); at < len(a.hop.rows) {
+		if at := int(key[0] - '1'); at < len(a.hop.rows) && at < hopDigits {
 			a.hop.at = at
 			return a.hopTake(), true
 		}
@@ -432,6 +592,9 @@ func (a *app) hopTake() tea.Cmd {
 	if row.here {
 		return nil
 	}
+	if !row.open {
+		return a.hopStart(row)
+	}
 	cmd, ok := a.bringForward(row.file)
 	if !ok {
 		// The conversation went away between the card opening and this key —
@@ -447,6 +610,43 @@ func (a *app) hopTake() tea.Cmd {
 // it was on screen. It names no path: the person pressed a row, and the row is
 // what they are being told about.
 const hopGoneWord = "that conversation is no longer open"
+
+// hopStart opens a conversation this process was NOT holding, and it makes
+// exactly the three checks home's `enter` makes, in the same order (home.go's
+// [app.homeOpenDoor]): is the folder still there, is there room for another, and
+// does the door itself refuse.
+//
+// IT SAYS THE REFUSAL WHERE THE PERSON IS. The card is already down by the time
+// this runs, so the sentence goes on the entry line of the conversation they are
+// standing in — which is where every other refusal made on a keystroke is said.
+func (a *app) hopStart(row hopRow) tea.Cmd {
+	if !homeFolderThere(row.where) {
+		a.note(WorkspaceGoneWord + " · " + row.where)
+		return nil
+	}
+	if word, room := a.roomForAnother(); !room {
+		a.note(word)
+		return nil
+	}
+	cmd, refusal := a.openBeside(row.where, row.file)
+	if refusal != "" {
+		a.note(refusal)
+		return nil
+	}
+	return cmd
+}
+
+// hopOpenRows is how many of the card's rows this process is already holding: the
+// count the head row says, and the seam the rule is drawn on.
+func (a *app) hopOpenRows() int {
+	n := 0
+	for _, row := range a.hop.rows {
+		if row.open {
+			n++
+		}
+	}
+	return n
+}
 
 // ── what the card looks like ────────────────────────────────────────────────
 
@@ -474,9 +674,20 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 		return nil
 	}
 	lines := []string{a.hopHead(width, pal), ""}
+	open := a.hopOpenRows()
 	for at, row := range a.hop.rows {
 		if len(lines) >= height {
 			break
+		}
+		// ONE RULE, AT THE SEAM. Above it is a keystroke away and already
+		// running; below it is a conversation that would be started up again.
+		// The two are different acts and the card says so once, with the
+		// thinnest mark this surface has, rather than with a word on every row.
+		if at == open && open > 0 {
+			lines = append(lines, pal.fade(rule(width), 0))
+			if len(lines) >= height {
+				break
+			}
 		}
 		lines = append(lines, hopLine(row, at, at == a.hop.at, width, pal))
 	}
@@ -491,7 +702,10 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 // is also reachable with the arrows), then `esc`, then the walk — and the count
 // alone survives, because a card with no head is the one shape this refuses.
 func (a *app) hopHead(width int, pal palette) string {
-	left := itoa(len(a.hop.rows)) + " open"
+	left := itoa(a.hopOpenRows()) + " open"
+	if rest := len(a.hop.rows) - a.hopOpenRows(); rest > 0 {
+		left += " · " + itoa(rest) + " more on this machine"
+	}
 	clauses := append([]string(nil), hopClauses...)
 	for {
 		right := strings.Join(clauses, " · ")
@@ -521,10 +735,15 @@ func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 	case row.moving:
 		glyph, glyphInk = tokens.GlyphWorking, pal.accent
 	}
-	// THE DIGIT IS DRAWN BECAUSE THE DIGIT IS BOUND. A row a person can take with
-	// `3` and is never told about is a key that does nothing until somebody
-	// guesses, which is the clause SCREEN 3a forbids.
-	lead := pal.dim(itoa(at+1)) + " " + glyphInk(glyph) + " "
+	// THE DIGIT IS DRAWN EXACTLY WHERE IT IS BOUND, AND THE COLUMN IS HELD OPEN
+	// WHERE IT IS NOT. A row a person can take with `3` and is never told about
+	// is a key that does nothing until somebody guesses; a tenth row wearing a
+	// `10` nothing answers is the same defect the other way round.
+	mark := "  "
+	if at < hopDigits {
+		mark = pal.dim(itoa(at+1)) + " "
+	}
+	lead := mark + glyphInk(glyph) + " "
 	parts := []string{row.note, row.project, row.age}
 	for hopTailWidth(parts)+ansi.StringWidth(lead)+8 > width {
 		if parts[0] != "" {
@@ -671,3 +890,41 @@ var hopClauses = []string{"tab down", "shift+tab up", "enter go", "esc back"}
 // clauses again, from the same list, so a person reading the bottom of the
 // screen and a person reading the top of the card are told the same four things.
 var hopFootWords = strings.Join(hopClauses, " · ")
+
+// ── how many there are, asked off the loop ──────────────────────────────────
+
+// hopCountMsg is the answer: how many conversations this machine has.
+type hopCountMsg struct{ n int }
+
+// countConversations counts them, off the frame.
+//
+// IT IS A COMMAND AND NOT A METHOD FOR ONE REASON, and it is the same reason
+// home's own beat is a command: the walk opens every project's index and every
+// session's meta.json ([app.readWorldKnown] says so outright), and over `--host`
+// it is a call to another machine. The legend asks whether to name the switcher
+// on every single frame, so what it reads has to be a number that is already in
+// memory ([app.hopKnown]).
+//
+// A door that cannot answer leaves the count where it was rather than zeroing
+// it: "nobody could be asked just now" is not "there is nothing there".
+func (a *app) countConversations() tea.Cmd {
+	// THE SEAM'S THREE INPUTS ARE TAKEN HERE, ON THE LOOP, and the reading is
+	// taken there, off it (home.go's [worldSeam]). A command that reached back
+	// into the app for them would be reading fields the update loop is writing.
+	door, root, hosted := a.world, a.placesRoot(), a.hosted()
+	return func() tea.Msg {
+		seen, known := worldSeam(door, root, hosted)
+		if !known {
+			return nil
+		}
+		n := 0
+		for _, project := range seen.Projects {
+			for _, row := range project.Sessions {
+				if !row.Archived {
+					n++
+				}
+			}
+		}
+		return hopCountMsg{n: n}
+	}
+}

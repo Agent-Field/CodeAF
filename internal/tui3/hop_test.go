@@ -1,9 +1,12 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE SWITCHER IS A CARD OVER A DIMMED SURFACE, AND THESE ARE THE FOUR CLAIMS
@@ -60,6 +63,11 @@ func TestTheSwitcherDrawsEveryOpenConversationWithHereLast(t *testing.T) {
 	// journey through this card is two keys.
 	if a.hop.at != 0 {
 		t.Fatalf("the cursor opened on row %d", a.hop.at)
+	}
+	// AND NEVER ON `you are here`, which is what makes `ctrl+k enter` land
+	// somewhere on a session holding one conversation ([hopFirstStop]).
+	if a.hop.rows[a.hop.at].here {
+		t.Fatal("the cursor opened on the conversation the person is already in")
 	}
 	// The project and the age are the two things the tail says about a row it
 	// did not have to ask the disk about.
@@ -199,19 +207,30 @@ func TestASingleConversationHasNoSwitcherAndIsNeverToldAboutOne(t *testing.T) {
 		t.Fatalf("the legend named the switcher with one conversation open: %q", a.legendRight(a.width))
 	}
 
-	// WITH TWO OPEN THE SLOT STILL SAYS `tab last`: the card would hold exactly
-	// one destination, and `tab` reaches it in one key rather than two.
+	// A SECOND CONVERSATION MAKES IT REAL, and the slot names BOTH doors: `tab`
+	// is one key to the last one, and the card is every one of them.
 	a.stow(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/lab/other.jsonl"},
 		&aside{since: a.now()})
-	if got := a.legendRight(a.width); strings.Contains(got, hopDoorWord) {
-		t.Fatalf("the legend named the switcher with two open: %q", got)
+	got := a.legendRight(a.width)
+	if !strings.Contains(got, hopDoorWord) || !strings.Contains(got, lastDoorWord) {
+		t.Fatalf("the legend names %q with two open", got)
 	}
-	// AND WITH THREE IT NAMES THE SWITCHER, because `tab` can now only ever reach
-	// one of the two others.
-	a.stow(Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/lab/third.jsonl"},
-		&aside{since: a.now()})
-	if got := a.legendRight(a.width); !strings.Contains(got, hopDoorWord) {
-		t.Fatalf("the legend does not name the switcher with three open: %q", got)
+
+	// AND A MACHINE WITH OTHER CONVERSATIONS ON IT NAMES THE SWITCHER WITH NONE
+	// OF THEM OPEN — which is the whole discoverability fix: on a fresh session
+	// this key is the only thing that gets you anywhere, so it has to be on the
+	// frame from the first one.
+	fresh := newTestApp(&fakeAgent{model: "m"})
+	fresh.width, fresh.file = 100, "/tmp/lab/this-one.jsonl"
+	if fresh.hopAvailable() {
+		t.Fatal("the switcher is available before anything has counted the machine")
+	}
+	fresh.hopKnown = 6
+	if !fresh.hopAvailable() {
+		t.Fatal("the switcher is not available with six conversations on the machine")
+	}
+	if got := fresh.legendRight(fresh.width); !strings.Contains(got, hopDoorWord) {
+		t.Fatalf("the legend does not name the switcher on a fresh session: %q", got)
 	}
 }
 
@@ -273,5 +292,67 @@ func TestTheAliasIsBoundOnlyWhereTheTerminalCanSpellIt(t *testing.T) {
 	drive(t, a, key(hopAlias))
 	if !a.hopShowing() {
 		t.Fatal("ctrl+tab did not raise the switcher where it can arrive")
+	}
+}
+
+// TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet is the half of the
+// card that made the key worth binding: on a fresh session there is exactly one
+// conversation open, and a switcher that listed only those would be a key that
+// does nothing until somebody had already learned what it was for.
+func TestTheCardHoldsTheWholeMachineAndOpensARowThatIsNotOpenYet(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.file = filepath.Join(dir, "this-one.jsonl")
+	a.workspace = dir
+
+	// A machine with two conversations on it, one of them the one on screen.
+	other := filepath.Join(dir, "other.jsonl")
+	a.world = func() (session.World, bool) {
+		return session.World{Projects: []session.Project{{
+			Name: "lab", Dir: dir,
+			Sessions: []session.SessionRow{
+				{ID: "a", Title: "this one", Transcript: a.file, ProjectDir: dir},
+				{ID: "b", Title: "the other one", Transcript: other, ProjectDir: dir},
+			},
+		}}}, true
+	}
+	// The door the card opens a closed row through, standing in for cmd/aforge's.
+	opened := ""
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		opened = transcript
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: transcript, Workspace: workspace}, nil
+	}
+
+	drive(t, a, key(hopOpenKey))
+	if !a.hopShowing() {
+		t.Fatal("the switcher did not open with one conversation open and another on the machine")
+	}
+	if len(a.hop.rows) != 2 {
+		t.Fatalf("the card holds %d rows: %+v", len(a.hop.rows), a.hop.rows)
+	}
+	// THE ONE ON SCREEN IS THE OPEN HALF, and the other is below the rule.
+	if !a.hop.rows[0].open || !a.hop.rows[0].here {
+		t.Fatalf("the first row came out as %+v", a.hop.rows[0])
+	}
+	if a.hop.rows[1].open || !strings.Contains(strings.ToLower(a.hop.rows[1].title), "other") {
+		t.Fatalf("the closed row came out as %+v", a.hop.rows[1])
+	}
+	// AND A QUIET CLOSED ROW SAYS NOTHING. `not open yet` on nine rows is the
+	// layout's own fact said nine times; the rule already draws that line.
+	if a.hop.rows[1].note != "" {
+		t.Fatalf("a quiet closed row says %q", a.hop.rows[1].note)
+	}
+	// THE CURSOR IS ON THE ROW THAT CAN BE TAKEN, so enter lands.
+	if a.hop.at != 1 {
+		t.Fatalf("the cursor opened on row %d", a.hop.at)
+	}
+	drive(t, a, key("enter"))
+	if opened != other {
+		t.Fatalf("enter opened %q", opened)
+	}
+	// AND THE CONVERSATION IT LEFT IS STILL RUNNING — the same bargain home's
+	// own enter makes (keeper.go).
+	if a.openCount() != 2 {
+		t.Fatalf("%d conversations are open after taking a closed row", a.openCount())
 	}
 }
