@@ -574,6 +574,13 @@ zero, and `/cost` only adds it when the cost is above zero — so the two comman
 `nothing spent yet — this session has not sent a turn.` where the row says `$0.00`. A
 landed task card also refuses to print `$0.00`.
 
+**A resumed conversation is not a $0.00 conversation.** Reopening a transcript with
+`--session`, `aforge resume` or `/resume` puts that conversation's own running total on
+the spend segment on its first frame — the sum of every cost line in its file, the
+errands aforge ran beside your turns included — and new turns add to it. If you resume a
+session that spent real money and the row still says `$0.00`, the file has no cost lines
+in it (an older build wrote none), not that the money was forgotten.
+
 Other honest silences: the context percentage is dropped below 1% rather than shown as
 `0%`; the cache cash half appears only when there is a published price pair, never
 "saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
