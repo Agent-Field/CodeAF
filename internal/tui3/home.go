@@ -2953,10 +2953,6 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 		h.say(homeGoneWord+" · "+where, "")
 		return nil
 	}
-	if word, room := a.roomForAnother(); !room {
-		h.say(word, "")
-		return nil
-	}
 	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
 	// rather than closed and put in the keeper, which is the whole of what makes
 	// home a switcher rather than a list of places to go to in another terminal.
@@ -3131,10 +3127,6 @@ func (a *app) homeStart(text string) tea.Cmd {
 	// of a conversation in this project. The row says which before enter is
 	// pressed ([homeView.startLabel]).
 	if place := a.home.typedPlace(text); place != "" {
-		if word, room := a.roomForAnother(); !room {
-			a.home.say(word, "")
-			return nil
-		}
 		cmd, refusal := a.startBeside(place)
 		if refusal != "" {
 			a.home.say(refusal, "")
@@ -3143,23 +3135,15 @@ func (a *app) homeStart(text string) tea.Cmd {
 		a.closeHome()
 		return cmd
 	}
-	// THE ROOM IS ASKED FOR BEFORE HOME GOES, which is the whole of this door's
-	// repair. Closing home throws the box away ([app.dropHome] takes the view
-	// with it), so a refusal met AFTER the close has nowhere to put the sentence
-	// somebody typed — and the sentence went to [app.submit] regardless, into the
-	// conversation that was already on the screen. That is one person typing a
-	// new chat and landing in an old one, every time, from the eighth
-	// conversation onward.
-	//
-	// It is the same question the typed-path branch above asks, in the same
-	// words, said on home so that home is still there to read it on
-	// ([app.roomToRenew]).
-	if word, room := a.roomToRenew(); !room {
-		a.home.say(word, "")
-		return nil
-	}
 	a.closeHome()
 	renewed, started := a.renew()
+	// THE SENTENCE IS ONLY SENT INTO A CONVERSATION THE RENEW ACTUALLY OPENED,
+	// which is what remains of this door's repair now that the keeper refuses
+	// nothing. Home used to close itself, ask for a conversation, and submit
+	// whether or not one came back — so a refusal met after the close sent the
+	// words into whatever was already on screen. There is no cap to be refused
+	// by any more, but a door can still fail (a session folder that cannot be
+	// made), and the bool is what tells the two apart.
 	if !started {
 		// The door itself failed — a session folder that could not be made — and
 		// [app.renew] has said so where a person is now standing. The sentence
