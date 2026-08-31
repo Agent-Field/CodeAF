@@ -143,6 +143,42 @@ func rowTail(fields []rowField, room int) string {
 	return out.String()
 }
 
+// rowLed is [rowTail] for a segment whose FIRST field is a LEAD — a name with a
+// word of grammar in front of it, where the grammar is worth less than any fact
+// behind it.
+//
+// THE DEFECT IT FIXES. [rowTail] is greedy field by field, which is right when
+// every field is a fact: each one says the most it can and the row stops where
+// it stops. It is wrong for a lead, because the lead's own longest spelling is
+// not a fact — "via coreweave" and "coreweave" name the same machine — so
+// spending three cells on `via ` can cost the whole of the fact after it. At
+// thirty-two columns the greedy answer is `via coreweave · 3.1s` and the honest
+// one is `coreweave · 3.1s → parasail 4.4s`, which is the same name and the
+// thing a person was actually looking for.
+//
+// THE RULE IS ONE LINE: try the lead in each of its spellings and keep the
+// rendering that says the MOST, measured in cells actually used. A tie keeps the
+// longer lead, because between two rows that say as much the more identifying
+// name is the better one. It is not a second ladder — every rung is still
+// [rowTail]'s, and this only decides which spelling of the head it is handed.
+func rowLed(fields []rowField, room int) string {
+	if len(fields) == 0 || !fields[0].known() {
+		return rowTail(fields, room)
+	}
+	lead, rest := fields[0], fields[1:]
+	best, widest := "", -1
+	for _, spelling := range [...]string{lead.full, lead.short, lead.tiny} {
+		if spelling == "" {
+			continue
+		}
+		said := rowTail(append([]rowField{{full: spelling}}, rest...), room)
+		if width := ansi.StringWidth(said); width > widest {
+			best, widest = said, width
+		}
+	}
+	return best
+}
+
 // rowAll is every known fact at its longest spelling — the row as a frame with
 // no edge would draw it.
 func rowAll(fields []rowField) string { return rowTail(fields, rowUnbounded) }

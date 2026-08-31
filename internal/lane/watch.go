@@ -2,6 +2,7 @@ package lane
 
 import (
 	"math"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,19 @@ import (
 // the stream is only abandoned when the drift alarms AND finishing here would
 // take longer than redoing the whole answer somewhere else from zero.
 //
+// COMMITMENT COUNTS THE TOKENS A PERSON CAN READ, AND NOTHING ELSE. A reasoning
+// model writes its thinking on the same stream, billed and streamed exactly
+// like an answer — and none of it is on the screen. Abandoning a thousand
+// tokens of thought throws away money that is already spent; abandoning a
+// thousand tokens of ANSWER throws away text somebody is in the middle of
+// reading, and takes it off the screen to do it. Those are different costs, so
+// they are different counters: [Watch.Token] is told how many of the tokens so
+// far were visible, and the commitment rule is about that figure alone. The
+// measured defect this fixes: a stream that stalled sixty seconds into its
+// reasoning was past sixty-four tokens, so every hedge was refused, and the
+// answer waited on the transport's stall guard — two and a half minutes away —
+// while the surface said "still working".
+//
 // A HEDGE IS A MEASUREMENT. The second request is also the only cheap way to
 // learn what the alternative lane would have done, so whichever way it lands it
 // goes back into the ledger as a sighting.
@@ -79,7 +93,9 @@ const (
 	// keeps its meaning exactly.
 	lumpGap = 15 * time.Second
 	// commitTokens is where an answer stops being cheap to abandon. Past it a
-	// drift alarm is not enough on its own: see [Watch.worthLeaving].
+	// drift alarm is not enough on its own: see [Watch.worthLeaving]. IT COUNTS
+	// VISIBLE TOKENS: a run of thought is money already spent and nothing a
+	// person would watch disappear, so it buys no commitment at all.
 	commitTokens = 64
 	// driftSlack (k) is how much slower than believed a gap may be before it
 	// counts as evidence at all, and driftAlarm (h) is how much evidence is
@@ -112,9 +128,17 @@ type Watch struct {
 	// reading a belief the choice never saw.
 	altTTFT float64
 	altRate float64
-	// began is when the request went out, and tokens counts what has arrived.
-	began  time.Time
-	tokens int
+	// head is the lane the deadline was computed for, so that a stream served
+	// by somebody else can be judged against the machine that is really
+	// answering it ([Watch.Serving]).
+	head string
+	// began is when the request went out, tokens counts every delta that has
+	// arrived, and visible counts the ones a person can read. The two differ by
+	// the run of thought, which is the whole of the commitment rule's argument
+	// above.
+	began   time.Time
+	tokens  int
+	visible int
 	// expected is how long this answer is thought to be, in output tokens. It
 	// is the other half of the commitment rule and it is set by whoever knows
 	// it ([Watch.SetExpectedTokens]); zero means "no idea", under which a
@@ -141,6 +165,7 @@ func NewWatch(choice Choice, belief Belief, now time.Time) *Watch {
 		deadline: choice.Deadline,
 		alt:      choice.Alt,
 		belief:   belief,
+		head:     headOf(choice),
 		began:    now,
 		beat:     now,
 	}
@@ -156,6 +181,19 @@ func NewWatch(choice Choice, belief Belief, now time.Time) *Watch {
 		}
 	}
 	return watch
+}
+
+// headOf is the lane this request was expected to land on: the pin if there is
+// one, else the head of the order. It is what the deadline in hand was computed
+// for, and [Watch.Serving] compares the stream's own answer against it.
+func headOf(choice Choice) string {
+	if len(choice.Only) > 0 {
+		return choice.Only[0]
+	}
+	if len(choice.Order) > 0 {
+		return choice.Order[0]
+	}
+	return ""
 }
 
 // derivedDeadline is the fallback when the choice named none: the serving
@@ -211,9 +249,11 @@ func (w *Watch) PathFault() bool { return w.fault }
 
 // SetExpectedTokens says roughly how long this answer is going to be.
 //
-// It is the sunk-cost half of the commitment rule: two hundred tokens in with
-// twenty to go is a stream worth finishing however slowly it is going, and the
-// only way to know that is to know how many were expected. Without it a
+// It is the sunk-cost half of the commitment rule: two hundred VISIBLE tokens in
+// with twenty to go is a stream worth finishing however slowly it is going, and
+// the only way to know that is to know how many were expected. It is an answer
+// length and never a thinking length — the run of thought is not counted on
+// either side of the comparison. Without it a
 // committed stream is never abandoned, which is the safe direction — the cost
 // of staying is one slow answer and the cost of leaving wrongly is the whole
 // answer again.
@@ -223,20 +263,56 @@ func (w *Watch) SetExpectedTokens(n int) {
 	}
 }
 
+// Serving says which lane the stream itself named, with what is believed about
+// it, so that everything after the first chunk is judged against the machine
+// that is really answering.
+//
+// A ROUTER IS FREE TO HONOUR ANY OF AN ORDER, and it says which way it went on
+// every chunk. Until it does, the only belief there is belongs to the lane at
+// the head of the order — that is what the deadline was solved for and what the
+// drift test would otherwise keep measuring gaps against. Judging parasail's
+// stream against friendli's believed rate is a surprise about nobody.
+//
+// The deadline moves with it only while nothing has arrived yet: past the first
+// token a deadline has nothing left to bound, and a lane named after the answer
+// started must not reopen a window that has already closed.
+func (w *Watch) Serving(lane string, belief Belief, now time.Time) {
+	if w.hedged || lane == "" || equalLane(lane, w.head) || !belief.Known() {
+		return
+	}
+	w.head, w.belief = lane, belief
+	if w.tokens > 0 {
+		return
+	}
+	if deadline := derivedDeadline(belief); deadline > 0 {
+		w.deadline = deadline
+	}
+}
+
+// equalLane compares two lane names the way every other comparison in this
+// design does: the wire spells a lane however it likes.
+func equalLane(a, b string) bool { return strings.EqualFold(a, b) }
+
 // Heartbeat records a sign of life that is not a token — the router's own
 // comment line before the model has said anything. It is proof about the PATH
 // and never about the endpoint.
 func (w *Watch) Heartbeat(t time.Time) { w.beat = t }
 
-// Token records that n tokens have now arrived, and says whether the stream
-// should be given up on.
+// Token records that n tokens have now arrived — of which visible are tokens a
+// person can read — and says whether the stream should be given up on.
 //
 // The first token carries no gap — there is nothing before it to measure
 // against — so it only stops the deadline clock. Every one after it is folded
 // into the drift.
-func (w *Watch) Token(n int, t time.Time) Verdict {
+//
+// THE TWO COUNTS ARE NOT INTERCHANGEABLE. n is progress: it is what says the
+// endpoint is writing at all, and it is what the gaps are measured between.
+// visible is what is on the screen, and it is the only thing the commitment
+// rule is allowed to read (see the header).
+func (w *Watch) Token(n, visible int, t time.Time) Verdict {
 	previous := w.last
 	w.tokens = n
+	w.visible = visible
 	w.beat, w.last = t, t
 	if previous.IsZero() {
 		return Verdict{}
@@ -327,7 +403,7 @@ func (w *Watch) verdict(reason string, path bool) Verdict {
 	if w.hedged || w.alt == "" || reason == "" {
 		return Verdict{}
 	}
-	if !path && w.tokens >= commitTokens && !w.worthLeaving() {
+	if !path && w.visible >= commitTokens && !w.worthLeaving() {
 		// Committed: the answer is already most of the way here and starting
 		// again somewhere else would cost more than finishing slowly.
 		return Verdict{}
@@ -348,7 +424,7 @@ func (w *Watch) worthLeaving() bool {
 	if rate <= 0 || w.expected <= 0 {
 		return false
 	}
-	remaining := float64(w.expected - w.tokens)
+	remaining := float64(w.expected - w.visible)
 	if remaining <= 0 {
 		return false
 	}

@@ -120,6 +120,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -2692,7 +2693,13 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// observer that types deltas into the room as the assistant speaking, and this
 	// answer is a worker's instruction rather than a word to the person. Left on
 	// the stream it would paint the brief over the top of the answer it is ending.
-	response, err := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
+	//
+	// AND WITHOUT THE TURN'S ROLE EITHER. This is a fold-up written beside an
+	// answer rather than the answer itself, so it is priced and drawn as the
+	// errand it is: a person is reading the turn this ends, and the clock over
+	// their answer is not this call's to move (internal/lane's roles.go).
+	response, err := a.client.CompleteWithMessages(
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
 		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This

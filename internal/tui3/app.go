@@ -2280,6 +2280,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// keystroke instead would be a rescue nobody saw happen.
 		return a, nil
 
+	case phaseNewsMsg:
+		// AND THE PHASE CLOCK SAID SOMETHING (phase.go's [PostPhaseNews]). It is
+		// the lane message's twin and it is empty for the same reason: the desk
+		// already holds the news, and a frame is the only thing this can add.
+		return a, nil
+
 	case sigQuitMsg:
 		// A REAL SIGINT OR SIGTERM, forwarded by this package's own handler
 		// (tui3.go's [forwardSignals]) because Bubble Tea's answers SIGINT by

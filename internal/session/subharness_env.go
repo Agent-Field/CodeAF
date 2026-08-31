@@ -45,6 +45,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -192,7 +193,9 @@ func (e *subharnessEnv) AI(ctx context.Context, promptRef string, input any, opt
 			fmt.Errorf("there is no prompt called %s in this program", strconv.Quote(promptRef)))
 	}
 
-	call := provider.WithoutStream(ctx)
+	// One step of a saved program: nobody is reading its stream and nobody is
+	// waiting on its first word (internal/lane's roles.go).
+	call := provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary)
 	if opts.Effort != provider.EffortNone {
 		call = provider.WithConfiguredReasoningEffort(call, opts.Effort)
 	}

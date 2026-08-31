@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -134,8 +135,14 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// WithoutStream for the reason the title and the compaction summary use it:
 	// this is bookkeeping about the conversation, not something anybody said, and
 	// left on the turn's stream it would type a word into the room.
+	//
+	// AND IT NAMES ITSELF A GATE. The guardian reads finished work and answers
+	// one word about whether it is safe, so its answer has to be right where its
+	// speed is worth little — and nobody is reading its stream, which is what
+	// keeps it off the status line of the answer it is standing in front of
+	// (internal/lane's roles.go).
 	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(judgeCtx),
+		provider.WithRole(provider.WithoutStream(judgeCtx), lane.RoleJudge),
 		[]ai.Message{
 			textMessage("system", guardianPrompt),
 			textMessage("user", guardianQuestion(call, decision)),

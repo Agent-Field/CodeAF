@@ -54,6 +54,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -177,7 +178,12 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 	// an answer.
 	messages := []ai.Message{textMessage("system", shapePrompt), textMessage("user", request)}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, callErr := a.client.CompleteWithMessages(provider.WithoutStream(ctx), messages,
+		// And a role for the same reason it is made without the stream: shaping a
+		// brief is the machine's own housekeeping beside somebody's turn, so it
+		// is priced as an errand and it never owns the clock (internal/lane's
+		// roles.go).
+		response, callErr := a.client.CompleteWithMessages(
+			provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
 			ai.WithModel(call.Model), ai.WithTemperature(taskShapeTemp), ai.WithMaxTokens(taskShapeTokens))
 		if callErr != nil || response == nil {
 			return unshaped(request)
