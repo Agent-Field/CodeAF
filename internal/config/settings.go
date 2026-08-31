@@ -1683,6 +1683,12 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
 		Setting{
+			Key: KeyBashBackgroundAfter, Category: CategorySpending, Kind: SettingCount,
+			Label: "background after", Hint: BashBackgroundAfterHint,
+			read:  func() string { return strconv.Itoa(BashBackgroundAfterAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyBashBackgroundAfter, raw) },
+		},
+		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +

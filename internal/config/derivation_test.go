@@ -161,8 +161,9 @@ var settingReaders = map[string]string{
 	// door: the clock runs on the frame clock beside the question it is counting
 	// down (internal/tui3's consent.go), so what touches the value is this
 	// accessor and nothing downstream of it.
-	KeyConsentTimeout: "ConsentTimeoutAt",
-	KeyMouse:          "MouseEnabledAt",
+	KeyConsentTimeout:      "ConsentTimeoutAt",
+	KeyBashBackgroundAfter: "BashBackgroundAfterAt",
+	KeyMouse:               "MouseEnabledAt",
 	// The timestamps row is read by the v3 surface itself — at boot and at every
 	// turn end, beside the mouse and the gate posture — and becomes what the
 	// transcript draws of the clock (internal/tui3's timestamps.go).
