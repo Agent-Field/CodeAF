@@ -73,6 +73,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my session called name this session in 8 words", "sessions-and-rewind"},
 		{"what slash commands are there", "commands"},
 		{"how do I export this conversation", "commands"},
+		// THE FOLDER PICKER, asked in the four vocabularies people bring to it.
+		// "folder" is the word most people say, "directory" is what a terminal
+		// person says, "repo" is what somebody with several checkouts says, and
+		// the fourth is the ask underneath all three — which the page has to
+		// answer honestly, because choosing a folder does not move the
+		// conversation.
+		{"how do I choose a folder", "choosing-a-folder"},
+		{"pick a directory", "choosing-a-folder"},
+		{"work on a different repo in this chat", "choosing-a-folder"},
+		{"open another project", "choosing-a-folder"},
+		{"can I attach a folder", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
