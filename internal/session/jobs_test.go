@@ -426,7 +426,7 @@ func TestJobNoteCoalescesWithAmbientNewsAtItsStepBoundary(t *testing.T) {
 	agent.opened = false
 	agent.mu.Unlock()
 
-	agent.enqueueWatchNote("lint", "watch lint · 1 line new\nalso check the linter")
+	agent.enqueueWatchNote("lint", "watch lint · 1 line new\nalso check the linter", false)
 	id := startJob(t, agent, "echo done")
 	waitFor(t, "the completion note", func() bool {
 		return len(steeringQueue(agent)) == 1

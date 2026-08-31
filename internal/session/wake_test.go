@@ -402,7 +402,7 @@ func TestWatchDeltasWaitForOneBatchAfterAFiveRoundTurn(t *testing.T) {
 		}
 		if round < 3 {
 			agent.jobs.notifyWatch("codex-jobs",
-				watchNote("codex-jobs", "1 line new", []string{fmt.Sprintf("fix %s", []string{"one", "two", "three"}[round])}))
+				watchNote("codex-jobs", "1 line new", []string{fmt.Sprintf("fix %s", []string{"one", "two", "three"}[round])}), false)
 		}
 		close(release[round])
 	}
@@ -501,7 +501,7 @@ func TestInterruptedTurnKeepsItsAmbientBatchForTheNextTurn(t *testing.T) {
 	}
 	<-inFlight
 	for _, line := range []string{"one", "two", "three"} {
-		agent.jobs.notifyWatch("build", watchNote("build", "1 line new", []string{line}))
+		agent.jobs.notifyWatch("build", watchNote("build", "1 line new", []string{line}), false)
 	}
 	agent.Interrupt()
 	collect(t, events)
