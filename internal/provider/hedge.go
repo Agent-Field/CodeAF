@@ -775,6 +775,18 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 	}
 
 	for _, arm := range arms {
+		// THE ANSWER THAT WAS USED IS NOTED ONCE, BY THE ORDINARY PATH. Every
+		// finished stream already reaches the belief through
+		// [Client.noteVelocity] — that is how a machine with no sheet learns
+		// anything at all — and the winner of a race is a finished stream like
+		// any other. Noting it here too gave a raced lane TWO sightings of one
+		// answer, which is a lane believed twice as measured as it is and, worse,
+		// a lane whose belief moves twice as fast for having been in a race. So
+		// this loop is about the LOSERS, which are the streams no other path can
+		// see.
+		if arm.index == result.index {
+			continue
+		}
 		tokens := 0
 		if done, ok := seen[arm.index]; ok && done.response != nil && done.response.Usage != nil {
 			tokens = done.response.Usage.CompletionTokens

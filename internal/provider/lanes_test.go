@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -458,4 +459,35 @@ func TestConstructionWiresTheSheetAtARouter(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("the wired sheet refused with %v, want the cancelled context's own error", err)
 	}
+}
+
+// ── ONE TEST'S BELIEFS ARE NOT ANOTHER'S ────────────────────────────────────
+
+// forgetLanes gives one test a registry of its own.
+//
+// The velocity ledger this package's tests were written around is PER CLIENT
+// (`client.velocity = newVelocityLedger()`), so every test that built a client
+// got a blank one. The lane registry is per PROCESS, by design — a belief about
+// a machine is a fact about this build's afternoon and not about one caller —
+// and a test binary is one process. So without this, a test that streamed an
+// answer taught every test after it, and the ones that assert on what a FIRST
+// request carries failed on an order they could not have learned.
+//
+// It is called from the builders rather than from each test, because the thing
+// that needs the clean registry is the thing that is about to send.
+func forgetLanes(t *testing.T) {
+	t.Helper()
+	// A HOME OF ITS OWN AS WELL AS A REGISTRY OF ITS OWN, and the second alone
+	// is not enough: the ledger writes through a store on the way in and reads
+	// it back on its first question, so a fresh registry pointed at the same
+	// file inherits the previous test's beliefs from disk a moment after being
+	// emptied. [TestMain] moves the state root off the developer's machine;
+	// this moves it again, per test.
+	t.Setenv(home.EnvVar, t.TempDir())
+	lanes.Default().Reset()
+	lanes.ForgetPrefixes()
+	t.Cleanup(func() {
+		lanes.Default().Reset()
+		lanes.ForgetPrefixes()
+	})
 }

@@ -84,6 +84,7 @@ func (c *capture) body(index int) map[string]any {
 
 func newTestClient(t *testing.T, config Config) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)

@@ -14,20 +14,38 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// TestMain switches the model-call log OFF for this package by default.
+// TestMain switches the model-call log OFF for this package by default and
+// moves the whole state root somewhere disposable.
 //
 // The log is always on in the product, which means a test binary that says
 // nothing about it appends a row per simulated call into the developer's own
 // ~/.aforge. The tests in this file switch it back on, pointed at a temporary
 // file of their own.
+//
+// AND THE SAME IS NOW TRUE OF THE BELIEF FILE. `internal/lane`'s ledger writes
+// every sighting through a store under [lane.StorePath], which resolves under
+// AFORGE_HOME on every call — so a package whose tests stream simulated answers
+// through a client was folding lanes called "quicksilver" into the belief file
+// of whoever ran the tests, and reading them back on the next run. The symptom
+// was a first request arriving with an `order` it could not have learned yet,
+// which is the pollution and the test failure in one. A home per test binary
+// ends the first half of that; [forgetLanes] ends the second.
 func TestMain(m *testing.M) {
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
-	os.Exit(m.Run())
+	root, err := os.MkdirTemp("", "provider-home")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv(home.EnvVar, root)
+	code := m.Run()
+	os.RemoveAll(root)
+	os.Exit(code)
 }
 
 // loggingTo points the process's one log at a fresh file for the duration of a

@@ -160,8 +160,21 @@ func TestAgeingWidensTheBeliefAndStopsAtTheSheet(t *testing.T) {
 	if twice := age(belief, 2*HalfLife, 0); math.Abs(twice.P-0.2) > 1e-12 {
 		t.Fatalf("two half-lives left the variance at %.4f", twice.P)
 	}
-	if clamped := age(belief, 100*HalfLife, 0.11); clamped.P != 0.11 {
-		t.Fatalf("a belief left alone for a day widened past the public sheet, to %.4f", clamped.P)
+	// AND IT STOPS WHERE THE PUBLIC READING STANDS, WHICH IS [SheetWeight] TIMES
+	// THE SHEET'S SPREAD AND NOT THE SPREAD ITSELF. The sheet enters the filter
+	// as a pseudo-observation with R = k·σ², so a belief sitting at σ² is four
+	// times more certain than the public number — and clamped there it could
+	// never be outweighed by it however old it got, which is the penalty box
+	// this design says it does not have. See [age].
+	if clamped := age(belief, 100*HalfLife, 0.11); math.Abs(clamped.P-SheetWeight*0.11) > 1e-12 {
+		t.Fatalf("a belief left alone for a day settled at %.4f rather than at the public sheet's own weight %.4f",
+			clamped.P, SheetWeight*0.11)
+	}
+	// A fully forgotten belief and a fresh sheet weigh the same: the next
+	// reading moves it half the way, which is what parity means.
+	forgotten := age(belief, 100*HalfLife, 0.11)
+	if gain := forgotten.P / (forgotten.P + SheetWeight*0.11); math.Abs(gain-0.5) > 1e-12 {
+		t.Fatalf("the sheet moved a forgotten belief %.0f%% of the way, want half", gain*100)
 	}
 }
 

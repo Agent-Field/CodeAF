@@ -263,15 +263,8 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	if prefs == nil || request == nil || !c.isOpenRouter() {
 		return
 	}
-	strategy := c.routingFor(knobs.intent)
-	if strategy == RoutingOff {
-		return
-	}
-	lambda := c.laneValueOfTime(strategy, knobs)
-	ask := c.laneRequest(model, knobs, request, lambda)
-	c.rememberAsk(ask)
-	choice := lanes.Default().Chooser().Choose(ask)
-	if choice.Empty() {
+	choice, made := c.laneChoiceFor(knobs, model, request)
+	if !made {
 		return
 	}
 	if len(choice.Order) > 0 {
@@ -293,6 +286,47 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 		}
 		prefs.Ignore = append(prefs.Ignore, lane)
 	}
+}
+
+// laneChoiceFor is the preference this request goes out on: the one the call
+// already decided, or a fresh one for a call that decided none.
+//
+// A STREAMED CALL DECIDES ONCE, IN client.go, BEFORE ANYTHING IS SENT — because
+// the watch that may hedge it and the encoder that writes `provider.order` have
+// to agree about which lane was asked for, and the choice is a sampled decision
+// that answers differently every time it is asked. A non-streamed call has no
+// watch to agree with, so it decides here, which is the last moment the model
+// and the shaped request are both known.
+func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Request) (lanes.Choice, bool) {
+	if knobs.laneChoice != nil {
+		return *knobs.laneChoice, true
+	}
+	strategy := c.routingFor(knobs.intent)
+	if strategy == RoutingOff {
+		return lanes.Choice{}, false
+	}
+	lambda := c.laneValueOfTime(strategy, knobs)
+	ask := c.laneRequest(model, knobs, request, lambda)
+	c.rememberAsk(ask)
+	choice := lanes.Default().Chooser().Choose(ask)
+	return choice, !choice.Empty()
+}
+
+// withLaneChoice decides this call's lane preference and carries it on the
+// context, so that the watch and the wire are looking at the same choice. See
+// [Client.laneChoiceFor] for why it is decided once rather than per encode.
+func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) context.Context {
+	if _, made := laneChoiceFromContext(ctx); made {
+		return ctx
+	}
+	if request == nil || !c.isOpenRouter() {
+		return ctx
+	}
+	choice, made := c.laneChoiceFor(knobsFrom(ctx), c.modelFor(request), request)
+	if !made {
+		return ctx
+	}
+	return WithLaneChoice(ctx, choice)
 }
 
 // namesEndpoint reports whether a preference list already names an endpoint.

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -328,6 +329,11 @@ type callKnobs struct {
 	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
 	// is what keeps a healthy request byte-for-byte what it always was.
 	hedgeLane string
+	// laneChoice is the lane preference this call was decided on, nil when
+	// nobody decided one — which is every call in a build where the router is
+	// not wired in, and every non-streamed call, which has no watch to agree
+	// with and makes its own inside the encoder.
+	laneChoice *lanes.Choice
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -337,7 +343,7 @@ type callKnobs struct {
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
-	return callKnobs{
+	knobs := callKnobs{
 		cacheKey:  CacheKeyFrom(ctx),
 		effort:    effortFrom(ctx),
 		intent:    routingIntentFrom(ctx),
@@ -347,6 +353,13 @@ func knobsFrom(ctx context.Context) callKnobs {
 		reasoning: MessageReasoningFrom(ctx),
 		trace:     newCallTrace(),
 	}
+	// The choice this call was already made on, if it was. See
+	// [Client.withLaneChoice]: it is carried rather than recomputed because it
+	// is a sampled decision and two draws are two different answers.
+	if choice, made := laneChoiceFromContext(ctx); made {
+		knobs.laneChoice = &choice
+	}
+	return knobs
 }
 
 // modelFor names the model a request will actually run against: the one the
@@ -921,6 +934,24 @@ func (c *Client) completeWithMessagesStreaming(
 	if observer == nil {
 		observer = func(StreamEvent) {}
 	}
+	relearned := false
+	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
+	if err != nil {
+		return nil, false, err
+	}
+	request.Stream = true
+	// THE LANE CHOICE IS MADE ONCE, HERE, AND EVERYTHING DOWNSTREAM READS IT.
+	//
+	// It is a sampled decision (`internal/lane`'s Thompson draw), so asking for
+	// it twice gives two different answers — and this call would have asked
+	// twice: once for the watch that decides whether to hedge and where to, and
+	// once inside the encoder for the `provider.order` that actually goes on the
+	// wire. A watch waiting on a lane the wire never asked for is a hedge fired
+	// at the wrong moment toward the wrong alternative, and nothing in either
+	// half would look wrong on its own. Made here, the two are the same choice
+	// by construction — and so is every rung of the endpoint ladder and every
+	// retry, which each re-encode the same request.
+	ctx = c.withLaneChoice(ctx, request)
 	// THE HEDGE, AND THE ONE PLACE IT IS DECIDED (hedge.go). A call the lane
 	// router is watching runs as a race of one or two arms, each of which is
 	// this same function on a child context; a call it is not watching — which
@@ -929,12 +960,6 @@ func (c *Client) completeWithMessagesStreaming(
 	if race, raced := c.raceFor(ctx, observer); raced {
 		return race.run(ctx, messages, options...)
 	}
-	relearned := false
-	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
-	if err != nil {
-		return nil, false, err
-	}
-	request.Stream = true
 	began := c.clock()
 	// The log's own start, on the world's clock rather than the measurement
 	// seam (calllog.go's logNow).

@@ -254,6 +254,11 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 		return errSheetEmpty
 	}
 	at := time.Now()
+	// Every row carries the moment it was read, so that the ledger can age a
+	// belief to it before folding it in ([Row.At]).
+	for i := range rows {
+		rows[i].At = at
+	}
 	s.mu.Lock()
 	s.rows[model], s.at[model], s.looked[model] = rows, at, true
 	for id, tag := range tags {

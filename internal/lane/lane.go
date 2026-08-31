@@ -128,6 +128,18 @@ type Row struct {
 	ID    ID
 	Facts Facts
 
+	// At is when this reading was taken, zero when nobody said.
+	//
+	// IT IS HERE BECAUSE A ROW IS AN OBSERVATION LIKE ANY OTHER, and every other
+	// observation in this package carries its moment ([Sighting.At],
+	// [Outcome.At]). Without it the ledger folds a FRESH public reading into a
+	// belief still holding the certainty it had ten minutes ago, and a lane this
+	// process stopped sending to — whose belief is therefore both stale and
+	// confident — can never be corrected by the sheet saying it recovered. That
+	// is a penalty box, arrived at by arithmetic rather than by a timer, and §5
+	// of the design forbids it either way.
+	At time.Time
+
 	TTFTp50 float64
 	TTFTp75 float64
 	TTFTp90 float64
