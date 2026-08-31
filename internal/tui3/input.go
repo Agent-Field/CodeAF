@@ -984,6 +984,20 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))
+		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
+		// It is here, on the one line every typed character passes through,
+		// because that is exactly what it is for: seconds before a request is
+		// made we know one is coming and roughly where it will go, and a
+		// one-token measurement of the two machines it would go to costs about
+		// two hundredths of a cent and takes a stale half-hour aggregate out of
+		// the wait a person is about to sit through.
+		//
+		// EVERY CHARACTER CALLS IT AND ALMOST NONE OF THEM BUY ANYTHING. The
+		// debounce is the engine's — at most one pair every twenty seconds per
+		// model, none at all when the speed guard is off or nobody is waiting —
+		// so a composer has no first-keystroke state to keep and cannot get it
+		// wrong. Nothing waits for it: it returns before anything is sent.
+		a.laneTyping()
 		cmd := a.edited()
 		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, which
 		// is the one line every typed character in this program passes through

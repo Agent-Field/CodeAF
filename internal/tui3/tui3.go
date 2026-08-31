@@ -914,6 +914,32 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	p := tea.NewProgram(newApp(ctx, opts), program...)
+	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT THE LANE NEWS. Which machine
+	// answered, and whether a rescue went out while somebody was waiting, are
+	// facts only the layer that sent the request can see, and the arrow between
+	// that layer and this one only points this way — so it is pushed
+	// (internal/session's lanenews.go) and this is where the push lands. It is
+	// registered for the life of the program and taken down when it ends, so a
+	// second surface in one process cannot inherit the first one's desk.
+	previousLaneReader := session.OnLaneNews(func(news session.LaneNews) {
+		PostLaneNews(LaneNews{
+			Model:  news.Model,
+			Lane:   news.Lane,
+			Alt:    news.Alt,
+			Winner: news.Winner,
+			TTFT:   news.TTFT,
+			Rate:   news.Rate,
+			Hedged: news.Hedged,
+			Trying: news.Trying,
+			At:     news.At,
+		})
+		// A status line that has changed is a frame that has to be drawn, and
+		// nothing else on this surface is going to ask for one: the news arrives
+		// on the stream's own goroutine, between two events, and a rescue that
+		// was only drawn at the next keystroke would be a rescue nobody saw.
+		p.Send(laneNewsMsg{})
+	})
+	defer session.OnLaneNews(previousLaneReader)
 	defer forwardSignals(p)()
 	_, err := p.Run()
 	return err

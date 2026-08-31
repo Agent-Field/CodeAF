@@ -705,12 +705,12 @@ const (
 	LaneOpenRouter = "openrouter"
 )
 
-// laneRowSlot is the ONE slot the settings registry carries a row for: the
+// LaneSlotTalk is the ONE slot the settings registry carries a row for: the
 // conversation. Every slot has a key — a task worker can be pinned by the same
 // grammar — but a panel with nine lane rows on it would be a panel about
 // endpoints rather than about models, and the other eight are set from the
 // picker on the model they belong to.
-const laneRowSlot = "talk"
+const LaneSlotTalk = "talk"
 
 // LaneSettingKey is the row holding one slot's lane: `auto`, `openrouter`, or a
 // lane's own name as the wire spells it.
@@ -1726,7 +1726,7 @@ func (s *Settings) build() []Setting {
 		// prefers; this says which endpoint the conversation actually goes to,
 		// for the person who has watched the numbers and knows.
 		Setting{
-			Key: LaneSettingKey(laneRowSlot), Category: CategoryModels, Kind: SettingText,
+			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
 			Label: "lane", EmptyLabel: LaneAuto,
 			Hint: "which machine behind your model answers you. One model id is served by " +
 				"a dozen endpoints that differ by seven times on the wait before the first " +
@@ -1736,8 +1736,8 @@ func (s *Settings) build() []Setting {
 				"a slow answer be rescued elsewhere; openrouter asks for no endpoint at all and " +
 				"lets the router balance on price. The picker under /model lists them with " +
 				"their measured speeds; → on a row opens them.",
-			read:  func() string { return LaneRowWord(dir, laneRowSlot) },
-			write: func(raw string) error { return WriteLaneRow(dir, laneRowSlot, raw) },
+			read:  func() string { return LaneRowWord(dir, LaneSlotTalk) },
+			write: func(raw string) error { return WriteLaneRow(dir, LaneSlotTalk, raw) },
 		},
 		Setting{
 			Key: KeyLaneGuard, Category: CategoryModels, Kind: SettingBool,
