@@ -104,9 +104,8 @@ func (a *app) sendParked() tea.Cmd {
 	}
 	next := a.parks[0]
 	a.parks = a.parks[1:]
-	a.pastes = next.pastes
 	shown := next.text
-	spoken := a.expandPastes(next.text)
+	spoken := next.spoken()
 	if len(next.chips) > 0 {
 		// The tray is refilled for exactly as long as the submit takes to read
 		// it, because [app.submitImages] is the door and the tray is what it

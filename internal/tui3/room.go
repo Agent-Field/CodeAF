@@ -1567,7 +1567,10 @@ func (a *app) steer() tea.Cmd {
 		a.roomNote(roomUnavailableWord)
 		return nil
 	}
-	waiting, err := doors.SteerTask(room.id, line)
+	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
+	// The chips are spent only once the engine has taken the line: a refusal
+	// leaves the words in the box, chips and all.
+	waiting, err := doors.SteerTask(room.id, a.pastesUnfolded(line))
 	if err != nil {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
@@ -1587,6 +1590,7 @@ func (a *app) steer() tea.Cmd {
 	// box, and a recall list holding sentences that went nowhere would be a
 	// history of things that did not happen.
 	a.remember(line)
+	a.pastes = nil
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
