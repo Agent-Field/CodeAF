@@ -50,6 +50,9 @@ type spendReading struct {
 	// this machine has that model BOUND to, and the role slots nothing is bound
 	// to at all ([spendReading.crewed], [spendCrew]).
 	crew spendCrew
+	// rail is the machine's daily limit, for the pointer line at the top of the
+	// page ([spendReading.railed]). Zero is no limit.
+	rail float64
 }
 
 // spendCrew is what SCREEN 2c's model table needs and the ledger does not hold:
@@ -80,6 +83,25 @@ func (r spendReading) crewed(crew spendCrew) spendReading {
 	r.crew = crew
 	return r
 }
+
+// railed hands the reading the day's own limit, for the pointer line at the top
+// of the page. Zero is a machine with no daily limit, which the line says in a
+// word rather than drawing a denominator nobody set.
+func (r spendReading) railed(rail float64) spendReading {
+	r.rail = rail
+	return r
+}
+
+// spendRailsWord is the second half of the pointer line: where the limits are
+// set, named with the door that actually works from here.
+//
+// IT NAMES `/budget` AND NOT A LETTER. The design asks for `b sets the rails`,
+// and on this surface every printable key belongs to a text box — this place has
+// one at its foot like every other place — so a bare letter advertised here
+// would be a letter the box eats (verbstrip.go's first law states it as the
+// product and not a compromise). `b` IS bound where a letter can be bound: on
+// the verb strip `→` opens over this row, where it is drawn before it works.
+const spendRailsWord = "/budget sets the limits"
 
 // modelName is what to call one model on a row: THE WORD A PERSON SAYS OUT LOUD,
 // which is the one this whole tree already spells a model with.
@@ -133,6 +155,11 @@ func spendModelKey(id string) string {
 type spendStop struct {
 	subject session.SubjectSpend
 	ok      bool
+	// rails marks THE POINTER LINE at the top of the page — the one row whose
+	// `enter` opens the Spending tab rather than the thing money was spent on
+	// (place_spend.go's [app.openSpendRow]). It is a flag and not a fourth
+	// subject kind because it is not a subject at all: nothing was spent on it.
+	rails bool
 }
 
 // naming hands the reading the titles for the ids it is holding. It answers a
@@ -246,6 +273,13 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	// the sections meet — and a hit map off by one row is a `f forget it` on the
 	// wrong line.
 	doors := map[int]session.SubjectSpend{}
+	// THE POINTER LINE LEADS THE PAGE, and it is a reading and not an editor —
+	// which is what keeps this place's own law intact ("there is no budget editor
+	// here and there will not be one"). It says what the day has cost against
+	// what it is allowed and where that second figure is set; `enter` on it walks
+	// to the one editor money has.
+	rails := len(out)
+	out = append(out, r.railsRow(width, pal))
 	out = append(out, r.windowHeaderRow(width, pal))
 
 	if spark := r.sparkline(); spark != "" {
@@ -301,7 +335,50 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	for at, subject := range doors {
 		stops[at] = spendStop{subject: subject, ok: true}
 	}
+	stops[rails] = spendStop{ok: true, rails: true}
 	return out, stops
+}
+
+// railsRow is the pointer line: what today has cost, against what the day is
+// allowed, and where that second figure is set.
+//
+//	today $3.42 of $500 · /budget sets the limits
+//
+// IT IS A READING AND NOT AN EDITOR. This place answers "what did it cost" and
+// its own law says the allowance is not edited here; what was missing was the
+// POINTER — a person who has just read the bill had nowhere to go — and a
+// sentence naming the door is not a second door.
+//
+// THE EMPTINESS LAW HOLDS ON BOTH FIGURES. A day with nothing on it says nothing
+// about today, and a machine with no daily limit says `no limit` rather than
+// drawing a fraction with nothing under the line.
+func (r spendReading) railsRow(width int, pal palette) string {
+	fields := []rowField{}
+	if today := r.todaySpend(); today > 0 {
+		figure := spendMoneyWord(today)
+		switch {
+		case r.rail > 0:
+			fields = append(fields, rowSay("today "+figure+" of "+railFigure(r.rail),
+				figure+" of "+railFigure(r.rail), figure))
+		default:
+			fields = append(fields, rowSay("today "+figure+" · "+config.NoLimitWord,
+				"today "+figure, figure))
+		}
+	}
+	fields = append(fields, rowSay(spendRailsWord, "/budget"))
+	return pal.dim(fit(rowTail(fields, width), width))
+}
+
+// todaySpend is what the bucket covering now has cost, out of the days this
+// reading is already holding. It is zero when the window has been paged off
+// today, which is the honest answer: this page is then not showing today.
+func (r spendReading) todaySpend() float64 {
+	for _, day := range r.days {
+		if sameSpendBucket(r.now, day.At, r.window.Grain) {
+			return day.USD
+		}
+	}
+	return 0
 }
 
 // windowHeaderRow is what the window came to on the left and the window itself

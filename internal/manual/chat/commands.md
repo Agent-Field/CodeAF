@@ -203,6 +203,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
+| `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
+| `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
@@ -614,6 +617,32 @@ hits.
 ```
 nothing spent yet — this session has not sent a turn.
 ```
+
+## /budget — setting a limit from the message box
+
+`/budget` (alias `/limits`) is the keyboard door onto the limits, and it writes through
+the same row the Spending tab writes through.
+
+| What you type | What it does |
+| --- | --- |
+| `/budget` | opens the Spending tab on `per day` |
+| `/budget 50` | sets the day's limit to $50 |
+| `/budget none` | removes the day's limit — the row then reads `no limit` |
+| `/budget plan 20` | sets one row by name |
+| `/budget plan` | a row named with no figure opens the tab on that row |
+
+The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
+`session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
+edited. There is deliberately **no `/budget task`**: a task has no dollar limit of its
+own, so a command that accepted one would be writing a number nothing reads.
+
+A write says back what it landed, in the tab's own words for that row — `per day · $50`,
+or `per day · no limit`. A figure it cannot read is refused in the row's own words with
+the rows listed after it: `that's not a dollar amount — a number, or none for no limit ·
+rows: day, conversation, plan, practice`. A row this machine does not have answers `that
+limit is not on this machine`.
+
+The `$` is optional, and the amount can be a word — see the next section.
 
 ## /cache — the build cache, disk space, and why aforge is using so much disk
 
@@ -1310,45 +1339,58 @@ Refusals inside the panel, exactly as written:
 - A search that matches nothing says `nothing matches`. The `Connections` tab has its own
   sentences.
 
-## The six settings tabs
+## The nine settings tabs
 
 The tabs, in order:
 
-**Session** — what this conversation may run and spend. Rows include "ask before running",
-"tool exceptions", "shell command rules", "guardian", "approval countdown",
-"starting a task", "check task work", "who settles work that needs a look", "memory",
-"task countdown", "task repair rounds", "tasks at once",
-"busy machine", "memory floor", "task model", "fallback models", "session ceiling".
+```
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
+```
+
+**Session** — the rows this conversation carries that belong nowhere else: "memory",
+"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
+"ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
-errands on two screens.
+errands on two screens. Neither is the conversation's own money limit here any more: it is
+`per conversation` on **Spending**.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "jina key".
 
-**Workspace** — what aforge may do and spend while it works for you. Rows: "daily
-budget", "ask before spending", "practice budget", "workers", "quiet before practice",
-"arrival brief after", "tenure after", "background checks", "attribution", "google
-sign-in id", "google sign-in secret".
-
-**"workers"** is which workers this install may hand a piece of work to, separated by
-commas — blank is all of them, which is the default. It is how you turn a specialist off;
-*How work on its own actually runs* has the whole of it.
+**Workspace** — this machine and this project: what aforge does with its own time here, and
+what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
+"tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
+secret", "slack sign-in id". **It holds no money row at all** — every one of those moved to
+Spending.
 
 **"background checks"** is on by default: one small timer under your own login checks
 your reminders, watches and routines every 5 minutes with no window open. Off removes it
 and nothing standing is lost — see *Keeping an eye on things* for the whole of it.
 
-**Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
-"timestamps", "hints" — the one-line tips above the message box, and the what's-new lines
-with them (see *Hints and tips*).
+**Spending** — money, and nothing that is not money. Seven lines: the reading `today`, then
+"per day", "per conversation", "per plan", the readings "per task" and "per standing run",
+and "practice". `/budget` and `/limits` open it. *Models, context, and what it costs* has
+every row and every door onto them.
 
-There is no "chat width" row here. The task roster is a fixed column whose width the
-frame decides — full, slim, or drawn over the conversation on a narrow terminal — so
-there is no share of the frame to set, and a row that could only refuse is not shown.
+**Safety** — what aforge may do without asking you first. Rows: "ask before running",
+"tool exceptions", "shell command rules", "guardian", "approval countdown", "task
+countdown", "who settles work that needs a look".
+
+**Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
+work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task model",
+"workers".
+
+**"workers"** is which workers this install may hand a piece of work to, separated by
+commas — blank is all of them, which is the default. It is how you turn a specialist off;
+*How work on its own actually runs* has the whole of it.
+
+**Display** — how the surface draws itself and what it remembers of your typing. Rows:
+"input history", "keep drafts", "nerd font", "linear mode", "task column", "hints" — the
+one-line tips above the message box, and the what's-new lines with them (see *Hints and
+tips*) — "sidebar", "chat width", "mouse", "timestamps", "turn work".
 
 **Providers** — which model answers what. It leads with the **Models section**, in this
 order:

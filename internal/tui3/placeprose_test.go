@@ -76,7 +76,8 @@ func TestEveryPlaceWithATimeWindowDrawsTheSameControl(t *testing.T) {
 	if !strings.Contains(standing, label) {
 		t.Fatalf("the standing head row draws no control: %q", standing)
 	}
-	spend := plain(spendTestReading().rows(120, pal)[0])
+	// Row zero is the spend place's pointer line; the window control is under it.
+	spend := plain(spendTestReading().rows(120, pal)[1])
 	if !strings.Contains(spend, label) {
 		t.Fatalf("the spend head row draws no control: %q", spend)
 	}

@@ -1028,11 +1028,22 @@ name on the row. A thing neither of them knows keeps its id.
 **`enter` on a row of "what it was for" opens what it was for**: a task goes to the tasks
 place, a standing promise to the standing place, a conversation to home.
 
-**There is no budget editor here and there will not be one.** The allowance is a rail and it
-is edited on the status line's money segment — the one that shows it. See "Spending limits"
-below. A cap on **one task** is a different figure and is set where that task is started —
-on the composer layer's third line, before you send it (the tasks page, *a task started from
-the composer carries a cap*).
+**There is no budget editor here and there will not be one.** The page answers *what did it
+cost*; *what may it spend* is the Spending tab, and this page **points** at it rather than
+holding a second copy of it. The first line of the page is that pointer, dim:
+
+```
+today $3.42 of $500 · /budget sets the limits
+```
+
+`enter` on that line opens the Spending tab, and so does `→` on any row of the page followed
+by `b` — the verb strip that opens there is one letter, `b the limits`. A cap on **one task**
+is a different figure and is set where that task is started — on the composer layer's third
+line, before you send it (the tasks page, *a task started from the composer carries a cap*).
+
+The pointer keeps the emptiness law on both halves: a day with nothing on it says nothing
+about today, and a machine with no daily limit reads `today $3.42 · no limit` rather than
+drawing a fraction with nothing under the line.
 
 **An empty window is not an empty machine.** Until the ledger has a priced line at all, the
 place says what it is for and nothing else, which is what every place with nothing to draw
@@ -1288,65 +1299,197 @@ travel to the other machine.
 
 Every limit aforge ships with is a **backstop against something going wrong**, not a
 budget. Nothing here is a number anybody chose for you, so all of them start large enough
-that ordinary work never reaches them:
+that ordinary work never reaches them.
 
-| What | Ships at | What happens when it is reached |
+They live on **one tab**: `/settings` → **Spending**, which `/budget` opens directly.
+
+| Row | Ships reading | What happens at the line |
 | --- | --- | --- |
-| **daily budget** | `$500` a day, across everything on this machine | aforge stops and asks. Nothing dies, and one word carries it on |
-| **ask before spending** | `$100` | a planned job estimated above this quotes its price and its step count and waits for your go-ahead |
-| **session ceiling** | off | when you set one, this conversation stops starting new turns past it |
-| **practice budget** | `$50` a day | the slice aforge may spend practicing on itself when you are away |
-| **a task's own cap** | `$100` a run | the third line of the composer layer, and you can type over it |
-| **a standing order's firing** | `$5` a firing | that one firing stops there |
+| **per day** | `$500` | new work waits for midnight or for you to raise it here |
+| **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
+| **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
+| **per task** | `no limit of its own` | nothing of its own; a task spends against the day and this conversation |
+| **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
+| **practice** | `$50 of the day` | aforge's practice on itself stops until tomorrow, and your own work is untouched |
 
-They live on the **Spending** rows of `/settings`, and `/budget` is the daily one on its
-own.
+Above those six the tab leads with **`today`**, which is a reading and not a setting:
+`$3.42 of $500 · resets at midnight`, or `$3.42 · no limit` on a machine with no daily
+limit. Before the first model call of the day it is **not on the tab at all** — a machine
+that has not spent anything has not spent zero.
 
-**Zero means no limit.** On the daily budget, on the session ceiling, on a standing
-order's per-firing figure — type `0` and the rail is gone, and it stays gone across
-restarts. The row says so back to you in dim text beside the number: `no limit`. The
-`ask before spending` row reads `never asks` at zero.
+**Four of the six are rows you can edit** — `per day`, `per conversation`, `per plan`,
+`practice`. `per task` and `per standing run` are **readings**: they are real rails, and
+neither is a number a settings row could hold. The sections below say why.
 
-**One row means the opposite, and says so.** `practice budget` at `0` turns self-practice
-**off** rather than uncapping it. Practice is work aforge does while nobody is watching,
-so it is the one pocket that always has a bottom — there is no way to ask for unlimited
-practice, on purpose.
+The rows used to be spread across two other tabs — the money on **Workspace**, the
+conversation's own ceiling on **Session**. They are all on **Spending** now, and
+**Workspace holds no money row at all**.
 
-**The daily budget is the one worth setting.** Five hundred dollars is where a runaway
-lives, not where your month lives. If you want aforge to stop at a figure you actually
-chose, put that figure on the `daily budget` row — the rail is exactly as good at
-twenty dollars as at five hundred, and the only reason it does not ship at twenty is
-that twenty was stopping work nobody wanted stopped.
+## Where are the spending limits — the Spending tab, and every door onto it
 
-## Spending limits
-
-A session can carry a spend ceiling. When it is set, a turn is stopped **before it starts**,
-reading the session's own recorded usage — so a turn already in flight is never cut in half.
-The refusal arrives as an error carrying the sentence:
+The settings panel's tab bar reads, in order:
 
 ```
-session: the spend rail was reached
+Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
 ```
 
-A ceiling of zero means there is none.
+Money is on **Spending** and nowhere else. The rows that used to share it are on the two
+tabs beside it: **Safety** is what aforge may do without asking you first (ask before
+running, tool exceptions, shell command rules, guardian, approval countdown, task
+countdown, who settles work that needs a look), and **Tasks** is how work you can walk
+away from is run (starting a task, check task work, task repair rounds, tasks at once,
+busy machine, memory floor, task model, workers).
 
-**The ceiling counts what this conversation spent before you resumed it.** The usage the
-rail reads is the rebuilt total, which includes every turn from every earlier sitting — so a
-ceiling reached yesterday is still reached when you open the conversation today, and the
-first thing you type is refused before it runs. That is the one place the rebuilt bill
-changes what happens rather than only what is printed. If you want a clean allowance, raise
-the ceiling on the `session ceiling` row, or start a fresh conversation with `/new`; there
-is no way to zero a conversation's recorded spend while keeping the conversation.
+**Six doors open that one tab, and none of them is a second editor** — every one lands on
+the same registry row, so what you set through one is what the others show:
 
-The settings panel's **Session** tab carries a row for it, labelled `session ceiling`. The
-panel's search matches a row's registry key as well as its label, so typing either `spendRail`
-or `ceiling` finds it.
+| Door | What you do |
+| --- | --- |
+| `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
+| the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
+| the spend place (`/spend`, `alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` |
+| the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
+| a refused turn | the message names `/budget` |
+| the first-run setup | its third screen, `what may aforge spend?` |
 
-**A task started from the composer carries a ceiling of its own**, whether or not this row
-is set: `alt+enter` opens the composer layer, and its third line is the figure that errand
-may spend before it stops and asks you. It is the same mechanism — the errand's own session
-gets that ceiling — so everything above is true of it, and any adaptive run it starts is
-held to a tank no bigger than the same figure. The tasks page has it in full.
+`ctrl+,` opens the panel itself, and `←`/`→` walk to **Spending** from wherever it opened.
+
+## How do I remove the daily limit — no limit, none, and why $0 is never shown
+
+Type **`none`** on the row, or `/budget none`. Every one of these spellings lands the same
+thing on any money row: `none`, `no`, `off`, `unlimited`, `∞`, `no limit`, `nolimit`,
+`never`, and plain `0`. The row then **reads `no limit`** back to you, and it stays that
+way across restarts — a written-down `0` is your own instruction, not a value to be
+reverted at the next launch.
+
+**`$0` is never rendered.** A money row with nothing set reads its own word for that, and
+each row has a different word because each rail means something different at zero:
+
+| Row | What it reads with no limit |
+| --- | --- |
+| `per day` | `no limit` |
+| `per conversation` | `no limit` |
+| `per plan` | `never asks` |
+| `practice` | `practice off` |
+
+That is the emptiness law applied to money: `$0` would read as *zero dollars allowed*,
+which is the exact opposite of what it means on three of these four rows.
+
+**`practice` is the one row where `0` is not "no limit".** Zero turns aforge's
+self-practice **off** rather than uncapping it. Practice is work aforge does while nobody
+is watching, so it is the one pocket that always has a bottom — there is no way to ask for
+unbounded practice, on purpose.
+
+What a money row will accept, in its own words: `an amount in dollars, like 5 or 2.50 — or
+none for no limit`. Anything else comes back as `that's not a dollar amount — a number, or
+none for no limit`, and nothing is written.
+
+## Why did it stop and ask me about money
+
+Four different limits can put a question or a stop in front of you, and each says which
+one it was:
+
+- **`per plan` — it asks, it does not stop.** A planned job estimated above `$100` quotes
+  itself before it starts: *"… comes to 12 steps, about $4.10 at what work like this has
+  cost here. Start it, or trim it first?"*, with `yes, start it` and `hold it — I'll trim
+  it first` as the two answers. Answered once, the decision stands for that job. Set the
+  row to `none` and it never asks.
+- **`per conversation` — it stops.** `conversation limit reached · $2.05 spent of $2 ·
+  /budget changes it`. The section on that below has the whole of it.
+- **`per day` — the day's work waits.** When the day's calls reach the daily limit, new
+  work waits for midnight or for you to raise it. `/budget 800` raises it where you stand.
+- **A task's own cap.** A task started from the composer layer (`alt+enter`) carries the
+  figure on that layer's third line — `it may spend up to $100.00 before it asks` — and
+  stops before its next turn when it reaches it. That figure is set where the task is
+  started, not on the Spending tab.
+
+An **adaptive run** is the fifth: its tank empties, it finishes what is in flight, starts
+nothing new, and asks you to top it up, finish on what is done, or stop.
+
+If you want to see where you stand before anything asks, `today` at the top of the
+Spending tab and `/cost` are the two readings — `/cost` is this conversation, `today` is
+the whole machine since midnight.
+
+## What does per plan mean — the limit that asks instead of stopping
+
+`per plan` is the only money row that **asks rather than stops**, and its value says so:
+it reads `asks first above $100`, not a bare figure.
+
+When a planned job is estimated to cost more than that figure, aforge quotes the step
+count and the price and waits for your go-ahead before any of it runs. Nothing has been
+spent at the moment it asks — the question comes before the first worker says a word — so
+holding it costs nothing. Answering it settles that job for good; you are not asked again
+for the same one.
+
+The estimate is grounded in what work like it has actually cost on this machine, so a job
+with no priced history behind it is not held.
+
+Set the row to `none` and it reads **`never asks`**: no plan is ever quoted and every one
+starts straight away, bounded then only by the day's limit and this conversation's.
+
+The row was called `ask before spending` when it lived on the Workspace tab, and the
+setting key behind it is still `plan_consent_usd` — the panel's search matches the key as
+well as the label, so typing either finds it.
+
+## What may a task spend — a task has no dollar limit of its own
+
+**A task carries no dollar cap of its own.** The Spending tab says so on the `per task`
+row, in those words: `no limit of its own`, with the dim receipt `it spends against the
+day and this conversation`.
+
+That is not a missing feature — it is what the rail actually is. A task's own bounds are
+**steps and time**, not money: a deadline it may renew, a step count, and a limit on how
+long it may go without progress. The money it spends is counted against the day's limit
+and against the limit on the conversation that started it, which are the two rows above it
+on the same tab.
+
+So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
+command takes. Where you *can* put a figure on one piece of work is the **composer layer**:
+`alt+enter` before you send a task, and its third line reads `it may spend up to $100.00
+before it asks`. Type a number there and that errand gets that ceiling — it stops before
+its next turn once it reaches it, and any adaptive run it starts is held to a tank no
+bigger. A task started any other way — `/task <brief>`, a proposal card, aforge's own
+hands — runs under the day's limit and this conversation's.
+
+`per standing run` beside it is the same kind of reading for a different reason: it reads
+`$5 a firing · each order may name its own`, because that rail is written **per standing
+order** where the order is made, not in one settings row.
+
+## This conversation stopped starting turns — conversation limit reached
+
+When `per conversation` is set and this conversation has spent it, the next turn is
+refused before it starts, with exactly this line:
+
+```
+conversation limit reached · $2.05 spent of $2 · /budget changes it
+```
+
+The figures are yours; whole dollars are written without cents.
+
+Four things are true of that refusal, and each is deliberate:
+
+- **The turn in flight always finishes.** The limit stops the *next* turn. A turn with
+  tool calls out is never cut in half.
+- **The refused message is still yours.** Nothing was journaled, no request was sent, no
+  tool ran — your text stays in the box, and sending it again once you raise the limit
+  runs it for the first time.
+- **It reads the recorded bill, not an estimate.** The figure is the provider's own cost
+  numbers, folded in per answer.
+- **It counts what this conversation spent before you resumed it.** The total is rebuilt
+  from every earlier sitting, so a limit reached yesterday is still reached when you open
+  the conversation today.
+
+`/budget conversation 20` raises it where you stand, `/budget conversation none` removes
+it, and `/new` starts a conversation with a fresh figure. There is no way to zero a
+conversation's recorded spend while keeping the conversation.
+
+The row is `per conversation` on the **Spending** tab; it sat on **Session** as `session
+ceiling` until this wave, and the panel's search still matches the key `spendRail`.
+
+**The status line warns before it stops.** The money segment takes the warm ink once this
+conversation has spent four fifths of its own limit — the figure leaves the dim and
+nothing else changes. With no `per conversation` limit set there is no fraction and no
+colour.
 
 ## Which endpoint answers, and what it charges
 

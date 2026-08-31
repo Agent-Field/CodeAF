@@ -17,8 +17,17 @@ import (
 // said was a provider error. Now the door lets that launch open with no key
 // (cmd/aforge's chatv3.go) and this screen asks for the three facts a first day
 // needs, one at a time: the key every model call rides, the crew of models
-// aforge uses on its own behalf, and the daily ceiling on what it may spend.
-// Under a minute; enter accepts each default; esc skips the whole thing.
+// aforge uses on its own behalf, and THE RAILS — what aforge may spend, per day,
+// per plan and per conversation. Under a minute; enter accepts each default; esc
+// skips the whole thing.
+//
+// THE RAILS STEP ASKS THREE ROWS AND NOT ONE. It asked the day's ceiling alone
+// for four waves, and the other rails were then discovered when they tripped —
+// which is the worst possible moment to meet a limit for the first time
+// (docs/design/spending/DESIGN.md). Three is the count a new person can answer:
+// the day (the bill), the plan (the question aforge will ask), and this
+// conversation (the window in front of them). The rest start where
+// docs/LIMITS.md says and are changed later with /budget.
 //
 // Four rules, and each is a thing the person is protected from:
 //
@@ -53,6 +62,19 @@ const (
 	setupBudget
 )
 
+// setupRails is the three rows the budget step asks, in the order it asks them,
+// and each is a REGISTRY ROW rather than a number this screen knows: what this
+// screen lands in the profile is byte-for-byte what /settings and /budget land,
+// because it is the same writer.
+var setupRails = []struct {
+	key   string
+	label string
+}{
+	{config.KeyDailyBudget, "per day"},
+	{config.KeyPlanConsent, "per plan"},
+	{config.KeySpendRail, "per conversation"},
+}
+
 // setupFlow is the screen's whole state. The zero value is a surface that never
 // had one, which is every launch but the first.
 type setupFlow struct {
@@ -65,6 +87,13 @@ type setupFlow struct {
 	// the raw string and nothing else: the key is masked at draw time, and the
 	// budget is parsed by the row's own writer on enter.
 	text string
+	// rail is which of [setupRails] the budget step is on, and railText what has
+	// been typed against each of the three. They are a slice and an index rather
+	// than three steps because the design draws ONE screen with three rows on it
+	// — a person answering "what may this spend" answers it once, looking at all
+	// three figures together.
+	rail     int
+	railText [3]string
 	// crew is the chooser the crew step draws — the same three rows /crew
 	// draws, from the same type (crew.go), so a person meets one picture of
 	// the crew and not two.
@@ -221,9 +250,21 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if s.step() == setupCrew {
 			s.crew.move(-1)
 		}
+		// AND ON THE RAILS SCREEN THE ARROWS WALK THE THREE ROWS, writing
+		// nothing: a person who has just typed a figure into the second row and
+		// wants to change the first should not have to finish the form to reach
+		// it. Only enter writes.
+		if s.step() == setupBudget && s.rail > 0 {
+			s.rail--
+			s.text = ""
+		}
 	case "down", "ctrl+n":
 		if s.step() == setupCrew {
 			s.crew.move(1)
+		}
+		if s.step() == setupBudget && s.rail+1 < len(setupRails) {
+			s.rail++
+			s.text = ""
 		}
 	case "backspace":
 		if runes := []rune(s.text); len(runes) > 0 {
@@ -297,21 +338,44 @@ func (a *app) setupCommit() bool {
 		a.refreshSettings()
 		return true
 	case setupBudget:
-		row, ok := registry.Row(config.KeyDailyBudget)
-		if !ok {
-			return true
-		}
-		raw := strings.TrimSpace(s.text)
-		if raw == "" {
-			raw = setupBudgetDefault()
-		}
-		if err := row.Apply(raw); err != nil {
-			s.refusal = err.Error()
+		// ENTER COMMITS THE ROW UNDER THE CURSOR AND WALKS TO THE NEXT, and on
+		// the last one the step is answered. Blank keeps the default, which is
+		// what the foot line says enter will do — a screen whose enter accepted
+		// something other than the figure on it would be a form that lies.
+		if !a.setupRail(s.rail) {
 			return false
 		}
-		a.refreshSettings()
+		if s.rail+1 < len(setupRails) {
+			s.rail++
+			s.text = ""
+			a.touch()
+			return false
+		}
 		return true
 	}
+	return true
+}
+
+// setupRail writes one of the three rails, and reports whether it landed.
+func (a *app) setupRail(at int) bool {
+	s := &a.setup
+	if at < 0 || at >= len(setupRails) {
+		return true
+	}
+	row, ok := a.registry().Row(setupRails[at].key)
+	if !ok {
+		return true
+	}
+	raw := strings.TrimSpace(s.text)
+	if raw == "" {
+		raw = setupRailDefault(at)
+	}
+	if err := row.Apply(raw); err != nil {
+		s.refusal = err.Error()
+		return false
+	}
+	s.railText[at] = raw
+	a.refreshSettings()
 	return true
 }
 
@@ -323,6 +387,47 @@ const setupKeyShapeWord = "not the shape of an openrouter key — they start wit
 // constant every other reader of the rail resolves to ([config.DefaultDailyBudgetUSD]).
 func setupBudgetDefault() string {
 	return strconv.FormatFloat(config.DefaultDailyBudgetUSD, 'f', -1, 64)
+}
+
+// setupRailDefaults are the three figures enter accepts, each spelled from the
+// one constant its own rail resolves to. A rail whose default is zero is spelled
+// `none` — the word this screen offers in its header and the word every writer
+// takes — rather than a `0` that reads as its own opposite.
+func setupRailDefault(at int) string {
+	switch at {
+	case 1:
+		return strconv.FormatFloat(config.DefaultPlanConsentUSD, 'f', -1, 64)
+	case 2:
+		if config.DefaultSpendRailUSD == 0 {
+			return setupNoneWord
+		}
+		return strconv.FormatFloat(config.DefaultSpendRailUSD, 'f', -1, 64)
+	}
+	return setupBudgetDefault()
+}
+
+// setupNoneWord is the word the header offers and the word a default of zero is
+// written with. It is one of [config]'s own accepted spellings, so what this
+// screen writes is what a person could have typed.
+const setupNoneWord = "none"
+
+// setupRailWord is one row of the rails screen as it reads before it is
+// answered: the default, in the words the Spending tab uses for it.
+func (a *app) setupRailWord(at int) string {
+	if at < 0 || at >= len(setupRails) {
+		return ""
+	}
+	raw := setupRailDefault(at)
+	if raw == setupNoneWord {
+		return config.NoLimitWord
+	}
+	if row, ok := a.registry().Row(setupRails[at].key); ok {
+		switch row.Key {
+		case config.KeyPlanConsent:
+			return "asks first above $" + raw
+		}
+	}
+	return "$" + raw
 }
 
 // ── the drawing ─────────────────────────────────────────────────────────────
@@ -383,20 +488,41 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			add(line)
 		}
 	case setupBudget:
-		add(pal.ink("a daily ceiling"))
-		for _, line := range wrap(setupBudgetWord(a.registry()), inner) {
+		// THE RAILS SCREEN: three rows, the same three the Spending tab leads
+		// with, in the same words, written through the same registry rows.
+		add(pal.ink(setupRailsTitle))
+		for _, line := range wrap(setupRailsWord, inner) {
 			add(pal.dim(line))
 		}
 		add("")
-		caretRow = len(body)
-		if s.text == "" {
-			// The default is drawn where the answer goes, dim, so what enter
-			// accepts is on the screen and not in a sentence about it.
-			add(pal.accent(setupLead) + pal.dim("$"+setupBudgetDefault()))
-			caretX = len(setupLead)
-		} else {
-			caretX = len(setupLead) + 1 + ansi.StringWidth(s.text)
-			add(pal.accent(setupLead) + pal.ink("$"+s.text))
+		for at, rail := range setupRails {
+			label := fit(rail.label, setupRailLabel)
+			label += strings.Repeat(" ", max(setupRailLabel-ansi.StringWidth(label), 0))
+			switch {
+			case at < s.rail:
+				// ANSWERED ROWS KEEP THEIR ANSWER ON THE SCREEN. A form that
+				// scrolled its own answers away would be a form a person cannot
+				// check before they finish it.
+				add("  " + pal.dim(label) + " " + pal.muted(setupRailAnswer(s.railText[at])))
+			case at > s.rail:
+				add("  " + pal.dim(label) + " " + pal.dim(a.setupRailWord(at)))
+			default:
+				caretRow = len(body)
+				if s.text == "" {
+					// The default is drawn where the answer goes, dim, so what
+					// enter accepts is on the screen and not in a sentence about it.
+					add(pal.accent(setupLead) + pal.ink(label) + " " + pal.dim(a.setupRailWord(at)))
+					caretX = len(setupLead) + ansi.StringWidth(label) + 1
+				} else {
+					typed := setupTyped(s.text)
+					add(pal.accent(setupLead) + pal.ink(label) + " " + pal.ink(typed))
+					caretX = len(setupLead) + ansi.StringWidth(label) + 1 + ansi.StringWidth(typed)
+				}
+			}
+		}
+		add("")
+		for _, line := range wrap(setupRailsRest, inner) {
+			add(pal.dim(line))
 		}
 	}
 	if s.refusal != "" {
@@ -461,7 +587,42 @@ const (
 	setupCrewWord = "these four are the models aforge uses on its own behalf — planning, " +
 		"checking, reading every turn. the model you talk to is a separate choice, " +
 		"made with /model."
+	// THE RAILS SCREEN'S OWN WORDS. `none` is offered in the header on purpose:
+	// no limits is a choice a person should SEE, rather than a trick they learn
+	// later from a `0` that reads as its own opposite.
+	setupRailsTitle = "what may aforge spend?"
+	setupRailsWord  = "enter keeps a default · type a number · none means no limit"
+	setupRailsRest  = "the rest — a task, a standing run, aforge's own practice — start with " +
+		"a small limit or none. change any of them later with /budget."
 )
+
+// setupRailLabel is the width the three row names are laid out in, so the
+// figures beside them line up in one column.
+const setupRailLabel = 17
+
+// setupTyped is what is being typed, shown as money.
+//
+// THE DOLLAR SIGN IS DRAWN AND NOT TYPED, which is right for a figure and wrong
+// for a word: `$none` is not an amount, and the screen's own header offers
+// `none` as an answer. So the mark goes in front of a number and nowhere else.
+func setupTyped(text string) string {
+	if text == "" {
+		return ""
+	}
+	if _, err := strconv.ParseFloat(text, 64); err != nil {
+		return text
+	}
+	return "$" + text
+}
+
+// setupRailAnswer is an answered row, said back the way it was taken: `none`
+// becomes the word the row itself reads.
+func setupRailAnswer(raw string) string {
+	if raw == "" || raw == setupNoneWord {
+		return config.NoLimitWord
+	}
+	return "$" + raw
+}
 
 // setupBudgetWord is the daily ceiling's sentence, read off its own settings
 // row rather than written a second time here: the row's hint is what /settings
@@ -488,9 +649,9 @@ func (a *app) setupKeysWord() string {
 		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · esc skips setup"
 	case setupBudget:
 		if strings.TrimSpace(s.text) == "" {
-			return "enter keeps $" + setupBudgetDefault() + " · esc skips setup"
+			return "enter keeps " + a.setupRailWord(s.rail) + " · esc skips setup"
 		}
-		return "enter sets $" + strings.TrimSpace(s.text) + " · esc skips setup"
+		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · esc skips setup"
 	}
 	return "esc skips setup"
 }

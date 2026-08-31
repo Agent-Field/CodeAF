@@ -396,8 +396,10 @@ func laneSheet(t *testing.T) (*app, string) {
 	a.sheet.sessionModel = flash
 	a.models = func() []Model { return laneCatalog }
 	a.openSettings()
-	for i := 0; i < 4; i++ {
-		drive(t, a, key("right")) // Providers
+	// The bar's own answer, walked rather than counted: a tab inserted before
+	// Providers moves this with it.
+	for settingTabs[a.sheet.tab] != tabProviders {
+		drive(t, a, key("right"))
 	}
 	return a, dir
 }
@@ -417,7 +419,7 @@ func TestTheLaneRowsSitUnderTheModelRow(t *testing.T) {
 	}
 	got := make([]string, 0, len(want))
 	for _, item := range a.sheet.items {
-		if !item.heading() && len(got) < len(want) {
+		if item.restful() && len(got) < len(want) {
 			got = append(got, item.row.Key)
 		}
 	}
@@ -622,7 +624,7 @@ func TestTheModelRowInSettingsNamesTheLane(t *testing.T) {
 	a.model = flash
 	a.sheet.sessionModel = flash
 	a.openSettings()
-	for i := 0; i < 4; i++ {
+	for settingTabs[a.sheet.tab] != tabProviders {
 		drive(t, a, key("right"))
 	}
 	if !sheetHas(a, "auto (cloudflare now)") {

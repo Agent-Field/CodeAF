@@ -9,7 +9,8 @@ the frame:
 
 1. **your openrouter key** — a masked paste box
 2. **the crew** — `frugal`, `balanced` or `max`, the same three rows `/crew` draws
-3. **a daily ceiling** — one number, `$500` by default
+3. **the limits** — one screen with three rows on it: `per day`, `per plan`, `per
+   conversation`
 
 `enter` accepts each step's default and goes on. `esc` skips the whole thing. When it is
 done, or skipped, the ordinary empty conversation appears — the wordmark box and the
@@ -69,17 +70,45 @@ exactly what `/crew balanced` does.
 If any of the four rows is already in your profile — you pinned one by hand, or an
 earlier `/crew` wrote them — this step is not shown.
 
-## The daily ceiling step — the budget
+## The first-run rails screen — what may aforge spend
 
-The third step is one number under the words *a daily ceiling*, with the daily budget
-row's own sentence beside it: *what aforge may spend on your work in a day. 0 removes the
-rail. A change lands at the next rail check.* The default is drawn dim where the answer
-goes — `$500` — and `enter` keeps it; typing a number replaces it. Something that is not a
-dollar amount is refused in the row's own words and the step stays.
+The third step is a screen with **three rows on it, not one number**. Its title is
 
-What it writes: `daily_budget_usd` in your profile's `config.json`, through the same
-settings row the panel's Workspace tab edits as **daily budget**. If `AFORGE_DAILY_BUDGET`
-is set in your shell, this step is not shown — the variable outranks the file.
+```
+what may aforge spend?
+enter keeps a default · type a number · none means no limit
+```
+
+and under that, in this order, the three rows a new person can answer:
+
+```
+ per day            $500
+ per plan           asks first above $100
+ per conversation   no limit
+```
+
+`↑` and `↓` walk between the rows and write nothing — only `enter` writes. The default is
+drawn dim where the answer goes, and `enter` keeps it and walks to the next row; typing a
+number replaces it, and the `$` is drawn for you rather than typed. Typing **`none`** —
+the word the header offers — removes that limit, and the answered row then reads
+`no limit`. An answered row keeps its answer on the screen while you finish the rest.
+Something that is not a dollar amount is refused in the row's own words and the step
+stays. `esc` skips the whole setup.
+
+The foot says what `enter` does right now: `enter keeps $500 · esc skips setup`, or
+`enter sets $50 · esc skips setup` once you have typed something.
+
+One dim line under the rows says what it is not asking about: *the rest — a task, a
+standing run, aforge's own practice — start with a small limit or none. change any of
+them later with /budget.*
+
+What it writes: `daily_budget_usd`, `plan_consent_usd` and `session.spendRailUSD` in your
+profile's `config.json` — through **the same settings rows** the Spending tab and
+`/budget` write, so what this screen lands is byte-for-byte what a settings edit lands. If
+`AFORGE_DAILY_BUDGET` is set in your shell, this step is not shown — the variable outranks
+the file.
+
+It shows **once, ever**, like the rest of the setup.
 
 ## It only appears once — when the setup is and is not shown
 
@@ -91,7 +120,7 @@ missing credential described above.
 
 It is **never shown** when:
 
-- `OPENROUTER_API_KEY` is in your shell **and** the crew and the daily budget are already
+- `OPENROUTER_API_KEY` is in your shell **and** the crew and the day's limit are already
   in your profile — there is nothing to ask, and the marker is written silently;
 - the launch is `--once`, `--host`, `--session <path>`, or `aforge resume`;
 - stdin is not a terminal — a pipe, a script, a headless frame;
@@ -113,7 +142,7 @@ Every answer went through a settings row, so every answer has a door:
 | --- | --- |
 | the openrouter key | `/settings`, Providers tab, the **openrouter key** row — masked, `enter` to paste a new one, empty to clear |
 | the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
-| the daily ceiling | `/settings`, Workspace tab, **daily budget** — or `AFORGE_DAILY_BUDGET` in your shell |
+| the limits | `/budget` (also `/limits`), or `/settings` → **Spending** — `per day`, `per plan`, `per conversation`. `AFORGE_DAILY_BUDGET` in your shell outranks the day's row |
 | the model you talk to | `/model` — this was never part of the setup |
 
 A credential changed in the settings row reaches the running conversation at once,

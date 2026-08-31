@@ -115,7 +115,7 @@ func TestTheConnectionsTabIsOnTheBarAndOwnsNoRegistryRow(t *testing.T) {
 	}
 	// It is on the bar a person can actually read, and it is drawn as a chip
 	// like every other tab.
-	bar := plain(sheetTabBar(90, len(settingTabs)-1, newPalette(tokens.ANSI256, false)))
+	bar := plain(sheetTabBar(140, len(settingTabs)-1, newPalette(tokens.ANSI256, false)))
 	if !strings.Contains(bar, tabConnections) {
 		t.Fatalf("the tab bar does not carry the tab: %q", bar)
 	}
@@ -573,7 +573,7 @@ var catalog = []connect.Status{
 func headings(a *app) []string {
 	out := []string{}
 	for _, item := range a.sheet.items {
-		if item.heading() {
+		if !item.restful() {
 			out = append(out, item.head)
 		}
 	}

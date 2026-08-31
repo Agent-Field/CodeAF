@@ -253,6 +253,15 @@ var commands = []command{
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
 	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// AND DIRECTLY UNDER WHAT IT HAS SPENT, WHAT IT MAY. /cost is the reading and
+	// this is the editor, and they sit together because a person who has just
+	// read a figure is the person deciding whether it is too high (budget.go).
+	// Three rows for one command, /export's reason exactly: bare is the shape
+	// nearly everybody wants, and the two that WRITE ride under it wearing the
+	// "…".
+	{name: "budget", desc: "what aforge may spend · every limit on one tab", alias: []string{"limits"}},
+	{name: "budget", args: "<amount>", desc: "…set the day's limit · none removes it"},
+	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan, practice"},
 	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
 	// this is what the machine is holding for it — the shared build cache task
 	// workers fill (internal/cachedir). Two rows for one command, /export's

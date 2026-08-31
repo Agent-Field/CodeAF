@@ -46,8 +46,47 @@ func (a *Agent) railBlockLocked() error {
 	if spent < rail {
 		return nil
 	}
-	return fmt.Errorf("%w: this session has spent $%.2f of its $%.2f rail — raise it to keep going",
-		ErrSpendRail, spent, rail)
+	// THE TRIP LINE NAMES THE LIMIT, THE FIGURE AND THE DOOR, in one line, and
+	// says nothing about it twice (docs/design/spending/DESIGN.md).
+	//
+	// It says `limit` and not `rail`: the machinery's word is this file's and the
+	// person's word is theirs. And it names `/budget` rather than a bare letter,
+	// because the person reading this is standing in front of a message box —
+	// their refused message is still in it, theirs to send again — and every
+	// printable key there belongs to that box. A door a refusal names has to be
+	// one that works from where the refusal is read.
+	return spendRailReached{said: fmt.Sprintf(
+		"conversation limit reached · %s spent of %s · /budget changes it",
+		railMoney(spent), railMoney(rail))}
+}
+
+// spendRailReached is the refused turn's error, and it exists for ONE reason:
+// the sentinel's own words must not reach a person.
+//
+// `fmt.Errorf("%w: …", ErrSpendRail, …)` prints the sentinel in front of the
+// sentence, so what a person read on the refused turn was `session: the spend
+// rail was reached: conversation limit reached · …` — the machinery's name for
+// the mechanism, twice, over the sentence written for them. A sentinel is
+// matched with [errors.Is] and never read, so it says nothing here: this type
+// carries the sentence, unwraps to the sentinel, and every existing
+// `errors.Is(err, ErrSpendRail)` is unchanged.
+type spendRailReached struct{ said string }
+
+func (e spendRailReached) Error() string { return e.said }
+func (e spendRailReached) Unwrap() error { return ErrSpendRail }
+
+// railMoney writes a figure the way money is written on this line: whole dollars
+// when the figure is whole, cents when it is not, and four decimals under a cent
+// — because `$0.00 spent of $0.00` is a refusal that names no figure at all,
+// which is the one thing a refusal has to do.
+func railMoney(usd float64) string {
+	switch {
+	case usd == float64(int64(usd)):
+		return fmt.Sprintf("$%d", int64(usd))
+	case usd < 0.01:
+		return fmt.Sprintf("$%.4f", usd)
+	}
+	return fmt.Sprintf("$%.2f", usd)
 }
 
 // railCap holds a run's fuel tank to the session's own rail.

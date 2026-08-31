@@ -189,7 +189,7 @@ The **far** machine owns the conversation and everything it touches:
 - the workspace and every file in it
 - every tool the session runs
 - the API key and the model catalog's credentials
-- the tool gate (what needs your approval) and the spend rail
+- the tool gate (what needs your approval) and the money limits
 - connected accounts
 - the harness registry
 - the session file the conversation is written to
