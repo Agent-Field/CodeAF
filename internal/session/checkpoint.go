@@ -2105,13 +2105,13 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
 	// continuation the reader would buy already exists and is already on its way.
 	//
-	// A WATCH IS THE ONE THAT DOES NOT WAKE, and it is included anyway. Its news
-	// rides the ambient lane and waits for a turn boundary
-	// ([Agent.enqueueWatchNote]), so a conversation waiting on one really does go
-	// quiet until the person says something — and that is a gap in the WAKE lane,
-	// which is the lane that can close it. Carrying on was never a fix for it:
-	// what it actually bought, measured, was twenty more polls of the command the
-	// watch was already running.
+	// A WATCH IS INCLUDED AND IT WAKES TOO, which is the half this gate was
+	// written before. A watch's repeated DELTAS ride the ambient lane and wait for
+	// a turn boundary, but the tick that FIRES it — `until` matched, the output
+	// went quiet, the command failed its way out — is owed and starts a turn like
+	// any other ending ([Agent.enqueueWatchNote]). So the continuation exists for
+	// this shape as well, and the twenty polls carrying on bought, measured, were
+	// polls of the command that was about to report.
 	//
 	// See [checkpointCarryOnCap] for the five minutes this was measured in.
 	if a.turnIsWaitingOnItsOwnWork() {

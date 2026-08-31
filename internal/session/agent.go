@@ -886,8 +886,10 @@ type userMessage struct {
 	replyTags []TaskReplyTag
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
-	// (task_run.go's reportTaskNode) or a background job's exit (jobs.go's
-	// reap). A watch's delta is deliberately ambient. It is the difference
+	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
+	// or a watch FIRING — the last thing a watch ever says, and the answer to the
+	// question it was started for. A watch's intermediate delta is deliberately
+	// ambient and is the one piece of background news that is not. It is the difference
 	// between the two kinds of news these queues carry — see
 	// [Agent.enqueueSteering] — and it is read
 	// at exactly two moments: when the note is queued, and when the turn that
@@ -982,9 +984,12 @@ func jobNote(text string) userMessage {
 	return wakeNote(firstLine(strings.TrimSpace(text)))
 }
 
-// watchNoteMessage is one ambient watch update reduced to the newest fact. The
+// watchNoteMessage is one ambient watch TICK reduced to the newest fact. The
 // batch key is stable across ticks from the same named watch, which is what lets
 // three deltas become "3 updates" rather than three mid-turn user-role rows.
+//
+// A WATCH'S FIRING DOES NOT COME THROUGH HERE. It is owed news and keeps every
+// word ([Agent.enqueueWatchNote]).
 func watchNoteMessage(name, text string) userMessage {
 	return userMessage{
 		message:    textMessage("user", watchUpdateSummary(name, text)),
@@ -2034,9 +2039,12 @@ func (a *Agent) takeReplyTags() []TaskReplyTag {
 //
 // THAT IS TRUE OF A BACKGROUND JOB'S ENDING, through [Agent.enqueueJobNote].
 // The model started the job and was explicitly told not to poll because the
-// ending would come back, so the exit remains owed. A watch is different:
-// repeated deltas are telemetry with a complete log behind them, and
-// [Agent.enqueueWatchNote] holds them for a turn boundary instead.
+// ending would come back, so the exit remains owed. IT IS TRUE OF A WATCH'S
+// FIRING FOR THE SAME REASON: a watch that matched, went quiet or failed its way
+// out has answered what it was started for and will never speak again, so that
+// last note is owed and [Agent.enqueueWatchNote] queues it here. Only a watch's
+// repeated DELTAS are different — telemetry with a complete log behind them —
+// and that lane holds those for a turn boundary instead.
 //
 // It is not a turn per event. Everything below coalesces: the notes queue, the
 // FIRST owed one starts a turn, and one authored batch lands at the next legal
@@ -2062,10 +2070,33 @@ func (a *Agent) enqueueJobNote(text string) {
 	a.enqueueNote(jobNote(text))
 }
 
-// enqueueWatchNote is the registry's ambient lane. Repeated ticks from one
-// watch remain separate until a boundary can truthfully count and collapse
-// them, and never wake a session by themselves.
-func (a *Agent) enqueueWatchNote(name, text string) {
+// enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
+// what the news actually is (jobs.go's notifyWatch carries the difference).
+//
+// A TICK IS AMBIENT. Repeated deltas from one watch remain separate until a
+// boundary can truthfully count and collapse them, and never wake a session by
+// themselves: a delta is telemetry with a complete log behind it, and a turn per
+// delta turns a quiet observer into an autonomous conversation.
+//
+// THE FIRING IS OWED. When a watch fires it has answered the question it was
+// started for and it is over — nothing further will ever come from it. Held for
+// a turn boundary that is a conversation which learned the thing it was waiting
+// for and said nothing until the person happened to type: measured 2026-08-31,
+// a session watching `gh pr checks` for the checks to settle. So it goes on the
+// step queue with the wake mark, exactly as a background job's exit does
+// ([Agent.enqueueJobNote]), and the turn it starts is read for what remains by
+// the checkpoint's `user.wake` law like any other woken turn.
+//
+// AND IT KEEPS ITS COMPLETE TEXT. A firing note is one sentence naming the terms
+// that were met plus the single line of evidence behind them, which is the whole
+// of the answer; the batch key that collapses ticks to a count would spend that
+// evidence to save a line, and [userMessage.batchKey] already states that owed
+// news does not carry one.
+func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
+	if fired {
+		a.enqueueNote(wakeNote(text))
+		return
+	}
 	a.enqueueAmbient(watchNoteMessage(name, text))
 }
 
