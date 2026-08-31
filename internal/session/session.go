@@ -1765,6 +1765,13 @@ type Agent struct {
 	// look back.
 	laneStop context.CancelFunc
 
+	// turnLane is what THIS agent's own last request was served by, and it is
+	// the only honest source there is for the lane half of a usage row
+	// (usage_ledger.go states why the process-wide ledger is not one). It sits
+	// outside mu holding its own lock for chatlog's reason: it is written from
+	// the stream goroutine while a turn holds mu for its own state.
+	turnLane laneWitness
+
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there

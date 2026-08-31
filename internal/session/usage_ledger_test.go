@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -625,4 +627,289 @@ func TestARowWrittenBeforeLanesExistedStillDecodes(t *testing.T) {
 	if line.Lane != "" || line.TTFTms != 0 || line.TPS != 0 || line.Hedged || line.HedgeWasteUSD != 0 {
 		t.Fatalf("a row from before lanes existed came back believing something: %+v", line)
 	}
+}
+
+// ── the lane half, filled by the turn that measured it ──────────────────────
+//
+// The four tests above pin the SHAPE of the five fields. These pin the WIRING:
+// that a running turn stamps a hedge report on its own call, times its own
+// stream, and hands both down to the row it seals — and that a turn which
+// measured none of it writes a row with those keys absent rather than zeroed.
+
+// rawUsageRows reads the ledger as JSON objects rather than as [UsageLine].
+//
+// THE EMPTINESS LAW IS ABOUT KEYS. A field nobody measured is absent from the
+// row, and a decode into the struct cannot tell an absent key from a zero one —
+// which is exactly the difference these tests exist to hold.
+func rawUsageRows(t *testing.T, path string) []map[string]any {
+	t.Helper()
+	FlushUsage()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the ledger: %v", err)
+	}
+	var rows []map[string]any
+	for _, raw := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		row := map[string]any{}
+		if err := json.Unmarshal([]byte(raw), &row); err != nil {
+			t.Fatalf("decode %q: %v", raw, err)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// sealRow is the one row a sealed turn wrote. A turn may run errands beside
+// itself and each of those writes a row of its own, so the seal is picked out
+// by the thing that is true of it alone: it names no role.
+func sealRow(t *testing.T, path string) map[string]any {
+	t.Helper()
+	var seals []map[string]any
+	for _, row := range rawUsageRows(t, path) {
+		if _, named := row["role"]; !named {
+			seals = append(seals, row)
+		}
+	}
+	if len(seals) != 1 {
+		t.Fatalf("the turn wrote %d rows with no role, want the one seal: %v", len(seals), seals)
+	}
+	return seals[0]
+}
+
+func wantRowFields(t *testing.T, row map[string]any, want map[string]any) {
+	t.Helper()
+	for field, value := range want {
+		got, present := row[field]
+		if !present {
+			t.Fatalf("the row has no %q: %v", field, row)
+		}
+		if got != value {
+			t.Fatalf("%q is %v, want %v", field, got, value)
+		}
+	}
+}
+
+func wantRowSilentAbout(t *testing.T, row map[string]any, fields ...string) {
+	t.Helper()
+	for _, field := range fields {
+		if got, present := row[field]; present {
+			t.Fatalf("the row says %q is %v with nobody having measured it: %v", field, got, row)
+		}
+	}
+}
+
+// A sealed turn's row names the machine that answered it and the wait it made,
+// which is the whole question a person asks after a slow afternoon: was it the
+// model, or was it the machine we happened to be routed to.
+func TestASealedTurnsRowNamesTheMachineAndTheWaitItMade(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	began := time.Now()
+	agent.turnLane.sent(began)
+	agent.turnLane.token(began.Add(768 * time.Millisecond))
+	agent.turnLane.token(began.Add(4768 * time.Millisecond))
+	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "deepseek/deepseek-v4-flash")
+
+	row := sealRow(t, ledger)
+	wantRowFields(t, row, map[string]any{
+		"lane":    "Cloudflare",
+		"ttft_ms": float64(768),
+		"tps":     58.0,
+	})
+	// Nothing was rescued, so nothing claims to have been.
+	wantRowSilentAbout(t, row, "hedged", "hedge_waste_usd")
+}
+
+// A hedge is the one thing in this build that can spend money twice, so a bill
+// that cannot be told apart from an ordinary one is a mechanism nobody can
+// audit. The winner of the race is the machine the row names.
+func TestAHedgedTurnsRowCarriesTheRescueAndWhatItWasted(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	began := time.Now()
+	agent.turnLane.sent(began)
+	agent.turnLane.token(began.Add(400 * time.Millisecond))
+	agent.turnLane.token(began.Add(2400 * time.Millisecond))
+	agent.turnLane.answered(hedgeSeen{lane: "Baidu", hedged: true, waste: 0.004}, 150)
+	agent.sealTurn(Usage{Input: 900, Output: 150, CostUSD: 0.12, Calls: 2}, began, "deepseek/deepseek-v4-flash")
+
+	wantRowFields(t, sealRow(t, ledger), map[string]any{
+		"lane":            "Baidu",
+		"ttft_ms":         float64(400),
+		"tps":             75.0,
+		"hedged":          true,
+		"hedge_waste_usd": 0.004,
+	})
+}
+
+// THE EMPTINESS LAW. A turn nobody measured writes a row with none of the five
+// keys on it — not a lane of "", not a wait of zero — because a figure a reader
+// finds on a row must be one somebody measured.
+func TestATurnNobodyMeasuredWritesNoneOfTheLaneKeys(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+	agent.sealTurn(Usage{Input: 900, Output: 120, CostUSD: 0.31, Calls: 2}, time.Now(), "opus-4.1")
+
+	row := sealRow(t, ledger)
+	wantRowSilentAbout(t, row, "lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd")
+	// And the row it always wrote is untouched beside them.
+	wantRowFields(t, row, map[string]any{"model": "opus-4.1", "usd": 0.31})
+}
+
+// A PATH FAULT IS NOT A LANE'S FAULT. When the watch judged the failure to be
+// the path rather than the machine there is no fact about the endpoint in the
+// seconds at all, so the row must not carry them — the same refusal
+// internal/provider's streamWatch.sighting makes about a belief. What the
+// rescue cost is still true and stays.
+func TestAPathFaultIsNotBlamedOnTheLane(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	began := time.Now()
+	agent.turnLane.sent(began)
+	agent.turnLane.token(began.Add(9 * time.Second))
+	agent.turnLane.token(began.Add(11 * time.Second))
+	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare", hedged: true, waste: 0.002, fault: true}, 232)
+	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 2}, began, "deepseek/deepseek-v4-flash")
+
+	row := sealRow(t, ledger)
+	wantRowSilentAbout(t, row, "ttft_ms", "tps")
+	wantRowFields(t, row, map[string]any{
+		"lane":            "Cloudflare",
+		"hedged":          true,
+		"hedge_waste_usd": 0.002,
+	})
+}
+
+// An errand made a call of its own and nothing watched it, so its row says
+// nothing about a machine. The turn's own figures are not the errand's, and a
+// row that borrowed them would file one measurement against another request.
+func TestAnErrandsRowCarriesNoLaneTheTurnMeasured(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	began := time.Now()
+	agent.turnLane.sent(began)
+	agent.turnLane.token(began.Add(768 * time.Millisecond))
+	agent.turnLane.token(began.Add(4768 * time.Millisecond))
+	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+
+	cost := 0.002
+	agent.addAuxiliaryUsageAs(&ai.Response{Usage: &ai.Usage{
+		PromptTokens: 300, CompletionTokens: 12, Cost: &cost,
+	}}, "haiku-4.5", 1, auxRoleTitle)
+	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "deepseek/deepseek-v4-flash")
+
+	rows := rawUsageRows(t, ledger)
+	if len(rows) != 2 {
+		t.Fatalf("wrote %d rows, want the errand and the seal: %v", len(rows), rows)
+	}
+	for _, row := range rows {
+		if row["role"] == auxRoleTitle {
+			wantRowSilentAbout(t, row, "lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd")
+		}
+	}
+	// And the errand did not eat the turn's own measurement on the way past.
+	wantRowFields(t, sealRow(t, ledger), map[string]any{"lane": "Cloudflare", "ttft_ms": float64(768)})
+}
+
+// A measurement belongs to exactly one row. A second seal that found the
+// first one's figures still sitting in the witness would write a lane and a
+// wait that nobody measured for it.
+func TestASecondSealDoesNotInheritTheFirstsLane(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	began := time.Now()
+	agent.turnLane.sent(began)
+	agent.turnLane.token(began.Add(768 * time.Millisecond))
+	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "m")
+	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.01, Calls: 1}, began, "m")
+
+	rows := rawUsageRows(t, ledger)
+	if len(rows) != 2 {
+		t.Fatalf("wrote %d rows, want two seals: %v", len(rows), rows)
+	}
+	wantRowFields(t, rows[0], map[string]any{"lane": "Cloudflare"})
+	wantRowSilentAbout(t, rows[1], "lane", "ttft_ms", "tps")
+}
+
+// readHedge is the one place the transport's report is turned into the plain
+// values everything downstream of it works in, and the nil report every call in
+// a build with no watch behind it has must read as "nobody said".
+func TestReadHedgeNamesTheMachineWithoutInventingOne(t *testing.T) {
+	seen := readHedge(nil, "  Baidu  ")
+	if seen.lane != "Baidu" {
+		t.Fatalf("the lane is %q, want the endpoint that answered", seen.lane)
+	}
+	if seen.hedged || seen.waste != 0 || seen.fault {
+		t.Fatalf("a call with no report claims %+v", seen)
+	}
+	if empty := readHedge(&provider.HedgeReport{}, ""); empty.lane != "" || empty.hedged {
+		t.Fatalf("a call nothing named claims %+v", empty)
+	}
+}
+
+// AND THE WIRING, end to end: a real turn stamps a hedge report on the context
+// its request rides, times its own stream across the send seam, and seals a row
+// carrying what it measured — while naming no lane, because nothing on a
+// scripted completer's answer ever names one.
+func TestATurnStampsAHedgeReportAndTimesItsOwnStream(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			if provider.HedgeReportFrom(ctx) == nil {
+				t.Error("the turn made a call with no hedge report on it")
+			}
+			// Real waits, because the row records milliseconds and a stream that
+			// arrives inside one of them was not timed at all.
+			time.Sleep(5 * time.Millisecond)
+			provider.Emit(ctx, provider.StreamDelta, "one ")
+			time.Sleep(5 * time.Millisecond)
+			provider.Emit(ctx, provider.StreamDelta, "two")
+			return textResponse("one two"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	collect(t, mustSubmit(t, agent, "hello"))
+
+	row := sealRow(t, ledger)
+	if _, timed := row["ttft_ms"]; !timed {
+		t.Fatalf("a turn that watched its own stream timed nothing: %v", row)
+	}
+	if _, rated := row["tps"]; !rated {
+		t.Fatalf("a turn that watched its own stream rated nothing: %v", row)
+	}
+	// Nothing named a machine, so the row names none — the emptiness law and the
+	// measurement in the same row.
+	wantRowSilentAbout(t, row, "lane", "hedged", "hedge_waste_usd")
 }

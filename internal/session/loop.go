@@ -353,11 +353,21 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	turnObserver := func(event provider.StreamEvent) {
 		switch event.Kind {
 		case provider.StreamDelta:
+			// THE TURN TIMES ITS OWN STREAM. The first chunk closes the
+			// first-token wait and every one after it extends the generation
+			// window, which are the two figures the ledger row's ttft_ms and tps
+			// are made of (usage_ledger.go's [laneWitness]).
+			a.turnLane.token(time.Now())
 			partial.write(event.Delta)
 			hub.send(Event{Kind: EventTextDelta, Text: event.Delta})
 		case provider.StreamThinking:
 			hub.send(Event{Kind: EventThinking})
 		case provider.StreamReasoning:
+			// A reasoning delta IS a token for the clock even though it is not one
+			// for the transcript: the model has started writing, which is the
+			// thing the first-token wait measures and the thing the person stops
+			// waiting on. internal/provider's own watch counts them the same way.
+			a.turnLane.token(time.Now())
 			// Reasoning is NOT written to partial: it is the model's working, not
 			// its answer. The sidecar is recorded only after the response completes.
 			reasoning.write(event)
@@ -429,6 +439,20 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// finished last. Read beside every response by [Agent.addUsage].
 	served := &provider.ServedEndpoint{}
 	ctx = provider.WithServedEndpoint(ctx, served)
+
+	// AND THE SLOT THE ADAPTER WRITES THIS TURN'S HEDGING INTO, beside it and
+	// for its reason. A hedge is the one thing in this build that can spend
+	// money twice (internal/provider's hedge.go), and the report is a per-call
+	// slot rather than a field on the response because hedging is the adapter's
+	// own bookkeeping and the response type is the OpenAI shape. Read with the
+	// endpoint below, folded into the witness, and written on the ledger row
+	// this turn seals (usage_ledger.go).
+	hedge := &provider.HedgeReport{}
+	ctx = provider.WithHedgeReport(ctx, hedge)
+	// The witness is emptied here rather than at the end of the turn before, so
+	// that a turn which never reaches the wire at all writes no lane figures
+	// instead of the previous turn's.
+	a.turnLane.reset()
 
 	// The model is latched for the whole turn. SetModel's contract is that a
 	// turn in flight finishes on the model it started on, and reading a.model
@@ -517,6 +541,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// nil for a conversation, whose liveness the presence file already carries
 		// (taskpresence.go).
 		a.config.beat.began()
+		// AND THE FIRST-TOKEN CLOCK, on the same line and for a related reason:
+		// this is the one place in this package where a request actually goes
+		// out, so it is the only place the wait a person feels can be timed from
+		// without timing this package's own preparation as well.
+		a.turnLane.sent(time.Now())
 		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reasoning, warm, forming)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
@@ -536,6 +565,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			if errors.Is(err, errSteerCut) {
 				turn.Turns++
 				a.addUsage(&turn, response, served.Name())
+				a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall)
 				warm.reset()
@@ -571,6 +601,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 
 		turn.Turns++
 		a.addUsage(&turn, response, served.Name())
+		// WHO ANSWERED, AND WHAT THE RESCUE COST, folded onto what was timed
+		// above. It is beside [Agent.addUsage] because it is the same grain —
+		// one response — and the row it eventually reaches is the turn's seal,
+		// which keeps the most recent answer and nothing else.
+		a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
 
 		calls := response.ToolCalls()
 
@@ -854,7 +889,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// [sessionFile.appendUsage] because the file knows the figures and this knows
 	// WHOSE they are — the session, the node, the standing item, the workspace —
 	// and a ledger row without those is a row nothing can be asked of.
-	a.recordUsageLine(turn, model, "")
+	a.recordUsageLine(turn, model, "", a.turnLane.take())
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
@@ -3375,6 +3410,9 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role)
 	if ledger {
-		a.recordUsageLine(aux, model, role)
+		// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
+		// watches the turn's own stream — and the turn's figures on this row
+		// would be a measurement of one request filed against another.
+		a.recordUsageLine(aux, model, role, laneFacts{})
 	}
 }
