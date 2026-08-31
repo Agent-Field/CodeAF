@@ -840,6 +840,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
+
+		// The 2026-08-31 incident, asked the ways a person describes what they
+		// saw: a serving endpoint leaked the model's own tool grammar as text,
+		// and the screen filled with markup instead of an answer.
+		{"the screen filled with weird tokens instead of an answer", "models-and-cost"},
+		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
+		{"the model kept writing its own internal markup", "models-and-cost"},
+
+		// /model while a task runs: the task keeps its model, and the person
+		// who watched the old voice continue asks why.
+		{"I changed the model but my task is still on the old one", "models-and-cost"},
+		{"does /model change the model my running task uses", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

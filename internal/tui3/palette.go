@@ -1537,7 +1537,20 @@ func (a *app) switchModel(id string, window int) {
 	// THE ID IS THE WHOLE OF THIS LINE (payload.go). `model ·` is a label a person
 	// already knows they asked for; the id is the one thing here they cannot see
 	// anywhere else at this moment, so it steps to ink and the label stays dim.
-	a.noteFacts("model · "+a.model, a.model)
+	//
+	// AND WHEN WORK IS RUNNING, THE LINE SAYS WHAT THE SWITCH DID NOT TOUCH. A
+	// task's model is frozen when it is admitted (task_run.go's runModel reads
+	// the spec, never the live dial), so a person who switches mid-task and
+	// then watches the task keep answering in the old voice has been told
+	// nothing unless it is said here, at the moment they acted. New tasks
+	// started after this line follow the switch (taskmodel.go's
+	// defaultTaskModel reads the live dial), which is why the sentence is
+	// about the running ones only.
+	note := "model · " + a.model
+	if a.deckRunning() > 0 {
+		note += " — tasks already running keep the model they started on"
+	}
+	a.noteFacts(note, a.model)
 	a.noticeEvent(eventModelSwitched)
 }
 
