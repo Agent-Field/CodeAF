@@ -184,15 +184,28 @@ const PrefixHold = 5 * time.Minute
 
 // scoreOf is what the chooser minimises for one lane, in seconds, lower better.
 //
-//	λ > 0 → $/λ + perceived seconds
+//	λ > 0 → $·λ + perceived seconds
 //	λ = 0 → the price alone, in dollars
 //
-// THE TWO ARE DIFFERENT UNITS ON PURPOSE. With nobody waiting, a second is
-// worth nothing and dividing by λ is a division by zero dressed up as a
-// preference; the honest score is the money, and perceived time is then only a
-// tiebreak ([Chooser.Choose] applies it). With somebody waiting, one dollar is
-// worth λ seconds by construction, so the two terms are commensurable and the
-// sum is a time.
+// THE MONEY IS MULTIPLIED BY λ AND NEVER DIVIDED BY IT, and getting this
+// backwards is the one arithmetic error in this package that leaves every test
+// green. λ is SECONDS PER DOLLAR, so dollars times λ is seconds and dollars
+// divided by λ is dollars squared per second — a quantity of nothing, about
+// eight thousand times too small at the attention value, which makes the price
+// term round to zero beside any wait at all. The symptom is a router that says
+// it prices money and does not: with [PerceivedSeconds] corrected so that two
+// lanes above reading speed feel identical, price is the ONLY thing left to
+// separate them on a talk turn, and a price term that cannot be felt turns that
+// decision into sampling noise. The direction is fixed by the design's own
+// sentence — a dollar buys ninety seconds, so spend up to a cent to save a
+// second — and by [underPriceCeiling], which goes the other way (seconds into
+// dollars) and divides. See ideation/provider-routing.md, Part III.
+//
+// THE TWO CASES ARE DIFFERENT UNITS ON PURPOSE. With nobody waiting, a second
+// is worth nothing; the honest score is the money, and perceived time is then
+// only a tiebreak ([Chooser.Choose] applies it). With somebody waiting, one
+// dollar is worth λ seconds by construction, so the two terms are commensurable
+// and the sum is a time.
 func scoreOf(price, perceived, lambda float64) float64 {
 	if lambda <= 0 {
 		return price
@@ -200,5 +213,5 @@ func scoreOf(price, perceived, lambda float64) float64 {
 	if math.IsInf(perceived, 1) {
 		return math.Inf(1)
 	}
-	return price/lambda + perceived
+	return price*lambda + perceived
 }

@@ -65,6 +65,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -248,6 +249,17 @@ func e2ePrice(now time.Time) Request {
 // network reach for [e2eServeSheet] instead.
 func e2ePrimed(t *testing.T) Ledger {
 	t.Helper()
+	// A HOME OF ITS OWN, FIRST. The ledger writes every belief through a store
+	// and reads yesterday's back on its first question, and [StorePath] resolves
+	// under AFORGE_HOME on every call — so a scenario that did not move the
+	// state root would fold the fake lanes of this file into the belief file of
+	// whoever ran the tests, and then read them back on the next run. That is
+	// two bugs at once: somebody's real router gets an opinion about a lane
+	// called "CoreWeave" that this file invented, and these scenarios stop being
+	// reproducible, because the ledger they start from is whatever the last run
+	// left behind. It was found by scenario 3 choosing a different victim on two
+	// runs of the same fixed Tuesday.
+	t.Setenv(home.EnvVar, t.TempDir())
 	t.Cleanup(Default().Reset)
 	Default().Reset()
 	ledger := Default().Ledger()

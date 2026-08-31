@@ -135,10 +135,18 @@ type Request struct {
 // asked for, and the first time the two drifted the explanation would be a
 // polite fiction.
 //
-// Score is in SECONDS — perceived seconds plus the price converted through λ —
-// and lower is better. TTFT is milliseconds, Rate tokens per second, Price the
-// dollars this whole request is expected to cost on this lane, Quality the
-// believed share of usable answers.
+// SCORE'S UNIT FOLLOWS λ, and lower is better either way. With somebody waiting
+// (λ > 0) a dollar is worth λ seconds by construction, the two terms are
+// commensurable, and the score is SECONDS — the perceived wait plus the price
+// converted through λ. With nobody waiting (λ = 0) a second is worth nothing,
+// dividing by λ is a division by zero dressed up as a preference, and the score
+// is DOLLARS: what this request is expected to cost on this lane, with the
+// perceived wait left to break the ties. The two are never compared with each
+// other, because one request has one λ.
+//
+// TTFT is milliseconds, Rate tokens per second, Price the dollars this whole
+// request is expected to cost on this lane, Quality the believed share of
+// usable answers.
 type Scored struct {
 	ID      ID
 	Score   float64

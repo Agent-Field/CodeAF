@@ -94,12 +94,6 @@ const realRescueTokens = 150
 // handshake — the same floor the transport applies to its own sightings.
 const realRatedFloor = 8
 
-// realSheetWeight is what a public row is worth beside one of our own
-// measurements — a quarter of a sighting. It is the design's k ≈ 4
-// (`ideation/provider-routing.md` §2), and `internal/lane` publishes it as
-// SheetWeight once lane L-A's ledger has landed.
-const realSheetWeight = 4
-
 // ── THE TEST ────────────────────────────────────────────────────────────────
 
 // TestRealRouterServesASheetAndHonoursAPreference is the whole of this file.
@@ -160,7 +154,7 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 
 	ledger := lane.Default().Ledger()
 	for _, row := range rows {
-		ledger.Prime(row, realSheetWeight)
+		ledger.Prime(row, SheetWeight)
 	}
 
 	// ── 2. five real calls, with the chooser on ─────────────────────────────

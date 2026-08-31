@@ -172,10 +172,10 @@ func TestAStaleBeliefIsMovedFurtherByTheSameAnswer(t *testing.T) {
 	row := cloudflareRow()
 	for _, l := range []*ledger{fresh, stale} {
 		l.Prime(row, SheetWeight)
-		l.Note(Sighting{ID: row.ID, TTFT: 800 * time.Millisecond, At: noon})
+		l.Note(Sighting{ID: row.ID, TTFT: 800 * time.Millisecond, Tokens: 1, At: noon})
 	}
-	fresh.Note(Sighting{ID: row.ID, TTFT: 3 * time.Second, At: noon.Add(time.Second)})
-	stale.Note(Sighting{ID: row.ID, TTFT: 3 * time.Second, At: noon.Add(30 * time.Minute)})
+	fresh.Note(Sighting{ID: row.ID, TTFT: 3 * time.Second, Tokens: 1, At: noon.Add(time.Second)})
+	stale.Note(Sighting{ID: row.ID, TTFT: 3 * time.Second, Tokens: 1, At: noon.Add(30 * time.Minute)})
 
 	quick, _ := fresh.Belief(row.ID)
 	old, _ := stale.Belief(row.ID)
@@ -206,7 +206,7 @@ func TestAProbeTouchesTheFirstTokenAndNeverTheRate(t *testing.T) {
 	// than the same wait behind a real prompt does.
 	ordinary := newLedger()
 	ordinary.Prime(row, SheetWeight)
-	ordinary.Note(Sighting{ID: row.ID, TTFT: 300 * time.Millisecond, PromptTokens: 2_000, At: noon})
+	ordinary.Note(Sighting{ID: row.ID, TTFT: 300 * time.Millisecond, Tokens: 1, PromptTokens: 2_000, At: noon})
 	plain, _ := ordinary.Belief(row.ID)
 	if !(after.TTFT.P < plain.TTFT.P) {
 		t.Fatalf("a probe was worth no more than an ordinary answer: %.5f and %.5f", after.TTFT.P, plain.TTFT.P)
@@ -222,8 +222,8 @@ func TestALongPromptIsANoisierClaimAboutTheLane(t *testing.T) {
 	row := cloudflareRow()
 	short.Prime(row, SheetWeight)
 	long.Prime(row, SheetWeight)
-	short.Note(Sighting{ID: row.ID, TTFT: 4 * time.Second, PromptTokens: 1_000, At: noon})
-	long.Note(Sighting{ID: row.ID, TTFT: 4 * time.Second, PromptTokens: 60_000, At: noon})
+	short.Note(Sighting{ID: row.ID, TTFT: 4 * time.Second, Tokens: 1, PromptTokens: 1_000, At: noon})
+	long.Note(Sighting{ID: row.ID, TTFT: 4 * time.Second, Tokens: 1, PromptTokens: 60_000, At: noon})
 
 	brief, _ := short.Belief(row.ID)
 	lengthy, _ := long.Belief(row.ID)
@@ -263,12 +263,12 @@ func TestASightingNobodyCanPlaceIsRefused(t *testing.T) {
 	row := cloudflareRow()
 	l.Prime(row, SheetWeight)
 	before, _ := l.Belief(row.ID)
-	l.Note(Sighting{ID: row.ID, TTFT: 9 * time.Second})
+	l.Note(Sighting{ID: row.ID, TTFT: 9 * time.Second, Tokens: 1})
 	after, _ := l.Belief(row.ID)
 	if after.TTFT != before.TTFT {
 		t.Fatal("a sighting with no moment was folded in anyway")
 	}
-	l.Note(Sighting{TTFT: time.Second, At: noon})
+	l.Note(Sighting{TTFT: time.Second, Tokens: 1, At: noon})
 	l.NoteOutcome(Outcome{Accepted: false, At: noon})
 	if len(l.Beliefs(scriptedModel)) != 1 {
 		t.Fatal("an anonymous observation invented a lane")
@@ -281,7 +281,7 @@ func TestAnOutcomeMovesQualityAndNotTheClock(t *testing.T) {
 	l := newLedger()
 	row := cloudflareRow()
 	l.Prime(row, SheetWeight)
-	l.Note(Sighting{ID: row.ID, TTFT: 800 * time.Millisecond, At: noon})
+	l.Note(Sighting{ID: row.ID, TTFT: 800 * time.Millisecond, Tokens: 1, At: noon})
 	l.NoteOutcome(Outcome{ID: row.ID, Accepted: false, Reason: "empty", At: noon.Add(20 * time.Minute)})
 	belief, _ := l.Belief(row.ID)
 	if belief.At != noon {
@@ -290,7 +290,10 @@ func TestAnOutcomeMovesQualityAndNotTheClock(t *testing.T) {
 	if belief.Quality != (Beta{A: 8, B: 2}) {
 		t.Fatalf("a refused answer left quality at %+v", belief.Quality)
 	}
-	l.NoteOutcome(Outcome{ID: row.ID, Accepted: true, At: noon.Add(21 * time.Minute)})
+	// The second outcome is at the same moment as the first, because between
+	// two moments the belief also FORGETS toward its prior ([Beta.Toward]) and
+	// this test is about the counts moving rather than about the forgetting.
+	l.NoteOutcome(Outcome{ID: row.ID, Accepted: true, At: noon.Add(20 * time.Minute)})
 	if belief, _ := l.Belief(row.ID); belief.Quality != (Beta{A: 9, B: 2}) {
 		t.Fatalf("an accepted answer left quality at %+v", belief.Quality)
 	}

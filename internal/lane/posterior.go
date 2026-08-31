@@ -149,12 +149,67 @@ type Beta struct {
 func (b Beta) Known() bool { return b.A+b.B > 0 }
 
 // Mean is the believed share of answers that will be usable, zero when nothing
-// is known — never a hopeful one.
+// is known — never a hopeful one. IT IS WHAT A PERSON IS SHOWN AND NEVER WHAT
+// THE GATE RUNS ON; see [Beta.Upper] for why those must be different numbers.
 func (b Beta) Mean() float64 {
 	if !b.Known() {
 		return 0
 	}
 	return b.A / (b.A + b.B)
+}
+
+// Upper is the belief's credible bound at z standard deviations: Upper(1.2816)
+// is the point below which the true share lies with 90% probability.
+//
+// THE GATE ASKS THE BOUND AND NEVER THE MEAN, and getting this wrong once cost
+// this design its whole candidate set. A lane nobody has judged starts at
+// Beta(8, 1) — "probably fine" — whose MEAN is 0.889, and a talk turn needs
+// 0.90. So a gate on the mean refused every lane of every model on the first
+// request of every process, for lack of evidence rather than for cause, and the
+// refusal was ABSORBING: a lane outside the candidate set is never sent to, so
+// it never earns the ninth good answer that would have let it back. The
+// simulator found it in one run (ideation/provider-routing.md, Part III).
+//
+// The bound asks the question the gate means to ask — "could this lane be good
+// enough?" rather than "is its point estimate above the line?" — and it is what
+// makes the gate's evidence requirement honest: Beta(8, 1) is bounded near
+// certainty and passes, and it takes real refusals to pull the bound under the
+// line, because a wide belief is not a bad one.
+//
+// The bound is the normal approximation to the Beta quantile,
+// mean ± z·√(mean(1−mean)/(A+B+1)), clamped to the unit interval. It is exact
+// enough at the counts a lane accumulates in an afternoon, and it costs one
+// square root on a path that runs in front of somebody's first token.
+func (b Beta) Upper(z float64) float64 {
+	if !b.Known() {
+		return 0
+	}
+	mean := b.Mean()
+	bound := mean + z*math.Sqrt(mean*(1-mean)/(b.A+b.B+1))
+	return math.Min(1, math.Max(0, bound))
+}
+
+// Toward forgets a quality belief back to its prior over halfLife.
+//
+// IT IS THE OTHER HALF OF THE FIX ABOVE, and without it the gate is still
+// absorbing — just later. A lane dropped for three bad answers at four o'clock
+// is sent nothing after four o'clock, so nothing can ever contradict those three
+// answers, and a lane that was briefly broken is refused until the process ends.
+// Forgetting is what makes the drop a suspicion with an expiry rather than a
+// verdict: after one half-life the excess evidence over the prior is worth half
+// what it was, after two a quarter, and the lane is back in the running to earn
+// its own contradiction.
+//
+// The arithmetic is the same shape as [Posterior.Predict] in the log domain:
+// each count decays toward the prior's own, so the MASS returns to the prior's
+// mass (Beta(8, 1)'s nine) and the SHARE returns to the prior's share, and a
+// belief with no excess evidence over its prior is left exactly where it is.
+func (b Beta) Toward(prior Beta, dt, halfLife time.Duration) Beta {
+	if !b.Known() || !prior.Known() || dt <= 0 || halfLife <= 0 {
+		return b
+	}
+	keep := math.Exp2(-dt.Seconds() / halfLife.Seconds())
+	return Beta{A: prior.A + (b.A-prior.A)*keep, B: prior.B + (b.B-prior.B)*keep}
 }
 
 // Observe folds one outcome in.
@@ -183,6 +238,13 @@ type Belief struct {
 	Rate    Posterior
 	Quality Beta
 	At      time.Time
+	// QualityAt is the moment of the last OUTCOME, and it is a second moment
+	// rather than a second use of At because quality is not a timing
+	// observation: an answer that arrived promptly and could not be used moves
+	// one of these beliefs and not the other. Both are forgotten over
+	// [HalfLife] and each needs to know how long it personally has been sitting
+	// still. Zero is "nothing to forget", never "since 1970".
+	QualityAt time.Time
 }
 
 // Known reports whether the belief carries any timing at all. A lane with facts

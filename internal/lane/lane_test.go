@@ -20,9 +20,26 @@ func TestThroughputStopsBeingWorthAnythingAtReadingSpeed(t *testing.T) {
 	if quick != slower {
 		t.Fatalf("75 t/s felt like %.3fs and 58 t/s like %.3fs; above reading speed they are the same wait", quick, slower)
 	}
-	want := 0.8 + 400/ReadRate
-	if math.Abs(quick-want) > 1e-9 {
-		t.Fatalf("a visible answer was priced at %.3fs rather than at reading speed's %.3fs", quick, want)
+	// AND THE WAIT IS THE FIRST TOKEN AND NOTHING ELSE. Reading four hundred
+	// tokens takes a person twenty-two seconds whichever lane wrote them, so
+	// counting it here would put a constant into every candidate's score and
+	// into every ratio computed from one.
+	if math.Abs(quick-0.8) > 1e-9 {
+		t.Fatalf("a visible answer above reading speed was priced at %.3fs rather than at its first token's 0.800s", quick)
+	}
+}
+
+// TestALaneSlowerThanReadingCostsTheDifference is the other side of the same
+// law: below the reading rate the person really is left waiting on the writer,
+// and what they wait is the gap between the two rates.
+func TestALaneSlowerThanReadingCostsTheDifference(t *testing.T) {
+	crawling := PerceivedSeconds(0.8, 6, 400, 0)
+	want := 0.8 + 400*(1.0/6-1/ReadRate)
+	if math.Abs(crawling-want) > 1e-9 {
+		t.Fatalf("a lane below reading speed was priced at %.3fs rather than at the %.3fs it makes somebody wait", crawling, want)
+	}
+	if !(crawling > PerceivedSeconds(0.8, 58, 400, 0)) {
+		t.Fatal("six tokens a second felt no slower than fifty-eight on text a person reads")
 	}
 }
 
@@ -199,7 +216,7 @@ func TestEverySeamAnswersAndNoneOfThemInventsANumber(t *testing.T) {
 	if _, ok := registry.Ledger().Belief(ID{Model: "m", Lane: "l"}); ok {
 		t.Fatal("the empty ledger believed something")
 	}
-	registry.Ledger().Note(Sighting{ID: ID{Model: "m", Lane: "l"}, TTFT: time.Second})
+	registry.Ledger().Note(Sighting{ID: ID{Model: "m", Lane: "l"}, TTFT: time.Second, Tokens: 1})
 	if _, ok := registry.Ledger().Belief(ID{Model: "m", Lane: "l"}); ok {
 		t.Fatal("the empty ledger is meant to forget, honestly, not to pretend")
 	}
