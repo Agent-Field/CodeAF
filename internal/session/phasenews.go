@@ -13,9 +13,10 @@ import (
 // internal/provider knows what a REQUEST is doing — connecting, waiting for the
 // first word, thinking, writing, paced, trying again, switching lanes. This
 // package knows what a TURN is doing between requests — running a tool,
-// checking an answer, tidying the transcript — and those waits are longer than
-// any of the provider's: a `go test` runs for minutes, and the route judge that
-// reads a finished answer has been measured at a quarter of an hour.
+// checking an answer, tidying the transcript, writing down a turn that is being
+// handed over — and those waits are longer than any of the provider's: a `go
+// test` runs for minutes, and the route judge that reads a finished answer has
+// been measured at a quarter of an hour.
 //
 // Both halves are one story to the person watching, so they leave by one door.
 // internal/tui3 imports this package and this package imports internal/provider,
@@ -35,10 +36,17 @@ type PhaseNews = provider.PhaseNews
 // The phases a turn has that a request does not. They are spelled in
 // internal/provider for the reason above — one vocabulary — and named here so a
 // reader of this package can see the whole list in one place.
+//
+// EVERY ONE OF THEM IS SAID ONCE AND AGES OUT. Nothing in this package beats the
+// way a request's own clock does (internal/provider's phaseBeat), and a surface
+// stops drawing a phase it has not heard again for fifteen seconds
+// (internal/tui3's phaseWindow) — so a stage that outlasts that window says
+// itself again at whatever seam it has, rather than being trusted to stay up.
 const (
 	PhaseRunning  = provider.PhaseRunning
 	PhaseChecking = provider.PhaseChecking
 	PhaseTidying  = provider.PhaseTidying
+	PhaseBriefing = provider.PhaseBriefing
 )
 
 var (

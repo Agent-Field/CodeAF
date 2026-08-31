@@ -12,10 +12,11 @@ import (
 
 // ── THE PHASE CLOCK: WHAT IS HAPPENING, AND WHAT HAPPENS NEXT ───────────────
 //
-// The layer that holds the wire knows which of nine slownesses a request is in
+// The layer that holds the wire knows which of ten slownesses a request is in
 // — a handshake, a queue before the first word, a run of thought, an answer
 // arriving, a rate-limit wait, a relaxed re-ask, a rescue in flight, a tool
-// running, a compaction — and it says so (internal/provider's phase.go,
+// running, a compaction, a turn being written down for whoever takes it over —
+// and it says so (internal/provider's phase.go,
 // forwarded by internal/session's phasenews.go). This file is the only place
 // that DRAWS one. Before it the surface could see a single bit of any of that,
 // whether a delta had arrived in the last ten seconds, so a stalled thinking
@@ -270,6 +271,13 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying:
 		return []rowField{rowSay(word), rowSay(countUpWord(since))}
+	case provider.PhaseBriefing:
+		// WHO IT IS FOR IS THE SUBSTANCE, exactly as the tool's own name is for a
+		// call that is running: "briefing" alone is the harness naming its
+		// paperwork, and "briefing a worker" is the sentence that tells somebody
+		// watching their turn stop what is about to happen to it. So the noun
+		// leads and a narrow row drops it before it drops the clock.
+		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
 	}
 	// A PHASE THIS SURFACE HAS NEVER HEARD OF DRAWS NOTHING, rather than its own
 	// machine word with a clock after it. The vocabulary is closed and spelled

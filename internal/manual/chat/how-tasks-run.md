@@ -953,13 +953,16 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
-## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, the task finished but the card is still busy, my task went quiet after the last line
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line
 
-A task has three lives and one state. Its worker writes the work; a second look reads what
-the worker left; a round closes the gaps that look named. **All three are `running`** —
-nothing has landed and nothing was undone between them — so the card, the rail row, the
-room header and the home row say which of the three it is in:
+A task has several lives and one state. Its worker writes the work; a reading decides
+whether the work is handed out in parts; a second look reads what the worker left; a round
+closes the gaps that look named. **Every one of them is `running`** — nothing has landed
+and nothing was undone between them — so the card, the rail row, the room header and the
+home row say which of them it is in:
 
+- `sizing the work` — a reading is deciding whether this job is handed out in parts, and
+  how. See *A task that has only just appeared and says sizing the work* below.
 - `checking what it left` — the worker is finished and its work is being read.
 - `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
   second number is `task.repair_rounds` (default 1), so with the default you will only
@@ -986,6 +989,53 @@ whole cost is on the one task's bill, because you asked for one piece of work.
 **If the row says nothing and the clock is still going**, the task is at its own work and
 the heartbeat is the thing to read — see the heartbeat section on this page for telling a
 working task from a hung one.
+
+## A task that has only just appeared and says sizing the work — task stuck before starting, why is my new task doing nothing, sizing the work how long, task appeared and then nothing happened
+
+`sizing the work` is the one life a task can be in **before its worker has said a word**,
+and it is the answer to "a task appeared, the clock is going, and nothing is happening".
+
+It means a model is reading the job and deciding **whether it is handed out in parts, and
+how**. It happens in two places:
+
+- **Just after the task appears**, when the work was moved out of a reply that had parts
+  in it (`this has parts · handing it to a task that can take them side by side`). Somebody
+  has already drawn the parts, and this reading is what decides whether they are admitted.
+- **Mid-run**, when a worker has opened the material, found the job wider than one pair of
+  hands, and asked to hand it out.
+
+**How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
+seconds**, measured at thirteen. It carries no numbers — how many parts there are is
+exactly what it is deciding — and the roster says what happened afterwards, either
+`split into 3 parts:` or the task carrying on as one worker.
+
+**Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
+a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
+
+**Cheap refusals draw nothing.** Where a division is turned down without a reading at all —
+the material does not name enough separate items, or no lane is free to pick the parts up —
+the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
+so only the reading is said.
+
+## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
+
+When your turn is handed over, the **status line at the bottom says `briefing a worker`**
+with a clock counting up beside it, and no task exists yet.
+
+That is the harness writing the instruction the task will open on, and it is two model runs
+back to back: the model that spent the turn writes down what it found out, and a second
+model turns that into the brief. **Fifteen to thirty seconds is normal.** Nothing is frozen
+and `esc` still works. The task appears on the rail the moment the writing ends.
+
+It is worth the wait, and that is the whole reason it exists: a task started without it
+opens on your bare sentence and re-derives everything the conversation already knew. What
+the writing produces is what the worker reads first — what is left, what is already known,
+what has been ruled out, and how anybody could tell when it is done.
+
+**It is a live line, not a note.** It says only what is true while it is true and takes
+itself off the screen when the writing ends, because this road can still decide the work
+was already finished and leave the turn exactly where it was — in which case no task starts
+and no line claims one did.
 
 ## The three ways a task can land
 
@@ -1542,7 +1592,7 @@ It holds:
 
 | field | what it says |
 | --- | --- |
-| `phase` | `working`, `checking` or `repairing` — which of the task's three lives this is |
+| `phase` | `working`, `sizing`, `checking` or `repairing` — which of the task's lives this is |
 | `request_started` | when its last model request went out |
 | `request_finished` | when that request came back; earlier than `request_started` means one is in flight |
 | `requests` | how many requests the task's workers, checkers and repair rounds have made between them |
