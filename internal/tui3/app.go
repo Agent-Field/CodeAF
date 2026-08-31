@@ -2262,7 +2262,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// air the block was built to end (taskcommand.go's [preflight]). The two
 	// places read ONE fact, [preflight.live], so a clock that starts and a clock
 	// that keeps going cannot disagree about whether a wait is up.
-	if a.levelsWaiting() || a.wait.live() {
+	// AN ARRIVING PROPOSAL CARD IS THE THIRD THING ARMED HERE. Its own event
+	// stream normally wakes the surface, but both clock lists read the derived
+	// card fact so a start and a keep can never disagree (task.go).
+	if a.levelsWaiting() || a.wait.live() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
 	return model, cmd
@@ -3553,7 +3556,14 @@ func (a *app) paint() tea.Cmd {
 		// this clock, so a clock that stopped the moment a list was drawn would
 		// leave every row of it spelled without its level until something
 		// unrelated repainted them (reasoninglevel.go).
-		a.levelsWaiting() {
+		a.levelsWaiting() ||
+		// AND A FORMING PROPOSAL CARD IS THE FIFTEENTH: its spinner and count-up
+		// are functions of this frame, not of the fragments that fill its brief.
+		// There is deliberately no page gate. The card lives for seconds, and its
+		// forming stream already wakes the surface up to ten times a second; a
+		// second visibility fact would only let the clock disagree with the card
+		// about whether its live row still exists (task.go).
+		a.formingCardLive() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
@@ -4009,6 +4019,13 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// transcript does not contain.
 		a.dropLive()
 		a.resolveUnfinished()
+		// THE CARD SURVIVES THE CUT because the next attempt reuses its title and
+		// fills the same block. Its clock does not: elapsed time belongs to the
+		// attempt now arriving, never to the attempt the engine threw away.
+		if card := a.formingCard(); card != nil {
+			card.born = a.now()
+			a.touch()
+		}
 		a.retrying = true
 		a.note(ev.Text)
 
@@ -4738,6 +4755,12 @@ func (a *app) claimAnnounced(ev session.Event) int {
 // itself. The failure text is a fallback for the Output, because a tool that
 // failed before it ran has a reason and no result.
 func (a *app) closeTool(ev session.Event, status toolState, why string) {
+	// A PROPOSE_TASK RESULT WITH A FORMING CARD IS A REFUSAL. A proposal that
+	// landed has already replaced this block with its question, so the presence
+	// of the forming card is the one fact that distinguishes the two outcomes.
+	if ev.Tool == taskTool {
+		a.refuseFormingCard()
+	}
 	for i := range a.entries {
 		e := &a.entries[i]
 		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
