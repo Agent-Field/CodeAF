@@ -27,7 +27,9 @@ func TestNewsBandReadsWithoutDrainingFoldsAndFits(t *testing.T) {
 		}
 	}
 	a := newTestApp(nil)
-	rows := drawNewsBand(a, ambientBandContext(a, row, now, 34))
+	ctx := ambientBandContext(a, row, now, 34)
+	takeHomeNews(a, ctx.subject, now)
+	rows := drawNewsBand(a, ctx)
 	got := plain(strings.Join(rows, "\n"))
 	if !strings.Contains(got, "◆ 4 things since you left") || !strings.Contains(got, "1m · keep main green") || !strings.Contains(got, "report landed") || !strings.Contains(got, "▸ …1 more things") {
 		t.Fatalf("news band:\n%s", got)
@@ -112,6 +114,7 @@ func TestLeftOffBandDrawsThePairAndFits(t *testing.T) {
 	}
 	a := newTestApp(nil)
 	row := session.SessionRow{Transcript: transcript}
+	takeHomeLeftOff(a, row.Transcript)
 	rows := drawLeftOffBand(a, ambientBandContext(a, row, time.Now(), 26))
 	got := plain(strings.Join(rows, "\n"))
 	if !strings.HasPrefix(got, "› Please explain") || strings.Contains(got, "First sentence") || len(rows) != 3 {

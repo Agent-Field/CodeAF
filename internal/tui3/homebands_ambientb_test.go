@@ -7,11 +7,26 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
+
+// settleHomeRepo runs the reading an arrival ASKED FOR and files the answer,
+// which is what the update loop does when the message comes back
+// (homeband_repo.go's [app.refreshRepoOf] is a tea.Cmd because a keystroke may
+// not wait for git).
+func settleHomeRepo(a *app, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	if msg, ok := cmd().(homeRepoMsg); ok {
+		a.tookHomeRepo(msg)
+	}
+}
 
 func ambientBandContextAt(a *app, width int, now time.Time) bandContext {
 	return bandContext{subject: bandSubject{kind: bandKindSession,
@@ -30,13 +45,13 @@ func TestRepoBandDrawsKnownFactsCachesAndObeysWidth(t *testing.T) {
 	}
 	t.Cleanup(func() { homeGitStatus = old })
 	a.home.lines = []homeLine{{kind: homeSession, row: session.SessionRow{Workspace: "/work"}}}
-	a.refreshHomeRepo(now)
+	settleHomeRepo(a, a.refreshRepoOf("/work", now))
 	rows := drawRepoBand(a, ambientBandContextAt(a, 34, now))
 	if got := plain(rows[0]); !strings.Contains(got, "feature/home · 2 files dirty") || ansi.StringWidth(got) > 34 {
 		t.Fatalf("repo row = %q", got)
 	}
 	assertNarrowRows(t, "repo", drawRepoBand(a, ambientBandContextAt(a, 30, now)), 30, "behind 1")
-	a.refreshHomeRepo(now.Add(time.Second))
+	settleHomeRepo(a, a.refreshRepoOf("/work", now.Add(time.Second)))
 	if calls != 1 {
 		t.Fatalf("git status ran %d times inside its cache", calls)
 	}
@@ -48,7 +63,7 @@ func TestRepoBandDrawsNothingWhenGitCannotAnswer(t *testing.T) {
 	homeGitStatus = func(context.Context, string) ([]byte, error) { return nil, errors.New("not git") }
 	t.Cleanup(func() { homeGitStatus = old })
 	a.home.lines = []homeLine{{kind: homeSession, row: session.SessionRow{Workspace: "/work"}}}
-	a.refreshHomeRepo(time.Now())
+	settleHomeRepo(a, a.refreshRepoOf("/work", time.Now()))
 	if rows := drawRepoBand(a, ambientBandContextAt(a, 40, time.Now())); len(rows) != 0 {
 		t.Fatalf("failed git drew %q", rows)
 	}

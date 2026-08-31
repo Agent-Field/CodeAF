@@ -312,7 +312,10 @@ func TestHoveringAnotherProjectsRowReadsThatProjectsRepository(t *testing.T) {
 	t.Cleanup(func() { homeGitStatus = old })
 
 	at := homeLineOfKind(t, a, homeSession, "alpha")
-	a.homeHover(4, homeLineY(t, a, at))
+	// The reading is ASKED FOR on the hover and taken off the update loop
+	// (homeband_repo.go), so the gesture is followed the way the program follows
+	// it: the command runs and its answer is filed.
+	settleHomeRepo(a, a.homeHover(4, homeLineY(t, a, at)))
 	if len(asked) != 1 || asked[0] != alpha {
 		t.Fatalf("hovering read %v, want one reading of %s", asked, alpha)
 	}

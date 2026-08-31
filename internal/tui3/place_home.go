@@ -971,7 +971,18 @@ func (placeHome) wheel(a *app, delta int) bool { return false }
 // key is home's whole grammar, which is the oldest on this surface and the one
 // every other place borrowed from (home.go's [app.homeKey]). The router is read
 // before it, exactly as it is before every other place's.
-func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.homeKey(msg) }
+// key is the place's own keyboard, and EVERY key on it is an arrival.
+//
+// The card follows the cursor and the cursor is moved by more than the arrows —
+// a filter typed into the box rebuilds the list under it, `alt+g` regroups it,
+// a fold opens — so the readings the card needs are asked for after whatever the
+// key did rather than beside the four keys that most obviously move it
+// (homecardread.go). Asking costs a map lookup on every key that changed
+// nothing, which is what it costs to never be stale.
+func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	answered := a.homeKey(msg)
+	return tea.Batch(answered, a.refreshHomeCard(a.now()))
+}
 
 // owns is the two layers of home that take the WHOLE keyboard, `tab` included,
 // and it is read before the router claims a single chord (pages.go's

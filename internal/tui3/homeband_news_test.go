@@ -23,7 +23,9 @@ func TestOneThingSinceYouLeftIsSpelledSingular(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := newTestApp(nil)
-	got := plain(strings.Join(drawNewsBand(a, ambientBandContext(a, row, now, 40)), "\n"))
+	ctx := ambientBandContext(a, row, now, 40)
+	takeHomeNews(a, ctx.subject, now)
+	got := plain(strings.Join(drawNewsBand(a, ctx), "\n"))
 	if !strings.Contains(got, "◆ 1 thing since you left") {
 		t.Fatalf("the heading did not count to one:\n%s", got)
 	}
