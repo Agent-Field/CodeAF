@@ -70,12 +70,14 @@ import (
 
 // taskGroundDir is THE ONE PLACE anything learns where a task stands.
 //
-// It is a function and not a field read at each site because the answer is about
-// to move: today a node's ground is the directory it was given to work in — a
-// worktree cut from the conversation's repository, or the person's own folder
-// when there is no repository (task_run.go's [prepareTaskTree]) — and when a node
-// carries a ground resolved from what the conversation was about, this body
-// changes and every reader follows it without being touched.
+// It is a function and not a field read at each site so that every reader
+// follows one body when the answer moves. The answer arrived with the ground
+// work (taskstands.go): a node's tree is now cut ON its ground —
+// task_run.go's [prepareTaskTreeOn] hands back a worktree of the repository
+// the task is about, a mirror of a plain folder, or the ground itself for
+// work done in place — so the directory a worker may write in is tree.dir in
+// every mode, and pointing this at [TaskNode.Ground] instead would aim the
+// guard at the person's own checkout, the one place the law exists to protect.
 func taskGroundDir(node *TaskNode, tree taskTree) string {
 	return tree.dir
 }
