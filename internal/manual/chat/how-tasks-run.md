@@ -1500,9 +1500,11 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.
-  - `went in circles — branch kept`: the worker kept making the same calls and its own loop
-    guard ended the turn (its last words are `this turn is going in circles · stopping here
-    with anything remaining left undone`).
+  - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
+    ended the turn (its last words are `this turn is going in circles · stopping here
+    with anything remaining left undone`). Repetition is the whole of it: the same call
+    three times in a row, the same failure three times, the same argument refused twice,
+    or five rounds that read nothing new.
   - `blocked by another task — branch kept`: the calls it kept making were writes into a
     working copy another task holds, and every one was refused. Wait for that task's report,
     then run this one again on top of it.
@@ -1512,6 +1514,14 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
   - `ended with an error — branch kept`: a working copy could not be made, the worker would
     not start, or an error nobody classified.
+
+**Being quiet is not going in circles**, and a task that was working cannot land here for
+it. A worker committing, pushing and writing files says very little, and the `[silent]`
+notes that ask it to write its plan down never stop it — they spend none of the loop
+guard's limit. Neither does a shell command that changed the working folder: that is
+counted as work, the same as an `edit` or a `write`. If a row says `went in circles`, the
+worker had genuinely stopped making progress, and its transcript shows what it kept
+repeating.
 
 The first cause wins: a check that refuses a run which had already given up is written as
 `went in circles`, because that is what happened first. A task that lands as `!` is not

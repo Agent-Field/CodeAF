@@ -381,7 +381,16 @@ type loopDetector struct{ agent *Agent }
 
 func (loopDetector) Name() string { return "loop" }
 
-func (loopDetector) EpisodeInit(ep *episode) { ep.watch = newLoopWatch() }
+// EpisodeInit opens the turn's window and tells it which tree answers "did
+// anything actually change" for a batch of shell commands — the workspace this
+// agent was built on, which for a task's worker is that node's own working copy.
+func (loopDetector) EpisodeInit(ep *episode) {
+	watch := newLoopWatch()
+	if ep.agent != nil {
+		watch.dir = ep.agent.config.Workspace
+	}
+	ep.watch = watch
+}
 
 func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results, visibleText)

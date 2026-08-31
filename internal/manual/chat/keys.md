@@ -2036,28 +2036,49 @@ answers, not the thinking.
 The chat loop watches for a model that keeps calling tools without putting any visible
 words between the calls. After **6 consecutive tool-using replies with no visible assistant
 text**, it adds a note beginning `[silent]`. If the silence continues, stronger notes arrive
-at **12** and **24** replies. The last says the harness will hand the turn over. Each note asks
-the model to write what it has learned, what it will check next, and why before making
-another call.
+at **12** and **24** replies, and the third is the last — one silent run is mentioned three
+times and no more. Each note asks the model to write what it has learned, what it will
+check next, and why before making another call.
+
+**A `[silent]` note never stops anything, and it is not an accusation of being stuck.** It
+is about the record rather than the work: it says the reasoning between steps is being
+lost. The work goes on either way, and no number of them will end a turn.
 
 That request matters for reasoning models because their streamed thinking is shown on the
 screen but is not put into the next request. Of the model's prose, only visible assistant
-text becomes part of the conversation the following step can read. A visible note resets
-the count. A successful `edit` or `write` resets it too, because the turn is landing work
-even if the model says nothing. Each rung is issued once in one silent stretch; after a
-reset, a later silent stretch begins again at 6.
+text becomes part of the conversation the following step can read.
+
+Three things reset the count: a visible note, a successful `edit` or `write`, and a
+successful shell command that left the working folder different from how it found it. That
+last one is why a commit-and-push run is not scolded for being quiet — landing work is
+work, whatever verb it is spelled with. Each rung is issued once in one silent stretch;
+after a reset, a later silent stretch begins again at 6.
 
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
 note says: `the last 5 rounds read nothing new; what you are looking for is already in the
-transcript`. A result with a fresh line or a successful write resets that count.
+transcript`. A fresh line, a successful write, or a command that changed the working folder
+resets that count.
 
-All loop signals share one warning limit. After two notes, another loop signal ends the
-turn instead of adding a third ineffective note. In an interactive conversation, aforge
-uses the same checkpoint hand-off as any other overlong turn and moves the remains to a
-watched task. If that hand-off cannot be made — for example inside a task or without a
-consent surface — it ends the turn with
+## When does a loop actually end the turn — the [stuck] warning limit
+
+Four signals say the turn is not moving: **the same call three times in a row**, **the same
+failure three times**, **the same argument refused twice**, and **five rounds that read
+nothing new**. They share one warning limit. After two `[stuck]` notes, a third such signal
+ends the turn instead of adding a third ineffective note.
+
+In an interactive conversation, aforge uses the same checkpoint hand-off as any other
+overlong turn and moves the remains to a watched task. If that hand-off cannot be made —
+for example inside a task or without a consent surface — it ends the turn with
 `this turn is going in circles · stopping here with anything remaining left undone`.
+
+Two things soften that limit. **`[silent]` notes spend none of it**, so a quiet turn cannot
+be ended for being quiet. And **getting something done gives one spent note back**: a batch
+that wrote a file, or ran a shell command that changed the working folder, steps the count
+down by one — unless it was the very call the turn has already been warned about, because
+writing the same file seven times is the loop and not the way out of it. It is a step down
+and not a wipe: a turn that keeps looping still reaches the limit, it just takes longer to
+get there.
 
 ## What does the indented part mean?
 

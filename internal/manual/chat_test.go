@@ -157,6 +157,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the way a person who has not read it asks.
 		{"my task says lost the connection what does that mean", "how-tasks-run"},
 		{"task went in circles", "how-tasks-run"},
+		// Written from a real run: a worker whose last six calls were distinct,
+		// successful git commands was cut off and its row said it had gone in
+		// circles. Both halves of the correction have to be findable — the word
+		// under the row, and the note the worker was actually being handed.
+		{"it said going in circles but it was working", "how-tasks-run"},
+		{"what does the silent note mean", "keys"},
 		{"what does the exclamation mark next to a task mean", "how-tasks-run"},
 		{"task blocked by another task", "how-tasks-run"},
 		{"why does it say not accepted under my task", "how-tasks-run"},
