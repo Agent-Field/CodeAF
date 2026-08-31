@@ -5,8 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -159,106 +157,11 @@ func (a *app) livePhase() (PhaseNews, bool) {
 
 // ── THE WORDS ───────────────────────────────────────────────────────────────
 
-// phaseField is one part of the served segment in the spellings it is honest
-// in: the whole of it, and the least of it that is still true.
-//
-// A FIELD IS NEVER CUT, IT IS ONLY SAID SHORTER. "3.1s" is the same fact as
-// "first word 3.1s" with the label taken off, and "friendli" is the same fact
-// as "friendli 38 t/s" with the measurement taken off — where a clip at the
-// same width would leave "first word 3.…", which is a fact about nothing. An
-// empty spelling is the field's third and last answer, which is the emptiness
-// law: a part nobody has room for draws NOTHING rather than a stub of itself.
-//
-// A TIGHT FIELD RIDES THE ONE BEFORE IT ON A SPACE rather than on the surface's
-// separator, because some fields are already joined by their own grammar. The
-// arrow in "3.1s → parasail at 4.4s" is the joint; a dot in front of it would
-// be a second one saying the same thing.
-type phaseField struct {
-	full  string
-	short string
-	tight bool
-}
-
-// phaseWord is a field with one spelling, which is most of them: a clock, a
-// phase's own word, a rung of a ladder. It says the same thing at every width
-// or it says nothing.
-func phaseWord(word string) phaseField { return phaseField{full: word, short: word} }
-
-// phaseSegment is the served segment AS DATA rather than as a finished string,
-// so that the row can decide how much of it there is room for without cutting
-// any of it.
-//
-// THE PRIMARY IS THE HEAD OF THE SEGMENT and it is kept whole for as long as
-// anything is drawn at all: the machine that is answering when one has named
-// itself, and the phase's own word when none has. Everything else is a field in
-// PRIORITY ORDER, most important first, and the fields are what the width takes
-// — from the back, one spelling at a time. That order is the data hierarchy the
-// owner asked for: the lane name, then the phase and its clock and whatever the
-// build will do about it, then the first-word figure, then the rate.
-//
-// The primary carries two spellings for the same reason a field does. "via
-// coreweave" and "coreweave" name the same machine; the lead word is grammar
-// and is the first thing a narrow row spends, and the NAME under it is never
-// cut — a segment with no room for the whole name draws nothing at all.
-type phaseSegment struct {
-	primary phaseField
-	fields  []phaseField
-}
-
-// fitPhaseSegment is the segment in the widest spelling that fits, and nothing
-// at all when even the bare primary does not. A width below zero is no bound.
-//
-// THIS FUNCTION IS A PLACEHOLDER FOR internal/tui3/rowfit.go's FITTER, which is
-// being built on its own branch as the one field-priority fitter this surface
-// has. It is written to the same shape on purpose — a primary that survives the
-// longest, telemetry fields with a full, a short and an absent spelling, added
-// by priority — so that the rebase is a single call and a deletion: whoever
-// lands rowfit.go replaces this body with a call to it, deletes these two
-// functions, and changes nothing else in this file. Do not grow a second width
-// ladder here; grow rowfit.go instead.
-//
-// The rungs, widest first: everything; the lead word spent to keep every field
-// whole; every field said short; then the fields dropped from the back, one at
-// a time, until only the primary is left.
-func fitPhaseSegment(seg phaseSegment, width int) string {
-	rungs := []string{
-		seg.say(seg.primary.full, len(seg.fields), false),
-		seg.say(seg.primary.short, len(seg.fields), false),
-	}
-	for kept := len(seg.fields); kept >= 0; kept-- {
-		rungs = append(rungs, seg.say(seg.primary.short, kept, true))
-	}
-	for _, rung := range rungs {
-		if rung != "" && (width < 0 || ansi.StringWidth(rung) <= width) {
-			return rung
-		}
-	}
-	return ""
-}
-
-// say is one rung: the primary in the spelling it was handed, and the first
-// kept fields after it, each in its short spelling or its full one. Every empty
-// part is dropped, which is the emptiness law as an operation — no rung has to
-// write the same four `if word != ""` lines.
-func (seg phaseSegment) say(primary string, kept int, short bool) string {
-	words := primary
-	for _, field := range seg.fields[:kept] {
-		word := field.full
-		if short {
-			word = field.short
-		}
-		switch {
-		case word == "":
-		case words == "":
-			words = word
-		case field.tight:
-			words += " " + word
-		default:
-			words += " · " + word
-		}
-	}
-	return words
-}
+// THE FITTING IS ROWFIT.GO'S AND NOT THIS FILE'S. This file decides what the
+// facts ARE and how they rank; `internal/tui3/rowfit.go` decides how many of
+// them a row has room for, in the one field-priority fitter this surface has
+// ([rowLed] for a segment led by a name, [rowTail] for one that is only facts).
+// A second width ladder here would be a second answer to a question with one.
 
 // phaseWords is the phase clock as a person reads it at a width nobody is
 // short of, WITHOUT the leading separator — a caller adds the " · " or the
@@ -280,12 +183,20 @@ func (seg phaseSegment) say(primary string, kept int, short bool) string {
 // segment by segment: no lane, no lane; no rate, no rate; no real deadline, no
 // arrow. What is left is still true.
 func phaseWords(news PhaseNews, now time.Time) string {
-	return fitPhaseSegment(phaseSegmentOf(news, now), -1)
+	return rowLed(phaseFields(news, now), rowUnbounded)
 }
 
-// phaseSegmentOf is every phase this surface has learned to say, as the data a
-// width can be applied to. It is the vocabulary in one place: a phase's parts,
-// which of them leads, and what each of them is worth when the row runs out.
+// phaseFields is every phase this surface has learned to say, as the ranked
+// facts a width can be applied to (rowfit.go's [rowField]). It is the vocabulary
+// in one place: a phase's parts, which of them leads, and what each of them is
+// worth when the row runs out.
+//
+// THE ORDER IS THE DATA HIERARCHY the owner asked for — the machine's name, then
+// the phase and its clock and whatever the build will do about it, then the
+// rate. A field is never cut, only said shorter: "3.1s" is "first word 3.1s"
+// with the label taken off, where a clip at the same width would leave
+// "first word 3.…", which is a fact about nothing. The fitting itself belongs to
+// rowfit.go and is not repeated here.
 //
 // TWO SPELLINGS OF A CLOCK, and the difference is what the number is for. The
 // phases a person is WAITING THROUGH with nothing arriving — the handshake and
@@ -295,7 +206,7 @@ func phaseWords(news PhaseNews, now time.Time) string {
 // read in whole seconds ([countUpWord], the spelling every other live clock on
 // this surface uses), because a tenth on a `go test` is a digit that changes
 // under the eye and means nothing.
-func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
+func phaseFields(news PhaseNews, now time.Time) []rowField {
 	since := now.Sub(news.Since)
 	if since < 0 {
 		since = 0
@@ -303,14 +214,11 @@ func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
 	word := string(news.Phase)
 	switch news.Phase {
 	case provider.PhaseConnecting:
-		return phaseWaitSegment(news, tookWord(since), false)
+		return phaseWaitFields(news, tookWord(since), false)
 	case provider.PhaseFirstWord:
-		return phaseWaitSegment(news, tookWord(since), true)
+		return phaseWaitFields(news, tookWord(since), true)
 	case provider.PhaseThinking, provider.PhaseWriting:
-		return phaseSegment{
-			primary: phaseWord(word),
-			fields:  []phaseField{phaseWord(countUpWord(since)), phaseServing(news)},
-		}
+		return []rowField{rowSay(word), rowSay(countUpWord(since)), phaseServing(news)}
 	case provider.PhasePaced:
 		// THE PACING WAIT IS THE ROUTER'S OWN `Retry-After` and is therefore a
 		// real moment, so it is spelled as the countdown it is. Without one the
@@ -321,7 +229,7 @@ func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
 				clock = "retry in " + countdown
 			}
 		}
-		return phaseSegment{primary: phaseWord(word), fields: []phaseField{phaseWord(clock)}}
+		return []rowField{rowSay(word), rowSay(clock)}
 	case provider.PhaseRetrying:
 		// The rung of the ladder is better than the clock when the ladder said
 		// which rung it is on: "2 of 6" answers "is this going anywhere?" and a
@@ -330,20 +238,20 @@ func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
 		if rung == "" {
 			rung = countUpWord(since)
 		}
-		return phaseSegment{primary: phaseWord(word), fields: []phaseField{phaseWord(rung)}}
+		return []rowField{rowSay(word), rowSay(rung)}
 	case provider.PhaseSwitching:
 		// THE STALL COMES FIRST BECAUSE IT IS THE REASON. A rescue reads as an
 		// answer to something, and the something is how long the first machine
 		// had gone quiet; the switch alone is the same sentence with the cause
 		// taken out of it. So the cause is what a narrow row spends, and the
-		// rescue itself — the one part a person would act on — is the primary.
+		// rescue itself — the one part a person would act on — is what is kept.
 		if news.Then != "" {
 			word += " to " + strings.ToLower(news.Then)
 		}
 		if news.Detail == "" {
-			return phaseSegment{primary: phaseWord(word)}
+			return []rowField{rowSay(word)}
 		}
-		return phaseSegment{primary: phaseField{full: news.Detail + " · " + word, short: word}}
+		return []rowField{rowSay(news.Detail+" · "+word, word)}
 	case provider.PhaseSwitchingModel:
 		// AND THE LAST RUNG SAYS SO BY NAME. Changing which machine writes an
 		// answer is bookkeeping and reads as "switching"; changing which MODEL
@@ -352,32 +260,27 @@ func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
 		// that sentence while it happens rather than in the transcript
 		// afterwards (the ladder, in docs/ARCHITECTURE.md). The name is the
 		// model's own base, spelled as the model segment beside it spells it.
-		seg := phaseSegment{primary: phaseWord(word)}
-		if news.Then != "" {
-			named := "→ " + modelBase(news.Then)
-			seg.fields = []phaseField{{full: named, short: named, tight: true}}
+		if news.Then == "" {
+			return []rowField{rowSay(word)}
 		}
-		return seg
+		return []rowField{rowSay(word+" → "+modelBase(news.Then), word)}
 	case provider.PhaseRunning:
 		// The tool's own name is the substance and the verb is the frame, so a
 		// narrow row keeps "running" and lets the noun go before the clock does.
-		return phaseSegment{
-			primary: phaseField{full: phaseJoinWord(word, news.Detail), short: word},
-			fields:  []phaseField{phaseWord(countUpWord(since))},
-		}
+		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying:
-		return phaseSegment{primary: phaseWord(word), fields: []phaseField{phaseWord(countUpWord(since))}}
+		return []rowField{rowSay(word), rowSay(countUpWord(since))}
 	}
 	// A PHASE THIS SURFACE HAS NEVER HEARD OF DRAWS NOTHING, rather than its own
 	// machine word with a clock after it. The vocabulary is closed and spelled
 	// in one place; a name that is not in it is a seam that has grown a word
 	// this file has not learned to say, and the older readings underneath are a
 	// better answer than a stranger's noun.
-	return phaseSegment{}
+	return nil
 }
 
-// phaseWaitSegment is a phase a person is waiting through: the handshake and
-// the queue before the first word.
+// phaseWaitFields is a phase a person is waiting through: the handshake and the
+// queue before the first word.
 //
 // THE MACHINE ANSWERING LEADS THE SEGMENT WHEN ONE HAS NAMED ITSELF, and that
 // is the data hierarchy: which machine a person is waiting on is the fact they
@@ -388,25 +291,29 @@ func phaseSegmentOf(news PhaseNews, now time.Time) phaseSegment {
 // has said who it is, the phase's word leads instead and the segment is exactly
 // what it has always been.
 //
-// Only the queue before the first word carries a consequence. The handshake has
-// no alternative armed behind it, and a countdown to nothing is the one thing
-// this file exists to refuse.
-func phaseWaitSegment(news PhaseNews, clock string, consequence bool) phaseSegment {
-	var seg phaseSegment
+// THE CONSEQUENCE RIDES THE CLOCK IT BELONGS TO rather than standing beside it,
+// because "3.1s → parasail at 4.4s" is one clock read twice and a separator
+// between them would claim they were two facts. That is what gives the clock
+// three spellings — with the label, without it, and without the consequence —
+// and those three are exactly the rungs the segment climbs down.
+//
+// Only the queue before the first word carries one. The handshake has no
+// alternative armed behind it, and a countdown to nothing is the one thing this
+// file exists to refuse.
+func phaseWaitFields(news PhaseNews, clock string, consequence bool) []rowField {
+	full, short := clock, clock
+	if consequence {
+		if long, brief := phaseConsequence(news); long != "" {
+			full, short = clock+" "+long, clock+" "+brief
+		}
+	}
 	if lane := strings.ToLower(news.Lane); lane != "" {
-		seg.primary = phaseField{full: "via " + lane, short: lane}
-		seg.fields = []phaseField{{full: phaseJoinWord(string(news.Phase), clock), short: clock}}
-	} else {
-		seg.primary = phaseWord(string(news.Phase))
-		seg.fields = []phaseField{phaseWord(clock)}
+		return []rowField{
+			rowSay("via "+lane, lane),
+			rowSay(phaseJoinWord(string(news.Phase), full), short, clock),
+		}
 	}
-	if !consequence {
-		return seg
-	}
-	if full, short := phaseConsequence(news); full != "" {
-		seg.fields = append(seg.fields, phaseField{full: full, short: short, tight: true})
-	}
-	return seg
+	return []rowField{rowSay(string(news.Phase)), rowSay(full, short, clock)}
 }
 
 // phaseJoinWord is the phase's word with its own noun after it — "running go
@@ -430,16 +337,16 @@ func phaseJoinWord(word, detail string) string {
 // The lane is lower-cased for the reason [app.laneRider] lower-cases it: a
 // vendor's own capitalisation of its own name is a decision about their brand
 // and this row is a decision about a person's eye.
-func phaseServing(news PhaseNews) phaseField {
+func phaseServing(news PhaseNews) rowField {
 	served := strings.ToLower(news.Lane)
 	rate := laneRateWord(news.Rate)
 	switch {
 	case served != "" && rate != "":
-		return phaseField{full: served + " " + rate, short: served}
+		return rowSay(served+" "+rate, served)
 	case served != "":
-		return phaseWord(served)
+		return rowSay(served)
 	default:
-		return phaseField{full: rate}
+		return rowSay(rate)
 	}
 }
 
