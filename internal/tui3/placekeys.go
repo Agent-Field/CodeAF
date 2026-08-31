@@ -360,10 +360,11 @@ func (a *app) placeBox() *editor {
 // worse than saying no". So the verb is in reach from every place, and the
 // second press puts you where the answer will arrive.
 func (a *app) placeSend() tea.Cmd {
-	if a.openComposerLayer() {
+	asked, opened := a.openComposerLayer()
+	if opened {
 		a.touch()
 	}
-	return nil
+	return asked
 }
 
 // placeTalk is `enter` on a place with something in the composer and no row to

@@ -1056,6 +1056,88 @@ memo's bytes are the direct path's bytes, `attach_test.go` proves the fold spell
 the whole answer. Those tests say the fast path is *right*; the ones above say it
 is still *fast*.
 
+## The home laws, which are about the machine in front of you
+
+The connection laws below were written about a far machine; these are the same
+laws with the latency at THIS end. Home is the screen a person walks with the
+arrow keys and sweeps with the pointer, and it is in `AllMotion` (view.go), so a
+pointer crossing it is answered up to sixty times a second (coalesce.go). Every
+one of those answers runs on the update loop, which is the one goroutine that
+also decodes the next key.
+
+**What they were written after.** The owner reported: *"when I hover or go up and
+down in home it's very laggy, I think it has something to do with git"*. Three
+separate things were true, and the guess was the smallest of them.
+
+| Law | Where it is pinned |
+| --- | --- |
+| **The deliverables index is read ONCE for the whole screen**, on `open` and on the beat, and re-parsed only when the file changed. | `internal/tui3/homeband_deliverables_test.go` |
+| **A key that moves the cursor on home runs no command.** It ASKS for one. | `internal/tui3/homesnappy_test.go` |
+| **A pointer motion on home runs no command.** | `internal/tui3/homesnappy_test.go` |
+| **A pointer motion on home builds ONE home frame**, and the one it builds is the paint's. | `internal/tui3/homesnappy_test.go` |
+| **A key or a motion on home walks no directory.** | `internal/tui3/homesnappy_test.go` |
+| **A home beat walks the world exactly once.** | `internal/tui3/homesnappy_test.go` |
+| **The card's own two readings — the conversation's journal and its inbox — are ASKED FOR and not taken.** | `internal/tui3/homesnappy_test.go` |
+
+**There is no millisecond in that table, and there must not be**, for the reason
+this file's doctrine gives: a count is a fact about the code and a stopwatch is a
+fact about the weather. The numbers below are what the counts were derived FROM,
+written down so the caps above can be read as a decision somebody signed for.
+
+**The three costs, measured on this machine.** A card ARRIVES once per arrow key
+and once per hover that moves, so a cost "cached per card" is a cost paid per
+keystroke:
+
+| what | cost per arrival | why |
+| --- | --- | --- |
+| the deliverables index | **7–11 ms** | 900 KB of JSON decoded to keep one conversation's four rows |
+| the conversation's journal | **1–33 ms** | `session.Peek` scans the whole transcript |
+| the repository | **7.7 ms** | `git status --porcelain=v2 --branch` on aforge's own worktree, warm, with a **1 s** ceiling on it |
+
+The first is one file about the WHOLE MACHINE, so it is read with the world and
+filed by the conversation that made each row. The other two are about the row
+itself and cannot be read in advance for every row on the machine, so they are
+asked for as `tea.Cmd`s and answered as messages (`internal/tui3/homecardread.go`,
+`homeband_repo.go`). The band draws the last answer it was given; a row nobody
+has read for yet draws no band, which is the emptiness law rather than a blank.
+
+**And the pointer built two frames.** `app.homeHover` built a whole home frame of
+its own to hit-test against and then asked for the repaint, so an answered motion
+drew the screen twice. It resolves against `homeView.painted` now — the frame
+that is ACTUALLY ON THE SCREEN, which is also the more honest of the two answers,
+because a frame built inside a hover is a frame nobody has ever seen.
+
+**And the beat walked the world twice.** `refreshHome` asked `readWorld` for the
+reading and then `worldKnown` whether the reading was an answer, and each of
+those is a full walk of the places root — every project's index, every session's
+`meta.json`. `app.readWorldKnown` takes both from one walk.
+
+Measured end to end, on a lab of eight repositories answering `git status` in ten
+milliseconds each — a tenth of what a cold or network-mounted worktree costs:
+
+|  | before | after |
+| --- | --- | --- |
+| twenty arrivals (key, readings, frame) | 1.14 ms each, **worst 10.4 ms** | 0.048 ms each, **worst 0.10 ms** |
+| sixty answered motions | 0.57 ms each, **worst 10.8 ms** | 0.116 ms each, **worst 0.79 ms** |
+| commands run on the update loop | 3 | **0** |
+| home frames built per motion | 2 | **1** |
+
+And on this machine's own home, whose repositories answer in microseconds because
+the same three workspaces are cached, the two halves that are not git still show:
+
+|  | before | after |
+| --- | --- | --- |
+| sixty answered motions | 0.25 ms each | 0.127 ms each |
+| a resting beat | 6.8 ms | 2.9 ms |
+
+**What a person would see if this were wrong.** Too eager, and the screen is
+where it was: a keystroke behind a `git status` on a repository big enough to
+need its whole second, with every key typed behind it queued. Too lazy, and a
+card never learns its branch, its files or where the conversation got to — which
+is why every law above is a pair, *the loop runs nothing* AND *the reading still
+lands*, and why `TestTheCardsReadingsAreAskedForAndNotTaken` follows the same
+gesture all the way to the state it leaves behind.
+
 ## The connection laws
 
 Over `--host` the surface runs on the laptop and only the engine is far away

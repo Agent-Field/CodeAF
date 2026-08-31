@@ -124,20 +124,21 @@ const composerSlot = "work"
 // it. It answers false where there is nothing to send, which is where the chord
 // keeps meaning what it always meant.
 //
-// THE ONE READING OF THE DISK IS TAKEN HERE. The layer states which branch the
-// destination is on, and that is a `git status` — so it is taken on this
-// keystroke and on `alt+w`'s, never on a draw (ARCHITECTURE.md's fourth law,
-// homeband_repo.go's [app.refreshRepoOf]).
-func (a *app) openComposerLayer() bool {
+// THE ONE READING OF THE DISK IS ASKED FOR HERE. The layer states which branch
+// the destination is on, and that is a `git status` — so it is asked for on this
+// keystroke and on `alt+w`'s, never on a draw (ARCHITECTURE.md's fourth law).
+// It is ASKED FOR and not waited on: the command runs off the update loop and
+// the line says where the task will run with no branch on it until the answer
+// lands, which is the emptiness law (homeband_repo.go's [app.refreshRepoOf]).
+func (a *app) openComposerLayer() (tea.Cmd, bool) {
 	box := a.placeBox()
 	if box == nil || strings.TrimSpace(box.String()) == "" {
-		return false
+		return nil, false
 	}
 	a.closeStrip()
 	a.composer = composerLayer{open: true, at: a.page}
 	a.composer.places = a.composerDestinations()
-	a.refreshRepoOf(a.composerWhere(), a.now())
-	return true
+	return a.refreshRepoOf(a.composerWhere(), a.now()), true
 }
 
 // closeComposerLayer is `esc`: the layer goes and the place under it is exactly
@@ -272,10 +273,10 @@ func (a *app) composerDestinations() []string {
 // the last. It answers false where there is only one — a machine with one
 // project has nowhere to move a task to, and the clause naming this key is then
 // absent from the line ([app.composerRows]).
-func (a *app) composerMove() bool {
+func (a *app) composerMove() (tea.Cmd, bool) {
 	places := a.composerPlaces()
 	if len(places) < 2 {
-		return false
+		return nil, false
 	}
 	here := a.composerWhere()
 	next := places[0]
@@ -286,8 +287,7 @@ func (a *app) composerMove() bool {
 		}
 	}
 	a.composer.where = next
-	a.refreshRepoOf(next, a.now())
-	return true
+	return a.refreshRepoOf(next, a.now()), true
 }
 
 // ── the rows the frame draws under the box ──────────────────────────────────
@@ -458,10 +458,11 @@ func (a *app) composerLayerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.placeTalk(), true
 
 	case "alt+w":
-		if a.composerMove() {
+		asked, moved := a.composerMove()
+		if moved {
 			a.touch()
 		}
-		return nil, true
+		return asked, true
 
 	case "alt+o":
 		a.openComposerPicker()
