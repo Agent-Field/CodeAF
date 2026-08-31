@@ -335,7 +335,11 @@ func (a *app) homeSheetTitle(subject bandSubject, width int, pal palette) []stri
 // homeSheetBody is every band the subject has, in this tier's order, with the
 // bookkeeping behind one fold — and what each row answers to a tap.
 func (a *app) homeSheetBody(subject bandSubject, width, room int) ([]string, []homeSheetHit) {
-	a.resetBandFoldLines()
+	// The sheet is this card in the phone tier, so it empties the same door
+	// registry the desktop card writes (carddoors.go). There is no hover on
+	// glass, so nothing here reads it back — but a registry left standing from a
+	// wide frame would be a tap resolved against rows this sheet never drew.
+	a.resetCardDoors()
 	pal := a.pal
 	ctx := bandContext{subject: subject, width: width - 1, now: a.home.world.Read, pal: pal}
 	top, more := homeSheetBands(subject.kind)

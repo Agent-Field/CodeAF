@@ -598,3 +598,154 @@ func TestAClickOnACardsTaskLeavesTheListWhereItWas(t *testing.T) {
 		t.Fatalf("a press on the card moved the list's cursor from %d to %d", before, a.home.cursor)
 	}
 }
+
+// ── THE POINTER ON THE CARD ─────────────────────────────────────────────────
+//
+// A DOOR THAT LOOKS EXACTLY LIKE THE PROSE AROUND IT IS A DOOR NOBODY FINDS. The
+// card's work rows opened a record from the day above, and the card lit nothing
+// at all under the pointer — neither its task rows nor its fold lines — so the
+// only way to learn the gesture was to be told it. These pin the other half:
+// what a press acts on is what LIGHTS, in the app's own hover ink, and what
+// answers nothing stays plain (carddoors.go).
+
+// cardHoverInk is what a row wears when the pointer is on it: THE GROUND
+// LADDER's cursor step ([palette.cursor]), on the PLACE ladder home paints its
+// own frame from (home.go's [app.homeFrame] swaps to it before it draws). The
+// suite's terminal is ANSI256, which is the branch of [palette.background] that
+// spells the step as one indexed background.
+func cardHoverInk(a *app) string {
+	return "\x1b[48;5;" + strconv.Itoa(int(a.pal.onPlaces().ramp.cursor.idx)) + "m"
+}
+
+// cardRowY is the screen row the frame drew a card line holding `want` on.
+func cardRowY(t *testing.T, a *app, want string) int {
+	t.Helper()
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	at := -1
+	for y, line := range lines {
+		if strings.Contains(ansi.Strip(line), want) {
+			at = y
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the frame holds no line saying %q:\n%s", want, homeText(a))
+	}
+	return at
+}
+
+// framePaint is one screen row exactly as it is painted, colour and all — which
+// is the only reading that can say whether a row is lit.
+func framePaint(t *testing.T, a *app, y int) string {
+	t.Helper()
+	width, height := a.size()
+	lines, _, _, _ := a.homeFrame(width, height)
+	if y < 0 || y >= len(lines) {
+		t.Fatalf("row %d is not on a %d-row frame", y, len(lines))
+	}
+	return lines[y]
+}
+
+// pointAtCard moves the pointer to a screen row of the right column, through the
+// real message the terminal sends — folded by the coalescer exactly as a live
+// sweep is, and spent at the frame boundary [pointerMsg] stands for
+// (coalesce.go).
+func pointAtCard(t *testing.T, a *app, y int) {
+	t.Helper()
+	width, _ := a.size()
+	left, right := homeColumns(width)
+	if right <= 0 {
+		t.Fatalf("a %d-column frame lent the card nothing", width)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: left + homeGutter + 2, Y: y}, pointerMsg{})
+}
+
+// THE ROW UNDER THE POINTER LIGHTS, AND SAYS THE SAME WORDS IT SAID BEFORE.
+func TestHoveringACardsTaskLightsThatRow(t *testing.T) {
+	a := workLab(t, 6)
+	at := cardRowY(t, a, "Task 1")
+	before := framePaint(t, a, at)
+	if strings.Contains(before, cardHoverInk(a)) {
+		t.Fatalf("the card's task row is lit with no pointer anywhere near it: %q", before)
+	}
+
+	pointAtCard(t, a, at)
+	lit := framePaint(t, a, at)
+	if !strings.Contains(lit, cardHoverInk(a)) {
+		t.Fatalf("the task row under the pointer wears no hover ink, so nothing says it is a door: %q", lit)
+	}
+	// AND LIGHTING A ROW IS A PAINT AND NOT AN EDIT: the words are the words,
+	// with the ground running out to the card's own edge behind them.
+	plain := func(row string) string { return strings.TrimRight(ansi.Strip(row), " ") }
+	if plain(lit) != plain(before) {
+		t.Fatalf("the hover rewrote the row:\n%q\n%q", plain(before), plain(lit))
+	}
+}
+
+// AND THE POINTER LEAVING GIVES THE ROW BACK, exactly as it was.
+//
+// IT LEAVES ONTO `▸ 3 more tasks`, WHICH IS THE OTHER HALF OF THE LAW. That line
+// names the tasks place at its margin and opens nothing
+// ([TestTheCardsWorkFoldNamesTheTasksPlace]), so it registers no door and must
+// not light — a hover style every line wears says nothing about what can be
+// pressed.
+func TestThePointerLeavingACardsTaskGivesItBackAndTheCountLineNeverLights(t *testing.T) {
+	a := workLab(t, 6)
+	at := cardRowY(t, a, "Task 1")
+	before := framePaint(t, a, at)
+	pointAtCard(t, a, at)
+
+	off := cardRowY(t, a, "3 more tasks")
+	pointAtCard(t, a, off)
+	if now := framePaint(t, a, at); now != before {
+		t.Fatalf("the task row did not go back to plain when the pointer left it:\n%q\n%q", before, now)
+	}
+	if lit := framePaint(t, a, off); strings.Contains(lit, cardHoverInk(a)) {
+		t.Fatalf("the line that opens nothing lit under the pointer: %q", lit)
+	}
+}
+
+// AND THE CARD'S FOLD LINES LIGHT THE SAME WAY, through the same registry: one
+// gesture, one ink, whatever kind of door it is (carddoors.go).
+//
+// It aims at `made for you` for [TestClickingACardsFoldLineTogglesIt]'s reason —
+// that is the one band left on this card that holds something back.
+func TestHoveringACardsFoldLineLightsIt(t *testing.T) {
+	a := workLabMade(t, 1, 5)
+	at := cardRowY(t, a, "…2 more files")
+	before := framePaint(t, a, at)
+	if strings.Contains(before, cardHoverInk(a)) {
+		t.Fatalf("the fold line is lit with no pointer on it: %q", before)
+	}
+	pointAtCard(t, a, at)
+	if lit := framePaint(t, a, at); !strings.Contains(lit, cardHoverInk(a)) {
+		t.Fatalf("the fold line under the pointer wears no hover ink: %q", lit)
+	}
+	// AND WHAT LIGHTS IS WHAT A PRESS ACTS ON. The hover and the click read one
+	// registry, so the row that offered the door opens it.
+	width, _ := a.size()
+	left, _ := homeColumns(width)
+	drive(t, a,
+		tea.MouseClickMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft},
+		tea.MouseReleaseMsg{X: left + homeGutter + 2, Y: at, Button: tea.MouseLeft})
+	if strings.Contains(homeText(a), "…2 more files") {
+		t.Fatalf("the row that lit did not open when it was pressed:\n%s", homeText(a))
+	}
+}
+
+// AND A LINE OF THE CARD THAT IS PROSE STAYS PROSE. The band headings, the
+// title, the place line and the facts are things to READ; a pointer crossing
+// them lights nothing, which is what makes the light mean "there is a door
+// here".
+func TestAPointerOnTheCardsProseLightsNothing(t *testing.T) {
+	a := workLabMade(t, 1, 5)
+	at := cardRowY(t, a, homeCardMadeWord)
+	before := framePaint(t, a, at)
+	pointAtCard(t, a, at)
+	if now := framePaint(t, a, at); now != before {
+		t.Fatalf("a band heading answered the pointer:\n%q\n%q", before, now)
+	}
+	if a.home.cardHover != "" {
+		t.Fatalf("a pointer on prose left a card door hovered: %q", a.home.cardHover)
+	}
+}

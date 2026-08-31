@@ -676,16 +676,19 @@ type homeView struct {
 	barRow    int
 
 	// bandOpen is which list-shaped bands of the right column a person opened,
-	// by band and subject (homebands.go); foldLines is the fold lines painted
-	// this frame, so a click can find one. Both die with the screen.
-	bandOpen  map[string]bool
-	foldLines []bandFoldLine
-	// cardTasks is the card's own work rows painted this frame, so a click on one
-	// can open the piece of work it names (place_home.go's [app.cardTaskAt]). It
-	// is a second registry rather than a second use of foldLines because the two
-	// answer different gestures — a fold line toggles a band and a task row opens
-	// a record — and dies with the screen exactly as that one does.
-	cardTasks []cardTaskLine
+	// by band and subject (homebands.go). It dies with the screen.
+	bandOpen map[string]bool
+	// cardDoors is every line of the right column a press acts on, painted this
+	// frame: the fold lines and the work rows both (carddoors.go). It is ONE
+	// registry because what LIGHTS under the pointer has to be what a press acts
+	// on — two registries would be two answers to that — and it dies with the
+	// frame that wrote it.
+	cardDoors []cardDoor
+	// cardHover is the door the pointer is on, by [cardDoor.key], or "" for none.
+	// It is an identity rather than a row for [hoverAt]'s reason: the column is
+	// repainted on every motion, so a hover held as a row would follow the redraw
+	// instead of the door.
+	cardHover string
 	repos     map[string]homeRepoReading
 	// machine is what this machine has to say about ITSELF — the reading the
 	// pulse line at the top of the screen draws from, taken at most once per
@@ -3377,7 +3380,14 @@ func (a *app) homeHover(x, y int) {
 		return
 	}
 	width, height := a.size()
-	_, hits, _, _ := a.homeFrame(width, height)
+	lines, hits, _, _ := a.homeFrame(width, height)
+	// AND THE CARD'S OWN DOORS LIGHT UNDER THE POINTER, resolved against THIS
+	// frame's paint — the fold lines and the work rows both, through the one
+	// registry a press reads (carddoors.go's [app.hoverCardDoor]). It is asked
+	// here rather than beside the list's hover below because it is the other
+	// column's answer to the same motion, and asking it anywhere else would be a
+	// second frame to disagree with.
+	a.hoverCardDoor(x, y, lines)
 	row, _, inPane := a.homePane(x, y)
 	if !inPane {
 		row = -1
@@ -4204,9 +4214,19 @@ func homeName(row session.SessionRow) string {
 // choosing between conversations, and choosing between them by name alone is what
 // the card exists to stop. It is the LIST that becomes a drop-up while typing
 // ([homeLift]); this stays where it is and keeps answering.
+// AND THE DOOR UNDER THE POINTER LIGHTS, which is done HERE and once: the card
+// is built by whichever of the branches below the previewed row asks for, and
+// the pointer is a fact about the finished column rather than about any one of
+// them (carddoors.go's [app.lightCardDoor]). Every band therefore draws exactly
+// as it did before hover existed.
 func (a *app) homeDetail(width, room int, pal palette) []string {
-	a.resetBandFoldLines()
-	a.resetCardTasks()
+	a.resetCardDoors()
+	return a.lightCardDoor(a.homeCardRows(width, room, pal), width, pal)
+}
+
+// homeCardRows is the card itself: everything above, with the pointer left to
+// [app.homeDetail].
+func (a *app) homeCardRows(width, room int, pal palette) []string {
 	line, ok := a.home.previewLine()
 	if ok && line.kind == homeExchangeRow && line.ex != nil {
 		// THE ERRAND UNDER THE CURSOR, drawn where every other row's card is
