@@ -411,6 +411,25 @@ a routing preference to something it believes is a router, from the base URL or
 the configured model, so a test that wants to see `provider.order` on the wire
 against `lanestub` configures its client with a model spelled `openrouter/…`.
 
+### The four seams wave 2b joined
+
+The five lanes each left a socket. Wave 2b is where they were plugged in, and
+four of the joins are worth stating because each one is a place two layers had
+to agree without either importing the other.
+
+| what | where it lives | how it crosses |
+| --- | --- | --- |
+| the person's row | `internal/provider/lanepin.go` | the surface RESOLVES `lane.<slot>` and `lane.guard` and WRITES the answer to a process-wide knob (`SetLanePin`, `SetLaneGuard`). It is a write and not a read because the transport may not touch a settings file on the send path, and it is not a `Config` field because the picker rewrites the row while the process runs. |
+| the lane news | `internal/session/lanenews.go` | `internal/tui3` imports `internal/session`, so the arrow only points one way: the surface REGISTERS a reader at open (`session.OnLaneNews`) and the turn loop pushes to it. Two posts for a rescued answer — `Trying` while the second request is out, `Hedged`+`Winner` at the end — and one for every other. |
+| the keystroke | `Agent.Typing` → `Client.ProbeLanes` | an OPTIONAL interface on both sides, the shape `modelChain` already uses: a door that cannot probe simply never does. The debounce is the prober's own, so the composer has no first-keystroke state to keep and cannot get it wrong. |
+| the talk request's shape | `provider.LaneTalkAsk` | the picker's `auto` row must predict the lane the next turn will really use, so it asks the chooser with the request the transport will build rather than one of its own. A surface that wrote its own left λ at zero and named the CHEAPEST lane — a correct answer to a question a conversation never asks. |
+
+And one law learned by breaking it: **a number a row draws and the name it draws
+beside it must come from the same lane.** The model row drew the speed of
+whichever lane the surface's own sort put first and then wrote the chooser's
+name after it, which was invisible while the chooser had no opinion and became a
+row attributing one machine's measurement to another the day it landed.
+
 ### The instrument
 
 `internal/lane/lanestub` is a fake router with lanes of a scripted speed, and it
