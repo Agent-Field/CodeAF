@@ -249,7 +249,7 @@ var settingReaders = map[string]string{
 	// time would let the low row prove this one.
 	KeyTierReflexModel: "RoleReflex",
 	KeyModelRoles:      "PinKey",
-	// The three web-search rows are read by the v3 door, which turns them into
+	// The four web-search rows are read by the v3 door, which turns them into
 	// the [search.Options] it resolves the session's pair from
 	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader
 	// rather than the mapping they share, so a row that stops being read
@@ -257,6 +257,7 @@ var settingReaders = map[string]string{
 	KeySearchProvider: "SearchProviderAt",
 	KeyAPIKey:         "APIKeyAt",
 	KeyExaKey:         "ExaKeyAt",
+	KeyFirecrawlKey:   "FirecrawlKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
 	// The Google pair is read by the v3 door, which turns it into the manager
 	// hung off session.Config.Connect (cmd/aforge/chatv3.go's v3Connect). Both

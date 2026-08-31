@@ -1299,7 +1299,7 @@ func v3LanePin(profileDir string) provider.LanePin {
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
-// three settings rows in, [search.Resolve]'s answer out.
+// four settings rows in, [search.Resolve]'s answer out.
 //
 // IT RETURNS NO ERROR, and that is a statement about the layer rather than an
 // omission. Every rung of the resolution ladder ends in a plug that needs no
@@ -1326,7 +1326,7 @@ func v3Search(profileDir string) (search.Provider, search.Fetcher) {
 
 // v3SearchOptions is the mapping itself, split out so it can be read and tested
 // without a registry: the pin from the choice row (auto meaning no pin, which
-// internal/search spells as the empty string), and the two credentials from the
+// internal/search spells as the empty string), and the three credentials from the
 // environment or the sheet.
 func v3SearchOptions(profileDir string) search.Options {
 	pin := config.SearchProviderAt(profileDir)
@@ -1334,9 +1334,10 @@ func v3SearchOptions(profileDir string) search.Options {
 		pin = ""
 	}
 	return search.Options{
-		Provider: pin,
-		ExaKey:   config.ExaKeyAt(profileDir),
-		JinaKey:  config.JinaKeyAt(profileDir),
+		Provider:     pin,
+		ExaKey:       config.ExaKeyAt(profileDir),
+		FirecrawlKey: config.FirecrawlKeyAt(profileDir),
+		JinaKey:      config.JinaKeyAt(profileDir),
 	}
 }
 
