@@ -189,6 +189,26 @@ jobs:
           pattern: aforge-*
           path: dist
           merge-multiple: true
+      # THE RELEASE NOTES ARE THE CHANGELOG, so that rolling it up is the release
+      # note rather than paperwork somebody does afterwards and nobody reads.
+      # A tag whose section is missing still publishes — with generated notes and
+      # a warning — because a release must not be blocked by prose.
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if awk -v tag="## ${TAG} " 'index($0, tag) == 1 {f=1; next} f && /^## / {exit} f' \
+               CHANGELOG.md > notes.md && [ -s notes.md ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+            echo "Release notes taken from the ${TAG} section of CHANGELOG.md."
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CHANGELOG.md has no '## ${TAG}' section. Falling back to generated notes."
+            echo "Roll it up next time: make changelog VERSION=${TAG}"
+          fi
+
       - name: Write checksums
         working-directory: dist
         run: sha256sum aforge-* > checksums.txt
@@ -199,12 +219,18 @@ jobs:
           TITLE: ${{ needs.version.outputs.title }}
           LATEST: ${{ needs.version.outputs.latest }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          HAVE_NOTES: ${{ steps.notes.outputs.have }}
         run: |
           set -euo pipefail
           if [ "$LATEST" = "true" ]; then
             marks=(--latest --prerelease=false)
           else
             marks=(--latest=false --prerelease)
+          fi
+          if [ "$HAVE_NOTES" = "true" ]; then
+            notes=(--notes-file notes.md)
+          else
+            notes=(--generate-notes)
           fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* \
@@ -218,6 +244,6 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "$TITLE" \
-              --generate-notes \
+              "${notes[@]}" \
               "${marks[@]}"
           fi

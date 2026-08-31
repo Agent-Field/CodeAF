@@ -4,7 +4,7 @@
 
 | Where | Workflow | What runs | Roughly |
 | --- | --- | --- | --- |
-| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | build, vet, the packed corpora, the manual law | a few minutes |
+| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | build, vet, the packed corpora, the change entry, the manual law | a few minutes |
 | pull request into `staging`, every push to `staging`, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
 | a `v*` tag | `.github/workflows/release-binaries.yml` | the release surface, then publish | — |
 
@@ -21,7 +21,7 @@ paid for once, on the way into `staging`, instead of on every pull request.
 
 ## What the light gate actually checks
 
-Four things, in `ci.yml`, job name `check`:
+Five things, in `ci.yml`, job name `check`:
 
 - **`go build ./...`** — several sessions work this tree at once and a
   half-finished file breaks the build for everybody. Cheapest possible answer to
@@ -31,6 +31,12 @@ Four things, in `ci.yml`, job name `check`:
 - **The packed corpora match their folders.** `go generate` on the three packed
   packages, then demand the tree comes back clean. A manual page edited without a
   build ships yesterday's manual.
+- **The change is written down.** A new file in `docs/changes/unreleased/`,
+  well formed. Two seconds. It carries the one thing a diff cannot — which of
+  the things somebody believes about this repository stopped being true — and it
+  is asked for here because it is worth nothing written later. A one-line
+  `kind: internal` entry is a legitimate answer and the `no-changelog` label is
+  the way out; [changelog.md](changelog.md) is the rule.
 - **The manual law.** `internal/manual`, plus the `Manual` tests in
   `internal/tui3` and `internal/session` — every slash command and alias, every
   tool on the belt, and every probe question still reaching the page that answers
@@ -40,6 +46,7 @@ Run the same thing before you push:
 
 ```sh
 go build ./... && go vet ./... && make embed && git diff --exit-code
+make changelog-check
 go test ./internal/manual/ && go test -run Manual ./internal/tui3/ ./internal/session/
 ```
 

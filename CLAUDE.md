@@ -19,7 +19,7 @@ carry vocabulary or assumptions between them.
 
 ## Branches — where work goes
 
-`dev` is the trunk and the default branch. Four rules, and they are here rather
+`dev` is the trunk and the default branch. Five rules, and they are here rather
 than only in `docs/rules/` because they are the ones that must never be looked up:
 
 - **Branch off `dev`, and open the pull request against `dev`.** Never against
@@ -31,17 +31,39 @@ than only in `docs/rules/` because they are the ones that must never be looked u
   yet and nothing promotes to it.
 - **Nothing publishes by itself.** A release is a semver tag on a commit that is
   on `staging`, cut by a person; the workflow refuses a tag that is anywhere else.
+- **Every pull request carries a change entry** in `docs/changes/unreleased/` —
+  `make changelog-new PR=<n> KIND=<kind> SLUG=<slug>`, and the `check` job
+  demands it.
 
 The pull-request gate into `dev` is deliberately light — build, vet, the packed
-corpora, the manual law, a few minutes. The whole suite runs on the way into
+corpora, the change entry, the manual law, a few minutes. The whole suite runs on the way into
 `staging` and nightly against `dev`. So **`dev` is where things are allowed to be
 briefly wrong**, which is the trade that keeps it fast, and the reason a commit
 soaks on `dev` for a couple of days before anyone promotes it.
 
+**AND IF YOUR MEMORY OF THIS REPOSITORY IS OLDER THAN A FEW DAYS, READ
+`docs/changes/unreleased/` BEFORE ACTING ON IT.** That is what those entries are
+for, and it is the one thing `git log` cannot tell you. They do not say what
+shipped; they say what somebody now believes **wrongly** — the branch that
+stopped existing, the default that moved, the refusal that became a capability.
+This has cost real hours: this file ordered work pushed to `origin chat-v3-task`
+for days after that branch stopped existing, and `generate_image` was documented
+as impossible right up until the wave that shipped it. In both cases the code was
+right, the tests were green, and what was wrong was what somebody remembered.
+
+```sh
+grep -rn 'invalidates' -A6 docs/changes/unreleased/    # everything that moved
+grep -rln 'surface:.*chat' docs/changes/unreleased/    # only the v3 surface
+```
+
+When you land a change, write yours the same way: what was true, and what is true
+now. `docs/rules/changelog.md` says why it cannot be generated from the diff.
+
 Read on demand, not up front: [docs/rules/branching.md](docs/rules/branching.md)
 for the model and why promotion is a fast-forward,
 [docs/rules/ci.md](docs/rules/ci.md) for what runs where and the known-red ledger
-in `.github/known-red.txt`, [docs/rules/promotion.md](docs/rules/promotion.md)
+in `.github/known-red.txt`, [docs/rules/changelog.md](docs/rules/changelog.md)
+for what an entry carries, [docs/rules/promotion.md](docs/rules/promotion.md)
 for the promote-and-release runbook.
 
 None of it is enforced by the server yet — the org is on the free plan and a

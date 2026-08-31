@@ -38,6 +38,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The changelog check compares against the base of the pull request,
+          # which a shallow clone does not contain.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -67,6 +71,48 @@ jobs:
             echo '.pack.gz beside the Markdown you changed.'
             exit 1
           fi
+
+      # THE CHANGELOG CARRIES WHAT A DIFF CANNOT — which of the things somebody
+      # believes about this repository stopped being true. It is checked here
+      # because it is worth nothing written later: the only moment the author
+      # knows they contradicted a page is the moment they went and edited it.
+      #
+      # Two seconds, and the cost of complying is one file with three fields.
+      # `kind: internal` with just a title is a legitimate entry; the
+      # `no-changelog` label is the way out for a typo in a comment.
+      # docs/rules/changelog.md is the rule.
+      - name: The change is written down
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          go run ./cmd/aforge-changes check
+          if git diff --name-only --diff-filter=A "$BASE" HEAD \
+               -- 'docs/changes/unreleased/*.md' | grep -q .; then
+            echo "This pull request adds a change entry."
+            exit 0
+          fi
+          cat <<'MSG'
+
+          This pull request adds no entry in docs/changes/unreleased/.
+
+          The changelog here is written for whoever reads the repository next,
+          and increasingly that is a model with a fortnight-old memory of it. Its
+          job is to say what somebody now believes WRONGLY — the branch that
+          stopped existing, the default that moved, the refusal that became a
+          capability. No tool can derive that from a diff, which is why it is
+          asked for here.
+
+            make changelog-new PR=<this PR> KIND=changed SLUG=<a-short-slug>
+
+          Kinds: added changed renamed fixed removed internal. A one-line
+          `kind: internal` entry is perfectly legitimate and takes ten seconds.
+          If this really is a typo in a comment, add the `no-changelog` label.
+
+          docs/rules/changelog.md says what belongs in the fields.
+          MSG
+          exit 1
 
       # THE MANUAL LAW, ENFORCED HERE BECAUSE IT IS THE LAW AGENTS BREAK MOST.
       # A feature that ships without its page is a feature the running chat will

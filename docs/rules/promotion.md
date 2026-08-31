@@ -41,7 +41,20 @@ worth understanding before anything else happens.
 
 ## Releasing
 
-A release is a semver tag on a commit that is on `staging`, cut by a person.
+**Roll the changelog up first, on `dev`, through a pull request.**
+
+```sh
+make changelog VERSION=v0.2.0        # writes CHANGELOG.md, eats the loose entries
+```
+
+That has to land on `dev` and be promoted like anything else — never committed
+onto `staging`, which would break the fast-forward the whole model rests on. So
+the order is: roll up on `dev`, promote that commit to `staging`, then tag it.
+The release workflow reads the `## v0.2.0` section back out of `CHANGELOG.md` for
+the release notes, which is what makes the roll-up worth doing rather than
+paperwork. [changelog.md](changelog.md) says why the entries exist at all.
+
+A release is then a semver tag on a commit that is on `staging`, cut by a person.
 
 ```sh
 git fetch origin
