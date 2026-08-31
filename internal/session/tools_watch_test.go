@@ -302,6 +302,10 @@ func TestWatchAlwaysReportsEveryTickIncludingTheFirst(t *testing.T) {
 
 // `until` ends the watch: one final note carrying the line that matched, the
 // job settles as stopped, and nothing is said afterwards.
+//
+// AND THAT NOTE IS OWED, so it names its watch and keeps every word rather than
+// being reduced to a tick's summary — a firing is the answer the watch was
+// started for, and it starts a turn of its own (watchwake_test.go).
 func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	t.Parallel()
 	agent, workspace := jobsAgent(t)
@@ -324,7 +328,7 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	if !strings.HasPrefix(queued[0], "until matched") {
+	if !strings.Contains(queued[0], "watch build: until matched") {
 		t.Fatalf("final note is wrong: %q", queued[0])
 	}
 	if !strings.Contains(queued[0], "BUILD OK in 4s") {
@@ -352,7 +356,9 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 
 // ── the broken command ──────────────────────────────────────────────────────
 
-// A watch spinning on a command that cannot run says so ONCE and stops.
+// A watch spinning on a command that cannot run says so ONCE and stops — and
+// that once is an owed note, because the watch giving up is the end of the
+// answer somebody was waiting for.
 func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -371,8 +377,11 @@ func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 		t.Fatalf("a broken watch reported more than once: %v", queued)
 	}
 	note := queued[0]
-	if !strings.HasPrefix(note, fmt.Sprintf("stopped: the command failed %d ticks in a row", watchFailLimit)) {
+	if !strings.Contains(note, fmt.Sprintf("stopped: the command failed %d ticks in a row", watchFailLimit)) {
 		t.Fatalf("failure note is wrong: %q", note)
+	}
+	if !strings.Contains(note, "watch broken") {
+		t.Fatalf("the failure note does not name its watch: %q", note)
 	}
 	if !strings.Contains(note, "exit status 7") {
 		t.Fatalf("failure note does not name the error: %q", note)
@@ -544,7 +553,7 @@ func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
-	if !strings.HasPrefix(queued[0], "quiet for 2 ticks (4s)") {
+	if !strings.Contains(queued[0], "watch build: quiet for 2 ticks (4s)") {
 		t.Fatalf("the final note is wrong: %q", queued[0])
 	}
 	if !strings.Contains(queued[0], "linking") {
