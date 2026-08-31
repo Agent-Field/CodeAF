@@ -588,15 +588,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 		a.interrupt()
-		// AND ESC WITH A MESSAGE WAITING SENDS IT NOW (park.go). Stopping the
-		// answer is nearly all of it: the interrupt above closes the stream, and
-		// the close is exactly where a parked message goes (app.go's
-		// streamClosedMsg). This is the other case — a message parked against a
-		// turn that has ALREADY ended, which has no close coming for it and would
-		// otherwise sit above the box until the person typed something else.
-		if a.state != stateWorking {
-			return tea.Batch(cmd, a.sendParked())
-		}
 		return cmd
 
 	case "enter":
@@ -777,6 +768,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.recallBack() {
 			return nil
 		}
+		// A BLOCK OF SEVERAL TASKS FORMING WALKS BEFORE THE CALLS DO. Its rows are
+		// the live thing at the tail of the transcript and the only rows on screen
+		// whose preview a person can steer, so for the seconds they are up the
+		// arrows walk them (formingblock.go). It answers false with one task
+		// forming and false at either end, so nothing about the ladder below
+		// changes in the ordinary case or when the walk runs out.
+		if a.input.empty() && a.walkForming(-1) {
+			return nil
+		}
 		if a.input.empty() && a.selectTool(-1) {
 			return nil
 		}
@@ -789,6 +789,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if a.recallForward() {
+			return nil
+		}
+		if a.input.empty() && a.walkForming(1) {
 			return nil
 		}
 		if a.input.empty() && a.selectTool(1) {
@@ -912,6 +915,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// matters, because the key keeps its ordinary meaning the instant there
 		// is a sentence to move through. See [app.navBack].
 		if a.input.empty() {
+			// AND THE FORMING BLOCK'S OWN FOLD SHUTS FIRST (formingblock.go). It is
+			// the same reading `→` gets below and for the same reason: the nearest
+			// thing a person is standing on answers before the navigation does, and
+			// a block with no window open answers nothing at all, so the key keeps
+			// the meaning it has had.
+			if a.closeForming() {
+				return nil
+			}
 			a.navBack()
 			return nil
 		}
@@ -930,6 +941,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// navigation it has always been.
 			if cmd, took := a.steerWaiting(); took {
 				return cmd
+			}
+			// AND THE FORMING BLOCK'S WINDOW OPENS BEFORE THE STEP INTO A ROOM. It
+			// is the fold every block on this surface has, spent on the one thing at
+			// the transcript tail that is still being written (formingblock.go) — and
+			// it is read here rather than given a key of its own because a new
+			// keybinding for a block that lives fifteen seconds is a key nobody
+			// learns. It answers false with no block up, with nothing written yet and
+			// with the window already open, so `→` goes on meaning what it means.
+			if a.openForming() {
+				return nil
 			}
 			return a.navForward()
 		}
@@ -1122,7 +1143,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// AND A MESSAGE TYPED WHILE AN ANSWER IS STILL COMING WAITS FOR IT (park.go).
 	// It is not sent, it is not spliced into the reply that is streaming, and it
 	// is not lost: it is held in its own block above the box until the answer is
-	// finished, where esc can send it early and ↑ or a click can pull it back to
+	// finished, where ↑ or a click can pull it back to
 	// be edited. Everything above this line — a slash command, a picked harness —
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.

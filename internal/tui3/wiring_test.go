@@ -461,8 +461,8 @@ func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 }
 
 // M10: Esc drops both session-owned queues, closes every follow-up stream, and
-// sends the one surface-owned parked message once after the stopped stream ends.
-func TestEscClosesQueuedStreamsAndSendsOneParkedTurnAfterClose(t *testing.T) {
+// drops the surface-owned parked queue before the stopped stream ends.
+func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
 	for _, line := range []string{"first follow-up", "second follow-up"} {
@@ -481,17 +481,17 @@ func TestEscClosesQueuedStreamsAndSendsOneParkedTurnAfterClose(t *testing.T) {
 			t.Fatalf("follow-up stream %d remained open after Esc", index)
 		}
 	}
-	if len(agent.sent) != 1 || len(a.parks) != 1 {
-		t.Fatalf("the parked message moved before close: sent=%q parks=%+v", agent.sent, a.parks)
+	if len(agent.sent) != 1 || len(a.parks) != 0 {
+		t.Fatalf("Esc did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
 	}
 
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
-	if len(agent.sent) != 2 || agent.sent[1] != "the parked message" {
-		t.Fatalf("the parked message was not sent exactly once: %q", agent.sent)
+	if len(agent.sent) != 1 {
+		t.Fatalf("the stream close resurrected a dropped message: %q", agent.sent)
 	}
-	if a.turn != firstTurn+1 || len(a.parks) != 0 {
-		t.Fatalf("the close opened turn %d with %d parked, want one new turn", a.turn, len(a.parks))
+	if a.turn != firstTurn || len(a.parks) != 0 {
+		t.Fatalf("the close opened orphaned turn %d with %d parked", a.turn, len(a.parks))
 	}
 }
 

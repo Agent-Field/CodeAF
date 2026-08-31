@@ -1387,7 +1387,7 @@ func TestTheEnginesStandingStoreAnswersOverTheWire(t *testing.T) {
 	// is asked to hold, and the surface prints the refusal on its own message
 	// line rather than redrawing a row that was never saved.
 	broken := paused
-	broken.Rails.PerRunUSD = 0
+	broken.Rails.PerRunUSD = -1
 	if result := l.call(4, MethodStandingSave, broken); result.Error == "" {
 		t.Fatal("an item the store refuses was reported as written")
 	}

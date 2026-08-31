@@ -636,6 +636,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The wait a person can now see into: the preview row under the phase
+		// row, asked the three ways somebody meets it — wanting it, describing
+		// it, and asking what the extra line is.
+		{"can I see the brief while it is being written", "commands"},
+		{"what is the line under shaping the brief", "commands"},
+		{"several tasks forming at once", "commands"},
+		{"why is the line under shaping the brief in italics", "commands"},
 
 		// The answer that gets moved because it ran long. People meet this as a
 		// line that appeared under a reply they were reading, so they say it back
@@ -840,6 +847,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
+
+		// The 2026-08-31 incident, asked the ways a person describes what they
+		// saw: a serving endpoint leaked the model's own tool grammar as text,
+		// and the screen filled with markup instead of an answer.
+		{"the screen filled with weird tokens instead of an answer", "models-and-cost"},
+		{"the reply was full of tool markup and angle brackets", "models-and-cost"},
+		{"the model kept writing its own internal markup", "models-and-cost"},
+
+		// /model while a task runs: the task keeps its model, and the person
+		// who watched the old voice continue asks why.
+		{"I changed the model but my task is still on the old one", "models-and-cost"},
+		{"does /model change the model my running task uses", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

@@ -59,7 +59,7 @@ alive as a job and lands your steer immediately. The clause names the job and
 |---|---|
 | `enter` | stops the current generation and sends the words into this turn |
 | `cmd+enter` | holds the message for an ordinary turn after this answer |
-| `esc` | stops the answer and sends the waiting message immediately |
+| `esc` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
 | `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
@@ -72,10 +72,12 @@ it back. `/`-commands are **not** held: a slash command is something you said to
 surface rather than to the model, and it runs at once.
 
 **Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
-The held message is dropped, with a note — `1 waiting message dropped` or `N waiting
-messages dropped` — if the conversation is replaced under it by `/new` or by opening a
-session from the welcome box. Inside a **task room** `enter` steers the node instead
-and nothing is held; that is the room's own key (see the room section below).
+With messages waiting, it clears both the editable parked queue and the `ctrl+q`
+follow-up queue. Each nonempty queue says what was dropped — `1 waiting message dropped`
+or `N waiting messages dropped` for parked messages, and the corresponding `queued`
+word for follow-ups. Replacing the conversation with `/new` or from the welcome box also
+drops parked messages. Inside a **task room** `enter` steers the node instead and nothing
+is held; that is the room's own key (see the room section below).
 
 **Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
 The current generation is itself made into a legal boundary: aforge keeps its partial
@@ -287,7 +289,7 @@ message box ends with `esc interrupt` — for example
 typed something and this terminal can deliver `shift+enter`. A foreground command that
 can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
 message of yours is already waiting for the answer to finish, the last clause becomes
-`esc stops and sends`. On the very first frame of a session the conversation carries the note
+`esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c twice quits`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
@@ -1272,7 +1274,7 @@ There is no `ctrl+<letter>` chord for home: every one this surface could use is 
 taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
-already arms rewind and already sends a message you parked with `ctrl+q`, and a third
+already arms rewind and already clears messages waiting from the turn, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box that still shows nothing

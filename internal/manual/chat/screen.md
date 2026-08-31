@@ -268,7 +268,7 @@ box has a picture on its tray on that terminal,
 `enter steers it in · shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
 when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 while a list is open. A waiting message changes the final clause to
-`esc stops and sends`; with neither words nor a picture the send clauses are absent.
+`esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
 `shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
@@ -983,7 +983,7 @@ glyph your messages wear in the conversation. Under it sits one dim line:
 
 ```
 › do much more of a deep research please
-  waits for this answer · esc stops and sends · → steers it in · ↑ or click to edit
+  waits for this answer · esc stops and drops · → steers it in · ↑ or click to edit
 ```
 
 The dim line trims from the right on a narrow terminal: the last piece goes first, then
@@ -993,9 +993,9 @@ exactly one it is not counted at all.
 
 `→ steers it in` is there only while the message can go into the running answer: a turn
 still running, and a message of words alone. A waiting message that carries pictures, or
-one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. `esc
-stops and sends` and `→ steers it in` both go while a turn you stopped is winding down —
-for those seconds neither key does anything, and what is left of the line is still true.
+one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. Pressing
+`esc` removes the waiting block at once; `→ steers it in` is absent while a stopped turn
+is winding down because that turn has no boundary left to take the words.
 
 ## What happens to a message waiting above the box
 
@@ -1004,7 +1004,8 @@ What happens to it:
 - **When the answer finishes**, it sends itself as an ordinary new turn and appears in
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
-- **`esc`** stops the answer and sends it immediately.
+- **`esc`** stops the answer and drops every parked message and queued follow-up. None
+  starts a turn when the interrupted stream closes.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
   **into** the running answer instead of leaving it to wait. A streaming generation
   stops and keeps its partial; a long bash is kept as a job. With several waiting it
@@ -1018,7 +1019,7 @@ What happens to it:
   or `N waiting messages dropped`.
 
 While something is waiting, the hint slot in the legend ends with
-`esc stops and sends` instead of `esc interrupt`.
+`esc stops and drops` instead of `esc interrupt`.
 
 ## Markdown at phone width
 

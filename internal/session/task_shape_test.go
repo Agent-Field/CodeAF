@@ -307,3 +307,121 @@ func shapeCalls(client *scriptedCompleter) int {
 	}
 	return count
 }
+
+// ── the brief, watched while it is written ──────────────────────────────────
+
+// A CALLER THAT ASKS TO WATCH SEES THE ANSWER ARRIVE. The gap this closes is
+// thirteen seconds of `shaping the brief…` and nothing else, in front of a
+// person who has just typed a command; the words exist the whole time, and this
+// is the door they leave by.
+//
+// What arrives is the ACCUMULATED text, raw and partial — a prefix of a JSON
+// object — and [PartialString] is what reads one field of it. Nothing here
+// unmarshals anything, which is the whole contract.
+func TestTheShaperReportsTheBriefToACallerThatAsksToWatch(t *testing.T) {
+	fragments := []string{`{"title":"launch post"`, `,"brief":"Write it for people`, ` who already use the product."}`}
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		whole := ""
+		for _, part := range fragments {
+			whole += part
+			provider.Emit(ctx, provider.StreamDelta, part)
+		}
+		// The reasoning the model did on the way rides its own side of the watch
+		// and never joins the answer.
+		provider.Emit(ctx, provider.StreamReasoning, "thinking about the audience")
+		return textResponse(whole + `,"acceptance":"It is at blog/launch.md."}`), nil
+	}}}
+	agent, ran := shapeAgent(t, client)
+	var seen []string
+	ctx := WithBriefWatch(context.Background(), func(answer, _ string) { seen = append(seen, answer) })
+
+	shaped := agent.shapeBrief(ctx, shapedAsk)
+	// One reading per delta of either kind — the three answer fragments and the
+	// reasoning event after them, which reports the same answer again beside a
+	// think the caller is free to ignore.
+	if len(seen) != len(fragments)+1 {
+		t.Fatalf("the watch saw %d readings, want one per delta: %q", len(seen), seen)
+	}
+	if seen[0] != fragments[0] {
+		t.Fatalf("the first reading is not the first fragment: %q", seen[0])
+	}
+	// EVERY READING IS THE WHOLE ANSWER SO FAR, which is what lets a surface
+	// that missed one draw the right thing from the next.
+	if want := fragments[0] + fragments[1]; seen[1] != want {
+		t.Fatalf("the second reading is not accumulated: %q, want %q", seen[1], want)
+	}
+	if brief, ok := PartialString(seen[1], "brief"); !ok || !strings.HasPrefix(brief, "Write it for people") {
+		t.Fatalf("the partial answer does not read as a brief: %q ok=%v", brief, ok)
+	}
+	if last := seen[len(seen)-1]; strings.Contains(last, "thinking about the audience") {
+		t.Fatalf("THE REASONING REACHED THE ANSWER: %q", last)
+	}
+	if !strings.Contains(shaped.Brief, "already use the product") {
+		t.Fatalf("watching the call changed what it returned: %q", shaped.Brief)
+	}
+	_ = ran
+}
+
+// AND A CALLER THAT DID NOT ASK HEARS NOTHING AT ALL, which is every headless
+// run and every session with nobody in front of it: the conversation's own
+// observer is taken off this call, so the shaper cannot type its housekeeping
+// into a room where somebody is reading a reply.
+func TestTheShaperIsSilentToAnObserverThatIsNotItsOwn(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		provider.Emit(ctx, provider.StreamDelta, shapedAnswer)
+		return textResponse(shapedAnswer), nil
+	}}}
+	agent, _ := shapeAgent(t, client)
+	var heard []string
+	ctx := provider.WithStreamObserver(context.Background(), func(event provider.StreamEvent) {
+		heard = append(heard, event.Delta)
+	})
+	agent.shapeBrief(ctx, shapedAsk)
+	if len(heard) != 0 {
+		t.Fatalf("THE SHAPER TYPED INTO THE ROOM: %q", heard)
+	}
+}
+
+// AND THE REASONING IS CARRIED TOO, KEPT APART FROM THE ANSWER.
+//
+// THE GAP THIS CLOSES WAS FOUND AGAINST A REAL ENDPOINT, not here: the shaper
+// sits on the careful tier and is allowed to think, and a measured run produced
+// 437 stream events across the whole twenty-five-second window without a single
+// answer delta among them. A watch given only the answer therefore hears nothing
+// at all for exactly the wait it exists for — so both halves go out, and the
+// caller decides what to do with each.
+func TestTheShaperReportsItsReasoningApartFromItsAnswer(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		provider.Emit(ctx, provider.StreamReasoning, "who is this for")
+		provider.Emit(ctx, provider.StreamReasoning, " — people who already use it")
+		provider.Emit(ctx, provider.StreamDelta, shapedAnswer)
+		return textResponse(shapedAnswer), nil
+	}}}
+	agent, _ := shapeAgent(t, client)
+	type reading struct{ answer, thinking string }
+	var seen []reading
+	ctx := WithBriefWatch(context.Background(), func(answer, thinking string) {
+		seen = append(seen, reading{answer, thinking})
+	})
+	agent.shapeBrief(ctx, shapedAsk)
+
+	if len(seen) != 3 {
+		t.Fatalf("the watch saw %d readings, want one per delta of either kind: %+v", len(seen), seen)
+	}
+	// WHILE IT IS THINKING THERE IS NO ANSWER, and that is the state the whole
+	// thing exists for.
+	if seen[0].answer != "" || seen[0].thinking != "who is this for" {
+		t.Fatalf("the first reading is not the think alone: %+v", seen[0])
+	}
+	if seen[1].thinking != "who is this for — people who already use it" {
+		t.Fatalf("the reasoning did not accumulate: %q", seen[1].thinking)
+	}
+	// AND THE TWO ARE NEVER MIXED: the answer arrives on its own side, with the
+	// reasoning still readable beside it and not spliced into it.
+	if seen[2].answer != shapedAnswer {
+		t.Fatalf("the answer is not the answer: %q", seen[2].answer)
+	}
+	if strings.Contains(seen[2].answer, "who is this for") {
+		t.Fatalf("THE REASONING WAS SPLICED INTO THE ANSWER: %q", seen[2].answer)
+	}
+}

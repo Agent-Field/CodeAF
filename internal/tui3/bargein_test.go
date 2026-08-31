@@ -245,12 +245,11 @@ func TestTheHintTeachesBothMeaningsOnlyWhileThereIsSomethingToSend(t *testing.T)
 	}
 }
 
-// ONE SOURCE OF TRUTH FOR ONE ACT. The block above the box and the line under
-// it say the same three words about the same thing, because `esc stops and
-// sends` and `shift+enter stops and sends` are one sentence with two keys in it.
-func TestTheChordAndTheParkedBlockSayTheSameThreeWords(t *testing.T) {
-	if !strings.HasSuffix(parkedHint[1], bargeSendWord) {
-		t.Fatalf("the parked block no longer says %q: %q", bargeSendWord, parkedHint[1])
+// THE TWO STOP GESTURES NAME THEIR DIFFERENT QUEUE DECISIONS. shift+enter
+// preserves the sentence it just parked; esc clears everything waiting.
+func TestTheChordSendsWhileEscDrops(t *testing.T) {
+	if strings.HasSuffix(parkedHint[1], bargeSendWord) {
+		t.Fatalf("the parked block claims esc sends: %q", parkedHint[1])
 	}
 	a, _ := bargeable(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")

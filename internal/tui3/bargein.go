@@ -97,11 +97,9 @@ import (
 // the query can spell the chord.
 const bargeKey = "shift+enter"
 
-// bargeSendWord is what this gesture does, in the words park.go's own block
-// already uses for the two-key version of it — ONE SOURCE OF TRUTH for a
-// person-facing phrase that now appears in two slots on one screen. The block
-// above the box says `esc stops and sends`; this line says `shift+enter stops
-// and sends`; they are the same three words because they are the same act.
+// bargeSendWord is what this gesture does in the running-turn hint. It belongs
+// to shift+enter alone: esc stops and clears waiting queues, while this chord
+// deliberately preserves the draft it just parked so the stream close sends it.
 const bargeSendWord = "stops and sends"
 
 // bargeOffered reports whether the chord should be named — which is exactly
@@ -175,6 +173,6 @@ func (a *app) bargeIn() tea.Cmd {
 		// left alone, which is the whole of the guard above said again.
 		return cmd
 	}
-	a.interrupt()
+	a.interruptForBarge()
 	return cmd
 }

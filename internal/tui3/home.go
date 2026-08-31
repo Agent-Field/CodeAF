@@ -3113,8 +3113,32 @@ func (a *app) homeStart(text string) tea.Cmd {
 		a.closeHome()
 		return cmd
 	}
+	// THE ROOM IS ASKED FOR BEFORE HOME GOES, which is the whole of this door's
+	// repair. Closing home throws the box away ([app.dropHome] takes the view
+	// with it), so a refusal met AFTER the close has nowhere to put the sentence
+	// somebody typed — and the sentence went to [app.submit] regardless, into the
+	// conversation that was already on the screen. That is one person typing a
+	// new chat and landing in an old one, every time, from the eighth
+	// conversation onward.
+	//
+	// It is the same question the typed-path branch above asks, in the same
+	// words, said on home so that home is still there to read it on
+	// ([app.roomToRenew]).
+	if word, room := a.roomToRenew(); !room {
+		a.home.say(word, "")
+		return nil
+	}
 	a.closeHome()
-	renewed := a.renew()
+	renewed, started := a.renew()
+	if !started {
+		// The door itself failed — a session folder that could not be made — and
+		// [app.renew] has said so where a person is now standing. The sentence
+		// goes into the box in front of them rather than into a conversation it
+		// was not meant for: it is still theirs to send, and this door has always
+		// promised the words go with the PERSON.
+		a.input.setText(text)
+		return nil
+	}
 	return tea.Batch(renewed, a.submit(text))
 }
 
@@ -3311,7 +3335,7 @@ const homeDoorWord = "space space home"
 //
 // WHY A GESTURE AND NOT A KEY. Every ctrl+letter is taken. `esc` was the
 // obvious candidate and is not available: on an idle conversation it already
-// arms rewind (the hint slot says `esc again to rewind`) and it already sends a
+// arms rewind (the hint slot says `esc again to rewind`) and it already drops a
 // message parked against a turn that has ended, and a third meaning on one key
 // in that state is how a surface becomes unpredictable. What was left is a
 // gesture, and a leading run of spaces in an empty message is the one keystroke

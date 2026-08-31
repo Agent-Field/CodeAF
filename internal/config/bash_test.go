@@ -13,7 +13,7 @@ func TestBackgroundAfterKeepsZeroAndDefaultsOnlyWhenMissing(t *testing.T) {
 		t.Fatalf("a missing row reads as %d seconds, want %d", got, DefaultBashBackgroundAfter)
 	}
 	row := mustRow(t, registry(t, dir), KeyBashBackgroundAfter)
-	if row.Category != CategorySpending || row.Kind != SettingCount || row.Label != "background after" || row.Hint != BashBackgroundAfterHint {
+	if row.Category != CategorySafety || row.Kind != SettingCount || row.Label != "background after" || row.Hint != BashBackgroundAfterHint {
 		t.Fatalf("the background-after row is not the specified row: %+v", row)
 	}
 	if want := "A change lands on the next session."; !strings.HasSuffix(row.Hint, want) {

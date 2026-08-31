@@ -480,7 +480,7 @@ The whole list, by settings key:
   work costs.
 - **How hard this machine may be worked** — `task.parallel`, `task.max_load`,
   `task.min_free_mb`, `bash.background_after_seconds`. The last is labelled
-  **background after** on `/settings`' Session tab and arms both the engine's handoff
+  **background after** on `/settings`' Safety tab and arms both the engine's handoff
   clock and the countdown for the next session.
 - **Whether aforge's own work is checked** — `task.audit`. A session that can
   switch off the auditor can call anything done.

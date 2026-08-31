@@ -256,7 +256,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · w wide · esc",
 			[]string{"↑↓", "→←", "enter", "w", "esc"}},
-		{"esc stops and sends", []string{"esc"}},
+		{"esc stops and drops", []string{"esc"}},
 		{"space space home · tab last · / commands",
 			[]string{"space", "space", "tab", "/"}},
 		{"enter open where it was asked · p pause · s stop · n not here · esc",

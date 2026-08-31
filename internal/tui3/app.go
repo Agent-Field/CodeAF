@@ -1142,7 +1142,16 @@ type app struct {
 	// wait is the forming block a task command is standing in — its verbatim
 	// brief, present phase, and clock (taskcommand.go). It keeps that live region
 	// out of the notes lane while driving its shared spinner and count-up.
-	wait preflight
+	// waits are the forming blocks up right now — a task command that is sizing
+	// or shaping, and a proposal whose yes is waiting on the same call
+	// (taskcommand.go). It is a LIST because two of them can be in flight at
+	// once, and three tall blocks stacked at the transcript tail is a wall;
+	// several share one block (formingblock.go).
+	waits []preflight
+	// waitSeq hands out the identity a settle comes back with, and waitAt is the
+	// row of the block a person is pointed at — the only one whose preview draws.
+	waitSeq uint64
+	waitAt  int
 	// mem is the memory place's state: the snapshot it is drawing, the shelves that
 	// are unrolled, and the filter (place_memory.go).
 	mem memoryPlace
@@ -2270,7 +2279,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// air the block was built to end (taskcommand.go's [preflight]). The two
 	// places read ONE fact, [preflight.live], so a clock that starts and a clock
 	// that keeps going cannot disagree about whether a wait is up.
-	if a.levelsWaiting() || a.wait.live() {
+	if a.levelsWaiting() || a.waiting() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
 	return model, cmd
@@ -3292,7 +3301,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case taskSizedMsg:
-		a.settleSizing()
 		door, ok := a.agent.(taskCommandAgent)
 		if !ok {
 			a.note("could not start the task · this session has no task door")
@@ -3314,10 +3322,26 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.parallel {
 			a.note(taskWideNote)
 		}
-		return a, a.startTaskDoor(door, msg.brief)
+		// THE PHASE CHANGES IN PLACE ON THE BLOCK ALREADY ON SCREEN. Sizing and
+		// shaping are two phases of one command, so the wait's own identity is
+		// handed on rather than settled and re-raised — a collapse and a second
+		// block opening under it would read as two commands (taskcommand.go's
+		// [app.beginPreflight]).
+		return a, a.startTaskDoor(door, msg.brief, msg.wait)
+
+	case shapingTailMsg:
+		// THE BRIEF, AS FAR AS IT HAS BEEN WRITTEN. The lane closing says the
+		// shaping call has returned, and the block that was drawing the tail is
+		// about to be settled by the answer itself — so nothing is asked for after
+		// it and the pump stops (taskcommand.go).
+		if msg.done {
+			return a, nil
+		}
+		a.shapingTail(msg.wait, msg.read)
+		return a, a.pumpShaping(msg.wait, msg.stream)
 
 	case taskStartedMsg:
-		a.settleShaping()
+		a.settleShaping(msg.wait)
 		if msg.err != nil {
 			a.note("could not start the task · " + msg.err.Error())
 		} else {
@@ -3518,7 +3542,7 @@ func (a *app) paint() tea.Cmd {
 		// `/task` sizes and shapes a brief, and without this the wait's spinner and
 		// its count-up would be a still photograph for twenty-five seconds — which
 		// is exactly what they were (taskcommand.go's [preflight]).
-		a.wait.live() ||
+		a.waiting() ||
 		// AND HOME WITH A ROW RUNNING IS THE NINTH, and the third that can be the
 		// whole of what is happening: the work is another window's, so no turn of
 		// ours runs while its spinner turns. Home is otherwise a still page on its
@@ -4561,6 +4585,30 @@ func formingPreview(tool, argsText string) string {
 	return text
 }
 
+// shapingPreviewField names the argument the BRIEF BEING SHAPED is previewed
+// by, and it is the sibling of the table above rather than a second idea.
+//
+// The shaper answers with one JSON object — {"title","brief","acceptance",
+// "where"} (internal/session's task_shape.go) — and `brief` is the field for the
+// same reason `content` is a write's: it is appended to and never revised, so
+// what has arrived is the beginning of the document and will still be the
+// beginning of it when the call is whole. A title is three words that land at
+// once and say nothing about progress; an acceptance is written last and is
+// blank for most of the wait.
+const shapingPreviewField = "brief"
+
+// shapingPreview is [formingPreview] for the other stream this surface watches:
+// the shaper's answer as it arrives, rather than a tool call's arguments.
+//
+// IT IS THE SAME SCANNER, deliberately. Both are prefixes of a JSON object that
+// nothing may unmarshal, and [session.PartialString] is the one tolerant read of
+// one field of such a prefix in this tree — a second parser here would be a
+// second answer to "what has arrived" waiting to disagree with the first.
+func shapingPreview(text string) string {
+	preview, _ := session.PartialString(text, shapingPreviewField)
+	return preview
+}
+
 // claimForming finds the row this forming event belongs to, or -1 for a call
 // nothing has been drawn for yet.
 //
@@ -5375,6 +5423,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.showAll(r.entry)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
+	case hitForming:
+		// THE FORMING BLOCK AT THE TAIL (formingblock.go). Its rows belong to no
+		// entry — the block is not part of the conversation, it is what stands
+		// where one is about to be — so the wait is named by its place in the list,
+		// which is what the row carries.
+		a.formingPress(r.turn)
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a
@@ -5989,7 +6043,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed
 		// it over, so the next conversation subscribes to its own (task.go).
-		return a.renew()
+		//
+		// The bool is for a caller with a sentence to send afterwards; /new has
+		// none — it is the whole of what was asked for — and the refusal is
+		// already a note in the conversation it was typed in.
+		cmd, _ := a.renew()
+		return cmd
 
 	default:
 		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
@@ -6161,22 +6220,31 @@ func (a *app) freshAndEmpty() bool {
 //
 // It returns the commands the next conversation owes itself: its own standing
 // lanes and the project's record (task.go, taskmention.go).
-func (a *app) renew() tea.Cmd {
+//
+// AND IT SAYS WHETHER THE CONVERSATION ACTUALLY CHANGED. Every refusal below
+// returns no work, and no work is also what a successfully renewed conversation
+// with nothing to subscribe to returns — so a caller that read the nil as "the
+// door held" was reading a coincidence. The callers that matter are the two that
+// SEND a sentence into whatever the renew left in front of them (home.go's
+// [app.homeStart], placekeys.go's [app.placeTalkAbout]), and sending it into the
+// conversation somebody was already in is the one outcome neither of them may
+// have.
+func (a *app) renew() (tea.Cmd, bool) {
 	if !a.canStart() {
 		a.note(newUnavailableWord)
-		return nil
+		return nil, false
 	}
 	replacing := a.freshAndEmpty()
 	if !replacing {
 		if word, room := a.roomForAnother(); !room {
 			a.note(word)
-			return nil
+			return nil, false
 		}
 	}
 	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
-		return nil
+		return nil, false
 	}
 	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
 	// own repair: a /new that failed used to leave the surface holding a closed
@@ -6238,7 +6306,24 @@ func (a *app) renew() tea.Cmd {
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
-	return cmd
+	return cmd, true
+}
+
+// roomToRenew is [app.renew]'s own room question asked BEFORE the door is
+// opened, in the words the refusal would use, so a caller standing on a screen
+// of its own can answer on that screen instead of noting into a conversation
+// nobody is looking at.
+//
+// IT IS THE SAME QUESTION AND NOT A SECOND ONE. A fresh empty conversation is
+// replaced rather than added to, so it needs no room at all; everything else
+// asks the keeper. Home used to ask [app.roomForAnother] flat on its typed-path
+// branch and not at all on its typed-sentence branch, which is two answers to
+// one question and how the sentence came to be sent into the wrong place.
+func (a *app) roomToRenew() (string, bool) {
+	if a.freshAndEmpty() {
+		return "", true
+	}
+	return a.roomForAnother()
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────
@@ -6375,6 +6460,24 @@ func (a *app) quit() tea.Cmd {
 // arriving for seconds after a person had stopped the turn, which is the screen
 // disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
+	a.interruptTurn()
+	// ESC STOPS EVERYTHING, including both ways a later turn can already be
+	// waiting. The session drops its follow-up queue on interrupt; the surface
+	// drops that mirror and its editable parked queue in the same keypress so the
+	// stream close cannot orphan or unexpectedly send either one.
+	a.dropFollows()
+	a.dropParked()
+}
+
+// interruptForBarge stops the current turn but preserves the draft
+// [app.bargeIn] just parked. shift+enter promises stop-and-send; it shares the
+// stop machinery with esc without sharing esc's queue-clearing decision.
+func (a *app) interruptForBarge() {
+	a.interruptTurn()
+	a.dropFollows()
+}
+
+func (a *app) interruptTurn() {
 	// THE AGENT IS ASKED FOR RATHER THAN ASSUMED, on [app.quit]'s own terms: a
 	// surface can be standing with no session under it, and a stop that panicked
 	// on the way to stopping nothing would be the worst possible answer to the
@@ -6421,10 +6524,6 @@ func (a *app) interrupt() {
 	// the state the session is IN rather than a line about what happened, which is
 	// what this note is.
 	a.note("stopped")
-	// The session drops its follow-up queue on an interrupt — a stop that was
-	// followed by the session working again is not a stop — so the surface says
-	// so rather than leaving a count above the box for turns that will never run.
-	a.dropFollows()
 	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
 	// on the blocks at the keypress so the demotion is on screen the moment the
 	// person presses esc, and again when the stream finally closes ([app.settle]),

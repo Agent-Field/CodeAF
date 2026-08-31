@@ -659,7 +659,7 @@ func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
 // AND THE WAITING MESSAGE'S OWN LINE CARRIES THE ARROW, unconditionally as far
 // as the terminal is concerned: an arrow key reaches every terminal there is, so
 // there is nothing to gate the clause on but whether the act itself is possible.
-func TestTheStripNamesTheArrowAndDropsItWithTheStop(t *testing.T) {
+func TestTheStripNamesTheArrowAndEscDropsTheWholeWaitingBlock(t *testing.T) {
 	a, agent := steerableTurn(t, "reading the tree. ")
 	a.width = 90
 	parkLine(t, a, "do much more of a deep research please")
@@ -675,18 +675,16 @@ func TestTheStripNamesTheArrowAndDropsItWithTheStop(t *testing.T) {
 		t.Fatalf("the strip did not offer the steer:\n%s", body)
 	}
 
-	// A TURN WINDING DOWN HAS NO BOUNDARY LEFT, so the arrow goes down with the
-	// esc — and what is left of the line is still exactly true.
+	// ESC drops the queue at the keypress, so a winding-down turn has neither a
+	// stale message nor an arrow that claims it can still cross a boundary.
 	drive(t, a, key("esc"), frameMsg{})
 	if !a.windingDown() {
 		t.Fatal("the surface is not winding down after esc")
 	}
 	body = plain(frame(a))
-	if strings.Contains(body, steerArrowWord) {
-		t.Fatalf("the strip still offers a steer into a turn that is ending:\n%s", body)
-	}
-	if !strings.Contains(body, parkedHint[0]) {
-		t.Fatalf("the strip dropped the half that is still true:\n%s", body)
+	if strings.Contains(body, steerArrowWord) || strings.Contains(body, parkedHint[0]) ||
+		strings.Contains(body, "do much more of a deep research please") {
+		t.Fatalf("the dropped waiting block is still on the winding-down frame:\n%s", body)
 	}
 	// And the key is inert with it.
 	drive(t, a, key("right"))
