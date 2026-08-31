@@ -701,7 +701,7 @@ func realStream(ctx context.Context, key string, only []string, maxTokens int, w
 		}
 		answer.tokens++
 		if watch != nil {
-			watch.Token(answer.tokens, time.Now())
+			watch.Token(answer.tokens, answer.tokens, time.Now())
 		}
 	}
 	if err := scanner.Err(); err != nil {

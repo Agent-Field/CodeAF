@@ -121,7 +121,17 @@ func RoutingIntentFrom(ctx context.Context) RoutingIntent {
 
 // routingIntentFrom answers who is waiting on this call, interactive when
 // nothing said.
+//
+// THE ROLE OUTRANKS THE INTENT WHERE BOTH ARE SAID (roles.go). A role is the
+// more specific claim — it names the errand, and the table can explain every
+// number derived from it — while the intent is a two-valued reading of the same
+// fact that a call site had to remember to state. The intent stays because it
+// is what `provider.sort` is built from and what a dozen sites still say; it is
+// now DERIVED where a role is present rather than believed alongside it.
 func routingIntentFrom(ctx context.Context) RoutingIntent {
+	if intent, ok := roleIntent(ctx); ok {
+		return intent
+	}
 	intent, _ := ctx.Value(routingIntentContextKey{}).(RoutingIntent)
 	return intent
 }
