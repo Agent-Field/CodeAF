@@ -550,13 +550,14 @@ brain, all blind to each other.
 
 ## Do you remember errors and how they were fixed?
 
-Yes, and it is a separate thing from everything above. When a command fails and
-the next run of that same tool works, the pair is written down: what the failure
-said, and the command that made it go away. No model is asked anything to do it
-— a failure followed by a success is something aforge watched happen.
+Yes, and it is a separate thing from everything above. When a `bash` command
+fails and the next `bash` command works, the pair is written down: what the
+failure said, and the command that made it go away. No model is asked anything to
+do it — a failure followed by a success is something aforge watched happen.
 
-The next time that same failure comes back, **one line is added to the bottom of
-the failed row**, and it is the only place you will ever see this:
+The next time that same failure comes back, **and only if the pair has earned
+it**, one line is added to the bottom of the failed row, and it is the only
+place you will ever see this:
 
 ```
 this exact error came up here before · what ran next and it went away: make clean && make build
@@ -582,10 +583,33 @@ a coin toss dressed as advice is worth less than silence.
 This only happens **after** something has already failed. Nothing is looked up
 before a command runs, and a command that works is never annotated.
 
-Only `bash`, `grep` and `find` are remembered this way, because their answer is
-something you could run again. A `read` that could not find a file is not: the
+Only `bash` is remembered this way, because a `bash` call's answer is a command
+you could run again. `grep` and `find` are not: their answer is the pattern that
+was searched for, and a regex is what was being looked for rather than something
+to do about a failure. A `read` that could not find a file is not either — the
 "fix" would be one particular path, right for that call and wrong for every
 later one.
+
+## When does it say nothing, and why did a suggestion stop appearing?
+
+Two things have to be true before anything is ever added to a failed row, and
+either one missing is silence:
+
+- **the suggestion has to be a command this machine can run.** The first word is
+  looked up the way a shell looks it up, so a regex, a path, a filename or a
+  sentence is never offered, and neither is a command for a program that is not
+  installed here.
+- **the pairing has to have been seen more than once** — or to have been offered,
+  taken, and watched to clear the error, which counts on its own. One command
+  following one failure happens in every session that fails at anything, and most
+  of those pairs are just the next thing that got typed.
+
+This is why suggestions that used to appear stopped. An earlier build offered a
+pair the first time it saw one, and on a real session that meant a `grep` was
+answered with `/\/+$` — the regex the next search used — and `npm error Missing
+script: build` was answered with `git log --oneline -5`, which is a fine command
+and had nothing to do with npm. A wrong suggestion costs a step chasing it, which
+is worse than the silence it replaced.
 
 ## What it refuses to learn from — a refusal, a missing tool, a missing program
 
