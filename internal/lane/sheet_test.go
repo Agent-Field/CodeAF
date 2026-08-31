@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
 
@@ -382,4 +383,45 @@ func waitFor(t *testing.T, done func() bool) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("waited three seconds for something that never happened")
+}
+
+// TestTheBeatPrimesTheBeliefFromEveryReading is the seam between the two halves
+// of a prior: the sheet fetching one, and the ledger holding it.
+//
+// A REFRESH THAT NOBODY PRIMES FROM IS A PRIOR NOTHING READS. The chooser asks
+// the LEDGER and never the sheet, so a build that fetched on a beat and primed
+// somewhere else would work exactly until the two drifted — and then be blind on
+// the first call of every process, with no symptom but slowness. The two are one
+// act ([Beat]) for that reason, and this holds it.
+func TestTheBeatPrimesTheBeliefFromEveryReading(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Cleanup(Default().Reset)
+	Default().Reset()
+	s, _, _ := wired(t)
+
+	if believed := Default().Ledger().Beliefs(scriptedModel); len(believed) != 0 {
+		t.Fatalf("the ledger believed %d lanes before anything was read", len(believed))
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		Beat(ctx, s, []string{scriptedModel}, time.Hour)
+		close(done)
+	}()
+	waitFor(t, func() bool { return len(Default().Ledger().Beliefs(scriptedModel)) > 0 })
+	stop()
+	<-done
+
+	believed := Default().Ledger().Beliefs(scriptedModel)
+	if len(believed) != len(s.Rows(scriptedModel)) {
+		t.Fatalf("the beat read %d lanes and the belief holds %d", len(s.Rows(scriptedModel)), len(believed))
+	}
+	for _, belief := range believed {
+		if !belief.TTFT.Known() || !belief.Rate.Known() {
+			t.Fatalf("%s was primed with no timing at all: %+v", belief.ID.Lane, belief)
+		}
+		if !belief.Quality.Known() {
+			t.Fatalf("%s was primed with no quality prior, so the gate has nothing to ask", belief.ID.Lane)
+		}
+	}
 }
