@@ -934,3 +934,100 @@ with the router. The caller is telling it something false, because the caller
 does not yet compute the three durations that would make it true. Until it does,
 background work wants a small positive λ rather than a zero — a task nobody is
 watching still has an owner who will read it eventually.
+
+# Part IV — what the wiring found
+
+Wave 2b joined the five lanes to each other and to the surface. Nothing here is
+a new idea; all of it is what the seams said when they were finally connected,
+and every item is a place where two halves were each right on their own.
+
+## λ was said and not heard
+
+`internal/session/loop.go` declared what a second was worth on every call, and
+`internal/provider` threw the declaration away for every background one. The
+adapter asked `routingFor(intent)` — which answers `price` for a call nobody is
+watching **because nobody said otherwise** — and then read that answer as "a
+person said speed is worth nothing", which vetoes the caller's own λ. So a task
+node that declared its wait was worth something was routed as though it had
+declared the opposite, and no test could see it because the caller was saying
+the right thing.
+
+The veto now asks `routingChoice()`, which reports whether a person **really**
+said. The lesson generalises: a resolver that folds "what somebody chose" and
+"what we default to when nobody chose" into one value cannot be used as the
+input to a rule about what somebody chose.
+
+## And what a task turn's second is worth is whether anybody is here
+
+Part III ended by naming the real defect at λ = 0: the caller tells the router
+that nobody is waiting on any background work, and the simulator priced that
+declaration at a fifth off the money for nearly four times the wait. The v1
+rule is now: **a task turn whose process has a conversation window open is worth
+a person's attention; one whose process has none is worth nothing.** It is
+deliberately coarse — it says a person is HERE, not that they are looking at
+this node — and `lane.Lambda`'s signature is unchanged, so the slack, the
+expected duration and the deadline are waiting for the plan graph that can
+compute them. The intent is untouched: a node still asks the router for the
+cheap endpoint, and now says what its wait costs among the machines behind it.
+
+## The picker was asking the chooser a different question from the wire
+
+The `auto` row promises to name the lane your next turn will use. It was built
+on a `lane.Request` written in the surface, with λ left at zero — which asks
+"which machine is CHEAPEST", a perfectly correct answer to a question a
+conversation never asks. The row then named a lane the very next turn did not
+use. `provider.LaneTalkAsk` is now the one spelling of a talk request and both
+sides ask with it.
+
+The same row had a worse bug behind it: it drew the first-token and rate of
+whichever lane the SURFACE'S own sort put first and wrote the CHOOSER'S name
+after them. While the chooser had no opinion the two always agreed and nothing
+showed; the day it landed, the row began attributing one machine's measurement
+to another. And with the lane row unset the name it wrote was the word `auto`
+itself — `via auto`, a machine no router has ever heard of.
+
+**The law: a number a row draws and the name beside it come from one lane.**
+
+## The router's own `status` is now a gate
+
+Part III left this to "the lane that owns the sheet's shape", and this is that
+lane. `lane.Facts` has a `Status`, `decodeSheet` reads the column, and `capable`
+refuses any lane whose status is not zero. It is the one field in `Facts` whose
+zero means "fine" rather than "the sheet did not say", which is safe because the
+router publishes the column for every row.
+
+On the measured sheet it removes two lanes of seventeen — Mancer 2 and Azure,
+both at `status: -2`, and Azure was in the `work` and `offpath` candidate sets.
+`bench/lanelab/gosim` mirrors the shipped gate for its baseline arm, so its
+mirror gained the clause in the same change; the "N/17 lanes past the SHIPPED
+capability gate" line it prints is true again.
+
+## C3's speed clause is a guard at λ = 0, not a demand
+
+Part III argued it and this wave applied it. `gosim`'s gate now reads: where
+λ > 0, the scenario's p90 must improve by 30%; where λ = 0, the p90 wait merely
+must not exceed **twice** the baseline's — and the money clause is unchanged and
+degenerates, correctly, to "no dearer than the baseline". A router told a second
+is worth nothing and then graded on seconds is being graded on the one term it
+was instructed to ignore, and no correct implementation could pass such a
+clause. Two is a factor rather than a percentage because at λ = 0 the two
+quantities are not commensurable: that is exactly what λ = 0 says.
+
+## The only interesting state of a hedge is over before the call returns
+
+`HedgeReport` was read after the answer, and the sentence a person needs — `slow
+· trying coreweave…` — is true only while the second request is out. It gained
+`OnHedgeStart`, called from the race the moment the budget allows the rescue,
+and `Primary`, the lane the FIRST arm was served by. The winner/loser pair
+cannot answer "where did this answer start", because which of the two is which
+depends on who won.
+
+## And a live test that congratulated itself
+
+`internal/lane/e2e_real_test.go` logged "no rescue was needed … so the watch was
+right not to spend a second request on it" on every un-hedged answer, including
+one that took 30.3 s against the 15.9 s its own sheet row predicted. That branch
+now separates the two cases and says, loudly, when no rescue went out and one
+was needed. It is a log rather than a failure because on a live router it is
+also what an already-spent budget looks like; the deterministic version of the
+claim is S2, which does fail.
