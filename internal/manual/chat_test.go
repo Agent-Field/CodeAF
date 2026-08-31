@@ -392,6 +392,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// they ask for the first and are refused.
 		{"can you change my settings", "what-i-can-do"},
 		{"set my daily budget to 5", "what-i-can-do"},
+
+		// THE SPENDING WAVE, in the words of the person asking
+		// (docs/design/spending/DESIGN.md acceptance 9). Money has one editor
+		// and many doors, and every one of these is somebody standing at a
+		// different door asking the same question.
+		{"how do I remove the daily limit", "models-and-cost"},
+		{"why did it stop and ask me about money", "models-and-cost"},
+		{"what does per plan mean", "models-and-cost"},
+		{"where do I set what aforge may spend", "models-and-cost"},
+		{"how much money can a task spend of its own", "models-and-cost"},
+		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},

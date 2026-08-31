@@ -115,3 +115,42 @@ func TestSpendRailNeverCutsTheTurnInFlight(t *testing.T) {
 		t.Fatalf("the next turn = %v, want the rail's refusal", kinds(next))
 	}
 }
+
+// TestTheRefusalNamesTheLimitTheFigureAndTheDoor is
+// docs/design/spending/DESIGN.md acceptance 6: one line, the limit, the figure
+// and the key — and nothing about it said twice.
+//
+// IT SAYS `limit` AND NOT `rail`. The machinery's word is this file's; the
+// person's word is theirs. And it names `/budget` rather than a bare letter,
+// because the person reading it is standing over the message box with their
+// refused message still in it, and every printable key there belongs to that
+// box.
+func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
+	agent := &Agent{}
+	agent.config.SpendRailUSD = 2
+	agent.usage.CostUSD = 2.05
+	err := agent.railBlockLocked()
+	if err == nil {
+		t.Fatal("a session past its ceiling must be refused")
+	}
+	if !errors.Is(err, ErrSpendRail) {
+		t.Fatalf("the refusal must carry the sentinel: %v", err)
+	}
+	want := "conversation limit reached · $2.05 spent of $2 · /budget changes it"
+	if got := err.Error(); !strings.HasSuffix(got, want) {
+		t.Fatalf("the refusal reads\n  %s\nwant it to end\n  %s", got, want)
+	}
+	for _, banned := range []string{"rail —", "ceiling", "raise it to keep going"} {
+		if strings.Contains(err.Error(), banned) {
+			t.Fatalf("the refusal still says %q: %s", banned, err)
+		}
+	}
+	// AND A WHOLE FIGURE IS WRITTEN WHOLE. `$500.00` is a number somebody typed
+	// with two cells of noise on the end.
+	if got := railMoney(500); got != "$500" {
+		t.Fatalf("a whole limit reads %q", got)
+	}
+	if got := railMoney(4.1); got != "$4.10" {
+		t.Fatalf("a part-dollar limit reads %q", got)
+	}
+}

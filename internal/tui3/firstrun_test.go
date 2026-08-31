@@ -115,9 +115,27 @@ func TestEnterThreeTimesLandsTheDefaultsInTheProfile(t *testing.T) {
 	if want := "$" + setupBudgetDefault(); !strings.Contains(setupScreen(a), want) {
 		t.Fatalf("the ceiling step must show %s, the default it will keep; got:\n%s", want, setupScreen(a))
 	}
+	// THE LAST STEP IS THREE ROWS AND NOT ONE (settingspend.go's design):
+	// enter keeps the default on the row it is standing on and walks to the
+	// next, and the third one closes the screen.
+	if screen := setupScreen(a); !strings.Contains(screen, "what may aforge spend?") ||
+		!strings.Contains(screen, "none means no limit") ||
+		!strings.Contains(screen, "per plan") || !strings.Contains(screen, "per conversation") {
+		t.Fatalf("the rails screen must offer all three rows and the word none; got:\n%s", screen)
+	}
 	pressSetup(a, key("enter"))
+	if !a.setup.open || a.setup.rail != 1 {
+		t.Fatalf("enter on the first rail walks to the second, rail = %d", a.setup.rail)
+	}
+	pressSetup(a, key("enter"), key("enter"))
 	if a.setup.open {
-		t.Fatal("enter on the last step closes the setup")
+		t.Fatal("enter on the last rail closes the setup")
+	}
+	if plan, err := config.PlanConsentUSDAt(dir); err != nil || plan != config.DefaultPlanConsentUSD {
+		t.Fatalf("the plan rail read back as %v (%v), want %v", plan, err, config.DefaultPlanConsentUSD)
+	}
+	if rail := config.SpendRailUSDAt(dir); rail != config.DefaultSpendRailUSD {
+		t.Fatalf("the conversation ceiling read back as %v, want %v", rail, config.DefaultSpendRailUSD)
 	}
 
 	if !config.CrewConfigured(dir) || config.CrewAt(dir) != config.CrewBalanced {
@@ -172,6 +190,15 @@ func TestATypedOrPastedKeyIsWrittenAndHandedToTheSession(t *testing.T) {
 	pressSetup(a, key("enter"))
 	if rail, _ := config.DailyBudgetUSDAt(dir); rail != 7.5 {
 		t.Fatalf("a typed ceiling replaces the default, profile reads %v", rail)
+	}
+	// And `none` on the row under it removes that limit rather than being
+	// refused for not being a number.
+	for _, r := range "none" {
+		pressSetup(a, key(string(r)))
+	}
+	pressSetup(a, key("enter"), key("enter"))
+	if plan, _ := config.PlanConsentUSDAt(dir); plan != 0 {
+		t.Fatalf("none on the plan rail must remove it, profile reads %v", plan)
 	}
 	if a.setup.open {
 		t.Fatal("the flow closes after its last step")

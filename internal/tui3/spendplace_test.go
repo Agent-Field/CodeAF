@@ -40,7 +40,9 @@ func spendTestReading() spendReading {
 // arrows — SCREEN 3d's "the label between the arrows is the control and the
 // reading at once", drawn by the head row standing and tasks share.
 func TestTheSpendPageCarriesTheWindowFiguresInItsHeader(t *testing.T) {
-	got := plain(spendTestReading().rows(120, newPalette(tokens.NoColor, false))[0])
+	// Row zero is the pointer line now (spendplace.go's [spendReading.railsRow]);
+	// the window control is the row under it.
+	got := plain(spendTestReading().rows(120, newPalette(tokens.NoColor, false))[1])
 	for _, want := range []string{"$34.10", "41.2M tokens", "shift+← aug 12 – aug 25 →", "shift+↑ coarser"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("header %q does not carry %q", got, want)
@@ -366,6 +368,9 @@ func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
 	talk := session.UsageLine{At: spendTestNow, Model: "opus 4.1", Calls: 2, Input: 100, Output: 20,
 		USD: 4.25, Session: "aaaa000000000001", Workspace: "/work/alpha"}
 	a := spendLab(t, []session.UsageLine{talk})
+	// The cursor opens on the pointer line, which is row zero and a door of its
+	// own onto the Spending tab. `↓` walks to the first thing money went on.
+	a.moveSpend(1)
 	stop := a.spendStopAt(a.spend.cursor)
 	if !stop.ok {
 		t.Fatalf("the cursor did not open on a door: %d of %d", a.spend.cursor, len(a.spend.stops))
@@ -382,6 +387,10 @@ func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
 // AND A ROW THAT IS NOT A DOOR IS NOT ONE. The window header, the sparkline and
 // the section headings are the reading; nothing stops on them, so `enter` there
 // is the composer's own road.
+//
+// THE POINTER LINE IS THE ONE EXCEPTION AND IT IS NOT A SUBJECT: it is row zero,
+// it names no spend, and its `enter` walks to the one editor money has
+// (settingspend.go).
 func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 	a := spendLab(t, spendFixture())
 	seen := 0
@@ -389,13 +398,50 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 		if !stop.ok {
 			continue
 		}
-		seen++
 		if i == 0 {
-			t.Fatal("the window header was offered as a door")
+			if !stop.rails {
+				t.Fatal("row zero is the pointer line and nothing else")
+			}
+			continue
+		}
+		seen++
+		if stop.rails {
+			t.Fatalf("row %d claims to be the pointer line", i)
 		}
 	}
 	if seen != spendSubjectCap {
 		t.Fatalf("%d doors were drawn, want the %d shown subjects", seen, spendSubjectCap)
+	}
+	if got := plain(a.spend.reading.rows(120, newPalette(tokens.NoColor, false))[0]); !strings.Contains(got, "/budget sets the limits") {
+		t.Fatalf("the pointer line reads %q", got)
+	}
+}
+
+// THE POINTER LINE IS A POINTER AND NOT AN EDITOR, which is what keeps this
+// place's own law intact — and `enter` on it opens the one editor there is.
+func TestThePointerLineOnTheSpendPlaceOpensTheSpendingTab(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	a.spend.cursor = 0
+	if !a.spendStopAt(0).rails {
+		t.Fatal("the pointer line must be a door")
+	}
+	drive(t, a, key("enter"))
+	if a.page != pageSettings || settingTabs[a.sheet.tab] != tabSpending {
+		t.Fatalf("enter on the pointer line landed on %q", a.page.word())
+	}
+}
+
+// AND `b` IS REAL WHERE A BARE LETTER MAY BE REAL: on the verb strip, which is
+// drawn before it works (verbstrip.go's first law).
+func TestBOnTheSpendPlacesStripOpensTheLimits(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	verbs := placeSpend{}.verbs(a)
+	if len(verbs) != 1 || verbs[0].key != 'b' || verbs[0].word != "the limits" {
+		t.Fatalf("the strip offers %v", verbs)
+	}
+	drive(t, a, key("right"), key("b"))
+	if a.page != pageSettings || settingTabs[a.sheet.tab] != tabSpending {
+		t.Fatalf("b on the strip landed on %q", a.page.word())
 	}
 }
 
