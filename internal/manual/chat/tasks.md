@@ -1080,10 +1080,10 @@ with a **spend cap** on it. The composer layer's third line is where you read it
 you change it:
 
 ```
- · it may spend up to $10.00 before it asks                                    type a number
+ · it may spend up to $100.00 before it asks                                    type a number
 ```
 
-**The default is $10.00**, which is the tank aforge applies to work nobody put a figure on.
+**The default is $100.00**, which is the tank aforge applies to work nobody put a figure on.
 Type digits while the layer is up and the figure is whatever you typed.
 
 **It is a real limit and not a caption.** The figure becomes that errand's own spend rail:
@@ -1099,7 +1099,7 @@ Type digits while the layer is up and the figure is whatever you typed.
 **A task started any other way carries whatever this window carries.** `/task <brief>`, the
 proposal card and the model's own hands run under the conversation's own rail — which is off
 unless you set the `spend rail` row in settings — and an adaptive run they start opens on
-the $10.00 default.
+the $100.00 default.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
@@ -2882,7 +2882,7 @@ these again" to change who is asked.
 
 An adaptive run is a run that keeps spawning tasks of its own for as long as its planner
 has something left to want, and it has a page rather than a room: the nodes drawn as chips
-in layers, with one fuel gauge pinned at the top — `planner: <model> · $0.87 / $2.00`, the
+in layers, with one fuel gauge pinned at the top — `planner: <model> · $0.87 / $100.00`, the
 model doing the planning beside what it has spent of what you approved.
 
 **`x` on that page stops the whole run**, over an empty message box, and it asks the same

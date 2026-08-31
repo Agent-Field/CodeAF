@@ -82,10 +82,15 @@ const sweproSentinelEnv = "AFORGE_SWEPRO"
 
 // DefaultSWEMaxCost is the engine's cumulative spend ceiling for one leaf, in
 // dollars. It is a backstop rather than a budget: a coding pipeline that has
-// spent ten dollars on one issue has stopped converging, and the ceiling turns
+// spent this much on one issue has stopped converging, and the ceiling turns
 // that from an open tap into a budget-exhausted terminal the continuation
 // replan already knows what to do with. AFORGE_SWE_MAX_COST moves it.
-const DefaultSWEMaxCost = 10.0
+//
+// TEN DOLLARS STOPPED BEING THE PRICE OF A LOOP and became the price of a hard
+// issue done properly, so the backstop started firing on work that was
+// converging exactly as intended. A hundred is back to what the word backstop
+// means. The daily rail is still the budget.
+const DefaultSWEMaxCost = 100.0
 
 const (
 	// sweControlPoll is the quiet-stream heartbeat for control and steering.

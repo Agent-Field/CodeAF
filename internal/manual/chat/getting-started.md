@@ -9,7 +9,7 @@ the frame:
 
 1. **your openrouter key** — a masked paste box
 2. **the crew** — `frugal`, `balanced` or `max`, the same three rows `/crew` draws
-3. **a daily ceiling** — one number, `$20` by default
+3. **a daily ceiling** — one number, `$500` by default
 
 `enter` accepts each step's default and goes on. `esc` skips the whole thing. When it is
 done, or skipped, the ordinary empty conversation appears — the wordmark box and the
@@ -17,7 +17,7 @@ prompt — and the screen never comes back.
 
 The line over the question reads `setting up · 1 of 3`; with only one thing missing it
 reads `setting up`. The foot says what `enter` does right now — `enter takes balanced`,
-`enter keeps $20`, `enter goes on without a key` — and that `esc skips setup`.
+`enter keeps $500`, `enter goes on without a key` — and that `esc skips setup`.
 
 ## Set up my api key — the openrouter key step, and what happens with no key
 
@@ -74,7 +74,7 @@ earlier `/crew` wrote them — this step is not shown.
 The third step is one number under the words *a daily ceiling*, with the daily budget
 row's own sentence beside it: *what aforge may spend on your work in a day. 0 removes the
 rail. A change lands at the next rail check.* The default is drawn dim where the answer
-goes — `$20` — and `enter` keeps it; typing a number replaces it. Something that is not a
+goes — `$500` — and `enter` keeps it; typing a number replaces it. Something that is not a
 dollar amount is refused in the row's own words and the step stays.
 
 What it writes: `daily_budget_usd` in your profile's `config.json`, through the same

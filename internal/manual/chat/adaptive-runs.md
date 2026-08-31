@@ -90,7 +90,7 @@ job that leaves the conversation, a **task**.
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
 calls too.
 
-The default tank is **$10.00** when nobody named a figure. **You cannot name one from a
+The default tank is **$100.00** when nobody named a figure. **You cannot name one from a
 conversation**, because a conversation cannot start a run at all — a run's cap is settled by
 whatever started it.
 
@@ -103,7 +103,7 @@ with `↑`/`↓` (the bold row is the one enter takes), press enter, or click a 
 does not answer it, it steers the planner:
 
 ```
-? out of fuel · $10.04 of $10.00
+? out of fuel · $100.40 of $100.00
 ▌ add $5
   finish with what we have
   stop
@@ -111,7 +111,7 @@ does not answer it, it steers the planner:
 ```
 
 The top-up offer is **half the tank you already approved**, in whole dollars and never
-less than one — a $10 run is offered $5 more, a $2 run $1 — so a big run is not begged a
+less than one — a $100 run is offered $50 more, a $2 run $1 — so a big run is not begged a
 dollar at a time. Taking it raises the cap by that amount and the run carries on. `finish
 with what we have` skips to the write-up over the results that exist. `stop` settles the
 run and keeps what finished. Each answers with a line saying what it did: `topped up; the
@@ -122,7 +122,7 @@ wait at the gate.
 
 **And the whole session says so, to every other window.** While a run sits at its gate the
 conversation reads `waiting on you` — on home, and on every other aforge open on the
-machine — with `out of fuel · $10.00 of $10.00` beside it, the same line the run's own page
+machine — with `out of fuel · $100.00 of $100.00` beside it, the same line the run's own page
 shows. It is the same word an approval question or a task proposal puts there, and it
 sorts to the top of its project for the same reason: nothing is going to happen until you
 answer. Answer the gate and the word goes away.
@@ -152,7 +152,7 @@ heading gathers the planner's narration in one place, each note wrapped whole un
 `· ` bullet — it is the planner's own sentence about what it just decided, and half of
 one says nothing. Your own steers and gate answers follow (`you steered · …`), then the
 `answer` section once there is one. The fuel gauge stays pinned in the header
-(`$0.87 / $10.00`) and is never dropped at any width. The page re-reads the run four
+(`$0.87 / $100.00`) and is never dropped at any width. The page re-reads the run four
 times a second. `esc` leaves; the conversation is untouched.
 
 **Type a sentence with the page open and it goes to the planner**, which sees it on its next

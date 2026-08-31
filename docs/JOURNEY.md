@@ -58,7 +58,7 @@ noted. This catalog is the contract the UX tests verify.
 | 6 | Answer its questions | type the number, arrows+enter, or click | Answer submits, appears as the user's message instantly, receipt lands in thread |
 | 7 | Teach a lesson | "always verify against live data before claiming done" | Lesson lands in the notebook (stated fact); future jobs see it |
 | 8 | Stand up a rule | "whenever X happens, do Y" / "remind me…" | Charter drafted, priced (per-firing and worst-day), ratified with one answer; pause/retire/stand-down equally sayable |
-| 9 | Approve spend | a >$3 plan | Price shown before purchase; consent asked; refusal honored |
+| 9 | Approve spend | a plan over the consent gate (`plan_consent_usd`, [LIMITS.md](LIMITS.md)) | Price shown before purchase; consent asked; refusal honored |
 | 10 | Ask about money | "what did that cost?" / header glance | Per-job and windowed spend readable in thread; costs in header |
 | 11 | Ask what it learned | "what did you learn this week?" | Read over the notebook/self — lessons, beliefs, retractions |
 | 12 | Leave and return | close terminal, come back later | Same thread resumes; a brief covers what landed while away; overnight deliverables were announced to whoever was home |

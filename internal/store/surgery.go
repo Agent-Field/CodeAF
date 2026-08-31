@@ -18,7 +18,14 @@ const (
 	// explicit consent. It lives here rather than with the conversational head
 	// because the same loss threshold now guards a second path: revision that
 	// would throw away a leaf already running.
-	SurgerySpendGateUSD = 0.25
+	//
+	// IT IS A LOSS GATE AND NOT A SPEND RAIL — it asks before work is thrown
+	// away, never before work is bought — so raising it makes aforge ask LESS.
+	// A quarter of a dollar was under the price of a single turn, which made
+	// every cancellation a confirmation, and a confirmation that always appears
+	// is one nobody reads. Five dollars is where the work being discarded is
+	// worth a person's second thought.
+	SurgerySpendGateUSD = 5.00
 	// SurgeryRuntimeGate is live runtime above which cancellation needs consent.
 	SurgeryRuntimeGate = 5 * time.Minute
 	// SurgeryCascadeGateNodes gates every operation that affects a larger tree.
