@@ -558,6 +558,7 @@ func (d *presenceDesk) beat() {
 			d.write()
 		case <-ticker.C:
 			d.agent.drainAnswers()
+			d.agent.drainTakeover()
 			d.write()
 		}
 	}

@@ -583,8 +583,8 @@ session open elsewhere — started a new one
 In a `--once` run the same notice goes to stderr as `<notice>: <new session file>`.
 
 **There is one place this fallback deliberately does not apply: picking one by name.** If
-you pick a conversation another window is holding open — from the resume picker, the welcome
-box, or home — it is reported rather than worked around, because *"a person who picked a
+you pick a conversation another window is holding open — from the resume picker or the
+welcome box — it is reported rather than worked around, because *"a person who picked a
 conversation by name means that one"*. Nothing is opened, and the conversation you are in is
 left exactly as it was. The sentence is:
 
@@ -595,9 +595,10 @@ open in another window — go there, or start a new conversation here
 **No file path is printed.** The path is aforge's bookkeeping and not something you can act
 on; what you can act on is in the sentence.
 
-On **home**, that line appears in the screen's own foot and home stays open, so you can pick
-a different row straight away — and home marks such a row `another window` in the list
-*before* you press anything. See the home page.
+**Home does something better: it MOVES it.** `enter` on a row marked `another window` offers
+to move that conversation into this terminal, and a second `enter` asks for it — the other
+window finishes its reply, lets go, and the row opens here with its tasks and its unsent
+sentence. See *Continue a conversation from another terminal* on the home page.
 
 A conversation you pick that is NOT held opens normally. And the one time this can still
 surprise you is a lock taken in the instant between the screen being drawn and your

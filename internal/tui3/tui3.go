@@ -654,6 +654,25 @@ type Options struct {
 	// just asked for by name is the door second-guessing them.
 	Landing bool
 
+	// TakeOver is a conversation this launch could not open because another
+	// window is holding its journal, and it is a TRANSCRIPT PATH.
+	//
+	// THE LAUNCH THAT MEETS A LOCK OPENS HOME RATHER THAN A NEW CONVERSATION.
+	// `aforge chat` in a folder whose conversation is open in another terminal
+	// used to start a second one without a word, which is the fault this field
+	// ends: the surface comes up on home with that row pointed and ARMED, the
+	// foot line saying what one more enter will do, so continuing the
+	// conversation that is already running costs a single keystroke.
+	//
+	// The surface still opens on the conversation the door DID build — a fresh
+	// one in the same workspace — so esc out of home is an ordinary launch and
+	// nothing is lost by ignoring the offer.
+	//
+	// Empty is every other launch. It is ignored over --host, where a window on
+	// another machine cannot ask this one's holder for anything, and on a row
+	// this window turns out to be holding itself.
+	TakeOver string
+
 	// Setup says this launch may open the first-run setup — the three-step
 	// screen that asks for a key, a crew and a daily ceiling (firstrun.go) —
 	// if the profile is missing any of the three and has never been shown it.
