@@ -433,6 +433,13 @@ no penalty box has one, and it is permanent.
 
 ## Go simulator (shipped code)
 
+> **THE NUMBERS IN THIS SECTION ARE THE FIRST RUN, AND THE BUILD IT MEASURED IS
+> GONE.** That run found three mechanisms that were not running at all, two of
+> which were fixed the same day; the arms below therefore price a hedge no
+> shipped build could fire and a quality gate that could never refuse anybody.
+> The section is kept because the failures are the point. **The run the ship
+> decision is taken on is at the end of this file — "The run after the fixes".**
+
 *Run 2026-08-31 from the repository root, against the same sheet fixture:*
 
 ```sh
@@ -854,3 +861,67 @@ default and fails `offpath` on all eight, for the reason item 1 names, so item 1
 is no longer a caution about a coin flip — it is the fix the shipped router is
 waiting on. `live.sh` is worth its money only after both simulators agree. It
 has never been run.
+
+---
+
+## The run after the fixes
+
+*Same command, same sheet, same eight seeds, same 2000 requests a cell —
+**52m58s** wall — against the build with `lane.Chooses()` gone and quality
+forgetting moved to `QualityHalfLife`. This is the table the ship decision is
+taken on; `gosim/result.json` is this run.*
+
+| scenario | policy | TTFT p50/p90/p99 (ms) | wait p50/p90 (s) | $/1k | hedges/100 | modal lane |
+|---|---|---|---|---:|---:|---|
+| talk | default | 1575 / 4777 / 50980 | 2.18 / 49.44 | 0.558 | 0.0 | DigitalOcean 20% |
+| talk | belief | 866 / 1729 / 12016 | 0.87 / 1.78 | 0.538 | 0.0 | DeepInfra 57% |
+| talk | belief+hedge | 870 / 1740 / 13692 | 0.87 / 1.79 | 0.595 | 9.2 | DeepInfra 54% |
+| work | default | 1343 / 4096 / 345424 | 81.18 / 428.47 | 0.852 | 0.0 | DigitalOcean 40% |
+| work | belief | 2163 / 4913 / 38920 | 38.80 / 68.16 | 1.160 | 0.0 | NextBit 89% |
+| work | belief+hedge | 1719 / 4728 / 43347 | 43.22 / 73.61 | 1.235 | 9.7 | NextBit 54% |
+| offpath | default | 1520 / 4133 / 337972 | 79.15 / 423.40 | 0.853 | 0.0 | DigitalOcean 38% |
+| offpath | belief | 1739 / 4126 / 403828 | 274.11 / 491.69 | 0.659 | 0.0 | DigitalOcean 65% |
+| offpath | belief+hedge | 1685 / 4135 / 402371 | 268.55 / 488.17 | 0.682 | 2.4 | DigitalOcean 63% |
+
+### The gate
+
+| scenario | policy | speed metric | improve | extra $/req | budget $/req | verdict | seeds |
+|---|---|---|---:|---:|---:|---|---|
+| talk | belief | p90 first token | **+63.8%** | −0.000020 | 0.129737 | **PASS** | 8/8 |
+| talk | belief+hedge | p90 first token | **+63.6%** | +0.000037 | 0.130649 | **PASS** | 8/8 |
+| work | belief | p90 wait | **+84.1%** | +0.000308 | 1.574756 | **PASS** | 8/8 |
+| work | belief+hedge | p90 wait | **+82.8%** | +0.000383 | 1.532983 | **PASS** | 8/8 |
+| offpath | belief | p90 wait | −16.1% | −0.000193 | 0.000000 | **FAIL (p90)** | 0/8 |
+| offpath | belief+hedge | p90 wait | −15.3% | −0.000171 | 0.000000 | **FAIL (p90)** | 0/8 |
+
+**Two of three scenarios pass on every seed, and `talk` now passes while
+spending LESS than doing nothing** (−$0.000020 a request): the belief arm is
+both quicker and cheaper, which the first run could not show because the
+capability gate was letting the wrong lanes through and the quality gate could
+not take any of them back out.
+
+### What moved, and what did not
+
+**The hedge now runs.** `belief+hedge` fires 9.2 hedges per hundred `talk`
+requests and 9.7 per hundred on `work`, where before the fix `lane.Chooses()`
+refused every race in a build nobody had pinned a stub chooser into. It buys
+almost nothing here — `talk` p90 first token 1740 ms against 1729 ms without it,
+`work` p90 wait 73.61 s against 68.16 s — and on `work` it is structurally a
+loss, because the race is settled on the first token while nine tenths of the
+wait is generation. **The hedge passes the gate on the strength of the belief
+arm underneath it, not on its own account**, and the honest reading is that it
+should stay off for tool loops until it can be decided on a rate rather than on
+a first token.
+
+**The quality gate now fires, and `offpath` still fails.** DigitalOcean's share
+of `offpath` fell from 97% to 65% and the p90 penalty from −27.5% to −16.1%, so
+the fix did what it was for. The remaining failure is not a bug in the router
+and no build can pass it: at λ = 0 the gate demands a 30% speed improvement from
+a router that has been told a second is worth nothing, and what it does instead
+is exactly what it was told — 23% off the bill for 3.5× the wait. Two things
+follow, and both are for the next wave rather than this one. The gate's speed
+clause has to become a GUARD at λ = 0 rather than a demand. And **the shipped
+non-interactive path should stop sending λ = 0**: `internal/session/loop.go`
+calls `lane.Lambda(false, false, 0, 0, 0)`, so with slack, expected and deadline
+all zero, every background request declares that nobody is waiting — and this
+table prices that declaration.
