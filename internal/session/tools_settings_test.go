@@ -155,8 +155,8 @@ func TestSettingsSearchNarrowsToTheRowsThatMentionIt(t *testing.T) {
 	if !strings.Contains(text, config.KeyTimestamps) {
 		t.Errorf("a search for timestamps did not find the row:\n%s", text)
 	}
-	if strings.Contains(text, config.KeyNerdFont) {
-		t.Errorf("a search for timestamps returned the nerd font row too:\n%s", text)
+	if strings.Contains(text, config.KeyDraftPersist) {
+		t.Errorf("a search for timestamps returned the draft-persist row too:\n%s", text)
 	}
 	// A search that matches nothing is an honest empty answer and not a fault —
 	// the manual tool's own posture for the same question — but it must say so
@@ -305,14 +305,14 @@ func TestChangeSettingRefusesABadValueInTheRegistrysOwnWords(t *testing.T) {
 
 // The environment still outranks everybody, this tool included.
 func TestChangeSettingHonorsAnEnvironmentPin(t *testing.T) {
-	t.Setenv("AFORGE_NERD_FONT", "0")
+	t.Setenv("AFORGE_DRAFT_PERSIST", "0")
 	agent, profile := settingsAgent(t)
 	_, write := settingsHands(t, agent)
-	text, isError := callSetting(t, write, map[string]string{"key": config.KeyNerdFont, "value": "on"})
+	text, isError := callSetting(t, write, map[string]string{"key": config.KeyDraftPersist, "value": "on"})
 	if !isError {
 		t.Fatalf("a pinned row was written: %s", text)
 	}
-	if !strings.Contains(text, "AFORGE_NERD_FONT") {
+	if !strings.Contains(text, "AFORGE_DRAFT_PERSIST") {
 		t.Errorf("the refusal does not name the variable holding the row: %q", text)
 	}
 	if values := profileJSON(t, profile); len(values) != 0 {

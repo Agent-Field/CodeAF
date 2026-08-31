@@ -125,8 +125,6 @@ var settingReaders = map[string]string{
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
-	KeyLinearMode:     "LinearModeAt",
-	KeyRailState:      "RailStateAt",
 	// The v3 task column names its own accessor, which the surface reads at boot
 	// and writes back through SaveTaskColumn every time ctrl+g moves the column
 	// (internal/tui3's task.go).
@@ -134,7 +132,6 @@ var settingReaders = map[string]string{
 	// The hints row names its accessor too: the surface reads it at boot and at
 	// every turn end, beside the mouse row (internal/tui3's notice.go).
 	KeyHints:    "HintsAt",
-	KeyNerdFont: "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls

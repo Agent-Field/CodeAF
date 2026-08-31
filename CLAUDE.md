@@ -9,7 +9,7 @@ before you read.
 | --- | --- |
 | `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
 | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
-| `internal/tui2` | the older v2 surface. Not the live one. |
+| `internal/tui2` | REMOVED as a surface on 2026-08-31. What remains (`tokens`, `blocks`, `prose`, `modelui`, `reltime`) is the shared component library v3 draws with. |
 | `internal/tui` | v1, and the visual north star: restrained, dim telemetry, no borders. |
 | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
 
@@ -202,9 +202,7 @@ Several Claude sessions often work this repo at once, in the same working tree.
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
 `TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `internal/swepro`
-packages, four `cmd/harness-design` tests, `internal/config
-TestRegistryCoversEveryUserFacingEnvironmentPin`
-(`AFORGE_RELAY` in `internal/pair/service.go` is not in the registry), two `internal/guard`
+packages, four `cmd/harness-design` tests, two `internal/guard`
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
 `internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
 `internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,

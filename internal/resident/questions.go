@@ -237,15 +237,9 @@ func (r *Reconciler) rehomeOrphanedBlockingLocked() error {
 			continue
 		}
 		original := strings.TrimSpace(question.SessionID)
-		// The live surface adopts an orphan; under owner-pinned rooms the task's
-		// own thread does, because a blocking question is part of its task's
-		// record and the room somebody happens to be sitting in is not. A
-		// question already home is left exactly where it is, which is what stops
-		// the pinned policy from moving anything at all in the ordinary case.
+		// The live surface adopts an orphan. A question already home is left
+		// exactly where it is.
 		destination := live
-		if home, pinned := r.pinnedQuestionRoom(question); pinned {
-			destination = home
-		}
 		if original == "" || original == destination {
 			continue
 		}
@@ -266,35 +260,6 @@ func (r *Reconciler) rehomeOrphanedBlockingLocked() error {
 		}
 	}
 	return nil
-}
-
-// pinnedQuestionRoom names the thread that commissioned a question, and answers
-// only under the owner-pinned policy. The second return is whether an owner was
-// found at all: a question with no node behind it — the compiler's "which
-// airport?", asked before any work exists — belongs to no task, so there is
-// nothing to pin it to and the legacy rescue stays the only thing that can make
-// it answerable again.
-//
-// The node read is a lookup by primary key, taken on the question-rescue sweep
-// for each unresolved blocking question that names a node — never on a delivery
-// or a per-node path, both of which already hold the node they are announcing.
-func (r *Reconciler) pinnedQuestionRoom(question store.AgentQuestion) (string, bool) {
-	if r.roomPolicy() != roomsOwnerPinned || r == nil || r.store == nil {
-		return "", false
-	}
-	nodeID := strings.TrimSpace(question.OriginNodeID)
-	if nodeID == "" {
-		return "", false
-	}
-	node, found, err := r.store.Node(nodeID)
-	if err != nil || !found {
-		return "", false
-	}
-	home := r.effectiveSessionID(node)
-	if home == "" {
-		return "", false
-	}
-	return home, true
 }
 
 func (r *Reconciler) expireQuestionsLocked() error {

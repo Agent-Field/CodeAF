@@ -423,54 +423,6 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	}
 }
 
-// Linear mode is off until someone says otherwise — the opposite default from
-// attribution, so the pin and the persisted file are both exercised in the
-// direction that actually turns something on.
-func TestLinearModeDefaultsOffPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("AFORGE_CHAT_LINEAR", "")
-	rows := registry(t, dir)
-	row, ok := rows.Row(KeyLinearMode)
-	if !ok {
-		t.Fatal("linear mode is not registered")
-	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "linear mode" {
-		t.Fatalf("linear mode row = %+v", row)
-	}
-	if row.Value() != "off" || LinearModeAt(dir) {
-		t.Fatalf("linear mode does not default off: %q", row.Value())
-	}
-	if err := row.Apply("on"); err != nil {
-		t.Fatal(err)
-	}
-	if !LinearModeAt(dir) {
-		t.Fatal("on did not persist")
-	}
-	reread, _ := registry(t, dir).Row(KeyLinearMode)
-	if reread.Value() != "on" {
-		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
-	}
-
-	t.Setenv("AFORGE_CHAT_LINEAR", "off")
-	if LinearModeAt(dir) {
-		t.Fatal("the environment lost to the persisted file")
-	}
-	pinned, _ := registry(t, dir).Row(KeyLinearMode)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "AFORGE_CHAT_LINEAR" {
-		t.Fatalf("linear mode did not report its pin: %q", name)
-	}
-	if err := pinned.Apply("on"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned linear mode accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over a rendering preference.
-	t.Setenv("AFORGE_CHAT_LINEAR", "sure")
-	if LinearModeAt(dir) {
-		t.Fatal("a malformed pin did not fall back to the default")
-	}
-}
 
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
@@ -517,96 +469,29 @@ func TestTheDividerRowIsAbsentWithoutSomewhereToSaveIt(t *testing.T) {
 	}
 
 	// With the seam it is back, and it is back WHERE IT WAS: at the head of the
-	// interface group, ahead of the nerd-font row it has always sat above.
+	// interface group, ahead of the task-column row it has always sat above.
 	full := NewSettings(SettingsOptions{
 		ProfileDir:   t.TempDir(),
 		SplitPct:     func() int { return 60 },
 		SaveSplitPct: func(int) {},
 	})
-	divider, nerd := -1, -1
+	divider, taskcol := -1, -1
 	for index, row := range full.Rows() {
 		switch row.Key {
 		case KeySplitPct:
 			divider = index
-		case KeyNerdFont:
-			nerd = index
+		case KeyTaskColumn:
+			taskcol = index
 		}
 	}
 	if divider < 0 {
 		t.Fatal("a surface that CAN save the divider was not given the row")
 	}
-	if divider > nerd {
-		t.Fatalf("the divider moved: it is row %d and nerd font is row %d", divider, nerd)
+	if divider > taskcol {
+		t.Fatalf("the divider moved: it is row %d and the task column is row %d", divider, taskcol)
 	}
 }
 
-// The nerd-font tier is ON until someone says otherwise, which is the opposite
-// default from linear mode — so this exercises the pin and the persisted file
-// in the direction that actually turns something OFF, and proves the row that
-// carries the opt-out really carries it (12.7 E.3, F.11).
-func TestNerdFontDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("AFORGE_NERD_FONT", "")
-	rows := registry(t, dir)
-	row, ok := rows.Row(KeyNerdFont)
-	if !ok {
-		t.Fatal("the nerd font row is not registered")
-	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "nerd font" {
-		t.Fatalf("nerd font row = %+v", row)
-	}
-	if row.Value() != "on" || !NerdFontAt(dir) {
-		t.Fatalf("the tier does not default on: %q", row.Value())
-	}
-	if err := row.Apply("off"); err != nil {
-		t.Fatal(err)
-	}
-	if NerdFontAt(dir) {
-		t.Fatal("off did not persist")
-	}
-	reread, _ := registry(t, dir).Row(KeyNerdFont)
-	if reread.Value() != "off" {
-		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
-	}
-
-	t.Setenv("AFORGE_NERD_FONT", "on")
-	if !NerdFontAt(dir) {
-		t.Fatal("the environment lost to the persisted file")
-	}
-	pinned, _ := registry(t, dir).Row(KeyNerdFont)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "AFORGE_NERD_FONT" {
-		t.Fatalf("the nerd font row did not report its pin: %q", name)
-	}
-	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned row accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over which characters get drawn.
-	t.Setenv("AFORGE_NERD_FONT", "sure")
-	if !NerdFontAt(dir) {
-		t.Fatal("a malformed pin did not fall back to the default")
-	}
-
-	// And the second answer the launcher needs: WHO chose. A value nobody can
-	// parse is not a choice, which is what lets the terminal veto run only
-	// where no human has spoken (12.7 E.1).
-	if _, source := NerdFontChosenAt(dir); source != NerdFontSourceNone {
-		t.Errorf("an unparseable pin was reported as a choice by %q", source)
-	}
-	t.Setenv("AFORGE_NERD_FONT", "off")
-	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourceEnv {
-		t.Errorf("the pin did not name itself: %v, %q", value, source)
-	}
-	t.Setenv("AFORGE_NERD_FONT", "")
-	if value, source := NerdFontChosenAt(dir); value || source != NerdFontSourcePersisted {
-		t.Errorf("the persisted row did not name itself: %v, %q", value, source)
-	}
-	if _, source := NerdFontChosenAt(t.TempDir()); source != NerdFontSourceNone {
-		t.Errorf("an untouched profile reported a chooser: %q", source)
-	}
-}
 
 // ── the web-search rows ─────────────────────────────────────────────────────
 

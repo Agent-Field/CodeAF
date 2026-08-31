@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -276,7 +275,6 @@ type Reconciler struct {
 	// rooms is the addressing policy, resolved once at construction. Every
 	// decision about *which conversation* a piece of news is spoken into reads
 	// this one value; nothing below reads the environment again.
-	rooms           roomPolicy
 	practiceEnabled bool
 	practiceBudget  float64
 	practiceIdle    time.Duration
@@ -434,7 +432,7 @@ func New(graph *store.Store, compile CompileFunc, plan PlanFunc) *Reconciler {
 		}
 	}
 	return &Reconciler{store: graph, compile: compile, plan: plan, now: time.Now,
-		rooms: resolveRoomPolicy(), services: NewServiceSupervisor(graph)}
+		services: NewServiceSupervisor(graph)}
 }
 
 func (r *Reconciler) WithServiceRuntime(runtime ServiceRuntime) *Reconciler {
@@ -2327,52 +2325,6 @@ func (r *Reconciler) effectiveSessionID(node store.Node) string {
 // costs a miss rather than the reconciler.
 const maxSessionWalk = 32
 
-// roomPolicy is the resident's answer to one question — when the conversation a
-// piece of news was born in is not the conversation somebody is sitting in,
-// which one hears it? — and there are two right answers at once.
-//
-// The surface shipping today has one window and a session id that changes every
-// launch, so its news is re-addressed to whoever is attached; that re-homing is
-// the only reason an overnight job's answer is ever read (see
-// deliverySessionID). Rooms invert it: a room is a place, work belongs to the
-// place that commissioned it, and news that wanders between rooms is news filed
-// under somebody else's task. The old surface keeps working while the new one
-// grows beside it, so the choice is made once, at construction, and read
-// wherever an address is decided — never re-derived from the environment.
-type roomPolicy int
-
-const (
-	// roomsLegacy re-homes to the attached session. It is the zero value on
-	// purpose: a Reconciler built any other way than New — tests, embeddings —
-	// gets the behavior every shipped surface already has.
-	roomsLegacy roomPolicy = iota
-	// roomsOwnerPinned addresses the thread that commissioned the work, read
-	// from the node's own provenance. Selected by the v2 chat surface.
-	roomsOwnerPinned
-)
-
-// chatV2Env selects the v2 chat surface. The room policy rides it rather than
-// carrying a flag of its own, because a half-pinned surface — v2 rooms with
-// legacy re-homing, or the reverse — is not a configuration anyone wants.
-const chatV2Env = "AFORGE_CHAT_V2"
-
-func resolveRoomPolicy() roomPolicy {
-	if strings.TrimSpace(os.Getenv(chatV2Env)) == "1" {
-		return roomsOwnerPinned
-	}
-	return roomsLegacy
-}
-
-// roomPolicy reads the resolved policy. Nil-safe because the addressing paths
-// must degrade to the legacy route rather than fault: an announcement that
-// panics loses the deliverable it was carrying.
-func (r *Reconciler) roomPolicy() roomPolicy {
-	if r == nil {
-		return roomsLegacy
-	}
-	return r.rooms
-}
-
 // deliverySessionID names the room a deliverable is actually spoken into.
 //
 // The originating session is the right address only while somebody is still in
@@ -2390,14 +2342,6 @@ func (r *Reconciler) roomPolicy() roomPolicy {
 // and leave everything exactly where it was when it has.
 func (r *Reconciler) deliverySessionID(origin string) string {
 	origin = strings.TrimSpace(origin)
-	// Under rooms the reasoning above stops holding: the room that commissioned
-	// the work is a place the user can walk back into, so its answer waits there
-	// instead of following them. A node that names no room of its own is the one
-	// case with nothing to pin to, and it keeps the legacy address — the choice
-	// is between the wrong room and no room, and no room is silence.
-	if r.roomPolicy() == roomsOwnerPinned && origin != "" {
-		return origin
-	}
 	seen, found, err := r.store.LastSeen()
 	if err != nil || !found || seen.State != store.SeenAttached {
 		return origin
@@ -2409,16 +2353,12 @@ func (r *Reconciler) deliverySessionID(origin string) string {
 	return live
 }
 
-// announceRoom names the room a node's news is spoken into, and it is the one
-// place the two policies disagree about a node with no conversation behind it.
-// Legacy says nothing for it: it has no originating room, and re-homing is
-// defined as a move *from* one. Owner-pinned cannot afford that silence — it
-// pins on provenance, so a splice that carried none would be exactly the node
-// whose deliverable disappeared. It falls back to the legacy address instead,
-// which is the attached room if anyone is home and nowhere if nobody is.
+// announceRoom names the room a node's news is spoken into. A node with no
+// conversation behind it gets silence: it has no originating room, and
+// re-homing is defined as a move *from* one.
 func (r *Reconciler) announceRoom(node store.Node) string {
 	origin := r.effectiveSessionID(node)
-	if origin == "" && r.roomPolicy() != roomsOwnerPinned {
+	if origin == "" {
 		return ""
 	}
 	return r.deliverySessionID(origin)
