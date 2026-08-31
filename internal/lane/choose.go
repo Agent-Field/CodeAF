@@ -97,39 +97,45 @@ const (
 	hedgeFloor   = 700 * time.Millisecond
 	hedgeCeiling = 8 * time.Second
 
-	// medianObservations is how many requests a published percentile row stands
+	// sheetObservations is how many requests a published percentile row stands
 	// for WHEN THE QUESTION IS HOW SURE OF THE LANE'S MEDIAN IT MAKES US.
 	//
 	// A belief's variance is two different quantities at two different moments,
-	// and this is the seam where the difference bites. Once this process has
-	// measured a lane itself, P is the variance of the MEDIAN: it shrinks like
-	// one over the number of sightings, and a draw from it is a draw of "which
-	// lane is quicker", which is exactly the question Thompson sampling exists
-	// to ask. BEFORE THAT, P IS WHATEVER THE SHEET'S SPREAD WAS — and the
-	// sheet's spread is the lane's per-request VARIABILITY, the distance between
-	// its p50 and its p90 over everybody's prompts. Drawing from that is drawing
-	// one imagined request, not one opinion about a lane, and a router that
-	// reorders lanes on an imagined request pays real money for a coin toss it
-	// can learn nothing from: the sheet has already told it both medians. The
-	// same file says so twice over — [predictive] floors this variance back UP
-	// for the hedge, precisely because there it wants the per-request question
-	// and P by then no longer answers it.
+	// and this is the seam where the difference bites.
+	//
+	// BEFORE THIS PROCESS HAS MEASURED A LANE, P is whatever the sheet's spread
+	// was — and the sheet's spread is the lane's per-request VARIABILITY, the
+	// distance between its p50 and its p90 over everybody's prompts. A draw from
+	// it is a draw of one imagined request, not of one opinion about a lane, and
+	// reordering lanes on an imagined request is paying real money for a coin
+	// toss nothing can be learned from: the sheet has already published both
+	// medians. So a belief that is still purely the sheet's is drawn narrow.
+	//
+	// AFTER IT HAS, P is the variance of the MEDIAN — it shrank with each
+	// sighting and widens again with [Posterior.Predict] as the last one ages —
+	// and a draw from THAT is exactly the question Thompson sampling exists to
+	// ask. So a measured belief is drawn at its own full width, which is what
+	// lets a lane this process gave up on earn its way back once its spread has
+	// grown (`ideation/provider-routing.md` §5: there is no penalty box). The
+	// same file says the same thing from the other side — [predictive] floors
+	// this variance back UP for the hedge, because there the per-request
+	// question is the right one and P has stopped answering it.
+	//
+	// [Belief.At] is what separates the two cases: it is zero for a lane only
+	// the sheet has ever spoken about. It is a blunt line — a lane with one
+	// sighting is still mostly the sheet's — and it is drawn where it is because
+	// it is the one fact that is certainly true on either side of it.
 	//
 	// Sixteen is stated rather than derived, because nothing the router
 	// publishes says how many requests are behind a percentile; it is the
 	// design's own discount for a public number ([SheetWeight] = 4) squared,
-	// which is what turns a weight in the filter's units into a count. What it
-	// buys is the property that matters: a lane the sheet has described is
-	// explored over about a quarter of its spread instead of the whole of it,
-	// and a lane this process has measured is explored on its own real
-	// uncertainty — which [Posterior.Predict] then widens again as it ages, so
-	// nothing is pinned forever.
+	// which is what turns a weight in the filter's units into a count.
 	//
 	// It was found by the case in `ideation/provider-routing.md`, Part III: with
 	// two thousand hidden tokens and somebody waiting, Baidu is both quicker and
 	// four times cheaper than Cloudflare, and the chooser sent a quarter of
 	// those requests to Cloudflare anyway.
-	medianObservations = SheetWeight * SheetWeight
+	sheetObservations = SheetWeight * SheetWeight
 
 	// predictiveSpreadFloor is the smallest spread the hedge arithmetic will use
 	// for a first-token belief, in the log domain.
@@ -288,7 +294,17 @@ func (c *chooser) beliefs(model string) []Belief {
 // why in one sentence.
 func (c *chooser) Choose(req Request) Choice {
 	beliefs := c.beliefs(req.Model)
-	if len(beliefs) == 0 {
+	// AN ORDER OF ONE IS NOT A RANKING, and a ledger that has heard of a single
+	// lane has nothing to rank. This is the same refusal as the empty one below
+	// it and it is worth stating separately, because the case is not
+	// hypothetical: on a machine with no sheet the only lanes this package has
+	// ever heard of are the ones that have already served, so the first thing it
+	// learns about a model is the name of ONE endpoint — quite possibly the slow
+	// one it is about to be demoted for. Sending that name as `provider.order`
+	// is not a preference among lanes; it is a preference for the only machine
+	// we happen to know exists, put in front of a router that knows a dozen, and
+	// it silently overrode a strike ledger that had correctly demoted it.
+	if len(beliefs) < 2 {
 		return Choice{}
 	}
 	aged := make(map[ID]Belief, len(beliefs))
@@ -336,8 +352,11 @@ func (c *chooser) Choose(req Request) Choice {
 	perceived := make(map[ID]float64, len(survivors))
 	for _, candidate := range survivors {
 		belief := aged[candidate.ID]
-		ttft := sample(belief.TTFT, draws, width)
-		rate := sample(belief.Rate, draws, width)
+		// A belief this process has measured is drawn at its own width; one that
+		// is still only the sheet's is drawn narrow. See [sheetObservations].
+		measured := !belief.At.IsZero()
+		ttft := sample(belief.TTFT, draws, width, measured)
+		rate := sample(belief.Rate, draws, width, measured)
 		if ttft <= 0 {
 			ttft = candidate.TTFT
 		}
@@ -466,16 +485,20 @@ func ignoredOf(scored []Scored, aged map[ID]Belief, order []string, lambda float
 // inventing a number here.
 //
 // THE DRAW IS OF THE LANE AND NEVER OF ONE OF ITS REQUESTS; see
-// [medianObservations] for why those are different and for the run that found
-// the difference. The tail is priced elsewhere and on purpose: the frontier
-// prunes at the p75 ([quartileZ]) and the hedge deadline is computed from the
-// full predictive spread ([predictive]), so nothing is lost here by asking a
-// narrower question.
-func sample(posterior Posterior, draws *rand.Rand, width float64) float64 {
+// [sheetObservations] for why those are different, for what `measured` selects
+// between, and for the run that found the difference. The tail is priced
+// elsewhere and on purpose: the frontier prunes at the p75 ([quartileZ]) and
+// the hedge deadline is computed from the full predictive spread
+// ([predictive]), so nothing is lost here by asking a narrower question.
+func sample(posterior Posterior, draws *rand.Rand, width float64, measured bool) float64 {
 	if !posterior.Known() {
 		return 0
 	}
-	spread := math.Sqrt(posterior.P/medianObservations) * width
+	variance := posterior.P
+	if !measured {
+		variance /= sheetObservations
+	}
+	spread := math.Sqrt(variance) * width
 	return math.Exp(posterior.X + spread*draws.NormFloat64())
 }
 

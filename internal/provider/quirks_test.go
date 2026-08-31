@@ -35,6 +35,7 @@ func strictHandler(recorded *capture) http.Handler {
 
 func newStrictClient(t *testing.T, model string) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	client, err := NewClient(Config{
 		APIKey: "test-key", BaseURL: "http://provider.test", Model: model,

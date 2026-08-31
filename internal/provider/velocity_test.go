@@ -383,6 +383,7 @@ func TestVelocityKeysOnTheModelNotItsSpelling(t *testing.T) {
 // ledger so one test's measurements cannot reach another's.
 func routedClient(t *testing.T, strategy RoutingStrategy, handler http.Handler) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	client, err := NewClient(Config{
 		APIKey:  "test-key",
@@ -583,6 +584,7 @@ func TestRoutingOffNotesNothingForACut(t *testing.T) {
 // preferences rebuilt after the cut without involving the turn loop's retry.
 func cutThenAnswerClient(t *testing.T, strategy RoutingStrategy, served string) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	t.Cleanup(shortenStallBounds(t, time.Second, 20*time.Millisecond))
 	recorded := &capture{}
 	var mu sync.Mutex

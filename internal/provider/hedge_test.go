@@ -260,6 +260,19 @@ func TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole(t *testing.T) 
 	if _, ok := rig.ledger.sightingFor("B"); !ok {
 		t.Fatalf("the rescuing lane taught the ledger nothing: %+v", rig.ledger.noted())
 	}
+	// EACH OF THEM EXACTLY ONCE. The loser is noted by the race, which is the
+	// only thing that can see it; the winner is noted by the ordinary path every
+	// finished stream takes. Both wrote it until the wave that merged them, and
+	// the symptom of that is invisible in any one assertion: a lane that had
+	// been raced was believed on twice the evidence it had earned.
+	waitFor(t, func() bool { return len(rig.ledger.noted()) == 2 })
+	seen := map[string]int{}
+	for _, sighting := range rig.ledger.noted() {
+		seen[sighting.ID.Lane]++
+	}
+	if seen["A"] != 1 || seen["B"] != 1 {
+		t.Fatalf("sightings per lane = %+v, want one each: %+v", seen, rig.ledger.noted())
+	}
 }
 
 func TestAnAlmostFinishedAnswerIsNeverAbandoned(t *testing.T) {
@@ -397,8 +410,20 @@ func TestWithNoLaneChoiceTheStreamIsExactlyWhatItAlwaysWas(t *testing.T) {
 	if tokens := answerTokens(response); tokens != 24 {
 		t.Fatalf("the answer is %d tokens, want A's 24", tokens)
 	}
-	if noted := rig.ledger.noted(); len(noted) != 0 {
-		t.Fatalf("an unwatched request wrote %d lane sightings", len(noted))
+	// IT STILL TAUGHT THE LEDGER, ONCE. A stream with no choice behind it is
+	// still a timed answer from a named lane, and folding it in is how a machine
+	// with no sheet ever learns anything (lanes.go's noteLane, on the ordinary
+	// path). What an unwatched request must not do is write a SECOND one: that
+	// was the seam where the watch's own bookkeeping and the transport's
+	// overlapped, and a lane noted twice for one answer is a lane whose belief
+	// moves twice as fast for having been looked at.
+	noted := rig.ledger.noted()
+	if len(noted) != 1 {
+		t.Fatalf("an unwatched request wrote %d lane sightings, want the one the ordinary path writes: %+v",
+			len(noted), noted)
+	}
+	if noted[0].ID.Lane != "A" {
+		t.Fatalf("the sighting was credited to %q, want the lane that served", noted[0].ID.Lane)
 	}
 	asks := rig.server.Asks()
 	if len(asks) != 1 {
@@ -516,4 +541,70 @@ func waitFor(t *testing.T, done func() bool) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatal("the thing being waited for never happened")
+}
+
+// ── THE WIRE AND THE WATCH SEE ONE CHOICE ───────────────────────────────────
+
+// countingChooser answers a fixed choice and says how often it was asked.
+type countingChooser struct {
+	mu     sync.Mutex
+	choice lanes.Choice
+	asked  int
+}
+
+func (c *countingChooser) Choose(lanes.Request) lanes.Choice {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.asked++
+	return c.choice
+}
+
+func (c *countingChooser) times() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.asked
+}
+
+// TestOneCallMakesOneChoiceAndBothHalvesUseIt is the seam between the two lanes
+// that built this: the encoder that writes `provider.order`, and the watch that
+// decides whether to hedge and where to.
+//
+// A CHOICE IS A SAMPLED DECISION, so asking for it twice gives two answers. The
+// two halves used to ask separately — the watch on the way in, the encoder on
+// the way out — and a watch armed on a lane the wire never asked for is a hedge
+// fired at the wrong moment toward the wrong alternative, with neither half
+// looking wrong on its own. So the call decides once and both halves read it,
+// and this test holds all three facts at the same time: asked once, on the
+// wire, and in force at the watch.
+func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
+	rig := newLaneRig(t, "choice/once",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
+			StallAfter: 30, StallFor: 200 * time.Millisecond,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 2, 250)
+	chooser := &countingChooser{choice: choiceFor(rig.model, 12*time.Millisecond)}
+	lanes.Default().SetChooser(chooser)
+
+	// NOTHING IS PUT ON THE CONTEXT HERE. Every other test in this file hands
+	// the transport a choice by hand; this one is about the transport making it.
+	report := &HedgeReport{}
+	if _, err := rig.client.CompleteWithMessages(WithHedgeReport(context.Background(), report), userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if got := chooser.times(); got != 1 {
+		t.Fatalf("the chooser was asked %d times for one call; a sampled decision asked twice is two decisions", got)
+	}
+	asks := rig.server.Asks()
+	if len(asks) == 0 || len(asks[0].Order) == 0 || asks[0].Order[0] != "A" {
+		t.Fatalf("the wire asked for %+v, want the chosen lane at the head", asks)
+	}
+	if !report.Hedged() {
+		t.Fatalf("the watch was never armed, so the choice reached the wire and not the watch")
+	}
+	if winner, loser := report.Lanes(); winner != "B" || loser != "A" {
+		t.Fatalf("winner %q, loser %q; the watch hedged somewhere the choice did not name", winner, loser)
+	}
 }

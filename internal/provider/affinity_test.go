@@ -71,6 +71,7 @@ func ok(body string) reply { return reply{status: http.StatusOK, body: body} }
 // below, where the ledger is wired back in deliberately.
 func pinningClient(t *testing.T, routing RoutingSource, prompt, completion float64, known bool, handler http.Handler) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	client, err := NewClient(Config{
 		APIKey:  "test-key",

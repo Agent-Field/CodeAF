@@ -196,7 +196,18 @@ func (l *ledger) Prime(row Row, k float64) {
 	if row.Known() {
 		ttft := fit(row.TTFTp50, row.TTFTp90)
 		rate := fit(row.Ratep50, row.Ratep90)
+		prior := l.priors[row.ID]
 		l.priors[row.ID] = spread{ttft: ttft.P, rate: rate.P}
+		// AGE FIRST, FOLD SECOND — the same order [Ledger.Note] keeps and for
+		// the same reason. A reading taken now weighed against the confidence a
+		// belief had ten minutes ago is a public number that cannot move a stale
+		// opinion, which is exactly the lane this process has stopped sending
+		// to. See [Row.At]; a row with no moment ages nothing, which is what
+		// every caller that primes from a fixture wants.
+		if !row.At.IsZero() && !belief.At.IsZero() {
+			belief.TTFT = age(belief.TTFT, row.At.Sub(belief.At), prior.ttft)
+			belief.Rate = age(belief.Rate, row.At.Sub(belief.At), prior.rate)
+		}
 		belief.TTFT = prime(belief.TTFT, ttft, k)
 		belief.Rate = prime(belief.Rate, rate, k)
 	}
@@ -357,16 +368,30 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	l.save()
 }
 
-// age widens a belief that has been sitting still, and stops at the prior.
+// age widens a belief that has been sitting still, and stops where the public
+// sheet stands.
 //
 // THE CLAMP IS THE WHOLE REASON THIS IS NOT [Posterior.Predict] CALLED DIRECTLY:
 // left to itself the variance doubles every half-life forever, and a belief
 // three days old would be less certain than the public sheet anybody can read.
 // Ageing may make a belief worthless. It may not make it worse than free.
+//
+// AND "FREE" IS THE SHEET'S OWN WEIGHT, WHICH IS [SheetWeight] TIMES ITS
+// SPREAD — not the spread itself. This is the correction, and it is one factor
+// of k that made a stated law untrue. The sheet enters the filter as a
+// pseudo-observation with R = k·σ² ([prime]), so a belief sitting at P = σ² is
+// FOUR TIMES MORE CERTAIN than the public reading, not equally certain. Clamped
+// there, a belief could never be outweighed by the sheet however old it got:
+// the gain on every refresh was pinned at σ²/(σ² + kσ²) = one fifth, so a lane
+// this process had stopped sending to crawled back toward the public number at
+// twenty per cent a beat — twenty-five minutes to return from a bad minute, in
+// a design whose whole claim is that there is no penalty box. At the honest
+// clamp a fully forgotten belief and a fresh sheet weigh the same, which is
+// what "worth about as much as anybody can look up" has to mean.
 func age(p Posterior, elapsed time.Duration, floor float64) Posterior {
 	p = p.Predict(elapsed, HalfLife)
-	if floor > 0 && p.P > floor {
-		p.P = floor
+	if ceiling := SheetWeight * floor; ceiling > 0 && p.P > ceiling {
+		p.P = ceiling
 	}
 	return p
 }
