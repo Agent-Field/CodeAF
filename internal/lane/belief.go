@@ -1,39 +1,415 @@
 package lane
 
+import (
+	"math"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
 // ── THE LEDGER: WHAT THIS PROCESS HAS MEASURED ──────────────────────────────
 //
-// One [Belief] per lane per model, each of them two Kalman filters and a Beta,
-// aged on read and folded on write. The sheet primes it, a finished stream
-// updates it, a probe updates it sharply, an unusable answer moves its quality,
-// and a file carries it between processes.
+// One [Belief] per lane per model — two scalar Kalman filters and a Beta — fed
+// by four kinds of evidence and by nothing else: a sheet row, a finished
+// stream, a probe, and an answer the caller could not use. The sheet primes it,
+// the stream corrects it, the probe corrects it sharply, and the file under
+// [StorePath] carries it to the next process.
 //
-// THIS FILE BELIEVES NOTHING YET. The empty ledger below accepts every
-// observation and remembers none of it, and answers every question with "no
-// belief" — which is exactly what a chooser must do something sensible with
-// anyway, on the first call of a fresh machine. Lane L-A replaces it.
+// ── THE UNITS, STATED ONCE ──────────────────────────────────────────────────
 //
-// The one thing the empty ledger must never do is invent a number. A ledger
-// that answered with a plausible-looking posterior would be a router steering
-// on a measurement nobody took, and the picker would draw it as fact.
+// TTFT IS BELIEVED IN MILLISECONDS AND RATE IN TOKENS PER SECOND, in the log
+// domain, which is what [Belief] and [Row] both already say and what the router
+// publishes. Nothing here converts, so no seam has to remember that it should.
+// The one place seconds appear is [PerceivedSeconds], whose caller divides by a
+// thousand at the point it is used and nowhere else.
+//
+// ── THE LEDGER HAS NO CLOCK ─────────────────────────────────────────────────
+//
+// Every moment it knows arrives on a [Sighting] or an [Outcome], and
+// [Ledger.Belief] answers with the belief AS IT WAS STORED — not aged to now,
+// because "now" is not something this type is entitled to an opinion about.
+// The caller has [Request.Now] and ages what it reads with
+// [Posterior.Predict], which is the same arithmetic whether the belief got old
+// in memory or old in a file: one implementation, asked at the one moment that
+// matters.
+//
+// [Belief.At] is therefore THE MOMENT OF THE LAST TIMED SIGHTING, and it is
+// zero for a lane only the sheet has ever spoken about. A zero At is "there is
+// nothing to age", never "aged since 1970", and a caller that ages a belief
+// must ask.
+//
+// ── WHY A SIGHTING WITH NO MOMENT IS DROPPED ────────────────────────────────
+//
+// A sighting whose At is zero cannot be placed in time, and folding it in would
+// stamp the belief with a moment that never happened — after which the next
+// real sighting would age it by fifty-six years and the filter's variance would
+// go to infinity. So it is refused, for the same reason an anonymous sighting
+// is: an observation this ledger cannot attribute is one it must not keep.
 
-// ledger is the empty ledger: it forgets everything, immediately and honestly.
-type ledger struct{}
+// HalfLife is how long a belief takes to lose half its information when nothing
+// new is heard about the lane. It is stated here because the ledger ages a
+// belief on the way in and the chooser ages it on the way out, and a half-life
+// that appeared in two places would be two different half-lives by Christmas.
+const HalfLife = 10 * time.Minute
 
-// newLedger builds the empty ledger. It is called from the registry and nowhere
+// SheetWeight is the k a caller passes to [Ledger.Prime]: the sheet's
+// pseudo-observation is worth a quarter of one of our own sightings, because it
+// is a half-hour aggregate over everybody's prompts from everywhere and ours is
+// about our prompt from here. Both are evidence; neither is truth.
+const SheetWeight = 4.0
+
+// ratedFloor is the shortest answer worth rating. Below it the generation
+// window is mostly the handshake and the first token's own arrival, so its
+// tokens-per-second is a measurement of a warm-up rather than of a lane.
+const ratedFloor = 32
+
+// defaultSpread is the σ of a log-normal used when the sheet's own percentiles
+// cannot give one — a p90 that is not above the p50, or no sheet at all. It is
+// about a 1.6× spread between the median and the ninetieth percentile, which is
+// narrower than a bad lane and wider than a good one, so a belief built on it
+// is honestly uncertain rather than confidently wrong either way.
+const defaultSpread = 0.6
+
+// z90 is the standard normal's ninetieth percentile, which is how a p50 and a
+// p90 become a location and a scale.
+const z90 = 1.2816
+
+// ledger is the live belief set.
+//
+// It is the only mutable state in the package and one mutex covers all of it:
+// the operations are microseconds of arithmetic over a map of a few hundred
+// entries, and a lock per lane would buy nothing but a way to deadlock.
+type ledger struct {
+	mu      sync.Mutex
+	beliefs map[ID]Belief
+	// priors is the sheet's own log-domain variance per lane, kept because it
+	// is two things at once: the observation noise a real sighting is folded in
+	// with, and THE FLOOR AGEING MAY NOT WIDEN PAST. A belief that has been
+	// left alone for a day should decay to the public sheet's certainty and
+	// stop there — worthless, never worse than what anybody can look up.
+	priors map[ID]spread
+	// keeper is where beliefs sleep, nil when nothing is attached. loaded is
+	// whether yesterday's have been read back yet: that read is one file, on
+	// the first question or the first sighting, so that importing this package
+	// costs a process nothing.
+	keeper Store
+	loaded bool
+}
+
+// spread is one lane's prior variance for each filter.
+type spread struct {
+	ttft float64
+	rate float64
+}
+
+// newLedger builds the live ledger. It is called from the registry and nowhere
 // else.
-func newLedger() *ledger { return &ledger{} }
+func newLedger() *ledger {
+	return &ledger{beliefs: map[ID]Belief{}, priors: map[ID]spread{}}
+}
 
-// Note accepts a sighting and keeps none of it.
-func (l *ledger) Note(Sighting) {}
+// keepIn attaches the store this ledger writes through. Yesterday's beliefs are
+// not read here — that is done lazily, on first use, so that a process which
+// merely imports this package never touches the disk.
+func (l *ledger) keepIn(keeper Store) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.keeper, l.loaded = keeper, false
+}
 
-// NoteOutcome accepts an outcome and keeps none of it.
-func (l *ledger) NoteOutcome(Outcome) {}
+// restore reads yesterday's beliefs, once. It is called with the lock held.
+//
+// What was on disk loses to what is in memory: a belief this process has
+// already measured is newer than any file, and a slow first read must never
+// undo a sighting that landed while it was happening.
+func (l *ledger) restore() {
+	if l.loaded {
+		return
+	}
+	l.loaded = true
+	if l.keeper == nil {
+		return
+	}
+	kept, err := l.keeper.Load()
+	if err != nil {
+		return
+	}
+	for _, belief := range kept {
+		if belief.ID.Zero() {
+			continue
+		}
+		if _, held := l.beliefs[belief.ID]; held {
+			continue
+		}
+		l.beliefs[belief.ID] = belief
+	}
+}
 
-// Belief has none.
-func (l *ledger) Belief(ID) (Belief, bool) { return Belief{}, false }
+// save writes the whole set through the store. It is called with the lock held,
+// which is what keeps two updates from landing on disk in the wrong order; the
+// file is tens of kilobytes and the write is one rename.
+func (l *ledger) save() {
+	if l.keeper == nil {
+		return
+	}
+	all := make([]Belief, 0, len(l.beliefs))
+	for _, belief := range l.beliefs {
+		all = append(all, belief)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].ID.Model != all[j].ID.Model {
+			return all[i].ID.Model < all[j].ID.Model
+		}
+		return all[i].ID.Lane < all[j].ID.Lane
+	})
+	_ = l.keeper.Save(all)
+}
 
-// Beliefs has none.
-func (l *ledger) Beliefs(string) []Belief { return nil }
+// ── THE PRIOR ───────────────────────────────────────────────────────────────
 
-// Prime accepts a sheet row and keeps none of it.
-func (l *ledger) Prime(Row, float64) {}
+// Prime folds one sheet row in as a pseudo-observation worth 1/k of a sighting.
+//
+// THE FACTS ARE TAKEN EVEN WHEN THE TIMING IS NOT. A row with no percentiles
+// still says whether the lane honours a tool call and what it charges, and
+// those are what the gate runs on: a lane the sheet published no timing for is
+// a lane we cannot score, not a lane we cannot judge.
+//
+// ON A LANE NOBODY HAS MEASURED the prior is adopted outright — X at the log of
+// the median, P at the sheet's own variance — rather than folded in at 1/k of
+// its weight. k says how much less the public number weighs THAN OURS, and
+// against no measurement at all there is nothing for it to weigh against.
+func (l *ledger) Prime(row Row, k float64) {
+	if row.ID.Zero() {
+		return
+	}
+	if k < 1 {
+		k = 1
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	belief := l.beliefs[row.ID]
+	belief.ID = row.ID
+	belief.Facts = row.Facts
+
+	if row.Known() {
+		ttft := fit(row.TTFTp50, row.TTFTp90)
+		rate := fit(row.Ratep50, row.Ratep90)
+		l.priors[row.ID] = spread{ttft: ttft.P, rate: rate.P}
+		belief.TTFT = prime(belief.TTFT, ttft, k)
+		belief.Rate = prime(belief.Rate, rate, k)
+	}
+	// The quality prior is set once and never re-asserted: a lane that has
+	// spent the afternoon returning tool calls the decoder refused must not be
+	// handed its optimism back every five minutes by the beat.
+	if !belief.Quality.Known() {
+		belief.Quality = qualityPrior(row.Facts.Quant)
+	}
+	l.beliefs[row.ID] = belief
+	l.save()
+}
+
+// fit turns a median and a ninetieth percentile into a log-normal: the median
+// is the location and the distance to the p90 is the scale. A p90 that is not
+// above the p50 is a sheet saying nothing about spread, and [defaultSpread]
+// stands in rather than a zero variance, which would be a claim of certainty
+// nobody made.
+func fit(p50, p90 float64) Posterior {
+	if p50 <= 0 {
+		return Posterior{}
+	}
+	sigma := defaultSpread
+	if p90 > p50 {
+		sigma = (math.Log(p90) - math.Log(p50)) / z90
+	}
+	return Posterior{X: math.Log(p50), P: sigma * sigma}
+}
+
+// prime folds a prior into a belief: adopted outright when there is no belief
+// yet, and otherwise folded in at 1/k of a sighting's weight.
+func prime(belief, prior Posterior, k float64) Posterior {
+	if !prior.Known() {
+		return belief
+	}
+	if !belief.Known() {
+		return prior
+	}
+	return belief.Update(prior.X, prior.P*k)
+}
+
+// qualityPrior is what a lane is assumed to be worth before it has answered.
+//
+// Beta(8, 1) is "probably fine": eight usable answers to one bad one, which a
+// handful of real refusals is enough to move. A lane serving FOUR-BIT WEIGHTS
+// starts at Beta(2, 2) — an open question — because four-bit quantization is
+// the one fact on the sheet that predicts a lane returning tool-call JSON the
+// decoder refuses, and starting it optimistic means paying for that discovery
+// on somebody's real turn.
+func qualityPrior(quant string) Beta {
+	if fourBit(strings.ToLower(strings.TrimSpace(quant))) {
+		return Beta{A: 2, B: 2}
+	}
+	return Beta{A: 8, B: 1}
+}
+
+// fourBit reports whether a quantization word names four-bit weights, in the
+// spellings the router uses for them.
+func fourBit(quant string) bool {
+	for _, four := range []string{"fp4", "int4", "nf4", "q4"} {
+		if strings.HasPrefix(quant, four) {
+			return true
+		}
+	}
+	return false
+}
+
+// ── WHAT WE MEASURED ────────────────────────────────────────────────────────
+
+// Note folds one timed answer in.
+//
+// It predicts first and updates second, which is what makes the innovation
+// mean anything: the belief is aged to the moment of the sighting, so "how
+// surprising was that" is measured against what this lane was doing then rather
+// than against what it was doing when we last looked.
+func (l *ledger) Note(s Sighting) {
+	if s.ID.Zero() || s.At.IsZero() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	belief := l.beliefs[s.ID]
+	belief.ID = s.ID
+	prior := l.priors[s.ID]
+
+	if !belief.At.IsZero() {
+		belief.TTFT = age(belief.TTFT, s.At.Sub(belief.At), prior.ttft)
+		belief.Rate = age(belief.Rate, s.At.Sub(belief.At), prior.rate)
+	}
+
+	if s.TTFT > 0 {
+		// A first-token wait behind a long prompt is mostly prefill, which no
+		// endpoint could have avoided, so it is a noisier claim about the lane
+		// the longer the conversation is. A PROBE is the opposite: one token,
+		// sent on purpose, measuring exactly our path to this lane right now.
+		noise := variance(prior.ttft) * promptNoise(s.PromptTokens)
+		if s.Probe {
+			noise = variance(prior.ttft) * 0.5
+		}
+		belief.TTFT = belief.TTFT.Update(math.Log(msOf(s.TTFT)), noise)
+	}
+	// A probe is never a rate measurement: an answer one token long rates the
+	// handshake. Neither is an answer too short to have found its stride.
+	if !s.Probe && s.Tokens >= ratedFloor && s.Gen > 0 {
+		if rate := s.Rate(); rate > 0 {
+			belief.Rate = belief.Rate.Update(math.Log(rate), variance(prior.rate))
+		}
+	}
+	belief.At = s.At
+	l.beliefs[s.ID] = belief
+	l.save()
+}
+
+// NoteOutcome folds in whether an answer could be used.
+//
+// It does not touch [Belief.At]: quality is not a timing observation, and
+// stamping the belief with this moment would quietly tell the next sighting
+// that the timing filters had been updated when they had not.
+func (l *ledger) NoteOutcome(o Outcome) {
+	if o.ID.Zero() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	belief := l.beliefs[o.ID]
+	belief.ID = o.ID
+	if !belief.Quality.Known() {
+		belief.Quality = qualityPrior(belief.Facts.Quant)
+	}
+	belief.Quality = belief.Quality.Observe(o.Accepted)
+	l.beliefs[o.ID] = belief
+	l.save()
+}
+
+// age widens a belief that has been sitting still, and stops at the prior.
+//
+// THE CLAMP IS THE WHOLE REASON THIS IS NOT [Posterior.Predict] CALLED DIRECTLY:
+// left to itself the variance doubles every half-life forever, and a belief
+// three days old would be less certain than the public sheet anybody can read.
+// Ageing may make a belief worthless. It may not make it worse than free.
+func age(p Posterior, elapsed time.Duration, floor float64) Posterior {
+	p = p.Predict(elapsed, HalfLife)
+	if floor > 0 && p.P > floor {
+		p.P = floor
+	}
+	return p
+}
+
+// variance is the observation noise for one measurement of a lane: the sheet's
+// own spread when we have it, and an honestly wide default when we do not.
+func variance(prior float64) float64 {
+	if prior > 0 {
+		return prior
+	}
+	return defaultSpread * defaultSpread
+}
+
+// promptNoise is how much less a first-token measurement says about the lane
+// the longer the prompt was. A short prompt measures the lane; a long one
+// measures a prefill that every lane would have had to do.
+func promptNoise(prompt int) float64 {
+	switch {
+	case prompt <= 4_000:
+		return 1
+	case prompt <= 32_000:
+		return 2
+	default:
+		return 4
+	}
+}
+
+// msOf is a duration in milliseconds, which is the unit every first-token
+// belief in this package is in.
+func msOf(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
+
+// ── WHAT IS BELIEVED ────────────────────────────────────────────────────────
+
+// Belief is what is believed about one lane, as it was last written.
+//
+// It is NOT aged to now — see the note at the top of this file. The caller
+// holds the moment and ages what it reads.
+func (l *ledger) Belief(id ID) (Belief, bool) {
+	if id.Zero() {
+		return Belief{}, false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	belief, ok := l.beliefs[id]
+	return belief, ok
+}
+
+// Beliefs is every lane believed in for one model, ordered by lane name.
+//
+// The order is stable so that two readings of the same ledger are the same
+// list: a picker that reshuffled its rows between two redraws would be a
+// picker nobody could click.
+func (l *ledger) Beliefs(model string) []Belief {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	var found []Belief
+	for id, belief := range l.beliefs {
+		if id.Model == model {
+			found = append(found, belief)
+		}
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].ID.Lane < found[j].ID.Lane })
+	return found
+}

@@ -40,15 +40,24 @@ var defaultRegistry = newRegistry()
 // Default is the registry this process routes through.
 func Default() *Registry { return defaultRegistry }
 
-// newRegistry builds the set every seam starts at: the empty implementations,
-// which believe nothing and say so.
+// newRegistry builds the set every seam starts at. The seams that have been
+// built answer for real from the first compile — the sheet with nothing fetched
+// yet, the ledger with nothing measured yet — and the ones that have not
+// believe nothing and say so.
 func newRegistry() *Registry {
+	// The ledger writes every observation through the store, so the two are
+	// introduced to each other here: this file is the only one entitled to know
+	// which concrete type answers which seam, and a ledger that went looking
+	// for a store by itself would be the reach-around this registry exists to
+	// prevent.
+	keeper, beliefs := newStore(), newLedger()
+	beliefs.keepIn(keeper)
 	return &Registry{
 		sheet:   newSheet(),
-		ledger:  newLedger(),
+		ledger:  beliefs,
 		chooser: newChooser(),
 		prober:  newProber(),
-		store:   newStore(),
+		store:   keeper,
 	}
 }
 
@@ -136,6 +145,13 @@ func (r *Registry) SetStore(store Store) {
 		store = newStore()
 	}
 	r.store = store
+	// A store swapped underneath a ledger this package built is a store that
+	// ledger must then write through — a bench that pointed the beliefs at a
+	// temporary file and found them still landing in the person's own home
+	// would have been given a seam that only half moves.
+	if beliefs, ok := r.ledger.(*ledger); ok {
+		beliefs.keepIn(store)
+	}
 }
 
 // Reset puts every seam back to the empty implementation. It is for tests, and

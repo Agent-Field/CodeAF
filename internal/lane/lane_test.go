@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // ── THE ONE PIECE OF ARITHMETIC THIS WAVE SHIPPED ───────────────────────────
@@ -179,6 +181,10 @@ func TestAnAnonymousSightingNamesNothing(t *testing.T) {
 // this wave builds against: the seams are filled in from the first compile, and
 // what they answer with before anybody has built them is honest emptiness.
 func TestEverySeamAnswersAndNoneOfThemInventsANumber(t *testing.T) {
+	// The sheet and the store are real files now, so this asks the seams on a
+	// machine that has never routed anything rather than on whatever the
+	// person running the test happens to have believed this morning.
+	t.Setenv(home.EnvVar, t.TempDir())
 	registry := Default()
 	if registry.Sheet() == nil || registry.Ledger() == nil || registry.Chooser() == nil ||
 		registry.Prober() == nil || registry.Store() == nil {
@@ -200,8 +206,11 @@ func TestEverySeamAnswersAndNoneOfThemInventsANumber(t *testing.T) {
 	if choice := registry.Chooser().Choose(Request{Model: "m"}); !choice.Empty() || choice.Why != "" {
 		t.Fatalf("the empty chooser had an opinion: %+v", choice)
 	}
-	if _, err := registry.Store().Load(); err == nil {
-		t.Fatal("the empty store reported a successful load of nothing")
+	// A belief file that has never been written is no beliefs and no error —
+	// "nothing was kept" rather than "nothing can be kept", which is the
+	// distinction [ErrNoStore] exists to hold.
+	if kept, err := registry.Store().Load(); err != nil || len(kept) != 0 {
+		t.Fatalf("a machine that has routed nothing loaded %d beliefs and %v", len(kept), err)
 	}
 }
 
