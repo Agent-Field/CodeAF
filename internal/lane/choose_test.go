@@ -222,6 +222,21 @@ func TestTheGateDropsALaneThatCannotServeTheRequestAtAll(t *testing.T) {
 	if capable(poor, talk(), opts) {
 		t.Error("quality was weighed rather than gated")
 	}
+
+	// AND THE ROUTER'S OWN VERDICT IS A GATE. A non-zero `status` on the sheet
+	// is the operator of the router saying it has derated this endpoint, which
+	// is evidence about the machine that nothing we can measure produces. The
+	// gate ignored the column until wave 2b, which is one of the two reasons the
+	// reference simulator and the shipped build did not admit the same lanes.
+	derated := lanes["Baidu"]
+	derated.Facts.Status = -2
+	if capable(derated, talk(), opts) {
+		t.Error("a lane the router itself marked down was still routed to")
+	}
+	derated.Facts.Status = 0
+	if !capable(derated, talk(), opts) {
+		t.Error("a healthy lane was refused on a status of zero")
+	}
 }
 
 // ── THE FRONTIER ────────────────────────────────────────────────────────────

@@ -111,6 +111,20 @@ type Facts struct {
 	// what makes price path-dependent: the cheapest lane on the sheet is not
 	// the cheapest lane for a request whose prefix another lane already holds.
 	Caches bool
+	// Status is THE ROUTER'S OWN HEALTH WORD for the lane, as it publishes it:
+	// zero is healthy and anything else is an endpoint the router has itself
+	// marked down. It is a gate and never a weight, for the reason quality is:
+	// a machine whose operator has flagged it is not a machine to weigh against
+	// a cheaper tariff.
+	//
+	// IT IS THE ONE FIELD HERE WHOSE ZERO MEANS "FINE" RATHER THAN "THE SHEET
+	// DID NOT SAY", and it is safe to read that way round because the sheet
+	// publishes the column for every row: a row that omits it is a row the
+	// router is not derating. The gate that ignored this column was the second
+	// of the two reasons the reference model and the shipped build did not
+	// admit the same lanes (bench/lanelab/REPORT.md, "the two capability gates
+	// do not admit the same lanes").
+	Status int
 }
 
 // Row is one line of the sheet: the public, thirty-minute account of a lane.

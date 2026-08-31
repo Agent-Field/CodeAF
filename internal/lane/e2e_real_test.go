@@ -327,10 +327,24 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 	case !budget.Allow(time.Now(), 0.001):
 		t.Logf("no rescue was attempted: the hedge budget refuses everything " +
 			"(lane watch and hedge budget not landed yet, wave 1 L-C)")
-	default:
+	case rescue.wall <= expected:
 		t.Logf("no rescue was needed: %s answered in %v against the %v its own sheet row "+
 			"predicted, so the watch was right not to spend a second request on it",
 			rescue.lane, rescue.wall.Round(time.Millisecond), expected.Round(time.Millisecond))
+	default:
+		// THE ONE OUTCOME THIS BRANCH MAY NOT CALL A SUCCESS. The answer was
+		// slower than its own sheet row predicted and no second request went
+		// out — which is the watch missing exactly the case it exists for. It
+		// is logged rather than failed because on a real router it is also what
+		// a budget that has already been spent looks like, and a live test that
+		// failed on somebody else's traffic would be a test nobody could run.
+		// The deterministic version of this claim is S2 in e2e_test.go, which
+		// does fail.
+		t.Logf("NO RESCUE AND IT WAS NEEDED: %s took %v against the %v its own sheet row "+
+			"predicted, and no second request went out — the watch did not fire on a "+
+			"lane that was %.1fx its own prediction",
+			rescue.lane, rescue.wall.Round(time.Millisecond), expected.Round(time.Millisecond),
+			rescue.wall.Seconds()/expected.Seconds())
 	}
 
 	t.Logf("total billed by the router across %d calls: $%.6f", 6, spent)
