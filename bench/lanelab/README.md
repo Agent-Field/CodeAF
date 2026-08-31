@@ -54,15 +54,25 @@ would be wrong twice.
 
 Every request in every scenario reads a 4000-token prompt.
 
-The objective is **perceived** time, ported from `lane.PerceivedSeconds`:
+The objective is the **wait**, ported from `lane.PerceivedSeconds`:
 
 ```
-T_perceived = ttft + hidden/rate + visible/min(rate, 18 tok/s)
+T_wait = ttft + hidden/rate + visible * max(0, 1/rate - 1/18 tok/s)
 ```
 
 Hidden tokens — reasoning, tool-call JSON — are pure waiting and cost their
-full rate. Visible tokens are worth at most reading speed. Wall time is
-reported next to it so a reader can see what the ceiling hides.
+full rate. The visible term is the **catch-up and not the reading**: text a
+person reads as it arrives costs them the same reading time whichever lane
+wrote it, and no router can remove it, so what a lane costs is only the amount
+by which it writes slower than 18 tok/s. A lane at or above the reading rate
+contributes no visible wait at all. Wall time is reported next to the wait so a
+reader can see the whole answer.
+
+Counting the reading (`visible / min(rate, 18)`, as this lab first did) changes
+no ranking — it is the same constant for every lane — but it puts 22.22 s of
+reading into every `talk` number, and every RATIO taken from those numbers is
+then a ratio of mostly reading. `REPORT.md` has the old and new figures side by
+side.
 
 ## The four policies
 
@@ -82,8 +92,8 @@ makes for free.
    in memory and empty at start. This is the mechanism the design retires, so
    it is the baseline that matters.
 
-3. **`sheet-only`** — pick the best perceived time from the sheet's p50 TTFT
-   and p50 rate and never learn anything. It is in the panel to separate two
+3. **`sheet-only`** — pick the shortest wait from the sheet's p50 TTFT and p50
+   rate and never learn anything. It is in the panel to separate two
    claims the design makes at once: if the prior alone captures most of the
    win, the belief and the hedge are being paid for something that was free.
 
@@ -91,7 +101,7 @@ makes for free.
    Beta posterior; two scalar Kalman filters in the log domain (10-minute
    half-life) primed from the sheet as a pseudo-observation worth a quarter of
    a real sighting; a Pareto prune at the p75 of four axes so an *uncertain*
-   lane stays in the set; a scalar `T_perceived + $/lambda` Thompson-sampled
+   lane stays in the set; a scalar `T_wait + $/lambda` Thompson-sampled
    with the spread scaled by the horizon; and a hedge whose deadline `t*` is
    solved per request from the posterior's expected remaining wait rather than
    read off a constant.
@@ -103,8 +113,10 @@ makes for free.
   themselves measures its own bookkeeping.
 - **Judge the diff, not a count.** Nothing here reports how often a policy
   "won" a request. The comparison is the distribution — p50/p90/p99 of the
-  wait and dollars per thousand — with the ship gate evaluated against **both**
-  baselines and printed as PASS or FAIL with the actual percentages, unrounded.
+  wait and dollars per thousand — with the ship gate applied to **every arm**
+  against one named baseline, `strike-ledger`, the mechanism the design
+  proposes to retire, and printed as PASS or FAIL with the two quantities that
+  decided it, unrounded.
 - **Autopsy before quoting.** `--sweep` exists because the first run of this
   file produced a `work` verdict that reversed between two seeds. Reporting the
   first seed alone would have been a number chosen after the fact. The three

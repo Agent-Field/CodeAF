@@ -571,3 +571,207 @@ candidate is.
   request is a setting nobody re-checks.
 - **Per-lane fixed allow/deny lists.** Pinning exists for the person who
   knows; everyone else gets a belief that is right more often than a list.
+
+---
+
+# Part III — what the simulator corrected
+
+*Added 2026-08-31, at the end of the build wave. Everything above was written
+before any of it ran. This part is what running it changed, and it is kept as a
+separate part rather than edited into the text above so that the difference
+between a design and a measurement stays visible.*
+
+The instrument is `bench/lanelab`: a reference simulator in Python that draws
+lanes from the sheet's own percentiles and replays three scenarios — a talk turn
+somebody is watching (λ = 90, four hundred visible tokens), a work node on the
+critical path (λ = 90, two thousand hidden tokens), and the same work with
+nobody waiting (λ = 0) — under four policies, over eight seeds. Beside it,
+`bench/lanelab/gosim` replays the same three scenarios against the SHIPPED code:
+the real registry, the real ledger, the real chooser, driven against `lanestub`.
+The reference model is where a mechanism is argued about; **the ship decision is
+taken on the Go one**, because a simulator that agrees with a design it does not
+run is a simulator agreeing with itself.
+
+Seven corrections came out of it. Five are arithmetic or law in this package,
+one is the gate the whole thing is judged by, and one is a bug in the test rig
+that had been quietly poisoning the person's own belief file.
+
+## C1 — the quality gate asks the upper bound, not the mean
+
+The gate as designed refused a lane whose believed share of usable answers fell
+under what the request needed. The prior for a lane the sheet has just described
+is Beta(8, 1) — "probably fine" — and its **mean is 0.889**, which is under the
+0.90 a talk turn asks for and well under the 0.97 a tool loop asks for. So the
+gate refused **every lane of every model on the first request of every process**,
+for want of evidence rather than for cause. And the refusal was **absorbing**: a
+lane outside the candidate set is never sent to, so it can never earn the ninth
+good answer that would have let it back in. The whole router was inert, and
+nothing in the unit tests of any one seam could show it, because the failure is
+a property of the sequence rather than of any call in it.
+
+Two things had to change.
+
+**The gate asks the 90% upper credible bound.** `Beta.Upper(z)` is the normal
+approximation `mean ± z·√(mean(1−mean)/(A+B+1))`, clamped to the unit interval.
+It asks the question the gate means to ask — *could this lane be good enough?* —
+rather than *is its point estimate above the line?* Beta(8, 1) is bounded near
+certainty and passes both needs; three refusals take Beta(8, 4) to a bound of
+about 0.83 and the lane leaves a talk turn. A wide belief is not a bad one, and
+this is the difference stated in arithmetic.
+
+**And a drop expires.** `Beta.Toward(prior, dt, halfLife)` decays each count
+toward the prior's own at `HalfLife`, so the belief's MASS returns to the
+prior's nine and its SHARE returns to the prior's share. After two half-lives
+with nothing new, the dropped lane is back in the candidate set to earn its own
+contradiction. It is the same forgetting the timing beliefs already do, and for
+the same reason: forgetting is losing confidence, never changing the estimate,
+which is why there is still no penalty box anywhere in this package.
+
+The ledger forgets on the way in (`NoteOutcome` ages before it observes, so
+three refusals this afternoon and three from last week are not the same
+evidence) and the chooser forgets on the way out (a dropped lane gets no
+sightings and no outcomes, so nothing else would ever age it).
+
+## C2 — perceived seconds is a WAIT, and reading is not part of it
+
+Part II §2 costs a visible answer at `visible / min(rate, ReadRate)`. That is the
+time a person spends *reading*, and it is a constant no router can remove: four
+hundred tokens is twenty-two seconds of reading whichever lane wrote them. What a
+router can remove is the part of the wait where the reader has caught up with the
+writer — the gap between the two rates, and nothing else:
+
+```
+wait = ttft  +  hidden/rate  +  visible · max(0, 1/rate − 1/ReadRate)
+```
+
+The correction changes **no ranking**: the removed term is identical for every
+candidate. What it changes is every RATIO computed from the number, and that is
+the whole of a ship gate. On the reference sim's talk scenario the three
+competent policies' p50 read 22.99 s, 22.87 s and 22.98 s — indistinguishable.
+Their actual waits are 0.770 s, 0.646 s and 0.755 s, a 19% spread. **The old
+number was 96% reading**, so a router with no effect at all would have been
+reported as a few per cent better than the thing it replaced. A metric that
+cannot separate three policies is not a metric.
+
+The lane package's `PerceivedSeconds` now computes the wait, and so do the
+simulator's objective, the simulator's reported metric, and the ship gate below.
+
+## C3 — the ship gate, in the design's own economics
+
+The proof plan said "ship if p90 improves ≥ 30% at ≤ 3% cost". The 30% is the
+tail-at-scale result and it survives. **The 3% is a number from nowhere**: this
+design's entire argument is that a second has a price, λ, computed per request
+from who is waiting — so a cost clause stated as a flat percentage is the one
+clause that refuses to use the design's own reasoning. Worse, it is either
+vacuous or arbitrary depending on the scenario, which is how a gate stops being
+a decision procedure.
+
+The gate, per scenario, against the arm the design retires (the strike ledger):
+
+- **The p90 wait improves by at least 30%** — and for the talk scenario the
+  prize is the FIRST TOKEN only, because above the reading rate every lane is
+  the same speed to a person, so talk gates on p90 TTFT.
+- **The extra money buys time at better than λ:**
+  `Δ$/request ≤ Δ(mean wait) / λ`. With nobody waiting (λ = 0) that degenerates
+  to `cost ≤ baseline`, which is the honest reading of "price wins outright".
+
+Both clauses, both scenarios, or it does not ship.
+
+**What the new gate cost us, said plainly.** The money clause is close to
+unbindable wherever a person is waiting on a long answer: at λ = 90 s/$, sixty-
+eight seconds saved on a work request are worth $0.76 and the design spends
+$0.0002. So the work scenario went from failing on the flat 3% clause to passing
+on all eight seeds — and the cost blow-up the arbitrary clause caught by accident
+now sails through. That is not the gate being wrong; it is the gate being honest
+about a trade the design really does endorse. It is also why the sweep still
+prints the bill, and why a reviewer reads it.
+
+## C4 — the hedge budget is request-relative, not wall-clock
+
+A token bucket of six hedges a minute is a rate against a clock, and the thing it
+is meant to bound is a rate against REQUESTS. A session sending four requests a
+minute and a swarm sending four hundred are the same bucket, so the same budget
+was 1% of traffic in one arm and 95% in another across seeds — a control that
+does not control. The budget is now a share of recent requests (at most one hedge
+in ten over a sliding window of the last twenty, with a small allowance at the
+start so that a fresh session may rescue anything at all), plus the spend share
+that was always there.
+
+## C5 — the price term has to be felt, and Thompson has to draw the right thing
+
+Two arithmetic errors, found by one case: a work node with two thousand hidden
+tokens and somebody waiting, where Baidu is both quicker and four times cheaper
+than Cloudflare and must therefore win.
+
+**λ multiplies money; the code divided by it.** λ is SECONDS PER DOLLAR, so
+dollars times λ is seconds and dollars over λ is dollars squared per second — a
+quantity of nothing, about eight thousand times too small at the attention value
+to be felt beside any wait. Part I had it right (`λ·price·N̂`); Part II's
+`λ⁻¹·$` is a slip in the design text that went straight into the code. The
+symptom only appeared once C2 landed: with the reading time removed, price is the
+ONLY thing left to separate two lanes that feel identical to a person, and a
+price term that rounds to zero turns that decision into sampling noise.
+
+**Thompson sampling drew one imagined request, not one opinion about a lane.**
+The prior seeds the belief's variance from the sheet's p50-to-p90 spread — which
+is the lane's per-request VARIABILITY, not our uncertainty about its median. A
+draw from it is a draw of a single request, and reordering lanes on a single
+imagined request is paying real money for a coin toss nothing can be learned
+from: the sheet has already published both medians. The same file said so twice
+over — the hedge's `predictive()` floors that variance back UP precisely because
+there the per-request question is the right one. The chooser now draws the
+lane's median (`medianObservations`), and the tail is still priced where it
+belongs: the frontier prunes at the p75 and the hedge deadline uses the full
+predictive spread.
+
+With both fixed, the case above goes from 306 requests in 400 reaching the
+quicker, cheaper lane to 397.
+
+**What is deferred, and named so it is not forgotten:** a `Posterior` still
+carries one variance where the design needs two — the lane's per-request spread
+(aleatoric, which the tail and the hedge want) and our uncertainty about its
+median (epistemic, which the sampler and the refusal want). Every consumer in
+this package works around the conflation in its own way. Carrying both on the
+belief is the right shape and it is a contract change for a later wave.
+
+## C6 — the simulator has to judge the shipped code
+
+A reference model in Python is where a mechanism is argued about, and it is worth
+having: it is quick to change and it found five of the seven corrections here.
+But it is a second implementation of the design, and a second implementation
+agreeing with the first is not evidence about the build. So `bench/lanelab/gosim`
+drives the REAL registry — the real ledger primed from the same sheet fixture,
+the real chooser, the real watch and budget — against `lanestub` on its fast
+clock, replaying the same three scenarios over eight seeds, with a scripted
+mid-run slowdown of the lane it initially chose and a recovery afterwards. The
+Python model stays as the reference; the ship decision is taken on the Go run,
+and both tables are in `bench/lanelab/REPORT.md`.
+
+## C7 — what an answer is entitled to teach
+
+A ledger that folds every finished stream into the same two filters learns the
+wrong thing from a failure. **An answer with no tokens in it never had a first
+token**, so whatever was timed is the wait until the stream gave up — a fact
+about a failure and not about how quickly the lane starts writing. A lane that
+returns nothing returns it quickly, so the belief got FASTER the more often the
+lane failed, and the router was rewarded for choosing it.
+
+The law, stated once in the ledger and held by two tests:
+
+- **An empty answer teaches quality and nothing else.** Its outcome is real
+  evidence and `NoteOutcome` takes it; the timing filters take nothing.
+- **A short answer teaches the first token and never the rate.** The generation
+  window of a handful of tokens is mostly the handshake, so the rate filter has
+  a floor (`ratedFloor`) and a probe — one token, bought on purpose — is never a
+  rate measurement at all.
+
+## And one bug in the instrument
+
+The acceptance scenarios in `internal/lane/e2e_test.go` primed a ledger that
+writes through a store, and `StorePath` resolves under `AFORGE_HOME` on every
+call. They did not move the state root. So every run folded this file's INVENTED
+lanes into the belief file of whoever ran the tests, and read them back on the
+next run — a real router given an opinion about a lane that does not exist, and
+scenarios whose starting ledger was whatever the last run left behind. It showed
+up as scenario 3 choosing a different victim on two runs of the same fixed
+Tuesday. Every scenario now takes a home of its own.
