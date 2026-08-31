@@ -309,6 +309,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asked by somebody who read the old refusal and wants to know whether
 		// it still stands; the rest are the four things a person does with the
 		// feature the moment they find it.
+		// Home's box answers a slash the way a chat's does, and the question is
+		// asked in all the words people reach for: the command by name, the verb,
+		// and the worry that it will be sent as a message instead.
+		{"can I type /settings on home", "home"},
+		{"can I run a slash command from the home screen", "home"},
+		{"typing /model on home starts a conversation instead of running it", "home"},
 		{"open another project from home", "home"},
 		{"enter does nothing on home", "home"},
 		{"why does it say elsewhere", "home"},

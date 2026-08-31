@@ -1166,11 +1166,11 @@ Two things cover what a meaning-search would have been for:
   ask it in sentences: *"what was that thing where we fixed the flaky auth test?"* Home is
   the fast layer; the conversation is the thoughtful one.
 
-## Start something new from home — typing does both at once
+## Start something new from home — typing does all three at once
 
-Whatever you type is **two things at the same moment**: a new conversation waiting to be
-sent, and a live query over the machine. You do not choose between them before you start
-typing.
+Whatever you type is **three things at the same moment**: a new conversation waiting to be
+sent, a live query over the machine, and — if it starts with `/` — a command. You do not
+choose between them before you start typing.
 
 **Everything about typing sits together at the bottom of the screen.** The moment you type
 a character the list becomes a drop-up: the matches rise from the foot, and the **last** row
@@ -1209,6 +1209,9 @@ The hint under the box tracks which of the two `enter` means: the line in the ex
 on the action row, and `enter open · ↓ back to starting a new conversation · esc clear` once
 you are on a match.
 
+A line beginning with `/` is the third thing typing can be — a command, run rather than
+sent. See *Running a slash command from home*, directly below.
+
 With **nothing** typed there is no action row and the list hangs from the top again — see
 *Why did the list jump to the bottom when I typed*.
 
@@ -1223,10 +1226,49 @@ that matches exactly one heading on the list — the action row reads
 with the one you were in left open behind. A name that two projects share resolves to
 neither, because opening whichever sorted first would be the screen guessing.
 
+**An absolute path begins with `/` too, and a folder that is really there still wins.**
+`/tmp/alpha` opens a conversation in that directory; it is not read as a command. The one
+exception is a word the command table already knows — `/home` is the command, on a machine
+that has a `/home` directory as much as on one that does not, because the commands are a
+short list somebody chose to learn and the disk is not. The row always says which of the
+two it is about to mean.
+
 **The path is resolved and never created.** A directory that does not exist is not a path
 at all as far as this row is concerned: the row goes back to quoting your words, and
 `enter` starts a conversation here and sends them. Nothing makes a folder because somebody
 mistyped one.
+
+
+## Running a slash command from home — can I type /settings on the home screen
+
+**Yes. A line that begins with `/` is a command, and `enter` runs it rather than sending
+it.** Typing `/settings` on home and pressing `enter` opens the settings panel; it does not
+start a conversation whose first message is the word `/settings`. Home's box behaves exactly
+as a chat's box does here — same commands, same dispatcher, same rules.
+
+**The screen says which `enter` you are about to press, before you press it.** With a command
+in the box the action row reads `+ run /settings` in place of `+ start a new conversation:
+"…"`, and the foot under the box reads `enter runs this command · ctrl+enter ask here ·
+↑ pick a match · esc clear`.
+
+**The command list opens over home's box too.** Typing `/` raises the same ranked drop-up a
+chat shows — best match nearest the box — and `↑` walks up into it, `enter` runs the row
+you land on, and `esc` puts the list away. A command that TAKES words leaves `/model ` in
+the box with the caret after it rather than running on the spot. A slash word in the middle
+of a sentence is a mention and never a dispatch: choosing a row there rewrites the word and
+nothing runs. *Typing a slash to see the command list* has the whole of that behaviour.
+
+**A path is not a command.** `/tmp/alpha` is a folder, so the row goes on offering
+`start a new conversation in /tmp/alpha` — see *Start something new from home* for the
+whole of that rule, and for the one word (`/home`) where the table wins.
+
+**Commands that are about a conversation act on the one this window is holding** behind the
+screen — home always has one open behind it, so `/model`, `/rewind` and the rest are not
+refused here.
+
+**`ctrl+enter` still asks here.** So you can ask a question *about* a command — type it and
+press `ctrl+enter` instead of `enter`, and the answer comes back in the pane on the right
+without the command being run (see *Asking from home*).
 
 ## How do I see the collapsed sessions — …13 more
 

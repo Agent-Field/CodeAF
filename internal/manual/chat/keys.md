@@ -1353,7 +1353,10 @@ everywhere — `enter opens the place this happened in · alt+. map · tab next 
 on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
 on the fold, and
 `enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
-on the action row.
+on the action row — and
+`enter runs this command · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+on that same row when what is typed is a slash command, because `enter` runs it rather than
+sending it (home's page has that rule whole).
 
 **With nothing typed the list hangs from the top** and the cursor is on the conversation
 this window is in; a card stands beside it only at 160 columns and wider. **While anything
