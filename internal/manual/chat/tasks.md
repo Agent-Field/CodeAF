@@ -596,11 +596,19 @@ background command, a watch, a video or music render, a forked hand — while an
 still going, the reply is waiting on it exactly the way a reply that ends on a question is
 waiting on you, and pushing it on would only make it poll.
 
-**For most of them the ending comes back and starts a new reply by itself.** A background
-command exiting, a render landing, a hand coming home: each of those wakes aforge and you get
-the sentence about it without typing anything. **A watch is the exception** — its news waits
-for the next thing you say, so a conversation waiting on a watch does go quiet until you speak.
+**The ending comes back and starts a new reply by itself.** A background command exiting, a
+render landing, a hand coming home, **a watch firing**: each of those wakes aforge and you get
+the sentence about it without typing anything. So you can start something, close the laptop
+lid on the conversation, and come back to the answer rather than to a card and silence.
 `jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
+
+**A watch is two kinds of news and only one of them wakes you.** Its ordinary updates — the
+new lines in a log, the number that moved — are quiet: they wait for the next thing you say,
+because a reply every time a log grows by a line would be a ticker tape. But the tick that
+**ends** the watch is the answer you started it for, and that one wakes the conversation: the
+line `until` was waiting for appeared, the output went quiet for as long as you asked, or the
+command failed three ticks in a row and the watch gave up. Nothing else will ever come from
+that watch, which is why it is the one that gets said out loud.
 
 **What that fixes, measured.** A conversation waiting for GitHub's checks on two pull requests
 had a watch of its own running over `gh pr checks`, and said so at the end of every reply.

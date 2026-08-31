@@ -13,9 +13,10 @@
 # One name per line. Matched as a whole Go test name against the full run in
 # .github/workflows/ci-full.yml. Blank lines and # comments are ignored.
 #
-# Seeded from the list in CLAUDE.md, verified failing on a clean tree on
-# 2026-08-26. CLAUDE.md also names four cmd/harness-design tests and does not
-# spell them; add them here from the first real run that shows them.
+# Seeded from the list in CLAUDE.md (verified failing on a clean macOS tree,
+# 2026-08-26), then trued up against the first real Linux run on 2026-08-31
+# (actions/runs/33414121900) — which named the four cmd/harness-design tests
+# CLAUDE.md could not spell, and found six more nobody was tracking.
 
 # Fail on a clean tree.
 TestHarnessEntriesFromStore
@@ -35,3 +36,27 @@ TestTheSocketMovesWithTheStateRoot
 # failure here.
 TestOnlyADesignsOwnThreadCarriesTheReviseVerb
 TestInterruptedTurnDoesNotWakeOnTheNoteItDrained
+
+# The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
+# had only been able to say "four cmd/harness-design tests".
+TestTheGuidesRender
+TestReviewerCarriesTheWholeLaw
+TestBothBriefsSayTheSyntaxIsASCII
+TestTheReviewerBriefCarriesBothDuties
+
+# Fails on macOS AND Linux — a clean-tree red on every platform that nobody had
+# written down anywhere before 2026-08-31. Owed a real fix, not just this line.
+TestTheEnginesStandingStoreAnswersOverTheWire
+
+# Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run
+# locally on 2026-08-31 to confirm). Environment-shaped: whoever picks one up
+# should reproduce on Linux first.
+TestTickWalksTheItemsAndWritesAWakeLine
+TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch
+TestRenderTerrainStaysUnderTheCap
+TestTheFixedPrefixStaysUnderItsBudget
+TestATransientClaimFailureDoesNotEndDispatchForever
+
+# From the second Linux run (2026-08-31, the first in which internal/tui3 ever
+# survived to report): red on the Linux runner, passes on a clean macOS tree.
+TestAPathInsideACorrectionIsADoor

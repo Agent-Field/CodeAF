@@ -455,6 +455,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+g do", "keys"},
 		{"tell me when the build stops changing", "what-i-can-do"},
 		{"how do I know when something has finished", "what-i-can-do"},
+		// The wave that made a watch's LAST tick wake the conversation. Both are
+		// asked by somebody deciding whether they can walk away from a watch they
+		// just started, which is the only reason to start one.
+		{"will it tell me when the watch finishes if I walk away", "what-i-can-do"},
+		{"does a watch wake the conversation or do I have to type first", "what-i-can-do"},
 
 		// The streams wave. Every one of these was asked with a running job on
 		// screen and a model that either could not see it or was burning turns

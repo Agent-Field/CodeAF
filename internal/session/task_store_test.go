@@ -777,3 +777,22 @@ func TestACarriedOverDesignRaisesItsCardAndSavesOnYes(t *testing.T) {
 		t.Fatal("the answered design still carries its offer")
 	}
 }
+
+// A SAVE THAT ARRIVES AFTER THE SESSION CLOSED WRITES NOTHING. This is the
+// measured flake in TestAWokenTurnIsMeteredExactlyLikeATypedOne: the woken
+// turn's hand-off admitted its task while the test's directory was being
+// removed, and the checkpoint's rename raced the cleanup. The close is the
+// door; a transition on a goroutine that outlived it is dropped whole.
+func TestACheckpointAfterTheCloseWritesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.tasks.json")
+	store := newTaskStore(path)
+	graph := &TaskGraph{store: store}
+	store.close()
+	store.save(graph)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("a closed store still wrote its file: stat err = %v", err)
+	}
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("a closed store left its temporary behind: stat err = %v", err)
+	}
+}
