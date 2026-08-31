@@ -684,7 +684,7 @@ typed confirms rather than changes.
 The placeholder in the empty filter box is the only place the picker explains itself:
 
 ```
-filter · ↑↓ · ctrl+t effort · enter switch · esc cancel
+filter · ↑↓ · → lanes · ctrl+t effort · enter · esc
 ```
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
