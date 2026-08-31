@@ -280,6 +280,49 @@ func CutFrom(err error) (*StreamCut, bool) {
 	return nil, false
 }
 
+// ── WHAT WAS THE PATH'S FAULT AND NOT THE ENDPOINT'S ────────────────────────
+
+// pathFaultPhrases are what the Go network stack says when the far end drops a
+// connection an answer was still arriving on. They are the WIRE and nothing
+// else: a refusal the router made about our bytes carries a status and is
+// classified long before this is asked.
+var pathFaultPhrases = []string{
+	"connection reset",
+	"broken pipe",
+	"unexpected eof",
+	"reset before headers",
+	"socket hang up",
+	"socket connection was closed",
+}
+
+// PathFault reports whether an error is about the CONNECTION rather than about
+// the endpoint behind it.
+//
+// IT IS A SEAM FOR THE LAYERS ABOVE, AND IT IS NOT AN INVITATION TO RETRY. The
+// waiting policy (docs/ARCHITECTURE.md) gives every re-ask on one question to
+// one owner — the funnel, where the lane watch already treats a path with no
+// heartbeat and no byte as a fault, refuses to charge the lane's belief for it,
+// and walks to the next machine behind the same model. A layer that answered a
+// reset with a re-ask of its own would be a second clock on one silence, which
+// is the exact defect that policy exists to end.
+//
+// SO WHAT A CALLER MAY DO WITH IT IS CHOOSE ITS WORDS. A task node whose run
+// ended on a dropped connection is not a node that failed at the work, and
+// "lost the connection" is a truer ending than "failed" — that is the whole of
+// what this predicate is for.
+func PathFault(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, phrase := range pathFaultPhrases {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 // roundSeconds spells a bound the way a person says it. The constants above are
 // whole seconds, so this is exact rather than approximate.
 func roundSeconds(d time.Duration) string {

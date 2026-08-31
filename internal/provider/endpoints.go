@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -491,6 +492,12 @@ func (c *Client) recoverFromRefusal(
 		relaxed.relaxed |= step.bit
 		stripped = append(stripped, step.name)
 		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: %s", attempt, total, step.label))
+		// AND THE PHASE CLOCK CARRIES THE SAME RUNG, so the status line says
+		// "trying again · 2 of 6" while the notice above says which knob went.
+		// It is the same fact at two grains and it is stated once, here, from
+		// the same pair of numbers (phase.go).
+		notePhase(ctx, c.modelFor(request), PhaseRetrying,
+			ordinalOf(attempt, total), c.clock(), time.Time{}, "")
 		response, payload, err := c.attemptShaped(ctx, request, relaxed, stream)
 		if err != nil {
 			return nil, err
@@ -505,6 +512,13 @@ func (c *Client) recoverFromRefusal(
 		attempt++
 		tried = append(tried, next)
 		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: Falling back to %s", attempt, total, next))
+		// AND THIS IS THE ONE RUNG THAT CHANGES THE ANSWER'S MODEL, so it is
+		// the one rung whose phase says so by name: a person who asked one model
+		// and is being answered by another is owed that sentence while it
+		// happens rather than in the transcript afterwards (the ladder, in
+		// docs/ARCHITECTURE.md).
+		notePhase(ctx, c.modelFor(request), PhaseSwitchingModel,
+			"", c.clock(), time.Time{}, next)
 		// A NEW MODEL IS TRIED AS CONFIGURED. The strips above were evidence
 		// about the endpoints serving the old model and say nothing about these
 		// ones; carrying them over would silently answer on a fallback model with

@@ -252,7 +252,7 @@ func TestAWatchWithoutAVerdictStillWatches(t *testing.T) {
 	if watch.Deadline() != 1200*time.Millisecond || watch.Alt() != "CoreWeave" {
 		t.Fatal("the watch lost the choice it was started from")
 	}
-	if verdict := watch.Token(64, now.Add(time.Second)); verdict.Hedge {
+	if verdict := watch.Token(64, 64, now.Add(time.Second)); verdict.Hedge {
 		t.Fatal("an un-built watch asked for a hedge")
 	}
 	if verdict := watch.Silence(now.Add(time.Minute)); verdict.Hedge {

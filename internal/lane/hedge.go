@@ -154,11 +154,43 @@ func (b *Budget) NoteHedge(usd float64, now time.Time) {
 // same moment must not both be told yes on the strength of one allowance, and a
 // caller that had to confirm afterwards would be a caller that could forget to.
 func (b *Budget) Allow(now time.Time, costEstimate float64) bool {
-	if b == nil || b.perTwenty <= 0 {
+	if b == nil {
 		return false
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !b.affordableLocked(now, costEstimate) {
+		return false
+	}
+	b.marks = append(b.marks, b.requests)
+	return true
+}
+
+// Affordable is the same question ASKED WITHOUT SPENDING, for the one caller
+// that has to know the answer before there is anything to decide: a surface
+// drawing "if this does not answer by 4.4s it switches to parasail" is making a
+// promise, and a promise the budget was always going to refuse is the surface
+// lying about the machinery. It is a reading and not a reservation — the
+// decision is still [Budget.Allow]'s, taken at the moment the hedge is really
+// wanted — which is the right way round: the promise may be withdrawn between
+// the drawing and the deadline, and a person who is never promised anything is
+// never let down.
+func (b *Budget) Affordable(now time.Time, costEstimate float64) bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.affordableLocked(now, costEstimate)
+}
+
+// affordableLocked is the arithmetic both of them read, so that the question
+// and the decision can never drift apart. It runs with the lock held and it
+// prunes, which is a read that ages rather than a write that spends.
+func (b *Budget) affordableLocked(now time.Time, costEstimate float64) bool {
+	if b.perTwenty <= 0 {
+		return false
+	}
 	b.prune()
 	if len(b.marks) >= b.perTwenty {
 		return false
@@ -178,7 +210,6 @@ func (b *Budget) Allow(now time.Time, costEstimate float64) bool {
 			return false
 		}
 	}
-	b.marks = append(b.marks, b.requests)
 	return true
 }
 
