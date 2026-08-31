@@ -303,6 +303,116 @@ new name. Two structural tests hold the line: one fails when a new road onto the
 wake queue appears without saying who it is addressed to, and one fails when a
 person-addressed sentence is written anywhere that has never heard of a
 principal.
+## Decision 10 — Lanes: the model id is an address, the lane is the machine
+
+**Decision.** What this build believes about the endpoints behind a model lives
+in one provider-agnostic package, `internal/lane`. It holds a belief per
+`(model, lane)`, it is asked for a preference before every send, and it watches
+every stream that results. It has no transport and no surface: it never opens a
+connection, never reads a clock of its own, and never formats a number for a
+person.
+
+**Why a package and not more of `velocity.go`.** One model id is served by a
+dozen endpoints that differ by 7× on the wait before the first token and by 12×
+on how fast they write, at roughly the same price — and by capability too, so
+the fastest of them may be the one that drops the tool call. The velocity ledger
+answered that with a strike table: two slow answers demote, three refuse for
+five minutes, and slow means a fixed two seconds. That is reactive, blind on the
+first call of every process, forgotten at exit, unable to rescue a request that
+is already slow, and invisible in the picker. Every one of those five is a
+consequence of having a *table* where a *belief* belongs. `ideation/provider-routing.md`
+is the full design and the measurements it was drawn from.
+
+### The boundary
+
+Three layers, and the arrows only point one way.
+
+| layer | knows about | never knows about |
+| --- | --- | --- |
+| `internal/lane` | rows, sightings, beliefs, requests, choices | HTTP, SSE, the router's dialect, a surface |
+| `internal/provider` | how to turn a `lane.Choice` into `provider.order` / `only` / `ignore`, and a stream into a `lane.Sighting` | how a belief is computed |
+| `internal/tui3` | how to draw a belief the registry handed it | how a belief is computed, and how one is sent |
+
+`lane.Default()` is the registry where the concrete sheet, ledger, chooser,
+prober and store are wired together, and it is the only place any of them is
+constructed. Every other caller asks the registry for an interface — the same
+reason the response boundary (Decision 8) is a registry and not a switch: sites
+that each decide for themselves start the same and drift the first time one of
+them is fixed.
+
+### The data flow
+
+Four paths, each of which crosses the boundary exactly once.
+
+```
+sheet    →  Ledger.Prime(row, k)      →  a prior, so nothing is blind on the first call
+stream   →  Ledger.Note(sighting)     →  the belief this process measured itself
+request  →  Chooser.Choose(request)   →  provider.order / only / ignore on the wire
+stream   →  Watch.Token / Silence     →  a verdict, and at most one hedge
+```
+
+### The laws
+
+- **No fetch on the send path.** `Sheet.Rows` reads memory and may be called
+  from anywhere; `Sheet.Refresh` goes to the network and belongs to a background
+  beat. A missing sheet means "no prior, use the belief alone" and never "wait
+  while I look". `internal/provider/lane_law_test.go` fails the build when any
+  non-test file in the transport so much as names `Refresh`.
+- **Every number a person sees is the posterior.** The sheet is a thirty-minute
+  aggregate over everybody's prompts; our own sightings are about our prompts
+  from our region. Both are evidence, neither is truth, and what a picker draws
+  is the belief that combined them.
+- **Quality is a gate and never a weight.** A lane that drops tool calls,
+  truncates, or returns JSON the decoder refuses leaves the candidate set until
+  its Beta recovers. Weighing quality against price is how a router learns to
+  ship wrong answers cheaply.
+- **A hedge is a measurement.** The second request a slow stream earns is also
+  the only cheap way to learn what the alternative lane would have done, so it
+  is fed back as a sighting whichever way it lands — and it is budgeted, because
+  an un-budgeted hedge is the one failure mode here that costs real money.
+- **No fixed thresholds.** The four constants the strike ledger ran on retire
+  with it. Slow means "surprising for this lane, ten minutes ago", which is the
+  innovation the filter already computes. Forgetting is losing confidence, never
+  changing the estimate, so there is no penalty box and no cooldown timer: a
+  belief widens until the sheet or a sampled draw puts the lane back in the
+  running.
+- **The choice is pure.** `lane.Request` carries its own `Now`. A structural
+  test fails the build when a choosing file names `time.Now`.
+
+### The file map, and who owns which file
+
+Wave 0 landed the contract and the instrument. The five wave-1 lanes each own a
+disjoint set of files, so no two of them edit the same one.
+
+| lane | owns | delivers |
+| --- | --- | --- |
+| — (wave 0) | `internal/lane/{lane,posterior,contract,registry}.go`, `internal/lane/lanestub/` | the types, the five interfaces, the registry, the fake router |
+| L-A | `internal/lane/sheet*.go`, `belief*.go`, `store*.go` | the endpoints client and its beat, the Kalman ledger, `~/.aforge/v3/lanes.json` |
+| L-B | `internal/lane/choose*.go`, `frontier*.go`, `value*.go`; `internal/provider/lanes.go`; λ plumbing in `internal/session` | the gate, the Pareto prune, the scalar, and the adapter that replaces the velocity ledger's order and ignore |
+| L-C | `internal/lane/watch*.go`, `hedge*.go`, `probe*.go`; `internal/provider/hedge.go`, `probe.go`; the stream loop in `internal/provider/client.go` | the derived deadline, the heartbeat and drift tests, the budgeted hedge, the probe on typing |
+| L-D | `internal/tui3/lanes*.go` and the picker, settings and HUD edits; the lane keys in `internal/config`; the manual pages | the speed column, the lane unfold, the filter grammar, the settings rows |
+| L-E | the new fields in `internal/session/usage_ledger.go` and `internal/calllog`; `bench/lanelab/`; `internal/lane/e2e_test.go` | the ledger fields, the simulator and the live A/B, and the real-key proof under `-tags e2e` |
+
+Two practical notes for the lanes. `internal/provider` already has an unexported
+type called `lane` (`velocity.go`), so the adapter file imports this package
+under a name — the collision is real and the compiler will not warn about the
+shadowing, it will simply resolve to the wrong one. And the transport only sends
+a routing preference to something it believes is a router, from the base URL or
+the configured model, so a test that wants to see `provider.order` on the wire
+against `lanestub` configures its client with a model spelled `openrouter/…`.
+
+### The instrument
+
+`internal/lane/lanestub` is a fake router with lanes of a scripted speed, and it
+is shared by all five lanes for the reason a shared fixture usually is not: five
+private routers would differ, and the first disagreement between them would look
+like a bug in the code under test. It serves the endpoints sheet in the router's
+own field names, a minimal catalog, and a streamed completion that honours
+`provider.order` / `only` / `ignore`, emits the router's heartbeat comments,
+names the serving lane on every chunk, ends with a usage frame carrying the
+exact cost, and counts the streams a client walked away from. On its fast clock
+a scenario scripted in minutes finishes in microseconds.
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and
