@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,20 @@ import (
 // stalls on its first breath does not win the race by starting, and few enough
 // that the person waits a fraction of a second for the decision.
 const hedgeCommit = 64
+
+// maxArms is how many requests one question may ever become: the original and
+// three rescues.
+//
+// IT IS THE LADDER'S SECOND RUNG, BOUNDED. A stall is answered by asking the
+// alternative lane; a rescue that is itself refused walks to the next
+// gate-passing lane in frontier order, because a lane refusing a request is a
+// fact about that lane and not about the model — and relaxing the request, or
+// changing the model, before the model's own remaining machines have been tried
+// is answering a different question from the one somebody asked (the ladder, in
+// docs/ARCHITECTURE.md). Four is where it stops: past three failed lanes the
+// evidence is about the model or the request rather than about the endpoints,
+// and every step of the walk is budgeted besides.
+const maxArms = 4
 
 // heldEvents bounds what is remembered for an arm that is not speaking. A
 // silent arm commits at [hedgeCommit] tokens and starts speaking, so this is
@@ -281,8 +296,19 @@ type streamWatch struct {
 	// tokens is how many deltas of real progress this arm has delivered, and
 	// commitAt is the count at which it takes the answer. Zero is "no
 	// commitment point": before a hedge goes out there is no race to win.
+	//
+	// IT COUNTS EVERY DELTA AND NOT ONLY THE VISIBLE ONES, which is the
+	// opposite of the rule the lane watch keeps, and the two answer different
+	// questions. The watch asks "is it too late to leave?" — and a run of
+	// thought is nothing on the screen, so it buys no commitment there. This
+	// asks "which arm is the person hearing?" — and an arm that stalled and has
+	// since written sixty-four deltas of anything has RECOVERED, so it keeps the
+	// answer rather than being paid for twice while a rescue finishes.
 	tokens   int
 	commitAt int
+	// visible is the same count restricted to tokens a person can read. It is
+	// what the lane watch's commitment rule is told.
+	visible int
 	// served is the lane the stream named, first and first, and began, first
 	// and last are the timing this arm's sighting is built from.
 	served string
@@ -316,21 +342,46 @@ func (w *streamWatch) heartbeat() {
 	w.watch.Heartbeat(w.now())
 }
 
-// serve records who the stream said was answering it.
+// serve records who the stream said was answering it, and re-points the watch
+// at the machine that is really writing.
+//
+// A ROUTER HONOURS ANY OF AN ORDER. Until the first chunk names a lane the only
+// belief anybody holds is the head of the order's, and every gap after that
+// would be judged as a surprise about a machine that was never asked
+// ([lane.Watch.Serving]). The ledger read is memory only by its own contract,
+// which is what makes it safe on the read loop.
 func (w *streamWatch) serve(lane string) {
 	if w == nil {
 		return
 	}
+	lane = strings.TrimSpace(lane)
+	w.mu.Lock()
+	first := w.served == "" && lane != ""
+	if first {
+		w.served = lane
+	}
+	model, now := "", w.now()
+	if w.race != nil {
+		model = w.race.model
+	}
+	w.mu.Unlock()
+	if !first || model == "" {
+		return
+	}
+	belief, ok := lanes.Default().Ledger().Belief(lanes.ID{Model: model, Lane: lane})
+	if !ok {
+		return
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.served == "" {
-		w.served = strings.TrimSpace(lane)
-	}
+	w.watch.Serving(lane, belief, now)
 }
 
 // token is one delta of real progress — a word, a thought, a fragment of a
-// call. It advances the drift test and it is where an arm commits.
-func (w *streamWatch) token() {
+// call. It advances the drift test and it is where an arm commits. visible says
+// whether this delta was a word a person can read, which is the only count the
+// watch's commitment rule may read.
+func (w *streamWatch) token(visible bool) {
 	if w == nil {
 		return
 	}
@@ -343,7 +394,10 @@ func (w *streamWatch) token() {
 	}
 	w.last = now
 	w.tokens++
-	verdict := w.watch.Token(w.tokens, now)
+	if visible {
+		w.visible++
+	}
+	verdict := w.watch.Token(w.tokens, w.visible, now)
 	fault := w.watch.PathFault()
 	commit := w.commitAt > 0 && w.tokens >= w.commitAt
 	arm, race := w.arm, w.race
@@ -412,6 +466,76 @@ func (w *streamWatch) sighting(model string, tokens int) (lanes.Sighting, bool) 
 	}, true
 }
 
+// consequence is the deadline this arm is watched against and the lane a hedge
+// would go to, both zero on a call the router is not watching.
+//
+// IT IS WHAT THE PHASE CLOCK IS ALLOWED TO PROMISE. A countdown on the screen
+// has to be a moment at which this build really acts, and this pair is the only
+// place in the process where that moment exists.
+func (w *streamWatch) consequence() (time.Duration, string) {
+	if w == nil {
+		return 0, ""
+	}
+	w.mu.Lock()
+	deadline, alt := w.watch.Deadline(), w.watch.Alt()
+	race := w.race
+	w.mu.Unlock()
+	// AND A RESCUE NOBODY CAN AFFORD IS NOT A CONSEQUENCE. The budget is what
+	// finally decides whether the second request goes out — a speed guard
+	// switched off is a budget of zero — and a countdown drawn over a hedge
+	// that was always going to be refused is a countdown that expires and does
+	// nothing, which is the one thing the phase clock may never do.
+	if race == nil || !race.budget.Affordable(race.now(), race.estimate(alt, race.expected)) {
+		return 0, ""
+	}
+	return deadline, alt
+}
+
+// canWalk reports whether this request still has another machine behind the
+// same model that it may be sent to.
+//
+// It is what stops the relax ladder from running too early: a refusal is
+// evidence about ONE endpoint, and the ladder's rungs are about the request
+// itself. See [Client.sendRecovered] for the whole argument.
+func (w *streamWatch) canWalk() bool {
+	if w == nil || w.race == nil {
+		return false
+	}
+	return w.race.hasUntriedLane()
+}
+
+// speaking reports whether this arm is the one the person is hearing.
+//
+// An unraced stream always is — there is nobody else. An arm of a race is only
+// while it holds the voice, which is the same rule [hedgeRace.emit] keeps about
+// the deltas themselves: one request is one story, and a story told from the
+// arm whose text is being HELD would be about words nobody is reading.
+func (w *streamWatch) speaking() bool {
+	if w == nil || w.race == nil {
+		return true
+	}
+	return w.race.hears(w.arm)
+}
+
+// quietFor is how long this arm has been silent, spelled the way a person says
+// it, and empty when it has never written at all — a stream that never started
+// is not a stream that stopped.
+func (w *streamWatch) quietFor(now time.Time) string {
+	if w == nil {
+		return ""
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.last.IsZero() {
+		return ""
+	}
+	quiet := now.Sub(w.last)
+	if quiet < time.Second {
+		return ""
+	}
+	return strconv.Itoa(int(quiet.Round(time.Second)/time.Second)) + "s"
+}
+
 // lane is who answered this arm, empty when nothing said.
 func (w *streamWatch) lane() string {
 	if w == nil {
@@ -460,6 +584,7 @@ type hedgeRace struct {
 	session  string
 	observer StreamObserver
 	report   *HedgeReport
+	phase    *phaseClock
 	budget   *lanes.Budget
 	now      func() time.Time
 	base     context.Context
@@ -476,9 +601,14 @@ type hedgeRace struct {
 	winner  int
 	spoken  bool
 	started bool
-	// held is what the arm that is not speaking has produced, replayed if it
-	// wins and dropped if it does not.
-	held []StreamEvent
+	// held is what each arm that is not speaking has produced, replayed if it
+	// wins and dropped if it does not. IT IS PER ARM because the walk below can
+	// have two silent arms at once, and one list would interleave two answers
+	// and replay the mixture.
+	held map[int][]StreamEvent
+	// tried is every lane this request has already been sent to, so the walk
+	// never asks the same machine twice.
+	tried map[string]bool
 	// hedging is set the moment a second request is decided on, so that a
 	// budget refusal is final rather than retried by the next delta.
 	hedging bool
@@ -519,12 +649,18 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver) (*hedgeRa
 		session:  streamSessionFrom(ctx),
 		observer: observer,
 		report:   HedgeReportFrom(ctx),
+		phase:    phaseClockFrom(ctx),
 		budget:   currentHedgeBudget(),
 		now:      c.clock,
 		speaker:  0,
 		winner:   -1,
-		results:  make(chan armResult, 2),
+		held:     map[int][]StreamEvent{},
+		tried:    map[string]bool{},
+		results:  make(chan armResult, maxArms),
 		decided:  make(chan struct{}),
+	}
+	if head := headLane(choice); head != "" {
+		race.tried[strings.ToLower(head)] = true
 	}
 	// What is believed about the lane expected to serve, which is what turns a
 	// gap into a surprise. The head of the order is the lane the router was
@@ -570,6 +706,18 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 			}
 		case result := <-r.results:
 			seen[result.index] = result
+			if result.err != nil {
+				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
+				// never speak again, and leaving it as the speaker holds every
+				// other arm's text unreplayed until one of them finishes —
+				// which is a person watching nothing while an answer arrives.
+				r.passVoice(seen)
+				// A RESCUE THAT WAS ITSELF REFUSED WALKS ON. The primary may
+				// still be stalled with nothing on the screen, and the next
+				// machine behind this model is a cheaper answer than relaxing
+				// the request or changing the model would be.
+				r.walk(result.index)
+			}
 			if result.err == nil {
 				// FINISHING IS COMMITTING. An arm that reached the end of its
 				// stream has the whole answer, whatever its token count said.
@@ -694,6 +842,9 @@ func (r *hedgeRace) hedge(from int, verdict lanes.Verdict, fault bool) {
 	if !r.budget.Allow(r.now(), r.estimate(alt, r.expected)) {
 		return
 	}
+	r.mu.Lock()
+	r.tried[strings.ToLower(alt)] = true
+	r.mu.Unlock()
 	// The primary's own commitment point is measured from HERE: it keeps the
 	// answer by writing another sixty-four tokens, or by finishing, and not by
 	// the tokens it had already written before it stalled.
@@ -707,7 +858,78 @@ func (r *hedgeRace) hedge(from int, verdict lanes.Verdict, fault bool) {
 	// said while something is already being done about it (internal/tui3's
 	// laneRider).
 	r.report.started(alt)
+	// AND THE CLOCK SAYS SO IN THE SAME BREATH. "stalled 9s · switching to
+	// parasail" is one sentence: the first half is why, and a person shown only
+	// the second half would not know what it was about (phase.go).
+	r.phase.switching(strings.ToLower(alt), primary.watch.quietFor(r.now()))
 	r.start(1, alt)
+}
+
+// walk is the second rung: the rescue we sent was refused or broke, nobody has
+// committed, and there is another machine behind this model that the frontier
+// says is worth asking.
+//
+// IT IS NOT A SECOND HEDGE. A hedge is a bet against SLOWNESS and it is fired
+// by the watch; this is a response to a lane that has FAILED, and the request
+// it replaces is already gone. That is why it is not gated by [hedgeRace.hedging]
+// — one refusal must not spend the one hedge a slow lane is still owed — and
+// why it is gated by the budget and by [maxArms] instead.
+//
+// THE PRIMARY IS NEVER WALKED FROM. An arm that is still streaming has not
+// failed, and the watch is the only thing allowed to give up on it.
+func (r *hedgeRace) walk(from int) {
+	if r == nil || r.base == nil || r.base.Err() != nil {
+		return
+	}
+	alt := ""
+	r.mu.Lock()
+	if r.winner >= 0 || len(r.arms) >= maxArms {
+		r.mu.Unlock()
+		return
+	}
+	for _, scored := range r.choice.Frontier {
+		name := strings.TrimSpace(scored.ID.Lane)
+		if name == "" || r.tried[strings.ToLower(name)] {
+			continue
+		}
+		alt = name
+		break
+	}
+	if alt == "" {
+		r.mu.Unlock()
+		return
+	}
+	r.tried[strings.ToLower(alt)] = true
+	index := len(r.arms)
+	r.mu.Unlock()
+
+	if !r.budget.Allow(r.now(), r.estimate(alt, r.expected)) {
+		return
+	}
+	r.report.started(alt)
+	r.phase.switching(strings.ToLower(alt), "")
+	r.start(index, alt)
+}
+
+// passVoice hands the person's ear to an arm that is still alive, when the one
+// they were listening to has failed. It is a no-op while the speaker is still
+// running and while there is nobody else.
+func (r *hedgeRace) passVoice(seen map[int]armResult) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.winner >= 0 {
+		return
+	}
+	if done, ok := seen[r.speaker]; !ok || done.err == nil {
+		return
+	}
+	for _, arm := range r.arms {
+		if _, ended := seen[arm.index]; ended || arm.index == r.speaker {
+			continue
+		}
+		r.flip(arm.index)
+		return
+	}
 }
 
 // commit hands the answer to one arm and cancels the other. It is idempotent:
@@ -750,8 +972,11 @@ func (r *hedgeRace) flip(to int) {
 		// told that in the one channel that reaches the room in order.
 		r.observer(StreamEvent{Kind: StreamNotice, Delta: hedgeNotice, Session: r.session})
 	}
-	held := r.held
-	r.held = nil
+	held := r.held[to]
+	// EVERY OTHER ARM'S HELD TEXT IS DROPPED HERE AND NOT LATER. It is an
+	// answer nobody is going to read, and keeping it would let a third arm
+	// replay it after this one had already spoken.
+	r.held = map[int][]StreamEvent{}
 	for _, event := range held {
 		if event.Kind == StreamStarted {
 			continue
@@ -802,8 +1027,8 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 		}
 	}
 	if arm != r.speaker {
-		if len(r.held) < heldEvents {
-			r.held = append(r.held, event)
+		if len(r.held[arm]) < heldEvents {
+			r.held[arm] = append(r.held[arm], event)
 		}
 		return
 	}
@@ -811,6 +1036,30 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 		r.spoken = true
 	}
 	r.observer(event)
+}
+
+// hasUntriedLane reports whether the frontier still holds a gate-passing lane
+// this request has not been sent to, and there is room to send one.
+func (r *hedgeRace) hasUntriedLane() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.winner >= 0 || len(r.arms) >= maxArms {
+		return false
+	}
+	for _, scored := range r.choice.Frontier {
+		name := strings.TrimSpace(scored.ID.Lane)
+		if name != "" && !r.tried[strings.ToLower(name)] {
+			return true
+		}
+	}
+	return false
+}
+
+// hears reports whether this arm is the one the person is listening to.
+func (r *hedgeRace) hears(arm int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.speaker == arm
 }
 
 // won is the arm that took the answer, -1 while the race is open.
@@ -882,14 +1131,25 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 			if arm.index == result.index {
 				winner = laneOf(arm)
 			} else {
+				// THE LOSER NAMED IS THE LAST ONE ASKED and the waste is EVERY
+				// arm that did not answer. One name cannot describe a walk of
+				// three, and the row would rather carry the nearest miss than
+				// an invented list; the money, though, is the sum, because a
+				// waste column that reported one of three cancelled arms would
+				// understate what the rescue cost by exactly the amount that
+				// makes it worth knowing.
 				loser = laneOf(arm)
-				waste = r.estimate(loser, arm.watch.written())
+				waste += r.estimate(loser, arm.watch.written())
 			}
 			if arm.index == 0 {
 				primary = laneOf(arm)
 			}
-			if arm.index == 1 {
-				second = r.armCost(seen, arm)
+			if arm.index > 0 {
+				// EVERY RESCUE IS CHARGED, not only the first one. The walk can
+				// put a third and a fourth request on the wire, and a budget
+				// that only ever saw the second would let a walk spend the
+				// session's whole share while believing it had spent one arm's.
+				second += r.armCost(seen, arm)
 			}
 		}
 		r.budget.NoteHedge(second, now)

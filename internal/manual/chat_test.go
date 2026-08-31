@@ -709,6 +709,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where did the answer that was on screen go", "screen"},
 		{"the text it was writing disappeared", "screen"},
 		{"stuck on waiting for the model", "screen"},
+		// THE PHASE CLOCK (internal/tui3's phase.go). The connection now says which
+		// of its own slownesses a request is in, so the questions people ask while
+		// nothing is arriving have a page with the exact words on it. The last two
+		// are the reported defect itself: a stalled reasoning pass that said
+		// nothing but "still working", and no sense of when anything would be done
+		// about it.
+		{"what is it doing right now", "screen"},
+		{"it says thinking and nothing is on the screen", "screen"},
+		{"what does first word mean while it is waiting", "screen"},
+		{"how long until it gives up on this one", "screen"},
+		{"what does still working mean", "screen"},
 		// THE ANSWER HIERARCHY (internal/tui3's hierarchy.go). A turn's narration
 		// now recedes into the work column at a quieter shade and only the block
 		// the turn ended on is drawn as the answer, so somebody looking at a reply

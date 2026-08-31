@@ -1030,7 +1030,14 @@ func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string 
 }
 
 // stillWorking is how long a turn has to be silent before the indicator says
-// so out loud.
+// so out loud. IT IS THE LAST FALLBACK AND NOT THE FIRST ANSWER: where the
+// layer holding the stream says what it is doing, the phase clock says it
+// (phase.go's [phaseWords]), and where it does not the wait says what is being
+// waited on ([app.waitingWords]). This word survives only where neither knows
+// anything — a build with nobody posting, a stall past the freshness window, a
+// turn whose request has already returned — which is the emptiness law read
+// downwards: the vaguest true sentence is what is left when no better one is
+// known, and it is still better than three dots.
 //
 // THE DEFECT THIS FIXES: the session's loop retries a failed request silently,
 // with a backoff — a rate limit, a 529, a connection reset — and it says nothing
@@ -1048,7 +1055,9 @@ func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string 
 // nothing for ten seconds, and that is exactly what it claims.
 const stillWorking = 10 * time.Second
 
-// stillWorkingWord is the suffix.
+// stillWorkingWord is the suffix, and the least specific thing this surface can
+// truthfully say about a running turn — see [stillWorking] for why it is now
+// reached last of three.
 const stillWorkingWord = " · still working"
 
 // ── THE WAIT FOR THE FIRST BYTE ─────────────────────────────────────────────
@@ -1168,6 +1177,22 @@ func (a *app) ellipsis() (string, bool) {
 		return "", false
 	}
 	line := a.pal.accent("  " + a.pulse())
+	// THREE ANSWERS TO ONE QUESTION, AND THE MOST SPECIFIC ONE WINS. All three
+	// say "nothing is arriving"; they differ in how much they know about why.
+	//
+	//	··· thinking · 12s · friendli 38 t/s   the layer holding the stream said
+	//	··· waiting for kimi-k3 · 12s          a request is out, and that is all
+	//	··· still working                      the stream has simply gone quiet
+	//
+	// The phase clock outranks both because it is the only one of the three that
+	// is not an inference: it is the wire's own account of itself (phase.go),
+	// and where it exists the other two are guesses about a thing somebody has
+	// already told us.
+	if news, ok := a.livePhase(); ok {
+		if words := phaseWords(news, a.now()); words != "" {
+			return line + a.pal.dim(" "+words), true
+		}
+	}
 	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
 	// line. They are two ways of saying the same thing — nothing is arriving —
 	// and the wait is the more specific of them: it names what is being waited
@@ -1517,7 +1542,7 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 	// here and a segment pressed there cannot be at two different offsets
 	// (app.go's [app.statusPress]). A cluster the width pressure then drops
 	// clears it again — see [app.statusRows].
-	left, span := a.identityParts()
+	left, span := a.identityParts(0)
 	a.modelSpan = span
 	parts := a.telemetry(width)
 	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
@@ -1534,12 +1559,24 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 	if room := width - ansi.StringWidth(left) - hudGap; hudWidth(parts) <= room {
 		return left, parts, false
 	}
+	// AND UNDER REAL PRESSURE THE CLUSTER IS SAID SHORTER, NEVER CLIPPED. Both
+	// branches below used to hand a cluster that had already overrun to
+	// something that cut it — [fit]'s ellipsis on the wrapped row, and the whole
+	// identity dropped on the row that did not wrap ([app.statusRows]). Asking
+	// for it again with the columns it actually has lets the served rider give
+	// up a spelling instead of a fact ([app.identityParts]).
 	if width < hudWrap {
 		for hudWidth(parts) > width && dropSegment(&parts) {
 		}
+		left, span = a.identityParts(width)
+		a.modelSpan = span
 		return left, parts, true
 	}
 	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap && dropSegment(&parts) {
+	}
+	if room := width - hudWidth(parts) - hudGap; ansi.StringWidth(left) > room {
+		left, span = a.identityParts(room)
+		a.modelSpan = span
 	}
 	return left, parts, false
 }
@@ -1578,7 +1615,7 @@ func (a *app) statusHeight(width int) int {
 // The name falls back to the workspace's base name until the session has named
 // itself (session's title.go), so the cluster is never empty.
 func (a *app) identity() string {
-	text, _ := a.identityParts()
+	text, _ := a.identityParts(0)
 	return text
 }
 
@@ -1592,7 +1629,7 @@ func (a *app) identity() string {
 // session with no model yet, or a room whose node is past being moved: the press
 // always acts on WHAT THE ROW NAMES, so in a room it is the node's model and out
 // here it is the conversation's, and neither can ever be mistaken for the other.
-func (a *app) identityParts() (string, hudSpan) {
+func (a *app) identityParts(width int) (string, hudSpan) {
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
 	// telemetry beside it is still the session's, because a room is a view over
@@ -1653,7 +1690,23 @@ func (a *app) identityParts() (string, hudSpan) {
 	// The RIDER IS PART OF THE TARGET. "via deepinfra · 92 tok/s" is a fact
 	// about the model that is answering, so a person pressing it means the same
 	// thing they mean by pressing the id.
-	segment := model + a.servedRider()
+	//
+	// AND THE RIDER IS THE HALF THE WIDTH IS TAKEN OUT OF. The conversation's
+	// name and the model's are what the cluster IS; the rider is what is
+	// happening to it, and it is the only part of the line that has a shorter
+	// true spelling to fall back on. So the columns left after the two names are
+	// the rider's budget, and a width of zero or less is no budget at all — the
+	// reading every caller that is not laying out the status row wants
+	// ([app.identity]).
+	segment := model
+	switch {
+	case width <= 0:
+		segment += a.servedRiderAt(-1)
+	default:
+		if room := width - ansi.StringWidth(name+" · "+model); room > 0 {
+			segment += a.servedRiderAt(room)
+		}
+	}
 	from := ansi.StringWidth(name + " · ")
 	return name + " · " + segment, hudSpan{from: from, to: from + ansi.StringWidth(segment)}
 }
@@ -1697,12 +1750,61 @@ const servedWindow = 10 * time.Minute
 // that reads "gpt-4.1 · via openai" is a cell of chrome per frame for a word
 // the reader already has.
 //
-// THE LANE LAYER SPEAKS FIRST WHEN IT HAS SPOKEN AT ALL (lanes.go's
-// [app.laneRider]). It knows three things this reading cannot — the first-token
+// THE LIVE PHASE OUTRANKS BOTH OF THE READINGS UNDER IT (phase.go's
+// [app.livePhase]), and the ranking is by TENSE. A phase is what this request is
+// doing right now; the lane news is what the last answer did; the sighting is
+// what some answer did within the last ten minutes. Drawing the older one beside
+// the newer is how the row came to say a finished answer's lane and throughput
+// under a request that had been stalled for a minute, which is the defect the
+// phase clock was built for.
+//
+// THE LANE LAYER SPEAKS SECOND WHEN IT HAS SPOKEN AT ALL (lanes.go's
+// [app.laneRider]). It knows three things the sighting cannot — the first-token
 // wait, that a rescue is in flight, and that one landed — and the two must not
 // both draw, or the row would say `via` twice about one answer. Where nothing
 // has posted, this is exactly the rider it has always been.
-func (a *app) servedRider() string {
+func (a *app) servedRider() string { return a.servedRiderAt(-1) }
+
+// riderLead is the separator the rider hangs off the model's name by, and the
+// cells a bounded rider has to pay for before it may say anything at all.
+const riderLead = " · "
+
+// servedRiderAt is that rider in the widest spelling that fits in the columns
+// the row has left for it. A width below zero is no bound, which is what
+// [app.servedRider] asks for and what every reading that is not on the status
+// row wants.
+//
+// THE SEGMENT DEGRADES BY WHAT ITS PARTS ARE WORTH, NEVER BY WHERE THE ROW
+// ENDS. A clip takes the tail, and the tail of this segment is the rate — which
+// is right, once — and then it takes the machine's name, the phase and the
+// clock together, in one step, and leaves an ellipsis standing where a shorter
+// true sentence would have fitted. So a narrow row is handed the segment as
+// DATA (phase.go's [phaseSegment]) and given the best rung of it that fits.
+func (a *app) servedRiderAt(width int) string {
+	room := width
+	if room >= 0 {
+		room -= ansi.StringWidth(riderLead)
+		if room < 0 {
+			room = 0
+		}
+	}
+	if news, ok := a.livePhase(); ok {
+		// THE RATE RIDES ONLY WHILE A TURN IS RUNNING, which is the rule both
+		// readings below already keep: what a phase IS remains attribution, and
+		// how fast it was writing is a claim about now. Zeroing it here rather
+		// than inside the words keeps that rule in one place per rider.
+		if a.state != stateWorking {
+			news.Rate = 0
+		}
+		if words := rowLed(phaseFields(news, a.now()), roomFor(room)); words != "" {
+			return riderLead + words
+		}
+	}
+	// THE LANE LAYER'S OWN RIDER IS NOT ON THE LADDER YET, and it is the one
+	// segment on this row that a narrow frame can still clip. Its three states
+	// are assembled in lanes.go, which this wave does not own; the rebase that
+	// lands internal/tui3/rowfit.go is where it becomes a [phaseSegment] like
+	// the two around it.
 	if rider := a.laneRider(); rider != "" {
 		return rider
 	}
@@ -1717,16 +1819,31 @@ func (a *app) servedRider() string {
 	if strings.Contains(strings.ToLower(a.model), served) {
 		return ""
 	}
-	rider := " · via " + served
+	// The name leads and the rate is the field after it, which is this segment's
+	// whole hierarchy: who answered is the fact, how fast is the measurement.
+	fields := []rowField{rowSay("via "+served, served)}
 	// THE RATE RIDES ONLY WHILE A TURN IS RUNNING. Who served is attribution
 	// and stays; how fast they were writing is a claim about NOW, and a rate
 	// from the last turn standing on an idle status line read as a live figure
 	// nobody was producing — a person sat looking at "92 tok/s" over a chat
 	// that was doing nothing.
 	if sighting.Rate > 0 && a.state == stateWorking {
-		rider += " · " + tokenWord(int(sighting.Rate)) + " tok/s"
+		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
 	}
-	return rider
+	if words := rowLed(fields, roomFor(room)); words != "" {
+		return riderLead + words
+	}
+	return ""
+}
+
+// roomFor turns this file's "below zero is no bound" into rowfit.go's own
+// spelling of the same thing, which is a very large number rather than a
+// special case ([rowUnbounded]). One code path fits every row.
+func roomFor(width int) int {
+	if width < 0 {
+		return rowUnbounded
+	}
+	return width
 }
 
 // modelBase strips the vendor from a model id, and nothing else: everything

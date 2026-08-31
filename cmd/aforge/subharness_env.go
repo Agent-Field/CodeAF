@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -142,6 +143,14 @@ func (e *headlessEnv) AI(ctx context.Context, promptRef string, input any, opts 
 	if opts.Effort != provider.EffortNone {
 		ctx = provider.WithReasoningEffort(ctx, opts.Effort)
 	}
+	// AND WHO THIS CALL IS FOR, which on this surface is nobody in particular:
+	// a headless run is a leaf with an empty room in front of it. The role is
+	// what the router reads a wait's worth from and what the phase clock reads
+	// its visibility from (internal/lane's roles.go), and unattended is the
+	// conservative reading — a call that claimed a person was waiting would buy
+	// speed with somebody's money and would take the status line away from an
+	// answer somebody really is reading.
+	ctx = provider.WithRole(ctx, lane.RoleLeafUnattended)
 	response, callErr := e.client.CompleteWithMessages(ctx,
 		[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(material)}}}},
 		options...)

@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -159,7 +160,11 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	// on the client bounded in total rather than on the stream client, which by
 	// design carries no total deadline at all (internal/provider's
 	// transport.go).
-	look, stopLooking := context.WithTimeout(provider.WithoutStream(ctx), viewLookWindow)
+	// And it names itself an errand for the same reason it is unstreamed: the
+	// answer is a tool result, so nobody is reading it arrive (internal/lane's
+	// roles.go).
+	look, stopLooking := context.WithTimeout(
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), viewLookWindow)
 	defer stopLooking()
 	response, err := a.client.CompleteWithMessages(look, []ai.Message{{
 		Role: "user",

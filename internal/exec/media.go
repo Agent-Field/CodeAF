@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -29,6 +30,15 @@ type MediaProvider interface {
 	// (internal/provider/music.go). Every call generate_music made failed.
 	GenerateMusic(context.Context, provider.MusicRequest) (*provider.MusicResponse, error)
 	GenerateVideo(context.Context, provider.VideoRequest) (*provider.VideoResponse, error)
+}
+
+// mediaContext names who a generation call is for. It is one line rather than
+// four because the four verbs on [MediaProvider] are one errand as far as the
+// funnel is concerned — a person asked for a picture, a voice, a tune or a clip
+// and is waiting on the file — and a role restated four times is a role that
+// will one day be four different roles.
+func mediaContext(ctx context.Context) context.Context {
+	return provider.WithRole(ctx, lane.RoleMedia)
 }
 
 type DocumentProvider interface {
@@ -149,7 +159,13 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 	} else {
 		request.Size = size
 	}
-	response, err := t.media.Provider.GenerateImage(ctx, request)
+	// DRAWING IS NOT WRITING, and [lane.RoleMedia] is where that difference is
+	// written down: this call produces no token stream at all, so it has no
+	// first token, no rate and no drift to watch — it takes the deadline-only
+	// half of the watch and its phase is a single word with a clock under it
+	// (internal/lane's roles.go). Somebody IS waiting on it, which is the other
+	// half of the same fact and why the role is a visible one.
+	response, err := t.media.Provider.GenerateImage(mediaContext(ctx), request)
 	if err != nil || response == nil || len(response.Data) == 0 {
 		return errorf("image generation failed — try another prompt or image model")
 	}
@@ -210,7 +226,7 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 	if voice == "" {
 		voice = "alloy"
 	}
-	response, err := t.media.Provider.Speak(ctx, provider.SpeechRequest{
+	response, err := t.media.Provider.Speak(mediaContext(ctx), provider.SpeechRequest{
 		Model: model, Input: body, Voice: voice, ResponseFormat: "mp3",
 	})
 	if err != nil || response == nil || len(response.Audio) == 0 {
@@ -247,7 +263,7 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 			return errorf("music generation paused at the daily budget — approve it in chat to continue")
 		}
 	}
-	response, err := t.media.Provider.GenerateMusic(ctx, provider.MusicRequest{
+	response, err := t.media.Provider.GenerateMusic(mediaContext(ctx), provider.MusicRequest{
 		Model: model, Prompt: prompt,
 	})
 	if err != nil || response == nil || len(response.Audio) == 0 {
@@ -323,7 +339,7 @@ func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result
 			return errorf("video generation paused at the daily budget — approve it in chat to continue")
 		}
 	}
-	response, err := t.media.Provider.GenerateVideo(ctx, provider.VideoRequest{
+	response, err := t.media.Provider.GenerateVideo(mediaContext(ctx), provider.VideoRequest{
 		Model: model, Prompt: prompt, Duration: duration,
 		Resolution:  strings.TrimSpace(stringArg(args, "resolution")),
 		AspectRatio: strings.TrimSpace(stringArg(args, "aspect_ratio")),

@@ -81,11 +81,16 @@ const (
 	EventTurnDone
 	// EventError ends the turn abnormally; Err says why.
 	EventError
-	// EventCompacting says a compaction pass has started — the cut is made
-	// and the summarizer is running, which is seconds a surface should show
-	// as work, not silence. Hint sizes the pass ("compacting ~84k tokens").
-	// EventCompacted always follows it, success or failure: on failure the
-	// pass changed nothing and the turn keeps going.
+	// EventCompacting says a compaction pass has started, which is work a
+	// surface should show rather than silence. Hint sizes the pass
+	// ("compacting ~84k tokens").
+	//
+	// EventCompacted always follows it, success or failure — a surface opens a
+	// row on this one and settles it on that one, and a pass that found nothing
+	// to do says so rather than leaving the row open (loop.go's [Agent.compact]).
+	// There is no summarizer behind it any more: the pass is two mechanical
+	// walks over messages this session already holds, so what it costs is a lock
+	// and not a model call.
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
 	// ("compacted from ~84k tokens, kept last ~20k").

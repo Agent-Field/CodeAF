@@ -61,6 +61,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -1043,8 +1044,11 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 			}
 		}
 	}()
+	// What this call is FOR, in the vocabulary the router and the phase clock
+	// share: a craft pass on a harness page, watched through the progress above
+	// rather than through its token stream (internal/lane's roles.go).
 	response, err := a.client.CompleteWithMessages(
-		streamCtx,
+		provider.WithRole(streamCtx, lane.RoleDesign),
 		messages,
 		ai.WithModel(model),
 		ai.WithMaxTokens(maxTokens),

@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
@@ -143,6 +144,28 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		knobs.trace.begin()
 		if attempt > 0 {
 			delay := backoffFor(attempt, providerWait)
+			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
+			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
+			// on a rate limit for two minutes said nothing at all: the only
+			// seam out of here was [WithPacingNotice], a bare bool, and it is
+			// nil on every chat session (internal/session's agent.go — only a
+			// task node sets one). The deadline here is REAL — it is the moment
+			// this request goes out again — which is what makes it something a
+			// countdown may be drawn from (phase.go).
+			// PACED OR MERELY TRYING AGAIN, and the difference is whose fault
+			// the wait is. A rate limit is the router asking us to slow down
+			// and it is the one wait with a moment attached to it, so it gets
+			// its own word; everything else here is a fault we are re-asking
+			// after. [pacedSince] is set on the first 429 of the call and is
+			// the honest reading of "this call is being paced", where the
+			// header's own figure is spent after one attempt.
+			paced := PhaseRetrying
+			if !pacedSince.IsZero() {
+				paced = PhasePaced
+			}
+			now := c.clock()
+			notePhase(ctx, c.modelFor(request), paced,
+				ordinalOf(attempts, patienceOf(patient)), now, now.Add(delay), "")
 			// Spent. It described one moment to come back at, and coming back
 			// is what we are doing; carrying it forward made a single 429 set
 			// the floor for every remaining attempt of the call.
@@ -380,4 +403,23 @@ func attemptContext(ctx context.Context, stream bool) (context.Context, context.
 // deadline three times over.
 func retryableStatus(status int) bool {
 	return status == http.StatusTooManyRequests || status >= 500
+}
+
+// ordinalOf spells which of how many attempts this is, the way a person says
+// it: "2 of 6". An unknown total draws nothing rather than a bare number with
+// no scale beside it.
+func ordinalOf(attempt, total int) string {
+	if attempt <= 0 || total <= 0 {
+		return ""
+	}
+	return strconv.Itoa(attempt) + " of " + strconv.Itoa(total)
+}
+
+// patienceOf is how many attempts this call is allowed, which is the only
+// figure the ordinal above can honestly be measured against.
+func patienceOf(patient bool) int {
+	if patient {
+		return patientAttempts
+	}
+	return rateLimitAttempts
 }

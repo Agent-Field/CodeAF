@@ -375,11 +375,16 @@ line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shel
 
 `delete` also forgets the line under the cursor.
 
-## spend — what it cost
+## spend — what it cost, and why it counts another session or another machine
 
 What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
+
+**It is the whole machine and not this session**, which is why a figure here can be larger
+than anything this conversation did: every window, every task and every standing run on
+this machine writes into that one ledger, including a session opened from another machine
+over `--host` whose calls are still made here. For this session alone, ask `/cost`.
 
 Three blocks: the window with its sparkline, `what ran it` by the model and the role that
 model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the

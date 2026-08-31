@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -1016,7 +1017,13 @@ func (m *modelEnv) say(ctx context.Context, model, system, user string) (string,
 	if model = strings.TrimSpace(model); model != "" {
 		options = append(options, ai.WithModel(model))
 	}
-	response, err := m.client.CompleteWithMessages(provider.WithoutStream(ctx), []ai.Message{
+	// NOBODY IS WATCHING A HARNESS NODE ARRIVE, which is the same fact the
+	// comment above states about the stream, said in the vocabulary the router
+	// and the phase clock read (internal/lane's roles.go). An unattended leaf is
+	// worth less a second than an attached one and owns no part of the status
+	// line, and both of those follow from the role rather than from a number
+	// this file would otherwise have to invent.
+	response, err := m.client.CompleteWithMessages(provider.WithRole(provider.WithoutStream(ctx), lane.RoleLeafUnattended), []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: user}}},
 	}, options...)

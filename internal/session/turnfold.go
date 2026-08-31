@@ -11,7 +11,9 @@ package session
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -71,6 +73,23 @@ func (a *Agent) foldTurnOutputs(seenThrough int, hub *eventHub) {
 	if line <= 0 {
 		return
 	}
+
+	// IS THERE A PASS AT ALL, ASKED BEFORE THE PASS SAYS ANYTHING. This runs at
+	// every step boundary of every turn and almost always answers no, and the
+	// answer wants the agent's lock while the SAYING must not have it — a phase
+	// post reaches a surface, and a surface that answers it by asking this agent
+	// a question would be waiting on the very lock the pass holds
+	// (phasenews.go). So the cheap reading is taken and let go of first.
+	a.mu.Lock()
+	over := a.estimateTokensLocked() > line
+	a.mu.Unlock()
+	if !over {
+		return
+	}
+	// A fold is the same kind of wait as a cross-turn compaction and wears the
+	// same word: the turn has stopped to tidy what it has already read.
+	a.tellPhase(provider.PhaseTidying, "this turn's results", time.Now())
+	defer a.endPhase()
 
 	a.mu.Lock()
 	before := a.estimateTokensLocked()
@@ -143,6 +162,14 @@ func (a *Agent) foldTurnOutputs(seenThrough int, hub *eventHub) {
 		a.mu.Unlock()
 		return
 	}
+	// THE PASS IS ANNOUNCED HERE AND NOWHERE EARLIER, because here is the first
+	// line at which it is certain to happen: everything above this returns
+	// without touching the transcript. [EventCompacting] opens a row a surface
+	// settles on the [EventCompacted] at the foot of this function, and a row
+	// opened for a pass that then did nothing would never close. It goes out
+	// under the lock for [Agent.compact]'s reason — [eventHub.send] appends to
+	// queues and cannot block.
+	hub.send(Event{Kind: EventCompacting, Hint: "compacting " + approxTokens(before) + " tokens"})
 	for _, replacement := range replacements {
 		a.messages[replacement.index] = replacement.message
 	}

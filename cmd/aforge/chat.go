@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
@@ -4723,7 +4724,7 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 	ch := make(chan verdict, 2)
 	for range 2 {
 		go func() {
-			vctx := pool.WithSpendNode(settings.Context(ctx, "quorum"), nodeID)
+			vctx := pool.WithSpendNode(errandContext(ctx, settings, "quorum", lane.RoleJudge), nodeID)
 			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
 			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
 				ch <- verdict{true, ""} // fail-open
@@ -5608,6 +5609,29 @@ func subtreePrefix() (string, error) {
 	return "t" + hex.EncodeToString(random[:]), nil
 }
 
+// errandContext is how one of the resident's side errands says who it is for.
+//
+// EVERY MODEL CALL IN THIS BUILD IS MADE ON SOMEBODY'S BEHALF, and the four
+// numbers that decide how it is routed — what a second of its wait is worth,
+// how sure we have to be the answer is usable, how many more calls there are to
+// learn from, and whether a person is reading this stream — are all consequences
+// of that one fact. They live in `internal/lane`'s roles.go and nowhere else; a
+// call site names its role and names none of them.
+//
+// It matters most for the LAST of those. A job being narrated, titled, distilled
+// and consolidated makes several calls that are nobody's business but the
+// machine's, and a status line that drew whichever of them answered last was
+// showing a person the lane and the throughput of a naming errand while they
+// waited on something else entirely. Only a visible role owns the phase clock,
+// and none of the errands below is one.
+//
+// It wraps [config.Config.Context] rather than sitting beside it because the two
+// facts belong to the same errand: the task name is what the cache key and the
+// spend row are built from, and the role is what the router is built from.
+func errandContext(ctx context.Context, settings config.Config, task string, role lane.Role) context.Context {
+	return provider.WithRole(settings.Context(ctx, task), role)
+}
+
 // narratorSystemPrompt keeps progress updates in the agent's own casual
 // voice. The reconciler decides when to speak; this decides only how.
 const narratorSystemPrompt = `You are aforge, giving the user one casual progress update on work happening in the background. One sentence, two at most. Plain speech in first person, no markdown, no lists, no internal jargon. Name the concrete things that just finished and what is in motion now; mention a duration only when it is notable. Do not repeat anything from your earlier updates, provided below. Never imply the whole job is finished — it is not.`
@@ -5644,7 +5668,7 @@ func narrateProgress(settings config.Config, client *liveClient, graph *store.St
 		if narration.Queued > 0 {
 			fmt.Fprintf(&input, "\nQueued behind them: %d parts\n", narration.Queued)
 		}
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "narrate"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "narrate", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: resident.VoicePrompt(graph, narratorSystemPrompt, narration.Goal)}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(150))
@@ -5817,7 +5841,7 @@ func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.
 		if refused := resident.RetractedBlock(graph, 10); refused != "" {
 			input.WriteString("\n" + refused + "\n")
 		}
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(500))
@@ -5845,7 +5869,7 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 				fmt.Fprintf(&input, "assets: %s\n", strings.Join(job.Pointers, ", "))
 			}
 		}
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "reflect"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt + voice}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(300))
@@ -5895,7 +5919,7 @@ func composeMorningBrief(settings config.Config, client *liveClient, graph *stor
 		if err != nil {
 			return resident.BriefDraft{}, err
 		}
-		briefCtx := provider.WithCall(settings.Context(ctx, "morning-brief"), provider.ClassPlanBrief)
+		briefCtx := provider.WithCall(errandContext(ctx, settings, "morning-brief", lane.RoleAuxiliary), provider.ClassPlanBrief)
 		options := []ai.Option{ai.WithMaxTokens(500)}
 		if client.Routed() {
 			options = append(options, ai.WithSchema(morningBriefSchema))
@@ -5950,7 +5974,7 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 		// "sentinel returned no clear yes" on every wake forever. A cap is a cap
 		// and not a purchase, so the number has to hold what the reply can
 		// legitimately need; head/scribe.go carries the full accounting.
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "sentinel", lane.RoleJudge), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, ai.WithMaxTokens(1024))
@@ -5994,7 +6018,7 @@ func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 		// first and the call returns nothing at all — the same failure that left
 		// every room in the rail untitled (head/scribe.go, where the mechanism
 		// and its one escalation are written out).
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "title"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "title", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
 		}, ai.WithMaxTokens(512))
@@ -6033,7 +6057,7 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 		// The same call may now carry a whole workflow file, which is worth
 		// several times what five one-line memories are: the ceiling is what
 		// keeps a craft from being truncated into an invalid file.
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "distill"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "distill", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, ai.WithMaxTokens(1500))
@@ -6082,7 +6106,7 @@ Fix exactly what the errors name and change nothing else. Each error names the s
 func repairCraft(settings config.Config, client *liveClient) resident.CraftRepairFunc {
 	return func(ctx context.Context, candidate resident.CraftCandidate, problem string) (resident.CraftCandidate, error) {
 		input := fmt.Sprintf("The file:\n%s\n\nWhat the parser said:\n%s", candidate.YAML, problem)
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "craft-repair"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "craft-repair", lane.RoleDesign), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftRepairSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, ai.WithMaxTokens(1500))
@@ -6147,7 +6171,7 @@ func fillCraftParams(settings config.Config, client *liveClient) resident.CraftP
 				options = append(options, ai.WithSchema(json.RawMessage(schema)))
 			}
 		}
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "craft-params"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "craft-params", lane.RoleDesign), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftParamsSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
 		}, options...)
@@ -6243,7 +6267,7 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 		if candidate != nil {
 			fmt.Fprintf(&input, "\nScope-gardening candidate:\n- %s\n- %s\n", candidate.First, candidate.Second)
 		}
-		response, err := client.CompleteWithMessages(settings.Context(ctx, "consolidate"), []ai.Message{
+		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "consolidate", lane.RoleMemory), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
 		}, ai.WithMaxTokens(700))

@@ -36,12 +36,6 @@ import (
 // boundary's own defaults ARE these two.
 const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
-// hedgeFloor is the shortest wait that can justify paying for a second copy of
-// an interactive completion. Eight seconds leaves ordinary cache misses and
-// prompt ingestion alone while still reaching the long TTFT tail before the
-// stream guard's full detect, cut, and retry cycle makes the person wait twice.
-const hedgeFloor = 8 * time.Second
-
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
 // otherwise turn one bad output ceiling into an unbounded, silent spend.
@@ -219,6 +213,17 @@ const outputLimit = 4000
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
 	started := time.Now()
 	var turn Usage
+
+	// NOTHING MAY LEAVE A CLOCK RUNNING. This turn posts phases of its own
+	// between requests — a tool batch, a gate reading the answer, a tidying
+	// pass (phasenews.go) — and a surface draws every one of them until it is
+	// told the work is over. There are a dozen ways out of the loop below,
+	// including an interrupt and a permanent failure mid-stream, and a stale
+	// phase left on the screen after any of them is exactly the defect the
+	// phase clock exists for. So the end is DEFERRED rather than written at
+	// each exit: a way out added later cannot forget it, and neither can a
+	// panic.
+	defer a.endPhase()
 
 	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
 	// session with a budget the goal owner is a [Steward] (principal.go), and a
@@ -411,14 +416,17 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 	}
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
-	// THE HEDGE BELONGS TO THE WATCHED TURN. Tasks and the session's own model
-	// errands can share this loop, so their InTask/Errand stamp explicitly takes
-	// the capability off even if a caller accidentally handed one down.
-	if !a.config.InTask && !a.config.Errand {
-		ctx = withInteractiveHedge(ctx, turnObserver, hedgeFloor)
-	} else {
-		ctx = withoutInteractiveHedge(ctx)
-	}
+	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
+	// to keep a hedge of its own here: an eight-second timer that, on a request
+	// which had said nothing, sent the whole prompt a second time. The transport
+	// now has a better answer to the same question (internal/provider's hedge.go
+	// over internal/lane's watch.go) — it derives the wait from the serving
+	// lane's own posterior instead of a constant, sends the second request to a
+	// NAMED alternative lane rather than back into the same pool, spends it out
+	// of a process-wide budget, cancels the loser and folds both arms back into
+	// the ledger, and it acts on a reasoning stall as well as on silence. Two
+	// mechanisms racing one silence is two bills for one answer and two stories
+	// on one status line, so the blind one was retired.
 
 	// WHO IS WAITING ON THIS TURN. A conversation's turn is a person watching an
 	// answer arrive, and the endpoint that starts soonest is what they are asking
@@ -448,9 +456,26 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// slack, the expected duration and the deadline the plan DAG will one day
 	// supply, and until it does they are zero here and the answer comes off the
 	// first argument alone: attended work is worth a person's attention,
-	// unattended work is worth nothing. The intent is unchanged either way —
-	// nobody is watching THIS turn stream, whatever they are watching — so a
-	// node still asks for the cheap endpoint and now says what its wait costs.
+	// unattended work is worth nothing.
+	//
+	// AND THE INTENT NOW FOLLOWS THAT RULE INSTEAD OF SITTING BESIDE IT. It used
+	// to be background for every node whatever was on the screen, on the grounds
+	// that nobody reads a node's raw stream — which left the two halves of one
+	// fact free to disagree, the λ saying a watched node's seconds belong to
+	// somebody and the intent saying they belong to nobody. They are one stamp
+	// now: the turn names its ROLE and internal/lane's table answers both, so an
+	// unwatched node still asks for the cheap endpoint and a node whose run
+	// somebody is sitting in front of asks for the soonest one.
+	//
+	// AND ALL OF IT SAID ONCE, AS A ROLE. internal/lane's roles.go holds the
+	// table — what a second of this errand's wait is worth, what quality bar it
+	// needs, how many calls it will make, and whether a person is reading THIS
+	// stream — and the role is the only thing a call site names. The intent
+	// below is kept beside it because `provider.sort` is still built from it and
+	// a dozen other packages still set it, but it is now a READING of the role
+	// rather than a second opinion about the same fact (internal/provider's
+	// roles.go).
+	ctx = provider.WithRole(ctx, a.laneRole())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}
@@ -716,7 +741,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// ([turnBroke]). The other way a turn ends badly — a call that
 			// errored — never arrives here at all: the error path above returns
 			// before the loop reaches this line, and that is deliberate.
-			if again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response); over {
+			//
+			// AND THE PERSON IS TOLD IT IS HAPPENING. Everything from the
+			// model's last word to the end of the turn is a gate reading an
+			// answer, and every one of those gates is another model call: a
+			// recon watched this gap run for minutes with the surface drawing
+			// nothing but a pulse, because the request the phase clock was
+			// following had finished and the ones underneath these lines are
+			// made without the turn's stream (checkpoint.go, route_judge.go).
+			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
+			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response)
+			a.endPhase()
+			if over {
 				return true
 			} else if again {
 				continue
@@ -730,7 +766,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// when it cannot work, it is rate-limited to one start every few turns,
 			// and it is asked before the turn is sealed so that the work it starts is
 			// on the rail by the time the person reads the answer.
+			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
+			a.endPhase()
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
@@ -954,319 +992,6 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 // stamp here would be dropped every time and the knob would do nothing. Nothing
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
-type interactiveHedgeContextKey struct{}
-
-// interactiveHedge is a capability, not a default. Only [runTurn] installs it,
-// and its observer is the watched turn's one door to the partial buffer and the
-// room. A completion reached from a task or an internal errand has no value and
-// therefore cannot duplicate itself by accident.
-type interactiveHedge struct {
-	observer provider.StreamObserver
-	floor    time.Duration
-}
-
-func withInteractiveHedge(ctx context.Context, observer provider.StreamObserver, floor time.Duration) context.Context {
-	return context.WithValue(ctx, interactiveHedgeContextKey{}, interactiveHedge{
-		observer: observer,
-		floor:    floor,
-	})
-}
-
-func withoutInteractiveHedge(ctx context.Context) context.Context {
-	return context.WithValue(ctx, interactiveHedgeContextKey{}, interactiveHedge{})
-}
-
-func interactiveHedgeFrom(ctx context.Context) (interactiveHedge, bool) {
-	if ctx == nil {
-		return interactiveHedge{}, false
-	}
-	hedge, ok := ctx.Value(interactiveHedgeContextKey{}).(interactiveHedge)
-	return hedge, ok && hedge.observer != nil
-}
-
-// hedgeBound lets the last answer set a model-sized patience while keeping a
-// cold model on the fixed floor. The ledger's zero TTFT means it was not
-// measured, so it carries no evidence with which to lengthen the wait.
-func hedgeBound(model string, floor time.Duration) time.Duration {
-	if floor <= 0 {
-		floor = hedgeFloor
-	}
-	if sighting, ok := provider.LastServed(model); ok && sighting.TTFT > 0 {
-		observed := 2 * sighting.TTFT
-		if observed > floor {
-			return observed
-		}
-	}
-	return floor
-}
-
-type hedgeCallResult struct {
-	which    int
-	response *ai.Response
-	err      error
-}
-
-// hedgeEventGate holds both streams behind one door until a first token names
-// the winner. Holding the lock while forwarding preserves the provider's
-// synchronous ordering across the buffered prefix and the live tail. The
-// losing prefix is dropped whole and can reach neither the partial buffer nor
-// the room.
-type hedgeEventGate struct {
-	mu        sync.Mutex
-	observer  provider.StreamObserver
-	first     chan int
-	toolReady chan int
-	decided   chan struct{}
-	settled   bool
-	winner    int
-	seen      [2]bool
-	buffered  [2][]provider.StreamEvent
-}
-
-func newHedgeEventGate(observer provider.StreamObserver) *hedgeEventGate {
-	return &hedgeEventGate{
-		observer:  observer,
-		first:     make(chan int, 2),
-		toolReady: make(chan int, 2),
-		decided:   make(chan struct{}),
-		winner:    -1,
-	}
-}
-
-func (g *hedgeEventGate) observe(which int) provider.StreamObserver {
-	return func(event provider.StreamEvent) {
-		g.mu.Lock()
-		if g.settled {
-			if g.winner == which {
-				g.observer(event)
-			}
-			g.mu.Unlock()
-			return
-		}
-		g.buffered[which] = append(g.buffered[which], event)
-		wait := false
-		if !g.seen[which] && (event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning) {
-			g.seen[which] = true
-			wait = true
-			select {
-			case g.first <- which:
-			default:
-			}
-		}
-		// A tool-call-only response has no text token, but forwarding its ready
-		// boundary can start a read. Commit this contender first so no event
-		// from the other completion can ever start a second tool execution.
-		if event.Kind == provider.StreamToolCallReady {
-			wait = true
-			select {
-			case g.toolReady <- which:
-			default:
-			}
-		}
-		g.mu.Unlock()
-		// The observer is synchronous. Holding the provider on the event that
-		// claims the race lets the coordinator flush that event before later
-		// deltas arrive, preserving the stream's order for live and attached
-		// readers alike.
-		if wait {
-			<-g.decided
-		}
-	}
-}
-
-func (g *hedgeEventGate) sawFirst(which int) bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.seen[which]
-}
-
-func (g *hedgeEventGate) choose(which int) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.settled {
-		return
-	}
-	g.settled = true
-	g.winner = which
-	for _, event := range g.buffered[which] {
-		g.observer(event)
-	}
-	g.buffered[0] = nil
-	g.buffered[1] = nil
-	close(g.decided)
-}
-
-func (g *hedgeEventGate) discard(which int) {
-	g.mu.Lock()
-	g.buffered[which] = nil
-	g.mu.Unlock()
-}
-
-func (g *hedgeEventGate) stop() {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.settled {
-		return
-	}
-	g.settled = true
-	g.buffered[0] = nil
-	g.buffered[1] = nil
-	close(g.decided)
-}
-
-// completeAttempt sends one ordinary request unless [runTurn] installed the
-// watched-turn capability above. With it installed, only the TTFT tail grows a
-// second request, and the first stream to speak owns the attempt from then on.
-func (a *Agent) completeAttempt(ctx context.Context, hub *eventHub, model string, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	hedge, enabled := interactiveHedgeFrom(ctx)
-	if !enabled {
-		return a.client.CompleteWithMessages(ctx, messages, options...)
-	}
-
-	bound := hedgeBound(model, hedge.floor)
-	gate := newHedgeEventGate(hedge.observer)
-	defer gate.stop()
-	results := make(chan hedgeCallResult, 2)
-	contexts := [2]context.Context{}
-	cancels := [2]context.CancelFunc{}
-	started := [2]bool{}
-
-	start := func(which int) {
-		contexts[which], cancels[which] = context.WithCancel(ctx)
-		contexts[which] = provider.WithStreamObserver(contexts[which], gate.observe(which))
-		started[which] = true
-		go func() {
-			response, err := a.client.CompleteWithMessages(contexts[which], messages, options...)
-			results <- hedgeCallResult{which: which, response: response, err: err}
-		}()
-	}
-	cancelAll := func() {
-		for which, cancel := range cancels {
-			if started[which] && cancel != nil {
-				cancel()
-			}
-		}
-	}
-	defer cancelAll()
-	cancelLoser := func(winner int) {
-		loser := 1 - winner
-		if started[loser] && cancels[loser] != nil {
-			cancels[loser]()
-		}
-	}
-	waitWinner := func(winner int) (*ai.Response, error) {
-		for {
-			result := <-results
-			if result.which == winner {
-				return result.response, result.err
-			}
-		}
-	}
-	waitActive := func(active [2]bool) {
-		remaining := 0
-		for _, live := range active {
-			if live {
-				remaining++
-			}
-		}
-		for remaining > 0 {
-			result := <-results
-			if active[result.which] {
-				active[result.which] = false
-				remaining--
-			}
-		}
-	}
-	choose := func(which int) (*ai.Response, error) {
-		gate.choose(which)
-		cancelLoser(which)
-		return waitWinner(which)
-	}
-
-	start(0)
-	timer := time.NewTimer(bound)
-	defer timer.Stop()
-	select {
-	case which := <-gate.first:
-		return choose(which)
-	case which := <-gate.toolReady:
-		return choose(which)
-	case result := <-results:
-		if result.err == nil {
-			gate.choose(result.which)
-			return result.response, nil
-		}
-		if gate.sawFirst(result.which) {
-			gate.choose(result.which)
-		}
-		return nil, result.err
-	case <-timer.C:
-		// A token or completed answer that landed with the timer owns the
-		// boundary. The channels may both be ready in one scheduler turn, and
-		// select is deliberately random; checking them once more keeps a call
-		// that answered within the bound from growing a needless duplicate.
-		select {
-		case which := <-gate.first:
-			return choose(which)
-		case which := <-gate.toolReady:
-			return choose(which)
-		case result := <-results:
-			if result.err == nil {
-				gate.choose(result.which)
-				return result.response, nil
-			}
-			if gate.sawFirst(result.which) {
-				gate.choose(result.which)
-			}
-			return nil, result.err
-		default:
-		}
-		hub.send(Event{Kind: EventRetrying, Text: hedgeNotice(bound)})
-		start(1)
-	case <-ctx.Done():
-		gate.stop()
-		cancelAll()
-		waitActive([2]bool{true, false})
-		return nil, ctx.Err()
-	}
-
-	active := [2]bool{true, true}
-	var failures [2]error
-	for {
-		select {
-		case which := <-gate.first:
-			return choose(which)
-		case which := <-gate.toolReady:
-			return choose(which)
-		case result := <-results:
-			active[result.which] = false
-			if result.err == nil || gate.sawFirst(result.which) {
-				gate.choose(result.which)
-				cancelLoser(result.which)
-				return result.response, result.err
-			}
-			failures[result.which] = result.err
-			gate.discard(result.which)
-			other := 1 - result.which
-			if active[other] {
-				continue
-			}
-			// Two concurrent failures are ONE failed attempt. Prefer the
-			// primary's error so retry classification stays exactly what the
-			// serial request would have decided from the same endpoint draw.
-			if failures[0] != nil {
-				return nil, failures[0]
-			}
-			return nil, failures[1]
-		case <-ctx.Done():
-			gate.stop()
-			cancelAll()
-			waitActive(active)
-			return nil, ctx.Err()
-		}
-	}
-}
-
 func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
 	return a.completeWithRetryReasoning(ctx, hub, model, rung, partial, &reasoningBuffer{}, warm, forming)
 }
@@ -1335,7 +1060,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		messages, carried := a.snapshotWithReasoning()
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
-		response, err := a.completeAttempt(attemptCtx, hub, model, messages,
+		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
 			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
@@ -1425,7 +1150,19 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			return nil, model, err
 		}
 		if verdict.Retries() {
-			if waitErr := backoffWait(ctx, verdict.Backoff); waitErr != nil {
+			// AND THE WAIT IS SAID OUT LOUD. This ladder is the longest silence
+			// in the whole request path — two seconds, then four, then eight,
+			// with a failed request in front of each of them — and until this
+			// line it told the surface nothing at all, so a person watching a
+			// turn back off for fourteen seconds saw a clock counting a request
+			// that had already failed. The rung rides as the detail in the
+			// person's own arithmetic, so the line reads `trying again · 2 of 4`
+			// (internal/provider's phase.go spells the word).
+			a.tellPhase(provider.PhaseRetrying,
+				fmt.Sprintf("%d of %d", attempt+2, attempts), time.Now())
+			waitErr := backoffWait(ctx, verdict.Backoff)
+			a.endPhase()
+			if waitErr != nil {
 				return nil, model, waitErr
 			}
 		}
@@ -1526,13 +1263,6 @@ func cutNotice(cut *provider.StreamCut) string {
 	default:
 		return "nothing came back from the model — asking again"
 	}
-}
-
-// hedgeNotice is said at the moment the duplicate starts, while both requests
-// are still live. Like [cutNotice], it names the observed fact and the action,
-// without guessing which endpoint is slow or asking the person to intervene.
-func hedgeNotice(bound time.Duration) string {
-	return fmt.Sprintf("no first token in %s — asking a second time in parallel", bound)
 }
 
 // hopNotice is the line the person reads when the step gives up on one model
@@ -1961,6 +1691,25 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Hint: a.gloss(call),
 			Args: rendered[index],
 		})
+	}
+
+	// AND THE CLOCK MOVES WITH THE BATCH. A tool round is the longest wait in
+	// this package by a wide margin — a `go test` runs for minutes where a
+	// request runs for seconds — and until this line the phase clock went quiet
+	// the moment the stream ended, so the surface counted a request that was
+	// already over while a build ran underneath it (phasenews.go).
+	//
+	// A BATCH IS ONE STORY AND IS NAMED ONCE. Several calls run at once here,
+	// they finish in scheduler order, and a clock that renamed itself as each
+	// one landed would be two stories about one wait — so the batch takes the
+	// name of the FIRST call, which is the one the person watched arrive first
+	// and the one the transcript already puts at the top of the round. The name
+	// is the tool's own, spelled exactly as the begin event above spells it,
+	// because a surface that had to translate it would translate it differently
+	// from the next one.
+	if len(calls) > 0 {
+		a.tellPhase(provider.PhaseRunning, calls[0].Function.Name, time.Now())
+		defer a.endPhase()
 	}
 
 	results := make([]toolResult, len(calls))
@@ -2965,6 +2714,15 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 // the cut while the summary was being written — cannot happen when nothing is
 // awaited.
 func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
+	// A PASS SAYS ITSELF WHILE IT RUNS, and it says itself from OUTSIDE the
+	// lock. A phase post reaches a surface, and a surface answers one by asking
+	// for a frame — so a phase posted with this agent's mutex held is a surface
+	// waiting on a lock the pass is holding while the pass waits on the surface
+	// (phasenews.go). Nothing is being claimed here, so an in-flight pass that
+	// is refused below still ends this clock on the way out.
+	a.tellPhase(provider.PhaseTidying, "the conversation", time.Now())
+	defer a.endPhase()
+
 	a.mu.Lock()
 	if a.compacting {
 		a.mu.Unlock()
@@ -2972,6 +2730,15 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	}
 	a.compacting = true
 	tokensBefore := a.estimateTokensLocked()
+	// AND THE PASS IS ANNOUNCED THE MOMENT IT BEGINS, not only when it ends.
+	// [EventCompacting] has said in its own doc comment since it was declared
+	// that a pass is visible while it runs, and until this line nothing in the
+	// repository ever sent it — three handlers in internal/tui3 waited on an
+	// event with no sender, so a person watching a turn stop to tidy itself saw
+	// the finished line and never the work. The event goes out under the lock
+	// deliberately: [eventHub.send] only appends to queues and cannot block,
+	// which is what makes it safe here and a phase post not.
+	hub.send(Event{Kind: EventCompacting, Hint: "compacting " + approxTokens(tokensBefore) + " tokens"})
 
 	// THE CONVERSATION IS SHAPED FOR THE SCROLLBACK BEFORE IT IS EDITED. This is
 	// the same region a resume recovers from the journal ([replayedSession.earlier]),
@@ -3003,6 +2770,12 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 		// transcript is the person's own words and the recent tail, which is
 		// what [ErrNothingToCompact] has always meant.
 		a.mu.Unlock()
+		// AND [EventCompacted] FOLLOWS [EventCompacting] ON EVERY PATH, which is
+		// the promise the pair is declared with (session.go). A surface opens a
+		// row on the first and settles it on the second; a pass that announced
+		// itself and then said nothing would leave that row open for the rest of
+		// the session, so a pass that found nothing says exactly that.
+		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact"})
 		return false, ErrNothingToCompact
 	}
 

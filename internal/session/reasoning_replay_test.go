@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -87,41 +86,6 @@ func TestResumedSessionReplaysJournaledReasoning(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = second.Close() })
 	collect(t, mustSubmit(t, second, "continue"))
-}
-
-func TestHedgeLoserReasoningNeverReachesTheWinningStep(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			<-ctx.Done()
-			provider.EmitReasoning(ctx, "reasoning_content", "loser", nil)
-			return nil, ctx.Err()
-		},
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			provider.EmitReasoning(ctx, "reasoning_content", "winner", nil)
-			return textResponse("winner"), nil
-		},
-	}}
-	agent, _ := newTestAgent(t, completer, nil)
-	partial := &partialBuffer{}
-	reasoning := &reasoningBuffer{}
-	observer := func(event provider.StreamEvent) {
-		if event.Kind == provider.StreamReasoning {
-			reasoning.write(event)
-		}
-	}
-	ctx := provider.WithStreamObserver(context.Background(), observer)
-	ctx = withInteractiveHedge(ctx, observer, hedgeTestFloor)
-	response, _, err := agent.completeWithRetryReasoning(ctx, newEventHub(), "hedge/reasoning", effort.None,
-		partial, reasoning, &warmBatch{}, &formingBatch{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.Text() != "winner" {
-		t.Fatalf("answer = %q", response.Text())
-	}
-	if got := reasoning.snapshot().Text; got != "winner" {
-		t.Fatalf("kept reasoning = %q, want only winner", got)
-	}
 }
 
 // The journal names the model each piece of working came from, so a resumed

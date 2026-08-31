@@ -420,6 +420,25 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		return response, nil
 	}
 	response.Body.Close()
+	// THE LANE IS TRIED BEFORE THE REQUEST IS RELAXED. A refusal is a fact
+	// about the MACHINE that made it — one endpoint behind a model drops tool
+	// calls, another has no room for the output cap, a third has the reasoning
+	// knob switched off — and the model's other machines have said nothing.
+	// Relaxing here would answer a question nobody asked (tools taken off a
+	// request that only needed a different endpoint) while an endpoint that
+	// would have taken it whole sat untried. So while the race still has a
+	// gate-passing lane to walk to, the refusal is handed back and the walk
+	// takes the next machine (hedge.go's walk); the ladder runs on the LAST arm,
+	// where the evidence really is about the request rather than the endpoint.
+	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
+	// order they are written down.
+	if streamWatchFrom(ctx).canWalk() {
+		return &http.Response{
+			StatusCode: response.StatusCode,
+			Header:     response.Header,
+			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
+		}, nil
+	}
 	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
 }
 
@@ -674,55 +693,6 @@ func answeredWithToolCalls(response *ai.Response) bool {
 	return response != nil && len(response.Choices) > 0 && len(response.Choices[0].Message.ToolCalls) > 0
 }
 
-// completeOnce is one send and one parse: the request as shaped, the answer as
-// served, and the measurements both feed. CompleteWithMessages owns the
-// decision to do it twice.
-func (c *Client) completeOnce(ctx context.Context, request *ai.Request) (*ai.Response, bool, error) {
-	began := c.clock()
-	// The log's own start, on the world's clock rather than the measurement
-	// seam (calllog.go's logNow).
-	logBegan := logNow()
-	knobs := knobsFrom(ctx)
-	httpResponse, err := c.sendShaped(ctx, request, knobs, false)
-	if err != nil {
-		// Every attempt this call made already wrote its own row on the way
-		// past (retry.go); a call that never got a response has nothing left to
-		// add that those rows do not already say.
-		return nil, false, err
-	}
-	defer httpResponse.Body.Close()
-
-	payload, err := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
-	if err != nil {
-		// EVERY ATTEMPT THAT FAILED LEAVES A ROW (retry.go), and a body that
-		// broke off after the headers landed is an attempt that failed. It
-		// used to leave none: three planning calls reset by the peer on
-		// 2026-08-29 sat in the log as three starts with no partner, which
-		// reads as three calls still in flight a quarter of an hour later.
-		err = fmt.Errorf("read response: %w", err)
-		c.record(recordFacts{
-			ctx: ctx, request: request, knobs: knobs,
-			began: logBegan, status: httpResponse.StatusCode, err: err,
-		})
-		return nil, false, err
-	}
-	if httpResponse.StatusCode >= 400 {
-		refusal := apiError(httpResponse.StatusCode, payload)
-		c.record(recordFacts{
-			ctx: ctx, request: request, knobs: knobs,
-			began: logBegan, status: httpResponse.StatusCode,
-			err: refusal, responseBody: payload,
-		})
-		// AND THE LANE GOES, so the caller's next attempt is encoded away from
-		// the upstream that just refused (velocity.go's refuseUpstream). The pin
-		// was already released on the way out of sendShaped; releasing a pin only
-		// stops us ASKING for that endpoint, and the router chooses it again.
-		c.refuseUpstream(c.modelFor(request), refusal)
-		return nil, false, refusal
-	}
-	return c.completionInOnePiece(ctx, request, knobs, payload, httpResponse.StatusCode, began, logBegan, false)
-}
-
 // completionInOnePiece parses a whole-completion body and folds it into every
 // record and measurement one answer feeds.
 //
@@ -953,6 +923,26 @@ func (c *Client) completeWithMessagesStreaming(
 	// by construction — and so is every rung of the endpoint ladder and every
 	// retry, which each re-encode the same request.
 	ctx = c.withLaneChoice(ctx, request)
+	// AND THE PHASE CLOCK, ONCE, FOR THE WHOLE REQUEST (phase.go). It is
+	// created here rather than below the race because a raced request is still
+	// ONE request: two arms making two clocks would have the surface told
+	// "writing" by the arm nobody is hearing while the other was still waiting
+	// for its first word. An arm inherits the clock from the context and the
+	// outermost call is the only one that ends it.
+	phase := phaseClockFrom(ctx)
+	if phase == nil {
+		phase = c.newPhaseClock(ctx, c.modelFor(request))
+		ctx = withPhaseClock(ctx, phase)
+		defer phase.done()
+	}
+	// ONLY THE ARM THE PERSON IS HEARING NARRATES. An arm of a race runs this
+	// same function on a child context and inherits the same clock; if it told
+	// its own story the surface would be shown "connecting" by the rescue while
+	// the answer it is drawing was already being written (hedge.go's one-voice
+	// rule, said here about the clock instead of about the deltas).
+	if streamWatchFrom(ctx).speaking() {
+		phase.enter(PhaseConnecting, "")
+	}
 	// THE HEDGE, AND THE ONE PLACE IT IS DECIDED (hedge.go). A call the lane
 	// router is watching runs as a race of one or two arms, each of which is
 	// this same function on a child context; a call it is not watching — which
@@ -1037,6 +1027,20 @@ func (c *Client) completeWithMessagesStreaming(
 	// narrows to the lane's own the moment one does, below.
 	stall := newStallWatch(cutStream, c.streamWall(c.modelFor(request), ""))
 	defer stall.stop()
+	// THE ENDPOINT HAS ACCEPTED THE REQUEST AND OWES AN ANSWER, which is a
+	// different wait from the handshake before it and the only one a hedge
+	// deadline belongs to. The consequence rides with it when there really is
+	// one — a lane to go to and a moment to go at — and is absent otherwise,
+	// because a countdown that expires and does nothing is the surface lying
+	// about the machinery (phase.go).
+	if watch.speaking() {
+		deadline, alt := watch.consequence()
+		if alt == "" || deadline <= 0 {
+			phase.firstWord(time.Time{}, "")
+		} else {
+			phase.firstWord(began.Add(deadline), strings.ToLower(alt))
+		}
+	}
 	// And the degeneration guard, unless this call has it switched off. It is
 	// nil rather than dormant when off, so a call that is not watching pays
 	// nothing per delta for the fact.
@@ -1157,6 +1161,9 @@ func (c *Client) completeWithMessagesStreaming(
 		}
 		if chunk.Provider != "" {
 			watch.serve(chunk.Provider)
+			if watch.speaking() {
+				phase.serve(chunk.Provider)
+			}
 			if served == "" {
 				// The first naming is what narrows the wall onto the lane that
 				// is actually serving; [stallWatch.rewall] does it once and
@@ -1214,7 +1221,27 @@ func (c *Client) completeWithMessagesStreaming(
 				// AND THE SAME PROGRESS DRIVES THE LANE WATCH: the drift test
 				// is over the gaps between exactly these deltas, and an arm of
 				// a race commits on how many of them it has delivered.
-				watch.token()
+				//
+				// IT IS TOLD WHICH OF THEM A PERSON CAN READ. A token of answer
+				// is text on the screen; a token of thought is billed, streamed
+				// work that shows nothing — and the watch's commitment rule is
+				// about what would be taken away from somebody, so it counts
+				// only the first (internal/lane's watch.go).
+				watch.token(choice.Delta.Content != "")
+				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
+				// only thing on the wire that can tell a person the difference
+				// between a model thinking and a model writing. Only the arm
+				// the person is HEARING may move it: the other one's deltas are
+				// held (hedge.go's one-voice rule) and a story told from them
+				// would be about text nobody is reading.
+				if watch.speaking() {
+					if choice.Delta.Content != "" {
+						phase.enter(PhaseWriting, "")
+					} else if choice.Delta.thinking() {
+						phase.enter(PhaseThinking, "")
+					}
+					phase.wrote()
+				}
 			}
 			if choice.Delta.Content != "" {
 				thinking = false
@@ -1309,7 +1336,8 @@ func (c *Client) completeWithMessagesStreaming(
 		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
 	}
 	// What the answer itself taught, read before the row is written so the row
-	// can carry it — the same reading completeOnce makes about the same fact.
+	// can carry it — the same reading [Client.completionInOnePiece] makes about the
+	// same fact.
 	// It belongs on BOTH paths or on neither: the ceiling that a thinking pass
 	// eats is a property of the model, not of the transport that carried it, and
 	// leaving it off the streamed path is how a fix landed at one seam gets

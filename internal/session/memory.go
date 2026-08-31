@@ -60,6 +60,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/reflex"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -179,6 +181,14 @@ type billedCompleter struct {
 }
 
 func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	// EVERY REFLEX CALL IS A MEMORY CALL, said here because this wrapper is the
+	// one door all of them go through — internal/reflex takes a completer and
+	// knows nothing about roles, so a stamp inside it would be a stamp in the
+	// wrong package. The role is what keeps the reflex off the status line: it
+	// runs twice a turn, beside an answer somebody is reading, and a surface
+	// that drew whichever call answered last was drawing this one
+	// (internal/lane's roles.go, and phasenews.go for what it decides).
+	ctx = provider.WithRole(ctx, lane.RoleMemory)
 	response, err := b.inner.CompleteWithMessages(ctx, messages, options...)
 	if err == nil {
 		// The active model is read from the same options the provider reads.

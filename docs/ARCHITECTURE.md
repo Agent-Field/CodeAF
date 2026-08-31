@@ -442,6 +442,226 @@ names the serving lane on every chunk, ends with a usage frame carrying the
 exact cost, and counts the streams a client walked away from. On its fast clock
 a scenario scripted in minutes finishes in microseconds.
 
+### Every clock on a request
+
+One outbound request is watched by eighteen independent timers, owned by six
+files, and until they were written down in one place nobody could say which of
+them would fire first. Nineteen, until this wave: `internal/session/loop.go`
+kept a second hedge of its own — a flat eight seconds without a first token, a
+duplicate of the whole prompt into the same pool, no lane named, no budget asked
+and no measurement taken from either arm — and it is RETIRED, because two
+mechanisms answering one silence is the prompt paid for twice to be told about
+it once. Everything it did, row 1 does better; the one thing it did that row 1
+cannot is fire with `routing off`, and answering "do not steer" by silently
+sending the request again is the loudest possible steer. That is not a filing problem. The measured defect the
+phase clock was built for is exactly what happens when the order is wrong: a
+stream that stalled sixty seconds into a reasoning pass could not hedge — the
+commitment rule was counting hidden tokens — so the first thing that acted on it
+was the stall guard, two and a half minutes away, and the surface said "still
+working" for the whole of it.
+
+The rank column is who acts first, and it is the design. Rows 1–6 are the cheap
+answers: a second request, or a wait. Rows 7–9 are asked in passing and cost no
+wall clock of their own. Rows 10–18 are the last resorts, and every one of them
+throws away work that was already paid for.
+
+| rank | clock | owner | trigger | what it does | the bound |
+| --- | --- | --- | --- | --- | --- |
+| 1 | the hedge deadline | `internal/lane/watch.go` | no first token by the moment the chooser solved for, or by the serving lane's own believed p90 first token | one more request to `Choice.Alt`; the loser is cancelled | the chooser's `Choice.Deadline`, else `derivedDeadline`, clamped to `deadlineFloor` **700ms** … `deadlineCeiling` **8s** |
+| 2 | the drift | `internal/lane/watch.go` | gaps between tokens accumulate surprise against the lane's believed rate | the same one hedge, and only if the commitment rule allows | `driftSlack` k = **0.5** nats, `driftAlarm` h = **3.0** nats; past `commitTokens` **64 VISIBLE tokens** an alarm also has to beat a fresh start elsewhere |
+| 3 | the single long gap | `internal/lane/watch.go` | one gap long enough to complain about whatever the lane's normal is | the same one hedge | `lumpGap` **15s** |
+| 4 | the dead path | `internal/lane/watch.go` | neither a heartbeat nor a byte | the same one hedge, flagged `PathFault` so no belief is charged for somebody's wifi | `2 × deadline`, never below `deadPathFloor` **3s** |
+| 5 | the hedge budget | `internal/lane/hedge.go` | asked at the instant a verdict fires | allows or refuses the second request; a refusal is FINAL for that request | `DefaultBudget` = **2 hedges in any 20 requests**, and at most **a tenth** of the last hour's spend (`requestWindow` 20, `spendWindow` 1h) |
+| 6 | the lane walk | `internal/provider/hedge.go` | the rescue we sent was itself refused or broke, and nobody has committed | one more request, to the next gate-passing lane in frontier order | `maxArms` **4** requests for one question, and every step past the first asks the same budget as row 5 |
+| 7 | the pacing wait | `internal/provider/retry.go` | a 429 | waits and re-sends; the phase clock says `paced` with the router's own `Retry-After` as a real countdown | `baseBackoff` **700ms** doubled and jittered, one wait never over `maxProviderWait` **1 min**; the call ends at `rateLimitAttempts` **6** / `watchedPacingBudget` **2 min** watched, `patientAttempts` **60** / `patientPacingBudget` **10 min** unwatched |
+| 8 | the relax ladder | `internal/provider/endpoints.go` | a refusal about the request's SHAPE (400/404/unsupported parameter) | re-asks at once with one field dropped | **6 rungs**, then `maxFallbackModels` **2** other models — and **NO WAIT BETWEEN RUNGS**, because nothing here is backing off from a fault |
+| 9 | admission | `internal/provider/limiter.go` | more than `limiterCeiling` **64** requests in flight | queues, and hands the next freed slot to the waiter | **no timer at all.** `sharedLimiter.acquire` selects on the queue and the caller's context and nothing else; a request held here is held by the caller's own deadline |
+| 10 | the first-delta bound | `internal/provider/streamguard.go` | the model has written nothing — no answer token, no reasoning token, no tool-call fragment | cuts the request, `CutSilent` | `firstDeltaBound` **90s** |
+| 11 | the mid-stream gap | `internal/provider/streamguard.go` | an established stream goes quiet | cuts the request, `CutStalled` | `midStreamGapBound` **45s** — half the first bound, because a model that has started writing has finished deciding |
+| 12 | the buffered quiet | `internal/provider/streamguard.go` | quiet, but the endpoint is still sending keepalives | cuts the request | `bufferedQuietBound` **150s** of quiet in total; keepalives buy patience and the patience is bounded |
+| 13 | the wall | `internal/provider/streamguard.go` | a reply that keeps writing and never ends | cuts the request, `CutOverrun` | `streamWallFactor` **5 ×** the longest reply THIS LANE has completed, clamped to `streamWallFloor` **5 min** … `streamWallCeiling` **20 min** |
+| 14 | the cut budget | `internal/session/loop.go` | a cut came back | asks again, and when the budget is spent hops the model | `silentRetries` **2**, `babbleRetries` **1**, `blindRetries` **1** — then `FallbackModels`, and the hop is SAID |
+| 15 | the response header deadline | `internal/provider/transport.go` | the endpoint accepted the connection and never wrote a header | the transport fails the attempt | `responseHeaderTimeout` **2 min**, on the streaming transport only — a non-streamed completion writes no header until the whole answer exists |
+| 16 | the body idle watchdog | `internal/provider/transport.go` | no BYTE at all on the wire, keepalives included | cancels the request context, which is the only thing that unblocks a parked `Read` | `streamIdleTimeout` **2 min** |
+| 17 | the completion total deadline | `internal/provider/client.go` | a non-streamed call | `http.Client.Timeout` | `adaptiveCompletionTimeout`: floor **5 min** (or `Config.Timeout` when larger), **1s per 64 requested tokens**, ceiling **15 min** — and held under the lane's own measured wall once there is one. For a stream `client.Timeout` is **0** on purpose: a total deadline killed every healthy long stream at the budget |
+| 18 | the structuring wall | `internal/provider/pool/wall.go` | one structuring completion — the slot that talks, the slot that plans | `ErrCallWall`, wrapping `context.DeadlineExceeded` | `DefaultCallWall` **4 min**, per completion and never per command |
+| — | dial and TLS | Go's `http.DefaultTransport` | — | — | the standard library's own defaults. **They are named nowhere in this build** — no constant, no config row — and the header deadline above is what actually catches a host that accepts and never answers |
+
+**THE WATCH DECIDES FIRST AND THE STALL GUARD IS A LAST RESORT.** The watch's
+answer costs one extra request and keeps the person's answer moving; the guard's
+answer throws away the whole attempt, the prompt it was paid for and any text
+that was already on the screen. So the guard exists for the case where no hedge
+is possible at all — no alternative lane in the choice, `routing off`, the
+speed guard off, or a budget that refused — and its bounds are deliberately far
+past every one of the watch's. And **every transport timeout is a CEILING above
+the guard's bounds, never the first thing to fire**: 90s of silence is cut by
+the guard before either two-minute transport clock has anything to say, which is
+why a stall is named in a person's words rather than surfacing as a torn
+connection.
+
+#### A dropped connection is the path's fault, and one owner answers it
+
+A stream that resets mid-body — `connection reset by peer`, `broken pipe`,
+`unexpected EOF` — is a claim about the WIRE and about nothing else. Three
+layers can see it and each of them can re-ask: the funnel (the watch reads a
+path with no heartbeat and no byte as a fault, hedges, and does not charge the
+lane's belief for it); this package's own transport ladder (`retryablePattern`
+in `internal/session/loop.go`, 2s/4s/8s, four attempts); and, above both, a task
+node that could run a whole second worker on the same model in the same working
+copy. THREE ANSWERS TO ONE DROPPED SOCKET IS THE PROMPT PAID FOR THREE TIMES,
+and the person is told about it once.
+
+So the ownership is the same as everywhere else in this table: **the funnel
+re-asks, and every layer above it only chooses its WORDS.**
+`provider.PathFault(err)` is the seam — a predicate and deliberately not a
+policy, documented at `internal/provider/streamguard.go` — so a node whose run
+ended on a dropped connection can say `lost the connection` instead of `failed`
+without starting a fourth clock to earn the right to. A layer that wants to
+re-ask anyway has one honest precondition: the funnel could not have rescued it
+(no alternative lane, `routing off`, or a budget that refused), and that is a
+question `HedgeReport` already answers.
+
+### The ladder
+
+Four rungs, and they are climbed in this order for one reason: each one changes
+more of what the person asked for than the one before it. Rung 1 changes which
+machine answers. Rung 2 changes which machine answers and is not even our
+decision. Rung 3 changes the SHAPE of the question. Rung 4 changes who answers
+it, which is a different answer.
+
+| rung | what changes | who walks it | when | bound |
+| --- | --- | --- | --- | --- |
+| 1 | same model, the one lane we chose | **us** — `internal/lane`'s watch, `internal/provider/hedge.go` | the derived deadline, the CUSUM drift, the 15s gap, or a dead path | one hedge per request, to `Choice.Alt`, budgeted; the loser is cancelled and both arms are folded back into the ledger |
+| 2 | same model, every other lane that passed the gate | **the router**, inside the request; **us** when a rescue itself fails | the router walks continuously on its own; we walk when an arm comes back refused or broken | on the wire as `provider.order` in frontier order with `allow_fallbacks` true; ours is `hedgeRace.walk`, capped at `maxArms` **4** and budgeted |
+| 3 | same model, a smaller question | **us** — `internal/provider/endpoints.go` | a refusal about the request's shape | `require_parameters` → `reasoning` → `max_tokens` → `response_format` → images → tools |
+| 4 | **another model** | **us** — `internal/provider/endpoints.go`, and `internal/session/loop.go` for a stall | every rung above is exhausted, or the cut budget is spent | the operator's `Fallbacks`, else `NearestModels`; `maxFallbackModels` **2** |
+
+**Rung 2 is mostly the router's walk.** While the request is in flight we do not
+iterate it, time it or report on it: we hand over a ranked order and a
+permission, and the endpoints behind it are walked inside the one request whose
+first word we are waiting for. There is no timer for that half and a reader who
+goes looking for one will not find it.
+
+**The half that IS ours starts where a rescue fails.** A hedge is pinned — it
+sends `only` with no fallbacks, which is what stops the second request landing
+back on the machine that is already stalling — so a rescue that comes back
+refused or broken has nowhere of its own to go, and the primary may still be
+silent. `hedgeRace.walk` takes the next untried gate-passing lane off the
+frontier and asks it, up to `maxArms` **4** requests for one question, every one
+of them through the same budget. It is not a second hedge: a hedge is a bet
+against SLOWNESS fired by the watch, and this is the answer to a lane that has
+FAILED, so one refusal must not spend the one hedge a slow lane is still owed.
+
+And it is why **`Client.sendRecovered` hands a refusal back untouched while a
+lane is still untried**: relaxing the request there would take the tools off a
+question that only needed a different endpoint, while an endpoint that would
+have taken it whole sat unasked. Rung 3 runs on the LAST arm, where the evidence
+really is about the request rather than about one machine.
+
+**A REFUSAL CLIMBS THE RELAX LADDER. SLOWNESS NEVER DOES.** Rung 3 is only ever
+reached by the refusal class — 400, 404, "no endpoints found that can handle the
+requested parameters", "unsupported parameter" — because every rung of it is a
+claim about the request's *shape*, and a slow lane has made no such claim.
+Dropping `reasoning` or `tools` off a request because it was taking a while
+would answer a different question from the one that was asked and call it a
+retry. A timeout, a 5xx and a 429 keep the behaviour `retry.go` gives them.
+
+**A ROLE'S MODEL TIERS ARE NOT A FALLBACK.** The reflex / low / high tiers a
+role is served on are a decision about what a piece of work is worth, made
+before the request goes out. A fallback is a decision about what else could
+answer *this* question, and it is chosen by NEARNESS — the operator's list, else
+`NearestModels` — never by dropping a tier. Falling from high to reflex because
+an endpoint was slow would answer a person's question with a model nobody chose
+for it, and it would look like the system working.
+
+Rung 4 says so out loud: the phase clock posts `switching model` and names the
+model in `Then`, because the rest of the reply arrives in a different voice at a
+different price and somebody watching text appear is owed the reason before it
+does.
+
+**Why the rungs were out of order.** Until the commitment rule was taught to
+count only VISIBLE tokens, a stall inside a reasoning pass could not hedge at
+all: the run of thought had pushed the stream past `commitTokens`, so every
+verdict was refused as "committed", and rung 1 never fired for the failure it
+was written for. What fired instead was rank 10's silence bound, twice — and two
+cuts spend the session's whole cut budget, so the step hopped the model. The
+answer changed models while its own model's other lanes had never been tried.
+That is the ladder walked from the bottom, and it cost a person's turn and a
+dearer request to do it.
+
+### The phase clock
+
+**Decision.** The layer that holds the wire says what it is doing, in a person's
+words, and the surface draws it. `internal/provider`'s `PhaseNews` is posted on
+every change and about once a second while a phase lasts (`phaseBeat`);
+`internal/session`'s `OnPhaseNews` forwards every one of them and adds the
+phases a TURN has that a request does not; `internal/tui3`'s `PostPhaseNews`
+keeps the latest per model and `phaseWords` is the only place one is spelled.
+
+The arrow points one way the whole distance — `internal/tui3` imports
+`internal/session`, which imports `internal/provider` — so a surface REGISTERS
+and the layers below PUSH, exactly as the lane news does (Decision 10's seam
+table). A build with nobody listening pays one atomic load per phase change.
+
+| the vocabulary | what it means |
+| --- | --- |
+| `connecting` | the handshake — DNS, TLS, the request going out; nothing accepted yet |
+| `first word` | accepted, and nothing written back: the queue, the router's own walk, a cold model. The one phase a hedge deadline belongs to |
+| `thinking` | a run of reasoning tokens. The endpoint IS writing and none of it is on the screen |
+| `writing` | the answer arriving |
+| `paced` | a rate-limit wait, with the router's own `Retry-After` as its deadline |
+| `trying again` | the relax ladder, with the rung as `Detail` — "2 of 6" |
+| `switching` | a rescue in flight to another lane, nobody committed yet; `Then` names the lane |
+| `switching model` | rung 4 — the only phase that changes what was asked; `Then` names the model |
+| `running` / `checking` / `tidying` | a tool executing, a gate reading an answer, a compaction. They belong to `internal/session` and are spelled in `internal/provider` because there is ONE vocabulary |
+
+**A DEADLINE IS NEVER INVENTED.** A countdown is drawn only where a real moment
+exists at which this build really acts — the watch's own hedge deadline, or the
+pacing wait the router asked for. `PhaseNews.Deadline` and `PhaseNews.Then` are
+both zero unless both are real, and `phaseConsequence` draws the arrow only when
+both halves are there. Where no alternative lane exists, or routing is off, the
+phase and its count-up are still true and the consequence is simply absent. A
+countdown that expires and does nothing is the surface lying about the
+machinery, and the emptiness law already says what to draw instead of a figure
+nobody measured, which is nothing.
+
+**ONLY A VISIBLE ROLE OWNS THE CLOCK.** A conversation's turn makes several
+calls that are nobody's business but the machine's — a title, a memory reflex, a
+route question, a reply check — and each of them posts its own phases. A desk
+that kept whichever answered last would put a naming errand's `writing · 61 t/s`
+under an answer somebody was still waiting for, which is the other half of the
+reported defect. So a phase from a hidden role is dropped at the door, in
+`PostPhaseNews`, and never reaches a drawing site to be filtered by whoever
+remembered to. `Visible` is `internal/lane/roles.go`'s field, and the table is
+the only place any of these four numbers is written down:
+
+| role | interactive | quality bar | horizon | visible | verb |
+| --- | --- | --- | --- | --- | --- |
+| `talk` | yes | 0.90 | 50 | **yes** | writing |
+| `leaf.attached` | yes | 0.90 | 50 | **yes** | writing |
+| `leaf.unattended` | no (critical) | 0.90 | 50 | no | writing |
+| `standing` | no | 0.90 | 20 | no | writing |
+| `memory` | no | 0.80 | 10 | no | writing |
+| `auxiliary` | no | 0.80 | 10 | no | writing |
+| `judge` | no (critical) | 0.95 | 10 | no | writing |
+| `design` | no (critical) | 0.90 | 20 | no | writing |
+| `probe` | no | — | 1 | no | writing |
+| `media` | yes | — | 1 | **yes** | **drawing** — it produces no token stream at all, so it takes the deadline-only half of the watch |
+| *(unnamed)* | no | 0.80 | 10 | no | writing — a call that named nothing reads as a background errand, which is the conservative direction |
+
+**THERE IS NO ROLE FOR A HEDGE**, and the absence is the law rather than an
+omission. The second request of a race is the SAME ERRAND as the first — the same
+person is waiting for the same answer — so it inherits the role it is rescuing
+and is routed, priced and drawn exactly as that errand is. A role of its own
+would say that the rescue of a naming errand was something somebody is reading,
+which is the very leak the `Visible` column exists to close.
+
+An unregistered role reads as the unnamed row rather than as a zero struct, so a
+name nobody added to the table behaves like a background errand instead of like
+a free one. `Verb` is here rather than in the surface because a role is what
+decides it: everything that makes text is `writing` and media is `drawing`.
+
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and
