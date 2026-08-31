@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -67,7 +68,10 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 			t.Errorf("notebook output omitted heading %q: %q", heading, rendered)
 		}
 	}
-	if !strings.Contains(rendered, "today's spend: $0.00 of $20.00 daily rail") {
+	// The rail is spelled from the constant that owns it, so raising the shipped
+	// default is one edit and not two.
+	wantRail := fmt.Sprintf("today's spend: $0.00 of $%.2f daily rail", config.DefaultDailyBudgetUSD)
+	if !strings.Contains(rendered, wantRail) {
 		t.Fatalf("notebook omitted daily rail: %q", rendered)
 	}
 	activeLine := normalizedNotebookLine(rendered, active.Seq)

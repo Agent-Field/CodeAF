@@ -6,7 +6,7 @@ Type `/home`. It takes the whole screen and shows **every conversation on this m
 from every project**, not just the folder this window was started in.
 
 The top line reads `aforge` on the left, with the machine's own vital signs on the
-right — `2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm` (its own section below).
+right — `2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm` (its own section below).
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
 nothing was sent while you were looking. The resting foot does not spend a cell naming it:
 it reads exactly `type to search or start something new · ↑↓ pick · enter open · tab next
@@ -81,7 +81,7 @@ stands beside it only on a frame **160 columns or wider** (see *Why is there no 
 the right*). Top to bottom:
 
 ```
- aforge                            2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+ aforge                            2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
   home   tasks 1   standing   memory 2   spend   search   settings
  ─────────────────────────────────────────────────────────────────────────────────────────
  since you left · 3h
@@ -570,7 +570,7 @@ The top line of home is the program's name and, right-aligned, what is true of t
 **whole machine** right now:
 
 ```
- aforge              2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+ aforge              2 want you · 4 moving · $0.55 / $500.00 · tue 1:11pm
 ```
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
@@ -584,7 +584,7 @@ The top line of home is the program's name and, right-aligned, what is true of t
   are, and a conversation with three tasks out counts as three. It is drawn in **cyan**,
   the in-flight colour. It shows from **one** — one hand working is worth knowing — and
   disappears entirely at nothing, never `0 moving`.
-- `$0.55 / $20.00` — what the machine has spent **since midnight** against what it is
+- `$0.55 / $500.00` — what the machine has spent **since midnight** against what it is
   allowed to spend today: the tasks that ran and the standing things that fired, then your
   daily allowance. It is drawn in **green**, which is the money colour and is never spent
   on anything else. A machine with no allowance set draws the figure alone.
@@ -650,7 +650,7 @@ its own that says it in full:
 |---|---|
 | `keeping an eye on` | the **standing** place — `alt+3`, or type `standing` |
 | `since you left` | the **`since you left` ledger** at the top of home's own list, where each line is a door into the place it happened in (*What is since you left*) |
-| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $20.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
+| `today` — chats, tasks, money | the **pulse line** at the top of every place says `$0.55 / $500.00`; the **spend** place — `alt+5` — has the days, the models and what each thing was for |
 | `agents` — the little chart | the pulse line's `4 moving`, which is the figure the chart was the shape of |
 | `thinking` — the install's rung | the `thinking` row of `/settings`, which is where that setting has always been written |
 
@@ -1470,7 +1470,7 @@ in more recently, longest wait first.
 The run is the one that used to be missing: a run that had spent its tank read as `working`
 to every other window on the machine, which is the one thing this row must never do. It now
 counts as needing you like the rest, and the line beside it is the gate's own — `out of
-fuel · $2.00 of $2.00`.
+fuel · $100.00 of $100.00`.
 
 The line above the box then repeats the question in full with the answers it will take, and
 the card — where the width draws one — has it too. A session that gave no words for what it

@@ -227,12 +227,38 @@ type Action struct {
 	MaxSteps int `json:"maxSteps,omitempty"`
 }
 
-// Rails bound an item. They are mandatory by construction: [Store.Create]
-// refuses an item whose PerRunUSD or MaxPerDay is zero. They stay quiet on the
-// proposal card unless the person named money themselves, because the ordinary
-// promise is the machine-wide daily allowance.
+// DefaultPerRunUSD is what ONE FIRING of a standing item may spend when nobody
+// named a figure — the probe, the sentinel's judgment and the work itself.
+//
+// IT IS THE ONE PLACE THIS NUMBER LIVES. It was written out three times once —
+// here in the store that creates a charter, in the proposal that quotes a price
+// to the person, and in the belt tool's own schema — and three copies of one
+// fact is the drift this codebase has a law against. Every reader resolves it
+// from this constant.
+//
+// Fifteen cents was the old figure and it was a rail rather than a backstop: a
+// cheap look plus a small model's answer and nothing else, so the first
+// standing order anybody wrote that did real work stopped halfway through its
+// first firing. Five dollars is a whole piece of work on a good model, which is
+// what a person who says "keep an eye on this" is actually asking for. The
+// protection that matters is still the machine-wide daily rail plus the
+// max-per-day count, not this.
+const DefaultPerRunUSD = 5.0
+
+// Rails bound an item. MaxPerDay is mandatory by construction: [Store.Create]
+// refuses an item that may fire zero times a day, which is an item that would
+// never fire at all. They stay quiet on the proposal card unless the person
+// named money themselves, because the ordinary promise is the machine-wide
+// daily allowance.
 type Rails struct {
 	// PerRunUSD is the most one firing may spend, probe and sentinel included.
+	//
+	// ZERO IS NO LIMIT, and it always was at the place that enforces it —
+	// internal/session's standing_run.go has only ever stopped a firing when
+	// `PerRunUSD > 0` — so a person who wants a standing order bounded by
+	// nothing but the daily rail writes 0 here and gets exactly that.
+	// [Item.Validate] used to refuse that number, which made the enforcement
+	// site's own contract unreachable.
 	PerRunUSD float64 `json:"perRunUsd"`
 	// MaxPerDay is how many times it may fire in one local day.
 	MaxPerDay int `json:"maxPerDay"`
@@ -395,12 +421,14 @@ func (it Item) Validate() error {
 	case it.Workspace == "":
 		return errors.New("an item needs a workspace")
 	}
-	// A HOLD CANNOT SPEND, SO IT ALONE CARRIES NO RAILS AND NO ACTION. Every
-	// waking kind still refuses a zero budget by construction.
+	// A HOLD CANNOT SPEND, SO IT ALONE CARRIES NO RAILS AND NO ACTION. A waking
+	// kind still needs to be able to fire at all; what it may spend when it does
+	// is allowed to be unbounded, because 0 there is the person's own "no limit"
+	// and the firing site already reads it that way.
 	if it.Spends() {
 		switch {
-		case it.Rails.PerRunUSD <= 0:
-			return errors.New("an item needs a per-run budget")
+		case it.Rails.PerRunUSD < 0:
+			return errors.New("a per-run budget cannot be negative")
 		case it.Rails.MaxPerDay <= 0:
 			return errors.New("an item needs a max per day")
 		}

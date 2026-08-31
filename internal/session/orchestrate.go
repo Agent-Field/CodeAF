@@ -82,17 +82,6 @@ const (
 	// because every lane is a whole child agent with its own context.
 	orchestrateLanes = 4
 
-	// orchestrateDefaultCap is the tank when nobody named one. It was $2, and
-	// real runs hit that gate mid-work often enough that the question became a
-	// nag rather than a decision — the owner raised it to ten. The gate is
-	// still where more money is asked for; it just fires when a run is
-	// genuinely large rather than merely ordinary.
-	//
-	// NOTHING READS IT TODAY: it was read by the cue that turned a typed sentence
-	// into a run, and every caller now names its own cap. It is kept because the
-	// figure is a decision about money rather than a piece of the door that went,
-	// and a re-wired chat road would otherwise have to invent it again.
-	orchestrateDefaultCap = 10.00
 
 	// The planner's own budget. It writes an amendment, not a page, and the
 	// answer to most completions is `{}` — what the tokens are actually for is
@@ -112,6 +101,20 @@ const (
 	orchestrateMaxSteps   = 60
 	orchestrateNoProgress = 6
 )
+
+// DefaultRunCapUSD is the tank an adaptive run gets when nobody named one, and
+// it is EXPORTED because the composer's own third line opens on this figure
+// (internal/tui3's composerCapDefault). The two were separate literals once,
+// each with a comment telling the other's reader to remember to change it by
+// hand — which is the drift the one-source-of-truth law exists to stop.
+//
+// It was $2, and real runs hit that gate mid-work often enough that the
+// question became a nag rather than a decision, so the owner raised it to ten;
+// ten did the same thing a year of cheaper models later. A hundred dollars is
+// where a run is genuinely large rather than merely ambitious. The gate has not
+// moved — it is still where more money is asked for — and a caller that names
+// its own cap still wins. Zero from a caller is the run nobody bounded.
+const DefaultRunCapUSD = 100.00
 
 // ── the doorways a surface holds ────────────────────────────────────────────
 

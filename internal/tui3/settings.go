@@ -2369,7 +2369,30 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	if word := s.laneWord(item); word != "" {
 		value += " · " + word
 	}
+	// AND A MONEY ROW SAYS WHAT A BARE "$0" CANNOT. Zero on a ceiling is the
+	// person's own instruction, and the thing it spells is the OPPOSITE of what
+	// the figure reads as at a glance: "no money at all" where the code means
+	// "no ceiling at all". See [sheet.railWord].
+	if word := s.railWord(item); word != "" {
+		value += " · " + word
+	}
 	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
+}
+
+// railWord is the dim tail on a spending row.
+//
+// IT DECIDES NOTHING. The registry already owns what zero means on each of these
+// rows — every money row carries a receipt written for exactly this
+// ([config.Setting.Receipt]) — and the words differ between them: the daily rail
+// and the session ceiling say `no limit`, the consent gate says `never asks`,
+// and the practice carve-out says `practice off`, because zero there switches
+// practice off rather than uncapping it. A surface that worked any of that out
+// again would be a second place for those three sentences to drift apart.
+func (s *sheet) railWord(item sheetItem) string {
+	if item.row.Category != config.CategorySpending {
+		return ""
+	}
+	return item.row.Receipt()
 }
 
 // laneWord is the tail on the conversation's model row: `auto (cloudflare now)`

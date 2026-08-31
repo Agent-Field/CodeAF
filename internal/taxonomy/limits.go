@@ -55,12 +55,18 @@ const (
 	DefaultTransportBackoff = 2 * time.Second
 	// DefaultSemanticFailures is one. See above.
 	DefaultSemanticFailures = 1
-	// DefaultTierCapUSD is two dollars, and it is nearly inert on a shipped
-	// install: one lift is bought per piece of work by default, so the cap has
-	// nothing to stop. It earns its keep the moment somebody raises the number
-	// of rounds a piece of work may take — which is exactly the configuration
-	// where an unbounded lift ran three runs to $9.50 and above.
-	DefaultTierCapUSD = 2.0
+	// DefaultTierCapUSD is twenty-five dollars, and it is nearly inert on a
+	// shipped install: one lift is bought per piece of work by default, so the
+	// cap has nothing to stop. It earns its keep the moment somebody raises the
+	// number of rounds a piece of work may take — which is exactly the
+	// configuration where an unbounded lift ran three runs to $9.50 and above.
+	//
+	// IT WAS $2, WHICH IS UNDER THE PRICE OF ONE LIFT on the models this cap
+	// exists to govern: a cap that stops the first purchase it was written to
+	// allow is not a cap, it is an off switch wearing a number. Twenty-five
+	// dollars is above the run that went wrong and far under a day anybody
+	// would defend. 0 is still no cap.
+	DefaultTierCapUSD = 25.0
 )
 
 // floor fills in whatever the caller left at zero. A policy is handed a floored
