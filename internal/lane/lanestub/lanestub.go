@@ -73,9 +73,15 @@ type Profile struct {
 	TTFT   time.Duration
 	Rate   float64
 	Tokens int
+	// Reasoning is how many THINKING deltas this lane writes before its first
+	// visible word. They are billed, streamed tokens like any other — the
+	// endpoint IS writing — but nothing a person can read appears while they
+	// run, which is the whole reason the watch counts them apart from the
+	// answer ([internal/lane.Watch.Token]).
+	Reasoning int
 	// StallAfter and StallFor stage a lane that goes quiet mid-answer:
-	// after StallAfter tokens nothing is written for StallFor. A zero
-	// StallAfter stalls nothing.
+	// after StallAfter deltas — counting the reasoning run first — nothing is
+	// written for StallFor. A zero StallAfter stalls nothing.
 	StallAfter int
 	StallFor   time.Duration
 	// FailWith is an HTTP status this lane answers with instead of streaming.
@@ -621,16 +627,37 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 		gap = time.Duration(float64(time.Second) / lane.Rate)
 	}
 
+	// THE RUN OF THOUGHT COMES FIRST AND IS DELTAS LIKE ANY OTHER. A reasoning
+	// model writes its thinking on the same stream, at the same rate, billed
+	// the same way — and a person reads none of it, which is exactly the
+	// difference the watch's commitment rule turns on.
+	delta := 0
+	pause := func() bool {
+		if delta == 0 {
+			delta++
+			return true
+		}
+		wait := gap
+		if lane.StallAfter > 0 && delta == lane.StallAfter {
+			wait += lane.StallFor
+		}
+		delta++
+		return clock.Wait(ctx, wait)
+	}
+	for thought := 0; thought < lane.Reasoning; thought++ {
+		if !pause() {
+			s.cancelled(lane.Name)
+			return
+		}
+		if !write("data: " + reasoningJSON(id, ask.Model, lane.Name, fmt.Sprintf("r%d ", thought)) + "\n\n") {
+			s.cancelled(lane.Name)
+			return
+		}
+	}
 	for token := 0; token < total; token++ {
-		if token > 0 {
-			pause := gap
-			if lane.StallAfter > 0 && token == lane.StallAfter {
-				pause += lane.StallFor
-			}
-			if !clock.Wait(ctx, pause) {
-				s.cancelled(lane.Name)
-				return
-			}
+		if !pause() {
+			s.cancelled(lane.Name)
+			return
 		}
 		if !write("data: " + chunkJSON(id, ask.Model, lane.Name, fmt.Sprintf("t%d ", token)) + "\n\n") {
 			s.cancelled(lane.Name)
@@ -712,6 +739,26 @@ func chunkJSON(id, model, lane, text string) string {
 		"choices": []any{map[string]any{
 			"index":         0,
 			"delta":         map[string]any{"role": "assistant", "content": text},
+			"finish_reason": nil,
+		}},
+	})
+	return string(body)
+}
+
+// reasoningJSON is one THINKING delta, in the field OpenRouter spells it with.
+// It is the same frame as [chunkJSON] with the text under `reasoning` instead
+// of `content`: on the wire the two are one stream, and telling them apart is
+// the reader's job rather than the router's.
+func reasoningJSON(id, model, lane, text string) string {
+	body, _ := json.Marshal(map[string]any{
+		"id":       id,
+		"object":   "chat.completion.chunk",
+		"created":  0,
+		"model":    model,
+		"provider": lane,
+		"choices": []any{map[string]any{
+			"index":         0,
+			"delta":         map[string]any{"role": "assistant", "reasoning": text},
 			"finish_reason": nil,
 		}},
 	})

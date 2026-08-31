@@ -118,8 +118,8 @@ func TestAHeartbeatKeepsThePathAliveWhileTheLaneIsStillJudged(t *testing.T) {
 func TestOneVeryLongGapAlarmsOnItsOwn(t *testing.T) {
 	start := time.Now()
 	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	watch.Token(1, msIn(start, 500))
-	verdict := watch.Token(2, msIn(start, 500+16_000))
+	watch.Token(1, 1, msIn(start, 500))
+	verdict := watch.Token(2, 2, msIn(start, 500+16_000))
 	if !verdict.Hedge || verdict.Reason != "gap" {
 		t.Fatalf("verdict after a sixteen-second gap = %+v, want a gap alarm", verdict)
 	}
@@ -129,17 +129,17 @@ func TestDriftAccumulatesOverGapsThatAreEachOnlySomewhatSlow(t *testing.T) {
 	start := time.Now()
 	// Fifty tokens a second is a gap of twenty milliseconds.
 	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	watch.Token(1, msIn(start, 400))
+	watch.Token(1, 1, msIn(start, 400))
 
 	// Gaps of two hundred milliseconds: ten times slower than believed, which
 	// is ln(10) − 0.5 ≈ 1.8 nats of surprise each. One is not enough on its
 	// own — a lane is allowed a bad moment — and two are.
 	moment := 400 + 200
-	if verdict := watch.Token(2, msIn(start, moment)); verdict.Hedge {
+	if verdict := watch.Token(2, 2, msIn(start, moment)); verdict.Hedge {
 		t.Fatalf("hedged on one slow gap; a lane is allowed a bad moment")
 	}
 	moment += 200
-	if verdict := watch.Token(3, msIn(start, moment)); !verdict.Hedge || verdict.Reason != "drift" {
+	if verdict := watch.Token(3, 3, msIn(start, moment)); !verdict.Hedge || verdict.Reason != "drift" {
 		t.Fatalf("verdict on the second slow gap = %+v, want a drift alarm", verdict)
 	}
 }
@@ -148,10 +148,10 @@ func TestASteadyLaneNeverDrifts(t *testing.T) {
 	start := time.Now()
 	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
 	moment := 400
-	watch.Token(1, msIn(start, moment))
+	watch.Token(1, 1, msIn(start, moment))
 	for token := 2; token <= 200; token++ {
 		moment += 20
-		if verdict := watch.Token(token, msIn(start, moment)); verdict.Hedge {
+		if verdict := watch.Token(token, token, msIn(start, moment)); verdict.Hedge {
 			t.Fatalf("hedged at token %d on a lane writing exactly as believed", token)
 		}
 	}
@@ -160,7 +160,7 @@ func TestASteadyLaneNeverDrifts(t *testing.T) {
 func TestASilenceMidStreamIsJudgedWhileItIsStillHappening(t *testing.T) {
 	start := time.Now()
 	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 1000), start)
-	watch.Token(1, msIn(start, 400))
+	watch.Token(1, 1, msIn(start, 400))
 	// A believed gap of one millisecond. The stall is judged from the silence
 	// beat rather than from the token that will eventually end it.
 	if verdict := watch.Silence(msIn(start, 410)); verdict.Hedge {
@@ -182,10 +182,10 @@ func TestPastTheCommitmentPointAnAlmostFinishedAnswerIsNotAbandoned(t *testing.T
 	watch := NewWatch(choice, beliefOf(400, 1000), start)
 	watch.SetExpectedTokens(220)
 	moment := 400
-	watch.Token(1, msIn(start, moment))
+	watch.Token(1, 1, msIn(start, moment))
 	for token := 2; token <= 200; token++ {
 		moment++
-		watch.Token(token, msIn(start, moment))
+		watch.Token(token, token, msIn(start, moment))
 	}
 	// Twenty tokens from the end, a stall that would alarm anywhere else.
 	if verdict := watch.Silence(msIn(start, moment+20_000)); verdict.Hedge {
@@ -206,10 +206,10 @@ func TestBeforeTheCommitmentPointTheSameStallIsHedged(t *testing.T) {
 	watch := NewWatch(choice, beliefOf(400, 1000), start)
 	watch.SetExpectedTokens(220)
 	moment := 400
-	watch.Token(1, msIn(start, moment))
+	watch.Token(1, 1, msIn(start, moment))
 	for token := 2; token <= 30; token++ {
 		moment++
-		watch.Token(token, msIn(start, moment))
+		watch.Token(token, token, msIn(start, moment))
 	}
 	verdict := watch.Silence(msIn(start, moment+20_000))
 	if !verdict.Hedge {
@@ -228,10 +228,10 @@ func TestPastTheCommitmentPointAStalledStreamWithMostOfTheAnswerLeftIsStillHedge
 	watch := NewWatch(choice, beliefOf(400, 1), start)
 	watch.SetExpectedTokens(2100)
 	moment := 400
-	watch.Token(1, msIn(start, moment))
+	watch.Token(1, 1, msIn(start, moment))
 	for token := 2; token <= 100; token++ {
 		moment += 1000
-		watch.Token(token, msIn(start, moment))
+		watch.Token(token, token, msIn(start, moment))
 	}
 	verdict := watch.Silence(msIn(start, moment+20_000))
 	if !verdict.Hedge {

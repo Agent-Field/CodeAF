@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -481,7 +482,14 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		}
 	})
 
-	response, err := a.client.CompleteWithMessages(ctx, []ai.Message{live}, ai.WithModel(seer))
+	// THIS IS THE PERSON'S OWN TURN, ANSWERED BY ANOTHER MODEL, and the role says
+	// exactly that. It is deliberately not [lane.RoleMedia]: that role is for
+	// work which produces no token stream at all — a picture, a piece of music,
+	// a transcription — and this one streams an answer into the room the person
+	// is reading, delta by delta, above. So it is talk, and it owns the clock
+	// for as long as it is writing (internal/lane's roles.go).
+	response, err := a.client.CompleteWithMessages(
+		provider.WithRole(ctx, lane.RoleTalk), []ai.Message{live}, ai.WithModel(seer))
 	if err == nil && response != nil {
 		a.addAuxiliaryUsage(response, seer, 1)
 	}

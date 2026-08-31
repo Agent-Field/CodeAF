@@ -472,7 +472,9 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 	// thousand: a drift alarm accumulated over forty scripted gaps a thousandth
 	// of a second apart would be measuring this machine's socket jitter and
 	// calling it a lane going bad.
-	watch.Token(result.tokens, r.at.Add(out.gen()))
+	// The bench's answers are all VISIBLE tokens: no scenario here scripts a
+	// run of thought, so the two counts are the same figure.
+	watch.Token(result.tokens, result.tokens, r.at.Add(out.gen()))
 	return out, nil
 }
 

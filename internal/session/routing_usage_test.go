@@ -43,6 +43,7 @@ func (s *intentSpy) first(t *testing.T) provider.RoutingIntent {
 }
 
 func TestAConversationsOwnTurnAsksForSpeed(t *testing.T) {
+	windowsOpen(t, false)
 	spy := &intentSpy{}
 	writer := &scriptedCompleter{steps: []step{
 		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
@@ -58,7 +59,38 @@ func TestAConversationsOwnTurnAsksForSpeed(t *testing.T) {
 	}
 }
 
-func TestATaskNodesTurnAsksForPriceInstead(t *testing.T) {
+// A task node with nobody in the building is work whose seconds are worth
+// nothing, and it asks for the cheap endpoint.
+func TestAnUnwatchedTaskNodesTurnAsksForPriceInstead(t *testing.T) {
+	windowsOpen(t, false)
+	if got := taskNodeIntent(t); got != provider.IntentBackground {
+		t.Fatalf("an unwatched task node routed as %v, want the errand's price ask", got)
+	}
+}
+
+// AND THE SAME NODE WITH SOMEBODY WATCHING THE RUN ASKS FOR SPEED, which is the
+// one place the role table changed an answer this package used to give.
+//
+// The old rule was that a node routes on price WHATEVER is on the screen, on
+// the grounds that nobody reads a node's raw stream. The λ beside it had
+// already stopped believing that — a run started from a window somebody is
+// watching has an owner reading its cards as they land, and the seconds are
+// theirs (loop.go, and bench/lanelab/REPORT.md for what pricing them at zero
+// costs) — and the two were free to disagree only because they were two
+// separate stamps. They are one now: the turn names its ROLE, and internal/lane's
+// table answers what a second of it is worth, what bar it has to clear, and
+// whether anybody is reading it, from that one word.
+func TestAWatchedTaskNodesTurnAsksForSpeed(t *testing.T) {
+	windowsOpen(t, true)
+	if got := taskNodeIntent(t); got != provider.IntentInteractive {
+		t.Fatalf("a watched task node routed as %v, want the interactive ask", got)
+	}
+}
+
+// taskNodeIntent runs one task node's turn and reports what its request asked
+// the router for.
+func taskNodeIntent(t *testing.T) provider.RoutingIntent {
+	t.Helper()
 	spy := &intentSpy{}
 	writer := &scriptedCompleter{steps: []step{
 		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
@@ -73,10 +105,7 @@ func TestATaskNodesTurnAsksForPriceInstead(t *testing.T) {
 		config.roomThread = true
 	})
 	collect(t, mustSubmit(t, agent, "do the work"))
-
-	if got := spy.first(t); got != provider.IntentBackground {
-		t.Fatalf("a task node routed as %v, want the errand's price ask", got)
-	}
+	return spy.first(t)
 }
 
 // Every errand this package makes goes through one door, and the door says

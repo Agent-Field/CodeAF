@@ -62,6 +62,12 @@ func (c *Client) probeLane(ctx context.Context, model, lane string) (time.Durati
 		return 0, errors.New("probe: a model and a lane are both required")
 	}
 	body := probeBody(model, lane)
+	// A PROBE NAMES ITSELF LIKE EVERY OTHER ERRAND (internal/lane's roles.go).
+	// It is the cheapest call this build makes and the least interesting one to
+	// watch: nobody is reading it, it will ask exactly once, and it has no
+	// quality bar because a measurement cannot come back wrong. All four of
+	// those are rows in the table rather than decisions taken here.
+	ctx = WithRole(ctx, lanes.RoleProbe)
 	ctx, stop := context.WithTimeout(ctx, probeCeiling)
 	defer stop()
 	httpRequest, err := c.newHTTPRequest(ctx, &ai.Request{Model: model}, body, true)

@@ -44,6 +44,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -177,7 +178,10 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 	// on a low-tier model is ten seconds spent on the one thing the person is
 	// waiting for. WithoutStream because nobody's turn asked for this, and left
 	// on a stream it would type itself into the room above the box.
-	response, callErr := client.CompleteWithMessages(provider.WithoutStream(ctx),
+	response, callErr := client.CompleteWithMessages(
+		// A side errand of the box the person is typing in, named as one so it
+		// is priced as one and never owns the clock (internal/lane's roles.go).
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
 		[]ai.Message{
 			textMessage("system", spellOutSystem),
 			// THE INSTRUCTION IS LAST, after the draft rather than above it, for

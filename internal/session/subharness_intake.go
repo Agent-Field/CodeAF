@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -161,8 +162,11 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), intakeWindow)
 	defer cancel()
+	// A side errand of the turn's, and it names itself one: nobody is waiting on
+	// a form being filled in, and nobody is reading its stream
+	// (internal/lane's roles.go).
 	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
+		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary),
 		[]ai.Message{
 			textMessage("system", intakeSystem),
 			textMessage("user", "The form:\n"+intakeFields(*card)+

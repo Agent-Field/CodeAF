@@ -85,7 +85,7 @@ func TestTheStatusLinesPlaceCarriesTheMachine(t *testing.T) {
 	if a.place != "devbox:app" {
 		t.Fatalf("place = %q, want the machine and the directory", a.place)
 	}
-	name, _ := a.identityParts()
+	name, _ := a.identityParts(0)
 	if !strings.HasPrefix(plain(name), "devbox:app") {
 		t.Fatalf("the status line's identity = %q", plain(name))
 	}
