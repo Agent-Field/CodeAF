@@ -306,6 +306,10 @@ type callKnobs struct {
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
 	reasoning []MessageReasoning
+	// hedgeLane is the one lane this request must go to, set only on the second
+	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
+	// is what keeps a healthy request byte-for-byte what it always was.
+	hedgeLane string
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -319,6 +323,7 @@ func knobsFrom(ctx context.Context) callKnobs {
 		cacheKey:  CacheKeyFrom(ctx),
 		effort:    effortFrom(ctx),
 		intent:    routingIntentFrom(ctx),
+		hedgeLane: hedgeLaneFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
 		trace:     newCallTrace(),
 	}
@@ -896,6 +901,14 @@ func (c *Client) completeWithMessagesStreaming(
 	if observer == nil {
 		observer = func(StreamEvent) {}
 	}
+	// THE HEDGE, AND THE ONE PLACE IT IS DECIDED (hedge.go). A call the lane
+	// router is watching runs as a race of one or two arms, each of which is
+	// this same function on a child context; a call it is not watching — which
+	// is every call in a build where nothing is wired in — falls straight
+	// through to the loop below, byte for byte as it was.
+	if race, raced := c.raceFor(ctx, observer); raced {
+		return race.run(ctx, messages, options...)
+	}
 	relearned := false
 	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
 	if err != nil {
@@ -918,6 +931,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// from them and the trace inside them is what counts its attempts
 	// (calllog.go).
 	knobs := knobsFrom(ctx)
+	// The lane watch this stream reports to, nil on every call that is not an
+	// arm of a race (hedge.go). Every use of it below is a nil-safe method
+	// call, so an unwatched stream pays one nil check per delta.
+	watch := streamWatchFrom(ctx)
 	httpResponse, err := c.sendShaped(guardCtx, request, knobs, true)
 	if err != nil {
 		return nil, false, err
@@ -1023,6 +1040,16 @@ func (c *Client) completeWithMessagesStreaming(
 	// connection's idle watchdog.
 	decoder := newSSEDecoder(httpResponse.Body)
 	decoder.alive = stall.alive
+	if watch != nil {
+		// A ROUTER'S COMMENT LINE IS PROOF ABOUT THE PATH. It buys the stall
+		// guard bounded patience (streamguard.go) and it tells the lane watch
+		// that the connection is alive but the model has not started — which is
+		// exactly the difference between a slow lane and a dead path.
+		decoder.alive = func() {
+			stall.alive()
+			watch.heartbeat()
+		}
+	}
 	// lastWrite and widestGap watch the same deltas the stall guard does, for
 	// the ledger rather than for a cut: an endpoint that finished its answer
 	// but delivered it in lumps is working, slowly, and "working slowly" is
@@ -1083,6 +1110,7 @@ func (c *Client) completeWithMessagesStreaming(
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {
+			watch.serve(chunk.Provider)
 			if served == "" {
 				// The first naming is what narrows the wall onto the lane that
 				// is actually serving; [stallWatch.rewall] does it once and
@@ -1137,6 +1165,10 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 				lastWrite = now
 				stall.progress()
+				// AND THE SAME PROGRESS DRIVES THE LANE WATCH: the drift test
+				// is over the gaps between exactly these deltas, and an arm of
+				// a race commits on how many of them it has delivered.
+				watch.token()
 			}
 			if choice.Delta.Content != "" {
 				thinking = false
