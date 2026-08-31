@@ -293,6 +293,12 @@ func (c *chooser) beliefs(model string) []Belief {
 // Choose is the whole of the decision: age, gate, prune, sample, rank, and say
 // why in one sentence.
 func (c *chooser) Choose(req Request) Choice {
+	// A TIER IS NOT A DEPLOYMENT. `model:high` is the same seventeen machines as
+	// `model` and the ledger files them under the bare id ([BareModel]), so the
+	// request is bared here — once, before anything is looked up — and every
+	// lookup below, including the two that key on [Request.Model] directly,
+	// asks about the model whose beliefs exist.
+	req.Model = BareModel(req.Model)
 	beliefs := c.beliefs(req.Model)
 	// AN ORDER OF ONE IS NOT A RANKING, and a ledger that has heard of a single
 	// lane has nothing to rank. This is the same refusal as the empty one below
@@ -380,6 +386,13 @@ func (c *chooser) Choose(req Request) Choice {
 		}
 		return scored[a].ID.Lane < scored[b].ID.Lane
 	})
+
+	// AND WHAT IS UNKNOWN GOES BEHIND WHAT IS KNOWN. A lane the sheet has never
+	// published a tool flag for is a candidate and not a favourite: it is ranked
+	// last among the survivors when the request carries tools, so the choice
+	// tries the machines we know will take the call first and still has
+	// somewhere to go when we know nothing at all (frontier.go's [toolsLast]).
+	scored = toolsLast(scored, req, aged)
 
 	choice := Choice{Frontier: scored}
 	choice.Order = orderOf(scored, aged)

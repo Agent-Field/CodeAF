@@ -59,6 +59,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -1293,3 +1294,170 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 		}
 	}
 }
+
+// ── S6. TWO PROCESSES, ONE FILE, AND A REQUEST THAT CARRIES TOOLS ───────────
+//
+// THE SCENARIO THAT WOULD HAVE CAUGHT THE 2026-08-30 INCIDENT, written in the
+// order it happened in.
+//
+// A person had two aforge windows open. One of them had been talking to a model
+// for a while and had two lanes in the file that it had merely SEEN — an id, a
+// moment, and every other field a zero nobody wrote. The other window then
+// fetched that model's seventeen-row sheet and primed every row. A minute later
+// the FIRST window saved its own ledger, which it had loaded before any of that
+// happened, and the whole primed set went with it. A restart loaded the
+// survivor, its next turn carried tools, the gate read the blank tool flag as a
+// published no, and the request went out with no preference on it and no watch
+// behind it: five seconds of somebody waiting on a machine nothing chose.
+//
+// Three laws have to hold for this to come out right, and this scenario
+// exercises all three at once rather than as three unit tests, because that is
+// the point: each of them alone leaves the person exactly where they were.
+//
+//	the save merges          a process may not delete what it never heard of
+//	the belief keeps a half  a sighting carries no facts and erases none
+//	unknown is not refused   a lane nobody looked up stays a candidate
+func TestS6TwoProcessesOneFileAndARequestThatCarriesTools(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("AFORGE_HOME", home)
+	path := filepath.Join(home, "lanes.json")
+	const talking, other = "moonshotai/kimi-k3", "z-ai/glm-5.3"
+	rows := twoProcessRows(talking)
+
+	t.Cleanup(Default().Reset)
+	Default().Reset()
+	Default().SetStore(newStore().at(path))
+
+	// ── what was already in the file: two lanes that had merely been seen ───
+	//
+	// No sheet is attached to this ledger, which is the state the machine was
+	// really in: the lanes had served answers and nobody had looked them up.
+	cold := newLedger()
+	cold.keepIn(newStore().at(path))
+	for index, row := range rows[:2] {
+		cold.Note(Sighting{
+			ID: row.ID, TTFT: time.Duration(1400+index*100) * time.Millisecond,
+			Gen: 2 * time.Second, Tokens: 64, At: noon.Add(time.Duration(index) * time.Minute),
+		})
+	}
+	for _, belief := range cold.Beliefs(talking) {
+		if belief.Facts.Known() {
+			t.Fatalf("this scenario needs %s to be a lane nobody has looked up", belief.ID.Lane)
+		}
+	}
+
+	// ── the other window opens and reads the file as it stands ──────────────
+	second := newLedger()
+	second.keepIn(newStore().at(path))
+	second.Note(Sighting{
+		ID: ID{Model: other, Lane: "Cloudflare"}, TTFT: 700 * time.Millisecond,
+		Gen: time.Second, Tokens: 64, At: noon,
+	})
+
+	// ── this window fetches the sheet and primes every row ──────────────────
+	Default().SetSheet(&fixedSheet{rows: map[string][]Row{talking: rows}})
+	Default().SetLedger(newLedger())
+	primeFrom(Default().Sheet(), talking)
+	if got := len(Default().Ledger().Beliefs(talking)); got != len(rows) {
+		t.Fatalf("the sheet primed %d lanes of %d", got, len(rows))
+	}
+
+	// ── and the other window saves the ledger it loaded a minute ago ────────
+	//
+	// It has never heard of a single lane of the model this one is talking to,
+	// and before this wave that was enough to delete all of them.
+	second.Note(Sighting{
+		ID: ID{Model: other, Lane: "Cloudflare"}, TTFT: 800 * time.Millisecond,
+		Gen: time.Second, Tokens: 64, At: noon.Add(time.Minute),
+	})
+
+	// ── the restart ─────────────────────────────────────────────────────────
+	//
+	// A brand new ledger over the same store and nothing in memory: everything
+	// it can answer from here, it answered out of the file. NO BEAT HAS RUN —
+	// the turn below is the first thing this process does, which is exactly the
+	// window the incident happened in.
+	Default().SetLedger(newLedger())
+	restarted := Default().Ledger()
+	if got := len(restarted.Beliefs(other)); got != 1 {
+		t.Fatalf("the restarted process lost the other window's own lane (%d)", got)
+	}
+	survivors := restarted.Beliefs(talking)
+	if len(survivors) != len(rows) {
+		t.Fatalf("the other window's save left %d of this one's %d lanes", len(survivors), len(rows))
+	}
+	for _, belief := range survivors {
+		if !belief.Facts.Known() {
+			t.Fatalf("%s came back from the file with every fact blank: %+v", belief.ID.Lane, belief.Facts)
+		}
+	}
+
+	// ── and one more lane, which nobody has ever looked up ──────────────────
+	//
+	// It answered a request once and the sheet has no row for it, so it reaches
+	// the gate exactly as the two survivors used to. It must stay a candidate
+	// and it must not lead a request that carries tools.
+	restarted.Note(Sighting{
+		ID: ID{Model: talking, Lane: "Stranger"}, TTFT: 300 * time.Millisecond,
+		Gen: time.Second, Tokens: 200, At: noon.Add(2 * time.Minute),
+	})
+
+	// ── the turn ────────────────────────────────────────────────────────────
+	//
+	// Asked for the TIER the person configured, which is the second half of the
+	// incident: `…:high` and `…` are one set of machines and one ledger.
+	choice := Default().Chooser().Choose(Request{
+		Model:        talking + ":high",
+		PromptTokens: 21_600,
+		Visible:      talkVisible,
+		Tools:        true,
+		MaxTokens:    8_000,
+		QualityNeed:  0.9,
+		Horizon:      40,
+		ValueOfTime:  AttentionValue,
+		Now:          noon.Add(3 * time.Minute),
+	})
+	if choice.Empty() {
+		t.Fatal("a turn carrying tools, on a model with three lanes in the file, was sent with no preference at all — " +
+			"which is the whole of the incident this scenario is written from")
+	}
+	if len(choice.Order) == 0 {
+		t.Fatalf("the choice named nothing to try first: %+v", choice)
+	}
+	head, ok := restarted.Belief(ID{Model: talking, Lane: choice.Order[0]})
+	if !ok {
+		t.Fatalf("the choice named %q, which the ledger has never heard of", choice.Order[0])
+	}
+	if !head.Facts.Tools {
+		t.Fatalf("a request carrying tools was sent first to %q, which nobody has said takes one", choice.Order[0])
+	}
+	if len(choice.Frontier) == 0 || choice.Frontier[0].ID.Lane != choice.Order[0] {
+		t.Fatalf("the frontier the choice explains itself with does not lead with the lane it asked for: %+v", choice.Frontier)
+	}
+	// AND THE WATCH HAS A MOMENT TO WAKE AT. The deadline is computed from the
+	// belief of the lane we expect to serve, which is looked up by
+	// [Request.Model] directly — so a request still wearing its tier suffix
+	// gets a choice that is never hedged, which is the half of the incident a
+	// non-empty Order alone would not have caught.
+	if choice.Deadline <= 0 {
+		t.Fatalf("the choice carries no hedge deadline, so nothing would rescue this turn: %+v", choice)
+	}
+	// The stranger is behind the machines we know about, and it is still there:
+	// ranked last is not the same as refused.
+	for index, candidate := range choice.Frontier {
+		if candidate.ID.Lane != "Stranger" {
+			continue
+		}
+		if index == 0 {
+			t.Fatal("a lane nobody has published a tool flag for led a request that carries tools")
+		}
+		return
+	}
+	t.Fatalf("the lane nobody has looked up left the candidate set: %+v", choice.Frontier)
+}
+
+// talkVisible is the length of a talk answer these scenarios are written
+// against. It is the same figure `internal/provider` sends for a turn somebody
+// is watching, said here rather than borrowed because this package may not know
+// that one exists.
+const talkVisible = 600

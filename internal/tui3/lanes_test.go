@@ -685,3 +685,87 @@ func TestTheSparklineIsOurOwnLastAnswersAndNothingUntilThereAreTwo(t *testing.T)
 		t.Fatalf("the lane row draws no sparkline: %q", note)
 	}
 }
+
+// ── "2ms" — WHERE A FIRST-TOKEN WAIT IS SAID, AND WHERE IT IS NOT ───────────
+//
+// A person watching a turn that took half a minute read `2ms` on the status
+// line and reasonably concluded the surface was lying about the lane. It was
+// not: EVERY first-token wait this file draws is said in SECONDS with one
+// decimal ([laneSecondsWord]), and there is no path from a belief or from
+// [LaneNews] to a millisecond word at all. `2ms` on that line is the CONNECTION
+// segment of a `--host` session — `spark · 2ms`, the round trip to the machine
+// the conversation is running on (hostlink.go's latencyWord, the only `ms` on
+// this surface) — which sits immediately before the state word and is true of
+// the whole line rather than of the answer.
+//
+// These two tests pin that, so that the next person to read `2ms` can tell the
+// two apart without re-deriving it: a lane wait is never spelled in
+// milliseconds, and the belief the incident was about renders as `2.4s`.
+
+// TestAFirstTokenWaitIsAlwaysSaidInSeconds walks the belief the field report
+// carried — X = 7.79 in the log-millisecond domain, which is 2418 ms — through
+// every place this file turns a wait into a word.
+func TestAFirstTokenWaitIsAlwaysSaidInSeconds(t *testing.T) {
+	const model = "moonshotai/kimi-k3"
+	slow := lane.Belief{
+		ID:      lane.ID{Model: model, Lane: "DigitalOcean"},
+		Facts:   lane.Facts{Tools: true, Uptime5m: 100, PriceOut: 2e-6, MaxOut: 16_384, Quant: "fp8"},
+		TTFT:    lane.Posterior{X: 7.79, P: 0.01},
+		Rate:    lane.Posterior{X: math.Log(26), P: 0.01},
+		Quality: lane.Beta{A: 9, B: 1},
+	}
+	laneLab(t, map[string][]lane.Belief{model: {slow}})
+
+	views := laneViews(model, time.Now())
+	if len(views) != 1 {
+		t.Fatalf("one belief and %d rows", len(views))
+	}
+	if math.Abs(views[0].TTFT-2.418) > 0.002 {
+		t.Fatalf("a belief at X=7.79 read back as %.4f seconds", views[0].TTFT)
+	}
+	head, tail := laneRowText(views[0])
+	for what, text := range map[string]string{
+		"the model row": laneSpeedWord(views, ""),
+		"the lane row":  head + " " + tail,
+		"the why line":  laneWhy(views[0]),
+	} {
+		if !strings.Contains(text, "2.4s") {
+			t.Errorf("%s says %q, which does not name the 2.4 second wait it was drawn from", what, text)
+		}
+		if strings.Contains(text, "ms") {
+			t.Errorf("%s says %q — a lane wait is said in seconds on this surface", what, text)
+		}
+	}
+	// And the word itself, over the range a lane really lives in. A first-token
+	// wait is never rounded into a millisecond spelling, however small it gets.
+	for _, seconds := range []float64{0.002, 0.43, 0.999, 2.418, 30} {
+		if got := laneSecondsWord(seconds); !strings.HasSuffix(got, "s") || strings.HasSuffix(got, "ms") {
+			t.Errorf("%v seconds reads %q", seconds, got)
+		}
+	}
+	if got := laneSecondsWord(2.418); got != "2.4s" {
+		t.Fatalf("2.418 seconds reads %q", got)
+	}
+}
+
+// TestTheServedRiderSaysTheWaitInSeconds is the same law on the status line,
+// which is the segment the person was reading when they saw `2ms`.
+func TestTheServedRiderSaysTheWaitInSeconds(t *testing.T) {
+	const model = "moonshotai/kimi-k3"
+	laneLab(t, map[string][]lane.Belief{model: {
+		laneBelief(model, "DigitalOcean", 2418, 26, 0.1, lane.Facts{Tools: true, Uptime5m: 100}),
+		laneBelief(model, "Modal", 933, 79, 0.1, lane.Facts{Tools: true, Uptime5m: 100}),
+	}})
+	a := laneApp(t)
+	a.model = model
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{Model: model, Lane: "DigitalOcean", TTFT: 2418 * time.Millisecond, Rate: 26})
+	got := a.servedRider()
+	if !strings.Contains(got, "2.4s") {
+		t.Fatalf("a 2418ms first token reads %q", got)
+	}
+	if strings.Contains(got, "ms") {
+		t.Fatalf("the served rider spelled a wait in milliseconds: %q", got)
+	}
+}

@@ -50,10 +50,17 @@ func newRegistry() *Registry {
 	// which concrete type answers which seam, and a ledger that went looking
 	// for a store by itself would be the reach-around this registry exists to
 	// prevent.
-	keeper, beliefs := newStore(), newLedger()
+	keeper, beliefs, pages := newStore(), newLedger(), newSheet()
 	beliefs.keepIn(keeper)
+	// AND THE LEDGER IS SHOWN THE SHEET. A lane arrives at the ledger two ways
+	// — primed from a row, or merely SEEN in an answer — and the second of them
+	// carries no facts at all. The sheet is already in memory and [Sheet.Rows]
+	// is a map lookup, so the ledger dresses a newly seen lane from it at the
+	// moment it lands rather than leaving a factless belief in the file until
+	// some later beat happens to prime it (belief.go's dress).
+	beliefs.readFrom(pages)
 	return &Registry{
-		sheet:   newSheet(),
+		sheet:   pages,
 		ledger:  beliefs,
 		chooser: newChooser(),
 		prober:  newProber(),
@@ -105,16 +112,32 @@ func (r *Registry) SetSheet(sheet Sheet) {
 		sheet = newSheet()
 	}
 	r.sheet = sheet
+	// A sheet swapped underneath a ledger this package built is the sheet that
+	// ledger must then read — a bench that installed a sheet of its own and
+	// found beliefs still being dressed from the empty one would have been
+	// given a seam that only half moves. It is the same reasoning as
+	// [Registry.SetStore] below, and for the same reason it is here.
+	if own, ok := r.ledger.(*ledger); ok {
+		own.readFrom(sheet)
+	}
 }
 
 // SetLedger installs a ledger.
-func (r *Registry) SetLedger(ledger Ledger) {
+func (r *Registry) SetLedger(beliefs Ledger) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if ledger == nil {
-		ledger = newLedger()
+	if beliefs == nil {
+		beliefs = newLedger()
 	}
-	r.ledger = ledger
+	r.ledger = beliefs
+	// A ledger this package built is introduced to the store and the sheet it
+	// is expected to work through, for the reason [Registry.SetStore] does the
+	// same in the other direction: a seam that only half moves is a seam whose
+	// two halves disagree the first time one of them is swapped.
+	if own, ok := beliefs.(*ledger); ok {
+		own.keepIn(r.store)
+		own.readFrom(r.sheet)
+	}
 }
 
 // SetChooser installs a chooser.
@@ -149,8 +172,8 @@ func (r *Registry) SetStore(store Store) {
 	// ledger must then write through — a bench that pointed the beliefs at a
 	// temporary file and found them still landing in the person's own home
 	// would have been given a seam that only half moves.
-	if beliefs, ok := r.ledger.(*ledger); ok {
-		beliefs.keepIn(store)
+	if own, ok := r.ledger.(*ledger); ok {
+		own.keepIn(store)
 	}
 }
 

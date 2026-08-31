@@ -113,6 +113,17 @@ type ledger struct {
 	// costs a process nothing.
 	keeper Store
 	loaded bool
+	// pages is the sheet already in memory, nil when nothing is attached.
+	//
+	// IT IS READ AND NEVER FETCHED. [Sheet.Rows] is a map lookup by contract
+	// and this ledger calls nothing else on it, so a lane the sheet knows can
+	// be dressed with its facts the moment it is first SEEN — which is what
+	// keeps a belief that arrived as a sighting from sitting in the file with
+	// every fact blank until the next beat happens to prime it. The registry
+	// introduces the two, for the same reason it introduces the store: a ledger
+	// that went looking for a sheet by itself would be the reach-around the
+	// registry exists to prevent.
+	pages Sheet
 }
 
 // spread is one lane's prior variance for each filter.
@@ -136,16 +147,52 @@ func (l *ledger) keepIn(keeper Store) {
 	l.keeper, l.loaded = keeper, false
 }
 
+// readFrom attaches the sheet this ledger dresses a newly seen lane from. It
+// fetches nothing; see the field's own note.
+func (l *ledger) readFrom(pages Sheet) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pages = pages
+}
+
 // restore reads yesterday's beliefs, once. It is called with the lock held.
-//
-// What was on disk loses to what is in memory: a belief this process has
-// already measured is newer than any file, and a slow first read must never
-// undo a sighting that landed while it was happening.
 func (l *ledger) restore() {
 	if l.loaded {
 		return
 	}
 	l.loaded = true
+	l.foldInFile()
+}
+
+// reload folds the file into memory again, however many times it is called.
+//
+// IT IS THE OTHER HALF OF THE MULTI-PROCESS CONTRACT (store.go, "two processes,
+// one file"). A save already comes back with the merged set, so a process that
+// is writing stays current for nothing; this is for the process that is not.
+// The beat calls it before it primes, which is the one moment a session is
+// already doing a round of bookkeeping and the one moment a stale ledger would
+// otherwise be about to overwrite a fresher file.
+//
+// NOTHING ON THE SEND PATH CALLS IT. A choice reads memory.
+func (l *ledger) reload() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.loaded = true
+	l.foldInFile()
+}
+
+// foldInFile merges what is on disk into memory. It is called with the lock
+// held.
+//
+// WHAT IS ON DISK NO LONGER LOSES OUTRIGHT TO WHAT IS IN MEMORY, and that is a
+// correction rather than a preference. The old rule — memory always wins —
+// was written for one process reading its own file at open, where it is
+// exactly right: a sighting that landed while a slow read was happening must
+// not be undone by it. With two processes the same rule silently discards
+// everything the other one learned. [fresher] keeps both readings of the rule:
+// a measurement this process has already made is newer than the file and still
+// wins, and a model it has never heard of arrives intact.
+func (l *ledger) foldInFile() {
 	if l.keeper == nil {
 		return
 	}
@@ -153,20 +200,35 @@ func (l *ledger) restore() {
 	if err != nil {
 		return
 	}
-	for _, belief := range kept {
+	l.adopt(kept)
+}
+
+// adopt folds a set of beliefs into memory by [fresher]. It is called with the
+// lock held.
+func (l *ledger) adopt(beliefs []Belief) {
+	for _, belief := range beliefs {
 		if belief.ID.Zero() {
 			continue
 		}
-		if _, held := l.beliefs[belief.ID]; held {
+		held, have := l.beliefs[belief.ID]
+		if !have {
+			l.beliefs[belief.ID] = belief
 			continue
 		}
-		l.beliefs[belief.ID] = belief
+		l.beliefs[belief.ID] = fresher(held, belief)
 	}
 }
 
-// save writes the whole set through the store. It is called with the lock held,
-// which is what keeps two updates from landing on disk in the wrong order; the
-// file is tens of kilobytes and the write is one rename.
+// save writes the whole set through the store, and takes back what the file
+// then holds. It is called with the lock held, which is what keeps two updates
+// from landing on disk in the wrong order; the file is tens of kilobytes and
+// the write is one rename.
+//
+// THE MERGE IS THE SAVE. A store that can read-merge-write hands the merged set
+// straight back ([store.saveMerging]), so the same lock that made the write
+// safe also tells this process what the other one wrote — no second read, no
+// second decode, and no window in which two ledgers are each sure they are the
+// only one.
 func (l *ledger) save() {
 	if l.keeper == nil {
 		return
@@ -181,6 +243,15 @@ func (l *ledger) save() {
 		}
 		return all[i].ID.Lane < all[j].ID.Lane
 	})
+	if merging, ok := l.keeper.(interface {
+		saveMerging([]Belief) ([]Belief, error)
+	}); ok {
+		merged, err := merging.saveMerging(all)
+		if err == nil {
+			l.adopt(merged)
+		}
+		return
+	}
 	_ = l.keeper.Save(all)
 }
 
@@ -201,6 +272,10 @@ func (l *ledger) Prime(row Row, k float64) {
 	if row.ID.Zero() {
 		return
 	}
+	// A TIER IS NOT A DEPLOYMENT — see [BareModel]. Every door of this ledger
+	// files a belief under the bare id, so that `model:high` and `model` are
+	// one set of machines rather than two ledgers, one of which is always empty.
+	row.ID = row.ID.bare()
 	if k < 1 {
 		k = 1
 	}
@@ -237,6 +312,69 @@ func (l *ledger) Prime(row Row, k float64) {
 	}
 	l.beliefs[row.ID] = belief
 	l.save()
+}
+
+// dress fills in what the sheet already knows about a lane this process has
+// merely SEEN. It is called with the lock held, and it does nothing to a belief
+// that has been primed.
+//
+// ── WHY A SIGHTING IS NOT ENOUGH TO FILE A BELIEF ON ────────────────────────
+//
+// An answer says which machine wrote it and how quickly. It says nothing about
+// whether that machine honours a tool call, how long an answer it will write,
+// what it charges or what precision it serves at — and a belief with a sighting
+// on it and no facts is not a lane with no facts, it is a lane nobody looked
+// up. Filed that way it reaches the gate as a machine that refuses tool calls
+// and cannot write a hundred tokens, which is a lane the router will never use
+// again on evidence nobody produced.
+//
+// The sheet is usually sitting in memory when the sighting lands: it was
+// fetched on the beat, it is a map lookup, and it has the row. So the row is
+// taken HERE, at the moment the lane is first seen, rather than being waited
+// for. A lane the sheet does not know is left alone — an honest blank, which
+// [Facts.Known] and the gate both read as "nobody said" (frontier.go).
+func (l *ledger) dress(belief *Belief) {
+	if belief.Facts.Known() || l.pages == nil {
+		return
+	}
+	row, found := l.rowFor(belief.ID)
+	if !found {
+		return
+	}
+	belief.Facts = row.Facts
+	if row.Known() {
+		ttft, rate := fit(row.TTFTp50, row.TTFTp90), fit(row.Ratep50, row.Ratep90)
+		l.priors[belief.ID] = spread{ttft: ttft.P, rate: rate.P}
+		// THE POSTERIORS ARE ADOPTED AND NEVER FOLDED IN, for the reason
+		// [Ledger.Prime] adopts them on a lane nobody has measured: k says how
+		// much less the public number weighs THAN OURS, and there is nothing
+		// here for it to weigh against. A filter this process has already moved
+		// is left exactly where it is.
+		if !belief.TTFT.Known() {
+			belief.TTFT = ttft
+		}
+		if !belief.Rate.Known() {
+			belief.Rate = rate
+		}
+	}
+	if !belief.Quality.Known() {
+		belief.Quality = qualityPrior(row.Facts.Quant)
+	}
+}
+
+// rowFor is the sheet's own line for one lane, false when the sheet has none.
+//
+// The lane is matched case-insensitively because the two spellings arrive from
+// two places on the wire — a chunk's `provider` and a sheet row's
+// `provider_name` — and a belief that missed its own row over a capital letter
+// would be the bug this function exists to close, wearing a different hat.
+func (l *ledger) rowFor(id ID) (Row, bool) {
+	for _, row := range l.pages.Rows(id.Model) {
+		if strings.EqualFold(row.ID.Lane, id.Lane) {
+			return row, true
+		}
+	}
+	return Row{}, false
 }
 
 // fit turns a median and a ninetieth percentile into a log-normal: the median
@@ -305,11 +443,13 @@ func (l *ledger) Note(s Sighting) {
 	if s.ID.Zero() || s.At.IsZero() {
 		return
 	}
+	s.ID = s.ID.bare()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
 	belief := l.beliefs[s.ID]
 	belief.ID = s.ID
+	l.dress(&belief)
 	prior := l.priors[s.ID]
 
 	if !belief.At.IsZero() {
@@ -362,11 +502,13 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	if o.ID.Zero() {
 		return
 	}
+	o.ID = o.ID.bare()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
 	belief := l.beliefs[o.ID]
 	belief.ID = o.ID
+	l.dress(&belief)
 	prior := qualityPrior(belief.Facts.Quant)
 	if !belief.Quality.Known() {
 		belief.Quality = prior
@@ -451,6 +593,7 @@ func (l *ledger) Belief(id ID) (Belief, bool) {
 	if id.Zero() {
 		return Belief{}, false
 	}
+	id = id.bare()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
@@ -464,7 +607,7 @@ func (l *ledger) Belief(id ID) (Belief, bool) {
 // list: a picker that reshuffled its rows between two redraws would be a
 // picker nobody could click.
 func (l *ledger) Beliefs(model string) []Belief {
-	model = strings.TrimSpace(model)
+	model = BareModel(model)
 	if model == "" {
 		return nil
 	}

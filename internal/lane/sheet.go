@@ -156,7 +156,9 @@ func (s *sheet) cacheIn(dir string) {
 // That one read is what makes a cold process useful before its first beat has
 // finished, and it is deliberately not a fetch.
 func (s *sheet) Rows(model string) []Row {
-	model = strings.TrimSpace(model)
+	// A TIER IS NOT A DEPLOYMENT: `model:high` and `model` are one endpoints
+	// page, and the router serves it under the bare id. See [BareModel].
+	model = BareModel(model)
 	if model == "" {
 		return nil
 	}
@@ -219,7 +221,7 @@ func (s *sheet) freshness(model string, now time.Time) (time.Duration, bool) {
 func (s *sheet) Tag(id ID) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.tags[id]
+	return s.tags[id.bare()]
 }
 
 // Refresh fetches model's sheet and replaces what Rows returns.
@@ -228,7 +230,7 @@ func (s *sheet) Tag(id ID) string {
 // rows that are already there: a lane sheet that is half an hour old is a
 // better prior than no prior, and the belief is what corrects it anyway.
 func (s *sheet) Refresh(ctx context.Context, model string) error {
-	model = strings.TrimSpace(model)
+	model = BareModel(model)
 	if model == "" {
 		return ErrNoSheet
 	}
@@ -347,6 +349,16 @@ func primeFrom(s Sheet, model string) {
 		return
 	}
 	beliefs := Default().Ledger()
+	// AND THE FILE IS READ BACK FIRST. Another aforge may have been running the
+	// whole time this one was, learning about models this session has never
+	// mentioned; priming over a ledger that has not looked since it opened is
+	// how a save deletes them (store.go, "two processes, one file"). The beat is
+	// the right moment for it: it is already a round of bookkeeping, it is
+	// nowhere near a send, and it is immediately before the one act that
+	// rewrites the whole file.
+	if reader, ok := beliefs.(interface{ reload() }); ok {
+		reader.reload()
+	}
 	for _, row := range rows {
 		beliefs.Prime(row, SheetWeight)
 	}

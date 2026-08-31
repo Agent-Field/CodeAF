@@ -197,7 +197,7 @@ func (c *Client) laneRequest(model string, knobs callKnobs, request *ai.Request,
 		ceiling = *request.MaxTokens
 	}
 	return lanes.Request{
-		Model:        normalizeModel(model),
+		Model:        laneModel(model),
 		PromptTokens: promptTokens(request),
 		Prefix:       knobs.cacheKey,
 		Visible:      visible,
@@ -229,7 +229,7 @@ func (c *Client) laneRequest(model string, knobs callKnobs, request *ai.Request,
 // request that does not exist yet.
 func LaneTalkAsk(model string, now time.Time) lanes.Request {
 	return lanes.Request{
-		Model:       normalizeModel(model),
+		Model:       laneModel(model),
 		Visible:     talkTokens,
 		QualityNeed: talkQuality,
 		ValueOfTime: lanes.AttentionValue,
@@ -237,6 +237,24 @@ func LaneTalkAsk(model string, now time.Time) lanes.Request {
 		Now:         now,
 	}
 }
+
+// laneModel is the id a BELIEF is filed under, which is not always the id a
+// request is sent with.
+//
+// `moonshotai/kimi-k3:high` and `moonshotai/kimi-k3` are one model served by one
+// set of machines: the suffix says how hard to think, the endpoints page answers
+// the same seventeen lanes for both, and the router publishes that page under
+// the bare id. Sent with the suffix — which is what the wire needs — and FILED
+// with it too, a session's whole sheet lands in one ledger and every question
+// is asked of another, empty one. The chooser then has fewer than two lanes to
+// rank, answers with no opinion, and the request goes out on the router's own
+// sort with no watch on it. That is what happened on 2026-08-30, and it is the
+// same fact `internal/lane` states at [lanes.BareModel]; this is the seam where
+// it is applied, so that the ask this adapter remembers per model and the
+// sighting it later attributes are filed under one name.
+//
+// The wire keeps the suffix. Only the bookkeeping loses it.
+func laneModel(model string) string { return lanes.BareModel(normalizeModel(model)) }
 
 // laneNow is the moment a choice is made at and a sighting is stamped with.
 //
@@ -483,7 +501,7 @@ func (c *Client) askFor(model string) laneAsk {
 // asked.
 func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached int) {
 	served = strings.TrimSpace(served)
-	model = normalizeModel(model)
+	model = laneModel(model)
 	if !c.isOpenRouter() || model == "" || served == "" {
 		return
 	}
