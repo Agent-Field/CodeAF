@@ -4,7 +4,7 @@ title: work only a person can do goes to the person, not to a worker
 pr: 97
 surface: [engine]
 invalidates:
-  - "a division judge's finding that no worker can do the remainder is discarded and a worker runs anyway — no longer true"
+  - "a division judge's finding that no worker can do the remainder is discarded and a worker runs anyway — no longer true: the task lands needing your look, with that finding as its report, before a worker is started."
 ---
 
 The reader that weighs a drawn division may find that what is left of the work
