@@ -6021,7 +6021,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed
 		// it over, so the next conversation subscribes to its own (task.go).
-		return a.renew()
+		//
+		// The bool is for a caller with a sentence to send afterwards; /new has
+		// none — it is the whole of what was asked for — and the refusal is
+		// already a note in the conversation it was typed in.
+		cmd, _ := a.renew()
+		return cmd
 
 	default:
 		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
@@ -6193,22 +6198,31 @@ func (a *app) freshAndEmpty() bool {
 //
 // It returns the commands the next conversation owes itself: its own standing
 // lanes and the project's record (task.go, taskmention.go).
-func (a *app) renew() tea.Cmd {
+//
+// AND IT SAYS WHETHER THE CONVERSATION ACTUALLY CHANGED. Every refusal below
+// returns no work, and no work is also what a successfully renewed conversation
+// with nothing to subscribe to returns — so a caller that read the nil as "the
+// door held" was reading a coincidence. The callers that matter are the two that
+// SEND a sentence into whatever the renew left in front of them (home.go's
+// [app.homeStart], placekeys.go's [app.placeTalkAbout]), and sending it into the
+// conversation somebody was already in is the one outcome neither of them may
+// have.
+func (a *app) renew() (tea.Cmd, bool) {
 	if !a.canStart() {
 		a.note(newUnavailableWord)
-		return nil
+		return nil, false
 	}
 	replacing := a.freshAndEmpty()
 	if !replacing {
 		if word, room := a.roomForAnother(); !room {
 			a.note(word)
-			return nil
+			return nil, false
 		}
 	}
 	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
-		return nil
+		return nil, false
 	}
 	// THE DOOR IS ASKED BEFORE ANYTHING IS PUT DOWN, which is [app.openSession]'s
 	// own repair: a /new that failed used to leave the surface holding a closed
@@ -6270,7 +6284,24 @@ func (a *app) renew() tea.Cmd {
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
-	return cmd
+	return cmd, true
+}
+
+// roomToRenew is [app.renew]'s own room question asked BEFORE the door is
+// opened, in the words the refusal would use, so a caller standing on a screen
+// of its own can answer on that screen instead of noting into a conversation
+// nobody is looking at.
+//
+// IT IS THE SAME QUESTION AND NOT A SECOND ONE. A fresh empty conversation is
+// replaced rather than added to, so it needs no room at all; everything else
+// asks the keeper. Home used to ask [app.roomForAnother] flat on its typed-path
+// branch and not at all on its typed-sentence branch, which is two answers to
+// one question and how the sentence came to be sent into the wrong place.
+func (a *app) roomToRenew() (string, bool) {
+	if a.freshAndEmpty() {
+		return "", true
+	}
+	return a.roomForAnother()
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────

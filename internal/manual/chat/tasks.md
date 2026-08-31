@@ -1143,7 +1143,7 @@ stopped, because there is nothing left to stop. The log file it was writing is s
 this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
 was started here or by a task's worker in its own checkout.
 
-## A task started from the composer carries a cap — how much a task may spend before it asks
+## A task started from the composer carries a cap — how much a task may spend before it asks, how do I set a spend limit on a task before I send it
 
 A task started with **`alt+enter`** from the composer on home or on any other place goes out
 with a **spend cap** on it. The composer layer's third line is where you read it and where
