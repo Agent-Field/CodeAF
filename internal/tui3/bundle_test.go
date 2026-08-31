@@ -940,7 +940,7 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 			t.Fatalf("%s did not open a picker", row)
 		}
 		// It is THE picker: the rows carry what /model's rows carry.
-		if !strings.Contains(plain(frame(a)), "200k · $3/$15 per M · elo 1300") {
+		if !strings.Contains(plain(frame(a)), "$3/$15 per M · 200k · elo 1300") {
 			t.Fatalf("%s opened a plainer list:\n%s", row, plain(frame(a)))
 		}
 		drive(t, a, key("esc"))

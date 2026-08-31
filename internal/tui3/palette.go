@@ -47,6 +47,16 @@ type picker struct {
 	// score is per-model scratch, indexed by the same index as all, reused
 	// across keystrokes.
 	score []int
+	// shared are the slugs MORE THAN ONE model on offer carries — `kimi-k3`
+	// where both `moonshotai/kimi-k3` and a mirror of it are listed. A narrow
+	// frame drops a row's author first (rowfit.go), and it may only do that
+	// where the slug left behind still names one row.
+	//
+	// IT IS TAKEN OVER THE WHOLE LIST AND NOT OVER THE FILTER'S HITS, once,
+	// when the list opens. A name that grew an author back because a keystroke
+	// narrowed the list would be a row changing its own identity while somebody
+	// was reading it, and the filter's hits change on every key.
+	shared map[string]bool
 
 	// hits are indexes into all, in rank order — the models actually on offer.
 	hits []int
@@ -135,6 +145,7 @@ func (p *picker) startFor(models []Model, current string, keep modelFilter) {
 // start opens the picker over models with current marked.
 func (p *picker) start(models []Model, current string) {
 	*p = picker{open: true, all: models, current: current}
+	p.shared = sharedSlugs(models)
 	p.lower = make([]string, len(models))
 	for i, model := range models {
 		p.lower[i] = strings.ToLower(model.ID)
@@ -714,12 +725,27 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	// that found it: a value naming ten tools is 141 cells against a 60-cell
 	// terminal, which is LAW 1 (a place takes exactly the frame) broken by a
 	// value a person chose.
-	if note != "" {
-		note = fit(note, width-3)
-	}
 	room := width - 2
 	if note != "" {
-		room -= ansi.StringWidth(note) + 1
+		// AND THE LABEL KEEPS A FLOOR UNDER IT. The label used to absorb
+		// whatever the note left, which on a long note left it NOTHING: the row
+		// drew a full-width value with no name in front of it, and a person
+		// reading down the column could not tell which setting they were
+		// looking at. So the note may take the row's second half and no more —
+		// or all of it but the label's own width, when the label is the shorter
+		// of the two — and the label gives way only inside what is left.
+		//
+		// EVERY LIST THAT RANKS ITS FACTS HANDS US A NOTE THAT ALREADY FITS
+		// (rowfit.go drops whole facts rather than cutting one in half), so this
+		// is the floor under the lists that pass a note they did not budget.
+		floor := ansi.StringWidth(label)
+		if half := room - room/2; floor > half {
+			floor = half
+		}
+		note = fit(note, room-floor-rowGutter)
+	}
+	if note != "" {
+		room -= ansi.StringWidth(note) + rowGutter
 	}
 	label = fit(label, room)
 
@@ -757,8 +783,8 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	line := lead + painted
 	if note != "" {
 		gap := width - 2 - ansi.StringWidth(label) - ansi.StringWidth(note)
-		if gap < 1 {
-			gap = 1
+		if gap < rowGutter {
+			gap = rowGutter
 		}
 		// THE NOTE IS INSIDE THE GROUND, so it is painted as part of it: dim ink
 		// on a raised ground is grey on grey, and the tail is the half of the row
@@ -1134,32 +1160,42 @@ func (p *picker) entryText(at int, width int, level func(string) string) (string
 		}
 		return p.rowText(model, dial, width)
 	case laneAutoAt:
-		note := laneAutoNote
 		// THE NAME ON THIS ROW IS THE CHOOSER'S AND NOT THE SORT'S. "auto picks
 		// the fastest lane each answer — coreweave now" is a claim about where
 		// the NEXT REQUEST would go, and only the chooser answers that; the
 		// order the rows are drawn in is this file's own reading of the same
 		// beliefs and is allowed to differ.
+		//
+		// AND ON A NARROW FRAME THE SENTENCE BECOMES THE NAME. What the row is
+		// FOR is a thing you read once; which machine it would send you to now
+		// is the thing you came back to look at, so the short spelling keeps the
+		// name and drops the explanation around it.
+		sentence := laneAutoNote
+		short := ""
 		if p.auto != "" {
-			note += " — " + strings.ToLower(p.auto) + " now"
+			sentence += " — " + strings.ToLower(p.auto) + " now"
+			short = strings.ToLower(p.auto) + " now"
 		}
-		note += " · recommended"
+		fields := []rowField{rowSay(sentence, short), rowSay("recommended")}
 		// AND WHAT AUTO WILL NOT DO, said where the choice is made. With the
 		// speed guard off, a lane that turns slow mid-answer is one you wait
 		// out; that is a fact about this row and it belongs on it.
 		if !p.guard {
-			note += " · no rescue"
+			fields = append(fields, rowSay("no rescue"))
 		}
-		return "  " + p.mark(true) + " auto", note
+		return rowHalves(rowPlan{primary: "  " + p.mark(true) + " auto", fields: fields}, width, 0)
 	case laneRoutAt:
-		return "  " + p.mark(false) + " openrouter", "let the router balance on price"
+		return rowHalves(rowPlan{
+			primary: "  " + p.mark(false) + " openrouter",
+			fields:  []rowField{rowSay("let the router balance on price", "balances on price")},
+		}, width, 0)
 	}
 	// A LANE SITS UNDER THE TWO WORDS THAT ARE NOT LANES. `auto` and
 	// `openrouter` are the two ways of declining to name a machine, so they
 	// stand at the block's own margin and the machines themselves are indented
 	// past them — which is what makes the block read as a question with two
 	// answers and a list, rather than as five things of the same kind.
-	label, note := laneRowText(p.lanes[row.lane])
+	label, note := rowHalves(laneRowPlan(p.lanes[row.lane]), width, overlayIndent)
 	return strings.Repeat(" ", overlayIndent) + label, note
 }
 
@@ -1213,27 +1249,22 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 	if model.ID == p.current {
 		pin = p.pinnedLane()
 	}
-	note := modelNoteVia(model, pin)
-	if level == "" {
-		return model.ID, note
+	plan := rowPlan{
+		primary: model.ID,
+		// THE AUTHOR IS DROPPABLE WHERE THE SLUG STILL NAMES ONE ROW. Which is
+		// a question about the LIST and not about the model, so the list
+		// answers it once when it opens ([picker.shared]).
+		author: !p.shared[rowSlug(model.ID)],
+		fields: modelFields(model, pin),
 	}
-	// THE LEVEL SURVIVES THE TRUNCATION AND THE NAME GIVES WAY. The row's own
-	// law is that the label yields before the note does (see [overlayRow]), and
-	// inside the label the same rule applies once more: a clipped id is still
-	// recognizable, while a level clipped off the end is a knob that looks like
-	// it did nothing. So the id is fitted to what is left AFTER the suffix is
-	// reserved, using the same arithmetic the row does — the two cells of the
-	// lead, the note, and the gap before it.
-	//
-	// A WRAPPED ROW RESERVES NOTHING FOR THE NOTE, because the note is not on
-	// this line: the id gets the whole width at [tierPhone], which is the point
-	// of giving the tail a line of its own.
-	suffix := ":" + level
-	room := width - 2 - ansi.StringWidth(suffix)
-	if note != "" && !phoneList(width) {
-		room -= ansi.StringWidth(note) + 1
+	// THE LEVEL RIDES THE NAME AND IS NEVER CUT. It is the one thing on the row
+	// that is not a fact about the model — it is what THIS person asked for, and
+	// it reads the same here as it does in the status line ("<model>:<level>") —
+	// so the fitter reserves it and fits the id into what is left (rowfit.go).
+	if level != "" {
+		plan.suffix = ":" + level
 	}
-	return fit(model.ID, room) + suffix, note
+	return rowHalves(plan, width, 0)
 }
 
 // ── reasoning strength, from the row it belongs to ──────────────────────────
@@ -1300,12 +1331,31 @@ func (a *app) cycleReasoning() {
 
 // pickerHint is the placeholder in the empty filter box. It is the only place
 // this overlay explains itself, and it costs no row of its own.
+//
 // THE LINE IS BUDGETED. It is drawn WHOLE inside the box on a sixty-cell frame
 // — a hint cut off at "e…" is a hint that has to be guessed at — which leaves
 // about fifty-five cells for it. The fold earned its seven, and what paid for
 // them are the two verbs a modal list does not have to explain: enter commits
 // and esc leaves, everywhere on this surface and in every other program.
+//
+// UNDER SIXTY IT IS THE SAME RANKED TAIL EVERY ROW IS (rowfit.go): the keys go
+// from the right, whole, and the box never draws a key spelled `es…`. Which is
+// why the written order is also the order they are given up in — `filter` is
+// what the box IS and survives every width, and the two universal verbs at the
+// end are the two a person already knows without being told.
 const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · enter · esc"
+
+// pickerHintFields is that same line as the fields it is made of, ranked. The
+// test that joins them and compares against [pickerHint] is what keeps the two
+// spellings one (the one-source-of-truth law: a constant read by a person and a
+// list read by the fitter would otherwise drift).
+var pickerHintFields = []rowField{
+	rowSay("filter"), rowSay("↑↓"), rowSay("→ lanes"),
+	rowSay("ctrl+t effort"), rowSay("enter"), rowSay("esc"),
+}
+
+// pickerHintAt is the hint in the cells the box actually has.
+func pickerHintAt(room int) string { return rowTail(pickerHintFields, room) }
 
 // ── the app's side of the overlay ───────────────────────────────────────────
 

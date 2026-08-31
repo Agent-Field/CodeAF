@@ -72,7 +72,7 @@ func TestASettingsSlotOpensTheModelPickerAndWritesTheRow(t *testing.T) {
 	// It is the picker and not a list of ids: every row says what the /model
 	// overlay says about the same model.
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "200k · $3/$15 per M · elo 1300") {
+	if !strings.Contains(screen, "$3/$15 per M · 200k · elo 1300") {
 		t.Fatalf("the slot's rows are not the picker's informative rows:\n%s", screen)
 	}
 	// And it opens on the model in use, so enter confirms rather than changes.

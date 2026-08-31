@@ -1189,7 +1189,12 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		return a.rewindBar(width), 0, 0
 	}
 	if a.pick.open {
-		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint, "")
+		// THE HINT IS FITTED BY THE FITTER AND NOT BY THE ELLIPSIS. The room is
+		// what [draftBlockWithTags] will compute for it — the width less the
+		// prompt, since the picker's box takes no lead — so the keys go whole,
+		// from the right, on a frame too narrow for all of them (rowfit.go).
+		return draftBlock(&a.pick.filter, a.pal, width, 1,
+			pickerHintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	if a.at(pageMemory) {
 		if a.mem.edit != nil {

@@ -585,35 +585,60 @@ func contextWord(tokens int) string {
 // NOBODY PUBLISHED IT — a gap in a row is readable, and a zero that has to be
 // explained is not (design-law-v2 §16 EMPTINESS).
 
-// modelNote is the dim tail of one picker row: "128k · $0.08/$0.15 per M ·
-// elo 1243", with each part left out when the catalog never said. Empty when
-// nothing is known, which is what a built-in row answers.
+// modelNote is the dim tail of one picker row on a frame with room to spare —
+// "coreweave · ▲0.4s · $0.08/$0.15 per M · 128k · elo 1243" — with each part
+// left out when the catalog never said. Empty when nothing is known, which is
+// what a built-in row answers.
+//
+// It is [rowAll] over [modelFields], and every narrower frame is the same
+// fields through the same fitter with an edge on it (rowfit.go).
 func modelNote(model Model) string { return modelNoteVia(model, "") }
 
-// modelNoteVia is that tail with the LANES on the end of it, and the lane the
-// caller already knows this model is pinned to — empty when it is not pinned or
-// when the caller has no profile to ask.
+// modelNoteVia is that tail with the caller's own knowledge of which machine
+// this model is pinned to — empty when it is not pinned or when the caller has
+// no profile to ask.
+func modelNoteVia(model Model, pin string) string { return rowAll(modelFields(model, pin)) }
+
+// ── THE PICKER ROW'S DATA HIERARCHY ─────────────────────────────────────────
 //
-//	1M · $0.09/$0.18 per M · elo 1290 · ▲0.8s 58t/s · via cloudflare
+// modelFields is one model as the row's facts, RANKED — and the ranking is the
+// whole design, because on a sixty-cell frame the row can only carry three of
+// them and which three is not a detail (rowfit.go states how a ranked tail is
+// spent).
 //
-// THE SPEED IS THE POSTERIOR OF THE BEST LANE, and it is absent whole whenever
-// the ledger has never heard of this model — which is every row on a machine
-// that has just started, and is why the tail is exactly what it always was
-// there (lanes.go states the three laws this obeys).
-func modelNoteVia(model Model, pin string) string {
-	parts := make([]string, 0, 5)
-	if window := contextWord(model.ContextLength); window != "" {
-		parts = append(parts, window)
-	}
-	if price := priceWord(model.PromptPrice, model.CompletionPrice); price != "" {
-		parts = append(parts, price)
-	}
-	if elo := eloWord(model.ArenaElo); elo != "" {
-		parts = append(parts, elo)
-	}
-	if modalities := ModalityWord(model.Input, model.Output); modalities != "" {
-		parts = append(parts, modalities)
-	}
+// The order is WHAT A PERSON CHOOSES ON, from the front:
+//
+//	1  the name          who it is — the primary, and it is never given up
+//	2  the lane          WHICH MACHINE will answer: the same model served by
+//	                     two providers is two different experiences, and this
+//	                     is the one fact on the row that the person's own pin
+//	                     changed. It reads `via coreweave` while there is room
+//	                     for the lead and `coreweave` after that.
+//	3  the first token   will it answer NOW. The wait before the first word is
+//	                     the whole felt difference between two models, and it
+//	                     is the number this surface measured itself.
+//	4  the price out     what it costs — completion first, since that is the
+//	                     half a long answer spends. `$0.08/$0.15 per M` →
+//	                     `$0.15/M` → `$0.15`.
+//	5  the window        how much it can hold. It ranks under price because a
+//	                     window is a ceiling somebody meets once a week and a
+//	                     price is a figure they pay every turn.
+//	6  the throughput    how fast it writes once it has started — a real fact,
+//	                     and one that changes a choice far less often than the
+//	                     wait before the first word does.
+//	7  the arena score   a stranger's opinion, and the first of these a person
+//	                     has ever acted on twice.
+//	8  what it can do    `sees · draws`, which matters enormously to the few
+//	                     rows it is true of and not at all to the rest — so it
+//	                     is last, and it is the field a narrow frame drops
+//	                     first.
+//
+// AND THE MODALITIES HAVE NO SHORT SPELLING. A glyph alphabet for "sees" and
+// "draws" would be a second vocabulary to learn for the rarest field on the
+// row, and this row already has one mark to explain ([laneUpMark]). A field
+// that is last to be drawn is a field that should be said in words or not at
+// all.
+func modelFields(model Model, pin string) []rowField {
 	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
 	// milliseconds cannot change a figure rounded to a tenth of a second, and
 	// threading a moment through every list on this surface to prove it would
@@ -624,10 +649,33 @@ func modelNoteVia(model Model, pin string) string {
 	if via == "" {
 		via = laneAuto(model.ID, views, now)
 	}
-	if speed := laneSpeedWord(views, via); speed != "" {
-		parts = append(parts, speed)
+	// THE NUMBERS BELONG TO THE LANE THE ROW NAMES ([laneShown] states why),
+	// and they are three fields rather than one phrase now: the lane a person
+	// is served by outranks every number, and the throughput sits five rungs
+	// under the wait it used to be glued to.
+	best, known := laneShown(views, via)
+	first, rate := rowField{}, rowField{}
+	if known {
+		if word := laneSecondsWord(best.TTFT); word != "" {
+			first = rowSay(laneUpMark+word, word)
+		}
+		if word := laneRateTight(best.Rate); word != "" {
+			rate = rowSay(word)
+		}
 	}
-	return strings.Join(parts, " · ")
+	lane := rowField{}
+	if via != "" {
+		lane = rowSay("via "+strings.ToLower(via), strings.ToLower(via))
+	}
+	return []rowField{
+		lane,
+		first,
+		priceField(model.PromptPrice, model.CompletionPrice),
+		rowSay(contextWord(model.ContextLength)),
+		rate,
+		rowSay(eloWord(model.ArenaElo)),
+		rowSay(ModalityWord(model.Input, model.Output)),
+	}
 }
 
 // ModalityWord is what a row can do BESIDES hold a conversation, in the
@@ -690,6 +738,26 @@ func priceWord(prompt, completion float64) string {
 		return ""
 	}
 	return "$" + perMillion(prompt) + "/$" + perMillion(completion) + " per M"
+}
+
+// priceField is the price as the row's ranked fact, in three spellings:
+//
+//	$0.08/$0.15 per M   both halves and the unit — what a person compares on
+//	$0.15/M             the completion price alone, which is the half a long
+//	                    answer spends, with the unit that makes it readable
+//	$0.15               the bare figure, for a frame with five cells left
+//
+// THE SHORT SPELLINGS DROP THE PROMPT HALF AND NOT THE COMPLETION ONE. A turn
+// pays for its answer far more than for its question, and of the two figures
+// the completion price is the one that decides between two models.
+//
+// Both halves must be known for any of them, exactly as [priceWord] demands:
+// zero is "nobody published a figure" and never "free".
+func priceField(prompt, completion float64) rowField {
+	if prompt <= 0 || completion <= 0 {
+		return rowField{}
+	}
+	return rowSay(priceWord(prompt, completion), "$"+perMillion(completion)+"/M", "$"+perMillion(completion))
 }
 
 // perMillion renders one per-token price as dollars per million tokens, to two
