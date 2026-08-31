@@ -162,6 +162,29 @@ func forgetLiveSession(agent *Agent) {
 	liveSessionsMu.Unlock()
 }
 
+// someoneIsWatching reports whether this process holds a conversation somebody
+// is sitting in front of.
+//
+// IT IS THE ONE READING OF "ATTENDED" THIS BUILD CAN HONESTLY MAKE, and it is
+// this map because of what the map already refuses: a task node's own agent and
+// an errand's pane both decline to register ([registerLiveSession]), so an
+// entry here is a room with a person in it and nothing else is. A headless run
+// opens no conversation and answers false, which is the correct reading of a
+// process nobody is watching.
+//
+// WHAT IT IS FOR. λ — what a second of waiting is worth — is zero for work
+// nobody is waiting on, and that is a true statement about a run whose owner
+// has closed the window and a false one about a run they are watching land
+// (internal/session's loop.go, and bench/lanelab/REPORT.md for what the false
+// version costs). It is deliberately coarse: it says a person is HERE, not that
+// they are looking at this particular node, which is a distinction no plan
+// graph in this build can yet draw.
+func someoneIsWatching() bool {
+	liveSessionsMu.Lock()
+	defer liveSessionsMu.Unlock()
+	return len(liveSessions) > 0
+}
+
 // liveSession answers the open conversation with that id, or nil.
 func liveSession(id string) *Agent {
 	id = strings.TrimSpace(id)

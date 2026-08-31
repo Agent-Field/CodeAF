@@ -67,6 +67,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // UsageLedgerName is the file, under the v3 home directory
@@ -147,6 +149,253 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+
+	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
+	//
+	// A model id is an address and the LANE is the machine behind it. One id is
+	// served by a dozen endpoints that differ by 7× on the wait before the
+	// first token and by 12× on how fast they write, at roughly the same price,
+	// so a spending row that names only the model cannot answer the question a
+	// person asks after a slow afternoon: was it the model, or was it the
+	// machine we happened to be routed to. These five fields are that answer,
+	// and they are the only ones in this struct that describe HOW rather than
+	// HOW MUCH.
+	//
+	// EVERY ONE OF THEM IS omitempty AND EVERY ZERO MEANS "NOBODY SAID". A call
+	// to an endpoint that is not a router names no lane; a call that was not
+	// timed has no first-token figure; a call that was never hedged has no
+	// waste. The emptiness law is the whole reason they can be added to a file
+	// that already has a year of rows in it: an old row decodes with all five
+	// absent, which reads as "not known", which is the truth about it.
+
+	// Lane is the machine that answered, spelled exactly as the router spelled
+	// it — the `provider` field of a streamed chunk. It is the vendor's own
+	// name and it arrived from the wire; nothing in this build holds a list of
+	// them.
+	Lane string `json:"lane,omitempty"`
+	// TTFTms is the wait before the first token, in milliseconds. It is the
+	// half of a call's duration a person actually feels: the rest of the answer
+	// arrives while they are reading.
+	TTFTms int64 `json:"ttft_ms,omitempty"`
+	// TPS is output tokens per second over the generation window — the first
+	// token to the last, and NOT the whole call, because dividing an answer by
+	// a duration that begins with a queue is how a warm lane behind a long
+	// prompt gets recorded as a slow one.
+	TPS float64 `json:"tps,omitempty"`
+	// Hedged marks a call that was rescued: it went slow, a second request went
+	// to another lane, and one of the two came back first. It is on the row
+	// because a hedge is the one thing in this build that can spend money
+	// twice, and a bill that cannot be told apart from an ordinary one is a
+	// mechanism nobody can audit.
+	Hedged bool `json:"hedged,omitempty"`
+	// HedgeWasteUSD is what the LOSING half of that pair cost. Cancelling a
+	// stream stops the billing on most lanes and on some it does not, so this
+	// is zero on a clean rescue and a real figure on a lane that charged for
+	// the tokens it had already written. It is the number the hedge budget is
+	// judged on: the mechanism is worth having exactly while this stays small
+	// beside the seconds it bought.
+	HedgeWasteUSD float64 `json:"hedge_waste_usd,omitempty"`
+}
+
+// usageFromResponse folds what a finished call taught us about its lane onto
+// the line that records what it cost.
+//
+// IT TAKES PLAIN VALUES AND NOT A PROVIDER TYPE, deliberately. This file is the
+// engine's ledger and the transport is `internal/provider`; a struct passed
+// between them would be a third place that has to agree about units, and the
+// units are exactly where this has gone wrong before (a per-token price read as
+// a per-million one). So: ttft and gen are durations, output is a token count,
+// and the only arithmetic here is the one derivation — tokens per second over
+// the generation window — which lives here so that two callers cannot compute
+// it two ways.
+//
+// THE EMPTINESS LAW IS ENFORCED HERE RATHER THAN TRUSTED. A zero duration
+// writes no first-token figure, an answer too short or too quick to rate writes
+// no rate, and a hedge that wasted nothing writes no waste. That is what keeps
+// an ordinary row exactly as wide as it was before lanes existed, and it is why
+// a reader may take any figure that IS on a row as something somebody measured.
+func usageFromResponse(line UsageLine, lane string, ttft, gen time.Duration, output int, hedged bool, hedgeWaste float64) UsageLine {
+	line.Lane = strings.TrimSpace(lane)
+	if ttft > 0 {
+		line.TTFTms = ttft.Milliseconds()
+	}
+	if output > 0 && gen > 0 {
+		line.TPS = float64(output) / gen.Seconds()
+	}
+	line.Hedged = hedged
+	if hedgeWaste > 0 {
+		line.HedgeWasteUSD = hedgeWaste
+	}
+	return line
+}
+
+// ── WHAT ONE AGENT'S OWN CALL WAS SERVED BY ─────────────────────────────────
+//
+// The five fields above are known at two different moments and the row is
+// written at a third. The lane and the hedge are known when the answer lands;
+// the first-token wait is known while the answer is still arriving; the row is
+// written when the turn is sealed, from a function with no request in front of
+// it. So something has to hold what was seen until there is a row to put it
+// on, and that is the whole of what a witness is.
+//
+// IT BELONGS TO ONE AGENT AND IS FILLED ONLY BY THAT AGENT'S OWN REQUESTS.
+// `internal/provider` folds every finished stream into a ledger keyed by MODEL
+// and shared by every agent in this process ([provider.LastServed]), so reading
+// a first-token wait back out of THAT would credit one conversation's lane to
+// another conversation's row the moment two of them work at once — the invented
+// measurement docs/ARCHITECTURE.md Decision 10 forbids. A witness cannot make
+// that mistake, because nothing but this agent's own stream ever writes to it.
+//
+// AND IT HOLDS THE MOST RECENT ANSWER AND NOTHING ELSE, exactly as
+// [provider.ServedEndpoint] does and for its reason. A turn is many requests
+// and one row, so all five figures describe the SAME request — the last one —
+// rather than a lane from one, a wait from another and a rate from a third.
+
+// laneFacts is what a finished request taught us about the machine that served
+// it, in the plain values [usageFromResponse] writes a row from. It is plain
+// values and not a provider type for that function's own stated reason: the
+// units are where this has gone wrong before, and a struct shared with the
+// transport would be a third place that has to agree about them.
+type laneFacts struct {
+	Lane   string
+	TTFT   time.Duration
+	Gen    time.Duration
+	Output int
+	Hedged bool
+	Waste  float64
+}
+
+// hedgeSeen is one call's [provider.HedgeReport] read into plain values, so
+// that everything below this line is drivable without a transport.
+type hedgeSeen struct {
+	lane   string
+	hedged bool
+	waste  float64
+	// fault says the watch judged the failure to be the PATH rather than the
+	// machine, which is the one verdict that must not reach a lane's row as
+	// timing.
+	fault bool
+}
+
+// readHedge reads one call's hedge report, and answers correctly for the nil
+// report every call in a build with no watch behind it has.
+//
+// THE LANE IS THE WINNER WHEN THERE WAS A RACE AND THE SERVED ENDPOINT
+// OTHERWISE. The report names a winner only on a call that actually hedged
+// (internal/provider's hedgeRace.settle writes the pair under that condition
+// alone), and on every ordinary call the endpoint slot the turn already stamps
+// is the same fact read off the same chunk. So one of the two always names the
+// machine that answered and neither of them is a guess.
+func readHedge(report *provider.HedgeReport, served string) hedgeSeen {
+	seen := hedgeSeen{
+		lane:   strings.TrimSpace(served),
+		hedged: report.Hedged(),
+		waste:  report.Waste(),
+		fault:  report.PathFault(),
+	}
+	if winner, _ := report.Lanes(); strings.TrimSpace(winner) != "" {
+		seen.lane = strings.TrimSpace(winner)
+	}
+	return seen
+}
+
+// responseOutput is how many tokens an answer wrote, and nothing at all where
+// the provider counted none — a cut stream, a refused call, an answer that came
+// back with no usage frame behind it. It is the denominator of the rate, so a
+// guess here would be a figure on the row that nobody measured.
+func responseOutput(response *ai.Response) int {
+	if response == nil || response.Usage == nil {
+		return 0
+	}
+	return response.Usage.CompletionTokens
+}
+
+// laneWitness is one agent's account of how its own last request was served.
+type laneWitness struct {
+	// mu is the witness's own, and it is deliberately not the agent's: this is
+	// written from the stream goroutine while the turn holds a.mu for its own
+	// state transitions, and a measurement is never worth a lock ordering.
+	mu sync.Mutex
+	// began is when the request went out; first and last are the arrival of the
+	// first and the latest chunk of the answer to it. They are the session's OWN
+	// clock on its OWN stream, which is the only clock in this program that can
+	// time one agent's call without borrowing another agent's.
+	began time.Time
+	first time.Time
+	last  time.Time
+	// row is what the finished request taught us, held until a row is written.
+	row laneFacts
+}
+
+// reset forgets the turn before. A turn is the scope a measurement is true in,
+// so a fresh one starts knowing nothing rather than knowing what the last one
+// happened to be served by.
+func (w *laneWitness) reset() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.began, w.first, w.last, w.row = time.Time{}, time.Time{}, time.Time{}, laneFacts{}
+}
+
+// sent starts the first-token clock, and it is called where the request
+// actually goes out and nowhere else: a clock started any earlier would time
+// this package's own preparation and write it down as the lane's wait.
+func (w *laneWitness) sent(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.began, w.first, w.last = now, time.Time{}, time.Time{}
+}
+
+// token records one chunk arriving. The first closes the first-token wait and
+// every one after it extends the generation window — the two are separated
+// here for [UsageLine.TPS]'s stated reason: a rate over a window that begins
+// with a queue records a warm lane behind a long prompt as a slow one.
+func (w *laneWitness) token(now time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.began.IsZero() {
+		return
+	}
+	if w.first.IsZero() {
+		w.first = now
+	}
+	w.last = now
+}
+
+// answered folds one finished request's lane and hedge onto what was timed.
+//
+// A PATH FAULT IS NOT A LANE'S FAULT. Where the watch judged the failure to be
+// the path rather than the machine, the seconds are a fact about somebody's
+// network and there is no fact about the endpoint in them at all — so the
+// timing is dropped here exactly as internal/provider's [streamWatch.sighting]
+// refuses to fold it into a belief. What the call spent and whether it hedged
+// are still true and stay.
+// It hands back what it wrote, because two readers want the same row at two
+// different moments: the turn's seal writes it to the ledger when the turn
+// ends ([laneWitness.take]), and the surface is told about it now — an answer
+// whose lane arrives on the status line a minute later is a fact about a turn
+// nobody is looking at any more.
+func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.row = laneFacts{Lane: seen.lane, Hedged: seen.hedged, Waste: seen.waste}
+	if !seen.fault && !w.began.IsZero() && !w.first.IsZero() {
+		w.row.TTFT = w.first.Sub(w.began)
+		w.row.Gen = w.last.Sub(w.first)
+		w.row.Output = output
+	}
+	w.began, w.first, w.last = time.Time{}, time.Time{}, time.Time{}
+	return w.row
+}
+
+// take is the row's read, and it CONSUMES what it read. A measurement belongs
+// to exactly one row: a second seal that found the first one's figures still
+// sitting here would write a lane and a wait that nobody measured for it.
+func (w *laneWitness) take() laneFacts {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	row := w.row
+	w.row = laneFacts{}
+	return row
 }
 
 // ── the writer ──────────────────────────────────────────────────────────────
@@ -447,7 +696,7 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // now happens on a writer goroutine ([RecordUsage]), the lock is still released
 // before the hand-off so no reader of the session's totals ever queues behind
 // the ledger at all.
-func (a *Agent) recordUsageLine(used Usage, model, role string) {
+func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts) {
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}
@@ -459,7 +708,7 @@ func (a *Agent) recordUsageLine(used Usage, model, role string) {
 	session := a.sessionID()
 	a.mu.Unlock()
 	now := time.Now()
-	RecordUsage(path, UsageLine{
+	line := UsageLine{
 		At:     now,
 		Day:    now.Local().Format(usageDayLayout),
 		Model:  strings.TrimSpace(model),
@@ -477,7 +726,21 @@ func (a *Agent) recordUsageLine(used Usage, model, role string) {
 		Task:      usageTaskID(a.config.taskID),
 		Standing:  strings.TrimSpace(a.config.standingItemID),
 		Workspace: strings.TrimSpace(a.config.Workspace),
-	})
+	}
+
+	// THE LANE HALF OF THE LINE GOES ON THROUGH ONE DOOR, and it comes in as an
+	// argument rather than being read from anywhere here — because the only
+	// honest source for it is the request this row is about, and by the time a
+	// row is written that request is over. [runTurn] watches its own stream into
+	// a [laneWitness] and hands what it saw down; an errand that made a call of
+	// its own passes nothing, because nothing watched THAT call and a turn's
+	// lane on an errand's row would be a measurement of one thing filed against
+	// another.
+	//
+	// Under the emptiness law an unwatched call therefore writes all five
+	// absent, which is the true sentence "nobody said" rather than a zero
+	// somebody reads as a figure.
+	RecordUsage(path, usageFromResponse(line, lane.Lane, lane.TTFT, lane.Gen, lane.Output, lane.Hedged, lane.Waste))
 }
 
 // usageTaskID spells a node's id the way the task index spells it, and answers

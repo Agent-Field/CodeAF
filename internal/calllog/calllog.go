@@ -133,6 +133,40 @@ type Record struct {
 	Millis int64  `json:"ms,omitempty"`
 	Finish string `json:"finish,omitempty"`
 
+	// ── the lane, and the wait it made (docs/ARCHITECTURE.md, Decision 10)
+	//
+	// Millis above is the whole call, which is the figure a bill is computed
+	// from and the wrong one to debug a slow afternoon with: it is a queue and
+	// a generation added together, and the two go wrong for different reasons.
+	// These four separate them and say who the wait belonged to.
+	//
+	// Lane is who the routing preference ASKED FOR and Served, above, is who
+	// answered. Keeping both is the whole point: a log in which they differ is
+	// a log of the router overriding a choice, and that is the single most
+	// useful line in the file when a lane a person pinned is not the one that
+	// wrote their answer.
+
+	// TTFTms is the wait before the first token, in milliseconds, on a streamed
+	// call. It is absent on a call that was not streamed — where the first
+	// token and the last arrive together and no endpoint's queue is separable
+	// from its writing — and absent is honest there rather than instant.
+	TTFTms int64 `json:"ttft_ms,omitempty"`
+	// DeadlineMs is when the watch was going to start thinking about a second
+	// request, derived at send time from the belief about the lane expected to
+	// serve rather than from any constant. It is on the row because a hedge
+	// that fired is only half a story: the rows where the deadline was set and
+	// NOT reached are what say the deadline was set in the right place.
+	DeadlineMs int64 `json:"deadline_ms,omitempty"`
+	// Lane is the machine the preference named — the first entry of the
+	// `provider.order` this request carried, or the pin it carried instead.
+	// Empty for a call to an endpoint that is not a router, and for one sent
+	// with no preference at all.
+	Lane string `json:"lane,omitempty"`
+	// Hedged marks the row of a call that was rescued by a second request to
+	// another lane. Both halves of the pair leave their own rows; this is what
+	// says they were a pair.
+	Hedged bool `json:"hedged,omitempty"`
+
 	PromptTokens     int     `json:"prompt_tokens,omitempty"`
 	CompletionTokens int     `json:"completion_tokens,omitempty"`
 	ReasoningTokens  int     `json:"reasoning_tokens,omitempty"`

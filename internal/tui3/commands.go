@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // THE COMMAND LIST: type "/" and what you can type appears.
@@ -58,6 +60,11 @@ var commands = []command{
 	// with the mouse turned off (config's ui.mouse) does not have it, and this
 	// row is then the only one there is.
 	{name: "model", desc: "pick a model · or press its name in the status line"},
+	// `<slug>` is the whole of what this row offers a person scanning the list,
+	// and the three other shapes it takes — `@lane`, `auto`, a filter query —
+	// are NOT four more rows here. The list is how somebody finds a command,
+	// not where they learn its grammar; the manual's model page has the four
+	// forms in a table ([modelArg] at the foot of this file).
 	{name: "model", args: "<slug>", desc: "switch the model"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
@@ -834,4 +841,60 @@ func helpText(file string, chords chordSpelling) string {
 		lines = append(lines, "session · "+file)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ── WHAT THE WORDS AFTER /model MEAN ────────────────────────────────────────
+//
+// /model has always taken one thing — a slug — and switched to it. It now takes
+// three, and they are told apart by SHAPE rather than by a flag, because a
+// person types what they want and not what kind of thing it is:
+//
+//	/model deepseek/deepseek-v4-flash    a name: switch, exactly as before
+//	/model @cloudflare                   a machine: pin the lane, stay on the model
+//	/model auto                          give the lane choice back
+//	/model deepseek <1s                  a question: open the list already narrowed
+//
+// THE SLUG CASE IS UNCHANGED AND IS THE FALL-THROUGH, which is the same
+// arrangement the filter box has: anything this grammar does not recognise is
+// still the thing it always was.
+
+// modelIntent is what one /model argument asks for.
+type modelIntent uint8
+
+const (
+	// modelSwitch is a slug, taken as typed.
+	modelSwitch modelIntent = iota
+	// modelPinLane is `@name`.
+	modelPinLane
+	// modelAutoLane is `auto`.
+	modelAutoLane
+	// modelQuery is a query for the picker.
+	modelQuery
+)
+
+// modelArg reads the words after /model. The second return is the lane for a
+// pin and the query for a filter, and is the argument itself for a switch.
+func modelArg(rest string) (modelIntent, string) {
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return modelQuery, ""
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 1 {
+		switch {
+		case strings.EqualFold(fields[0], config.LaneAuto):
+			return modelAutoLane, ""
+		case strings.HasPrefix(fields[0], "@") && len(fields[0]) > 1:
+			return modelPinLane, strings.TrimPrefix(fields[0], "@")
+		}
+	}
+	// A QUESTION IS ANYTHING THE FILTER GRAMMAR CAN ANSWER, and anything with a
+	// space in it: a slug has no spaces, so two words were never a name.
+	if len(fields) > 1 {
+		return modelQuery, rest
+	}
+	if _, ok := parseLaneTerm(strings.ToLower(fields[0])); ok {
+		return modelQuery, rest
+	}
+	return modelSwitch, rest
 }

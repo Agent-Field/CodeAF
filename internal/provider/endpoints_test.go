@@ -23,6 +23,7 @@ const refusalBody = `{"error":{"message":"No endpoints found that can handle the
 // provider.test would be testing a shorter ladder than the product climbs.
 func refusingClient(t *testing.T, accept func(map[string]any) bool, config Config) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)

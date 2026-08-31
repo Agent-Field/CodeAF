@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -2774,5 +2775,190 @@ func TestTheStreamedUsageChunkCarriesTheCacheFields(t *testing.T) {
 	}
 	if usage.Input != 1000 {
 		t.Fatalf("Input = %d, want 1000", usage.Input)
+	}
+}
+
+// ── THE LANE-SHEET BEAT ─────────────────────────────────────────────────────
+//
+// The beat is the one background lane in this package that goes to the network
+// without a person asking for anything, so what is worth pinning is not that it
+// fetches — `internal/lane` tests that — but that it BEGINS when the session
+// begins, ENDS when the session ends, asks about the models this session
+// actually rides, and never starts at all for a session that said no.
+
+// beatSheet is a sheet that records what the beat asked it, and keeps the
+// context it was asked under so a test can watch that context die.
+type beatSheet struct {
+	mu     sync.Mutex
+	asked  []string
+	ctx    context.Context
+	called chan struct{}
+	once   sync.Once
+}
+
+func (s *beatSheet) Rows(string) []lanes.Row { return nil }
+
+func (s *beatSheet) Refresh(ctx context.Context, model string) error {
+	s.mu.Lock()
+	s.asked = append(s.asked, model)
+	s.ctx = ctx
+	s.mu.Unlock()
+	s.once.Do(func() { close(s.called) })
+	return nil
+}
+
+func (s *beatSheet) models() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.asked...)
+}
+
+func (s *beatSheet) lifetime() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ctx
+}
+
+func installBeatSheet(t *testing.T) *beatSheet {
+	t.Helper()
+	sheet := &beatSheet{called: make(chan struct{})}
+	lanes.Default().SetSheet(sheet)
+	t.Cleanup(func() { lanes.Default().Reset() })
+	return sheet
+}
+
+func TestOpeningASessionStartsTheLaneBeatAndClosingItStopsIt(t *testing.T) {
+	sheet := installBeatSheet(t)
+
+	agent, err := newAgent(Config{
+		Workspace: t.TempDir(),
+		Model:     "talk/model",
+		TaskModel: "work/model",
+		BaseURL:   "https://openrouter.ai/api/v1",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("open the session: %v", err)
+	}
+
+	select {
+	case <-sheet.called:
+	case <-time.After(2 * time.Second):
+		_ = agent.Close()
+		t.Fatal("the session opened and no beat ever asked the sheet for anything")
+	}
+
+	if err := agent.Close(); err != nil {
+		t.Fatalf("close the session: %v", err)
+	}
+	// THE GOROUTINE IS THE SESSION'S AND DIES WITH IT. The context the beat was
+	// running under is the only handle on that from out here, and a beat still
+	// holding a live one after Close is a beat that outlives the window it was
+	// opened for.
+	lifetime := sheet.lifetime()
+	if lifetime == nil {
+		t.Fatal("the beat never ran under a context this test could watch")
+	}
+	select {
+	case <-lifetime.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("the session closed and its lane beat is still running")
+	}
+
+	// AND IT ASKED ABOUT THE SLOTS THIS SESSION RIDES — the conversation's own
+	// model and the model a task runs on — and about nothing else.
+	asked := sheet.models()
+	if len(asked) != 2 || asked[0] != "talk/model" || asked[1] != "work/model" {
+		t.Fatalf("the beat asked about %v, want the talk slot then the work slot", asked)
+	}
+}
+
+func TestRoutingOffRunsNoLaneBeat(t *testing.T) {
+	sheet := installBeatSheet(t)
+
+	agent, err := newAgent(Config{
+		Workspace: t.TempDir(),
+		Model:     "talk/model",
+		BaseURL:   "https://openrouter.ai/api/v1",
+		// A person who turned routing off asked NOT to have their endpoints
+		// chosen for them. Every lane the belief holds is inert under that row,
+		// so a background fetch would be work nobody asked for, paid for by
+		// somebody who asked for the opposite.
+		Routing: provider.RoutingOff,
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("open the session: %v", err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	if agent.laneBeating {
+		t.Error("routing off still armed a beat this session would have to stop")
+	}
+	// The beat is a goroutine, so "it did not happen" has to be given a moment
+	// in which it could have.
+	select {
+	case <-sheet.called:
+		t.Fatalf("routing off still fetched a sheet for %v", sheet.models())
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
+	sheet := installBeatSheet(t)
+
+	agent, err := newAgent(Config{
+		Workspace: t.TempDir(),
+		Model:     "talk/model",
+		// There is no sheet behind a gateway of somebody's own, however the
+		// model is spelled, so there is nothing for a beat to fetch.
+		BaseURL: "http://localhost:8080/v1",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("open the session: %v", err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	if agent.laneBeating {
+		t.Error("a base that publishes no sheet still armed a beat")
+	}
+	select {
+	case <-sheet.called:
+		t.Fatalf("a non-router base still fetched a sheet for %v", sheet.models())
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestTheBeatAsksAboutEachSlotModelOnce(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		config Config
+		want   []string
+	}{
+		"both slots": {
+			config: Config{Model: "talk/model", TaskModel: "work/model"},
+			want:   []string{"talk/model", "work/model"},
+		},
+		"the task slot is the conversation's own model": {
+			config: Config{Model: "talk/model", TaskModel: "talk/model"},
+			want:   []string{"talk/model"},
+		},
+		"nobody set a task model": {
+			config: Config{Model: "talk/model", TaskModel: "   "},
+			want:   []string{"talk/model"},
+		},
+		"no model at all": {
+			config: Config{},
+			want:   nil,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := laneBeatModels(testCase.config)
+			if len(got) != len(testCase.want) {
+				t.Fatalf("laneBeatModels gave %v, want %v", got, testCase.want)
+			}
+			for index, model := range testCase.want {
+				if got[index] != model {
+					t.Fatalf("laneBeatModels gave %v, want %v", got, testCase.want)
+				}
+			}
+		})
 	}
 }

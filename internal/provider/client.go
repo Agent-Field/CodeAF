@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -114,6 +115,10 @@ type Client struct {
 	// its models (velocity.go). It is consulted by the encoder immediately
 	// before a send and written the moment an answer completes.
 	velocity *velocityLedger
+	// laneAsks is what the last request for each model told the belief about
+	// itself (lanes.go). It is on the client because a prompt one router was
+	// sent is not evidence about another's lanes.
+	laneAsks lanesState
 	// pins is which endpoint holds each prompt lineage's cache (affinity.go).
 	// It is read at the same moment the velocity ledger is — encode time — and
 	// written from the same answers, and the two never disagree: a lane the
@@ -186,6 +191,12 @@ func NewClient(config Config) (*Client, error) {
 	if err := client.SetAPIKey(config.APIKey); err != nil {
 		return nil, err
 	}
+	// AND THE LANE SHEET LEARNS WHERE THE ROUTER IS, here and nowhere else
+	// (lanes.go). It opens no connection: it hands `internal/lane` the base, the
+	// bearer and the one thing that package may not own, and the fetching is a
+	// beat the session starts and stops. A client pointed somewhere that is not
+	// a router wires nothing, because there is no sheet there to read.
+	client.wireLaneSheet()
 	return client, nil
 }
 
@@ -299,6 +310,14 @@ type callKnobs struct {
 	// resolved once here, at the top of the call, rather than at encode time,
 	// because it is a fact about the CALLER and cannot change between the two.
 	intent RoutingIntent
+	// lambda is what a second is worth to whoever is waiting on this call, in
+	// seconds per dollar, and whether the call site said (lanes.go). It is
+	// resolved here with the intent because it is the same kind of fact about
+	// the same caller.
+	lambda secondsPerDollar
+	// horizon is roughly how many more calls the work this call belongs to
+	// expects to make. It sizes exploration and nothing else (lanes.go).
+	horizon int
 	// relaxed is what this encode has been told to leave off the body, set only
 	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
 	// which is what keeps a healthy request byte-for-byte what it always was.
@@ -306,6 +325,15 @@ type callKnobs struct {
 	// reasoning is aligned with the request's messages. It stays outside the SDK
 	// values because ai.Message has no reasoning fields of its own.
 	reasoning []MessageReasoning
+	// hedgeLane is the one lane this request must go to, set only on the second
+	// request of a hedged pair (hedge.go). Empty on every ordinary call, which
+	// is what keeps a healthy request byte-for-byte what it always was.
+	hedgeLane string
+	// laneChoice is the lane preference this call was decided on, nil when
+	// nobody decided one — which is every call in a build where the router is
+	// not wired in, and every non-streamed call, which has no watch to agree
+	// with and makes its own inside the encoder.
+	laneChoice *lanes.Choice
 	// trace is what ONE CALL accumulates on its way to an answer — how many
 	// times it went out, what its refusals taught, the body it last carried —
 	// for the model-call log (calllog.go). It is a pointer because the knobs
@@ -315,13 +343,23 @@ type callKnobs struct {
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
-	return callKnobs{
+	knobs := callKnobs{
 		cacheKey:  CacheKeyFrom(ctx),
 		effort:    effortFrom(ctx),
 		intent:    routingIntentFrom(ctx),
+		lambda:    valueOfTimeFrom(ctx),
+		horizon:   callHorizonFrom(ctx),
+		hedgeLane: hedgeLaneFrom(ctx),
 		reasoning: MessageReasoningFrom(ctx),
 		trace:     newCallTrace(),
 	}
+	// The choice this call was already made on, if it was. See
+	// [Client.withLaneChoice]: it is carried rather than recomputed because it
+	// is a sampled decision and two draws are two different answers.
+	if choice, made := laneChoiceFromContext(ctx); made {
+		knobs.laneChoice = &choice
+	}
+	return knobs
 }
 
 // modelFor names the model a request will actually run against: the one the
@@ -739,6 +777,7 @@ func (c *Client) completionInOnePiece(
 		outputTokens(&response, ""),
 		c.clock().Sub(began),
 		0,
+		response.Usage.CacheReadTokens(),
 	)
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it. The caller decides whether to ask again.
@@ -853,7 +892,7 @@ func outputTokens(response *ai.Response, text string) int {
 			}
 		}
 	}
-	return len(text) / 4
+	return tokensIn(text)
 }
 
 // stampCut writes onto a cut the three facts only the read loop holds: who the
@@ -902,6 +941,26 @@ func (c *Client) completeWithMessagesStreaming(
 		return nil, false, err
 	}
 	request.Stream = true
+	// THE LANE CHOICE IS MADE ONCE, HERE, AND EVERYTHING DOWNSTREAM READS IT.
+	//
+	// It is a sampled decision (`internal/lane`'s Thompson draw), so asking for
+	// it twice gives two different answers — and this call would have asked
+	// twice: once for the watch that decides whether to hedge and where to, and
+	// once inside the encoder for the `provider.order` that actually goes on the
+	// wire. A watch waiting on a lane the wire never asked for is a hedge fired
+	// at the wrong moment toward the wrong alternative, and nothing in either
+	// half would look wrong on its own. Made here, the two are the same choice
+	// by construction — and so is every rung of the endpoint ladder and every
+	// retry, which each re-encode the same request.
+	ctx = c.withLaneChoice(ctx, request)
+	// THE HEDGE, AND THE ONE PLACE IT IS DECIDED (hedge.go). A call the lane
+	// router is watching runs as a race of one or two arms, each of which is
+	// this same function on a child context; a call it is not watching — which
+	// is every call in a build where nothing is wired in — falls straight
+	// through to the loop below, byte for byte as it was.
+	if race, raced := c.raceFor(ctx, observer); raced {
+		return race.run(ctx, messages, options...)
+	}
 	began := c.clock()
 	// The log's own start, on the world's clock rather than the measurement
 	// seam (calllog.go's logNow).
@@ -918,6 +977,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// from them and the trace inside them is what counts its attempts
 	// (calllog.go).
 	knobs := knobsFrom(ctx)
+	// The lane watch this stream reports to, nil on every call that is not an
+	// arm of a race (hedge.go). Every use of it below is a nil-safe method
+	// call, so an unwatched stream pays one nil check per delta.
+	watch := streamWatchFrom(ctx)
 	httpResponse, err := c.sendShaped(guardCtx, request, knobs, true)
 	if err != nil {
 		return nil, false, err
@@ -1023,6 +1086,16 @@ func (c *Client) completeWithMessagesStreaming(
 	// connection's idle watchdog.
 	decoder := newSSEDecoder(httpResponse.Body)
 	decoder.alive = stall.alive
+	if watch != nil {
+		// A ROUTER'S COMMENT LINE IS PROOF ABOUT THE PATH. It buys the stall
+		// guard bounded patience (streamguard.go) and it tells the lane watch
+		// that the connection is alive but the model has not started — which is
+		// exactly the difference between a slow lane and a dead path.
+		decoder.alive = func() {
+			stall.alive()
+			watch.heartbeat()
+		}
+	}
 	// lastWrite and widestGap watch the same deltas the stall guard does, for
 	// the ledger rather than for a cut: an endpoint that finished its answer
 	// but delivered it in lumps is working, slowly, and "working slowly" is
@@ -1083,6 +1156,7 @@ func (c *Client) completeWithMessagesStreaming(
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {
+			watch.serve(chunk.Provider)
 			if served == "" {
 				// The first naming is what narrows the wall onto the lane that
 				// is actually serving; [stallWatch.rewall] does it once and
@@ -1137,6 +1211,10 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 				lastWrite = now
 				stall.progress()
+				// AND THE SAME PROGRESS DRIVES THE LANE WATCH: the drift test
+				// is over the gaps between exactly these deltas, and an arm of
+				// a race commits on how many of them it has delivered.
+				watch.token()
 			}
 			if choice.Delta.Content != "" {
 				thinking = false
@@ -1225,9 +1303,10 @@ func (c *Client) completeWithMessagesStreaming(
 			outputTokens(response, content.String()),
 			generation.Sub(firstToken),
 			widestGap,
+			response.Usage.CacheReadTokens(),
 		)
 	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0)
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, 0)
 	}
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it — the same reading completeOnce makes about the same fact.

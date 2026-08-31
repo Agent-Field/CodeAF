@@ -382,11 +382,35 @@ func (q *quirksStore) save() {
 	}
 	// Written beside and renamed on top, so a reader never sees half a file and
 	// a crash mid-write leaves the previous memo intact.
-	temporary := path + ".tmp"
-	if os.WriteFile(temporary, encoded, 0o644) != nil {
+	//
+	// THE TEMPORARY NAME IS UNIQUE, which a fixed `.tmp` beside the memo was
+	// not. Two savers running at once — two clients in one process, or two
+	// processes sharing a home — then opened the SAME scratch file: the second
+	// truncated what the first had written, and the first renamed the truncation
+	// on top of the memo. What a reader saw was not half a write but a whole
+	// file that was half a document, which is how it reached a decoder as
+	// "unexpected end of JSON input". [writeAtomic] in internal/lane already
+	// does it this way; this is the same fix.
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return
 	}
-	if os.Rename(temporary, path) != nil {
-		_ = os.Remove(temporary)
+	name := temporary.Name()
+	if _, err := temporary.Write(encoded); err != nil {
+		temporary.Close()
+		_ = os.Remove(name)
+		return
+	}
+	if err := temporary.Chmod(0o644); err != nil {
+		temporary.Close()
+		_ = os.Remove(name)
+		return
+	}
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(name)
+		return
+	}
+	if os.Rename(name, path) != nil {
+		_ = os.Remove(name)
 	}
 }

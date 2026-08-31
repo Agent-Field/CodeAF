@@ -19,6 +19,7 @@ import (
 // The prices are per token in US dollars, as the catalog publishes them.
 func pricedClient(t *testing.T, routing RoutingSource, prompt, completion float64, known bool) (*Client, *capture) {
 	t.Helper()
+	forgetLanes(t)
 	recorded := &capture{}
 	client, err := NewClient(Config{
 		APIKey:  "test-key",

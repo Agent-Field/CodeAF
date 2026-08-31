@@ -421,6 +421,13 @@ When the endpoint that answered is not already named by the model id, the segmen
 ` · via deepinfra · 92 tok/s`. The rate clears the moment the turn ends, because a rate
 is a claim about now; the attribution alone goes silent after **10 minutes**.
 
+Where aforge has timed the lane itself the same segment reads `via cloudflare · 0.6s ·
+61 t/s` — the wait before the first word, then the rate. Two more readings replace it for
+one answer at a time: `slow · trying coreweave…` while a slow answer is being asked of a
+second lane, and `via coreweave · rescued` when that second one won. Those are the only
+times this row calls anything slow, and it says it while something is already being done
+about it. The models page has the whole of it under "what rescued means".
+
 Pressing the model segment opens the model picker, and it brightens under the pointer to
 say so.
 

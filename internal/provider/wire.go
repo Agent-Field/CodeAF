@@ -386,7 +386,11 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
-	wire.Provider = c.providerPreferences(model, knobs)
+	wire.Provider = c.providerPreferences(model, knobs, &scrubbed)
+	// And the second request of a hedged pair names its lane outright, over
+	// whatever the ledger's own ranking preferred (hedge.go). It is a no-op on
+	// every request that is not one.
+	wire.Provider = hedgePreference(wire.Provider, knobs)
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		// The two fields that can narrow the endpoint set to nothing: the hard
 		// parameter filter, and this process's own refusals. The SORT stays —
