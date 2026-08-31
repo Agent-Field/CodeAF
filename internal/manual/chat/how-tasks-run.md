@@ -911,6 +911,40 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, the task finished but the card is still busy, my task went quiet after the last line
+
+A task has three lives and one state. Its worker writes the work; a second look reads what
+the worker left; a round closes the gaps that look named. **All three are `running`** —
+nothing has landed and nothing was undone between them — so the card, the rail row, the
+room header and the home row say which of the three it is in:
+
+- `checking what it left` — the worker is finished and its work is being read.
+- `closing gaps · round 1 of 1` — a fresh worker is closing what the look found. The
+  second number is `task.repair_rounds` (default 1), so with the default you will only
+  ever see `round 1 of 1`.
+- Nothing at all while the task is simply working. The row draws what it always drew: the
+  call it is inside, its clock, its tokens and its spend.
+
+**Under a round, one dim line says what was found**, in the checker's own sentence with
+what happened in front of it:
+
+```
+closing gaps · round 1 of 1
+not done — go test ./... reports no test files
+```
+
+That line is the reason the work is being done again. It takes the row the clock and the
+spend would have had, because the clock is true every second and this is not.
+
+**How long it can take.** Both are full model runs on your work, so minutes each is
+normal — a check on a large change has been four minutes, and a round is a second worker
+doing the last ten percent of the job. The whole time is on the one task's clock and the
+whole cost is on the one task's bill, because you asked for one piece of work.
+
+**If the row says nothing and the clock is still going**, the task is at its own work and
+the heartbeat is the thing to read — see the heartbeat section on this page for telling a
+working task from a hung one.
+
 ## The three ways a task can land
 
 Every task ends in exactly one of three states, and the words are the same everywhere you

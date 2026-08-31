@@ -259,6 +259,16 @@ type TaskIndexEntry struct {
 	// remembering a present that ended seconds after it was recorded — which is
 	// the one thing an append-only history must not do.
 	Activity string `json:"-"`
+	// Phase is which of a RUNNING node's three lives the row was built in, in
+	// the words task_contract.go exports ([TaskPhaseChecking] and the other
+	// two): its own worker, the check that reads what the worker left, a repair
+	// round closing what the check found. It is empty on every landed row, and
+	// empty on a running one this process does not hold the graph for.
+	//
+	// IT IS NEVER WRITTEN TO THE FILE, for [TaskIndexEntry.Activity]'s reason
+	// said once: the index is what work CAME TO, and a phase is what it is doing
+	// this second.
+	Phase string `json:"-"`
 }
 
 // taskFileCitations is the pair a row carries about what a node wrote: the
@@ -711,6 +721,13 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	// takes only its own lock, so nothing waits on the graph for it.
 	if !n.state.settled() {
 		entry.Activity = n.room.recorder().activity()
+		// AND WHICH OF ITS THREE LIVES IT IS IN. The recorder above knows what
+		// the node's ROOM is doing, and a check runs outside the room — so
+		// through a check and a repair round the activity line is the worker's
+		// last call, sitting there finished, which is a row asserting a present
+		// that has passed. The phase is the fact that tells them apart, and it is
+		// already on the node ([TaskNode.life]): no file, no second lock.
+		entry.Phase = n.life
 	}
 	if n.state.settled() {
 		// A landed node's EndedAt is now minus nothing: the report hook runs at

@@ -297,6 +297,21 @@ type taskNode struct {
 	// merely waiting its turn. Like [taskNode.mending] it is a report of RIGHT
 	// NOW, so it goes the moment the engine stops sending it.
 	waiting string
+	// phase is which of a running node's three lives it is in, in the engine's
+	// own word (session's [session.TaskPhaseWorking], .TaskPhaseChecking,
+	// .TaskPhaseRepairing) — and phaseRound, phaseRounds and phaseFinding are
+	// the three facts that ride the repairing one. taskphase.go holds the words
+	// a person reads for them and says why they exist.
+	//
+	// THEY ARRIVE ON THEIR OWN EVENT, not on an update ([session.EventTaskPhase]),
+	// which is why they are not in [taskLive] with the other three: a phase move
+	// does not carry a state, a clock or a cost, and the de-dup that guards a
+	// redrawn row is asking about an update. They are a report of RIGHT NOW like
+	// mending and waiting are, and they go the moment the node lands.
+	phase        string
+	phaseRound   int
+	phaseRounds  int
+	phaseFinding string
 	// froze is the clock this node's row is drawn against while somebody is
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
@@ -629,6 +644,8 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 	case session.EventTaskUpdate:
 		pilot = a.taskUpdate(ev)
 		mentions = a.refreshTasks()
+	case session.EventTaskPhase:
+		a.taskPhaseMoved(ev)
 	case session.EventStandingProposal:
 		a.proposeStanding(ev)
 	case session.EventStandingUpdate:
@@ -4505,13 +4522,23 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// column for; the hold only ever displaces the row that would otherwise be
 		// false.
 		//
-		// AND A NAMED PHASE OUTRANKS ALL THREE. A node of a kind that names its
+		// AND THE LIFE THE NODE IS IN OUTRANKS THE GAP. A node under a check is
+		// not inside a call and has no gap yet, so the rows below would draw a
+		// finished call or a clock for four minutes of reading — which is the
+		// silence #76 §5 measured. A node inside a repair round has a gap, and
+		// [app.railPhase] draws that same gap with what [app.railMending] could
+		// not know: that a round is closing it, and which round of how many.
+		//
+		// AND A NAMED PHASE OUTRANKS ALL FOUR. A node of a kind that names its
 		// own moments — a harness being designed, which is "designing" and then
 		// "awaiting your look" (session's TaskNotice.Doing) — is saying the most
 		// specific true thing there is about it, and the rows below would each
 		// say something less: a call it is inside of, a hold that is not holding
-		// it, or a clock. It takes the row for [railDoing]'s reason.
+		// it, or a clock. It takes the row for [app.railDoing]'s reason.
 		rows := a.railDoing(node, width)
+		if len(rows) == 0 {
+			rows = a.railPhase(node, width)
+		}
 		if len(rows) == 0 {
 			rows = a.railMending(node, width)
 		}
@@ -5273,6 +5300,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// present that has passed (the same law [taskNode.tool] is held to).
 	live := taskLiveLines(notice)
 	node.doing, node.mending, node.waiting = live.doing, live.mending, live.waiting
+	// AND SO IS THE LIFE IT WAS IN, on the same law one field over. The phase
+	// arrives on its own event and is cleared here rather than there, because the
+	// event that says a node has stopped checking is the LANDING — a node that
+	// settles while a check is in flight sends no phase move on its way out, and a
+	// row left saying "checking what it left" under a card that has merged would
+	// be this column reporting a present that has passed (taskphase.go).
+	if notice.State != session.TaskRunning && notice.State != session.TaskQueued {
+		node.phase, node.phaseRound, node.phaseRounds, node.phaseFinding = "", 0, 0, ""
+	}
 	// The kind is a FACT and is kept the way the branch and the price above are:
 	// an update that says nothing about it has not changed it.
 	if notice.Kind != "" {

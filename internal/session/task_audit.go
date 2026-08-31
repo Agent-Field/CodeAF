@@ -620,12 +620,16 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
-	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go). A
-	// node under check is running — nothing landed, nothing was undone — so an
-	// outside reader watching only the state sees an unbroken "running" across a
-	// worker, a check and three repair rounds; the phase is what tells those
-	// apart, and a check that ends in an error still puts the word back.
-	defer node.beatPhase(taskBeatChecking)()
+	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go), AND
+	// SO DOES THE CARD ([EventTaskPhase]). A node under check is running —
+	// nothing landed, nothing was undone — so a reader watching only the state
+	// sees an unbroken "running" across a worker, a check and three repair
+	// rounds; the phase is what tells those apart, and a check that ends in an
+	// error still puts the word back.
+	//
+	// A check has no rounds and nothing to report yet, so it carries neither —
+	// the emptiness law, one field at a time.
+	defer a.enterPhase(node, taskBeatChecking, 0, 0, "")()
 
 	// STAGED, NOT COMMITTED. `git diff` in a worktree shows changes to tracked
 	// files only, so an auditor looking at a node whose whole work was three NEW
@@ -928,10 +932,12 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// that sent the work back is not on the wire (task_contract.go's Mending).
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
-	// AND THE PULSE SAYS SO TOO, for the surface's reason one layer out: a repair
-	// round is the node still working, and a reader outside the process is owed
-	// the same distinction the card gets (task_beat.go).
-	defer node.beatPhase(taskBeatRepairing)()
+	// AND THE PULSE AND THE CARD SAY WHICH ROUND THIS IS. A repair round is the
+	// node still working, and a reader outside the process is owed the same
+	// distinction the card gets (task_beat.go, [EventTaskPhase]) — with the two
+	// facts a person watching a second minute of it actually wants: how far
+	// through the rounds this is, and what the check said that sent it back.
+	defer a.enterPhase(node, taskBeatRepairing, round, a.config.TaskRepairRounds, taskFindingLine(verdict.evidence))()
 
 	child, err := a.newTaskAgentOn(ctx, taskGroundDir(node, tree), node, fmt.Sprintf("-repair%d", round), a.repairTierModel(node, lift))
 	if err != nil {

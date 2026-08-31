@@ -460,3 +460,59 @@ type TaskAnswer struct {
 	Redirect string
 	Model    string
 }
+
+// ── the phases of a running node ────────────────────────────────────────────
+
+// The three lives a running node has, in the plain words every file here writes
+// and a surface draws from.
+//
+// THEY ARE THE ONE SPELLING. task_beat.go writes these same strings into the
+// node's pulse file for other windows to read, and task_run.go sends them on
+// [EventTaskPhase] for this one, so a reader outside the process and the card in
+// front of the person are never two vocabularies for the same three moments.
+const (
+	// TaskPhaseWorking is the node's own worker, in its worktree.
+	TaskPhaseWorking = "working"
+	// TaskPhaseChecking is the gate looking at what the worker left.
+	TaskPhaseChecking = "checking"
+	// TaskPhaseRepairing is a repair round closing named gaps.
+	TaskPhaseRepairing = "repairing"
+)
+
+// TaskPhaseNotice is the payload of [EventTaskPhase]: which node moved, which of
+// the three words it moved into, and — while a repair round runs — which round
+// out of how many.
+//
+// IT EXISTS BECAUSE A RUNNING NODE IS NOT ONE THING. The state stays `running`
+// across a worker, a check and every repair round, so a surface holding only
+// [EventTaskUpdate] draws the same row for a node writing code and a node that
+// finished writing code eight minutes ago and has been under a check ever since.
+// That gap is what makes a person conclude the work hung: the worker's last line
+// scrolls past, and then nothing at all is drawn for minutes while the check
+// reads the tree and a repair round rewrites it.
+//
+// IT IS NEWS, NOT A ROW. It carries no state, no elapsed, no cost — an update
+// is where those live and this never contradicts one. A surface that ignores
+// this kind is exactly the surface it was.
+type TaskPhaseNotice struct {
+	// ID names the node, and is the same id its [TaskNotice] carries: a surface
+	// folds this into the row it already drew rather than opening a second one.
+	ID uint64
+	// Phase is one of the three words above.
+	Phase string
+	// Round and Rounds are which repair round this is and how many the person's
+	// settings allow ("round 1 of 1"). They are set on TaskPhaseRepairing alone
+	// and are zero on the other two, which is the emptiness law: a surface draws
+	// no numbers at all for a check, because a check has no rounds.
+	Round  int
+	Rounds int
+	// Text is the check's finding in ONE line, in a person's words, and it rides
+	// the repairing phase because that is the moment it becomes true of the work:
+	// the check did not accept it, and here is what it said. It is "" everywhere
+	// else, and "" is drawn as nothing.
+	//
+	// It is the checker's own sentence with a plain-words opener in front of it
+	// ([mendingLine], [taskFindingLine]) and never a paraphrase — the machinery's
+	// names for what happened are not on this wire.
+	Text string
+}

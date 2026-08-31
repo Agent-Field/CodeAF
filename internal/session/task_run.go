@@ -470,6 +470,18 @@ type TaskNode struct {
 	// nothing has landed, and what a surface draws is the work still going with
 	// one line saying what is being finished.
 	mend string
+	// life is which of the node's three lives it is in right now — the worker,
+	// the check, a repair round — in the words task_contract.go exports
+	// ([TaskPhaseWorking] and the other two). "" is a node that has not started.
+	//
+	// IT IS HELD HERE SO THAT A READER OF THE GRAPH DOES NOT HAVE TO OPEN A FILE
+	// FOR IT. The pulse on disk has the same word (task_beat.go) and is the right
+	// answer for a reader in ANOTHER process; a row this session builds for its
+	// own home page has the node in its hand, and reaching through the pulse's
+	// mutex — which a disk write is held under — from inside the graph's lock is
+	// exactly the thing armBeat is two steps to avoid. [Agent.enterPhase] writes
+	// all three of the places this word lives, so they cannot disagree.
+	life string
 	// ran is the model this node is ACTUALLY running on, when that is not the one
 	// its spec froze. It is written in exactly one place — the tool-use rescue in
 	// [Agent.newTaskAgent], which swaps an incapable model for the worker tier —
@@ -1674,6 +1686,89 @@ func (n *TaskNode) beatWriter() *taskBeat {
 // hands back the way out, so a caller writes `defer node.beatPhase(x)()`.
 func (n *TaskNode) beatPhase(name string) func() {
 	return n.beatWriter().phase(name)
+}
+
+// enterPhase moves the node into one of its three lives EVERYWHERE AT ONCE — the
+// pulse other windows read off disk (task_beat.go) and the event this session's
+// own surface draws from ([EventTaskPhase]) — and hands back the way out, so a
+// caller writes `defer a.enterPhase(node, x, …)()`.
+//
+// ONE MOVE, ONE CALL, AND NO SECOND STATE MACHINE. The phase already had exactly
+// two sites — the check and a repair round — and both of them were already
+// spelling the move as a deferred pair. Anything that tracked the phase a second
+// time in order to publish it would be a second thing to keep in step with those
+// two lines, and the first minute they disagreed the card would be lying about
+// work the pulse had right.
+//
+// THE WAY OUT IS ALWAYS BACK TO WORKING, and that is a fact about the callers
+// rather than an assumption made here: the check and a repair round are SIBLINGS
+// and never nested — [Agent.auditWithRepair] runs one, then the other, then the
+// first again — so each of them is entered from a node that is working and left
+// to a node that is working. The pulse restores whatever it actually saved; this
+// says the word that is true either way.
+func (a *Agent) enterPhase(node *TaskNode, phase string, round, rounds int, text string) func() {
+	if node == nil {
+		return func() {}
+	}
+	restore := node.beatPhase(phase)
+	node.living(phase)
+	a.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: phase, Round: round, Rounds: rounds, Text: text})
+	return func() {
+		restore()
+		node.living(TaskPhaseWorking)
+		a.emitTaskPhase(TaskPhaseNotice{ID: node.id, Phase: TaskPhaseWorking})
+	}
+}
+
+// living records the node's phase on the node itself, under the graph's lock, so
+// that anything already holding the graph can read it without a second lock and
+// without a file. It announces nothing: the phase's own event has already gone
+// out, and a second announce would put the same news on the wire twice.
+func (n *TaskNode) living(phase string) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	n.life = phase
+	n.graph.mu.Unlock()
+}
+
+// taskFindingLine is the check's finding as a PERSON reads it: the plain-words
+// gap the checker named, with the plain-words verdict in front of it.
+//
+// The opener is the whole reason this exists. [mendingLine] hands back the gap
+// alone — "the restore contains nothing" — and a gap on its own line under a
+// running row reads like a note somebody left rather than the reason the work is
+// being done again. "not done — " is what happened, in the words this codebase
+// says it in; the machinery's own names for it are banned from anything a person
+// reads and are not on this wire.
+func taskFindingLine(evidence []string) string {
+	gap := mendingLine(evidence)
+	if gap == "" {
+		return ""
+	}
+	return "not done — " + gap
+}
+
+// emitTaskPhase puts one phase move in front of whoever is watching.
+//
+// It is [Agent.emitTaskUpdate]'s two lanes, for [Agent.emitTaskUpdate]'s reason
+// said one layer down: a node under check outlives the turn that proposed it by
+// minutes, so the standing subscription is where most of these land.
+func (a *Agent) emitTaskPhase(notice TaskPhaseNotice) {
+	event := Event{Kind: EventTaskPhase, Tool: "propose_task", TaskPhase: &notice}
+	a.mu.Lock()
+	hub := a.hub
+	watchers := make([]*eventStream, len(a.taskWatchers))
+	copy(watchers, a.taskWatchers)
+	a.mu.Unlock()
+
+	if hub != nil {
+		hub.send(event)
+	}
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }
 
 // claimSettle claims a node that NEEDS A LOOK for exactly one resolution, and
