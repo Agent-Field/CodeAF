@@ -66,9 +66,11 @@ func TestTheLineSaysWhatWorkedAndHowOftenItDid(t *testing.T) {
 	episode, _ := fixTestLane(t)
 	broken := "ugrep: error at position 5 (empty (sub)expression)\n\nCommand exited with code 2"
 
-	// Three rounds of the same error and the same fix. The first round is the
-	// bare pairing; the second and third are the offered patch being taken.
-	for i := 0; i < 3; i++ {
+	// Four rounds of the same error and the same fix. The first two are the bare
+	// pairing being watched — nothing is offered until a pairing has recurred
+	// (fixstore.go's [fixMinPairings]) — and the third and fourth are the
+	// offered patch being taken.
+	for i := 0; i < 4; i++ {
 		episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
 		episode.noteToolOutcome(fixBash("grep -F '(sub)' ."), fixWorked("found it"))
 	}
@@ -166,10 +168,11 @@ func TestAnOfferedPatchThatWorksIsCountedForIt(t *testing.T) {
 	episode, bucket := fixTestLane(t)
 	broken := "ld: symbol(s) not found for architecture arm64\n\nCommand exited with code 1"
 
-	episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
-	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
-	episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
-	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+	// Two rounds to earn the offer, and a third in which the offer is taken.
+	for i := 0; i < 3; i++ {
+		episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
+		episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+	}
 
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if document.Worked != 1 {
@@ -179,14 +182,16 @@ func TestAnOfferedPatchThatWorksIsCountedForIt(t *testing.T) {
 	// And a retry that succeeded with something ELSE is neither a win nor a loss
 	// for the advice — it is the line being read and set aside.
 	episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
-	episode.noteToolOutcome(fixBash("cargo build"), fixWorked("built"))
+	episode.noteToolOutcome(fixBash("go build ./..."), fixWorked("built"))
 	document = readFixDocument(filepath.Join(bucket, fixesFileName))
 	if document.Worked != 1 || document.Failed != 0 {
 		t.Fatalf("an ignored line is no verdict; got worked=%d failed=%d", document.Worked, document.Failed)
 	}
 }
 
-// The lane is per HAND: a bash failure is not answered by a grep success.
+// The lane is per HAND, and a hand that keeps none answers for nothing: a bash
+// failure is not answered by a grep success, and the grep is not written down
+// under the bash failure's key either.
 func TestOneHandsFailureIsNotAnsweredByAnothersSuccess(t *testing.T) {
 	episode, bucket := fixTestLane(t)
 	episode.noteToolOutcome(fixBash("make build"), fixFailed("ld: symbol(s) not found for architecture arm64"))
@@ -195,6 +200,25 @@ func TestOneHandsFailureIsNotAnsweredByAnothersSuccess(t *testing.T) {
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if len(document.Entries) != 0 {
 		t.Fatalf("nothing should have been recorded; got %+v", document.Entries)
+	}
+}
+
+// AND A HAND WHOSE ARGUMENT IS A PATTERN KEEPS NO LANE AT ALL. grep's defining
+// argument is the regex it searched with, and a regex is what the model was
+// looking for rather than a thing to do about a failure — the measured store
+// held `/\/+$` filed as the cure for grep's own "Path not found".
+func TestAHandWhoseArgumentIsAPatternKeepsNoLane(t *testing.T) {
+	episode, bucket := fixTestLane(t)
+	missing := "Path not found: /Users/x/code/tests/test_execution_logger.py"
+	result := episode.noteToolOutcome(fixCall("grep", "pattern", "logger"), fixFailed(missing))
+	if strings.Contains(result.text, "before") {
+		t.Fatalf("grep should not be annotated; got %q", result.text)
+	}
+	episode.noteToolOutcome(fixCall("grep", "pattern", `/\/+$`), fixWorked("internal/x.go: /"))
+
+	document := readFixDocument(filepath.Join(bucket, fixesFileName))
+	if len(document.Entries) != 0 {
+		t.Fatalf("a regex may never be filed as a remedy; got %+v", document.Entries)
 	}
 }
 
@@ -248,17 +272,19 @@ func TestTheLiveLoopConsultsTheProjectBeforeTheMachine(t *testing.T) {
 	signature, _ := fixSignature("bash", broken)
 
 	project := newFixStore(filepath.Join(bucket, fixesFileName))
-	project.confirm(signature, "the project answer")
+	for i := 0; i < 2; i++ {
+		project.confirm(signature, "go test ./internal/...")
+	}
 	global := newFixStore(filepath.Join(root, "v3", fixesFileName))
 	for i := 0; i < 9; i++ {
-		global.confirm(signature, "the machine answer")
+		global.confirm(signature, "go test ./...")
 	}
 
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.fixesDir = bucket
 	})
 	annotated := agent.newEpisode().noteToolOutcome(fixBash("make build"), fixFailed(broken))
-	if !strings.Contains(annotated.text, "the project answer") {
+	if !strings.Contains(annotated.text, "go test ./internal/...") {
 		t.Fatalf("the project should win even against a better-worn machine answer:\n%q", annotated.text)
 	}
 }
@@ -301,15 +327,17 @@ func TestTheChokepointLearnsFromARealToolCall(t *testing.T) {
 	defer hub.close()
 	episode := agent.newEpisode()
 
-	broke := agent.runToolsWarm(context.Background(), episode, []ai.ToolCall{
-		fixBash("echo 'ld: symbol(s) not found for architecture arm64' >&2; exit 1"),
-	}, hub, nil)
-	if len(broke) != 1 || !broke[0].isError {
-		t.Fatalf("the first call should have failed: %+v", broke)
+	for round := 0; round < 2; round++ {
+		broke := agent.runToolsWarm(context.Background(), episode, []ai.ToolCall{
+			fixBash("echo 'ld: symbol(s) not found for architecture arm64' >&2; exit 1"),
+		}, hub, nil)
+		if len(broke) != 1 || !broke[0].isError {
+			t.Fatalf("the failing call should have failed: %+v", broke)
+		}
+		agent.runToolsWarm(context.Background(), episode, []ai.ToolCall{
+			fixBash("true"),
+		}, hub, nil)
 	}
-	agent.runToolsWarm(context.Background(), episode, []ai.ToolCall{
-		fixBash("true"),
-	}, hub, nil)
 
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if len(document.Entries) != 1 || document.Entries[0].Fix != "true" {
@@ -396,8 +424,10 @@ func TestAGenuineFailureFollowedByTheCommandThatEndedItIsStillLearned(t *testing
 	episode, bucket := fixTestLane(t)
 	broken := "ugrep: error at position 5 (empty (sub)expression)"
 
-	episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
-	episode.noteToolOutcome(fixBash("grep -F '(sub)' ."), fixWorked("internal/x.go: (sub)"))
+	for i := 0; i < 2; i++ {
+		episode.noteToolOutcome(fixBash("grep -E '(sub)' ."), fixFailed(broken))
+		episode.noteToolOutcome(fixBash("grep -F '(sub)' ."), fixWorked("internal/x.go: (sub)"))
+	}
 
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if len(document.Entries) != 1 || document.Entries[0].Fix != "grep -F '(sub)' ." {
@@ -446,9 +476,12 @@ func TestTheFooterNeverClaimsAFixWorkedUntilItHasBeenSeenToWork(t *testing.T) {
 	episode, bucket := fixTestLane(t)
 	broken := "ld: symbol(s) not found for architecture arm64"
 
-	// One pairing watched, nothing offered yet.
-	episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
-	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+	// Two pairings watched, nothing offered yet — one alone is an adjacency and
+	// earns no line at all (fixstore.go's [fixMinPairings]).
+	for i := 0; i < 2; i++ {
+		episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))
+		episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
+	}
 
 	document := readFixDocument(filepath.Join(bucket, fixesFileName))
 	if len(document.Entries) != 1 || document.Entries[0].Worked != 0 {
@@ -466,8 +499,8 @@ func TestTheFooterNeverClaimsAFixWorkedUntilItHasBeenSeenToWork(t *testing.T) {
 	// The offer is taken and the error goes away. NOW it has worked.
 	episode.noteToolOutcome(fixBash("make clean && make build"), fixWorked("built"))
 	document = readFixDocument(filepath.Join(bucket, fixesFileName))
-	if document.Entries[0].Worked != 1 || document.Entries[0].OK != 2 {
-		t.Fatalf("the taken offer should read worked=1 ok=2; got %+v", document.Entries[0])
+	if document.Entries[0].Worked != 1 || document.Entries[0].OK != 3 {
+		t.Fatalf("the taken offer should read worked=1 ok=3; got %+v", document.Entries[0])
 	}
 
 	proven := episode.noteToolOutcome(fixBash("make build"), fixFailed(broken))

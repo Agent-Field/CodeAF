@@ -44,25 +44,29 @@ import (
 //
 // ── A PATCH MUST BE AN INSTRUCTION, NOT AN OPERAND ──
 //
-// The three here are the tools whose defining argument is a thing you can DO
-// again somewhere else: a shell command, a search pattern. Offering one back to
-// a model that has just hit the same error is offering it a move.
+// One hand qualifies, and it is bash: the argument that says what a bash call
+// did is a COMMAND, and offering one back to a model that has just hit the same
+// error is offering it a move.
 //
-// read, write, edit and ls are deliberately absent, and the reason is the
-// normalization law from the other direction. Their defining argument is a PATH,
-// and their commonest failure — "no such file or directory" — normalizes to one
-// signature that every missing file on the machine shares. The patch stored
-// under it would be one arbitrary path, correct for the call that recorded it
-// and wrong for every later one, and the line would be noise appended to a
-// perfectly clear error. The ratio gate would eventually silence it; the right
-// answer is not to say it in the first place.
+// read, write, edit and ls are absent because their defining argument is a PATH,
+// and the reason is the normalization law from the other direction: their
+// commonest failure — "no such file or directory" — normalizes to one signature
+// that every missing file on the machine shares, so the patch stored under it
+// would be one arbitrary path, correct for the call that recorded it and wrong
+// for every later one.
+//
+// GREP AND FIND WERE HERE UNTIL THE PATTERN CAME BACK AS A CURE. Their defining
+// argument is a search pattern, which is the same objection one step along: a
+// pattern is what the model was LOOKING FOR, not a thing to do about a failure.
+// A real session's store held `/\/+$` filed as the answer to grep's "Path not
+// found", and the line under it read "what ran next and it went away: /\/+$" —
+// a regex handed to a model as a command (fixremedy.go's first measured
+// failure). No amount of counting that entry better could have made it right.
 //
 // Adding a hand here is one line, and the question to ask before doing it is
-// whether its argument would still be worth reading in a different session.
+// whether its argument is something the next session could TYPE.
 var fixLaneTools = map[string]bool{
 	"bash": true,
-	"grep": true,
-	"find": true,
 }
 
 // fixLane is one turn's memory of what has just failed, per tool.
@@ -250,6 +254,15 @@ func (ep *episode) noteSuccess(shelf *fixShelf, tool string, call ai.ToolCall) {
 	}
 	patch := fixPatchOf(call)
 	if patch == "" {
+		return
+	}
+	// AND JUNK IS KEPT OUT OF THE FILE, not merely kept quiet on the way out.
+	// The same reading that decides whether a patch may be spoken decides
+	// whether it is worth writing down (fixremedy.go): a string nothing could
+	// ever run is not a remedy this session simply has too little evidence for,
+	// it is not a remedy, and an entry for it would sit in a file two scopes
+	// wide until the decay took it away.
+	if !fixRunnableRemedy(patch) {
 		return
 	}
 	// The verdict on this store's own advice is narrow on purpose. It is a
