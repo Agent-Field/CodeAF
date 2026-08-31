@@ -49,6 +49,23 @@ func TestDroppingAPictureLeavesATokenAndAttachesTheFile(t *testing.T) {
 	}
 }
 
+// P1: a raw-space picture paste becomes one numbered chip and one draft token.
+func TestARawSpacePicturePasteBecomesOneNumberedChip(t *testing.T) {
+	name := "Screen Shot 2026-08-21 at 5.21.40 PM.png"
+	a, _, dir := attachLab(t, map[string]int{name: 12})
+	pasteText(t, a, filepath.Join(dir, name))
+
+	if got := a.input.String(); got != "[image #1] " {
+		t.Fatalf("the raw-space path left the draft %q", got)
+	}
+	if want := []string{name}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+	if strip := plain(a.chipStrip(a.width)); !strings.Contains(strip, "#1 "+name) {
+		t.Fatalf("the tray reads %q, want the numbered picture", strip)
+	}
+}
+
 // An ordinary file dropped on the terminal takes the same visible tray road as
 // /attach. In a hosted conversation that tray is what makes the bytes cross
 // when the person sends, instead of leaving a local path in the draft.
@@ -82,22 +99,143 @@ func TestDroppingAFolderUsesTheAttachRefusal(t *testing.T) {
 // macOS names them with four spaces in them, and a splitter that took every
 // space would find five words and call none of them a picture.
 func TestADroppedPathKeepsItsEscapedAndQuotedSpaces(t *testing.T) {
-	name := "Screenshot 2026-08-21 at 5.21.40 PM.png"
-	for _, spell := range []func(string) string{
-		func(base string) string { return strings.ReplaceAll(base, " ", `\ `) },
-		func(base string) string { return "'" + base + "'" },
-		func(base string) string { return `"` + base + `"` },
+	for _, tc := range []struct {
+		name  string
+		spell func(string) string
+	}{
+		{"backslashed spaces", func(base string) string { return strings.ReplaceAll(base, " ", `\ `) }},
+		{"single quotes", func(base string) string { return "'" + base + "'" }},
+		{"double quotes", func(base string) string { return `"` + base + `"` }},
+		{"macOS narrow no-break space", func(base string) string { return strings.ReplaceAll(base, " ", `\ `) }},
 	} {
+		name := "Screenshot 2026-08-21 at 5.21.40 PM.png"
+		if tc.name == "macOS narrow no-break space" {
+			name = "Screenshot 2026-08-21 at 5.21.40\u202fPM.png"
+		}
 		a, _, dir := attachLab(t, map[string]int{name: 12})
 		// The escaping is on the whole path as the terminal writes it, so it is
 		// applied after the join and not to a base name joined onto a directory.
-		pasteText(t, a, spell(filepath.Join(dir, name)))
+		pasteText(t, a, tc.spell(filepath.Join(dir, name)))
 
 		if want := []string{name}; !equalStrings(chipNames(a), want) {
-			t.Fatalf("%q attached %v, want %v", spell(name), chipNames(a), want)
+			t.Fatalf("%s attached %v, want %v", tc.name, chipNames(a), want)
 		}
 		if got := a.input.String(); got != "[image #1] " {
-			t.Fatalf("%q left the draft %q", spell(name), got)
+			t.Fatalf("%s left the draft %q", tc.name, got)
+		}
+	}
+}
+
+// P3: every terminal spelling resolves without changing multi-file order.
+func TestEveryTerminalPasteSpellingResolves(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files map[string]int
+		paste func(string) string
+		want  []string
+	}{
+		{
+			name:  "raw spaces",
+			files: map[string]int{"Screen Shot.png": 8},
+			paste: func(dir string) string { return filepath.Join(dir, "Screen Shot.png") },
+			want:  []string{"Screen Shot.png"},
+		},
+		{
+			name:  "kitty bare percent escapes",
+			files: map[string]int{"Screen Shot.png": 8},
+			paste: func(dir string) string { return strings.ReplaceAll(filepath.Join(dir, "Screen Shot.png"), " ", "%20") },
+			want:  []string{"Screen Shot.png"},
+		},
+		{
+			name:  "VTE quoted path with a trailing newline",
+			files: map[string]int{"Screen Shot.png": 8},
+			paste: func(dir string) string { return "'" + filepath.Join(dir, "Screen Shot.png") + "\n'" },
+			want:  []string{"Screen Shot.png"},
+		},
+		{
+			name:  "VTE apostrophe spelling",
+			files: map[string]int{"owner's shot.png": 8},
+			paste: func(dir string) string {
+				return "'" + strings.ReplaceAll(filepath.Join(dir, "owner's shot.png"), "'", `'\''`) + "'"
+			},
+			want: []string{"owner's shot.png"},
+		},
+		{
+			name:  "Ghostty space-joined files",
+			files: map[string]int{"one.png": 8, "two.png": 8},
+			paste: func(dir string) string { return filepath.Join(dir, "one.png") + " " + filepath.Join(dir, "two.png") },
+			want:  []string{"one.png", "two.png"},
+		},
+		{
+			name:  "newline-separated pictures",
+			files: map[string]int{"one.png": 8, "two.png": 8},
+			paste: func(dir string) string { return filepath.Join(dir, "one.png") + "\n" + filepath.Join(dir, "two.png") },
+			want:  []string{"one.png", "two.png"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, dir := attachLab(t, tc.files)
+			pasteText(t, a, tc.paste(dir))
+			if !equalStrings(chipNames(a), tc.want) {
+				t.Fatalf("chips are %v, want %v", chipNames(a), tc.want)
+			}
+		})
+	}
+}
+
+// P7: the shell-word parser splits ASCII IFS and preserves every other rune.
+func TestPastedWordsMatchesTheShellsSeparators(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want []string
+	}{
+		{`/tmp/Screen\ Shot.png`, []string{"/tmp/Screen Shot.png"}},
+		{`'/tmp/Screen Shot.png'`, []string{"/tmp/Screen Shot.png"}},
+		{`"C:\Users\me\My Shot.png"`, []string{`C:\Users\me\My Shot.png`}},
+		{"/tmp/Screenshot\\ 5.21.40\u202fPM.png", []string{"/tmp/Screenshot 5.21.40\u202fPM.png"}},
+		{"/a/one.png\t/a/two.png\r\n/a/three.png\v/a/four.png\f/a/five.png", []string{"/a/one.png", "/a/two.png", "/a/three.png", "/a/four.png", "/a/five.png"}},
+	} {
+		if got := pastedWords(tc.text); !equalStrings(got, tc.want) {
+			t.Errorf("pastedWords(%q) = %#v, want %#v", tc.text, got, tc.want)
+		}
+	}
+}
+
+// P7: alternate paste readings stay ordered and duplicate readings are removed.
+func TestPasteReadingsAreLiteralFirstAndDeduplicated(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want [][]string
+	}{
+		{
+			text: "/tmp/Screen Shot.png",
+			want: [][]string{{"/tmp/Screen", "Shot.png"}, {"/tmp/Screen Shot.png"}},
+		},
+		{
+			text: "/tmp/Screen%20Shot.png",
+			want: [][]string{{"/tmp/Screen%20Shot.png"}, {"/tmp/Screen Shot.png"}},
+		},
+		{
+			text: "/tmp/one.png\n/tmp/two.png",
+			want: [][]string{{"/tmp/one.png", "/tmp/two.png"}, {"/tmp/one.png\n/tmp/two.png"}},
+		},
+		{
+			text: "look at /tmp/shot.png",
+			want: [][]string{{"look", "at", "/tmp/shot.png"}},
+		},
+		{
+			text: "/tmp/server.log is full of these errors",
+			want: [][]string{{"/tmp/server.log", "is", "full", "of", "these", "errors"}, {"/tmp/server.log is full of these errors"}},
+		},
+	} {
+		got := pasteReadings(tc.text)
+		if len(got) != len(tc.want) {
+			t.Fatalf("pasteReadings(%q) = %#v, want %#v", tc.text, got, tc.want)
+		}
+		for i := range got {
+			if !equalStrings(got[i], tc.want[i]) {
+				t.Errorf("pasteReadings(%q)[%d] = %#v, want %#v", tc.text, i, got[i], tc.want[i])
+			}
 		}
 	}
 }
@@ -163,18 +301,19 @@ func TestAPasteThatIsNotAllPicturesStaysText(t *testing.T) {
 // on this surface whose whole job is to take one, and dropping a file on it is
 // somebody using it exactly as documented.
 func TestAPathDroppedOnASlashCommandStaysAPath(t *testing.T) {
-	a, _, dir := attachLab(t, map[string]int{"shot.png": 12})
+	a, _, dir := attachLab(t, map[string]int{"Screen Shot.png": 12})
+	path := filepath.Join(dir, "Screen Shot.png")
 	typeText(t, a, "/image ")
-	pasteText(t, a, filepath.Join(dir, "shot.png"))
+	pasteText(t, a, path)
 
-	if got := a.input.String(); got != "/image "+filepath.Join(dir, "shot.png") {
+	if got := a.input.String(); got != "/image "+path {
 		t.Fatalf("the draft is %q, want the path left alone", got)
 	}
 	if len(a.chips) != 0 {
 		t.Fatalf("the drop attached %v before the command ran", chipNames(a))
 	}
 	drive(t, a, key("enter"))
-	if want := []string{"shot.png"}; !equalStrings(chipNames(a), want) {
+	if want := []string{"Screen Shot.png"}; !equalStrings(chipNames(a), want) {
 		t.Fatalf("the command attached %v, want %v", chipNames(a), want)
 	}
 }
@@ -183,8 +322,8 @@ func TestAPathDroppedOnASlashCommandStaysAPath(t *testing.T) {
 // box: a refusal that also swallowed what was dropped would leave the person
 // with nothing to point at.
 func TestADroppedPictureOverTheCeilingIsRefusedByName(t *testing.T) {
-	a, _, dir := attachLab(t, map[string]int{"huge.png": maxAttachBytes + 1})
-	path := filepath.Join(dir, "huge.png")
+	a, _, dir := attachLab(t, map[string]int{"huge picture.png": maxAttachBytes + 1})
+	path := filepath.Join(dir, "huge picture.png")
 	pasteText(t, a, path)
 
 	if len(a.chips) != 0 {
@@ -193,8 +332,36 @@ func TestADroppedPictureOverTheCeilingIsRefusedByName(t *testing.T) {
 	if got := a.input.String(); got != path {
 		t.Fatalf("the draft is %q, want the path kept as text", got)
 	}
-	if body := strings.Join(plainRows(a), "\n"); !strings.Contains(body, "huge.png is over the 10MB image limit") {
+	if body := strings.Join(plainRows(a), "\n"); !strings.Contains(body, "huge picture.png is over the 10MB image limit") {
 		t.Fatalf("the refusal does not name the file:\n%s", body)
+	}
+}
+
+// P5: the drop road applies the ordinary-file ceiling only over a connection.
+func TestALargeDroppedFileIsLocalOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		host string
+		want int
+	}{
+		{"local", "", 1},
+		{"hosted", "devbox", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, dir := fileLab(t, tc.host, map[string]int{"large dump.bin": 20 * 1024 * 1024})
+			path := filepath.Join(dir, "large dump.bin")
+			pasteText(t, a, path)
+			if len(a.chips) != tc.want {
+				t.Fatalf("the tray holds %d chips, want %d", len(a.chips), tc.want)
+			}
+			body := strings.Join(plainRows(a), "\n")
+			if tc.host == "" && strings.Contains(body, "over the 16MB file limit") {
+				t.Fatalf("a local drop was refused:\n%s", body)
+			}
+			if tc.host != "" && !strings.Contains(body, "large dump.bin is 20MB and over the 16MB file limit") {
+				t.Fatalf("the hosted refusal did not name the file:\n%s", body)
+			}
+		})
 	}
 }
 

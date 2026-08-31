@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"os"
 	"strings"
 	"time"
 	"unicode"
@@ -41,11 +40,11 @@ import (
 // gate counts work rather than time, and the work this file is allowed is
 // counted in dropkeys_test.go:
 //
-//   - A KEY THAT COULD NOT BE PART OF A PATH COSTS NOTHING. Prose arms no timer,
-//     asks the disk nothing and builds no extra frame. The fold opens only on a
-//     character that can BEGIN a dropped path — `/`, `~`, a quote, or the `f` of
-//     `file://` — standing at a word boundary, and it closes again on the first
-//     character that proves the run is an ordinary word.
+//   - A KEY THAT COULD NOT BE PART OF A PATH COSTS NOTHING. Prose whose first
+//     token is not path-shaped arms no timer, asks the disk nothing and builds no
+//     extra frame. Once a path-shaped first token arrives the fold stays open
+//     through later words: until the disk is asked, a raw-space filename and a
+//     sentence beginning with a path are the same characters.
 //   - A SLASH COMMAND COSTS NOTHING EITHER. `/help`, `/model`, `/export ~/x` —
 //     none of them ever reaches the disk, because a dropped path is told from a
 //     command by a SEPARATOR INSIDE IT: `/var/folders` has one, `/help` does not.
@@ -54,17 +53,19 @@ import (
 //     the pointer fold's shape exactly (coalesce.go): one is in flight or none
 //     is, and the one in flight re-arms itself while characters are still
 //     arriving rather than a second one being asked for.
-//   - A SETTLED BURST ASKS THE DISK ONCE PER WORD IT HOLDS, and only after the
-//     string gate above has passed. A burst that names nothing changes nothing
-//     and BUILDS NO FRAME, because it provably mutated nothing [app.View] reads.
+//   - A SETTLED BURST ASKS THE DISK ONCE PER CANDIDATE IN AT MOST FOUR READINGS,
+//     and only after the string gate above has passed. A burst that names nothing
+//     changes nothing and BUILDS NO FRAME, because it provably mutated nothing
+//     [app.View] reads.
 //
 // AND IT IS SILENT UNLESS IT IS CERTAIN. A burst still arriving spells a great
 // many paths that do not exist yet — `/var/f`, `/var/fo` — and the settle may
-// land on any of them. So the fold converts only when every word it holds is an
-// existing REGULAR FILE on this machine, and says nothing at all otherwise: a
-// note about a half-typed path would be this surface interrupting somebody who
-// is still typing. The refusals a person should see — a folder, a file over the
-// ceiling — belong to the door at enter, where the gesture is finished.
+// land on any of them. So the fold converts only when one complete terminal
+// reading names existing REGULAR FILES on this machine, and says nothing at all
+// otherwise: a note about a half-typed path would be this surface interrupting
+// somebody who is still typing. The refusals a person should see — a folder, a
+// file over the ceiling — belong to the door at enter, where the gesture is
+// finished.
 
 // dropQuiet is how long a run of characters must go quiet before it is read as
 // a finished drop.
@@ -300,16 +301,21 @@ func dropCouldGrowInto(run string) bool {
 // fileScheme is the URL form of a drop, spelled once.
 const fileScheme = "file://"
 
-// droppedPathShape reports whether a run of characters is shaped like the paths
-// a terminal writes when a file is dropped on it — WITHOUT asking the disk
-// anything, which is the whole point of it. Every word must be an absolute
-// local path, because that is the only thing a drop ever writes.
+// droppedPathShape reports whether a run of characters begins like the paths a
+// terminal writes when a file is dropped on it — WITHOUT asking the disk
+// anything, which is the whole point of it. The first whitespace-delimited token
+// decides because the terminal writes the path first; later words may be the raw,
+// unescaped spaces of that same filename.
 //
-// THE SEPARATOR INSIDE IT IS WHAT TELLS A DROP FROM A COMMAND. `/help`,
+// THE SEPARATOR INSIDE THE FIRST TOKEN IS WHAT TELLS A DROP FROM A COMMAND. `/help`,
 // `/model`, `/export` and every other word this surface answers are one segment
 // with nothing after them; `/var/folders/…` and `~/Desktop/…` are not. So a
 // slash command never reaches a syscall, and the cost of typing one is exactly
 // what it was before this file existed.
+//
+// A RUN THAT BEGINS WITH A REAL PATH STAYS OPEN THROUGH PROSE AFTER IT. That is
+// the admitted cost of raw-space filenames: `/tmp/Screen Shot.png` and
+// `/tmp/server.log is broken` cannot be told apart until the readings meet disk.
 //
 // It also means a file sitting at the root of the disk — `/notes.md` — is not
 // recognised while it is being typed. That is deliberate: the enter door below
@@ -320,12 +326,7 @@ func droppedPathShape(text string) bool {
 	if len(words) == 0 {
 		return false
 	}
-	for _, word := range words {
-		if !droppedWordShape(word) {
-			return false
-		}
-	}
-	return true
+	return droppedWordShape(words[0])
 }
 
 func droppedWordShape(word string) bool {
@@ -350,23 +351,14 @@ func cutFileScheme(word string) (string, bool) {
 	return word[len(fileScheme):], true
 }
 
-// droppedFiles reports whether every word of a run names an existing regular
-// file on this machine. It is the fold's certainty, and it is SILENT: a run
-// that names a folder, or nothing at all, simply is not a drop yet, and a
-// surface that said so would be talking over somebody who is still typing.
+// droppedFiles reports whether one complete terminal reading of a run names
+// existing regular files on this machine. It is the fold's certainty, and it is
+// SILENT: a run that names a folder, or nothing at all, simply is not a drop yet,
+// and a surface that said so would be talking over somebody who is still typing.
 func (a *app) droppedFiles(text string) bool {
-	words := pastedWords(text)
-	if len(words) == 0 {
-		return false
-	}
-	for _, word := range words {
-		a.drop.looked++
-		info, err := os.Stat(a.resolvePath(pastedPath(word)))
-		if err != nil || !info.Mode().IsRegular() {
-			return false
-		}
-	}
-	return true
+	hits, looked := a.pasteResolve(text, true)
+	a.drop.looked += looked
+	return hits != nil
 }
 
 // ── the net under enter ─────────────────────────────────────────────────────
@@ -385,18 +377,14 @@ func (a *app) droppedFiles(text string) bool {
 // An unknown command that names nothing on the disk still refuses exactly as it
 // always did: this returns false and the caller writes its own sentence.
 func (a *app) droppedLine(line string) bool {
-	words := pastedWords(line)
-	if len(words) == 0 {
+	hits, looked := a.pasteResolve(line, false)
+	a.drop.looked += looked
+	if hits == nil {
 		return false
 	}
 	files := 0
-	for _, word := range words {
-		a.drop.looked++
-		info, err := os.Stat(a.resolvePath(pastedPath(word)))
-		if err != nil {
-			return false
-		}
-		if info.Mode().IsRegular() {
+	for _, hit := range hits {
+		if hit.info.Mode().IsRegular() {
 			files++
 		}
 	}
@@ -412,7 +400,7 @@ func (a *app) droppedLine(line string) bool {
 	// A FOLDER SAYS ITS OWN SENTENCE AND IS NOT GIVEN A SECOND ONE. [app.pasteFiles]
 	// answers "<name> is a folder · attach a file" and attaches nothing, and
 	// "attached" underneath that would be this surface contradicting itself.
-	if files == len(words) && len(a.chips) > held {
+	if files == len(hits) && len(a.chips) > held {
 		a.note(droppedNote(files))
 	}
 	return true

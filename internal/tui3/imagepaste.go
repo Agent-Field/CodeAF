@@ -9,7 +9,7 @@ import (
 	"unicode"
 )
 
-// DRAGGING A PICTURE IN IS A PICTURE, NOT A SENTENCE.
+// DRAGGING A FILE IN IS A FILE, NOT A SENTENCE.
 //
 // A terminal has no idea what an image is. Drop a screenshot on iTerm2, Ghostty
 // or Terminal.app and what arrives is a BRACKETED PASTE of the file's path —
@@ -24,11 +24,12 @@ import (
 // the string was worth opening. A screenshot path with four spaces in it usually
 // did not survive the guess at all.
 //
-// So a paste that is NOTHING BUT PICTURES is read as pictures:
+// So a paste that is NOTHING BUT PATHS TO REAL FILES is read as attachments:
 //
-//   - each file goes on the attachment tray, where /image and the @ completion
-//     already put them (attach.go), so it travels as bytes;
-//   - and the draft gets `[image #1]` where the path would have been.
+//   - a picture goes on the tray and leaves `[image #1]` in the draft, where
+//     /image and the @ completion already put them (attach.go);
+//   - an ordinary file goes on the same tray without putting its local path in
+//     the sentence, so a hosted send can carry its bytes.
 //
 // The token is the point. It is what the person sees, edits around and can say
 // out loud — "what font is image #1", "compare image #1 with image #2" — and it
@@ -38,11 +39,12 @@ import (
 // message are ONE number, kept in agreement by [app.forgetToken] whenever a chip
 // comes off.
 //
-// IT IS ALL OR NOTHING. A paste substitutes only when every word in it resolves
-// to a picture on this machine; anything else — a sentence that mentions a png,
+// IT IS ALL OR NOTHING. A paste substitutes only when one complete reading of
+// it resolves on this machine; anything else — a sentence that mentions a png,
 // a diff, a stack trace — is inserted as the text it plainly is. That is what
 // keeps this out of the way of the paste the surface sees a thousand times more
-// often.
+// often. The several readings below are terminal spellings of the same gesture,
+// not several ideas of what a file is.
 
 // imageTokenHead is the token's opening, spelled once. It is also the cheap
 // reject that decides whether a draft is worth rewriting at all.
@@ -51,70 +53,20 @@ const imageTokenHead = "[image #"
 // imageToken is what the draft holds in place of the nth attached picture.
 func imageToken(n int) string { return imageTokenHead + strconv.Itoa(n) + "]" }
 
-// pasteImages takes one pasted string, and reports whether it was pictures. When
-// it was, the files are on the tray and the tokens are in the draft; when it was
-// not, nothing has happened and the caller inserts the text.
-func (a *app) pasteImages(text string) bool {
-	// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE. `/image ` followed
-	// by a dropped file is somebody using the command exactly as documented, and
-	// turning its argument into `[image #1]` would break the one line on this
-	// surface whose whole job is to take a path. The same is true of `/export `.
-	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
-		return false
-	}
-	paths := a.pastedImages(text)
-	if len(paths) == 0 {
-		return false
-	}
-	// THE CEILING IS CHECKED AT THE DOOR, and a picture over it is refused here
-	// with its name rather than attached and refused at enter. The path stays in
-	// the draft as the text it arrived as, so nothing the person dropped is lost
-	// — they can still ask aforge to look at the file where it lies.
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			// Not a file on this machine, so the paste was never a picture. No
-			// note: there is nothing to tell somebody who pasted a sentence.
-			return false
-		}
-		if info.Size() > maxAttachBytes {
-			a.note(oversizeAttachment(chip{path: path}).Error())
-			return false
-		}
-	}
-
-	marks := make([]string, 0, len(paths))
-	for _, path := range paths {
-		a.attach(path)
-		marks = append(marks, imageToken(a.chipNumber(path)))
-	}
-	inserted := a.spacedTokens(marks)
-	at := a.input.cursor
-	a.input.insert(inserted)
-	a.editTags(at, at, len([]rune(inserted)))
-	a.touch()
-	return true
-}
-
-// pasteFiles recognizes the ordinary-file form of the same terminal gesture
-// pasteImages handles for pictures. A desktop drop arrives only as pasted local
-// paths, so putting those files on the existing tray is what lets hosted sends
-// carry their bytes instead of handing the engine names from the wrong disk.
+// pasteFiles recognizes the file form of a terminal drop. A desktop drop
+// arrives only as pasted local paths, so putting those files on the existing
+// tray is what lets hosted sends carry their bytes instead of handing the
+// engine names from the wrong disk.
 func (a *app) pasteFiles(text string) bool {
 	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
 		return false
 	}
-	words := pastedWords(text)
-	if len(words) == 0 {
+	hits, _ := a.pasteResolve(text, false)
+	if hits == nil {
 		return false
 	}
-	paths := make([]string, 0, len(words))
-	for _, word := range words {
-		candidate := a.resolvePath(pastedPath(word))
-		info, err := os.Stat(candidate)
-		if err != nil {
-			return false
-		}
+	for _, hit := range hits {
+		candidate, info := hit.path, hit.info
 		if info.IsDir() {
 			a.note(filepath.Base(candidate) + " is a folder · attach a file")
 			return true
@@ -124,14 +76,14 @@ func (a *app) pasteFiles(text string) bool {
 				a.note(oversizeAttachment(chip{path: candidate}).Error())
 				return false
 			}
-		} else if info.Size() > maxAttachedFileBytes {
+		} else if a.hosted() && info.Size() > maxAttachedFileBytes {
 			a.note(oversizeFile(filepath.Base(candidate), info.Size()))
 			return false
 		}
-		paths = append(paths, candidate)
 	}
-	marks := make([]string, 0, len(paths))
-	for _, candidate := range paths {
+	marks := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		candidate := hit.path
 		if isImagePath(candidate) {
 			a.attach(candidate)
 			marks = append(marks, imageToken(a.chipNumber(candidate)))
@@ -179,31 +131,8 @@ func (a *app) chipNumber(path string) int {
 	return 0
 }
 
-// pastedImages resolves a paste to the pictures it names, or nil when it names
-// anything else at all.
-//
-// The all-or-nothing rule lives here: one word that is not one of the five
-// picture extensions and the whole paste is text. Existence is NOT asked here —
-// that is a syscall per word, and the caller stats only the pastes that got this
-// far.
-func (a *app) pastedImages(text string) []string {
-	words := pastedWords(text)
-	if len(words) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(words))
-	for _, word := range words {
-		path := a.resolvePath(pastedPath(word))
-		if !isImagePath(path) {
-			return nil
-		}
-		out = append(out, path)
-	}
-	return out
-}
-
 // pastedWords splits a paste the way the terminal that wrote it meant it to be
-// split: on whitespace, EXCEPT the whitespace a drag-and-drop escaped or quoted.
+// split: on ASCII IFS, EXCEPT the separators a drag-and-drop escaped or quoted.
 //
 // This is the whole reason a screenshot's path needs parsing at all. Every
 // terminal that implements the drop writes `Screenshot\ 2026-08-21\ at\ 5.png`
@@ -232,7 +161,10 @@ func pastedWords(text string) []string {
 			// escaping was written for would do with it.
 			i++
 			word.WriteRune(runes[i])
-		case unicode.IsSpace(r):
+		case asciiPasteSpace(r):
+			// A TERMINAL ESCAPES WHAT THE SHELL WOULD SPLIT ON AND NOTHING ELSE.
+			// In particular, the narrow no-break space in a macOS screenshot name
+			// arrives literally and belongs to that name rather than between words.
 			if word.Len() > 0 {
 				out = append(out, word.String())
 				word.Reset()
@@ -245,6 +177,133 @@ func pastedWords(text string) []string {
 		out = append(out, word.String())
 	}
 	return out
+}
+
+// asciiPasteSpaces is the shell whitespace a terminal escapes in a dropped
+// path, named once so the splitter and the literal readings cannot drift.
+const asciiPasteSpaces = " \t\n\r\v\f"
+
+func asciiPasteSpace(r rune) bool {
+	return strings.ContainsRune(asciiPasteSpaces, r)
+}
+
+// pasteReadings returns the terminal spellings one drop may mean, most literal
+// first. The alternatives are admitted only for a path-shaped first token and
+// only where the literal split left evidence that it may not be the whole
+// story, so prose never grows a more permissive reading around a path it names.
+func pasteReadings(text string) [][]string {
+	words := pastedWords(text)
+	if len(words) == 0 {
+		return nil
+	}
+	readings := make([][]string, 0, 4)
+	readings = appendReading(readings, words)
+	if !droppedWordShape(words[0]) ||
+		(len(words) == 1 && !strings.ContainsAny(text, "\n%")) {
+		return readings
+	}
+
+	lines := strings.Split(text, "\n")
+	lineReading := make([]string, 0, len(lines))
+	for _, line := range lines {
+		candidate := literalPastePath(line)
+		if candidate == "" {
+			lineReading = nil
+			break
+		}
+		lineReading = append(lineReading, candidate)
+	}
+	readings = appendReading(readings, lineReading)
+	readings = appendReading(readings, []string{literalPastePath(text)})
+
+	decoded := append([]string(nil), words...)
+	changed := false
+	for i, word := range decoded {
+		if !strings.Contains(word, "%") {
+			continue
+		}
+		if path, err := url.PathUnescape(word); err == nil {
+			decoded[i] = path
+			changed = changed || path != word
+		}
+	}
+	if changed {
+		readings = appendReading(readings, decoded)
+	}
+	return readings
+}
+
+// literalPastePath removes exactly one balanced quote pair because a filename
+// may itself contain quotes, then removes the shell escaping from its spelling.
+func literalPastePath(text string) string {
+	text = strings.Trim(text, asciiPasteSpaces)
+	if len(text) >= 2 && (text[0] == '\'' || text[0] == '"') && text[len(text)-1] == text[0] {
+		text = text[1 : len(text)-1]
+	}
+	var out strings.Builder
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '\\' && i+1 < len(runes) {
+			i++
+		}
+		out.WriteRune(runes[i])
+	}
+	return strings.Trim(out.String(), asciiPasteSpaces)
+}
+
+// appendReading rejects an empty reading and deduplicates equivalent spellings
+// so one path is never stat'ed twice merely because a line is also the whole paste.
+func appendReading(readings [][]string, reading []string) [][]string {
+	if len(reading) == 0 || (len(reading) == 1 && reading[0] == "") {
+		return readings
+	}
+	for _, held := range readings {
+		if sameReading(held, reading) {
+			return readings
+		}
+	}
+	return append(readings, reading)
+}
+
+func sameReading(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type pasteHit struct {
+	path string
+	info os.FileInfo
+}
+
+// pasteResolve walks the admitted readings until every candidate in one exists.
+// It reports the stats it performed without owning the keystroke road's count;
+// that counter belongs to the two callers that promise it to the performance
+// tests. regularOnly is the quiet fold's stricter certainty about real files.
+func (a *app) pasteResolve(text string, regularOnly bool) (hits []pasteHit, looked int) {
+	for _, reading := range pasteReadings(text) {
+		resolved := make([]pasteHit, 0, len(reading))
+		for _, word := range reading {
+			candidate := a.resolvePath(pastedPath(word))
+			info, err := os.Stat(candidate)
+			looked++
+			if err != nil || (regularOnly && !info.Mode().IsRegular()) {
+				resolved = nil
+				break
+			}
+			resolved = append(resolved, pasteHit{path: candidate, info: info})
+		}
+		if resolved != nil {
+			return resolved, looked
+		}
+	}
+	return nil, looked
 }
 
 // pastedPath turns one word of a paste into the path it means. A `file://` URL
