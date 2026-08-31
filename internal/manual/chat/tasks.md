@@ -1103,11 +1103,15 @@ Three things a job's row deliberately does **not** have, because a job has none 
 
 - **no room in the sense a task has one.** There is no agent inside a job and no
   transcript to read, so `enter` on the row opens a page that carries what a job actually
-  leaves behind: the same `job 3 · log /path/…` line, and under it
-  `a background job keeps a log, not a transcript`. The log file named there is where you
-  read what it did. What that page never shows is a chat — there was never one to show.
-  (On a job that has ended, `→` on the row itself does one thing only: it unfolds that
-  log line back under the row.)
+  leaves behind: the same `job 3 · log /path/…` line, and under it the **end of that log**
+  — the last 200 lines, newest at the bottom, re-read four times a second while the job
+  runs, with a foot reading `this log grows as the job works — esc to return`. When the job
+  ends the page takes one last reading, so the process's final lines are on it, and the foot
+  becomes `task finished — esc to return`. A job that has written nothing yet says
+  `a background job keeps a log, not a transcript` instead, and never an error. What that
+  page never shows is a chat — there was never one to show, and `enter` inside it steers
+  nothing, because there is nobody in a job to read a line. (On a job that has ended, `→` on
+  the row itself does one thing only: it unfolds that log line back under the row.)
 - **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
   `jobs kill`; every running job is also killed when the conversation closes.
 - **no branch, no changed-files list and no price.** A job runs in the workspace itself,
@@ -1890,9 +1894,12 @@ messages use the ordinary room renderer. `enter` steers the far worker; `x` rais
 ordinary confirmation and stopping uses the far engine's own sentence. Changing the
 task's model remains absent over this connection. Leaving with `esc` or `←` works normally.
 
-A background job still has no transcript. Its room says `a background job keeps a log,
-not a transcript`, and both its row and room prefix the far log path with that machine's
-name; they never offer the same spelling as a local path.
+A background job still has no transcript, and over this connection its room draws no log
+either: the path belongs to the other machine, and reading it here would open a file on
+yours. Its room says `a background job keeps a log, not a transcript`, and both its row and
+room prefix the far log path with that machine's name; they never offer the same spelling
+as a local path. `jobs output 3` is how you read a far job's output. On a local
+conversation the same page tails that log live.
 
 ## What is different inside a room
 
