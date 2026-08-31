@@ -100,6 +100,25 @@ const (
 	PhaseBriefing Phase = "briefing"
 )
 
+// PhaseWindow is how long a phase still describes the present: past it a surface
+// draws nothing rather than a clock for work that may be over.
+//
+// IT IS THE CONTRACT BETWEEN WHOEVER POSTS A PHASE AND WHOEVER DRAWS ONE, so it
+// is spelled once, here, with the vocabulary — and every beat that keeps a phase
+// alive is DERIVED from it rather than written down beside it. Two packages with
+// two ideas of how long a phase lasts is a stage that goes dark while it is still
+// running, which is the defect this constant was moved out of internal/tui3 to
+// end.
+//
+// Both beats sit comfortably inside it: a request says its phase again at most
+// once a second while it lasts ([phaseBeat] below), and a turn holding a phase
+// open says it again every third of this window (internal/session's
+// [phaseHeldBeat]). Fifteen seconds is therefore a wide margin on either — wide
+// enough that a busy frame or a machine under load never blinks the segment, and
+// short enough that a posting layer whose goroutine was killed without saying so
+// takes its clock off the screen while a person is still looking at it.
+const PhaseWindow = 15 * time.Second
+
 // PhaseNews is one moment of one request's life.
 //
 // Anything unknown is left zero and draws nothing, which is the emptiness law
@@ -218,7 +237,8 @@ type phaseClock struct {
 
 // phaseBeat is how often a phase that has not changed says so again. One second
 // is the granularity a person reads an elapsed clock at, and it keeps the cost
-// of the whole seam at one post a second per request.
+// of the whole seam at one post a second per request. It is a fifteenth of
+// [PhaseWindow], which is the margin that makes a dropped beat invisible.
 const phaseBeat = time.Second
 
 // newPhaseClock starts one request's clock. A nil clock is a request nobody is

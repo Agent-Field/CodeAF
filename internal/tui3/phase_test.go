@@ -232,6 +232,31 @@ func TestAStalePhaseDrawsNothing(t *testing.T) {
 	}
 }
 
+// AND A STAGE THAT IS STILL RUNNING IS STILL DRAWN, however long it runs.
+//
+// The window above is one half of a bargain and this is the other: every posting
+// layer says its phase again while it lasts — a request off its own stream, a
+// turn's stage off a timer (internal/session's phaseHeldBeat) — so what the desk
+// judges is the moment it was last HEARD and never the moment the stage began.
+// A quarter-hour reading that beats is a quarter-hour clock on the screen; the
+// measured defect was the same reading drawn for fifteen seconds of it.
+func TestAStageThatKeepsSayingItselfIsNeverDropped(t *testing.T) {
+	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
+	a := phaseApp(t, now)
+
+	PostPhaseNews(PhaseNews{
+		Phase: provider.PhaseChecking, Since: now.Add(-15 * time.Minute),
+		Model: phaseModel, Role: lane.RoleTalk, At: now.Add(-time.Second),
+	})
+	live, ok := a.livePhase()
+	if !ok {
+		t.Fatal("a stage said again a second ago was dropped as stale")
+	}
+	if got := phaseWords(live, now); got != "checking · 15m 0s" {
+		t.Fatalf("the stage reads %q, want the whole quarter of an hour it has run", got)
+	}
+}
+
 // AND A TURN THAT STOPPED SAYS SO. The empty phase is the end of the story, not
 // a phase called "" — it clears the entry so nothing keeps counting.
 func TestAFinishedTurnTakesItsClockOffTheScreen(t *testing.T) {

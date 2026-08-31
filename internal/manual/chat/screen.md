@@ -2228,6 +2228,24 @@ same clock:
 
 Each of them is taken off the screen the moment the wait ends.
 
+## A stage that lasts minutes keeps drawing — the phase went blank, the status line disappeared while it was still working, does a slow stage stop being shown
+
+**No stage ever goes dark while the work behind it is alive**, however many minutes it
+lasts. A phase says
+itself again while it lasts — a request off its own stream, a turn's own stage off a timer
+— and the screen keeps drawing one it has heard from in the last fifteen seconds. A reading
+that takes a quarter of an hour draws a clock for the whole quarter of an hour.
+
+That fifteen seconds is the one thing that can take a line off the screen early, and it is
+deliberate: it is what stops a clock running forever when the layer behind it was killed
+without saying so. If a phase disappears and the work has **not** finished, what you are
+looking at is a layer that stopped reporting, and `still working` — the vaguest true
+sentence aforge has — is what takes its place.
+
+This was not always true. Long stages used to be drawn for fifteen seconds and then vanish
+while they carried on, and one of them worked around it by announcing itself twice. Neither
+is the case now: every stage is said once and kept alive until it ends.
+
 ## It says thinking and nothing is on the screen — is it stuck, is it frozen, why is it slow, and what still working means
 
 `thinking` means the model is writing and none of what it writes is for you. Reasoning

@@ -2587,14 +2587,14 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// is true, and it takes itself off the screen when the stage ends, whichever
 	// way this ends.
 	//
-	// AND IT IS SAID TWICE, ONCE PER CALL. A surface drops a phase it has not
-	// heard again for fifteen seconds (internal/tui3's phaseWindow) and nothing
-	// here beats, so a single post would go dark halfway through a thirty-second
-	// stage — which is the defect, not the fix. The two calls are the seam this
-	// has, and [briefingSince] is carried into both so the clock a person reads
-	// counts the whole stage rather than restarting at the boundary.
-	briefingSince := time.Now()
-	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
+	// AND IT IS SAID ONCE, FOR THE WHOLE STAGE. It used to be posted twice, once
+	// per model call, because nothing beat and a surface drops a phase it has not
+	// heard again for [provider.PhaseWindow] — so a single post went dark halfway
+	// through a thirty-second stage. That is no longer true of any holder: a
+	// phase held open re-says itself while it lasts (phasenews.go's
+	// [phaseHeldBeat]), so the two calls below are one stage with one clock on
+	// it, counting from here to whichever ending this road takes.
+	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, time.Now())
 	draft, remains, drafted := a.checkpointBrief(ctx, turn, model)
 	if !remains {
 		if sketch.saysDone() {
@@ -2638,8 +2638,10 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// with nothing in any file saying it had happened. So the ladder is walked
 	// with its outcomes in hand, written down rung by rung, and the rung that
 	// supplied the brief rides the ceiling's own line (see the carry ladder above).
-	a.tellPhase(provider.PhaseBriefing, checkpointBriefingWho, briefingSince)
 	written, wrote := a.writeHandoff(ctx, asked, read.digest, draft)
+	// AND THE CLOCK COMES OFF WITH THE WRITING, which is where the stage the
+	// person was watching actually ends: everything below is bookkeeping over
+	// text already in hand.
 	a.endPhase()
 	goal, carried := written, carryRungHandoff
 	if strings.TrimSpace(goal) == "" {
