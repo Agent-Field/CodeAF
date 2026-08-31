@@ -1764,6 +1764,18 @@ type Agent struct {
 	// prior the next session will fetch again — so a quit cuts it and does not
 	// look back.
 	laneStop context.CancelFunc
+	// laneCtx is the context the beat runs under and the one a probe rides. It
+	// is the SESSION'S life rather than a turn's, deliberately: a probe is
+	// bought while somebody is typing and outlives the keystroke that bought it,
+	// so a turn's context would cancel it exactly when it stopped mattering and
+	// a background one would outlive the window (lanenews.go's [Agent.Typing]).
+	laneCtx context.Context
+	// laneBeating is whether this session actually started a sheet beat. It is
+	// a separate fact from laneStop, which is minted for every session because
+	// a probe rides the same context: the three sessions that run no beat still
+	// have a lane context, and "did a beat start" is the question the gate is
+	// about (agent.go's [Agent.startLaneBeat]).
+	laneBeating bool
 
 	// turnLane is what THIS agent's own last request was served by, and it is
 	// the only honest source there is for the lane half of a usage row

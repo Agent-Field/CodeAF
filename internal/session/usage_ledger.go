@@ -369,7 +369,12 @@ func (w *laneWitness) token(now time.Time) {
 // timing is dropped here exactly as internal/provider's [streamWatch.sighting]
 // refuses to fold it into a belief. What the call spent and whether it hedged
 // are still true and stay.
-func (w *laneWitness) answered(seen hedgeSeen, output int) {
+// It hands back what it wrote, because two readers want the same row at two
+// different moments: the turn's seal writes it to the ledger when the turn
+// ends ([laneWitness.take]), and the surface is told about it now — an answer
+// whose lane arrives on the status line a minute later is a fact about a turn
+// nobody is looking at any more.
+func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.row = laneFacts{Lane: seen.lane, Hedged: seen.hedged, Waste: seen.waste}
@@ -379,6 +384,7 @@ func (w *laneWitness) answered(seen hedgeSeen, output int) {
 		w.row.Output = output
 	}
 	w.began, w.first, w.last = time.Time{}, time.Time{}, time.Time{}
+	return w.row
 }
 
 // take is the row's read, and it CONSUMES what it read. A measurement belongs

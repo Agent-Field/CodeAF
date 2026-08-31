@@ -2890,7 +2890,7 @@ func TestRoutingOffRunsNoLaneBeat(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	if agent.laneStop != nil {
+	if agent.laneBeating {
 		t.Error("routing off still armed a beat this session would have to stop")
 	}
 	// The beat is a goroutine, so "it did not happen" has to be given a moment
@@ -2917,7 +2917,7 @@ func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = agent.Close() })
 
-	if agent.laneStop != nil {
+	if agent.laneBeating {
 		t.Error("a base that publishes no sheet still armed a beat")
 	}
 	select {

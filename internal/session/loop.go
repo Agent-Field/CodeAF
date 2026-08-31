@@ -15,7 +15,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
-	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -421,17 +420,29 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// seconds per dollar (internal/lane's Lambda). Who is waiting and what their
 	// waiting costs are two different facts and the router needs both — the
 	// first decides whether to ask for speed at all, the second decides how much
-	// a second of it may cost. A turn is worth a person's attention. A task node
-	// is off anybody's critical path as far as this build can yet see it, so its
-	// λ is zero and price wins outright, which is exactly what its background
-	// intent already asked for; it is said rather than inferred for the reason
-	// WithRoutingIntent is said rather than inferred.
+	// a second of it may cost. A turn is worth a person's attention; it is said
+	// rather than inferred for the reason WithRoutingIntent is said rather than
+	// inferred.
+	//
+	// A TASK NODE'S λ IS NOT ZERO WHEN SOMEBODY IS SITTING IN FRONT OF THE RUN.
+	// It was, on every task turn this build ever ran, and the simulator priced
+	// what that bought: a fifth off the money for nearly four times the wait
+	// (bench/lanelab/REPORT.md, "the λ = 0 row"). λ = 0 is the statement that a
+	// second is worth NOTHING, and it is only true of work whose owner is not
+	// there — a run started from a window somebody is watching has an owner
+	// reading its cards as they land, and the seconds are theirs.
+	//
+	// THIS IS THE V1 RULE AND THE SIGNATURE SAYS SO. [lane.Lambda] takes the
+	// slack, the expected duration and the deadline the plan DAG will one day
+	// supply, and until it does they are zero here and the answer comes off the
+	// first argument alone: attended work is worth a person's attention,
+	// unattended work is worth nothing. The intent is unchanged either way —
+	// nobody is watching THIS turn stream, whatever they are watching — so a
+	// node still asks for the cheap endpoint and now says what its wait costs.
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
-		ctx = provider.WithValueOfTime(ctx, lane.Lambda(false, false, 0, 0, 0))
-	} else {
-		ctx = provider.WithValueOfTime(ctx, lane.Lambda(true, false, 0, 0, 0))
 	}
+	ctx = provider.WithValueOfTime(ctx, a.turnLambda())
 
 	// The slot the adapter writes each answer's endpoint into. It is per turn and
 	// per agent, which is the only scope in which the answer is honest: the
@@ -467,6 +478,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// same call the dialled level does, which is what makes one resolver true.
 	model := a.Model()
 	rung := a.effortFor(model)
+	// AND THE SURFACE HEARS ABOUT A RESCUE WHILE IT IS STILL OUT, under the
+	// latched model for the latch's own reason (lanenews.go). The report is read
+	// AFTER the answer; this is the one state of a hedge that is over before the
+	// answer exists, and it is the only place this build says the word "slow" —
+	// while something is already being done about it.
+	a.watchLaneRescue(model, hedge)
 
 	// usedTools says this turn touched the belt at all. It is the one fact the
 	// route judge cannot see from outside the loop (route_judge.go): a turn that
@@ -565,7 +582,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			if errors.Is(err, errSteerCut) {
 				turn.Turns++
 				a.addUsage(&turn, response, served.Name())
-				a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
+				a.tellLaneNews(model, a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response)), hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall)
 				warm.reset()
@@ -605,7 +622,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// above. It is beside [Agent.addUsage] because it is the same grain —
 		// one response — and the row it eventually reaches is the turn's seal,
 		// which keeps the most recent answer and nothing else.
-		a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
+		// AND THE SURFACE IS TOLD WHO ANSWERED, on the same line and at the same
+		// grain (lanenews.go). It is the push half of a seam whose pull half
+		// cannot exist: a status line cannot see a stream, and the arrow between
+		// this package and a surface only points one way.
+		a.tellLaneNews(model, a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response)), hedge)
 
 		calls := response.ToolCalls()
 
