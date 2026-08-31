@@ -643,7 +643,11 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	process := exec.CommandContext(tickCtx, shell, append(shellArgs, spec.command)...)
 	process.Dir = r.workspace
 	process.Env = os.Environ()
-	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// A new SESSION rather than a bare process group: the group-kill below is
+	// unchanged (a session leader leads its own group), and a tick's child that
+	// opens /dev/tty is refused rather than drawing on the person's frame
+	// (jobs.go states the measured case).
+	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	// The timeout kills the whole GROUP, not just the shell: a tick that ran
 	// `sleep 600 | grep x` leaves two processes, and killing the parent alone
 	// would leak the rest of them once per tick, forever.

@@ -371,7 +371,14 @@ func newBashTool(cwd string) Tool {
 			cmd := exec.Command(shell, shellArgs...)
 			cmd.Dir = cwd
 			cmd.Env = StreamingEnv()
-			processgroup.Configure(cmd)
+			// Detached — a new session, not just a new group. The kill
+			// semantics are identical (a session leader leads its own group),
+			// and what the detachment buys is the terminal: a command that
+			// opens /dev/tty — a CLI that is itself a screen — is refused
+			// instead of drawing over the surface that ran it. Measured on two
+			// review CLIs promoted to jobs, whose frames landed across the top
+			// of a running conversation.
+			processgroup.ConfigureDetached(cmd)
 			// A COMMAND THAT LEAVES A BACKGROUND CHILD SHARING ITS STDOUT MUST
 			// STILL COST ITS TIMEOUT AND NOTHING MORE. Killing the shell is not
 			// enough on its own: Stdout and Stderr below are an in-process

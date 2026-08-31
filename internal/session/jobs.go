@@ -493,10 +493,16 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	process := exec.Command(shell, shellArgs...)
 	process.Dir = r.workspace
 	process.Env = bare.StreamingEnv()
-	// Setpgid puts the job and everything it spawns in one process group, so a
-	// kill reaches the whole tree. A dev server that forks a compiler must not
-	// survive the kill of its parent.
-	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Setsid puts the job and everything it spawns in one process group, so a
+	// kill reaches the whole tree — the leader of a new session leads its own
+	// group, so every `kill -pgid` here works exactly as it did under Setpgid.
+	// A dev server that forks a compiler must not survive the kill of its
+	// parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty, so
+	// a child that opens /dev/tty — a CLI that is itself a screen, a prompt
+	// that insists on the keyboard — is refused instead of painting over the
+	// person's frame. That was measured, not imagined: two review CLIs run as
+	// jobs drew their own output across the top of a running conversation.
+	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 

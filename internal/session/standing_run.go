@@ -312,7 +312,9 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 	process := exec.CommandContext(probeCtx, shell, append(shellArgs, item.When.Probe.Command)...)
 	process.Dir = item.Workspace
 	process.Env = os.Environ()
-	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// A new SESSION, for the reason jobs.go states: the group-kill is unchanged
+	// and a probe's child cannot reach the person's terminal.
+	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	// The whole GROUP, not just the shell: a probe that ran `curl … | grep x`
 	// leaves two processes, and killing the parent alone would leak the rest of
 	// them once per check, forever (tools_watch.go's runTick).

@@ -307,6 +307,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// jobs tool, so these have to land on the page that owns the column.
 		{"why is nothing showing on the right while a command is running", "tasks"},
 		{"does a background job show up on the task column", "tasks"},
+		{"the job is drawing over my chat", "tasks"},
+		{"stray lines painted over the conversation", "tasks"},
 		{"what is the row for my dev server on the right", "tasks"},
 		{"can I stop a background job from the sidebar", "tasks"},
 		{"do you ask before running rm", "permissions"},
