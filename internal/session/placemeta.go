@@ -160,6 +160,12 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// a value a person can choose their way back to: a session dialled to max
 	// and then turned off again has to come back off rather than back at max.
 	meta.Effort = a.effort.String()
+	// And the folders this conversation turned out to be about, for the rung's
+	// reason and one more: EVERY STAMP KEEPS THEM TRUE. The set moves during a
+	// turn — a ground resolved, a folder named — and every writer of this file
+	// goes through here, so a place accrued between two stamps cannot be undone
+	// by whichever one happens to run next (places.go).
+	meta.Places = a.places
 	return meta
 }
 
@@ -174,7 +180,26 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 //
 // EVERY FAILURE IS SILENCE, for this file's stated reason: the rung is a
 // convenience and the session is the record.
-func (a *Agent) stampEffort() {
+func (a *Agent) stampEffort() { a.stampMeta() }
+
+// stampPlaces writes the folders this conversation is about down the moment the
+// set changes, for [Agent.stampEffort]'s reason: a person who names a place and
+// closes the terminal must find the conversation still about it, and a ground
+// the work resolved is only worth keeping if the NEXT process finds it too
+// (places.go).
+//
+// It is one write per deliberate change and never per turn — [Agent.refer]
+// returns without calling this when the set already reads the way it would.
+func (a *Agent) stampPlaces() { a.stampMeta() }
+
+// stampMeta is the write those two share: read the identity, fill in everything
+// this running session knows about itself, put it back. It is one function
+// because a stamp that wrote only ITS OWN field would be two writers of one
+// file, and the one that ran second would put back what it had read before the
+// other moved.
+//
+// EVERY FAILURE IS SILENCE, for this file's stated reason.
+func (a *Agent) stampMeta() {
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		return

@@ -1885,7 +1885,21 @@ type Agent struct {
 	// field and not a map because it is a choice about THIS CONVERSATION rather
 	// than about a model: a person dialling their session deeper means the
 	// session, whatever they switch the model to inside it.
-	effort   effort.Rung
+	effort effort.Rung
+	// places is the set of folders this conversation is ABOUT, newest first,
+	// kept in the session folder's meta.json so it survives a restart
+	// (places.go). It is under mu because the two hands that move it are a
+	// surface — a person naming a folder — and a turn resolving a task's ground,
+	// and those run at once.
+	//
+	// Nil is the ordinary state and means nothing: a conversation about the
+	// place it is standing in has referred to nowhere else, which is every
+	// conversation until one accrues.
+	//
+	// IT IS REPLACED AND NEVER EDITED IN PLACE, because a stamp hands the live
+	// slice to the marshaller and writes it after the lock is released
+	// (placemeta.go's [Agent.stampMeta]).
+	places   []PlaceRef
 	messages []ai.Message
 	// messageReasoning is aligned one-for-one with messages and carries the
 	// provider fields ai.Message cannot represent. Rewrites clear or move the
