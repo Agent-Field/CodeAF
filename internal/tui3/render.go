@@ -1796,7 +1796,7 @@ func (a *app) servedRiderAt(width int) string {
 		if a.state != stateWorking {
 			news.Rate = 0
 		}
-		if words := fitPhaseSegment(phaseSegmentOf(news, a.now()), room); words != "" {
+		if words := rowLed(phaseFields(news, a.now()), roomFor(room)); words != "" {
 			return riderLead + words
 		}
 	}
@@ -1821,19 +1821,29 @@ func (a *app) servedRiderAt(width int) string {
 	}
 	// The name leads and the rate is the field after it, which is this segment's
 	// whole hierarchy: who answered is the fact, how fast is the measurement.
-	seg := phaseSegment{primary: phaseField{full: "via " + served, short: served}}
+	fields := []rowField{rowSay("via "+served, served)}
 	// THE RATE RIDES ONLY WHILE A TURN IS RUNNING. Who served is attribution
 	// and stays; how fast they were writing is a claim about NOW, and a rate
 	// from the last turn standing on an idle status line read as a live figure
 	// nobody was producing — a person sat looking at "92 tok/s" over a chat
 	// that was doing nothing.
 	if sighting.Rate > 0 && a.state == stateWorking {
-		seg.fields = []phaseField{{full: tokenWord(int(sighting.Rate)) + " tok/s"}}
+		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
 	}
-	if words := fitPhaseSegment(seg, room); words != "" {
+	if words := rowLed(fields, roomFor(room)); words != "" {
 		return riderLead + words
 	}
 	return ""
+}
+
+// roomFor turns this file's "below zero is no bound" into rowfit.go's own
+// spelling of the same thing, which is a very large number rather than a
+// special case ([rowUnbounded]). One code path fits every row.
+func roomFor(width int) int {
+	if width < 0 {
+		return rowUnbounded
+	}
+	return width
 }
 
 // modelBase strips the vendor from a model id, and nothing else: everything

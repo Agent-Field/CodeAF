@@ -343,7 +343,7 @@ func richPhase(now time.Time) PhaseNews {
 // sentence; not one of them is a cut one.
 func TestTheServedSegmentDegradesByWhatItsPartsAreWorth(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
-	seg := phaseSegmentOf(richPhase(now), now)
+	seg := phaseFields(richPhase(now), now)
 
 	for _, c := range []struct {
 		width int
@@ -355,21 +355,30 @@ func TestTheServedSegmentDegradesByWhatItsPartsAreWorth(t *testing.T) {
 		// The lead word is grammar and is the first thing a narrow row spends.
 		{width: 49, want: "coreweave · first word 3.1s → parasail at 4.4s"},
 		{width: 46, want: "coreweave · first word 3.1s → parasail at 4.4s"},
-		// Then every field says the least of itself that is still true.
-		{width: 45, want: "coreweave · 3.1s → parasail 4.4s"},
+		// Then every field says the least of itself that is still true — and
+		// the lead comes BACK the moment the shorter fields have left room for
+		// it, because between two rows that say as much the more identifying
+		// name is the better one (rowfit.go's [rowLed]).
+		{width: 45, want: "via coreweave · 3.1s → parasail 4.4s"},
+		{width: 36, want: "via coreweave · 3.1s → parasail 4.4s"},
+		{width: 35, want: "coreweave · 3.1s → parasail 4.4s"},
 		{width: 32, want: "coreweave · 3.1s → parasail 4.4s"},
 		// Then the consequence goes WHOLE — never a bare countdown.
-		{width: 31, want: "coreweave · 3.1s"},
+		{width: 31, want: "via coreweave · 3.1s"},
+		{width: 20, want: "via coreweave · 3.1s"},
+		{width: 19, want: "coreweave · 3.1s"},
 		{width: 16, want: "coreweave · 3.1s"},
 		// Then the clock, and the machine's name is the last thing standing.
-		{width: 15, want: "coreweave"},
+		{width: 15, want: "via coreweave"},
+		{width: 13, want: "via coreweave"},
+		{width: 12, want: "coreweave"},
 		{width: 9, want: "coreweave"},
 		// And a row with no room for the whole name draws NOTHING, because half
 		// a machine's name names no machine.
 		{width: 8, want: ""},
 		{width: 0, want: ""},
 	} {
-		if got := fitPhaseSegment(seg, c.width); got != c.want {
+		if got := rowLed(seg, roomFor(c.width)); got != c.want {
 			t.Fatalf("at %d columns the segment reads %q, want %q", c.width, got, c.want)
 		}
 	}
@@ -382,7 +391,7 @@ func TestTheLadderWithNoConsequenceToName(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	news := richPhase(now)
 	news.Deadline, news.Then = time.Time{}, ""
-	seg := phaseSegmentOf(news, now)
+	seg := phaseFields(news, now)
 
 	for _, c := range []struct {
 		width int
@@ -392,12 +401,15 @@ func TestTheLadderWithNoConsequenceToName(t *testing.T) {
 		{width: 31, want: "via coreweave · first word 3.1s"},
 		{width: 30, want: "coreweave · first word 3.1s"},
 		{width: 27, want: "coreweave · first word 3.1s"},
-		{width: 26, want: "coreweave · 3.1s"},
+		{width: 26, want: "via coreweave · 3.1s"},
+		{width: 20, want: "via coreweave · 3.1s"},
+		{width: 19, want: "coreweave · 3.1s"},
 		{width: 16, want: "coreweave · 3.1s"},
-		{width: 15, want: "coreweave"},
+		{width: 15, want: "via coreweave"},
+		{width: 12, want: "coreweave"},
 		{width: 8, want: ""},
 	} {
-		if got := fitPhaseSegment(seg, c.width); got != c.want {
+		if got := rowLed(seg, roomFor(c.width)); got != c.want {
 			t.Fatalf("with nothing armed, %d columns reads %q, want %q", c.width, got, c.want)
 		}
 	}
@@ -411,7 +423,7 @@ func TestTheLadderWithNoLaneNamedLeadsWithThePhasesOwnWord(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	news := richPhase(now)
 	news.Lane = ""
-	seg := phaseSegmentOf(news, now)
+	seg := phaseFields(news, now)
 
 	for _, c := range []struct {
 		width int
@@ -427,12 +439,12 @@ func TestTheLadderWithNoLaneNamedLeadsWithThePhasesOwnWord(t *testing.T) {
 		{width: 10, want: "first word"},
 		{width: 9, want: ""},
 	} {
-		if got := fitPhaseSegment(seg, c.width); got != c.want {
+		if got := rowLed(seg, roomFor(c.width)); got != c.want {
 			t.Fatalf("with no lane named, %d columns reads %q, want %q", c.width, got, c.want)
 		}
 	}
 	for width := -1; width <= 40; width++ {
-		if got := fitPhaseSegment(seg, width); strings.Contains(got, "via") {
+		if got := rowLed(seg, roomFor(width)); strings.Contains(got, "via") {
 			t.Fatalf("a lane nobody named was announced at %d columns: %q", width, got)
 		}
 	}
@@ -455,10 +467,10 @@ func TestTheLadderNeverOverrunsItsWidthNorEndsInATruncationGlyph(t *testing.T) {
 		Model: phaseModel, Role: lane.RoleTalk, At: now,
 	}
 	for _, news := range []PhaseNews{rich, quiet, writing, running} {
-		seg := phaseSegmentOf(news, now)
-		widest := fitPhaseSegment(seg, -1)
+		seg := phaseFields(news, now)
+		widest := rowLed(seg, rowUnbounded)
 		for width := 0; width <= len(widest)+8; width++ {
-			got := fitPhaseSegment(seg, width)
+			got := rowLed(seg, roomFor(width))
 			if measured := ansi.StringWidth(got); measured > width {
 				t.Fatalf("%q ran %d columns over a budget of %d: %q", widest, measured-width, width, got)
 			}
