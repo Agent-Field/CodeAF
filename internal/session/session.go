@@ -2104,6 +2104,18 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
+	// handover is the seam a delivery's last two writes are made across, and the
+	// seam the runner reads them across ([Agent.handOverTaskNews] and
+	// [Agent.taskNewsStanding], which states the law). The pair it guards lives
+	// under two other locks — "outstanding" is the graph's and the job
+	// registry's, "owed" is this agent's — so nothing smaller than a lock of its
+	// own can make a delivery indivisible to whoever is reading it.
+	//
+	// IT IS THE OUTERMOST LOCK ON BOTH ROADS. It is taken while holding nothing,
+	// and everything done under it takes its own locks inside; taking it while
+	// holding mu or the graph's would be a second lock order in a package that
+	// has one.
+	handover sync.Mutex
 	// done is closed when the in-flight turn has recorded its last message,
 	// non-nil exactly while running. Close waits on it so a cancelled turn's
 	// tail reaches the journal before the file does.
