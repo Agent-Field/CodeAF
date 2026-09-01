@@ -59,8 +59,9 @@ folders the conversation is about, with nothing in the work to choose between th
 the same one-keypress question rung 2 asks, in the two names you already know.
 
 **How it stands on that ground is not asked either — it follows from the work.** A
-repository the task writes in gets `git worktree add -b <branch> <dir> HEAD` cut **from that
-repository** and merged back into it; your uncommitted changes are not carried. A repository
+repository the task writes in gets a worktree of its own cut **from that repository** and
+merged back into it, and what that worktree holds is your folder **as it stands** —
+uncommitted edits and untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
 folder, and the files the task wrote are laid back over it by name when it lands. And "work
@@ -84,7 +85,8 @@ its own branch, so you can keep working in yours while it runs. If your request 
 names another folder, the task works in that exact folder instead; its card and its
 `/history` record show the resolved `where`.
 
-aforge runs `git worktree add -b <branch> <dir> HEAD` off your **current HEAD**.
+aforge cuts that worktree from your folder **as it stands** — see *Does a task see my
+unsaved changes* above for what travels and what does not.
 
 - **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home,
   while the worktree is registered in the repository it was cut from.
@@ -116,7 +118,8 @@ aforge quietly makes that workspace a git repository the moment the conversation
 
 So a task in a conversation that has been nowhere else takes the ordinary road described
 above, against that repository instead of a project's: a worktree at `<session
-folder>/trees/<task id>`, a branch `task/<title>-<6 hex>` off its HEAD, and a merge home
+folder>/trees/<task id>`, a branch `task/<title>-<6 hex>` cut from that workspace as it
+stands, and a merge home
 when the task lands. **A conversation that HAS been somewhere else goes there instead** — if
 you have been reading a real project in this conversation, that project is the task's
 ground and the workspace beside the session is not used at all. Work that
@@ -147,37 +150,45 @@ made there is inside the conversation and deleting the conversation deletes it. 
 three ways to keep the work are on the starting-aforge page, under *Where do task files go when I
 did not open a project*.
 
-## Does a task see my unsaved changes — it worked on an old version of the file
+## Does a task see my unsaved changes — does a task get my uncommitted work, do I have to commit before starting a task
 
-No. The task's checkout is cut from your **last commit**, so an edit sitting uncommitted in
-your working copy does not travel with it. That is the same isolation that lets you keep
-typing while it runs, and it is also how a task ends up reporting a file as it was this
-morning: it was reading the committed version, and it was right about that version.
+**Yes, and you do not have to commit first.** A task's world is your folder **as it stands
+at the moment you start it** — the edits you have not committed, and the files you have
+never added. It works in a copy of that, not in a copy of your last commit.
+
+Before that, it was your last commit and nothing else, and it was expensive: a task handed
+a brief describing work that was still uncommitted spent an hour looking for files that were
+not on its disk. Nothing about the isolation changed — you keep typing in your own folder
+while it runs, and what you type does not reach it.
 
 Aforge says so before it spends anything. When you start a task and your working copy has
 uncommitted changes, one line goes into the chat with the brief:
 
 ```
-your unsaved edits stay here · the task works from the last commit
+your unsaved edits go with it · your own copy is untouched
 ```
 
 It is a **note and not a gate** — the task starts on the very next breath and nothing waits
 for you. It is said once per task you start, and it is not said at all when your working
 copy is clean or when the conversation is not in a repository, because there would be
-nothing to tell you.
+nothing to tell you. **New files you have never committed do not get the line** — build
+output and scratch files would otherwise make it appear on every single start — but they
+travel with the task just the same.
 
-**New files you have never committed are not counted.** Build output and scratch files
-would otherwise make the line appear on every single start, and a line that always appears
-is a line nobody reads. They are just as invisible to the task, so a brand-new file the task
-needs is one to commit — or to name in the brief, so the worker makes it itself.
+**How your work travels, if you want to know.** aforge writes a commit of your folder as it
+stands, called `the world this task started from: <title>`, and cuts the task's branch from
+that. Your own checkout is not touched: your HEAD does not move, your index does not move,
+and your uncommitted work is still uncommitted in front of you. That commit is scaffolding
+and it never comes home — when the task lands, only what the task itself wrote is merged.
 
-**If you want the task to have your changes, commit them first**, then start it. There is no
-flag that sends a dirty working copy; the checkout is `git worktree add … HEAD` and HEAD is
-what it gets.
+**The one thing that still does not travel** is what your `.gitignore` covers: a `.env`, an
+installed `node_modules`, a dev database. Git cannot see those, so the commit cannot carry
+them. A task that needs one of them is a task to run **in place** — a named folder, or
+`where: in place` — where there is only one directory and the question does not arise.
 
-The one task that does see your unsaved edits is a task **running in place** — a named
-folder, `where: in place`, or a workspace that is no repository at all. There is only one
-directory in that case, which is why such a task holds it while it runs (below).
+**If you would rather it did not have your half-finished work,** commit or stash before you
+start. There is no flag for it: the world is the folder, and the folder is what you leave in
+it.
 
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 
