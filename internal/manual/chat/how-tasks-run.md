@@ -605,8 +605,10 @@ longer evidence that anybody is looking at *that* conversation.
 Two clocks, and neither is a hard stop.
 
 **One hour per checkpoint.** The run, every correction round and every check inside it
-share a 60-minute interval — but when it fires, a second look at the evidence decides what
-happens next. Working toward the brief: the task gets another hour, up to five in all
+share a 60-minute interval — but when it fires, a second look decides what
+happens next. That look stands in the task's own working copy and has to open it: an answer
+given without reading anything is sent back once, told so, and the second answer is the one
+that counts. Working toward the brief: the task gets another hour, up to five in all
 (5 hours is the hard backstop, and a healthy task never meets it). Circling: it is told to
 land now — one final turn to write the deliverable from what it already has — and only
 then is it stopped, with the threshold and the evidence in the report.
@@ -637,6 +639,29 @@ to the 1000-step backstop. Whatever stops the work, the landing turn runs first 
 writes up what it has — so nothing is ever lost mid-flight. And a task stopped this way is
 still checked against its acceptance afterwards: if the work holds it lands finished and
 merges, and the `stopped:` line never reaches you.
+
+## The repeat checkpoint — a task that keeps saving the same thing
+
+A successful save always counted as progress, so a task rewriting one file with the same
+bytes reset `no_progress` on every call and nothing but the 200-step budget stood in its
+way. One really did: twenty-odd rewrites of a single file over twenty-two minutes, every
+call clean.
+
+So aforge fingerprints what each call **produced** — the bytes of the file a saving call
+wrote, or the answer any other call brought back — and counts how many in a row produced
+something it had already produced. The same count covers a search run twice with the same
+query, an API called again with the same body and a page downloaded twice; it is not about
+files.
+
+When that run reaches the task's own `no_progress` number, the second look runs. It is
+handed the count in words — `the last 6 write calls produced byte-identical content` — in
+front of the list of calls, and it is told to read the working copy before it answers.
+**Nothing is stopped by the count itself.** Told the task is still working, the run starts
+again from zero and the task carries on with no extra steps and no extra time; told it is
+circling, the landing turn runs and the report reads
+`stopped at repeat checkpoint: <what it said>`. There is no number anywhere saying how many
+identical saves are too many, and `no_progress` is on the wire — a task whose work is
+legitimately repetitive can raise it.
 
 ## What "bringing the work home" tells the task, and why a tool says it was withdrawn
 
@@ -1767,7 +1792,7 @@ Endings are checked in a fixed order, and the first match wins:
 | --- | --- | --- |
 | 1 | No working copy could be made | `could not prepare a working copy: <err>` |
 | 2 | The worker would not start | `could not start the task: <err>` |
-| 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
+| 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish`, `stopped: 6 steps without progress`, or `stopped at repeat checkpoint: <what the second look said>` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
 | 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
@@ -1929,6 +1954,10 @@ nothing new in the worktree before the task is stopped as spinning. Default **6*
 limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
 the task made is committed onto its kept branch. A negative value answers
 `Invalid arguments: no_progress cannot be negative`.
+
+The same number is also **how many calls in a row may produce byte-identical content before
+the second look is asked about it** — the repeat checkpoint above. That one stops nothing on
+its own: raising `no_progress` for work that is legitimately repetitive moves both.
 
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
