@@ -81,12 +81,16 @@ const literalPathspec = ":(literal)"
 // ONE FILE LEFT OUT IS ENOUGH, because a landing merges and then removes the only
 // other copy, and a file that was quietly dropped on the way is a file nobody has.
 //
-// TWO PATHS ARE NOT WORK AT RISK. One that is not on disk — a node that wrote a
-// file and then removed it still names it on its ledger — has nothing to lose. One
-// the repository IGNORES was never going to be on the branch under `add -A`
-// either, and refusing a landing over it would be this file's law inverted. The
-// ignore is asked of git and only on this road, which is the one a landing never
-// takes.
+// TWO PATHS ARE NOT WORK AT RISK. One that is GONE and was never tracked — a node
+// that wrote a file and then removed it still names it on its ledger — has nothing
+// to lose; one that is gone and IS tracked is a deletion the branch has to carry,
+// so it counts. And a path the repository IGNORES was never going to be on the
+// branch under `add -A` either, so refusing a landing over it would be this file's
+// law inverted. Anything else that cannot be looked at at all is work at risk by
+// default: a file behind a directory nobody can read is still a file.
+//
+// The two extra questions are asked of git ONLY on this road, which is the one a
+// landing never takes: an ordinary batch goes in whole and nothing here runs.
 func unstagedWork(dir string, paths []string) bool {
 	unstaged := false
 	for _, path := range paths {
@@ -94,7 +98,14 @@ func unstagedWork(dir string, paths []string) bool {
 			continue
 		}
 		relative := strings.TrimPrefix(path, literalPathspec)
-		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(relative))); err != nil {
+		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(relative))); os.IsNotExist(err) {
+			if _, known := git(dir, "ls-files", "--error-unmatch", "--", relative); known != nil {
+				// Never tracked and no longer there: nothing to lose either way.
+				continue
+			}
+			// Tracked and gone is a deletion, and a deletion that did not reach the
+			// index is half a change waiting to land on somebody's branch.
+			unstaged = true
 			continue
 		}
 		if _, err := git(dir, "check-ignore", "-q", "--", relative); err == nil {

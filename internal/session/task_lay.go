@@ -109,7 +109,9 @@ func (l laidWork) commit() string {
 		staged, target := pair[0], pair[1]
 		// A RENAME REPLACES A FILE AND REFUSES A DIRECTORY, so the one shape it
 		// cannot do on its own is cleared first. Everything else — the ordinary
-		// file over an ordinary file — is one atomic step.
+		// file over an ordinary file — is one atomic step. A clearing that fails
+		// needs no answer of its own: the rename under it is then the one that
+		// cannot happen, and it is already reported.
 		if directoryAt(target) || directoryAt(staged) {
 			_ = os.RemoveAll(target)
 		}

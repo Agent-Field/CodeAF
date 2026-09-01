@@ -500,3 +500,69 @@ func TestASettledLandingThatSavedNothingSaysSoInTheJobLog(t *testing.T) {
 		t.Fatalf("merge = %q, want the mark the landing handed over", merge)
 	}
 }
+
+// THE COMMIT'S OWN FAILURE IS THE THIRD SILENT ENDING. Everything stages, git
+// refuses to write the commit, and the landing must not read that as the empty
+// branch a node that only read leaves.
+func TestALandingWhoseCommitGitRefusedKeepsTheWork(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only directory, so the commit cannot be refused")
+	}
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "ffff6666ffffbbbb", 22, "add the parser")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
+	// The directory holding the task's own branch ref: staging still works, and
+	// the commit that would move the branch cannot lock it.
+	refs := filepath.Join(repo, ".git", "refs", "heads", "task")
+	if err := os.Chmod(refs, 0o555); err != nil {
+		t.Fatalf("making %s read-only: %v", refs, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
+
+	merge, detail := tree.comeHome("add the parser", []string{"parser.py"})
+
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q (%s), want the landing to refuse a commit git would not write", merge, detail)
+	}
+	if !strings.Contains(detail, "cannot lock ref") {
+		t.Fatalf("the landing said %q, want git's own account of the refusal", detail)
+	}
+	if _, err := os.Stat(filepath.Join(tree.dir, "parser.py")); err != nil {
+		t.Fatalf("the landing destroyed the only copy of the work: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "parser.py")); err == nil {
+		t.Fatal("an empty branch was merged onto the person's own")
+	}
+}
+
+// AND THE INDEX READ SAYS WHEN IT COULD NOT READ. An empty answer and a failed
+// one are the same silence to a caller that is about to merge.
+func TestReadingTheIndexSaysWhenItCouldNotBeRead(t *testing.T) {
+	saved, problem := stagedPaths(t.TempDir())
+	if problem == "" {
+		t.Fatalf("reading the index of somewhere that is not a repository answered %v and no problem", saved)
+	}
+	if len(saved) != 0 {
+		t.Fatalf("a failed read answered %v", saved)
+	}
+}
+
+// A LAY THAT FAILS WHILE PUTTING FILES IN PLACE SAYS SO. It is the one window
+// this road cannot close — the person can be left holding part of the ledger —
+// so what it must never do is report the landing as ordinary.
+func TestALayThatFailsWhilePuttingFilesInPlaceReportsIt(t *testing.T) {
+	to := t.TempDir()
+	target := filepath.Join(to, "keep.md")
+	writeFile(t, target, "what the person had\n")
+	lay := laidWork{token: "abcdef", staged: [][2]string{{filepath.Join(to, "nothing-was-staged-here"), target}}}
+
+	if problem := lay.commit(); problem == "" {
+		t.Fatal("a lay that could not put its files in place reported no problem")
+	}
+	if got := readFile(t, target); got != "what the person had\n" {
+		t.Fatalf("keep.md is %q, want the person's own file", got)
+	}
+}
