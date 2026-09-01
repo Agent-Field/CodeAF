@@ -1863,11 +1863,11 @@ of them runs — and if it sends only tool calls three more times its turn ends 
 `stopped here · would not write its notes down, so what this turn worked out is not on the record`.
 That is not circling, and the row does not say it is. **It is written up in its own
 words**: the rail reads `would not write its notes down — branch kept`, with the same `!`
-every halted task wears; the landing note reads `task 7 would not write its notes down:
-<title>`; and the record that grades the model on the work says it was `stopped`, not that
-it did not finish. The run settles on whatever it had actually done and the branch is kept
-like any other. The keys page has the whole ladder under "Why did aforge stop running tool
-calls, and what is a [held] answer?".
+every halted task wears; the landing note reads
+`task 7 would not write its notes down: <title>`; and the record that grades the model on
+the work says it was `stopped`, not that it did not finish. The run settles on whatever it
+had actually done and the branch is kept like any other. The keys page has the whole ladder
+under "Why did aforge stop running tool calls, and what is a [held] answer?".
 
 If a row says `went in circles`, the worker had genuinely stopped making progress, and its
 transcript shows what it kept repeating.
