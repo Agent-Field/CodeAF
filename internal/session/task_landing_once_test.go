@@ -20,7 +20,12 @@ import (
 // asked for it. `head` leads, `tail` stands under it, and what the merge itself
 // had to say stands under both — which is the shape every card, every project
 // row and every parent's note downstream reads from the top.
-func TestEveryRoadHomeComposesTheSameReportAndSettlesOnce(t *testing.T) {
+//
+// THAT A NODE SETTLES ONCE IS NOT THIS TEST'S CLAIM AND COULD NOT BE: this calls
+// the landing directly. It is proved where it has always been proved, by the
+// suites that drive the real runner end to end — task_progress_test.go,
+// task_landing_test.go and task_test.go — none of which this change touches.
+func TestEveryRoadHomeComposesTheSameReport(t *testing.T) {
 	repo := newTestRepo(t)
 	tree, err := prepareTaskTree(Place{}, repo, "cccc3333cccc3333", 1, "add the parser")
 	if err != nil {

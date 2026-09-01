@@ -31,11 +31,15 @@ import (
 // AN ENTRY IS A CLAIM ABOUT SAFETY, not a permission slip. "It reads them
 // separately and a tear costs nothing" is a legitimate answer and one entry
 // gives it — but it has to be written down and it has to be true.
+// THE KEY IS THE RECEIVER-QUALIFIED NAME ([functionName], complexity_test.go),
+// because a bare verb is not an address: two types in this package may perfectly
+// well both answer `count`, and an exemption written for one of them would sit
+// silently over the other.
 var taskNewsPairReaders = map[string]string{
-	"taskNewsStanding": "THE LOCKED READ ITSELF. Both facts are taken under the handover, which is " +
+	"Agent.taskNewsStanding": "THE LOCKED READ ITSELF. Both facts are taken under the handover, which is " +
 		"the lock a delivery makes its own two writes under ([Agent.handOverTaskNews]), so no " +
 		"caller of this can see half a delivery. Every decision that costs a turn goes through it.",
-	"count": "the no-progress switch ([childRun.count]) reads the two one at a time, and " +
+	"childRun.count": "the no-progress switch ([childRun.count]) reads the two one at a time, and " +
 		"deliberately: this is the event drain, and evaluating `childrenOutstanding` eagerly would " +
 		"walk the graph on every event to answer a question the earlier cases usually settle. A " +
 		"tear there is harmless — BOTH branches suspend the counter and neither ends anything — so " +
@@ -59,7 +63,7 @@ func TestEveryReaderOfAParkedParentsPairSaysHowItReadsIt(t *testing.T) {
 			if !owed || !working {
 				continue
 			}
-			name := function.Name.Name
+			name := functionName(function)
 			found[name] = true
 			if _, known := taskNewsPairReaders[name]; known {
 				continue

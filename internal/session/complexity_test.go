@@ -42,6 +42,15 @@ import (
 //     one before it took out, with the gate green throughout. So the row IS the
 //     measured number, and the failure hands the author the figure to write.
 //
+// ── AND IT IS A LEDGER, WHICH IS A DIFFERENT THING FROM A LOCK ──
+//
+// Nothing here stops somebody editing [complexityDebt]. Nothing stops somebody
+// raising `SIZE-BUDGET` either, or adding a line to `.github/known-red.txt`, and
+// the answer is the same for all three: the edit is a LINE IN THE DIFF that a
+// reviewer reads and the author has to justify in words. What the gate buys is
+// that the growth cannot happen QUIETLY — which is exactly how it happened, one
+// ending at a time, over the runs that produced #229, #255, #256 and #258.
+//
 // The count is gocyclo's, because it is the number everybody quotes: one, plus
 // every `if`, `for`, `range`, named `case`, named comm clause, `&&` and `||` —
 // a `default` decides nothing and gocyclo does not count one. It is computed
