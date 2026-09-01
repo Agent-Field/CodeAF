@@ -302,9 +302,20 @@ type TaskNode struct {
 	// machine commit's sha (groundladder.go). They are written beside Ground and
 	// Mode by [TaskNode.setTree], from the tree that was actually made, and they
 	// are what lets a report say what world the work was done in.
-	Rung  GroundRung
-	Seal  string
-	brief string
+	Rung GroundRung
+	Seal string
+	// Expects is THE CHECKABLE HALF OF THE HANDOFF this node was given: what its
+	// brief assumes is already true of the world it gets (handoffcontract.go).
+	// It sits beside Ground for the same reason Rung does — the ground says
+	// which world, and this says what the world was promised to contain — and it
+	// is written once, at admission, from the spec.
+	//
+	// It is deliberately NOT on the checkpoint. The contract is answered before
+	// the node's first step, so a node that comes back from a checkpoint has
+	// already been through it, and carrying the manifest forward would only
+	// invite a second reading of a question that has been settled.
+	Expects []Expectation
+	brief   string
 	// adjudicated says this node has already spent its one tiebreak: a division
 	// the evidence gate refused on the floor has been put to the mastermind once
 	// on the strength of a judge's wide reading, and the answer — whatever it was
@@ -811,6 +822,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// in from the repository it is cut from ([TaskNode.setTree]).
 		Ground: spec.ground,
 		Mode:   spec.mode,
+		// AND WHAT ITS BRIEF ASSUMES, carried from whoever wrote the brief
+		// (handoffcontract.go). Every door admits with nothing here except the
+		// two that ask a model for a handoff, which is the point: the harness
+		// never writes an expectation on anybody's behalf.
+		Expects: spec.expects,
 	}
 	g.mu.Lock()
 	if g.nodes == nil {
@@ -1419,7 +1435,8 @@ func (n *TaskNode) title() string {
 func (n *TaskNode) instruction() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance)
+	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
+		expectsSection(n.spec.expects))
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -1954,6 +1971,21 @@ func (n *TaskNode) setTree(tree taskTree) {
 	n.Rung, n.Seal = tree.rung, tree.seal
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
+}
+
+// expectations is the handoff's checkable manifest, read under the graph's lock
+// like every other field beside it. A node nobody wrote one for answers nothing,
+// and the preflight then has nothing to do — which is the ordinary task.
+func (n *TaskNode) expectations() []Expectation {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if len(n.Expects) == 0 {
+		return nil
+	}
+	return append([]Expectation{}, n.Expects...)
 }
 
 // groundNow is the node's ground and mode, read under the graph's lock like
@@ -2920,6 +2952,28 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// task standing in the folder it was already about.
 	if world := tree.world(); world != "" {
 		fmt.Fprintf(log, "its world is %s\n", world)
+	}
+
+	// ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE MONEY ──
+	//
+	// The brief says what this work assumes about its world; the world has just
+	// been made. This is the one moment the two can be held up against each
+	// other for nothing, and it is BEFORE the first worker is built rather than
+	// inside its first turn, so a contract that does not hold costs a directory
+	// walk instead of a model call (handoffcontract.go).
+	//
+	// It is journaled either way. A contract that held is one line and the run
+	// goes on; a contract that did not is the node's whole report, and it names
+	// every expectation that failed rather than the first, because a brief
+	// written against a world one commit behind fails several at once.
+	if expects := node.expectations(); len(expects) > 0 {
+		if unmet := preflightExpectations(tree.dir, expects); len(unmet) > 0 {
+			fmt.Fprintf(log, "its brief does not match its world:\n%s\n", strings.Join(unmet, "\n"))
+			node.end(TaskEndingStale)
+			node.finish(staleGroundReport(tree.world(), unmet), nil, tree.branch, abortedMerge(tree))
+			return TaskFailed
+		}
+		fmt.Fprintf(log, "its brief matches its world · %d checked\n", len(expects))
 	}
 
 	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's

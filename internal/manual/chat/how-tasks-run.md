@@ -190,6 +190,55 @@ them. A task that needs one of them is a task to run **in place** — a named fo
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
 
+## A task that never started — its world did not match, stale ground, my task failed before it did anything, expects
+
+A brief can name files and symbols of a world that is not in the folder the task gets: a
+file that moved, a folder somebody renamed, a change that was still uncommitted somewhere
+else. Before this was caught, that was an expensive way to find out — one task spent
+twenty-two minutes and $7.99 rewriting a test file for a component its own brief said had
+been deleted, four lines at a time, until the step limit stopped it.
+
+So a brief may carry **what it assumes is already true** of the folder it will get, and
+aforge checks every line of it **before anything starts** — no model call, no money. Each
+assumption is a place, and optionally something that must be findable there:
+
+- a file or folder that must be there — `internal/tui3/taskchip.go`
+- one that must **not** be, which is how you say something was deleted
+- text that must be findable at that place: a symbol, a heading, a column name
+
+It is **optional and never invented**. Whoever writes the brief writes the assumptions,
+because only they know which of their own sentences the work leans on; aforge never
+reads a brief and guesses. A brief that assumes nothing is checked against nothing and
+costs nothing, which is most tasks.
+
+Today the assumptions come from **a task handing parts out under itself** — that is where
+a brief is written about a folder its reader has not been given yet, and where the
+twenty-two minutes went. A task you or the chat starts is proposed against a folder the
+conversation can already see, and carries none.
+
+**When one does not hold, the task lands at once** — before anything is spent — and its
+row reads `its world did not match`. The report names every assumption that failed, what
+was found instead, and what can be done about it:
+
+```
+its world is not what its brief describes, so nothing was spent on it.
+
+· the survivors of taskstrip.go live in taskchip.go — it does not say stripKey (taskchip.go)
+· internal/tui3/topbar.go is there — it is not there
+
+Either bring that work into the folder this was cut from and start it again, hand the
+part out again with a brief that matches what is really there, or say which of the two is
+right.
+```
+
+Every failed assumption is named, not the first: a brief written against a world one
+change behind usually misses several, and fixing them one at a time costs a landing each.
+What held is not listed, so the lines that matter are the only lines there.
+
+**What it cannot check** is anything that is not in the folder — a URL that must answer, an
+account that must still be logged in. Those belong in the brief itself, where they
+already went.
+
 ## A task working in place holds the directory — nothing was written, a task is using this working copy, I cannot edit a file while a task runs
 
 When a task got a checkout of its own, you and it are in different directories and nothing
