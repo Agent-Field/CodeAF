@@ -2317,10 +2317,15 @@ type Agent struct {
 	tasks *TaskGraph
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
-	// question with a CLOCK: the wait ends on an answer, on the deadline, or
-	// with the turn (task.go). The ids are the GRAPH's — a proposal is a node
-	// that has not been admitted yet, not a second numbering.
-	taskAnswers map[uint64]chan TaskAnswer
+	// question whose CLOCK can be held: the wait ends on an answer, on an active
+	// deadline, or with the turn (task.go). The ids are the GRAPH's — a proposal
+	// is a node that has not been admitted yet, not a second numbering.
+	taskAnswers map[uint64]*taskQuestion
+	// taskNow and taskTimer are the proposal clock's test seam. Production leaves
+	// them nil and takes the real clock; keeping both decisions together lets a
+	// contract test cross the old deadline without sleeping or racing a machine.
+	taskNow   func() time.Time
+	taskTimer func(time.Duration) (<-chan time.Time, func())
 	// standingAnswers is the same wait, for standing cards (standing_contract.go).
 	standingAnswers map[uint64]chan StandingAnswer
 	// standingSeq numbers those cards. It is the agent's own sequence and not
