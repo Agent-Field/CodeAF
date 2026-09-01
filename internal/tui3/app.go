@@ -2162,6 +2162,24 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a.noteStandingHere()
 	a.measureContext()
+	// AND WHAT THE CONVERSATION HAS ALREADY SPENT IS ASKED FOR ON THIS FRAME,
+	// beside the context it is measured with. The engine restores the total from
+	// the journal's usage lines at construction (session's [Agent.Usage], seeded
+	// by [sessionFile.RestoredUsage]), but nothing on this surface asked until a
+	// frame of the paint clock came round — and the paint clock only turns while
+	// something is animating. So a resumed conversation sat idle at the prompt
+	// with `$0.00` on its status line until the person sent a turn or typed
+	// /cost, under-reporting its own bill in the one direction that erodes trust
+	// in every other figure beside it (#128).
+	//
+	// It is the SYNCHRONOUS reading rather than [app.usageKick] for the reason
+	// [app.measureContext] above it is: this is the first frame, the figures have
+	// to be right on it rather than one round trip later, and a surface that
+	// already asks the agent what the conversation weighs can ask what it cost in
+	// the same breath. The emptiness law is unharmed — a conversation that spent
+	// nothing restores a zero Usage and every one of these fields stays as it
+	// was, so the sheet and /cost still draw nothing.
+	a.refreshUsage()
 	// The notices get their first look now that the conversation, the box and
 	// the directory's facts are all in place: a news line lands here, under the
 	// replay and above the door's own notice, and the hints that wait on this
