@@ -2629,7 +2629,15 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	case mergeMerged:
 		note.WriteString("\nits branch " + notice.Branch + " merged into yours")
 	case mergeConflicted:
-		note.WriteString("\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready")
+		// A FOLDER FAMILY HAS NO BRANCH TO OFFER. Its landing refuses the same way
+		// a merge does and for the same reason — the same file changed on both
+		// sides (task_mirror_manners.go) — but what it can offer is the directory
+		// its work is still in, which its own sentence has already named at the top
+		// of this report. The emptiness law is why nothing is written here rather
+		// than a line with a hole where a branch name would go.
+		if notice.Branch != "" {
+			note.WriteString("\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready")
+		}
 	case mergeAborted:
 		// WHAT IT MADE IS ON THAT BRANCH, and saying so is the difference
 		// between a person going to look and a person assuming an ending they
@@ -5838,6 +5846,11 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		if err != nil {
 			return taskTree{}, err
 		}
+		// AND THE FOLDER AS IT STANDS IS WRITTEN DOWN BESIDE THE COPY
+		// (task_mirror_manners.go). It is the only moment the two are known to
+		// hold the same bytes, and without it the landing cannot tell the
+		// person's own edit from the family's work and writes over it in silence.
+		rememberGroundBaseline(ground, tree.dir)
 		// AND THE COPY IS OPENED AS THE FAMILY'S OWN TREE (task_tree_mirror.go).
 		// A mirror that is a repository is a mirror whose parts cut real
 		// worktrees off it and merge back into it through the one road every
@@ -6098,9 +6111,23 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 // The outcome is the in-place one, because from where the person sits that is
 // what happened: their folder has the work in it, there is no branch, and there
 // is nothing to merge. How it got there is [TaskNode.Mode]'s to say.
+//
+// EXCEPT WHERE THE FOLDER MOVED UNDER IT, which is the one outcome that is not
+// in-place: a file the person edited themselves while the work ran is a file
+// this refuses to write over (task_mirror_manners.go).
 func (t taskTree) landMirror(wrote []string) (string, string) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
 		return mergeInPlace, ""
+	}
+	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
+	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what
+	// this is — the same file changed on both sides — and because every one of the
+	// five roads that reach here already reads that one word and settles the node
+	// needing the person's look with the names in front of them. Nothing is laid,
+	// the copy is left whole, and what a person does about two versions of their
+	// own file is theirs to decide, exactly as it is on a repository ground.
+	if changed := groundChanged(t.dir, t.ground, wrote); len(changed) > 0 {
+		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed)
 	}
 	if problem := layWork(t.dir, t.ground, wrote); problem != "" {
 		return mergeInPlace, "its work is in " + t.dir + " and could not be copied back into " + t.ground + ": " + problem
