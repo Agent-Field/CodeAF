@@ -1191,11 +1191,16 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if text := msg.Key().Text; text != "" {
+		at := ex.box.cursor
 		ex.box.insert(text)
 		// TYPING LEAVES THE OFFER ROW. The box is where characters go, and a
 		// person who starts typing has said which of the two things under the
 		// pane they meant.
 		ex.onOffer = false
+		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, on the
+		// pane's own box and the pane's own tray, exactly as the draft and
+		// home's line watch on theirs (dropkeys.go).
+		return a.dropWatch(&ex.box, &ex.chips, at, text)
 	}
 	return nil
 }
@@ -1203,6 +1208,11 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 // exchangeEnter is what enter means in the pane, and it means exactly one of
 // three things depending on what is on screen.
 func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
+	// A DROP THE FOLD IS STILL HOLDING IS SPENT BEFORE THE LINE IS READ, which
+	// is input.go's law about enter said at the third of this surface's send
+	// doors: two frames of quiet is not a wait a person owes before pressing
+	// enter (dropkeys.go).
+	a.spendDrop()
 	text := strings.TrimSpace(ex.box.String())
 	switch {
 	case ex.changing:

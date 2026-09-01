@@ -226,3 +226,180 @@ func TestAnErrandCarriesThePictureDroppedIntoIt(t *testing.T) {
 		t.Fatalf("the tray still holds %v after the send", ex.chips)
 	}
 }
+
+// homeDropKeys is [homeDropLab] with a clock that does not move on its own, so
+// a run of characters can be delivered with provably nothing between them and
+// the fold's wakeup settled deliberately. It is dropkeys_test.go's `dropLab`
+// arrangement pointed at the other box.
+func homeDropKeys(t *testing.T, files ...string) (*app, string, func(time.Duration)) {
+	t.Helper()
+	a, drop := homeDropLab(t, files...)
+	at := time.Now()
+	a.clock = func() time.Time { return at }
+	return a, drop, func(d time.Duration) { at = at.Add(d) }
+}
+
+// ISSUE #163, ON THE SCREEN IT WAS REPORTED ON. Some terminals TYPE a dragged
+// file in character by character, and home held the raw path until enter —
+// filtering its list by a path no conversation on this machine matches. The
+// fold converts it two frames after it goes quiet, through the one door.
+func TestAPictureTypedIntoHomeBecomesAChipWhileItArrives(t *testing.T) {
+	a, drop, tick := homeDropKeys(t, "shot.png")
+	typeBurst(a, filepath.Join(drop, "shot.png"))
+	settleDrop(t, a, tick)
+
+	if got := a.home.box.String(); got != "[image #1] " {
+		t.Fatalf("home's box holds %q, want the typed path replaced by its token", got)
+	}
+	if want := []string{"shot.png"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+	frame := homeText(a)
+	if !strings.Contains(frame, "#1 shot.png") {
+		t.Fatalf("home drew no tray over its box:\n%s", frame)
+	}
+	// AND THE LIST IS THE LIST AGAIN. It empties while the path is arriving,
+	// because the box IS the query; the conversion is what gives it back.
+	if !strings.Contains(frame, "Pricing Research") {
+		t.Fatalf("the typed drop left home's list empty:\n%s", frame)
+	}
+}
+
+// AND ENTER INSIDE THE QUIET WINDOW STILL MEANS THE DROP, which is input.go's
+// law about enter said at home's own send door: two frames is not a wait
+// somebody owes before pressing a key.
+func TestATypedDropOnHomeEnteredAtOnceStillAttachesAndStarts(t *testing.T) {
+	a, drop, _ := homeDropKeys(t, "shot.png")
+	sees := &imageAgent{fakeAgent: &fakeAgent{model: "vendor/sees"}}
+	a.start = func(workspace string) (Conversation, error) {
+		return Conversation{Agent: sees, SessionFile: filepath.Join(drop, "transcript.jsonl")}, nil
+	}
+	typeBurst(a, filepath.Join(drop, "shot.png"))
+	drive(t, a, key("enter"))
+
+	if sees.calls != 1 {
+		t.Fatalf("SubmitImage was called %d times, want once", sees.calls)
+	}
+	if len(sees.images) != 1 || len(sees.images[0].Bytes) != 12 {
+		t.Fatalf("the conversation was handed %v, want the picture's bytes", sees.images)
+	}
+	if !strings.Contains(sees.text, imageToken(1)) {
+		t.Fatalf("the sentence sent was %q, want the picture named in it", sees.text)
+	}
+	if got := plain(frame(a)); strings.Contains(got, "unknown command") {
+		t.Fatalf("a typed drop on home was refused as a command:\n%s", got)
+	}
+}
+
+// AND THE ERRAND PANE'S BOX TAKES A TYPED DROP TOO, onto the errand's own tray
+// and never the conversation's.
+func TestATypedDropIntoTheErrandPaneBecomesAChip(t *testing.T) {
+	_, a := exchangeLab(t)
+	ex := theExchange(a)
+	if !ex.focused {
+		t.Fatal("asking here should put the keyboard in the pane")
+	}
+	now := time.Now()
+	a.clock = func() time.Time { return now }
+	drop := t.TempDir()
+	path := filepath.Join(drop, "chart.png")
+	if err := os.WriteFile(path, make([]byte, 9), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	typeBurst(a, path)
+	settleDrop(t, a, func(d time.Duration) { now = now.Add(d) })
+
+	if got := ex.box.String(); got != "[image #1] " {
+		t.Fatalf("the pane's box holds %q, want the token", got)
+	}
+	if len(ex.chips) != 1 || ex.chips[0].name() != "chart.png" {
+		t.Fatalf("the pane holds %v, want the picture", ex.chips)
+	}
+	if len(a.chips) != 0 {
+		t.Fatalf("the pane's drop landed on the conversation's tray: %v", chipNames(a))
+	}
+}
+
+// ONE FOLD, ONE BOX. A run left standing on a screen that went away is never
+// spent into the box that took the keyboard after it — the token would be
+// written into a line nobody was looking at when they dropped anything.
+func TestAFoldOpenedOnHomeIsNeverSpentIntoTheDraft(t *testing.T) {
+	a, drop, tick := homeDropKeys(t, "shot.png")
+	path := filepath.Join(drop, "shot.png")
+	typeBurst(a, path)
+	a.closeHome()
+	settleDrop(t, a, tick)
+
+	if len(a.chips) != 0 {
+		t.Fatalf("a fold left on home attached %v after home closed", chipNames(a))
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the draft holds %q, want nothing written into it", got)
+	}
+}
+
+// AND THE SAME LAW IN THE OTHER DIRECTION.
+func TestAFoldOpenedInTheDraftIsNeverSpentIntoHome(t *testing.T) {
+	a, drop, tick := homeDropKeys(t, "shot.png")
+	a.closeHome()
+	path := filepath.Join(drop, "shot.png")
+	typeBurst(a, path)
+	a.openHome()
+	settleDrop(t, a, tick)
+
+	if len(a.chips) != 0 {
+		t.Fatalf("a fold left in the draft attached %v after home opened", chipNames(a))
+	}
+	if got := a.home.box.String(); got != "" {
+		t.Fatalf("home's box holds %q, want nothing written into it", got)
+	}
+	if got := a.input.String(); got != path {
+		t.Fatalf("the draft holds %q, want the characters exactly as typed", got)
+	}
+}
+
+// ISSUE #164. A START IN A TYPED FOLDER CARRIES THE TRAY WITH THE PERSON. The
+// files were dropped on HOME, for the conversation home is about to open, and
+// the aside that steps the previous one out of the way used to take them.
+func TestAStartInATypedFolderCarriesTheTrayWithThePerson(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	drop, where := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(drop, "server.log"), make([]byte, 12), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.openHome()
+	drive(t, a, tea.PasteMsg{Content: filepath.Join(drop, "server.log")})
+	if want := []string{"server.log"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("the drop did not land on home's tray: %v", chipNames(a))
+	}
+	a.home.box.setText(where)
+	a.home.build()
+	drive(t, a, key("enter"))
+
+	if a.workspace != where {
+		t.Fatalf("the row opened %q, want a conversation in the typed folder", a.workspace)
+	}
+	if want := []string{"server.log"}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("the conversation the row opened holds %v, want the dropped file", chipNames(a))
+	}
+	// AND THE ONE THAT STEPPED ASIDE DOES NOT HOLD IT. Its own draft is still
+	// its own — that is a different law and it is untouched — but a file
+	// dropped on home was never its.
+	if len(a.behind) == 0 {
+		t.Fatal("nothing stepped aside, so the tray had nowhere wrong to go")
+	}
+	for key, held := range a.behind {
+		if len(held.side.chips) != 0 {
+			t.Fatalf("%s kept %v", key, held.side.chips)
+		}
+	}
+	// AND NOTHING WAS SENT — a send empties the tray, and the assertion above is
+	// that it is still full. What was typed named a PLACE and not a sentence, so
+	// there was never a message to send: the file is in front of the person in
+	// the conversation they asked for, waiting for the words it goes with.
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the new conversation's draft holds %q, want the place spent", got)
+	}
+}
