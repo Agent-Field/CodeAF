@@ -1439,6 +1439,29 @@ func eventStreamOf(payloads ...string) http.Handler {
 	})
 }
 
+func TestAKeyHandedToAnOpenSessionReachesTheWrappedProvider(t *testing.T) {
+	var authorization string
+	answer := eventStreamOf(`{"choices":[{"index":0,"delta":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`)
+	client, err := provider.NewClient(provider.Config{
+		BaseURL: "http://provider.test", Model: "test/model",
+		HTTPClient: fakeHTTP(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			authorization = request.Header.Get("Authorization")
+			answer.ServeHTTP(writer, request)
+		})),
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	agent, _ := newTestAgent(t, client, nil)
+	if err := agent.SetAPIKey("sk-or-v1-from-the-browser"); err != nil {
+		t.Fatalf("SetAPIKey: %v", err)
+	}
+	collect(t, mustSubmit(t, agent, "hello"))
+	if authorization != "Bearer sk-or-v1-from-the-browser" {
+		t.Fatalf("first request after the browser handoff carried %q", authorization)
+	}
+}
+
 // A reasoning model's working reaches the surface as EventReasoning, in order,
 // behind the one EventThinking that opened the run — and never reaches answer
 // Content, where it would come back as something the model had said aloud.

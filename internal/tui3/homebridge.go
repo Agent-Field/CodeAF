@@ -82,11 +82,26 @@ const homeSwitchFull = 120
 // saying that same fact, which is the layout arguing with itself.
 const homeCardMin = homeSwitchFull + homeGutter + homeCardCol
 
-// homeCardCap is the widest the card is drawn. Past forty-eight cells its
-// sentences have all the room they will ever ask for, and the cells after that
-// do more good in the list beside it — the same argument [homeSwitchFull] makes
-// from the other end.
-const homeCardCap = 48
+// homeCardCap is the widest the card is drawn.
+//
+// IT WAS FORTY-EIGHT AND THE CARD WAS DEMONSTRABLY CUT OFF THERE. On a
+// two-hundred-column terminal the list was holding a hundred and forty-eight
+// cells — twenty-eight more than it asks for ([homeSwitchFull]) — while the card
+// beside it drew `→ verbs: put it away, new chat here, open folde…` and cut the
+// sentence under a failed task mid-clause. A card that ends in an ellipsis over
+// the thing it was about to offer is not a card with all the room it will ever
+// ask for, whatever the number next to it said.
+//
+// THE GIVE-WAY RULE IS THE ARITHMETIC AND NOT THE CAP. The list keeps HALF of
+// every cell past [homeCardMin] ([homeColumns]), so its share is
+// `width/2 + 40` and is at [homeSwitchFull] or above at every width the tier
+// exists at — by construction, at any cap. Raising this number therefore never
+// takes a cell from the list; it only decides how many of the card's OWN half it
+// is allowed to keep. Fifty-six is a comfortable measure for the clauses the
+// card actually draws, it is reached at two hundred columns where the list still
+// holds a hundred and forty-four, and past it the cells do more good in the list
+// — which is the same argument [homeSwitchFull] makes from the other end.
+const homeCardCap = 56
 
 // homeTierAt is the whole ladder, and it is the ONE place a width is compared.
 func homeTierAt(width int) homeTier {

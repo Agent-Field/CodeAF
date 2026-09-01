@@ -322,10 +322,11 @@ func ProfileDir() string { return os.Getenv(ProfileDirEnv) }
 func Load() (Config, error) { return load(true) }
 
 // LoadKeyless is [Load] for a launch that can collect the key itself: the
-// interactive chat, whose first-run setup asks for one (internal/tui3's
-// firstrun.go). Everything else resolves exactly as Load resolves it, and APIKey
-// is simply empty until the person hands one over. A door that has nobody to
-// ask — --once, an engine, a pipe — has no business calling this.
+// interactive chat, whose provider screen connects OpenRouter or takes a pasted
+// key (internal/tui3's firstrun.go). Everything else resolves exactly as Load
+// resolves it, and APIKey is simply empty until the person hands one over. A
+// door that has nobody to ask — --once, an engine, a pipe — has no business
+// calling this.
 func LoadKeyless() (Config, error) { return load(false) }
 
 func load(requireKey bool) (Config, error) {
