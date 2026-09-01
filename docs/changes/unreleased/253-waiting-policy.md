@@ -60,12 +60,36 @@ reads the silence a person is waiting through and the clock that guards the wire
 reads the time since the endpoint last wrote anything at all — so a lane that
 has written three words and is now reasoning is no longer read as a stall.
 
+**And a refused path is told apart from a slow one at the report level**
+(`HedgeReport.PathFault`), so the two are already separate quantities where a
+caller reads them. The surface word for a refused lane is not built here — it
+belongs beside `PhaseAsking`, and it is issue #266.
+
 **And a sheet row is an offset.** It was shared out among the levels it may move
 at each one's Kalman gain, and `μ` holds most of the variance and may not move,
 so a pair whose only evidence was one published row was believed between the
 world's pace and the published one: a lane the sheet put at 430 ms read back as
 about 1.2 s. `e[model, lane]` takes the whole difference now and the prediction
 lands where the sheet put it.
+
+**§K's four bounds were then re-measured over a WARMED store, and three of them
+fail there too.** The ruling was that a cost bound describes a steady state and
+that the remaining failures were cold-start exploration the purse bounds, so
+`bench/lanelab/gosim` gained a store axis: the cold arms enforce the ceiling,
+the long think and the purse's own ceiling on the bill and REPORT the two cost
+figures; a warmed arm — the sheet, plus sixty real answers of every pair folded
+through the real `lane.Ledger.Note` door in a home of the run's own — enforces
+all four. On the door the transport asks, the warmed arm measured
+**time-to-action 100.00% of 225 acts at a maximum of 10.00 s (PASS), false
+hedges 2.84% against 2% (FAIL), spend 5.56% against 3% (FAIL), long think 93.21%
+of 162 phases against 95% (FAIL)** — every cost figure WORSE than the cold arm's
+2.49% / 4.64% / 96.77%. Warming the store does not move these bounds into range;
+it moves them the wrong way, because a cold store's low arm count is partly an
+inability to hedge — the silent row raises 0 arms cold and 29 warmed, having
+gained a frontier to point at. `REPORT.md` carries the four arms and the rows.
+Nothing was tuned in response and `docs/design/waiting/DESIGN.md` §K is
+unchanged: the ruling's premise is not what the measurement says, and the
+decision is the owner's.
 
 Measured, on the shipped door: false hedges fall from 5.3% to 2.9% of healthy
 requests and the spend overhead from 5.5% to 4.8% of the bill, against

@@ -1449,3 +1449,118 @@ either a heavier sheet — a belief that is *centred* on the published number an
 seventeen lanes and Thompson sampling the design's own inequality asks for an
 arm on roughly one healthy request in forty, and the purse is what holds the
 bill down.
+
+## The warmed store, and what §K measured on one
+
+*`go run ./bench/lanelab/gosim -proof -json bench/lanelab/gosim/proof.json`,
+2026-09-01, on `feat/waiting-policy` at `04049d87`. **Four arms** — two stores
+(`cold`, `warmed`) × two doors (`shipped`, `flat`) — five rows each, seeds
+**7 / 9 / 11**, **150 requests per row per seed**, so **450 trials per row**,
+**2,250 per arm**, **9,000 in the run**; per arm that is **1,125 healthy
+requests** and **225 staged silences in the row the ceiling is read off**.
+**17m 59s** wall. `gosim/proof.json` is this run.*
+
+**THE WARMED ARM FAILS THREE OF THE FOUR BOUNDS, AND IT FAILS THEM BY MORE THAN
+THE COLD ONE DOES.** That is the opposite of what the arm was built to show, so
+the lane stopped there: nothing was tuned, nothing was re-run, and the decision
+goes back to the owner. What follows is the measurement and nothing else.
+
+### Why the arm exists
+
+§K's four bounds were all graded on one staging — a process that has never
+measured a pair. Two of them are steady-state costs, and the argument for
+grading them somewhere else is that a store with nothing in it has to explore to
+find out which lane is quick: those arms are how a ledger stops being cold
+rather than deadlines firing early, and what should bound them is the purse
+rather than a figure about a system that knows its own service times. So the
+rows gained a store axis:
+
+- **cold** — §J's own staging, unchanged: the silent row's home empty, the other
+  four primed from the sheet, no pair ever measured.
+- **warmed** — the sheet every process has, and **60 real answers of every
+  (model, lane) pair** drawn from the world's own distributions and folded
+  through the **real `lane.Ledger.Note` door** over the 20 minutes before the
+  first request, in a temp home of the run's own. Nothing writes a belief, a
+  variance, a chain component or a store file directly;
+  `TestAWarmedStoreLearnsItsPaceThroughTheObservationDoor` checks that what the
+  store came back believing is where the world really is.
+
+The sheet's timing is **not** withheld from the warmed arm, and the same test
+pins why: a lane's **draw** — how much one answer varies around what is believed
+about it — is published and never observed. `ledger.Draw` reads the distance
+between a published p50 and p90 and this build has no other source for it, so a
+store primed from the sheet's facts alone waits every lane against
+`lane.SpreadFloor` however many answers it has watched. That state is staged as
+`seen` and is a diagnostic, never a gate.
+
+### The four arms, against the four bounds
+
+| bound | cold · shipped | cold · flat | **warmed · shipped** | warmed · flat |
+|---|---|---|---|---|
+| time-to-action ≤ 10 s in 100% | **100.00% of 225, max 10.00 s** | **100.00% of 225, max 10.00 s** | **100.00% of 225, max 10.00 s** | **100.00% of 225, max 2.54 s** |
+| false hedges ≤ 2% | 2.49% of 1,125 | 4.89% of 1,125 | **2.84% of 1,125** | 5.78% of 1,125 |
+| spend overhead ≤ 3% | 4.64% of $1.3842 | 5.18% of $1.3581 | **5.56% of $1.4928** | 6.52% of $1.4985 |
+| long think ≥ 95% | 96.77% of 124 | 98.57% of 70 | **93.21% of 162** | 98.04% of 102 |
+| loser spend ≤ the purse's 10% | 4.64% PASS | 5.18% PASS | — | — |
+
+On the cold arms the invariant, the long think and the purse cap are enforced
+and all three pass on both doors; the two §K cost figures are printed without a
+verdict. On the warmed arms all four §K bounds are enforced, and on the door the
+transport actually asks — `shipped` — **three of them fail**:
+
+> **time-to-action 100.00% of 225 acts, max 10.00 s — PASS.
+> False hedges 2.84% against ≤ 2% — FAIL.
+> Spend overhead 5.56% against ≤ 3% — FAIL.
+> Long think 93.21% of 162 phases against ≥ 95% — FAIL.**
+
+### What the rows say about the direction
+
+**Warming the store moved every cost figure the wrong way.** Same seeds, same
+world, same door: false hedges 2.49% → 2.84%, spend 4.64% → 5.56%, long think
+96.77% → 93.21%. The ruling's premise — that the residue is cold-start
+exploration the purse bounds — is not what this measured.
+
+| row | arms, cold | arms, warmed | false %, cold → warmed |
+|---|---:|---:|---|
+| `silent lane` | 0 | **29** | 0.00 → 2.22 |
+| `stalled lane` | 29 | 33 | 2.22 → 4.44 |
+| `thinking model` | 41 | 39 | 8.44 → **7.11** |
+| `pinned lane, a reader` | 0 | 0 | 0.00 → 0.00 |
+| `pinned lane, no reader` | 27 | 25 | 1.78 → 0.44 |
+
+**The mechanism is visible in the first row and it is not subtle.** On a cold
+store the silent row has nowhere to go: no belief, no frontier, no alternative,
+so every one of its 226 acts is a `Report` and it arms nothing. Warmed, the same
+silence has somewhere to go — the ledger now names a frontier — so 29 of its
+healthy requests raise a `Hedge` where a cold store could only ever have talked
+about it. **A cold store's low false-hedge figure is partly an inability to
+hedge, not a restraint**, and the warmed arm is what makes that legible. The two
+rows that already had alternatives (`thinking model`, `pinned, no reader`) both
+improved when warmed, which is the effect the arm was built to find; it is
+smaller than the effect above.
+
+**The long-think failure is the warmed shipped arm's alone**, and its
+denominator moved with it: 124 phases cold to 162 warmed. A warmed store acts
+later on the healthy half — the `thinking model` row's act p50 is 3.66 s cold and
+4.95 s warmed — so more runs of thought are OBSERVED at all before anything
+fires, and 11 of the 162 were armed against 4 of the 124. It is a real regression
+against the bound on the door that ships, and it is inside neither this
+instrument's spread nor the bound.
+
+### What is not decided here, and what was not done
+
+- **Nothing was tuned.** No constant moved, no threshold moved, no arm was
+  re-run to a better seed. The brief for this lane was to stop on a warmed
+  failure and hand the numbers back, and that is what happened.
+- **`docs/design/waiting/DESIGN.md` §K is unchanged.** The gate structure the
+  ruling describes is implemented in `gosim` and is what the table above was
+  measured with, but writing it into the design as the acceptance would be
+  asserting a shape whose load-bearing arm is red.
+- **The rebase onto `dev` and the full verification pass were not run.** They
+  were the two stages after this one and the lane stopped before them.
+- **This says nothing about whether 60 sightings a pair is enough.** It is past
+  the point where the chain's own variance falls under the published dispersion
+  — which is what the test checks — but a longer history, a narrower lane set, or
+  a `SheetWeight` that says how sure to be of a published row are all untested
+  from here, and the last section's ruling on `SheetWeight` is untouched by this
+  run.
