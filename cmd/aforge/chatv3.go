@@ -439,8 +439,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// turned off in the settings opens no store at all and both are then
 		// absent, which is what keeps "memory off makes no calls" a property of
 		// the wiring rather than a branch in every caller (v3Memory).
-		Memory: v3MemorySeam(cfg.Memory),
-		Search: v3SearchSeam(cfg.Memory),
+		Memory:       v3MemorySeam(cfg.Memory),
+		Search:       v3SearchSeam(cfg.Memory),
+		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
 		// same file every window on this machine appends a model call to, named
 		// once by internal/session so a reader and a writer cannot spell it two
@@ -1324,16 +1325,16 @@ func v3LanePin(profileDir string) provider.LanePin {
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
-// four settings rows in, [search.Resolve]'s answer out.
+// four settings rows in, [search.Live]'s answer out.
 //
 // IT RETURNS NO ERROR, and that is a statement about the layer rather than an
-// omission. Every rung of the resolution ladder ends in a plug that needs no
-// key (internal/search states this and tests it), so there is no configuration
-// — no key, a stale pin, a garbled row — that can leave a person unable to look
-// something up. A missing key is not a failure but a rung; a pin naming a plug
-// this build does not have falls through to auto rather than taking search
-// away. The only outcome this call cannot produce is a launch that fails
-// because of search, which is the correct set of outcomes for an accessory.
+// omission. The built registry keeps the capability present, and auto always
+// reaches a plug that needs no key. An explicit keyed search pin stays present
+// when its key is absent so its call can name that exact missing-key failure.
+// A pin naming a plug this build does not have falls through to auto rather
+// than taking search away. The only outcome this call cannot produce is a
+// launch that fails because of search, which is the correct set of outcomes
+// for an accessory.
 //
 // A nil half is therefore not an error either. It is what a build whose
 // registry is empty answers, and internal/session reads it as "leave that tool
@@ -1346,23 +1347,21 @@ func v3LanePin(profileDir string) provider.LanePin {
 // the PERSON's rows in the sense internal/config's allowlist means it, so they
 // resolve profile-and-environment only.
 func v3Search(profileDir string) (search.Provider, search.Fetcher) {
-	return search.Resolve(v3SearchOptions(profileDir))
+	return search.Live(func() search.Options {
+		return config.SearchOptionsAt(profileDir)
+	})
 }
 
-// v3SearchOptions is the mapping itself, split out so it can be read and tested
-// without a registry: the pin from the choice row (auto meaning no pin, which
-// internal/search spells as the empty string), and the three credentials from the
-// environment or the sheet.
-func v3SearchOptions(profileDir string) search.Options {
-	pin := config.SearchProviderAt(profileDir)
-	if pin == config.SearchProviderAuto {
-		pin = ""
+// v3SearchStatus is absent with the search hand and otherwise resolves from
+// the same options function on every deck read. The near surface therefore
+// never advertises a capability its session does not carry, and it names the
+// plug the next search will use rather than the one launch happened to choose.
+func v3SearchStatus(provider search.Provider, profileDir string) func() string {
+	if provider == nil {
+		return nil
 	}
-	return search.Options{
-		Provider:     pin,
-		ExaKey:       config.ExaKeyAt(profileDir),
-		FirecrawlKey: config.FirecrawlKeyAt(profileDir),
-		JinaKey:      config.JinaKeyAt(profileDir),
+	return func() string {
+		return search.Status(config.SearchOptionsAt(profileDir))
 	}
 }
 

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +13,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -194,7 +198,7 @@ func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
 	t.Setenv("FIRECRAWL_API_KEY", "")
 	t.Setenv("JINA_API_KEY", "")
 
-	empty := v3SearchOptions(t.TempDir())
+	empty := config.SearchOptionsAt(t.TempDir())
 	if empty.Provider != "" || empty.ExaKey != "" || empty.FirecrawlKey != "" || empty.JinaKey != "" {
 		t.Fatalf("an untouched profile produced %+v, want an empty auto configuration", empty)
 	}
@@ -205,7 +209,7 @@ func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
 		"search.firecrawlKey": "firecrawl-from-the-sheet",
 		"search.jinaKey":      "jina-from-the-sheet",
 	})
-	fromRows := v3SearchOptions(dir)
+	fromRows := config.SearchOptionsAt(dir)
 	if fromRows.Provider != "exa" {
 		t.Fatalf("the pin did not reach the options: %q", fromRows.Provider)
 	}
@@ -214,18 +218,18 @@ func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
 	}
 
 	t.Setenv("EXA_API_KEY", "from-the-shell")
-	if got := v3SearchOptions(dir).ExaKey; got != "from-the-shell" {
+	if got := config.SearchOptionsAt(dir).ExaKey; got != "from-the-shell" {
 		t.Fatalf("the environment lost to the sheet: %q", got)
 	}
 	t.Setenv("FIRECRAWL_API_KEY", "firecrawl-from-the-shell")
-	if got := v3SearchOptions(dir).FirecrawlKey; got != "firecrawl-from-the-shell" {
+	if got := config.SearchOptionsAt(dir).FirecrawlKey; got != "firecrawl-from-the-shell" {
 		t.Fatalf("the Firecrawl environment lost to the sheet: %q", got)
 	}
 
 	// An auto row is the ABSENCE of a pin, not the word: internal/search reads
 	// "auto" as a plug name and would find nothing registered under it.
 	auto := v3Profile(t, map[string]any{"search.provider": "auto"})
-	if got := v3SearchOptions(auto).Provider; got != "" {
+	if got := config.SearchOptionsAt(auto).Provider; got != "" {
 		t.Fatalf("auto reached search as %q, want no pin at all", got)
 	}
 }
@@ -274,5 +278,156 @@ func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	}
 	if got := pinned.SearchFetcher.Name(); got != "exa-fetch" {
 		t.Fatalf("pinning the search half moved the fetch half to %q", got)
+	}
+}
+
+// V2 and V8: the local status seam follows live options and disappears with
+// the session's search hand.
+func TestTheSearchStatusSeamIsLiveAndAbsentWithTheTool(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	dir := t.TempDir()
+	provider, _ := v3Search(dir)
+	status := v3SearchStatus(provider, dir)
+	if status == nil {
+		t.Fatal("a session with a search tool received no status seam")
+	}
+	if got := status(); got != "firecrawl · keyless" {
+		t.Fatalf("keyless status = %q", got)
+	}
+	rows := config.NewSettings(config.SettingsOptions{ProfileDir: dir})
+	exa, _ := rows.Row(config.KeyExaKey)
+	if err := exa.Apply("exa-live"); err != nil {
+		t.Fatal(err)
+	}
+	if got := status(); got != "exa · with your key" {
+		t.Fatalf("status after key write = %q", got)
+	}
+	if got := v3SearchStatus(nil, dir); got != nil {
+		t.Fatal("a session with no search tool received a status seam")
+	}
+}
+
+type localSearchTransport struct{ host string }
+
+func (transport localSearchTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	local := request.Clone(request.Context())
+	local.URL.Scheme = "http"
+	local.URL.Host = transport.host
+	return http.DefaultTransport.RoundTrip(local)
+}
+
+// V1, V3, and V4: writes through public settings rows affect the existing
+// pair's very next operation. The Firecrawl calls reach a real httptest server,
+// which proves the changed key was rebound into the request rather than merely
+// changing the wrapper's reported name.
+func TestTheRunningSearchPairReadsEverySettingsWrite(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	var authorizations []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		authorizations = append(authorizations, request.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		if request.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<div class="result results_links web-result"><div class="result__body"><h2 class="result__title"><a class="result__a" href="https://example.com">Example</a></h2><a class="result__snippet">A result.</a></div></div>`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"data\":{\"web\":[{\"url\":\"https://example.com\",\"title\":\"Example\",\"description\":\"A result.\"}]}}"}]}}`))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	client := &http.Client{Transport: localSearchTransport{host: strings.TrimPrefix(server.URL, "http://")}}
+	provider, _ := search.Live(func() search.Options {
+		opts := config.SearchOptionsAt(dir)
+		opts.HTTPClient = client
+		return opts
+	})
+	results, name, err := search.SearchWithName(context.Background(), provider, "q", 1)
+	if err != nil {
+		t.Fatalf("keyless search: %v", err)
+	}
+	if got := search.RenderResults(results, 1, name); !strings.HasSuffix(got, "1 result · firecrawl") {
+		t.Fatalf("the keyless result did not name Firecrawl: %q", got)
+	}
+
+	rows := config.NewSettings(config.SettingsOptions{ProfileDir: dir})
+	firecrawl, _ := rows.Row(config.KeyFirecrawlKey)
+	if err := firecrawl.Apply("fc-live"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := search.SearchWithName(context.Background(), provider, "q", 1); err != nil {
+		t.Fatalf("keyed search: %v", err)
+	}
+	if got, want := strings.Join(authorizations, ","), ",Bearer fc-live"; got != want {
+		t.Fatalf("Authorization calls = %q, want %q", got, want)
+	}
+
+	pin, _ := rows.Row(config.KeySearchProvider)
+	if err := pin.Apply("duckduckgo"); err != nil {
+		t.Fatal(err)
+	}
+	results, name, err = search.SearchWithName(context.Background(), provider, "q", 1)
+	if err != nil {
+		t.Fatalf("search after pin change: %v", err)
+	}
+	if got := search.RenderResults(results, 1, name); !strings.HasSuffix(got, "1 result · duckduckgo") {
+		t.Fatalf("the next result kept the old plug: %q", got)
+	}
+
+	if err := pin.Apply("exa"); err != nil {
+		t.Fatal(err)
+	}
+	_, name, err = search.SearchWithName(context.Background(), provider, "q", 1)
+	if err != search.ErrNoAPIKey {
+		t.Fatalf("pinned unkeyed exa error = %v, want %v", err, search.ErrNoAPIKey)
+	}
+	if got := search.Failure(name, search.ErrNoAPIKey); got != "Search failed (exa): no API key" {
+		t.Fatalf("pinned failure = %q", got)
+	}
+}
+
+// V3 and V4: one pair obtained from the production chat door follows later
+// key and provider writes. Constructing search.Live in this test would leave a
+// boot-resolved v3Search implementation untested.
+func TestTheSearchPairFromTheDoorReadsEveryLaterSettingsWrite(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	dir := t.TempDir()
+	provider, _ := v3Search(dir)
+	if got := provider.Name(); got != "firecrawl" {
+		t.Fatalf("fresh door pair = %q, want firecrawl", got)
+	}
+
+	rows := config.NewSettings(config.SettingsOptions{ProfileDir: dir})
+	exaKey, _ := rows.Row(config.KeyExaKey)
+	if err := exaKey.Apply("exa-live"); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.Name(); got != "exa" {
+		t.Fatalf("the retained pair ignored the key write: %q", got)
+	}
+
+	pin, _ := rows.Row(config.KeySearchProvider)
+	if err := pin.Apply("duckduckgo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.Name(); got != "duckduckgo" {
+		t.Fatalf("the retained pair ignored the pin write: %q", got)
+	}
+
+	if err := exaKey.Apply(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := pin.Apply("exa"); err != nil {
+		t.Fatal(err)
+	}
+	_, name, err := search.SearchWithName(context.Background(), provider, "q", 1)
+	if name != "exa" || err != search.ErrNoAPIKey {
+		t.Fatalf("the retained pair's pinned call = %q/%v, want exa/%v", name, err, search.ErrNoAPIKey)
 	}
 }
