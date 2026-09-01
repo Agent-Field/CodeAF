@@ -3,9 +3,10 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in its own copy of the repository and reports back when
-it lands. It never sees the conversation: what it reads is one written brief — your own
-message, word for word, then the work, what to produce and what done means. How that is
+conversation carries on. It works in a copy of its own — a worktree of your repository, or
+a copy of the folder when the work is about a folder — and reports back when it lands. It
+never sees the conversation: what it reads is one written brief — your own message, word
+for word, then the work, what to produce and what done means. How that is
 assembled is on the *how tasks run* page, under *What the task actually reads*.
 
 You can ask for the work in words, and the model grooms it and calls its `propose_task`
@@ -2370,9 +2371,13 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of the repository taken from its **parent's** copy, and its
-branch merges back into the parent's — so a family's work comes home as the parent's work,
-in one merge, not as three branches racing for yours.
+Each piece works in a copy of its **parent's** own working copy, and its branch merges
+back into the parent's — so a family's work comes home as the parent's work, in one merge,
+not as three branches racing for yours. That is true whether the family is working on a
+repository or on a plain folder: a family on a folder gets a private copy of it to work in,
+and the pieces branch off that copy and merge back into it, so two pieces writing different
+files never touch each other's directory. The person's own folder is written once, at the
+end, when the whole family lands.
 
 A parent never lands while a piece of it is still running. Its own turn may end long
 before; the task stays open, each report is put in front of it as it arrives, and only then
@@ -2393,8 +2398,8 @@ that from the sentence you typed.
 
 So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
 what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
-own copy of the repository, with its own branch coming home into the parent's. Your
-transcript says it in plain words — `split into 3 parts:` and then each part by number and
+own copy of the parent's working copy, with its own branch coming home into the parent's.
+Your transcript says it in plain words — `split into 3 parts:` and then each part by number and
 name.
 
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
@@ -2412,7 +2417,7 @@ does not do them again. *An answer that runs long is read and moved* is where th
 **Two things have to be true, and neither is the worker's confidence.**
 
 - **There must be enough separate items.** Below six, one worker doing them in order beats
-  paying for a copy of the repository, a check and a wait for each part. This was measured,
+  paying for a working copy, a check and a wait for each part. This was measured,
   not guessed: twelve image files won, four modules and three bugs lost. This count reads
   what the worker says it saw, and it counts a number standing beside a pile of things —
   "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.
@@ -2461,6 +2466,24 @@ spent on it is that one reading. The next section, *A task that landed needing y
 without doing anything*, is what you see. This is a deliberate word the mastermind has to
 reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
 this, has refused a division and the worker carries on with the work exactly as above.
+
+**No two parts may own the same file, and that one is not a judgement — it is
+enforced.** The files each part's brief and done-condition name are checked against each
+other, and if the same file is claimed by more than one part the division is **refused
+before anything is handed out**: no part starts and no copy of the repository is made.
+The worker is told which file — "`report.md` is claimed by more than one part" — and can
+redraw the boundary and ask again. The reason is that everything the parts write goes
+into **one deliverable**: a file two parts wrote is kept once, and the other part's
+version of it would simply be gone, with no conflict for anybody to notice.
+
+**It is checked twice, and the first one is free.** The parts as the worker wrote them are
+read before the mastermind is, so the commonest case — a worker that drew its own
+boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts
+the mastermind settled are read again afterwards, because it can sharpen a brief onto a
+file its sibling already owns; a refusal there has cost that one reading and nothing else,
+and its wording does not pretend otherwise. Only the **same file** counts either time. Two
+parts working in one directory on different files are independent and always were, and so
+is one part owning a folder while another owns a file inside it.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the

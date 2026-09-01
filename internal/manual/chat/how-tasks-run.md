@@ -702,7 +702,7 @@ than one line means the answer is responding to all of those finished tasks, top
 
 **Every file aforge names you is named by its full absolute path** — after a task and
 everywhere else in the conversation. A relative path like `research/notes.md` is one you
-would have to work out a root for, and a task that ran in its own copy of the repository
+would have to work out a root for, and a task that ran in a copy of its own
 makes even that a guess.
 
 ## Does a task proposal expire while I am in another conversation

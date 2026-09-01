@@ -813,6 +813,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// And the refusal a person meets in the transcript rather than in a
+		// design: the split did not happen because two of the parts wanted the
+		// same file. The words are the ones they read there.
+		{"why was the split refused because two parts wanted the same file", "tasks"},
 		// Hands: the third weight, and the one a person meets as a line they did
 		// not ask for in the middle of their own answer. They ask in the words on
 		// the screen — "three hands on it" — or in the words for what they saw,
