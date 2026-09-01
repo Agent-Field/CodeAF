@@ -78,7 +78,7 @@ var complexityDebt = map[string]int{
 	"TaskGraph.runFrontier": 22,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
-	"taskNote":              18,
+	"taskNote":              19,
 	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
 }
@@ -100,7 +100,8 @@ var whyTheDebtIsStillThere = map[string]string{
 	"declaredInvalidations": "a worker's claim read for the beliefs it says it moved " +
 		"(task_claims.go): several shapes of sentence, each with its own reading.",
 	"taskNote": "one landing turned into the sentence its parent reads, and every " +
-		"kind of ending spells that sentence differently.",
+		"kind of ending spells that sentence differently — including, since #277, the one " +
+		"whose work was saved nowhere and has no branch to offer.",
 	"auditDoor.admitsFile": "one path weighed against what a checker may open, which is a " +
 		"question with that many separate answers.",
 	"copyOriginal": "the original of a file fetched for a check, from whichever of the " +
