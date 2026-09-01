@@ -820,49 +820,24 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		return said, "", false
 	}
 
-	// THE SLOTS ARE TAKEN FOR THE WHOLE DIVISION BEFORE ANY OF IT IS ADMITTED.
-	// A division is ONE decision: three parts admitted and a fourth refused by
-	// the fan cap would leave the worker holding a shape nobody chose, so the
-	// cap is met before anything exists rather than halfway through
-	// ([TaskGraph.claimChild] states why the claim and not the count).
-	taken := 0
-	defer func() {
-		for ; taken > 0; taken-- {
-			graph.releaseChild(parent)
-		}
-	}()
-	for range parsed.Parts {
-		if refusal := graph.claimChild(parent); refusal != "" {
-			line.Decision = divisionRefusedCap
-			return refusal, "", false
-		}
-		taken++
-	}
-
-	// AND THE PARTS COME INTO EXISTENCE, which is one operation and not a loop
-	// with a preamble (task_divide_wip.go's [Agent.startTheParts]). The family's
-	// world is frozen onto its own branch and every part is admitted carrying
-	// that commit — in that order, because [TaskGraph.admit] puts a node on the
+	// AND THE PARTS COME INTO EXISTENCE, which is ONE operation and not a
+	// sequence this function holds the bookkeeping for (task_divide_wip.go's
+	// [Agent.startTheParts]). The free hands are claimed, the family's world is
+	// frozen onto its own branch, and every part is admitted carrying that
+	// commit — in that order, because [TaskGraph.admit] puts a node on the
 	// frontier and the frontier STARTS it, so a world frozen after the first
-	// admission is a world the first part may already have raced past.
+	// admission is a world the first part may already have raced past. Every road
+	// out of it gives the hands back and writes its own decision on the record.
 	//
 	// WHOSE WORK IT IS is settled there too: the parts are registered under this
 	// node, one level deeper, owned by this agent — so their worktrees branch off
 	// this one's and come home into it — and each of them opens on the sentence
 	// the person typed, inherited through [Agent.taskRequest] because there is
 	// nobody in a worktree to type a new one.
-	ids, titles, notFrozen := a.startTheParts(node, parsed.Parts, &line)
-	if notFrozen != "" {
-		// A FAMILY WHOSE WORLD COULD NOT BE FROZEN HANDS NOTHING OUT. Admitting
-		// the parts anyway would start every one of them on material the parent
-		// does not have, which is the defect the freeze exists to close arriving
-		// through the door meant to close it. The claims taken above go back on
-		// the deferred release, exactly as they do for every other refusal here.
-		line.Decision = divisionRefusedFreeze
-		return notFrozen, "", false
+	ids, titles, refused := a.startTheParts(node, parsed.Parts, &line)
+	if refused != "" {
+		return refused, "", false
 	}
-	taken -= len(ids)
-	line.Decision, line.Admitted = divisionAdmitted, len(ids)
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
 }
 

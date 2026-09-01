@@ -104,13 +104,28 @@ import "strings"
 // It answers the ids and titles admitted, or the one sentence to hand the worker
 // when the family's world could not be frozen and nothing was handed out.
 func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalDivision) ([]uint64, []string, string) {
+	graph := a.graph()
+	// THE SLOTS ARE TAKEN FOR THE WHOLE DIVISION BEFORE ANY OF IT EXISTS. A
+	// division is ONE decision: three parts admitted and a fourth refused by the
+	// fan cap would leave the worker holding a shape nobody chose, so the cap is
+	// met before anything exists rather than halfway through
+	// ([TaskGraph.claimChild] states why the claim and not the count). The hands
+	// go back on every road out of here, which is why they are held by a value
+	// with one release rather than by a counter each ending has to remember.
+	hands := divisionHands{graph: graph, parent: a.config.taskID}
+	defer hands.release()
+	if refusal := hands.take(len(parts)); refusal != "" {
+		line.Decision = divisionRefusedCap
+		return nil, nil, refusal
+	}
+
 	frozen, checkpoint, problem := a.freezeFamilyWorld(node)
 	if problem != "" {
+		line.Decision = divisionRefusedFreeze
 		return nil, nil, divisionWorldNotFrozen(problem)
 	}
 	line.Frozen, line.Checkpoint = frozen, checkpoint
 
-	graph := a.graph()
 	// THE MODEL, THE OTHER MODEL, THE RATINGS AND THE PERSON'S SENTENCE ARE ALL
 	// RESOLVED ONCE, ABOVE THE LOOP. The ladder reads settings and the live
 	// conversation model and the store is the person's rather than this session's
@@ -155,10 +170,46 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 			// knowing its world is a part the frontier could start on the wrong one.
 			frozen: frozen,
 		})
+		// The node counts itself from here, so the hand its admission was holding
+		// has already gone back ([TaskGraph.admit] releases it under the graph's
+		// own lock) and this is the book agreeing with it.
+		hands.held--
 		ids = append(ids, id)
 		titles = append(titles, part.Title)
 	}
+	line.Decision, line.Admitted = divisionAdmitted, len(ids)
 	return ids, titles, ""
+}
+
+// divisionHands is the free hands one division is holding, and the ONE place
+// they are given back.
+//
+// IT IS A VALUE RATHER THAN A COUNTER because the alternative is a `taken--`
+// that every ending in this function has to remember — and the ending that
+// forgets is a hand held for a part that will never exist, which is a lane the
+// person's cap will not give out again for the life of the session.
+type divisionHands struct {
+	graph  *TaskGraph
+	parent uint64
+	held   int
+}
+
+// take claims one hand per part, or answers the cap's own refusal having given
+// back whatever it managed to claim first.
+func (h *divisionHands) take(parts int) string {
+	for i := 0; i < parts; i++ {
+		if refusal := h.graph.claimChild(h.parent); refusal != "" {
+			return refusal
+		}
+		h.held++
+	}
+	return ""
+}
+
+func (h *divisionHands) release() {
+	for ; h.held > 0; h.held-- {
+		h.graph.releaseChild(h.parent)
+	}
 }
 
 // partModel is which tier one part is minted on, and it is a function of its own
@@ -210,12 +261,21 @@ func (a *Agent) freezeFamilyWorld(node *TaskNode) (frozen, checkpoint, problem s
 		return "", "", ""
 	}
 	if ledger := node.rememberedWrites(); len(ledger) > 0 {
-		if saved := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger); len(saved) > 0 {
-			head, err := git(dir, "rev-parse", "HEAD")
-			if err != nil {
-				return "", "", familyTreeProblem(head, err)
-			}
-			return strings.TrimSpace(head), strings.TrimSpace(head), ""
+		_, commit, err := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger)
+		if err != nil {
+			return "", "", err.Error()
+		}
+		// AND THE CHECKPOINT IS ASKED WHETHER IT REALLY HOLDS THE LEDGER. A commit
+		// that ran is not a commit that carried: [stageTaskWork] steps over a path
+		// git refuses one at a time, which is right for a landing and wrong here —
+		// a ledger path left on the floor is a part opening on a brief that names
+		// a file its disk does not have. So the tree is asked, and a division whose
+		// material did not all go in is refused rather than handed out short.
+		if unheld := unheldLedgerPaths(dir, ledger); len(unheld) > 0 {
+			return "", "", "the work so far is not all in it: " + namedFew(unheld, leftBehindNamesShown)
+		}
+		if commit != "" {
+			return commit, commit, ""
 		}
 	}
 	// Nothing of the ledger reached a commit — the parent has written nothing

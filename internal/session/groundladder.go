@@ -385,16 +385,6 @@ func universeReaches(order groundOrder) bool {
 	if ground == "" || dir == "" || withinDir(ground, dir) {
 		return false
 	}
-	// A FAMILY THAT FROZE ITS WORLD IS NOT THIS RUNG'S EITHER, and it is the one
-	// refusal here that is not about what furrow can do. A fork is the parent's
-	// DIRECTORY as it stands, byte for byte, and the freeze is a COMMIT — so a
-	// part forked while its parent goes on working would hold a world that is
-	// precisely not the one its siblings were promised. The snapshot below is
-	// the answer, and on a family tree it costs nothing: the commit is already
-	// there and the worktree is carved straight from it.
-	if strings.TrimSpace(order.frozen) != "" {
-		return false
-	}
 	switch order.promise {
 	case TaskModeMirror:
 		return true
@@ -433,6 +423,32 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 		drop()
 		return taskTree{}, false
 	}
+	// A FAMILY THAT FROZE ITS WORLD OPENS THE FORK AT THAT COMMIT INSTEAD OF
+	// SEALING IT (task_divide_wip.go). The fork is a byte-exact copy of the
+	// family tree, `.git` included, so the freeze is an object this repository
+	// already holds and opening it costs one checkout. The seal is not a second
+	// way of doing that; it is the answer for a child that has no freeze.
+	if frozen := strings.TrimSpace(order.frozen); frozen != "" {
+		if !openForkAt(fork.Path, order.branch, frozen) {
+			drop()
+			return taskTree{}, false
+		}
+		// THERE IS NO BASE, and that is the freeze's own law rather than an
+		// omission here: [taskTree.replayOwnWork] lifts a machine commit out of a
+		// branch before it comes home, and a freeze is an ordinary commit on the
+		// family branch that the part merges back into. What would be lifted out
+		// is the family's own work.
+		return taskTree{
+			dir:      fork.Path,
+			root:     order.root,
+			branch:   order.branch,
+			place:    order.place,
+			ground:   order.ground,
+			mode:     TaskModeWorktree,
+			seal:     frozen,
+			universe: fork.Name,
+		}, true
+	}
 	base, ok := sealForkWorld(fork.Path, order.branch, order.title)
 	if !ok {
 		drop()
@@ -449,6 +465,43 @@ func universeBranch(ctx context.Context, workspace *furrow.Workspace, order grou
 		universe: fork.Name,
 		base:     base,
 	}, true
+}
+
+// openForkAt cuts the part's branch inside a forked repository AT THE WORLD ITS
+// FAMILY FROZE, and leaves the fork holding what git cannot see.
+//
+// ── WHERE THE FREEZE STOPS, SAID OUT LOUD ──
+//
+// THE FREEZE IS OVER WHAT GIT CAN SEE, and that is the same edge every other
+// part of this system draws rather than a compromise made here: the ledger is
+// the contract of what ships, [stageTaskWork] stages that ledger, the landing
+// carries only what was committed, and [taskTree.landMirror] lays back only what
+// was named. So a part's TRACKED world is the frozen commit exactly, for every
+// sibling, however long after the division it was cut — and the `.env`, the
+// installed dependency tree and the dev database are the fork's, which is the
+// whole and only reason this rung exists.
+//
+// A DIVISION THAT STOOD THIS RUNG DOWN WOULD BE THE WRONG TRADE. It was the
+// first answer here and it was wrong: a part of a family whose parent had a
+// `node_modules` would have lost it to gain a guarantee about files it was never
+// going to ship, which is this rung's own defect written backwards — four steps
+// spent discovering it cannot run the tests.
+//
+// THE UNTRACKED-AND-NOT-IGNORED FILES GO. `git checkout` puts tracked files back
+// to the freeze and leaves everything else where it is, so without the clean a
+// part cut late would hold scratch files its siblings never saw — the divergence
+// again, in the one corner the checkout does not reach. The two directories kept
+// are the ones that belong to machinery rather than to anybody's world: a task's
+// private metadata, and furrow's own bookkeeping, which the fork needs to be a
+// fork at all.
+func openForkAt(dir, branch, frozen string) bool {
+	if _, err := git(dir, "checkout", "-b", branch, frozen); err != nil {
+		return false
+	}
+	if _, err := git(dir, "clean", "-fd", "-e", aforgeDroppings, "-e", furrowMarkerDir); err != nil {
+		return false
+	}
+	return true
 }
 
 // sealForkWorld cuts the task's branch inside a forked repository and commits
@@ -557,10 +610,11 @@ func holdsItsOwnGit(dir string) bool {
 // untracked files included, with the branch and the merge that come after it
 // exactly as they were.
 //
-// AND IT IS THE RUNG A FAMILY'S PARTS TAKE, WITH NOTHING TO SEAL. A parent that
-// divides commits its work onto the family branch first (task_divide_wip.go), so
-// a part arrives here with that commit named and the whole of this rung's job is
-// one `git worktree add` from it.
+// AND IT IS THE RUNG A FAMILY'S PARTS TAKE WHEN FURROW CANNOT REACH THEM, WITH
+// NOTHING TO SEAL. A parent that divides commits its work onto the family branch
+// first (task_divide_wip.go), so a part arrives here with that commit named and
+// the whole of this rung's job is one `git worktree add` from it. The rung above
+// honours the same freeze its own way ([openForkAt]).
 type snapshotRung struct{}
 
 func (snapshotRung) rung() GroundRung { return GroundRungSnapshot }
@@ -584,7 +638,12 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	if frozen := strings.TrimSpace(order.frozen); frozen != "" {
 		tree, err := cutWorktreeFrom(order.place, order.root, order.dir, order.branch, order.mode, frozen)
 		if err != nil {
-			return taskTree{}, false, nil
+			// A WORKTREE THAT WOULD NOT BE CUT IS THIS RUNG FAILING AT A GROUND IT
+			// REACHED, not a ground it cannot take, so it stops the ladder with
+			// git's own words. No rung below takes a repository promise anyway, so
+			// what this changes is not whether the task fails but whether anybody
+			// is told why.
+			return taskTree{}, false, err
 		}
 		tree.ground, tree.seal = order.ground, frozen
 		return tree, true, nil
@@ -614,7 +673,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	}
 	tree, err := cutWorktreeFrom(order.place, order.root, order.dir, order.branch, order.mode, from)
 	if err != nil {
-		return taskTree{}, false, nil
+		return taskTree{}, false, err
 	}
 	tree.ground, tree.base = order.ground, base
 	if base != "" {

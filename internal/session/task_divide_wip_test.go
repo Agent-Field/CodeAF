@@ -55,6 +55,15 @@ type wipFamily struct {
 // window this whole seam is about.
 func newWipFamily(t *testing.T, mode TaskMode, gate func(*TaskNode)) *wipFamily {
 	t.Helper()
+	return newWipFamilyFrom(t, mode, taskSpec{title: "the whole job", request: personSentence,
+		brief: "do the whole job", acceptance: "it is done", depth: 1}, gate)
+}
+
+// newWipFamilyFrom is the same rig built from a SPEC, which is the one thing the
+// sketch road's test has to vary: what the parent was ADMITTED with, since that
+// is where a drawn division lives.
+func newWipFamilyFrom(t *testing.T, mode TaskMode, spec taskSpec, gate func(*TaskNode)) *wipFamily {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 
 	family := &wipFamily{script: &wipPartCompleter{seen: map[string]string{}}}
@@ -92,10 +101,9 @@ func newWipFamily(t *testing.T, mode TaskMode, gate func(*TaskNode)) *wipFamily 
 		family.graph.runOwned(node)
 	}
 
+	spec.ground, spec.mode = family.ground, mode
 	id := family.graph.reserve()
-	family.graph.admit(id, taskSpec{title: "the whole job", request: personSentence,
-		brief: "do the whole job", acceptance: "it is done", depth: 1,
-		ground: family.ground, mode: mode})
+	family.graph.admit(id, spec)
 	family.parent = family.graph.node(id)
 
 	// The two lines the runner runs for a node it is about to start.
@@ -520,7 +528,10 @@ func TestAPartRestoredFromACheckpointStandsInTheFrozenWorld(t *testing.T) {
 		t.Fatalf("prepareTaskTreeOn for the parent: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "repro.txt"), "the failing case\n")
-	saved := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"})
+	saved, _, err := commitTaskWorkAs(tree.dir, wipCheckpointMessage("the whole job"), []string{"repro.txt"})
+	if err != nil {
+		t.Fatalf("the checkpoint would not commit: %v", err)
+	}
 	if len(saved) == 0 {
 		t.Fatal("the checkpoint staged nothing")
 	}
@@ -658,5 +669,205 @@ func TestASealTellsACleanTreeFromAGitThatWouldNotRun(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "could not be sealed") {
 		t.Fatalf("the failure reads %q, want it to say what could not be done", err)
+	}
+}
+
+// ── the rung above, which carries what git cannot see ───────────────────────
+
+// A FAMILY THAT WAS GIVEN THE WHOLE WORLD HANDS THE WHOLE WORLD ON. The parent
+// here rode the universe rung, so its directory holds an installed dependency
+// tree and a `.env` that no commit anywhere mentions. Standing that rung down
+// for its parts — the first answer to the freeze, and the wrong one — would have
+// bought a guarantee about files a part is never going to ship by taking away
+// the files it needs to run anything.
+//
+// So the freeze reaches the fork instead: the tracked world is the frozen commit
+// exactly, for both parts and whenever they were cut, and everything git was
+// told to ignore is still there.
+func TestPartsOfAUniverseGroundedFamilyGetTheWholeWorldAndTheSameOne(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := worldGitCannotSee(t)
+	installFakeFurrow(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+
+	script := &wipPartCompleter{seen: map[string]string{}}
+	session, _ := newTestAgent(t, script, func(config *Config) {
+		config.Workspace = repo
+		config.Place = place
+		config.Divide = true
+		config.TaskAudit = false
+		config.TaskRepairRounds = 0
+	})
+	graph := session.graph()
+	// NOTHING STARTS. The parts are grounded by hand below, through the same
+	// [prepareTaskTreeOn] their runner calls, so that their working copies can be
+	// read before a landing takes them away.
+	graph.run = func(*TaskNode) {}
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the whole job", request: personSentence,
+		brief: "do the whole job", acceptance: "it is done", depth: 1,
+		ground: repo, mode: TaskModeWorktree})
+	parent := graph.node(id)
+	tree, err := prepareTaskTreeOn(context.Background(), place, repo, session.journalID(),
+		parent.id, parent.title(), parent.stand())
+	if err != nil {
+		t.Fatalf("prepareTaskTreeOn for the parent: %v", err)
+	}
+	if tree.rung != GroundRungUniverse {
+		t.Fatalf("the parent's rung is %q; this test is about the rung above and nothing else", tree.rung)
+	}
+	parent.setTree(tree)
+	writeFile(t, filepath.Join(tree.dir, "repro.txt"), "the failing case the parent built\n")
+	parent.noteWrote("repro.txt")
+
+	journal := filepath.Join(t.TempDir(), "worker.jsonl")
+	worker, err := newAgent(Config{
+		Workspace: tree.dir, Model: "test/model", System: "SYSTEM",
+		SessionFile: journal,
+		InTask:      true, Divide: true, TaskRepairRounds: 0,
+		tasker: graph, taskID: id, taskDepth: 1,
+	}, script)
+	if err != nil {
+		t.Fatalf("newAgent for the worker: %v", err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
+	parent.openRoom().speaking(worker)
+
+	answer, _, err := worker.divideWork(context.Background(), json.RawMessage(fmt.Sprintf(
+		`{"evidence":%q,"parts":[`+
+			`{"title":"alpha","summary":"s","brief":"write alpha.md","acceptance":"alpha.md is there"},`+
+			`{"title":"beta","summary":"s","brief":"write beta.md","acceptance":"beta.md is there"}]}`,
+		wideEvidence)))
+	if err != nil || !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("divide_work answered %q (%v)", answer, err)
+	}
+	frozen := strings.TrimSpace(gitOut(t, tree.dir, "rev-parse", "HEAD"))
+
+	// AND THE PARENT KEEPS WORKING between the two parts being cut, which is the
+	// window the freeze exists for.
+	writeFile(t, filepath.Join(tree.dir, "later.txt"), "written after the parts were handed out\n")
+
+	parts := partsByTitle(t, graph, parent)
+	for _, name := range []string{"alpha", "beta"} {
+		part := parts[name]
+		world, err := prepareTaskTreeOn(context.Background(), place, tree.dir, session.journalID(),
+			part.id, part.title(), part.stand())
+		if err != nil {
+			t.Fatalf("prepareTaskTreeOn for %s: %v", name, err)
+		}
+		if world.rung != GroundRungUniverse {
+			t.Fatalf("the part %s was grounded on the %q rung; a freeze must not cost a family the world it already had", name, world.rung)
+		}
+		// THE HALF NO OTHER RUNG CARRIES, and the whole point of not standing this
+		// rung down: a `.env` and an installed dependency tree are invisible to git
+		// by design, so a part that has them could only have been forked.
+		if got := readFile(t, filepath.Join(world.dir, ".env")); !strings.Contains(got, "SECRET=1") {
+			t.Fatalf("the part %s has no .env (%q): the freeze took away the world its parent had", name, got)
+		}
+		if got := readFile(t, filepath.Join(world.dir, "node_modules", "left-pad", "index.js")); !strings.Contains(got, "module.exports") {
+			t.Fatalf("the part %s has no installed dependency tree: %q", name, got)
+		}
+		// AND THE TRACKED WORLD IS THE FREEZE, EXACTLY, for both of them.
+		if got := readFile(t, filepath.Join(world.dir, "repro.txt")); !strings.Contains(got, "the failing case") {
+			t.Fatalf("the part %s woke without the family's own work: %q", name, got)
+		}
+		if _, err := os.Stat(filepath.Join(world.dir, "later.txt")); !os.IsNotExist(err) {
+			t.Fatalf("the part %s can see work the parent did after the split", name)
+		}
+		if got := strings.TrimSpace(gitOut(t, world.dir, "rev-parse", "HEAD")); got != frozen {
+			t.Fatalf("the part %s stands at %s, want the one world the division froze (%s)", name, got, frozen)
+		}
+		if world.base != "" {
+			t.Fatalf("the part %s carries base %q; a freeze is history and there is nothing to rebase out", name, world.base)
+		}
+	}
+}
+
+// ── a freeze that really will not go ────────────────────────────────────────
+
+// THE REFUSAL, DRIVEN THROUGH THE TOOL. A family tree whose object store cannot
+// be written to is every reason a checkpoint fails — a read-only disk, a
+// repository somebody broke, a hook that refuses — and the answer has to be that
+// NOTHING IS HANDED OUT: parts admitted onto a world their parent's work never
+// reached is the defect this seam exists to end, arriving through the door meant
+// to close it.
+func TestAFamilyWhoseWorkWillNotCommitHandsNothingOut(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only directory, so there is no failure to drive")
+	}
+	family := newWipFamily(t, TaskModeMirror, nil)
+	family.wrote(t, "repro.txt", "the failing case the parent built\n")
+
+	// The mirror is a repository of its own (#230), so its object store is its
+	// own directory and taking the write permission away is the whole of the
+	// fault injection.
+	objects := filepath.Join(family.tree.dir, ".git", "objects")
+	if err := os.Chmod(objects, 0o555); err != nil {
+		t.Fatalf("chmod the object store: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(objects, 0o755) })
+
+	before := family.graph.freeHands()
+	head := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD"))
+
+	answer := family.divide(t)
+	if !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want the division refused", answer)
+	}
+	if !strings.Contains(answer, "carry on with the work in your own hands") {
+		t.Fatalf("the refusal reads %q; it does not say what the worker does next", answer)
+	}
+	if kids := family.graph.children(family.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts were admitted onto a world the family could not write", len(kids))
+	}
+	if line := onlyDivision(t, family.journal); line.Decision != divisionRefusedFreeze {
+		t.Fatalf("the record says %q, want %q", line.Decision, divisionRefusedFreeze)
+	}
+	// THE HANDS GO BACK. A refusal that kept them would cost the person a lane
+	// for the life of the session.
+	if now := family.graph.freeHands(); now != before {
+		t.Fatalf("the refusal left %d free hands, want the %d it started with", now, before)
+	}
+	if now := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD")); now != head {
+		t.Fatalf("the family branch moved to %s on a checkpoint that failed", now)
+	}
+}
+
+// ── the sketch road ─────────────────────────────────────────────────────────
+
+// THE ROAD WHERE NOTHING HAS BEEN WRITTEN YET. A division drawn before the
+// worker's first request is submitted by the harness on its behalf
+// (task_divide_sketch.go), and there is nothing on disk to check point — so the
+// commit is a no-op by construction rather than by a special case written for
+// it. The world is still pinned, because a parent that writes AFTER this would
+// otherwise reach the parts that start late and not the ones that start early.
+func TestASketchRoadDivisionWritesNoCommit(t *testing.T) {
+	family := newWipFamilyFrom(t, TaskModeWorktree, drawnSpec(countedSketch("A | B | C",
+		"A is the flaking auth test, B is the http client major version, C is the release notes for 2.4")), nil)
+	// Nothing runs: what is under test is the door, and a part landing would move
+	// the family branch under the assertion below.
+	family.graph.run = func(*TaskNode) {}
+	before := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD"))
+
+	said, person := family.worker.divideFromSketch(context.Background())
+	if person != "" {
+		t.Fatalf("the sketch road came back with a person's own job: %q", person)
+	}
+	if said == "" {
+		t.Fatal("the harness submitted the drawing and nothing was handed out")
+	}
+	if kids := family.graph.children(family.parent.id); len(kids) == 0 {
+		t.Fatal("the drawing produced no parts at all, so this proves nothing about the commit")
+	}
+	if now := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD")); now != before {
+		t.Fatalf("the family branch moved from %s to %s with nothing written to commit", before, now)
+	}
+	line := onlyDivision(t, family.journal)
+	if line.Checkpoint != "" {
+		t.Fatalf("a division drawn before the first request wrote checkpoint %q", line.Checkpoint)
+	}
+	if line.Frozen != before {
+		t.Fatalf("the sketch road froze %q, want the family tree's own HEAD %q", line.Frozen, before)
 	}
 }
