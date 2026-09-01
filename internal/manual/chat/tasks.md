@@ -1112,9 +1112,9 @@ Three things a job's row deliberately does **not** have, because a job has none 
   transcript to read, so `enter` on the row opens a page that carries what a job actually
   leaves behind: the same `job 3 · log /path/…` line, and under it the **end of that log**
   — the last 200 lines, newest at the bottom, re-read four times a second while the job
-  runs, with a foot reading `this log grows as the job works — esc to return`. When the job
+  runs, with a foot reading `this log grows as the job works — say it to main`. When the job
   ends the page takes one last reading, so the process's final lines are on it, and the foot
-  becomes `task finished — esc to return`. A job that has written nothing yet says
+  becomes `this task has finished — say it to main`. A job that has written nothing yet says
   `a background job keeps a log, not a transcript` instead, and never an error. What that
   page never shows is a chat — there was never one to show, and `enter` inside it steers
   nothing, because there is nobody in a job to read a line. (On a job that has ended, `→` on
@@ -1360,7 +1360,7 @@ rest state, so a person who starts typing is typing, not navigating.
 | `→` | open a folded family, or step to the first child |
 | `←` | fold an open family, or jump to the parent row |
 | `enter` | open the task's room |
-| `w` | toggle the wider 46-column tree |
+| `alt+w` | toggle the wider 46-column tree (bare `w` only on the full-frame roster) |
 | `esc` or `ctrl+t` | give the keyboard back |
 | `ctrl+g` | close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
@@ -2073,9 +2073,12 @@ Inside a task's room the page is built from the same blocks the conversation is 
 a tool call expands to its diff or output, a reply renders as markdown, and anything you
 steered wears your own hue. History comes off the task's journal, capped at the last 120
 blocks; a missing or unreadable journal is not an error — the room opens on the live edge
-instead. When the task has landed, a foot line reads `task finished — esc to return`, and
-a landed room with no journal to read says `this task's transcript is not here any more`
-above it. A finished task's room replays its whole transcript after a restart as well —
+instead. When the task has landed, a foot line reads `this task has finished — say it to main` —
+and `this task has finished — say it to main, or open its parent, Ship the port` where the
+task was spawned under another one — and a landed room with no journal to read says
+`this task's transcript is not here any more` above it. The foot names a door rather than a
+key: `esc` is already on the legend and the header, and what a person whose steering was
+just refused needs to know is where the words can go instead. A finished task's room replays its whole transcript after a restart as well —
 see *A task's room after a restart*.
 
 `pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
