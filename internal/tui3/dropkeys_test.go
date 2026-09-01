@@ -394,15 +394,21 @@ func TestAFolderTypedInIsSilentUntilEnter(t *testing.T) {
 // in the program passes through.
 func TestOrdinaryTypingArmsNothingAndAsksTheDiskNothing(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
-	typeBurst(a, "fix the roof and then the gutter before it rains for a fortnight")
+	typeBurst(a, "the ratio a:b/c is fine and the roof needs fixing before it rains")
 	if a.drop.armed != 0 {
 		t.Fatalf("a sentence armed %d wakeups, want none", a.drop.armed)
 	}
 	if a.drop.looked != 0 {
 		t.Fatalf("a sentence asked the disk %d times, want none", a.drop.looked)
 	}
-	if got := a.input.String(); got != "fix the roof and then the gutter before it rains for a fortnight" {
+	if got := a.input.String(); got != "the ratio a:b/c is fine and the roof needs fixing before it rains" {
 		t.Fatalf("the draft is %q", got)
+	}
+
+	a, _, _ = dropLab(t, nil)
+	typeBurst(a, "c:")
+	if a.drop.armed != 0 || a.drop.looked != 0 {
+		t.Fatalf("a lone drive prefix armed %d wakeups and made %d looks, want none", a.drop.armed, a.drop.looked)
 	}
 }
 
@@ -544,6 +550,13 @@ func TestWhatALineHasToLookLikeBeforeTheDiskIsAsked(t *testing.T) {
 		{"'/var/folders/x/Screen shot.png'", true},
 		{"~/Desktop/shot.png", true},
 		{"file:///var/folders/x/shot.png", true},
+		{"c:/Users/abira/Pictures/shot.png", true},
+		{`C:\Users\abira\Pictures\shot.png`, true},
+		{"/C:/Users/abira/Pictures/shot.png", true},
+		{`\\wsl.localhost\Ubuntu\home\abir\shot.png`, true},
+		{`\\wsl$\Ubuntu\home\abir\shot.png`, true},
+		{"//wsl.localhost/Ubuntu/home/abir/shot.png", true},
+		{"//wsl$/Ubuntu/home/abir/shot.png", true},
 		{"/a/one.log /a/two.log", true},
 		{"/var/folders/x/Screen Shot.png", true},
 		{"/var/folders/x/Screen Shot 5.21.40\u202fPM.png", true},
@@ -556,6 +569,12 @@ func TestWhatALineHasToLookLikeBeforeTheDiskIsAsked(t *testing.T) {
 		{"~", false},
 		{"~/", false},
 		{"file://", false},
+		{"c:", false},
+		{"c:/", false},
+		{`C:\`, false},
+		{"/C:/", false},
+		{"//wsl.localhost/Ubuntu/", false},
+		{"the ratio a:b/c is fine", false},
 		{"look at /a/b.png", false},
 		{"/notes.md", false},
 		{"", false},

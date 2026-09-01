@@ -311,22 +311,22 @@ func (a *app) spendDrop() bool {
 
 // dropOpener reports whether one typed character could begin a dropped path.
 //
-// `/` and `~` are the two roots a terminal writes; `'` and `"` are the quoting
-// the ones that do not backslash their spaces use instead; and `f` is there for
-// `file://`, which is what a desktop's own drag protocol carries and several
-// terminals pass straight through. `f` is the expensive-looking one and it is
-// not: it merely OPENS the question, and [dropCouldGrowInto] shuts it again on
-// the second character of every `f` word that is not `file://`.
+// `/` and `~` are the two Unix roots a terminal writes; `'` and `"` are the
+// quoting the ones that do not backslash their spaces use instead; `\` is the
+// first half of WSL's UNC spelling; and an ASCII letter may be the drive in
+// `C:\`. A letter merely OPENS the question: [dropCouldGrowInto] shuts it on
+// the second character unless that character is `:`, so ordinary words still
+// arm nothing and ask the disk nothing.
 func dropOpener(text string) bool {
 	r := []rune(text)
 	if len(r) == 0 {
 		return false
 	}
 	switch r[0] {
-	case '/', '~', '\'', '"', 'f':
+	case '/', '~', '\'', '"', '\\':
 		return true
 	}
-	return false
+	return r[0] <= unicode.MaxASCII && asciiDriveLetter(byte(r[0]))
 }
 
 // dropWordStart reports whether at is where a word begins in the draft. A `/`
@@ -344,12 +344,47 @@ func dropCouldGrowInto(run string) bool {
 		strings.HasPrefix(run, "'"), strings.HasPrefix(run, `"`):
 		return true
 	}
+	if windowsDriveCouldGrowInto(run) || wslUNCCouldGrowInto(run) {
+		return true
+	}
 	// `file://` one character at a time, and its own prefixes.
 	head := strings.ToLower(run)
 	if len(head) > len(fileScheme) {
 		head = head[:len(fileScheme)]
 	}
 	return strings.HasPrefix(fileScheme, head)
+}
+
+// windowsDriveCouldGrowInto keeps one ASCII letter open only for the two
+// characters that prove it is a drive path. The fourth character is where the
+// full shape gate takes over and may arm the one quiet-window wakeup.
+func windowsDriveCouldGrowInto(run string) bool {
+	if run == "" || !asciiDriveLetter(run[0]) {
+		return false
+	}
+	switch len(run) {
+	case 1:
+		return true
+	case 2:
+		return run[1] == ':'
+	case 3:
+		return run[1] == ':' && windowsSeparator(run[2])
+	default:
+		return run[1] == ':' && windowsSeparator(run[2])
+	}
+}
+
+// wslUNCCouldGrowInto admits only prefixes of WSL's two UNC hosts, then the
+// path beneath one. A backslash beginning any other word closes before a timer
+// or a disk reading exists.
+func wslUNCCouldGrowInto(run string) bool {
+	head := strings.ToLower(run)
+	for _, prefix := range []string{`\\wsl.localhost\`, `\\wsl$\`} {
+		if strings.HasPrefix(prefix, head) || strings.HasPrefix(head, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // fileScheme is the URL form of a drop, spelled once.
@@ -383,9 +418,37 @@ func droppedPathShape(text string) bool {
 	return droppedWordShape(words[0])
 }
 
+// windowsDroppedLineShape is the narrow enter net for a Windows path that does
+// not begin with `/` and therefore cannot reach the slash router's existing
+// net. Quotes are already removed by [pastedWords]; file URLs and `/C:/...`
+// retain their older slash or paste roads.
+func windowsDroppedLineShape(text string) bool {
+	words := pastedWords(text)
+	if len(words) == 0 {
+		return false
+	}
+	word := words[0]
+	if windowsDriveHead(word) {
+		return windowsDriveShape(word)
+	}
+	return wslUNCShape(word)
+}
+
 func droppedWordShape(word string) bool {
 	if rest, ok := cutFileScheme(word); ok {
-		return strings.Contains(rest, "/")
+		if windowsDriveHead(rest) {
+			return windowsDriveShape(rest)
+		}
+		return strings.Contains(rest, "/") || wslUNCShape(rest)
+	}
+	if windowsDriveHead(word) {
+		return windowsDriveShape(word)
+	}
+	if strings.HasPrefix(word, "//") {
+		return wslUNCShape(word)
+	}
+	if wslUNCShape(word) {
+		return true
 	}
 	switch {
 	case strings.HasPrefix(word, "~/"):
@@ -432,6 +495,25 @@ func (a *app) droppedFiles(text string) bool {
 // always did: this returns false and the caller writes its own sentence.
 func (a *app) droppedLine(line string) bool {
 	return a.droppedLineInto(&a.input, &a.chips, line)
+}
+
+// inputDroppedLine gives a non-slash Windows path the same finished-gesture
+// door home already has. The line comes out before the attachment door reads
+// the box, and comes back unchanged when no chip was taken, after the missing,
+// folder, or size note has been said.
+func (a *app) inputDroppedLine(line string) bool {
+	held := len(a.chips)
+	// Enter ends this gesture even when the file is absent. A quiet-window
+	// wakeup already in flight may still arrive, but it must not ask the disk
+	// about the finished line again.
+	a.drop.open = false
+	a.input.reset()
+	took := a.droppedLine(line)
+	if len(a.chips) == held {
+		a.input.setText(line)
+	}
+	a.touch()
+	return took
 }
 
 // droppedLineInto is that net under WHICHEVER box the line was typed into, so

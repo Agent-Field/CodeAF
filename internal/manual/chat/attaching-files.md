@@ -102,9 +102,8 @@ When you press `enter`, the transcript shows your line with the file's name afte
 ## Drops arrive however the terminal sends them
 
 **Your terminal decides the shape, and aforge handles both.** Most terminals write a drop
-into the message box as one *paste* of the file's path. Some terminals — and some
-multiplexers in front of them — *type* the same path instead, one character at a time,
-with nothing marking it as a paste at all.
+into the message box as one *paste* of the file's path. Others *type* the same path,
+one character at a time, with nothing marking it as a paste.
 
 Either way you get the chip. When the characters stop arriving, aforge reads the run that
 just landed, and if one complete terminal reading of it names real files on the machine
@@ -118,8 +117,9 @@ files that are really there is ever converted.
 (`Screenshot\ 2026-08-27\ at\ 1.21.14\ PM.png`), raw un-escaped spaces, `'single'` and
 `"double"` quotes, `file://` URLs and bare paths with `%20` escapes, several files joined
 by spaces or newlines, and the narrow no-break space macOS puts before `AM` or `PM` in a
-screenshot name. `~` means your home directory. A drop after words you had already typed
-keeps the words and puts `[image #1]` where the path was.
+screenshot name. Inside WSL, `c:/…`, `C:\…`, `/C:/…`, `\\wsl.localhost\…`, and
+`\\wsl$\…` work too. `~` means your home directory. A drop after words you had already
+typed keeps the words and puts `[image #1]` where the path was.
 
 **Typing a slash command is untouched.** `/help`, `/model`, `/export` and the rest are
 told from a dropped path by the separator inside it: `/var/folders/…` has one, `/help`
@@ -201,9 +201,45 @@ true.
   say `3 files are not on this machine`. The sentence is owed only to a paste that is
   *plainly* a drop — every word an absolute path — so a sentence that merely mentions a
   file is inserted in silence as it always was.
+- **A Windows path inside WSL is local.** `c:/Users/…`, `C:\Users\…`, `/C:/…`,
+  `\\wsl.localhost\<distro>\…`, and `\\wsl$\<distro>\…` are translated before the file is
+  checked. If the file exists under WSL's mount, the text settles into a chip just like a
+  `/home/…` path. Outside WSL the same text stays text and the note names the file, such
+  as `Screenshot (1).png is not on this machine`.
 - **The box already starts with a `/command`.** That is deliberate. `/attach ` followed by
   a dropped file is the command being used exactly as documented, so the path stays as its
   argument and `enter` runs the command. See below.
+
+## Dragging a file from Windows into WSL
+
+Yes. Windows Terminal and the VS Code terminal may send a drag from Explorer as exactly
+
+```
+'c:/Users/you/Pictures/Screenshots/Screenshot (1).png'
+```
+
+aforge recognises that as the local WSL file at
+`/mnt/c/Users/you/Pictures/Screenshots/Screenshot (1).png` and turns it into the same chip
+as a Linux path. A bare `C:\Users\…` path, either quote style, a `file:///C:/…` URL, and
+the `\\wsl.localhost\<distro>\…` or `\\wsl$\<distro>\…` spelling work too. A UNC path is
+local only when its distro is this WSL distro.
+
+`/mnt` is WSL's default automount root. If `[automount] root` in `/etc/wsl.conf` names
+another root, aforge uses that instead: `root = /drives` makes `c:/Users/…` read from
+`/drives/c/Users/…`. This applies to a drag, a pasted path, `/attach`, `/image`, `/export`,
+and a local copy destination chosen in `/files` because all use the same path reading.
+
+## I copied a screenshot and pasted it — nothing happened
+
+aforge does not read picture bytes from the Windows or macOS clipboard. If the clipboard
+contains a picture rather than a file path, the terminal sends no path into the message
+box, so its paste shortcut with that picture pastes nothing into the box. Most terminals
+consume their paste shortcut before aforge sees a key. If a terminal does pass `ctrl+v`
+through, aforge uses that chord to change thinking, never to read clipboard pixels.
+
+Two things do work: drag the screenshot file onto the terminal, or paste the screenshot's
+path. Either one gives aforge a real local file to put on the tray. If your screenshot is
+only in the clipboard, save it as a file first.
 
 ## A drop into a box that already holds a command
 

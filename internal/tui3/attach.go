@@ -375,10 +375,167 @@ func (a *app) resolvePath(path string) string {
 			path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
 		}
 	}
+	path = windowsPathHere(path, a.wsl)
 	if root := a.pathRoot(); !filepath.IsAbs(path) && root != "" {
 		path = filepath.Join(root, path)
 	}
 	return path
+}
+
+// ── paths a Windows terminal hands to WSL ──────────────────────────────────
+
+const (
+	defaultWSLMountRoot = "/mnt"
+	procVersionPath     = "/proc/version"
+	wslConfigPath       = "/etc/wsl.conf"
+)
+
+// wslPaths is the boot fact needed to translate a Windows path without asking
+// the environment, a config file, or another process on the keystroke road.
+type wslPaths struct {
+	inside bool
+	distro string
+	root   string
+}
+
+// bootWSLPaths is deliberately read at package boot. A process either is WSL
+// or is not, and its automount root does not become a per-file question merely
+// because several conversations are open in it.
+var bootWSLPaths = detectWSLPathsAt(os.Getenv, procVersionPath, wslConfigPath)
+
+// detectWSLPathsAt reads the two boot files once and returns the immutable fact
+// every app caches. The paths are parameters so the contract runs unchanged on
+// macOS and ordinary Linux rather than borrowing the test machine's identity.
+func detectWSLPathsAt(getenv func(string) string, versionPath, configPath string) wslPaths {
+	distro := strings.TrimSpace(getenv("WSL_DISTRO_NAME"))
+	inside := distro != "" || strings.TrimSpace(getenv("WSL_INTEROP")) != ""
+	if !inside {
+		if version, err := os.ReadFile(versionPath); err == nil {
+			inside = strings.Contains(strings.ToLower(string(version)), "microsoft")
+		}
+	}
+	if !inside {
+		return wslPaths{}
+	}
+	root := defaultWSLMountRoot
+	if config, err := os.ReadFile(configPath); err == nil {
+		root = wslAutomountRoot(config)
+	}
+	return wslPaths{inside: true, distro: distro, root: root}
+}
+
+// wslAutomountRoot reads only the setting this surface needs. Unknown sections
+// and keys stay unknown rather than turning a small boot fact into an INI
+// implementation with behavior of its own.
+func wslAutomountRoot(config []byte) string {
+	root := defaultWSLMountRoot
+	section := ""
+	for _, line := range strings.Split(string(config), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSpace(line[1 : len(line)-1])
+			continue
+		}
+		if !strings.EqualFold(section, "automount") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "root") {
+			continue
+		}
+		if value = strings.TrimSpace(value); value != "" {
+			root = value
+		}
+	}
+	if root == "/" {
+		return root
+	}
+	return strings.TrimRight(root, "/")
+}
+
+// windowsPathHere is the ONE translation before any attachment stat. Outside
+// WSL it changes nothing, so the existing missing-file sentence remains the
+// answer instead of pretending a Windows path belongs to an ordinary Linux or
+// macOS process.
+func windowsPathHere(path string, wsl wslPaths) string {
+	if !wsl.inside {
+		return path
+	}
+	if drive, rest, ok := cutWindowsDrive(path); ok {
+		root := wsl.root
+		if root == "" {
+			root = defaultWSLMountRoot
+		}
+		root = strings.TrimRight(root, "/")
+		rest = strings.TrimLeft(strings.ReplaceAll(rest, `\`, "/"), "/")
+		return root + "/" + strings.ToLower(string(drive)) + "/" + rest
+	}
+	distro, rest, ok := cutWSLUNC(path)
+	if !ok || (wsl.distro != "" && distro != wsl.distro) {
+		return path
+	}
+	return "/" + strings.TrimLeft(strings.ReplaceAll(rest, `\`, "/"), "/")
+}
+
+// cutWindowsDrive recognizes the three drive spellings that can reach WSL. It
+// requires a character after the separator, which keeps a lone `c:` or `c:/`
+// an unfinished prefix rather than a path-shaped disk question.
+func cutWindowsDrive(path string) (byte, string, bool) {
+	at := 0
+	if strings.HasPrefix(path, "/") {
+		at = 1
+	}
+	if !windowsDriveHead(path) || len(path) < at+4 {
+		return 0, "", false
+	}
+	return path[at], path[at+3:], true
+}
+
+func windowsDriveHead(path string) bool {
+	at := 0
+	if strings.HasPrefix(path, "/") {
+		at = 1
+	}
+	if len(path) < at+3 || !asciiDriveLetter(path[at]) || path[at+1] != ':' {
+		return false
+	}
+	if at == 1 {
+		return path[at+2] == '/'
+	}
+	return windowsSeparator(path[at+2])
+}
+
+func asciiDriveLetter(char byte) bool {
+	return char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z'
+}
+
+func windowsSeparator(char byte) bool { return char == '/' || char == '\\' }
+
+// cutWSLUNC recognizes only WSL's two hosts. Other UNC paths belong to another
+// machine and stay untouched, which lets the existing local-file refusal do the
+// talking rather than inventing a mount for them.
+func cutWSLUNC(path string) (distro, rest string, ok bool) {
+	forward := strings.ReplaceAll(path, `\`, "/")
+	lower := strings.ToLower(forward)
+	for _, prefix := range []string{"//wsl.localhost/", "//wsl$/"} {
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		remaining := forward[len(prefix):]
+		distro, rest, ok = strings.Cut(remaining, "/")
+		return distro, rest, ok && distro != "" && rest != ""
+	}
+	return "", "", false
+}
+
+func windowsDriveShape(path string) bool {
+	_, _, ok := cutWindowsDrive(path)
+	return ok
+}
+
+func wslUNCShape(path string) bool {
+	_, _, ok := cutWSLUNC(path)
+	return ok
 }
 
 // ── the row above the box ───────────────────────────────────────────────────

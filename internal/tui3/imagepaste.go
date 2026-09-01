@@ -100,13 +100,16 @@ func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 	hits, _ := a.pasteResolve(text, false)
 	if hits == nil {
 		// A DROP FROM ANOTHER MACHINE IS SAID OUT LOUD. The richer resolver above
-		// admits raw spaces and terminal escapes; the literal reading is retained
-		// here only to name a missing drop in the same voice the current surface
-		// uses for home, a conversation, and an errand pane.
-		words := pastedWords(text)
-		if len(words) > 0 && droppedPathShape(text) {
-			first := filepath.Base(a.resolvePath(pastedPath(words[0])))
-			a.trayNote(notOnThisMachine(first, len(words)))
+		// admits raw spaces and terminal escapes, so the missing voice must use
+		// one of those SAME readings too. In particular, a bare Windows name with
+		// a raw space is one path rather than two shell words.
+		missing := missingPasteReading(text)
+		if len(missing) > 0 && droppedPathShape(text) {
+			// filepath.Base follows this process's separator. A Windows path left
+			// unchanged outside WSL still deserves its file name rather than its
+			// whole drive path in the existing sentence.
+			first := filepath.Base(strings.ReplaceAll(a.resolvePath(pastedPath(missing[0])), `\`, "/"))
+			a.trayNote(notOnThisMachine(first, len(missing)))
 		}
 		return false
 	}
@@ -272,8 +275,12 @@ func pastedWords(text string) []string {
 	out := make([]string, 0, 4)
 	var word strings.Builder
 	quote := rune(0)
+	windowsWord := false
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
+		if quote == 0 && word.Len() == 0 && !asciiPasteSpace(r) {
+			windowsWord = windowsBackslashWord(string(runes[i:]))
+		}
 		switch {
 		case quote != 0:
 			if r == quote {
@@ -283,7 +290,7 @@ func pastedWords(text string) []string {
 			word.WriteRune(r)
 		case r == '\'' || r == '"':
 			quote = r
-		case r == '\\' && i+1 < len(runes):
+		case r == '\\' && i+1 < len(runes) && !windowsWord:
 			// The escaped character is itself, which is what the shell this
 			// escaping was written for would do with it.
 			i++
@@ -296,6 +303,7 @@ func pastedWords(text string) []string {
 				out = append(out, word.String())
 				word.Reset()
 			}
+			windowsWord = false
 		default:
 			word.WriteRune(r)
 		}
@@ -304,6 +312,18 @@ func pastedWords(text string) []string {
 		out = append(out, word.String())
 	}
 	return out
+}
+
+// windowsBackslashWord says whether backslashes in this word are separators
+// rather than shell escapes. It is asked only at a word boundary and recognises
+// only a drive or one of WSL's two UNC hosts, so POSIX `Screen\ Shot.png` keeps
+// the escaping it arrived with.
+func windowsBackslashWord(text string) bool {
+	if len(text) >= 3 && asciiDriveLetter(text[0]) && text[1] == ':' && text[2] == '\\' {
+		return true
+	}
+	lower := strings.ToLower(text)
+	return strings.HasPrefix(lower, `\\wsl.localhost\`) || strings.HasPrefix(lower, `\\wsl$\`)
 }
 
 // asciiPasteSpaces is the shell whitespace a terminal escapes in a dropped
@@ -360,12 +380,45 @@ func pasteReadings(text string) [][]string {
 	return readings
 }
 
+// missingPasteReading chooses the reading a plainly missing drop is named by.
+// The literal raw-space reading is admitted only for a Windows path whose later
+// shell words do not begin another path; two actual paths therefore keep their
+// plural voice while `Screenshot (1).png` stays one candidate. Every answer
+// comes from [pasteReadings], the same source resolution walks before a stat.
+func missingPasteReading(text string) []string {
+	readings := pasteReadings(text)
+	if len(readings) == 0 || len(readings[0]) < 2 {
+		if len(readings) == 0 {
+			return nil
+		}
+		return readings[0]
+	}
+	for _, word := range readings[0][1:] {
+		if droppedWordShape(word) {
+			return readings[0]
+		}
+	}
+	for _, reading := range readings[1:] {
+		if len(reading) != 1 {
+			continue
+		}
+		candidate := pastedPath(reading[0])
+		if windowsDriveShape(candidate) || wslUNCShape(candidate) {
+			return reading
+		}
+	}
+	return readings[0]
+}
+
 // literalPastePath removes exactly one balanced quote pair because a filename
 // may itself contain quotes, then removes the shell escaping from its spelling.
 func literalPastePath(text string) string {
 	text = strings.Trim(text, asciiPasteSpaces)
 	if len(text) >= 2 && (text[0] == '\'' || text[0] == '"') && text[len(text)-1] == text[0] {
 		text = text[1 : len(text)-1]
+	}
+	if windowsBackslashWord(text) {
+		return strings.Trim(text, asciiPasteSpaces)
 	}
 	var out strings.Builder
 	runes := []rune(text)
