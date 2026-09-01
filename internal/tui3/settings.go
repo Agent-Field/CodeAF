@@ -443,7 +443,7 @@ var settingUI = map[string]settingMeta{
 		about: "where a web search goes. auto uses the best back end your keys " +
 			"reach and falls back to one that needs none.",
 	},
-	// THE KEY EVERY CALL RIDES sits on the Providers tab above the two search
+	// THE KEY EVERY CALL RIDES sits on the Providers tab above the three search
 	// keys: it is the credential the browser connection or a manual paste writes
 	// (firstrun.go), and remains the replacement door after that.
 	config.KeyAPIKey: {
@@ -456,6 +456,11 @@ var settingUI = map[string]settingMeta{
 		tab: tabContext, label: "exa key", widget: widgetText,
 		about: "an exa.ai key, which buys better results and page fetches than " +
 			"the free back end. Optional.",
+	},
+	config.KeyFirecrawlKey: {
+		tab: tabContext, label: "firecrawl key", widget: widgetText,
+		about: "a firecrawl.dev key, for when the free monthly allowance runs " +
+			"out. Optional.",
 	},
 	config.KeyJinaKey: {
 		tab: tabContext, label: "jina key", widget: widgetText,

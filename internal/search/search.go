@@ -5,16 +5,16 @@
 //
 // The registry is the design. Exa is one plug and not the point — it is the
 // keyed plug that happens to exist today. A search back end that arrives later
-// declares itself from its own file's init, and no caller, no settings screen
-// and no line of this file changes. A closed switch over provider names would
-// put every future vendor's vocabulary in this source and make the package a
-// merge point for work that has nothing to do with resolution.
+// declares itself from its own file's init, and no caller changes. The one
+// deliberate list in this file orders zero-key defaults: without it, Go's
+// filename-ordered inits would silently decide which free service wins.
 //
 // The other half of the design is that search WORKS with no configuration at
 // all. A person who has typed no keys still gets results, because the last rung
-// of the ladder is a zero-key plug (DuckDuckGo's HTML endpoint) that is always
-// available. Keys are an upgrade someone opts into when they care about result
-// quality, not a prerequisite for the agent to be able to look anything up.
+// of the ladder is a zero-key plug (Firecrawl's keyless endpoint) that is
+// always available. Keys are an upgrade someone opts into when they care about
+// result quality or rate ceilings, not a prerequisite for the agent to look
+// anything up. DuckDuckGo remains registered as a safety-valve pin.
 //
 // The package imports nothing of the surface — no session, no config, no
 // provider, no store. Configuration arrives as a plain [Options] value, so the
@@ -110,6 +110,11 @@ type Options struct {
 	// ExaKey is the Exa API key. Its presence is what makes the exa plugs
 	// available.
 	ExaKey string
+	// FirecrawlKey is optional: Firecrawl search is keyless, and a key raises
+	// its ceiling rather than gating availability. The fetch plug does require
+	// it, so a paid account upgrades page reads while search keeps working with
+	// or without one.
+	FirecrawlKey string
 	// JinaKey is optional: r.jina.ai answers unauthenticated at 20 requests
 	// per minute, and a key only raises that ceiling. So it does NOT gate
 	// availability — jina is a zero-key plug that happens to take a key.
@@ -164,6 +169,12 @@ var (
 	searchReg  []Provider
 	fetchReg   []Fetcher
 )
+
+// keylessOrder is the one explicit preference among zero-key plugs. Go runs
+// init functions in filename order, and a product default decided by that
+// order would change when a file was renamed. Names absent from this list keep
+// their registration order, preserving the registry's open extension seam.
+var keylessOrder = []string{"firecrawl", "duckduckgo"}
 
 // RegisterSearch adds a search plug. Meant to be called from a package's init,
 // which is why it panics rather than returning an error: a plug that failed to
@@ -228,9 +239,10 @@ func RegisteredFetch() []Fetcher {
 //  2. Otherwise the first AVAILABLE KEYED plug in registration order. Keyed
 //     means the plug reports itself unavailable under empty Options — exa,
 //     when ExaKey is set.
-//  3. Otherwise the zero-key default: the first plug available under empty
-//     Options, which is DuckDuckGo for search and jina for fetch. This rung
-//     cannot fail to produce a plug, which is why Resolve returns no error.
+//  3. Otherwise the zero-key default: the earliest named plug in
+//     [keylessOrder], then unlisted plugs in registration order. That is
+//     Firecrawl for search and jina for fetch. This rung cannot fail to
+//     produce a plug, which is why Resolve returns no error.
 //
 // Availability is key presence and nothing more, so the whole ladder is a few
 // string comparisons and can run per call.
@@ -284,13 +296,16 @@ func Resolve(opts Options) (Provider, Fetcher) {
 // zero-key default second.
 func autoSearch(providers []Provider, opts Options) Provider {
 	var fallback Provider
+	fallbackRank := len(keylessOrder)
 	for _, p := range providers {
 		plug, ok := p.(SearchPlug)
 		if !ok || plug.Available(Options{}) {
-			// Needs nothing: the zero-key rung. Remember the first and
-			// keep looking for a keyed plug that beats it.
-			if fallback == nil {
+			// Needs nothing: the zero-key rung. Prefer only an explicitly
+			// earlier default; equal-ranked unlisted plugs keep init order.
+			rank := keylessRank(p.Name())
+			if fallback == nil || rank < fallbackRank {
 				fallback = bindSearch(p, opts)
+				fallbackRank = rank
 			}
 			continue
 		}
@@ -303,11 +318,14 @@ func autoSearch(providers []Provider, opts Options) Provider {
 
 func autoFetch(fetchers []Fetcher, opts Options) Fetcher {
 	var fallback Fetcher
+	fallbackRank := len(keylessOrder)
 	for _, f := range fetchers {
 		plug, ok := f.(FetchPlug)
 		if !ok || plug.Available(Options{}) {
-			if fallback == nil {
+			rank := keylessRank(f.Name())
+			if fallback == nil || rank < fallbackRank {
 				fallback = bindFetch(f, opts)
+				fallbackRank = rank
 			}
 			continue
 		}
@@ -316,6 +334,15 @@ func autoFetch(fetchers []Fetcher, opts Options) Fetcher {
 		}
 	}
 	return fallback
+}
+
+func keylessRank(name string) int {
+	for index, preferred := range keylessOrder {
+		if strings.EqualFold(name, preferred) {
+			return index
+		}
+	}
+	return len(keylessOrder)
 }
 
 func bindSearch(p Provider, opts Options) Provider {
