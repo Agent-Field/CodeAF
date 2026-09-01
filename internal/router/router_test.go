@@ -177,7 +177,7 @@ func TestPinnedOpenerKeepsLeafLearningAndEscalation(t *testing.T) {
 	if got := panel.calls(); len(got) != 2 || got[0] != "mid/two" || got[1] != "top/three" {
 		t.Fatalf("calls = %v, want the explicit opener then the ceiling", got)
 	}
-	leafClass := shaped(provider.ClassExecLeaf, "atomic")
+	leafClass := Shaped(provider.ClassExecLeaf, "atomic")
 	if rating, count := routed.Ledger().Rating("mid/two", leafClass, 0); count != 1 || rating >= 0 {
 		t.Fatalf("opener rating = %.3f over %d observations, want one negative leaf verdict", rating, count)
 	}
@@ -628,8 +628,8 @@ func TestAFewGradedOutcomesCannotOutvoteThePrior(t *testing.T) {
 // That single fact is the whole of the t2 and t3 collapse.
 func TestLeafRatingsAreKeyedByTheShapeOfLeaf(t *testing.T) {
 	router := newRouter(t, answering(t), armBPanel())
-	oversized := shaped(provider.ClassExecLeaf, "oversized")
-	atomic := shaped(provider.ClassExecLeaf, "atomic")
+	oversized := Shaped(provider.ClassExecLeaf, "oversized")
+	atomic := Shaped(provider.ClassExecLeaf, "atomic")
 
 	for range 30 {
 		router.ledger.Observe(flash, oversized, 0, provider.VerdictEmptyResponse)
@@ -882,7 +882,7 @@ func TestExplorationNeverTouchesALeaf(t *testing.T) {
 		return http.StatusOK, answer(model, "working")
 	})
 	router := newRouter(t, server, armBPanel())
-	leafClass := shaped(provider.ClassExecLeaf, "atomic")
+	leafClass := Shaped(provider.ClassExecLeaf, "atomic")
 	for range MinGraded {
 		router.ledger.Observe(flash, leafClass, 0, provider.VerdictVerifiedSuccess)
 	}
@@ -909,8 +909,8 @@ func TestExplorationNeverTouchesALeaf(t *testing.T) {
 // assertion here is one of the four things that had to hold and did not.
 func TestTheArmBCollapseCannotReproduce(t *testing.T) {
 	router := newRouter(t, answering(t), armBPanel())
-	oversized := shaped(provider.ClassExecLeaf, "oversized")
-	atomic := shaped(provider.ClassExecLeaf, "atomic")
+	oversized := Shaped(provider.ClassExecLeaf, "oversized")
+	atomic := Shaped(provider.ClassExecLeaf, "atomic")
 
 	before := slugs(router.order(atomic))
 	// Run 1 through run 3: five budget stops on the one task whose leaves are too

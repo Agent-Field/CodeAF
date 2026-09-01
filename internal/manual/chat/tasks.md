@@ -2449,6 +2449,20 @@ careful too. If you have not set the four class rows at all, every part runs whe
 runs and the grade costs you nothing; *Models and cost* has the rows and the `/crew` word
 that writes all four.
 
+**And the grade is not the last word — what has actually happened here is.** Every task
+that settles writes down what the check said about it, against the model it ran on and
+the name the work was given: `aforge models` is where those rows show up. When a part is
+about to be handed out as ordinary work, aforge looks that record up first. If work
+named like this one has been turned down by the check **twice or more** on the model the
+task is on, and the balance of those answers is against it, the part is minted on your
+**careful work** model instead — even though the worker called it ordinary. Two names
+count as the same kind of work when they share half their words or more, so *tests for
+the rail* and *tests for the composer* are one thing and *the eleven adapters* is not.
+Nothing is spent to work any of this out: the check had already read the work and said
+so, and no extra model call is made to grade it. A part the worker itself graded careful
+is never moved back down, and an install with no class rows set never moves anything,
+because there is nowhere dearer to move it to.
+
 **A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
 and the parts simply **wait** — the same wait any queued task does, drawn as
