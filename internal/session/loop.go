@@ -1044,6 +1044,19 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, string, error) {
+	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
+	// this package that can say so: every request that goes out through here is
+	// the turn's own, and every gate, judge, title and memo is made from some
+	// other function.
+	//
+	// IT DECIDES WHAT HAPPENS TO A RESPONSE THAT THOUGHT AT LENGTH AND SAID
+	// NOTHING (internal/provider's answer.go). For a reply, the working IS the
+	// reply and the person gets it rather than a turn that appears to have
+	// answered nothing. For a gate — which asks for `{"work": false}` and has
+	// its answer read by a parser — a missing object is missing, and a
+	// deliberation salvaged into its place would start work off a sentence the
+	// model was still arguing with itself about.
+	ctx = provider.WithProseAnswer(ctx)
 	var lastErr error
 	// cuts counts the attempts the STREAM GUARD ended — a stall, or a reply that
 	// stopped being language. They are counted apart from the transport attempts

@@ -74,6 +74,12 @@ func (a *app) appendThought(text string) {
 		now := time.Now()
 		a.entries = append(a.entries, entry{
 			kind: entryThinking, turn: a.turn, began: now, ended: now,
+			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
+			// [app.settledTurn]). The boundary that would have closed it has
+			// already gone by, and a thought block left open would stay expanded
+			// over the next turn — the very thing [app.collapseThought] runs at
+			// the settle to prevent.
+			settled: a.settledTurn > 0 && a.turn == a.settledTurn,
 		})
 		a.think = len(a.entries) - 1
 		a.follow()
