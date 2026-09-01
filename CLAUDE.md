@@ -224,6 +224,30 @@ in isolation and move on.**
 in the full run means the change caused it. The two are the same debt written twice;
 fix a test and delete it from both in the same commit.
 
+**The tmux TUI suite** is the only test that drives the real binary in a real
+terminal against a real model, and it is how a wave verifies that the surface
+still behaves:
+
+```sh
+go test -tags e2e -count=1 -timeout 40m -v ./internal/e2e/
+go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/   # just the nine TUI subtests
+```
+
+It needs `OPENROUTER_API_KEY` and `tmux`, costs a few cents, and takes about
+**seventeen minutes** for the whole tagged package (`TestTUIE2E` alone is about
+ten, most of it one subtest waiting out a five-minute standing pass). It SKIPS
+rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
+first. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
+paying for the whole thing, and capture the output to a file: the screens it logs
+are far too wide to read through a pipe.
+
+Its needles all come out of one table, `internal/e2e/tuiwords_test.go`, which an
+**untagged** test in the same package reads back against `internal/tui3`'s own
+sources — so `go test ./internal/e2e/` (no tag, no model, under a second) fails
+the moment the surface stops spelling a sentence the suite waits for. That gate
+exists because the suite silently rotted for a week after the home redesign
+(#184); if you respell a person-facing string, expect it to name you.
+
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
 
 ```sh

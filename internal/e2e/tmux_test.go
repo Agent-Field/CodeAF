@@ -539,3 +539,117 @@ func sessionTranscripts(t *testing.T, home string) map[string]string {
 	})
 	return out
 }
+
+// ── what stood, as the store wrote it ───────────────────────────────────────
+
+// standingRecord is the part of one standing item's file this suite reads.
+//
+// THE MODEL OWNS THIS VOCABULARY AND THE TEST MAY NOT ASSUME IT. What a reminder
+// is CALLED and what it SAYS when it fires are written by the model on the day —
+// one run named the same order `drink water reminder` and fired `💧 Time to
+// drink water!` — so a test that waited for the person's own sentence would be
+// waiting for words nothing promised. The record on disk is the one place both
+// are stated, so the needles come off it, exactly as every needle about the
+// SURFACE comes off internal/tui3's own sources (tuiwords_test.go).
+type standingRecord struct {
+	ID            string `json:"id"`
+	Words         string `json:"words"`
+	Status        string `json:"status"`
+	RetiredWhy    string `json:"retiredWhy"`
+	LastCheckLine string `json:"lastCheckLine"`
+	When          struct {
+		Kind string    `json:"kind"`
+		At   time.Time `json:"at"`
+	} `json:"when"`
+	Does struct {
+		Kind string `json:"kind"`
+		Say  string `json:"say"`
+	} `json:"does"`
+	Rails struct {
+		Expires time.Time `json:"expires"`
+	} `json:"rails"`
+	Brief struct {
+		Title string `json:"title"`
+	} `json:"brief"`
+}
+
+// standingRecords is every item this run stood, read from the store's own
+// directory. The layout is internal/standing's: one `<id>.json` beside a folder
+// of the same name.
+func standingRecords(t *testing.T, home string) []standingRecord {
+	t.Helper()
+	dir := filepath.Join(home, "v3", "standing")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []standingRecord
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var record standingRecord
+		// A file in this directory that is not an item — the watch offer is one —
+		// simply has none of these fields, and is told apart by having no id.
+		if err := json.Unmarshal(raw, &record); err != nil || strings.TrimSpace(record.ID) == "" {
+			continue
+		}
+		out = append(out, record)
+	}
+	return out
+}
+
+// standingRecordAbout is the item whose words hold a given word, which is how a
+// test names the one it asked for without knowing what the model called it.
+func standingRecordAbout(t *testing.T, home, word string) (standingRecord, bool) {
+	t.Helper()
+	for _, record := range standingRecords(t, home) {
+		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) {
+			return record, true
+		}
+	}
+	return standingRecord{}, false
+}
+
+// standingRecordByID is that item read again, after the pass has had its say
+// about it.
+func standingRecordByID(t *testing.T, home, id string) standingRecord {
+	t.Helper()
+	for _, record := range standingRecords(t, home) {
+		if record.ID == id {
+			return record
+		}
+	}
+	return standingRecord{}
+}
+
+// standingRecordsDump is every record in one paragraph, for a failure that has
+// to say what the store actually holds.
+func standingRecordsDump(t *testing.T, home string) string {
+	t.Helper()
+	var b strings.Builder
+	for _, record := range standingRecords(t, home) {
+		fmt.Fprintf(&b, "  %s %q — %s/%s · due %s · expires %s · says %q · %s\n",
+			record.ID, record.Words, record.Status, record.RetiredWhy,
+			record.When.At.Format(time.RFC3339), record.Rails.Expires.Format(time.RFC3339),
+			record.Does.Say, record.LastCheckLine)
+	}
+	if b.Len() == 0 {
+		return "  (the store holds no items)"
+	}
+	return b.String()
+}
+
+// firstWords is the first n words of a sentence, which is the needle a screen
+// can be searched for when the whole sentence would be cut by a column edge.
+func firstWords(said string, n int) string {
+	fields := strings.Fields(said)
+	if len(fields) > n {
+		fields = fields[:n]
+	}
+	return strings.Join(fields, " ")
+}
