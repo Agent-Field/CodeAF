@@ -6526,7 +6526,7 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, er
 	}
 	saved, problem := stagedPaths(dir)
 	if problem != "" {
-		return nil, problem
+		return nil, "", errors.New(problem)
 	}
 	if len(saved) == 0 {
 		// Nothing the node wrote is different from HEAD, which is the ordinary
