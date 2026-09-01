@@ -110,7 +110,7 @@ func TestAStalledLaneIsActedOnInsideTheCeiling(t *testing.T) {
 		t.Fatalf("no scenario called %q", proofScenario)
 	}
 	const requests = 8
-	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold)
+	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold, mixStress)
 	if len(got) != requests {
 		t.Fatalf("got %d trials, want %d", len(got), requests)
 	}
@@ -208,4 +208,83 @@ func TestAWarmedStoreLearnsItsPaceThroughTheObservationDoor(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestTheWasteAndTheRescueAreCountedApart is the arithmetic of the split §K's
+// spend clause is now read through. Money an arm cost on a request that was
+// never in trouble is WASTE; money an arm cost rescuing a staged fault is what
+// the mechanism exists to spend. They sum to the loser spend that was reported
+// before, and the gate reads one of them.
+func TestTheWasteAndTheRescueAreCountedApart(t *testing.T) {
+	got := summariseProof(proofCases[2], []trial{
+		// two healthy requests armed for no staged reason: two cents of waste
+		{usd: 0.10, waste: 0.01, armed: true, answered: true},
+		{usd: 0.10, waste: 0.01, armed: true, answered: true},
+		// three staged faults rescued: six cents, and none of it waste
+		{sick: true, usd: 0.10, waste: 0.02, armed: true, acted: true, kind: control.Hedge,
+			reason: "drift", action: 3, silence: 3, sickThought: true},
+		{sick: true, usd: 0.10, waste: 0.02, armed: true, acted: true, kind: control.Hedge,
+			reason: "drift", action: 5, silence: 5, sickThought: true},
+		{sick: true, usd: 0.10, waste: 0.02, armed: true, acted: true, kind: control.Hedge,
+			reason: control.CeilingReason, action: 10, silence: 10, sickThought: true},
+		// and one healthy request nobody armed
+		{usd: 0.10, answered: true},
+	})
+	for _, want := range []struct {
+		what string
+		got  float64
+		want float64
+	}{
+		{"the bill", got.USD, 0.60},
+		{"loser spend, as it was reported before the split", got.SpendPct, 100 * 0.08 / 0.60},
+		{"waste, on healthy requests", got.WastePct, 100 * 0.02 / 0.60},
+		{"rescue, on staged faults", got.RescuePct, 100 * 0.06 / 0.60},
+		{"arms on a healthy lane", float64(got.FalseArm), 2},
+		{"arms on a staged fault", float64(got.RescueArm), 3},
+		{"stalled runs of thought", float64(got.StallThinks), 3},
+		{"time-to-action on a stalled thought, p50", got.StallP50, 5},
+	} {
+		if math.Abs(want.got-want.want) > 1e-9 {
+			t.Errorf("%s: got %g, want %g", want.what, want.got, want.want)
+		}
+	}
+	// The two halves are the whole, which is what makes the split a reading of
+	// one number rather than a second accounting of it.
+	if math.Abs(got.WastePct+got.RescuePct-got.SpendPct) > 1e-9 {
+		t.Errorf("waste %.4f + rescue %.4f is not the reported %.4f",
+			got.WastePct, got.RescuePct, got.SpendPct)
+	}
+}
+
+// TestTheNaturalMixStagesTheRateItNames pins the mix itself: one request in
+// twenty is a fault, scattered rather than blocked, and never the first — which
+// is the request the store is coldest for.
+func TestTheNaturalMixStagesTheRateItNames(t *testing.T) {
+	const total = 4000
+	for _, mix := range []string{mixStress, mixNatural} {
+		faults, first := 0, -1
+		for index := range total {
+			if sickAt(mix, index, total) {
+				faults++
+				if first < 0 {
+					first = index
+				}
+			}
+		}
+		// COUNTED EXACTLY, because a rate compared with a tolerance is a rate
+		// nobody can check. The natural mix skips request zero on purpose, so it
+		// stages one fault fewer than the nominal rate over any run — which is
+		// the rate the table prints, to the nearest request.
+		want := total / 2
+		if mix == mixNatural {
+			want = total/naturalPeriod - 1
+		}
+		if faults != want {
+			t.Errorf("%s: staged %d faults of %d, want %d (%.4f of requests, the table says %.4f)",
+				mix, faults, total, want, float64(faults)/total, rateOfMix(mix))
+		}
+		if first == 0 {
+			t.Errorf("%s: the first request of the run is a staged fault", mix)
+		}
+	}
 }

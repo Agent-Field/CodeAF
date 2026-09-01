@@ -202,6 +202,8 @@ func main() {
 		"run docs/design/waiting/DESIGN.md §K's four scenarios and its pass table instead of the ship gate")
 	pace := flag.String("pace", "",
 		"proof only: which belief the plan waits against, `shipped` or `flat`; both when unsaid")
+	mix := flag.String("mix", "",
+		"proof only: which fault rate the rows are run at, `stress` or `natural`; both when unsaid")
 	store := flag.String("store", "",
 		"proof only: which store the rows are staged in, `cold`, `warmed` or `seen`; "+
 			"cold and warmed when unsaid")
@@ -273,7 +275,7 @@ func main() {
 		"(the rate filter's floor is %d)\n", *speedup, streamTokens, 32)
 	if *proof {
 		proveIt(world, seedList, *requests, *speedup, *trace,
-			pacesFrom(*pace), storesFrom(*store), *jsonOut, began)
+			pacesFrom(*pace), storesFrom(*store), mixesFrom(*mix), *jsonOut, began)
 		return
 	}
 	fmt.Printf("script:   the lane the router chose on request 0 goes to a %v first token at "+

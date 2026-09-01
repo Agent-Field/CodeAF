@@ -224,6 +224,65 @@ const (
 	storeSeen = "seen"
 )
 
+// ── THE TWO MIXES A ROW CAN BE RUN AT ───────────────────────────────────────
+//
+// §J stages its fault for the MIDDLE HALF of every row, which makes half of
+// every arm's requests a staged fault. That is the right shape for an INVARIANT
+// — a ceiling wants every trial it can get of the state it bounds — and it is
+// the wrong shape for a COST that is a share of the bill, because a rescue of a
+// genuinely broken request is charged to the same numerator as an arm nobody
+// needed. On a mix that is half faults, most of the numerator is the mechanism
+// working.
+//
+// So the rows are also run at a rate a person would recognise. Both mixes are
+// kept and neither replaces the other: the stress mix is where the invariant
+// and the false-hedge rate are measured, and the natural one is where a total
+// bill means anything.
+const (
+	// mixStress is §J's own staging: the fault runs for the middle half of every
+	// row, so half of every arm's requests are broken. It is a stress rig and it
+	// is named one.
+	mixStress = "stress"
+	// mixNatural is one request in [naturalPeriod] staged as a fault —
+	// [naturalRate] — scattered rather than contiguous, because isolated faults
+	// are what a real afternoon has and a block of them is what a stress rig
+	// has.
+	mixNatural = "natural"
+
+	// naturalPeriod is how many requests apart the natural mix's faults are. It
+	// is a period rather than a die roll so that every seed and every row sees
+	// the SAME number of faults and a cost comparison is not partly a comparison
+	// of how many things broke.
+	naturalPeriod = 20
+)
+
+// naturalRate is the natural mix's fault rate, as a share of one. It is derived
+// from the period rather than written twice.
+const naturalRate = 1.0 / float64(naturalPeriod)
+
+// rateOfMix is what share of a mix's requests are staged faults.
+func rateOfMix(mix string) float64 {
+	if mix == mixNatural {
+		return naturalRate
+	}
+	return 0.5
+}
+
+// sickAt says whether this request is the staged fault, for one mix.
+//
+// The stress mix breaks the MIDDLE HALF, exactly as the three scenarios above
+// break their victim between n/4 and 3n/4, so the committed tables stay
+// comparable. The natural mix breaks every [naturalPeriod]th request, offset so
+// that no fault lands on request zero — the first request of a run is the one
+// the store is coldest for, and staging the fault there would confound the two
+// things this table separates.
+func sickAt(mix string, index, total int) bool {
+	if mix == mixNatural {
+		return index > 0 && index%naturalPeriod == 0
+	}
+	return index >= total/4 && index < 3*total/4
+}
+
 const (
 	// warmSightings is how many real answers of each (model, lane) pair a warmed
 	// store has watched before its first request. Sixty is an afternoon on a
@@ -369,6 +428,10 @@ type trial struct {
 	// counting one would answer §K's fourth criterion with requests that were
 	// acted on before the model had said anything at all.
 	thought bool
+	// sickThought is the same run of thought on a request whose fault is staged
+	// INSIDE it: the stalled thinking phase, which is the one case this table
+	// reports time-to-action for on its own.
+	sickThought bool
 	// survived says that thought then reached its first visible word WITH NO ARM
 	// behind it, which is §K's fourth criterion in its own words. An arm and not
 	// an act: [control.Report] sends nothing, so a wait that was merely said out
@@ -415,6 +478,25 @@ type proofRow struct {
 	USD           float64 `json:"usd_total"`
 	Waste         float64 `json:"usd_waste"`
 
+	// AND THE LOSER SPEND SPLIT BY WHAT IT BOUGHT. §K's spend clause was
+	// written to catch WASTE — money an arm cost on a request that was never in
+	// trouble — and on a mix that is half staged faults it mostly bills RESCUES,
+	// which is the mechanism doing its job. The two are one subtraction apart
+	// and reporting only their sum makes them impossible to tell apart, which is
+	// how a correct rescue came to look like a defect.
+	WasteWell   float64 `json:"usd_waste_on_healthy"`
+	WasteSick   float64 `json:"usd_waste_on_faults"`
+	WastePct    float64 `json:"waste_overhead_pct"`
+	RescuePct   float64 `json:"rescue_overhead_pct"`
+	RescueArm   int     `json:"arms_on_a_staged_fault"`
+	StallThinks int     `json:"stalled_thinking_phases"`
+	// StallP50 and StallP90 are time-to-action for the one case a person
+	// reported: a run of thought that stopped. They are the fault window of the
+	// thinking row and nothing else, kept separately because the row's own
+	// percentiles pool them with the requests that never reached a thought.
+	StallP50 float64 `json:"stalled_think_action_p50_s"`
+	StallP90 float64 `json:"stalled_think_action_p90_s"`
+
 	// Kinds is how many acts of each kind fired and Whys which clock decided
 	// them, both in the controller's own words.
 	Kinds map[string]int `json:"acts_by_kind"`
@@ -435,10 +517,15 @@ var kindWords = map[control.Kind]string{
 func summariseProof(c proofCase, got []trial) proofRow {
 	out := proofRow{Case: c.name, Why: c.why, N: len(got),
 		CeilingS: proofRole.Ceiling().Seconds(), Kinds: map[string]int{}, Whys: map[string]int{}}
-	var action, silence, late []float64
+	var action, silence, late, stalled []float64
 	for _, one := range got {
 		out.USD += one.usd
 		out.Waste += one.waste
+		if one.sick {
+			out.WasteSick += one.waste
+		} else {
+			out.WasteWell += one.waste
+		}
 		out.Answered += boolCount(one.answered)
 		out.Sick += boolCount(one.sick)
 		out.Well += boolCount(!one.sick)
@@ -446,6 +533,17 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		out.ThinkKept += boolCount(one.thought && one.survived)
 		out.Arms += boolCount(one.armed)
 		out.FalseArm += boolCount(one.armed && !one.sick)
+		out.RescueArm += boolCount(one.armed && one.sick)
+		// THE ONE CASE A PERSON COMPLAINED ABOUT, counted on its own: a run of
+		// thought that really began and then stopped. `thought` is only set when
+		// the model reached its reasoning at all, so a fault that struck before
+		// the thinking started is not one of these.
+		if one.sickThought && c.reasoning > 0 {
+			out.StallThinks++
+			if one.acted {
+				stalled = append(stalled, one.action)
+			}
+		}
 		if !one.acted {
 			continue
 		}
@@ -465,11 +563,14 @@ func summariseProof(c proofCase, got []trial) proofRow {
 	out.ActionP50, out.ActionP90, out.ActionMax = pct(action, 0.50), pct(action, 0.90), pct(action, 1.0)
 	out.SilenceP50, out.SilenceP90, out.SilenceMax = pct(silence, 0.50), pct(silence, 0.90), pct(silence, 1.0)
 	out.LateMedian, out.LateMax = pct(late, 0.50), pct(late, 1.0)
+	out.StallP50, out.StallP90 = pct(stalled, 0.50), pct(stalled, 0.90)
 	out.FalseHedgePct = share(out.FalseArm, out.Well)
 	out.ReportPct = share(out.Kinds[kindWords[control.Report]], out.Acts)
 	out.ThinkKeptPct = share(out.ThinkKept, out.Thinks)
 	if out.USD > 0 {
 		out.SpendPct = 100 * out.Waste / out.USD
+		out.WastePct = 100 * out.WasteWell / out.USD
+		out.RescuePct = 100 * out.WasteSick / out.USD
 	}
 	return out
 }
@@ -497,26 +598,35 @@ func share(part, whole int) float64 {
 // proveIt is the whole of the `-proof` run: the four scenarios, the pass table,
 // the two figures §K reports without gating, and the raw rows if a file was
 // named for them.
-func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores []string, jsonOut string, began time.Time) {
+func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, mixes []string, jsonOut string, began time.Time) {
 	fmt.Printf("script:   the lane that is about to serve goes quiet for %v on the middle half "+
 		"of every case's requests\n", quietFor)
 	fmt.Printf("stores:   %v; a warmed one has watched %d answers of every pair over the %v "+
 		"before the first request, folded through lane.Ledger.Note\n",
 		stores, warmSightings, warmOver)
+	fmt.Printf("mixes:    %v; %s stages a fault on %.0f%% of requests and %s on %.0f%% "+
+		"(one in %d, scattered)\n",
+		mixes, mixStress, 100*rateOfMix(mixStress), mixNatural, 100*rateOfMix(mixNatural), naturalPeriod)
 	fmt.Println()
-	arms := make([]proofArm, 0, len(paces)*len(stores))
-	for _, store := range stores {
-		for _, pace := range paces {
-			rows := runProof(w, seeds, n, speedup, trace, pace, store)
-			arms = append(arms, proofArm{Pace: pace, Store: store, Rows: rows,
-				Criteria: proofGates(rows, store)})
+	arms := make([]proofArm, 0, len(paces)*len(stores)*len(mixes))
+	for _, mix := range mixes {
+		for _, store := range stores {
+			if !staged(store, mix) {
+				continue
+			}
+			for _, pace := range paces {
+				rows := runProof(w, seeds, n, speedup, trace, pace, store, mix)
+				arms = append(arms, proofArm{Pace: pace, Store: store, Mix: mix,
+					FaultPct: 100 * rateOfMix(mix), Rows: rows,
+					Criteria: proofGates(rows, store, mix)})
+			}
 		}
 	}
 	rows, gates := arms[0].Rows, arms[0].Criteria
 	for _, arm := range arms {
-		fmt.Printf("── a %s store, and the plan waits against the %s belief ─────────────────────\n\n",
-			arm.Store, arm.Pace)
-		printProof(arm.Rows, arm.Criteria, seeds, n, speedup, arm.Store)
+		fmt.Printf("── a %s store at a %s mix, and the plan waits against the %s belief ─────────\n\n",
+			arm.Store, arm.Mix, arm.Pace)
+		printProof(arm.Rows, arm.Criteria, seeds, n, speedup, arm.Store, arm.Mix)
 	}
 	wall := time.Since(began)
 	fmt.Printf("   wall %s\n", wall.Round(time.Second))
@@ -528,6 +638,7 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores []
 		"speedup": speedup, "role": string(proofRole), "ceiling_s": proofRole.Ceiling().Seconds(),
 		"scenario": proofScenario, "quiet_for_s": quietFor.Seconds(),
 		"stores": stores, "warm_sightings_per_pair": warmSightings, "warm_over_s": warmOver.Seconds(),
+		"mixes": mixes, "natural_fault_rate": naturalRate,
 		"rows": rows, "criteria": gates, "arms": arms, "wall_seconds": wall.Seconds(),
 	}, "", "  ")
 	if err != nil {
@@ -568,18 +679,42 @@ func storesFrom(named string) []string {
 	return nil
 }
 
+// mixesFrom is which fault rates the rows are run at: both, unless the caller
+// named one.
+func mixesFrom(named string) []string {
+	switch named {
+	case "":
+		return []string{mixStress, mixNatural}
+	case mixStress, mixNatural:
+		return []string{named}
+	}
+	log.Fatalf("gosim: no mix called %q; it is %q or %q", named, mixStress, mixNatural)
+	return nil
+}
+
+// staged says whether a store is worth running at a mix.
+//
+// THE COLD STORE IS A STRESS RIG AND IS RUN AS ONE. It is the staging §J wrote
+// for the invariant, and its cost figures are reported rather than gated
+// precisely because a store with nothing in it has nowhere to hedge to — see
+// REPORT.md. Running it at the natural rate would add a quarter of an hour to
+// every proof to produce two more reported numbers nothing reads.
+func staged(store, mix string) bool { return store != storeCold || mix == mixStress }
+
 // proofArm is one whole table: the rows and the four criteria, for one of the
 // two doors a plan can be built against, in one of the stores it can be staged
 // in.
 type proofArm struct {
 	Pace     string      `json:"pace"`
 	Store    string      `json:"store"`
+	Mix      string      `json:"mix"`
+	FaultPct float64     `json:"staged_fault_pct"`
 	Rows     []proofRow  `json:"rows"`
 	Criteria []proofGate `json:"criteria"`
 }
 
 // runProof is the whole of §K: every case, every seed, pooled.
-func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store string) []proofRow {
+func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix string) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)
 	if !ok {
 		log.Fatalf("gosim: no scenario called %q to run the proof rows in", proofScenario)
@@ -588,7 +723,7 @@ func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store str
 	for _, c := range proofCases {
 		var all []trial
 		for _, seed := range seeds {
-			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store)...)
+			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store, mix)...)
 		}
 		rows = append(rows, summariseProof(c, all))
 	}
@@ -612,7 +747,7 @@ func scenarioNamed(name string) (scenario, bool) {
 // did not move the state root would fold this program's lanes into the belief
 // file of whoever ran it — and the cold-store row would not be cold on its
 // second seed.
-func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store string) []trial {
+func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store, mix string) []trial {
 	dir, err := os.MkdirTemp("", "gosim-proof-")
 	if err != nil {
 		log.Fatal(err)
@@ -642,7 +777,7 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 	p := &prover{
 		world: w, scen: s, kase: c, seed: seed, stub: stub, ledger: ledger,
 		budget: lane.DefaultBudget(), client: &http.Client{},
-		speedup: speedup, total: n, at: theMoment, trace: trace, pace: pace,
+		speedup: speedup, total: n, at: theMoment, trace: trace, pace: pace, mix: mix,
 	}
 	out := make([]trial, 0, n)
 	for index := 0; index < n; index++ {
@@ -782,6 +917,8 @@ type prover struct {
 	trace   bool
 	// pace is which door the plan is built against: [paceShipped] or [paceFlat].
 	pace string
+	// mix is how often a request is a staged fault: [mixStress] or [mixNatural].
+	mix string
 
 	// at is the moment in the WORLD this request went out and wire the moment on
 	// the socket it went out at; every world moment handed to the watch is the
@@ -803,7 +940,7 @@ func (p *prover) worldNow() time.Time { return p.at.Add(p.worldly(time.Since(p.w
 // prove is one request: the choice, the plan, the stream, the controller on top
 // of it, and whatever its first act led to.
 func (p *prover) prove(index int) (trial, error) {
-	sick := index >= p.total/4 && index < 3*p.total/4
+	sick := sickAt(p.mix, index, p.total)
 	req := p.scen.request(p.world.model, p.at, p.total-index)
 	choice := p.choose(req)
 	head := p.headFor(choice)
@@ -956,8 +1093,18 @@ func (p *prover) untilActed(watch *lane.Watch, s *armed, out *trial) (control.Ac
 				belief, _ := p.ledger.Belief(lane.ID{Model: p.world.model, Lane: served})
 				watch.Serving(served, belief, seen.reading.At)
 			}
-			if seen.reading.Hidden > 0 && !out.sick {
-				out.thought = true
+			if seen.reading.Hidden > 0 {
+				// A RUN OF THOUGHT REALLY BEGAN. On a healthy request that is
+				// §K's fourth criterion's denominator; on a staged one it is the
+				// case a person complained about — a thought that started and
+				// then stopped — and the two are counted apart because one is a
+				// phase that must be left alone and the other a phase that must
+				// be acted on.
+				if out.sick {
+					out.sickThought = true
+				} else {
+					out.thought = true
+				}
 			}
 			p.sawToken(out, seen)
 			if act := watch.Read(seen.reading); act.Kind != control.None {
@@ -1371,10 +1518,10 @@ type proofGate struct {
 // and the two §K cost figures are printed beside it without a verdict. The
 // ceiling and the long think are unchanged: neither is a cost and neither gets
 // an allowance for being cold.
-func proofGates(rows []proofRow, store string) []proofGate {
+func proofGates(rows []proofRow, store, mix string) []proofGate {
 	var cold proofRow
 	arms, well, thinks, kept := 0, 0, 0, 0
-	usd, waste := 0.0, 0.0
+	usd, waste, onWell, onSick := 0.0, 0.0, 0.0, 0.0
 	for _, r := range rows {
 		if r.Case == proofCases[0].name {
 			cold = r
@@ -1385,14 +1532,18 @@ func proofGates(rows []proofRow, store string) []proofGate {
 		kept += r.ThinkKept
 		usd += r.USD
 		waste += r.Waste
+		onWell += r.WasteWell
+		onSick += r.WasteSick
 	}
 	falsePct, thinkPct := share(arms, well), share(kept, thinks)
-	spendPct := 0.0
+	spendPct, wastePct, rescuePct := 0.0, 0.0, 0.0
 	if usd > 0 {
 		spendPct = 100 * waste / usd
+		wastePct = 100 * onWell / usd
+		rescuePct = 100 * onSick / usd
 	}
 	inside := share(cold.SickActs-cold.OverCeil, cold.SickActs)
-	steady := store != storeCold
+	steady, natural := store != storeCold, mix == mixNatural
 	out := []proofGate{
 		{Criterion: "time-to-action, stalled lane, " + store + " store, talk role",
 			Threshold: "<= " + cold.ceilingWord() + " in 100%",
@@ -1404,17 +1555,38 @@ func proofGates(rows []proofRow, store string) []proofGate {
 			Measured:  fmt.Sprintf("%.2f%% of %d healthy requests", falsePct, well),
 			Where:     "every case, healthy half",
 			Value:     falsePct, Gated: steady, Pass: falsePct <= gateFalseHedgePct},
-		{Criterion: "spend overhead",
+		// SPEND, SPLIT BY WHAT IT BOUGHT, AND WHICH HALF DECIDES DEPENDS ON THE
+		// MIX. §K's clause was written to catch WASTE — an arm on a request that
+		// was never in trouble. On the stress mix, where half of everything is
+		// broken by construction, the total is mostly RESCUES and the clause
+		// cannot tell them apart, so the waste half is what is gated there and
+		// the rescue half is reported under the purse. On the natural mix the
+		// question is the one the clause was written to ask — what does this
+		// mechanism add to a real bill — so the TOTAL is gated.
+		{Criterion: "spend overhead, total",
 			Threshold: "<= 3% of the arm's own bill",
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", spendPct, usd),
 			Where:     "every case",
-			Value:     spendPct, Gated: steady, Pass: spendPct <= gateSpendOverheadPct},
+			Value:     spendPct, Gated: steady && natural, Pass: spendPct <= gateSpendOverheadPct},
+		{Criterion: "spend overhead, waste on a healthy lane",
+			Threshold: "<= 3% of the arm's own bill",
+			Measured:  fmt.Sprintf("%.2f%% of $%.4f", wastePct, usd),
+			Where:     "every case, healthy half",
+			Value:     wastePct, Gated: steady && !natural, Pass: wastePct <= gateSpendOverheadPct},
+		{Criterion: "spend overhead, rescues of staged faults",
+			Threshold: "reported; the purse is what bounds it",
+			Measured:  fmt.Sprintf("%.2f%% of $%.4f", rescuePct, usd),
+			Where:     "every case, fault window",
+			Value:     rescuePct, Gated: false},
 	}
-	if !steady {
-		// THE PURSE IS WHAT BOUNDS EXPLORATION, so on a cold store it is what
-		// the bill is graded against. The ceiling is read off the shipped budget
-		// rather than restated here, because a figure written down twice is a
-		// figure that will drift away from the one the build enforces.
+	if !steady || !natural {
+		// THE PURSE IS WHAT BOUNDS SPENDING NOTHING ELSE BOUNDS, and it is what
+		// grades the bill wherever §K's own clause is not deciding it: on a cold
+		// store, where the arms are exploration, and on the stress mix, where
+		// the total is mostly correct rescues. The ceiling is read off the
+		// shipped budget rather than restated here, because a figure written
+		// down twice is a figure that will drift from the one the build
+		// enforces.
 		purse := 100 * lane.DefaultBudget().Share()
 		out = append(out, proofGate{
 			Criterion: "loser spend inside the purse",
@@ -1433,20 +1605,23 @@ func proofGates(rows []proofRow, store string) []proofGate {
 
 // printProof writes §K's pass table with the measured value beside every
 // threshold, and then the two figures §K asks for and does not gate.
-func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int, store string) {
+func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int, store, mix string) {
 	fmt.Println("── §K, the four scenarios ──────────────────────────────────────────────────────")
 	fmt.Printf("   role %s, ceiling %s   seeds %v   requests per case per seed %d   pooled %d   wire %d× the world\n",
 		proofRole, proofRole.Ceiling(), seeds, n, n*len(seeds), speedup)
 	fmt.Printf("   store %s   %s\n", store, storyOf(store))
+	fmt.Printf("   mix %s   a fault is staged on %.0f%% of requests\n", mix, 100*rateOfMix(mix))
 	fmt.Println("   the fault runs for the middle half of every case; the other half is the healthy one")
 	fmt.Println()
-	fmt.Printf("   %-24s%6s%6s%6s%6s%10s%10s%10s%7s%8s%8s\n",
-		"case", "n", "sick", "acts", "arms", "act p50", "act p90", "act max", "over", "false%", "$over%")
-	fmt.Printf("   %s\n", strings.Repeat("-", 104))
+	fmt.Printf("   %-24s%6s%6s%6s%6s%7s%7s%10s%10s%10s%7s%8s%8s%9s%9s\n",
+		"case", "n", "sick", "acts", "arms", "well", "resc", "act p50", "act p90", "act max",
+		"over", "false%", "$over%", "$waste%", "$resc%")
+	fmt.Printf("   %s\n", strings.Repeat("-", 136))
 	for _, r := range rows {
-		fmt.Printf("   %-24s%6d%6d%6d%6d%9.2fs%9.2fs%9.2fs%7d%8.2f%8.2f\n",
-			r.Case, r.N, r.Sick, r.SickActs, r.Arms, r.ActionP50, r.ActionP90, r.ActionMax,
-			r.OverCeil, r.FalseHedgePct, r.SpendPct)
+		fmt.Printf("   %-24s%6d%6d%6d%6d%7d%7d%9.2fs%9.2fs%9.2fs%7d%8.2f%8.2f%9.2f%9.2f\n",
+			r.Case, r.N, r.Sick, r.SickActs, r.Arms, r.FalseArm, r.RescueArm,
+			r.ActionP50, r.ActionP90, r.ActionMax,
+			r.OverCeil, r.FalseHedgePct, r.SpendPct, r.WastePct, r.RescuePct)
 	}
 	fmt.Println()
 	for _, r := range rows {
@@ -1481,6 +1656,20 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 	for _, r := range rows {
 		fmt.Printf("   %-24s%13.2fs%13.2fs%13.2fs%12.1f\n",
 			r.Case, r.SilenceP50, r.SilenceP90, r.SilenceMax, r.ReportPct)
+	}
+	fmt.Println()
+	// AND THE ONE CASE A PERSON REPORTED, ON ITS OWN LINE. A run of thought that
+	// stopped is pooled into the thinking row's percentiles with every request
+	// that was acted on before the model had said anything, and the two are not
+	// the same wait. How often it happens at this mix is on the line with it,
+	// because a time-to-action nobody can weigh is a number nobody can rule on.
+	for _, r := range rows {
+		if r.StallThinks == 0 {
+			continue
+		}
+		fmt.Printf("   a stalled run of thought: %d of %d requests (%.2f%%), acted on at "+
+			"%.2fs p50 / %.2fs p90   [%s]\n",
+			r.StallThinks, r.N, share(r.StallThinks, r.N), r.StallP50, r.StallP90, r.Case)
 	}
 	fmt.Println()
 }
