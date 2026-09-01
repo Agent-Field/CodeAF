@@ -101,7 +101,7 @@ import "strings"
 // THE STALE FLAG IS THE POINT OF THE COMPARISON. A block whose tier changed is
 // holding rows it drew in the other tier, and [app.entryRows] hands those back
 // unless something says otherwise — so the flip and the invalidation are one
-// statement, exactly as [app.closeLive] writes the settle. A block whose tier did
+// statement, exactly as [feed.closeLive] writes the settle. A block whose tier did
 // NOT change is left alone, which is nearly every block on every frame: this pass
 // is free unless something actually moved.
 func stampHierarchy(es []entry, folds map[int]workfold) {

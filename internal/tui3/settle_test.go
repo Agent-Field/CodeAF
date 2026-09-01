@@ -93,7 +93,7 @@ func TestAStreamingReplyLeadsAndASettledOneDoesNot(t *testing.T) {
 //
 // [app.entryRows] hands back what it built last time unless the entry says it
 // is stale, and a settled assistant block is not one of the shapes that bypass
-// the cache. So the flag [app.closeLive] sets is the whole of the transition: a
+// the cache. So the flag [feed.closeLive] sets is the whole of the transition: a
 // turn that ended without it would keep the bright rows on screen forever, and
 // this is the test that would have caught it.
 func TestTheSettleDropsTheRowsTheStreamLeftBehind(t *testing.T) {
