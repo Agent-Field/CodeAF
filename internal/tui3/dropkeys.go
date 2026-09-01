@@ -385,6 +385,15 @@ func (a *app) droppedFiles(text string) bool {
 // An unknown command that names nothing on the disk still refuses exactly as it
 // always did: this returns false and the caller writes its own sentence.
 func (a *app) droppedLine(line string) bool {
+	return a.droppedLineInto(&a.input, &a.chips, line)
+}
+
+// droppedLineInto is that net under WHICHEVER box the line was typed into, so
+// home's own dispatcher falls into it too (home.go's [app.homeEnter]). Home
+// answered a dropped path with `unknown command`, the same sentence chat stopped
+// answering with when this net was written, because home ran the slash router
+// over its own box and never reached here.
+func (a *app) droppedLineInto(box *editor, chips *[]chip, line string) bool {
 	words := pastedWords(line)
 	if len(words) == 0 {
 		return false
@@ -394,14 +403,24 @@ func (a *app) droppedLine(line string) bool {
 		a.drop.looked++
 		info, err := os.Stat(a.resolvePath(pastedPath(word)))
 		if err != nil {
+			// A LINE SHAPED LIKE A DROP THAT NAMES NOTHING HERE IS A DROP FROM
+			// ANOTHER MACHINE, and the door says so in its own sentence rather
+			// than leaving the router to answer `unknown command` about a file
+			// that exists perfectly well on the laptop it was dragged from
+			// (imagepaste.go's [app.pasteFilesInto]). Anything else is the
+			// unknown command it looks like, and is refused as one.
+			if droppedPathShape(line) {
+				a.pasteFilesInto(box, chips, line)
+				return true
+			}
 			return false
 		}
 		if info.Mode().IsRegular() {
 			files++
 		}
 	}
-	held := len(a.chips)
-	if !a.pasteFiles(line) {
+	held := len(*chips)
+	if !a.pasteFilesInto(box, chips, line) {
 		return false
 	}
 	a.drop.took++
@@ -409,11 +428,12 @@ func (a *app) droppedLine(line string) bool {
 	// who has just watched their file turn into a line of text and press enter.
 	// The chips are the proof; the sentence is what stops them typing it again.
 	//
-	// A FOLDER SAYS ITS OWN SENTENCE AND IS NOT GIVEN A SECOND ONE. [app.pasteFiles]
-	// answers "<name> is a folder · attach a file" and attaches nothing, and
-	// "attached" underneath that would be this surface contradicting itself.
-	if files == len(words) && len(a.chips) > held {
-		a.note(droppedNote(files))
+	// A FOLDER SAYS ITS OWN SENTENCE AND IS NOT GIVEN A SECOND ONE.
+	// [app.pasteFilesInto] answers "<name> is a folder · attach a file" and
+	// attaches nothing, and "attached" underneath that would be this surface
+	// contradicting itself.
+	if files == len(words) && len(*chips) > held {
+		a.trayNote(droppedNote(files))
 	}
 	return true
 }
