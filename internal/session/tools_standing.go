@@ -235,7 +235,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
-	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs a brief in its own session, with a worktree and a cost row, the way propose_task's work runs."},` +
+	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs a brief in its own session, with a copy of its own and a cost row, the way propose_task's work runs."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
