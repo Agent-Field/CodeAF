@@ -269,13 +269,16 @@ func lowQuantizationAllowed() bool {
 // ── THE CHOOSER ─────────────────────────────────────────────────────────────
 
 // chooser turns a request into a preference. It holds no state of its own: the
-// belief is the ledger's and the moment is the request's.
+// belief is the ledger's, the rows are the sheet's, and the moment is the
+// request's.
 type chooser struct {
-	// ledger is where the beliefs come from, nil meaning the registry's own.
-	// The registry builds this chooser before it can hand it a ledger, and a
-	// test builds one with a ledger of its own, so the seam is read late rather
-	// than held.
+	// ledger, pages and hier are where what is believed comes from, nil meaning
+	// the registry's own. The registry builds this chooser before it can hand it
+	// any of them, and a test builds one with its own, so every seam is read
+	// late rather than held.
 	ledger Ledger
+	pages  Sheet
+	hier   Hierarchy
 }
 
 // newChooser builds the chooser. It is called from the registry and nowhere
@@ -284,10 +287,173 @@ func newChooser() *chooser { return &chooser{} }
 
 // beliefs is what is believed about a model's lanes right now.
 func (c *chooser) beliefs(model string) []Belief {
+	return c.ledgerOf().Beliefs(model)
+}
+
+func (c *chooser) ledgerOf() Ledger {
 	if c.ledger != nil {
-		return c.ledger.Beliefs(model)
+		return c.ledger
 	}
-	return Default().Ledger().Beliefs(model)
+	return Default().Ledger()
+}
+
+func (c *chooser) sheetOf() Sheet {
+	if c.pages != nil {
+		return c.pages
+	}
+	return Default().Sheet()
+}
+
+// hierarchy is the belief store's second door, nil on a build whose ledger does
+// not answer it. Everything below treats that as "borrow nothing", which is the
+// behaviour this package had before there was a hierarchy at all.
+func (c *chooser) hierarchy() Hierarchy {
+	if c.hier != nil {
+		return c.hier
+	}
+	if borrowed, ok := c.ledgerOf().(Hierarchy); ok {
+		return borrowed
+	}
+	return nil
+}
+
+// ── COLD START: A MODEL NOBODY HAS MEASURED STILL GETS AN ORDER ─────────────
+//
+// The first request to a (model, lane) pair is the STEADY STATE — a person
+// picks a model at runtime, the sheet is half an hour old at best, and the
+// ledger has never heard of the machines behind it — and until this the whole
+// package refused it: fewer than two beliefs and the answer was the zero
+// [Choice]. The measured consequence was a request with no routing opinion AND
+// no clock on it, waiting three minutes.
+//
+// The refusal was right about ONE thing and wrong about the other. An order of
+// one is genuinely not a ranking, and sending the name of the only endpoint we
+// happen to know exists is a preference for our own ignorance. But "one lane in
+// the ledger" was never the same fact as "one lane known": the sheet names
+// every machine that serves this model, and the hierarchy knows how quick each
+// PROVIDER is from every other model it has served (waiting.go's sum). Both are
+// beliefs about lanes; neither was being read.
+//
+// So the candidate set is widened in three steps, cheapest first, and it stops
+// as soon as there is something to rank:
+//
+//  1. what the ledger holds for this model — the measured account, untouched;
+//  2. every lane the SHEET names for this model, fitted from its published
+//     percentiles exactly as [Ledger.Prime] would fit them;
+//  3. every lane this process has seen serving ANY model, priced from the
+//     hierarchy's provider level.
+//
+// A candidate that comes out of all three with nothing believed about it is
+// dropped rather than ranked, because that is the old refusal's true half: a
+// name with no belief behind it is not a preference.
+//
+// AND A MODEL WITH NO SHEET ASKS FOR ONE, on the way past, without waiting:
+// [Wanter.Wants] queues it for the beat. That is the one write this path makes
+// and it is not a fetch — the law that nothing is fetched on a send path is
+// exactly what the queue exists to keep.
+
+// widened is the candidate set the choice is made from. It is the ledger's own
+// list unchanged whenever that list can be ranked, and the three steps above
+// when it cannot.
+func (c *chooser) widened(req Request, known []Belief) []Belief {
+	if len(known) >= 2 {
+		return known
+	}
+	held := make(map[string]bool, len(known))
+	for _, belief := range known {
+		held[belief.ID.Lane] = true
+	}
+	rows := c.sheetOf().Rows(req.Model)
+	if len(rows) == 0 {
+		c.wantSheet(req.Model)
+	}
+	// THE LIST IS COPIED BEFORE IT GROWS. What a ledger hands out is its answer
+	// and not this file's scratch space, and appending into somebody else's
+	// spare capacity is the kind of aliasing nobody finds twice.
+	widened := append(make([]Belief, 0, len(known)+len(rows)), known...)
+	for _, row := range rows {
+		if row.ID.Lane == "" || held[row.ID.Lane] {
+			continue
+		}
+		held[row.ID.Lane] = true
+		widened = append(widened, fromRow(ID{Model: req.Model, Lane: row.ID.Lane}, row))
+	}
+	if len(widened) < 2 {
+		for _, name := range c.rosterOf() {
+			if held[name] {
+				continue
+			}
+			held[name] = true
+			widened = append(widened, Belief{ID: ID{Model: req.Model, Lane: name}})
+		}
+	}
+	return c.borrowedAll(widened, req.Now)
+}
+
+// borrowedAll fills every candidate that believes nothing of its own from the
+// hierarchy, and drops the ones that still believe nothing after it.
+func (c *chooser) borrowedAll(candidates []Belief, now time.Time) []Belief {
+	hier := c.hierarchy()
+	// A FRESH SLICE, NOT A FILTER IN PLACE. The list may still be the ledger's
+	// own, and a package that quietly rewrote what a seam handed it would be a
+	// bug nobody could see from the seam's side.
+	kept := make([]Belief, 0, len(candidates))
+	for _, belief := range candidates {
+		if hier != nil {
+			if !belief.TTFT.Known() {
+				belief.TTFT = borrow(hier.Wait(belief.ID, now))
+			}
+			if !belief.Rate.Known() {
+				belief.Rate = borrow(hier.Rate(belief.ID, now))
+			}
+		}
+		if !belief.Known() {
+			continue
+		}
+		kept = append(kept, belief)
+	}
+	return kept
+}
+
+// borrow is one chain read as the flat belief the gate and the score are made
+// of: the sum of the four means, with the sum of the four variances. An unknown
+// chain borrows nothing, which the caller reads as a candidate to drop.
+func borrow(chain Chain) Posterior {
+	if !chain.Known() {
+		return Posterior{}
+	}
+	mu, variance := chain.Predict()
+	return Posterior{X: mu, P: variance}
+}
+
+// fromRow is a sheet row read as a belief nobody has measured yet: the facts as
+// published and the timing fitted from the percentiles, with NO MOMENT on it —
+// so the Thompson draw stays narrow ([sheetObservations]) and nothing here is
+// ever mistaken for a sighting.
+func fromRow(id ID, row Row) Belief {
+	belief := Belief{ID: id, Facts: row.Facts, Quality: qualityPrior(row.Facts.Quant)}
+	if row.Known() {
+		belief.TTFT = fit(row.TTFTp50, row.TTFTp90)
+		belief.Rate = fit(row.Ratep50, row.Ratep90)
+	}
+	return belief
+}
+
+// rosterOf is every lane this process has seen serving any model, empty for a
+// sheet that cannot answer.
+func (c *chooser) rosterOf() []string {
+	if pages, ok := c.sheetOf().(Roster); ok {
+		return pages.Roster()
+	}
+	return nil
+}
+
+// wantSheet queues a model nobody has a sheet for. It returns before anything
+// is fetched and it is safe on the send path for that reason alone.
+func (c *chooser) wantSheet(model string) {
+	if pages, ok := c.sheetOf().(Wanter); ok {
+		pages.Wants(model)
+	}
 }
 
 // Choose is the whole of the decision: age, gate, prune, sample, rank, and say
@@ -299,17 +465,19 @@ func (c *chooser) Choose(req Request) Choice {
 	// lookup below, including the two that key on [Request.Model] directly,
 	// asks about the model whose beliefs exist.
 	req.Model = BareModel(req.Model)
-	beliefs := c.beliefs(req.Model)
-	// AN ORDER OF ONE IS NOT A RANKING, and a ledger that has heard of a single
-	// lane has nothing to rank. This is the same refusal as the empty one below
-	// it and it is worth stating separately, because the case is not
-	// hypothetical: on a machine with no sheet the only lanes this package has
-	// ever heard of are the ones that have already served, so the first thing it
-	// learns about a model is the name of ONE endpoint — quite possibly the slow
-	// one it is about to be demoted for. Sending that name as `provider.order`
-	// is not a preference among lanes; it is a preference for the only machine
-	// we happen to know exists, put in front of a router that knows a dozen, and
-	// it silently overrode a strike ledger that had correctly demoted it.
+	// THE LEDGER IS ASKED FIRST AND THE WORLD SECOND. What this process has
+	// measured about this model is the best account there is; the sheet and the
+	// hierarchy are what stand in when there is not enough of it to rank, which
+	// on a cold store is every model and on a picked one is most of them
+	// ([chooser.widened] carries the whole argument).
+	beliefs := c.widened(req, c.beliefs(req.Model))
+	// AN ORDER OF ONE IS STILL NOT A RANKING. The refusal below is the old one
+	// with its true half kept: one lane KNOWN is nothing to rank, and sending
+	// its name as `provider.order` is a preference for the only machine we
+	// happen to know exists, put in front of a router that knows a dozen. What
+	// has changed is what counts as known — the widening above — so the case
+	// this fires in is now a process that has seen nothing at all rather than a
+	// process that has not seen THIS model.
 	if len(beliefs) < 2 {
 		return Choice{}
 	}
@@ -644,6 +812,13 @@ func whyOf(top Scored, felt float64) string {
 		return ""
 	}
 	start := top.TTFT / 1000
+	// AND A LANE NOBODY HAS TIMED SAYS NOTHING RATHER THAN "STARTS IN 0.0s".
+	// The widening puts lanes into the order that are believed in only through
+	// their provider, and a sentence built on a zero is the one thing this
+	// surface may not print (the emptiness law).
+	if start <= 0 {
+		return ""
+	}
 	switch {
 	case top.Price >= 0.01:
 		return fmt.Sprintf("%s starts in %.1fs and costs about $%.2f for this answer.", top.ID.Lane, start, top.Price)
