@@ -113,26 +113,46 @@ func runParent(t *testing.T, nest *nest, limits taskLimits) (<-chan struct{}, *s
 	return done, stopped
 }
 
-// waitParked waits for a node's runner to be ON ITS PARK — waiting on its parts
-// with no turn running — and fails rather than hanging.
+// waitParked waits for a node's runner to be ON A PARK LATER THAN `past` —
+// waiting on its parts with no turn running — and answers that park's
+// generation, so the caller can name it to the next wait. It fails rather than
+// hanging. Pass 0 for the first park of the run, when there is no earlier one to
+// be told apart from.
 //
 // It is the signal a test needs before it can say "and it did not ask", because
 // the honest reading of a parent that has been given no time is neither yes nor
 // no. A clock cannot answer that question on a machine carrying other work: the
 // milliseconds pass whether or not the goroutine behind them has been given a
 // processor.
-func waitParked(t *testing.T, node *TaskNode) {
+//
+// AND "PARKED" ALONE IS NOT THAT SIGNAL ONCE A REPORT HAS LANDED. A parent woken
+// by one part unparks, reads it, finds another part outstanding and parks again,
+// and the flag is true on both sides of that window — so a waiter looking only
+// at the flag can return on the park the parent has NOT YET WOKEN FROM, and the
+// assertion the caller makes one line later lands in the unpark → re-park gap
+// and reads the wrong park. That was 2 runs in 40 of
+// [TestAParentIsAskedNothingUntilEveryPartHasReported] under -race (#201).
+//
+// THE CURE IS THE GENERATION AND NOT A LONGER POLL. Sleeping until the flag
+// "looks settled" would pass on a quiet machine and hide a parent that had
+// genuinely stopped re-parking, which is the regression these tests exist to
+// catch. Waiting past a NAMED park is an answer about identity: this is a park
+// that had not been taken when the caller last looked.
+func waitParked(t *testing.T, node *TaskNode, past uint64) uint64 {
 	t.Helper()
 	for until := time.Now().Add(10 * time.Second); time.Now().Before(until); {
-		node.graph.mu.Lock()
-		parked := node.parked
-		node.graph.mu.Unlock()
-		if parked {
-			return
+		// One reading, never two: the flag and the number are taken under the
+		// same hold of the graph's lock ([TaskNode.parkStanding]).
+		if parked, generation := node.parkStanding(); parked && generation > past {
+			return generation
 		}
 		time.Sleep(time.Millisecond)
 	}
+	if past > 0 {
+		t.Fatalf("the parent never parked again after park %d", past)
+	}
 	t.Fatal("the parent never parked on its parts")
+	return 0
 }
 
 // ── waiting is not spinning ─────────────────────────────────────────────────
@@ -209,16 +229,21 @@ func TestAParentIsAskedNothingUntilEveryPartHasReported(t *testing.T) {
 	if len(landing) != 3 {
 		t.Fatalf("%d parts were admitted, want the three that were handed out", len(landing))
 	}
+	// EVERY WAIT HERE NAMES THE PARK IT ALREADY SAW. A part is landed against a
+	// park the parent is known to be on, and the assertions that follow wait for
+	// the NEXT park — the one it took after reading that report — because the
+	// flag is true on both sides of the unpark → re-park window and "parked"
+	// alone would let the reads below land inside it.
+	parked := waitParked(t, nest.parent, 0)
 	land := func(part *TaskNode) {
 		t.Helper()
-		waitParked(t, nest.parent)
 		part.finish(part.title()+" landed", nil, "", "")
 		part.graph.complete(part, TaskDone)
 	}
 
 	// ONE part reports. Nothing may be asked on the strength of it.
 	land(landing[0])
-	waitParked(t, nest.parent)
+	parked = waitParked(t, nest.parent, parked)
 	if got := completer.requests(); got != asked {
 		t.Fatalf("the parent was asked %d times after one of three parts reported, want it left parked at %d", got, asked)
 	}
@@ -232,6 +257,7 @@ func TestAParentIsAskedNothingUntilEveryPartHasReported(t *testing.T) {
 	}
 
 	land(landing[1])
+	waitParked(t, nest.parent, parked)
 	land(landing[2])
 	select {
 	case <-done:
@@ -530,7 +556,7 @@ func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t
 	// The park is the SIGNAL that it reached the wait, and it replaces a
 	// three-hundred-millisecond sleep that only ever meant "it has probably got
 	// there by now" — which on a busy machine was a parent that had not started.
-	waitParked(t, nest.parent)
+	parked := waitParked(t, nest.parent, 0)
 	if got := completer.requests(); got != 0 {
 		t.Fatalf("the parent was asked %d times before any part reported, want none", got)
 	}
@@ -546,7 +572,9 @@ func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t
 	}
 	for index, part := range landing {
 		if index > 0 {
-			waitParked(t, nest.parent)
+			// Past the park the previous landing was made against, so this one
+			// really is going into a parent that has read what it was sent.
+			parked = waitParked(t, nest.parent, parked)
 		}
 		part.finish(part.title()+" is done", nil, "", "")
 		part.graph.complete(part, TaskDone)
@@ -619,7 +647,7 @@ func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
 			// THE PARK IS THE STARTING LINE. Landing a part before the runner
 			// reaches its wait would be a different test — one about the brief
 			// being submitted — and it would not touch the window this pins.
-			waitParked(t, nest.parent)
+			waitParked(t, nest.parent, 0)
 
 			partsMu.Lock()
 			landing := append([]*TaskNode(nil), parts...)
@@ -753,7 +781,7 @@ func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
 	}
 
 	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6})
-	waitParked(t, here.parent)
+	waitParked(t, here.parent, 0)
 	if got := completer.requests(); got != 0 {
 		t.Fatalf("the parent was asked %d times while its work was out, want none", got)
 	}
