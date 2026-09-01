@@ -76,6 +76,12 @@ func (a *Agent) groundShift(node *TaskNode, wrote []string) string {
 	if node == nil || len(wrote) == 0 {
 		return ""
 	}
+	// THE QUESTION IS ABOUT WHAT WOULD SHIP, and for a node that handed work out
+	// that is the family's ledger rather than its own worker's slice of it
+	// (task_ledger.go). It is folded HERE rather than by the caller because this
+	// is the caller's own question: every road that asks it hands over the list
+	// it was holding, and the landing that follows folds again for itself.
+	wrote = absorbedLedger(node, wrote)
 	after := node.runStart()
 	if after.IsZero() {
 		// NO WINDOW, NO QUESTION. A node whose start nothing knows cannot say

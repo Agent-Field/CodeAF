@@ -912,7 +912,8 @@ type landingFiles struct {
 	// own is what this node's worker wrote.
 	own []string
 	// parts is what the parts it handed out wrote and brought home, in the order
-	// the parts finished, and never anything already in own.
+	// the parts finished. The two halves are disjoint, and a path they share is
+	// filed here — see [landingFilesFor].
 	parts []string
 }
 
@@ -938,10 +939,14 @@ func (f landingFiles) divided() bool { return len(f.parts) > 0 }
 // and its parts' half as its parts', and `Files it wrote:` stays a true claim
 // about this node however many times the list has been folded.
 //
-// A PATH BOTH WROTE IS ONE PATH, filed under the parts. It is on [all] exactly
-// once either way, which is what every consumer but the packet reads — and two
-// parts of one division writing one path is a scope fault the division is meant
-// not to make, never something a landing resolves by picking a side.
+// A PATH BOTH WROTE IS FILED UNDER THE PARTS, and that is a decision rather
+// than a detail. It used to be filed under the node, which cannot survive being
+// asked twice: the second reading has no way to tell a path the node wrote from
+// one it absorbed, so the split would drift with every re-audit. Filing it with
+// the writer the graph can still name keeps one answer at every age — and it
+// costs the packet nothing, because the path is named in the packet either way,
+// staged either way, restored either way, and on [all] exactly once either way.
+// The only thing that changes is which of the two true sentences carries it.
 func landingFilesFor(node *TaskNode, changed []string) landingFiles {
 	if node == nil || node.graph == nil {
 		return landingFiles{own: changed}
