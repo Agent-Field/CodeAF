@@ -82,20 +82,26 @@ type Expectation struct {
 	Fact string `json:"fact,omitempty"`
 }
 
-// expectsSchemaJSON is the `expects` property, and today exactly ONE door
-// carries it: the divider's (task_divide.go). It is a constant of its own
-// anyway, because the next door to carry one must interpolate this rather than
-// write a second account of the same shape.
+// expectsSchemaJSON is the `expects` property, and BOTH doors that take a brief
+// from a model carry it: the divider's (task_divide.go) and the conversation's
+// (task.go). It is ONE constant interpolated twice rather than two literals,
+// because a second account of the same shape is how a field comes to mean one
+// thing at one door and something else at the other.
 //
-// WHY ONLY THE DIVIDER, said where somebody will look for it: propose_task's
-// schema rides in front of every request of every turn of every conversation
-// and is already the heaviest tool on that belt, and the fixed-prefix budget
-// (prefixbudget_test.go) had no room for a second contract there. The divider's
-// schema is on a WORKER's belt and costs the conversation nothing. It is also
-// where the failure this file was written from happened, and where the asymmetry
-// is real: a divider writes a brief about a world its reader has not been given
-// yet, while a conversation proposing a task can see the folder it is proposing
-// against. Nothing below cares which door filled the list.
+// THE SECOND DOOR WAS PAID FOR AND NOT BORROWED, said here because this is
+// where somebody will look for the reason. propose_task's schema rides in front
+// of every request of every turn of every conversation and is the heaviest tool
+// on that belt, so this text reached it only once its 1,230 bytes had been
+// taken back out of prompts/system.md: four lines whose every clause the tool
+// block already carried, each in the description of the tool it was about
+// (prefixbudget_test.go states that law, and is what would have failed).
+//
+// The asymmetry between the doors is real and was never the argument: a divider
+// writes a brief about a world its reader has not been given yet, while a
+// conversation proposing a task can see the folder it is proposing against —
+// and a conversation proposing work against a folder it has NOT opened, or
+// against a project three directories away, is the same handoff this file was
+// written from. Nothing below cares which door filled the list.
 //
 // IT IS WRITTEN FOR DENSITY, like everything else that rides in front of every
 // request: each rule is stated once, in the field it governs.
