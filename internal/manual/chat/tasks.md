@@ -197,10 +197,13 @@ split has to come off what your brief already spelled out.
 ## The card that asks whether to run the work
 
 While the model is still writing the proposal, a grey block opens in the transcript and
-grows: a pulsing `◌`, the title (or just the word `task` until the title arrives), and one
-row reading `forming…`. It is not a question yet — no options and no clock. If the turn
-ends before the proposal finishes arriving, the block settles as
-`cancelled · the proposal never arrived`.
+grows: a still `◌`, the title (or just the word `task` until the title arrives), and one
+row such as `⠙ forming… · 6s`. The mark spins and the clock climbs on the same grid as
+the `/task` block and a running tool row. Under a second the clock is not shown. In the
+plain-text tier the mark is a still `*` and only the clock climbs. It is not a question
+yet — there are no options. If the turn ends before the proposal finishes arriving, the
+block settles as `cancelled · the proposal never arrived`. If the call is refused before
+there is a proposal to ask about, it settles as `not started · the call was refused`.
 
 When the proposal is complete, that same block turns into the question. The card shows:
 
@@ -221,6 +224,23 @@ the box becomes the redirect lane, with the placeholder
 Only one proposal is a live question at a time. If a second one arrives while the first is
 unanswered, the older card settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
+
+## The forming card is not moving — proposal card frozen
+
+While a proposal is arriving, the card's middle row reads like
+`⠙ forming… · 6s`: the braille mark turns and the elapsed clock climbs. The `◌` in the
+head is intentionally still — it is the empty identity slot, not a second animation. Under
+one second there is no number. In the plain-text tier the row uses a still `*`, so only the
+clock moves.
+
+The moving row is the display's local clock. It says the proposal call remains open; it
+does not prove that network fragments are arriving, so it can keep moving while a provider
+is slow or stalled. When the proposal lands, the forming row stops and the same block
+becomes the question with its options and countdown. If the stream or turn ends first, it
+settles as `cancelled · the proposal never arrived`. If the request is cut and retried, the
+partial block disappears because that attempt's half-arrived call was discarded; a new
+proposal fragment starts a new block. If the call is refused before it ever becomes a
+question, it settles as `not started · the call was refused` instead of moving forever.
 
 ## Why a task started on its own — aforge started work I did not ask for, this looked like work, so task N started
 
@@ -821,7 +841,7 @@ These are the exact words on screen.
 
 | what is happening | the word you see |
 | --- | --- |
-| the proposal is still arriving | `forming…` |
+| the proposal is still arriving | `⠙ forming… · 6s` after six seconds; under one second there is no clock |
 | the proposal is waiting, with no clock | `waiting on you` |
 | the proposal is waiting, with a clock | `auto-starts in <time>` |
 | queued behind something | `waiting · <reason>` |

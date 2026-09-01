@@ -2222,7 +2222,8 @@ There is a linear tier, and it is three subtractions.
 
 **No animation.** A spinner read aloud is a word repeated forever, so every spinner
 becomes a still `*`, the pulsing ellipsis becomes its last still frame, and a forming
-tool row stops pulsing.
+tool row stops pulsing. The forming proposal card's mark becomes a still `*` too, while
+only its clock climbs.
 
 **No hover.** A pointer's shadow is nothing to a reader, so no row ever brightens under
 the pointer.
