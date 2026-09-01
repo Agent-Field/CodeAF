@@ -1820,21 +1820,13 @@ type Extension struct {
 	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
 	// the one the exit code reads.
 	Unclosed bool
-	// Overturned says the finding LOST to a reading of the world: the job's own
-	// coverage question, asked against the criterion it is judged on and
-	// everything that has landed, answered that nothing is left uncovered.
-	//
-	// Two readings of one job may not refuse each other in silence. The gate
-	// says the delivery is not whole; the coverage reading says there is
-	// nothing to add. ofetch s12 held both, resolved neither, and ended partial
-	// after 145 calls with the person told only "no more work could be started
-	// on it" — which is neither answer and reads as the machinery giving up.
-	// One of the two has to yield, and it is the gate's: coverage is a reading
-	// over the whole job's criterion and its landed work, the finding is a
-	// judgement about one file, and the more specific opinion does not outrank
-	// the broader measurement. See store.DeliveryGate.Overturned, whose whole
-	// meaning is a finding weighed against the world and lost.
-	Overturned bool
+	// AN EXTENSION CANNOT ACQUIT. There is no Overturned here and there must
+	// not be one: everything this function can learn is whether a round was
+	// bought, and a round nobody bought says nothing whatever about whether the
+	// finding was right. Only the two world-doors — AdmitGapArtifact and
+	// AdmitGapPresent, which read the disk and the delivered text — and a
+	// person may set store.DeliveryGate.Overturned. See coverageRefused for the
+	// run that shipped a dead behaviour on the reasoning this comment replaces.
 }
 
 // GapContinuationNotice is the whole of what a person sees when a judgement
@@ -1963,14 +1955,13 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		// rail has journaled the repair and is waiting on consent. Either way
 		// nothing new is running and the delivery has to say so.
 		//
-		// EXCEPT WHERE THE GOVERNOR THAT SPOKE CONTRADICTED THE FINDING. The
-		// cause is read from the journal rather than threaded back through four
-		// signatures, because the journal is where it is already written down
-		// and a fact carried twice is a fact that will differ.
-		if coverageOverturned(graph, base) {
-			extension.Overturned = true
-			extension.Refused = "the job's own reading of what it is judged on found nothing left uncovered, " +
-				"so the review's finding is what was wrong"
+		// AND THE COVERAGE GOVERNOR SAYS SO IN ITS OWN WORDS, STILL UNCLOSED.
+		// The cause is read from the journal rather than threaded back through
+		// four signatures, because the journal is where it is already written
+		// down and a fact carried twice is a fact that will differ.
+		if coverageRefused(graph, base) {
+			extension.Refused, extension.Unclosed = "the job's own reading of what it is "+
+				"judged on found nothing left to add, so nothing further was started", true
 			return extension
 		}
 		extension.Refused, extension.Unclosed = "no more work could be started on it", true
@@ -1980,21 +1971,27 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	return extension
 }
 
-// coverageOverturned reads the growth journal for the refusal that has just
-// happened and answers whether it was the coverage question.
+// coverageRefused reads the growth journal for the refusal that has just
+// happened and answers whether it was the coverage question, so the delivery
+// can say which governor declined in that governor's own terms.
 //
-// It is the one governor whose refusal CONTRADICTS the finding rather than
-// merely declining to fund it. Rounds, the ceiling, the wall and the rail all
-// say "not now" and leave the gap standing, which is exactly what Unclosed
-// means and what the exit code is for. Coverage says "there is nothing there",
-// about the same job, from the same world — and a run cannot hand over a
-// finding and a measurement that deny each other and call the result a
-// shortfall the person should act on.
+// A GOVERNOR MAY REFUSE A ROUND AND NEVER A FINDING. It used to set Overturned
+// here, on the reasoning that coverage is a broader measurement than one
+// review's finding and the broader one settles it. That reasoning was wrong at
+// the root: coverage is a MODEL'S READING OF THE JOB'S OWN ACCOUNT — the plan's
+// Done and the workers' own summaries — and the finding is a reading of the
+// world. A run answered "the job's own reading of what it is judged on found
+// nothing left uncovered, so the review's finding is what was wrong" over a
+// behaviour that was genuinely dead in the delivered tree, and shipped it
+// (2026-09-01, deepseek-v4-flash, a real issue as the brief). So a refusal here
+// leaves the gap exactly where the rounds cap, the wall and the rail leave it:
+// Unclosed, which is the field the exit code turns on. Overturned is reserved
+// for AdmitGapArtifact, AdmitGapPresent and a person — the three doors that
+// weigh a finding against the world.
 //
-// A journal that cannot be read answers false, which leaves the delivery
-// partial: the fail-safe direction is the one that does not manufacture a pass
-// out of a record nobody could open.
-func coverageOverturned(graph *store.Store, lineage string) bool {
+// A journal that cannot be read answers false, which costs only the more
+// particular sentence: the delivery is partial either way.
+func coverageRefused(graph *store.Store, lineage string) bool {
 	if graph == nil {
 		return false
 	}

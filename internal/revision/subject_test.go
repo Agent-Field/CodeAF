@@ -448,17 +448,18 @@ func TestEveryJudgementCarriesWhatItJudged(t *testing.T) {
 
 // ── The two readings that refused each other ────────────────────────────────
 
-// ofetch s12 again, at the other seam. The gate refused the delivery over
-// src/circuit-breaker.ts; the repair round it bought was refused because "the
-// goal is already covered"; and the run reported `partial — no more work could
-// be started on it` after 145 calls. That sentence is neither answer, and a
-// person reading it cannot tell which of the two readings to believe.
+// A GOVERNOR MAY REFUSE A ROUND, NEVER A FINDING.
 //
-// The broader measurement settles it: coverage is asked of the whole job's
-// criterion against everything that landed, and the finding is one judge's
-// opinion about one file. So the finding is OVERTURNED and the run settles on
-// the fields, rather than handing over a shortfall nobody can act on.
-func TestACoverageRefusalOverturnsTheFindingItContradicts(t *testing.T) {
+// The coverage refusal used to set Overturned here, on the reasoning that
+// coverage is a broader measurement than one review's finding. It is not a
+// measurement at all: it is a model reading the plan's own Done and the
+// workers' own summaries, which is the account being judged. A run answered
+// "the job's own reading of what it is judged on found nothing left uncovered,
+// so the review's finding is what was wrong" over a behaviour that was dead in
+// the delivered tree (2026-09-01, deepseek-v4-flash). So the refusal now says
+// which governor spoke, in that governor's words, and leaves the gap Unclosed
+// exactly as the rounds cap and the wall do.
+func TestACoverageRefusalLeavesTheFindingStanding(t *testing.T) {
 	graph := gateStore(t)
 	if err := graph.RecordJobGrowth("task-2", store.JobGrowth{Reason: "gap", Lineage: "task-2",
 		Round: 1, Allowed: false, Cause: resident.CauseCovered,
@@ -479,14 +480,14 @@ func TestACoverageRefusalOverturnsTheFindingItContradicts(t *testing.T) {
 			return store.Subtree{}, nil
 		})
 
-	if !extension.Overturned {
-		t.Fatalf("the contradiction was handed over as a shortfall: %+v", extension)
+	if !extension.Unclosed {
+		t.Fatalf("a refused round settled the finding: %+v", extension)
 	}
-	if extension.Unclosed {
-		t.Fatalf("an overturned finding was also left standing: %+v", extension)
+	if !strings.Contains(extension.Refused, "found nothing left to add") {
+		t.Fatalf("the person is not told which governor declined: %q", extension.Refused)
 	}
-	if !strings.Contains(extension.Refused, "found nothing left uncovered") {
-		t.Fatalf("the person is not told which reading won: %q", extension.Refused)
+	if strings.Contains(extension.Refused, "the review's finding is what was wrong") {
+		t.Fatalf("a governor acquitted a finding: %q", extension.Refused)
 	}
 }
 
@@ -514,7 +515,7 @@ func TestARefusalThatOnlyDeclinesToFundLeavesTheGapStanding(t *testing.T) {
 			return store.Subtree{}, nil
 		})
 
-	if extension.Overturned || !extension.Unclosed {
+	if !extension.Unclosed {
 		t.Fatalf("a cap was read as the gate being wrong: %+v", extension)
 	}
 }

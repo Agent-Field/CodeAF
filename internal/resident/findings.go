@@ -272,6 +272,13 @@ const (
 	EvidenceUnbound     = "unbound"
 	EvidenceLost        = "lost-names"
 	EvidenceMechanical  = "mechanical-gap"
+
+	// EvidenceFinding is a review's own finding, held in the hand of the round
+	// being bought rather than read back off the journal. It is the kind for
+	// the findings no reading names — a judge's citation, a suite nobody could
+	// read — and it stands for the same reason all the others do: something
+	// outside the account being judged says this job is not finished.
+	EvidenceFinding = "open-finding"
 )
 
 // StandingEvidence is what the WORLD still says is wrong with this job, as the
@@ -342,4 +349,61 @@ func StandingEvidence(graph *store.Store, jobRoot string) []string {
 		return nil
 	}
 	return standing
+}
+
+// standingAgainst is what the world says is wrong with this job when the round
+// about to be bought was bought FOR something — the finding a review is raising
+// right now, which no journal can be relied on to hold yet.
+//
+// THE JOURNAL IS WRITTEN ONE EVENT LATER THAN IT IS READ. The delivery gate
+// asks for its repair round and records its row afterwards, in that order, so
+// StandingEvidence looking for the gate's own finding in DeliveryGateLineage
+// finds the round BEFORE it: journal seq 331 was the growth, 332 was the gate
+// (2026-09-01, deepseek-v4-flash). The package test that covered the same path
+// recorded the gate first and passed over the inverted order for months. A
+// finding held in the hand needs no journal to be standing — it is standing by
+// construction, because a live review is raising it — so it is read from the
+// hand and the journal is asked for everything else.
+//
+// The empty finding adds nothing, which is exactly StandingEvidence's answer
+// for a round nobody bought for a finding.
+func standingAgainst(graph *store.Store, jobRoot string, finding Finding) []string {
+	standing := StandingEvidence(graph, jobRoot)
+	if finding.Empty() {
+		return standing
+	}
+	kind := findingEvidence(finding)
+	for _, held := range standing {
+		if held == kind {
+			return standing
+		}
+	}
+	return append([]string{kind}, standing...)
+}
+
+// findingEvidence is a live finding said in the vocabulary of the readings, so
+// an autopsy sorting the journal by what stood does not have to learn a second
+// set of words for the same measurements.
+//
+// The kinds with no reading of their own — a judge's own citation, a suite
+// nobody could read — answer EvidenceFinding, which says the true thing about
+// them: a review is holding something open against this job.
+func findingEvidence(finding Finding) string {
+	switch finding.Kind {
+	case FindingOwnFailing, "own-checks-failing", "removed-checks", "regression":
+		return EvidenceFailing
+	case FindingUnexercised:
+		return EvidenceUnexercised
+	case FindingUnasserted:
+		return EvidenceUnasserted
+	case FindingConsumers:
+		return EvidenceConsumers
+	case FindingUnbound, "unbound-names":
+		return EvidenceUnbound
+	case "removed-public-name":
+		return EvidenceLost
+	case FindingMechanical:
+		return EvidenceMechanical
+	}
+	return EvidenceFinding
 }
