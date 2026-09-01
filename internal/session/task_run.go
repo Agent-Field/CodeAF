@@ -1964,6 +1964,20 @@ func (n *TaskNode) living(phase string) {
 	n.graph.mu.Unlock()
 }
 
+// lifeNow answers the word living recorded, under the same lock, and "" for a
+// node that has never moved. It is the steer door's read (task_room.go's
+// [Agent.SteerTask]): the beat writes the same word to disk for OTHER
+// processes, and reading the beat here would be a second in-process authority
+// racing the first — and a file mutex under a keypress.
+func (n *TaskNode) lifeNow() string {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.life
+}
+
 // taskFindingLine is the check's finding as a PERSON reads it: the plain-words
 // gap the checker named, with the plain-words verdict in front of it.
 //
@@ -2364,6 +2378,14 @@ func (n *TaskNode) spend() float64 {
 	room, frozen := n.room, n.cost
 	n.graph.mu.Unlock()
 	if child := room.speaker(); child != nil {
+		return frozen + child.Usage().CostUSD
+	}
+	// The speaker is withdrawn the moment the worker's reading is over
+	// (runTaskChild), which is minutes before its usage is folded into the
+	// frozen figure at retire — and a card whose price dropped by the whole
+	// worker for the length of the check would be money lying mid-run. The bill
+	// remembers who is still owed for until the fold happens.
+	if child := room.billed(); child != nil {
 		return frozen + child.Usage().CostUSD
 	}
 	return frozen
@@ -3218,6 +3240,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		}
 		_ = child.Close()
 		a.foldTaskUsage(node, child)
+		// The fold moved this child's whole tally onto the node, so the bill
+		// stops naming it — a price read now comes off the frozen figure, and a
+		// bill left standing would count the same money twice
+		// ([TaskNode.spend]).
+		node.openRoom().bill(nil)
 		child = nil
 	}
 	defer retire()
@@ -3287,9 +3314,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// THE ROOM OPENS HERE, because this is the first moment there is anybody
 		// in it: from now until the node lands, its events reach whoever is
 		// watching and the person's words reach this child's steering lane
-		// (task_room.go).
+		// (task_room.go). The bill is separate from the speaker on purpose: the
+		// speaker leaves when the worker's reading is over, the bill stands
+		// until retire folds the money ([taskRoom.bill], [TaskNode.spend]).
 		room := node.openRoom()
 		room.speaking(child)
+		room.bill(child)
 
 		// AND THE DIVISION SOMEBODY ALREADY DREW IS PUT HERE, BEFORE THE FIRST
 		// REQUEST. A turn handed over on a mark's sketch arrives with its parts
@@ -3871,6 +3901,20 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
+	// ── THE DOOR SHUTS ON EVERY ROAD OUT, NOT JUST THE CLEAN ONE ──
+	//
+	// From the moment this function returns, this child never reads again — the
+	// check and the landing are other hands — but it stays OPEN until the
+	// caller's retire, which on a checked node is minutes away. A line steered
+	// in during that window would still be TAKEN ([Agent.enqueueSteeredLine]
+	// answers whether the agent is closed, not whether anybody will drain it),
+	// echoed by the room as said, and closed over unread: the #273 swallow. The
+	// tail loop below also withdraws at its own last read, which is earlier on
+	// the ordinary road; this defer is for the roads the loop never takes — a
+	// threshold stop, a cancelled context, a turn that errored — where the
+	// swallow was otherwise alive and well. A caller that put somebody else in
+	// the room restores them itself (task_audit.go's repair round).
+	defer room.speaking(nil)
 
 	var (
 		changed  []string
@@ -4291,7 +4335,34 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		owed, working := child.taskNewsStanding()
 		held := child.steeringHeld()
 		if owed == 0 && !held && !working {
-			break
+			// ── THE DOOR SHUTS BEFORE THE LOOP LEAVES ──
+			//
+			// From here the child never reads again — the check and the landing
+			// are other hands — but it stays OPEN until [runTaskNode]'s retire,
+			// which on a checked node is minutes away. A line steered in during
+			// that window would still be TAKEN ([Agent.enqueueSteeredLine]
+			// answers whether the agent is closed, not whether anybody will
+			// drain it), echoed by the room as said, and then closed over: the
+			// exact swallow the speaker's clearing at close exists to prevent
+			// (task_room.go's [taskRoom.speaker]), happening in the gap before
+			// close. So the speaker is withdrawn HERE, at the moment "nobody is
+			// in there to read it" becomes true, and the queue is asked once
+			// more: a line that raced the withdrawal — the room's own lock
+			// orders the two, see [taskRoom.steerIn] — is answered by one more
+			// turn instead of dying with the worker (#273).
+			//
+			// AND A CAUGHT LINE PUTS THE SPEAKER BACK. The turn that answers it
+			// is a turn the worker is reading again: a follow-up steer must be
+			// deliverable, and a part that lands while it runs must reach THIS
+			// worker rather than being misrouted to the person's own
+			// conversation ([Agent.deliverTaskNote] reads the speaker to decide
+			// who is owed the report). The next pass through this gate takes
+			// the speaker away again.
+			room.speaking(nil)
+			if !child.steeringHeld() {
+				break
+			}
+			room.speaking(child)
 		}
 		// ── WAITING IS NOT WORKING, AND IT IS NOT ASKED FOR EITHER ──
 		//

@@ -1123,7 +1123,9 @@ nothing.
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
 `ctrl+c` handed back to the door, where two presses quit · everything else does nothing.
 Its row reads
-`[r] revive and send · [m] send to main · [esc] cancel`.
+`[r] revive and send · [m] send to main · [esc] cancel`. When the task is still
+running — refused mid-check, or while its work lands — the guard offers no `r`: its row
+reads `[m] send to main · [esc] cancel`, because reviving live work would duplicate it.
 
 ## Keys in the settings panel and the other panels
 

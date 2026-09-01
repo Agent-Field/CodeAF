@@ -655,7 +655,7 @@ func TestALineSteeredAtAClosedWorkerIsRefusedRatherThanSwallowed(t *testing.T) {
 	if waiting {
 		t.Fatal("a refused line was reported as one that woke something")
 	}
-	if !strings.Contains(err.Error(), "nobody left to say it to") {
+	if !strings.Contains(err.Error(), "nobody in it to read your line") {
 		t.Fatalf("the refusal reads %q, want it to say there is nobody in there", err)
 	}
 	if steeringContains(nest.node, "one more thing") {

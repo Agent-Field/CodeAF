@@ -133,7 +133,7 @@ func TestTasksToolSteersARunningNode(t *testing.T) {
 	// Nobody is in the room yet: a stubbed runner has no child, and "there is no
 	// worker to talk to" is a better answer than a line queued onto nothing.
 	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"say":"use etc/"}`, id))
-	if !isError || !strings.Contains(text, "no worker") {
+	if !isError || !strings.Contains(text, "nobody in it") {
 		t.Fatalf("steering a node with no worker was not refused:\n%s", text)
 	}
 
