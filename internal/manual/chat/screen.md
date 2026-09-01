@@ -575,9 +575,10 @@ zero, and `/cost` only adds it when the cost is above zero — so the two comman
 landed task card also refuses to print `$0.00`.
 
 **A resumed conversation is not a $0.00 conversation.** Reopening a transcript with
-`--session`, `aforge resume` or `/resume` puts that conversation's own running total on
+`--session`, `aforge resume` or `/resume` puts what that conversation has already spent on
 the spend segment on its first frame — the sum of every cost line in its file, the
-errands aforge ran beside your turns included — and new turns add to it. If you resume a
+errands aforge ran beside your turns included — and the work it started is added on top
+as soon as the task column is up, the way it is on any conversation. New turns add to it. If you resume a
 session that spent real money and the row still says `$0.00`, the file has no cost lines
 in it (an older build wrote none), not that the money was forgotten.
 
