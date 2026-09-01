@@ -242,7 +242,7 @@ func (a *app) deckSpend() (string, string) {
 	// The phone keeps this segment because it is one a person cannot recover by
 	// looking at anything else, and that is truer still of a number the work
 	// under the conversation is moving.
-	if cost := dollars(a.spendShown()); cost != "" {
+	if cost := a.costSegment(); cost != "" {
 		parts = append(parts, hudPart{kind: segCost, text: cost})
 	}
 	if pct, ok := a.ctxPercent(); ok {
@@ -448,7 +448,7 @@ func (a *app) deckItems() []deckItem {
 	}
 	add("served", strings.TrimPrefix(a.servedRider(), " · "), deckActNone)
 
-	for _, part := range a.telemetry(hudWide) {
+	for _, part := range a.telemetrySheet() {
 		// The crew's segment is the word alone and this page already carries the
 		// whole reading under the model, so the segment is not written a second
 		// time as a shorter line further down.

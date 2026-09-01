@@ -525,10 +525,10 @@ func (a *app) stopCardPress(x, y int) bool {
 // else. A finger covers about three rows of a terminal, and this is the one
 // control on the surface whose miss is expensive in both directions — hitting
 // it by accident raises a card the person did not want, missing it leaves them
-// with no way to stop the work at all. The header is the first row of the frame,
-// so the box can only grow downward; it is claimed here, ahead of the strip and
-// the body, and it occupies three columns at the far right where neither of them
-// draws anything (taskstrip.go's chips are left-aligned).
+// with no way to stop the work at all. The top bar is the first row of the
+// frame, so the box can only grow downward; it is claimed here, ahead of the bar
+// and the body, and it rides the far right end of the bar where the transcript's
+// own rows are ragged and rarely reach.
 func (a *app) stopMarkPress(x, y int) bool {
 	if !a.stopMarkAt(x, y) {
 		return false
@@ -549,6 +549,15 @@ func (a *app) stopMarkPress(x, y int) bool {
 // branch stated here: the card has taken the question, and a ✕ that lit under the
 // pointer would offer to raise a card that is on the screen.
 func (a *app) stopMarkAt(x, y int) bool {
+	// THE MARK IS ONLY EVER ON THE BAR, so a frame with no bar has no mark — even
+	// while a room is open and a span from some earlier frame is still in the
+	// field. This is asked before the span because the span is a memory and this
+	// is the present: at the phone tier and on a window too short to breathe the
+	// bar is not drawn (topbar.go's [app.topBarShowing]), and without this the
+	// three-row hit box below sat over the top of the transcript.
+	if a.headHeight() == 0 {
+		return false
+	}
 	if !a.roomOpen() || a.stopping() || !a.roomStop.holds(x) {
 		return false
 	}
@@ -573,7 +582,6 @@ const stopTouchRows = 3
 const (
 	roomStopMark      = "✕"
 	roomStopMarkASCII = "X"
-	roomStopSep       = " · "
 )
 
 // roomStopWord is the ✕ as the header draws it, or "" when there is nothing

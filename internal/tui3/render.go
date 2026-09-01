@@ -1409,14 +1409,67 @@ const (
 	segYolo
 	// segLink is the connection under a --host session: `devbox · 3ms` after
 	// its first measured round trip, or `reconnecting to devbox — trying for up
-	// to 5 minutes` when that condition wins (hostlink.go). It sits immediately
-	// before the state word because the two are the only segments on the line
-	// that are true of the WHOLE of it — one says what the conversation is
-	// doing, and this one says how the machine it is doing it on answers.
+	// to 5 minutes` when that condition wins (hostlink.go).
+	//
+	// IT IS THE TOP BAR'S NOW, and the move is the whole of this issue's law
+	// applied to it: which machine is answering is a fact about the WHOLE
+	// conversation that changes only when the wire does, and the bar is where
+	// facts like that live. The reconnect sentence still outranks every term
+	// beside it and may evict all of them — it is drawn in the bar's right
+	// cluster and never dropped by its ladder (topbar.go's [app.topBarRightFit]).
+	// This segment survives so the sheet and /status can say the same thing.
 	segLink
 	segState
 	segCount
 )
+
+// hudLane is where an assembled segment is DRAWN, and every segment has exactly
+// one. It exists because the routing used to be a switch with no default in
+// [app.statusLayout]: six segments fell through it and were silently discarded,
+// including the one whose own comment said it was never dropped. A switch that
+// forgets is indistinguishable from a switch that decided, so this one cannot
+// forget — [hudLaneOf] answers for every segment by name and panics on a new one.
+type hudLane uint8
+
+const (
+	// lanePresence is the bottom row's left end, dim: what is alive out there
+	// that nobody is watching.
+	lanePresence hudLane = iota
+	// laneTicking is the bottom row's right cluster: the facts that MOVE, which
+	// is the whole of what the bottom row is for.
+	laneTicking
+	// laneTopBar is a fact the top bar draws instead, off the session rather
+	// than off this list (topbar.go). The segment is still assembled, because
+	// the sheet and /status read this list whole.
+	laneTopBar
+	// laneSheet is demoted: /status, the status sheet and the Spending tab, and
+	// nothing ambient at all. A number in a static bar becomes wallpaper; these
+	// are the ones that had become it.
+	laneSheet
+)
+
+// hudLaneOf routes one segment. THE ROUTING IS BY NAME AND IT IS TOTAL: a
+// segment added without a lane here stops the surface on the first frame that
+// assembles it, which is the loudest a mistake in a render can be made and the
+// only volume that would have caught the six this replaced.
+func hudLaneOf(kind hudSeg) hudLane {
+	switch kind {
+	case segAmbient, segKeeping:
+		return lanePresence
+	case segOpen, segCost, segCtx, segETA, segState:
+		return laneTicking
+	case segYolo, segLink:
+		// The safety posture and the wire: two facts about the whole
+		// conversation, both in the bar's right cluster now.
+		return laneTopBar
+	case segCrew, segDelta, segCache, segBurn:
+		// The crew word, the session's delta, the cache's savings and the burn
+		// rate. Each of them is a real number and none of them is one a person
+		// acts on between keystrokes, which is exactly what a sheet is for.
+		return laneSheet
+	}
+	panic("tui3: status segment " + itoa(int(kind)) + " has no lane — route it in hudLaneOf")
+}
 
 // hudPart is one assembled segment: what it says, and which clock it is on.
 type hudPart struct {
@@ -1523,20 +1576,28 @@ func (a *app) statusLayout(width int) (string, []hudPart, []hudPart, bool) {
 	// row — crew, delta, cache, burn, the served rider, YOLO, the link — are one
 	// press away in the deck's sheet and in /status, which is what a sheet is
 	// for: everything, deep, behind the numbers that move.
-	parts := a.telemetry(width)
-	var leftParts, rightParts []hudPart
-	for _, p := range parts {
-		switch p.kind {
-		case segAmbient, segKeeping:
+	var leftParts, rightParts, drawn []hudPart
+	for _, p := range a.telemetry(width) {
+		switch hudLaneOf(p.kind) {
+		case lanePresence:
 			leftParts = append(leftParts, p)
-		case segOpen, segCost, segCtx, segETA, segState:
+			drawn = append(drawn, p)
+		case laneTicking:
 			rightParts = append(rightParts, p)
+			drawn = append(drawn, p)
+		case laneTopBar, laneSheet:
+			// Assembled, and not drawn HERE. The bar reads its own facts off the
+			// session rather than off this list (topbar.go) and the sheet reads
+			// this one whole ([app.telemetrySheet]) — so a segment in either lane
+			// is a segment this row deliberately says nothing about.
 		}
 	}
-	// The change clocks are stamped from the ASSEMBLED segments, before any
+	// The change clocks are stamped from the segments THIS ROW DRAWS, before any
 	// width pressure is applied: a number that moved has moved whether or not
-	// this frame had room to say so.
-	a.freshen(parts)
+	// this frame had room to say so — but a segment the row never draws has no
+	// fade to be on, and stamping one was the row keeping a clock for a number
+	// somebody else prints.
+	a.freshen(drawn)
 	fits := func() bool {
 		return hudWidth(leftParts)+hudGap+hudWidth(rightParts) <= width
 	}
@@ -1792,13 +1853,8 @@ func (a *app) telemetry(width int) []hudPart {
 	// work this conversation started is spending its money, and a segment that
 	// waited for each task to close said `$2.53` for two hours over a family
 	// burning $51.05 (treespend.go's [app.spendShown]).
-	add(segCost, dollars(a.spendShown()))
-	if context, _ := a.contextSegment(); context != "" {
-		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
-			context += " " + spark
-		}
-		add(segCtx, context)
-	}
+	add(segCost, a.costSegment())
+	add(segCtx, a.ctxAmbient())
 	add(segCache, a.warmSegment())
 	add(segBurn, a.burnSegment())
 	add(segETA, a.etaSegment())
@@ -1813,17 +1869,76 @@ func (a *app) telemetry(width int) []hudPart {
 	return parts
 }
 
+// telemetrySheet is the same set spelled for a PAGE rather than a row: every
+// segment as [app.telemetry] assembled it, with the context meter said in full
+// and its trend restored.
+//
+// The row wears a percent alone below the crowding line and carries no sparkline
+// at any width ([app.ctxAmbient]); a sheet has the room a row does not, and "how
+// much of the window is that, and which way is it going" is exactly the question
+// somebody opens the page to answer. It is one function rather than a second
+// meter assembled from the same fields for statusdeck.go's own stated reason —
+// both spellings come off [app.contextSegment], so the two cannot disagree about
+// what the conversation is carrying.
+//
+// The meter is INSERTED where it belongs when the row dropped it entirely, which
+// it does under one percent. [app.telemetry] emits in segment order, so the seam
+// is the first part that sorts after [segCtx] — and a set with nothing after it
+// takes the meter on its end.
+func (a *app) telemetrySheet() []hudPart {
+	full, _ := a.contextSegment()
+	if full == "" {
+		return a.telemetry(hudWide)
+	}
+	if spark := a.ctxSpark(); spark != "" {
+		full += " " + spark
+	}
+	parts := a.telemetry(hudWide)
+	for i := range parts {
+		if parts[i].kind == segCtx {
+			parts[i].text = full
+			return parts
+		}
+	}
+	meter := hudPart{kind: segCtx, text: full}
+	for i, part := range parts {
+		if part.kind > segCtx {
+			return append(parts[:i:i], append([]hudPart{meter}, parts[i:]...)...)
+		}
+	}
+	return append(parts, meter)
+}
+
+// costSegment is the bill on the ambient row, and it is NOTHING AT ZERO. This
+// line used to be the one deliberate exception to the emptiness law — it printed
+// `$0.00` on a session that had spent nothing — and the reason was stability: the
+// row carried the model, the branch and the host beside the money, so a segment
+// that came into existence on the first priced turn shoved its neighbours
+// sideways under a reader's eye. Those slow facts are the top bar's now
+// (topbar.go), the row holds only things that tick, and the exception died with
+// the crowding that justified it. A conversation that has spent nothing has no
+// `$` at all, exactly as /status and /cost have always had none.
+//
+// It is [dollars] and not a spelling of its own, because the figure below a cent
+// is the same four-place figure everywhere else on this surface; what changes
+// here is only whether there is a figure at all.
+func (a *app) costSegment() string {
+	spent := a.spendShown()
+	if spent <= 0 {
+		return ""
+	}
+	return dollars(spent)
+}
+
 // statusQuiet reports whether the status row is the untouched screen's: the
 // greeting is up, so nothing has been said, sent, spent or produced here yet.
 //
 // THE BILL AND THE METER ARRIVE WITH THE CONVERSATION. On the empty screen there
-// is nothing to bill and nothing but the prompt to meter, and `$0.00 · 9.4k/1.3M
-// · 1%` under a greeting asking for a first sentence was the first thing a
-// person on their own card read. The `$0.00` exception ([app.statusRows]'s law)
-// is untouched: it is about a session IN USE not having its segments jump
-// sideways, and from the first keystroke on — the frame on which the greeting
-// dissolves and the box moves anyway — every row is drawn exactly as it always
-// was.
+// is nothing to bill and nothing but the prompt to meter, and `9.4k/1.3M · 1%`
+// under a greeting asking for a first sentence was the first thing a person on
+// their own card read. The bill is quiet here for a second reason as well as
+// this one — it is quiet at zero on every frame now ([app.costSegment]) — and
+// the meter is quiet for this reason alone.
 //
 // IT IS THE GREETING'S OWN STATE AND NOT A COUNT OF ANYTHING, for the reason the
 // column and the legend read the same state (task.go's [app.railQuiet],
@@ -1835,19 +1950,6 @@ func (a *app) telemetry(width int) []hudPart {
 // holds is owed the prompt's size; only the row nobody asked is kept quiet.
 func (a *app) statusQuiet() bool { return a.welcome.open }
 
-// quietParts is the segment set with the bill and the meter taken out, for a
-// row that is [app.statusQuiet].
-func quietParts(parts []hudPart) []hudPart {
-	kept := parts[:0]
-	for _, part := range parts {
-		if part.kind == segCost || part.kind == segCtx {
-			continue
-		}
-		kept = append(kept, part)
-	}
-	return kept
-}
-
 // openSegment is how many conversations this terminal holds and how many of
 // them want somebody:
 //
@@ -1858,10 +1960,11 @@ func quietParts(parts []hudPart) []hudPart {
 // permanent reminder of the absence of a feature. The `· N waiting` clause is
 // absent when nothing is waiting, on the same terms.
 //
-// The deliberate $0.00 exception on this line is NOT extended here. That
-// exception exists so a cost segment does not jump sideways as its width
-// changes; this one appears and disappears with a real change in what is true,
-// and a placeholder would be a lie about how many conversations are open.
+// IT APPEARS AND DISAPPEARS WITH A REAL CHANGE IN WHAT IS TRUE, which is the
+// only reason a segment on this row is allowed to come and go — a placeholder
+// would be a lie about how many conversations are open. The bill beside it now
+// answers to the same law ([app.costSegment]); this line has no exceptions left
+// on it at all.
 //
 // THE COUNT IS ASKED OF THE AGENTS AND NOT OF THE PRESENCE FILE, for the reason
 // home's own rows are ([app.homeTrue]): the file lags by up to five seconds, and
@@ -1881,32 +1984,22 @@ func (a *app) openSegment() string {
 	return word
 }
 
-// dropOrder is what the line gives up, first to last, when it does not fit,
-// and it is ordered by how ACTIONABLE each segment is:
+// dropOrder is the bottom row's give-way, first dropped → last, and it is
+// ordered by how ACTIONABLE each surviving segment is:
 //
-//	delta    what the session wrote — the only fact here about the past
-//	crew     which preset aforge's own calls are on — a setting, not a
-//	         measurement; it changes only when the person changes it, and
-//	         /status, the picker's hint and bare /crew all say it in full
-//	cache    an accounting nicety; the cost segment already carries the bill
+//	ambient  a server holding a port is a thing a person acts on LATER
+//	keeping  what is standing watch out there — true, and about somewhere else
+//	open     how many other conversations this terminal holds; at forty columns
+//	         what a person needs is what THIS conversation is doing
 //	eta      a forecast, and the meter beside it is already painted the warning
-//	burn     nice to watch, but the clock on the state word says it is alive
-//	ambient  a server holding a port is a thing a person acts on
-//	cost     the bill
-//	ctx      what the conversation is carrying, which is the decision it forces
+//	ctx      what the conversation is carrying
+//	cost     the bill, last of all, because it is the one a person watches move
 //
-// The state word, the safety posture and the link are not in this list at all:
-// one is why a person is looking at the line, one is why they should be, and
-// the third is the reason nothing else on the line is moving.
-//
-//	open     how many other conversations this terminal holds — true, and about
-//	         somewhere else; at forty columns what a person needs is what THIS
-//	         conversation is doing
-// dropOrder is the bottom row's give-way, first dropped → last. The presence
-// clauses go first because a frame too narrow for what is watching can still
-// say what is happening; the bill is the last number to go, because it is the
-// one a person is watching move. The state word is not in the order at all —
-// what is happening is never dropped for a number.
+// The presence clauses go first because a frame too narrow for what is watching
+// can still say what is happening. The state word is not in the order at all —
+// what is happening is never dropped for a number — and the segments that left
+// this row entirely are not in it either, because a segment the row does not
+// draw has nothing to give up ([hudLaneOf]).
 var dropOrder = []hudSeg{segAmbient, segKeeping, segOpen, segETA, segCtx, segCost}
 
 // dropRowSegment removes the least important segment still present from either
@@ -1946,8 +2039,11 @@ func (a *app) paintParts(parts []hudPart) (string, string) {
 	var painted, plain string
 	for i, part := range parts {
 		if i > 0 {
-			painted += a.pal.dim(" · ")
-			plain += " · "
+			// [legendJoin] and not a literal: the doors on this row find their
+			// columns by walking these same parts (rowdoors.go's [hudPartAt]), so
+			// the separator's spelling and its width have to come off one constant.
+			painted += a.pal.dim(legendJoin)
+			plain += legendJoin
 		}
 		painted += a.paintPart(part)
 		plain += part.text
@@ -2014,10 +2110,25 @@ func (a *app) paintPart(part hudPart) string {
 			return a.pal.accent(part.text)
 		}
 		return a.pal.dim(part.text)
+	case segOpen:
+		// THE COUNT IS A DOOR TOO — pressing it opens the conversations list —
+		// and it brightens for the reason every other door on this row does: a
+		// label that is also a control has to say so (rowdoors.go). It has no
+		// ramp of its own to outrank; the count is either true or absent.
+		if a.hoveringOpen() {
+			return a.pal.accent(part.text)
+		}
 	case segCtx:
-		// The meter's three-rung ramp outranks its age: a conversation about to
-		// compact is a decision a person can still act on, and "this number is
-		// four seconds old" is not.
+		// THE POINTER OUTRANKS THE RAMP, exactly as it does on the money segment
+		// above: while somebody is about to press it, the fact worth saying is
+		// that it opens (it prints /status — rowdoors.go). Under the pointer the
+		// meter's three-rung ramp is the thing they are pressing it to read.
+		if a.hoveringCtx() {
+			return a.pal.accent(part.text)
+		}
+		// The ramp otherwise outranks its age: a conversation about to compact is
+		// a decision a person can still act on, and "this number is four seconds
+		// old" is not.
 		switch a.ctxHeat() {
 		case ctxDue:
 			return a.pal.bad(part.text)
@@ -2375,6 +2486,46 @@ func (a *app) contextSegment() (string, bool) {
 		segment += " · " + itoa(pct) + "%"
 	}
 	return segment, a.ctxCrowded()
+}
+
+// ctxAmbient is the meter as the bottom row wears it: A PERCENT, AND NOTHING
+// ELSE.
+//
+//	9%              the ordinary reading, three cells
+//	82.5k/1M · 84%  past the crowding line, where the fraction starts to matter
+//	(empty)         under one percent, or nobody has said what the window is
+//
+// The full fraction and the sparkline that used to ride beside it were twenty
+// cells of a row that a person reads on every keystroke, and neither of them
+// answers a question at 9%: "how much of the window am I on" is the decision the
+// meter forces, and the percent IS that answer. The fraction is the workings.
+//
+// SO THE WORKINGS COME BACK EXACTLY WHERE THEY ARE NEEDED — past
+// [app.ctxCrowded], the same one-bit question the paint has always asked (80% of
+// the compaction threshold). At that point a person is deciding whether to
+// compact now or finish a thought first, and the two absolute figures are what
+// that decision is made on. Below it they are furniture.
+//
+// The sparkline is demoted to the sheet and /status entirely (statusdeck.go's
+// [app.deckItems]): a trend is a thing you go and look at, not a thing that
+// earns six cells of the row a person types under.
+//
+// UNDER ONE PERCENT THERE IS NO SEGMENT AT ALL, which is the meter's own old law
+// ([app.contextSegment] drops the percentage below 1%) applied to a row that is
+// now the percentage alone: a meter with nothing to say says nothing.
+func (a *app) ctxAmbient() string {
+	full, crowded := a.contextSegment()
+	if full == "" {
+		return ""
+	}
+	if crowded {
+		return full
+	}
+	pct, ok := a.ctxPercent()
+	if !ok || pct < 1 {
+		return ""
+	}
+	return itoa(pct) + "%"
 }
 
 // warmSegment is the session's cached share of everything it has sent, and what

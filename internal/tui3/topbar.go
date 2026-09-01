@@ -101,7 +101,7 @@ func (a *app) topBarHover(x, y int) (hoverAt, bool) {
 		return hoverAt{kind: hoverHome}, true
 	}
 	if a.crumbChatSpan.holds(x) {
-		return hoverAt{kind: hoverRoomBack}, true
+		return hoverAt{kind: hoverCrumbChat}, true
 	}
 	if a.modelSpan.holds(x) {
 		return hoverAt{kind: hoverStatusModel}, true
@@ -137,9 +137,31 @@ func (a *app) topBarShowing(width int) bool {
 // frame saying everything twice.
 func (a *app) topBarRows(width int) []string {
 	if !a.topBarShowing(width) {
+		// A BAR THAT IS NOT DRAWN LEAVES NO DOORS BEHIND IT. The spans are this
+		// surface's whole answer to "was it on the screen" (standdoor.go's law,
+		// and the reason [app.topBarWord] clears them before it writes them), and
+		// an early return that skipped the clearing left the LAST frame's columns
+		// live: open a room wide, drag the window under sixty columns, and a click
+		// on the transcript landed on a ✕ that was three frames gone. Every path
+		// out of the bar clears them, this one included.
+		a.clearTopSpans()
 		return nil
 	}
-	return []string{a.topBarWord(width), a.pal.dim(a.rule(width))}
+	// The rule paints itself dim ([app.rule]); a second coat over the top of it
+	// is a hue nested inside a hue, and it ends at the inner one's reset.
+	return []string{a.topBarWord(width), a.rule(width)}
+}
+
+// clearTopSpans forgets every door the bar records. It is one function because
+// the list has to be one list: a span cleared on one path out and not on another
+// is exactly the defect above, wearing a different width.
+func (a *app) clearTopSpans() {
+	a.crumbHomeSpan = hudSpan{}
+	a.crumbChatSpan = hudSpan{}
+	a.backSpan = hudSpan{}
+	a.topYoloSpan = hudSpan{}
+	a.roomStop = hudSpan{}
+	a.modelSpan = hudSpan{}
 }
 
 // topBarWord is the bar's one row, plain-spaced: the left cluster from the
@@ -152,12 +174,7 @@ func (a *app) topBarRows(width int) []string {
 // the fitting records nothing, which is what makes the span its own answer to
 // "was it drawn" — a door that is not on the screen cannot be pressed.
 func (a *app) topBarWord(width int) string {
-	a.crumbHomeSpan = hudSpan{}
-	a.crumbChatSpan = hudSpan{}
-	a.backSpan = hudSpan{}
-	a.topYoloSpan = hudSpan{}
-	a.roomStop = hudSpan{}
-	a.modelSpan = hudSpan{}
+	a.clearTopSpans()
 
 	// THE WELCOME BOX QUIETS THE BAR TO ITS CRUMB (render.go's
 	// [app.statusQuiet]): a greeting is the one moment the surface is about
@@ -261,15 +278,55 @@ func (a *app) topBarWord(width int) string {
 	// edge, quiet between. The spans are recorded from the plain cells BEFORE
 	// the painting, because the model's own paint reads the span it is about
 	// to be given — the lift and the record have to come from the same walk.
+	left = clampCells(left, width-cellsWidth(right)-1)
 	a.recordTopSpans(left, right, width)
 	gap := width - cellsWidth(left) - cellsWidth(right)
-	if gap < 1 {
-		gap = 1
+	if gap < 0 {
+		gap = 0
 	}
 	row := paintCells(left)
 	row += strings.Repeat(" ", gap)
 	row += paintCells(right)
 	return fit(row, width)
+}
+
+// clampCells cuts a cluster down to a column budget, keeping whole cells while
+// they fit, truncating the one that straddles the edge, and dropping the rest.
+//
+// IT IS WHAT KEEPS THE TWO CLUSTERS FROM STANDING ON EACH OTHER once both
+// ladders have given everything they have. The row used to be assembled at
+// whatever width the pieces came to and handed to [fit], which cuts from the
+// RIGHT — so the last resort took the ✕ and the YOLO term off a bar whose crumb
+// had already refused to shorten, which is the exact inversion of the give-way
+// this file states three times. The crumb yields last among the things that
+// yield; it does not outrank the safety posture or the way to stop the work.
+//
+// A budget below zero is a right cluster wider than the frame — a reconnect
+// sentence at sixty columns — and the left cluster is then nothing at all,
+// which is that sentence's own stated right to evict everything beside it.
+func clampCells(cells []topBarCell, budget int) []topBarCell {
+	if budget < 0 {
+		budget = 0
+	}
+	if cellsWidth(cells) <= budget {
+		return cells
+	}
+	kept := make([]topBarCell, 0, len(cells))
+	at := 0
+	for _, c := range cells {
+		w := ansi.StringWidth(c.text)
+		if at+w <= budget {
+			kept = append(kept, c)
+			at += w
+			continue
+		}
+		if room := budget - at; room > 0 {
+			c.text = fit(c.text, room)
+			kept = append(kept, c)
+		}
+		break
+	}
+	return kept
 }
 
 // topBarOrchWord is the bar while a run page is open: the run's own word as
@@ -282,10 +339,13 @@ func (a *app) topBarOrchWord(width int, quiet bool) string {
 	}
 	left := []topBarCell{{text: a.orchHeadWord(width), paint: accent}}
 	right := a.topBarRight(quiet, accent)
+	// The run's own trail gives way to the terms beside it on the same terms the
+	// crumb does ([clampCells]).
+	left = clampCells(left, width-cellsWidth(right)-1)
 	a.recordTopSpans(left, right, width)
 	gap := width - cellsWidth(left) - cellsWidth(right)
-	if gap < 1 {
-		gap = 1
+	if gap < 0 {
+		gap = 0
 	}
 	row := paintCells(left) + strings.Repeat(" ", gap) + paintCells(right)
 	return fit(row, width)
@@ -368,7 +428,7 @@ func (a *app) topBarLeft(rung trailRung, showGlyph, showState, showClock, showSp
 		} {
 			if part.show && part.text != "" {
 				cells = append(cells,
-					topBarCell{text: " · ", paint: accent},
+					topBarCell{text: legendJoin, paint: accent},
 					topBarCell{text: part.text, paint: accent})
 			}
 		}
@@ -399,7 +459,7 @@ func (a *app) crumbCells(segs []crumbSeg, room bool, accent func(string) string)
 		if room {
 			paint = accent
 		}
-		cells = append(cells, topBarCell{text: seg.text, paint: paint, door: seg.door})
+		cells = append(cells, topBarCell{text: seg.text, paint: a.topBarPaint(seg.door, paint), door: seg.door})
 		if seg.handle != "" {
 			cells = append(cells, topBarCell{text: seg.handle, paint: a.pal.dim})
 		}
@@ -450,22 +510,24 @@ func (a *app) crumbSegments() []crumbSeg {
 	}
 	segs[1].door = topDoorCrumbChat
 	// THE PARENTS, outermost first, walked up the engine's own parent seam
-	// (task.go's [taskNode.ParentID]). The walk is cycle-safe because a roster
-	// that could name its own ancestor would be a roster that could not draw
-	// it either, and the same guard answers both.
-	byKey := map[string]*taskNode{}
-	for _, n := range a.tasks {
-		byKey[stripKey(n)] = n
-	}
+	// (taskchip.go's [taskNode.ParentID], indexed once by [app.nodesByKey]).
+	//
+	// The walk is guarded twice over, because a crumb is drawn on every frame and
+	// neither failure would be survivable there. A key nobody admitted stops the
+	// climb rather than dereferencing nothing; a key already seen stops it rather
+	// than walking a cycle for ever — and a roster that could name its own
+	// ancestor is a roster the rail could not draw either.
+	byKey := a.nodesByKey()
 	var parents []string
 	seen := map[string]bool{}
-	for key := node.ParentID(); key != "" && !seen[key]; key = byKey[key].ParentID() {
+	for key := node.ParentID(); key != "" && !seen[key]; {
 		seen[key] = true
 		parent := byKey[key]
 		if parent == nil {
 			break
 		}
 		parents = append([]string{parent.title}, parents...)
+		key = parent.ParentID()
 	}
 	for _, title := range parents {
 		segs = append(segs, crumbSeg{text: title})
@@ -481,11 +543,11 @@ func (a *app) crumbSegments() []crumbSeg {
 type trailRung int
 
 const (
-	trailFull     trailRung = iota // the whole trail
-	trailMiddles                   // the middles folded to one …
-	trailNoProject                 // the project gone, … in its place
-	trailNoParent                  // the parent gone too
-	trailTitle                     // the current title truncated, floor roomHeadFloor
+	trailFull      trailRung = iota // the whole trail
+	trailMiddles                    // the middles folded to one …
+	trailNoProject                  // the project gone, … in its place
+	trailNoParent                   // the parent gone too
+	trailTitle                      // the current title truncated, floor roomHeadFloor
 )
 
 // trailEllipsis is the elision mark a dropped rung leaves behind: one …
@@ -584,7 +646,7 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 	}
 	sep := func() {
 		if len(cells) > 0 {
-			cells = append(cells, topBarCell{text: " · ", paint: dim})
+			cells = append(cells, topBarCell{text: legendJoin, paint: dim})
 		}
 	}
 	// THE MODEL, with the reasoning level spliced onto it where one has been
@@ -593,18 +655,30 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 	// settled by the render, in the columns it recorded (room.go's
 	// [app.roomModelMovable]): a node past being moved has no span, so the
 	// press never sees it.
+	//
+	// IT WEARS THE CLUSTER'S OWN HUE AT REST, and that is different in the two
+	// places the bar is drawn: ink in a chat, where the terms are ink and dim,
+	// and accent in a room, where the whole bar is the one lit element. An ink
+	// model amid an accent cluster would be one term deliberately unlike its
+	// neighbours for no fact about it — and it would also be invisible under the
+	// pointer, because ink is exactly what the room's lift raises a door TO
+	// ([app.topBarPaint]). The lift only reads as a lift from the hue beside it.
+	modelRest := a.pal.ink
+	if room {
+		modelRest = accent
+	}
 	if showModel {
 		if room {
 			if node := a.roomNode(); node != nil {
 				word := a.roomModelWord()
 				if showEffort {
 					if clause := a.taskEffortClause(node); clause != "" {
-						word += " · " + clause
+						word += legendJoin + clause
 					}
 				}
 				sep()
 				if a.roomModelMovable() {
-					cells = append(cells, topBarCell{text: word, paint: a.paintTopModel, door: topDoorModel})
+					cells = append(cells, topBarCell{text: word, paint: a.topBarPaint(topDoorModel, modelRest), door: topDoorModel})
 				} else {
 					add(word, dim)
 				}
@@ -620,7 +694,7 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 				}
 			}
 			sep()
-			cells = append(cells, topBarCell{text: modelBase(id), paint: a.paintTopModel, door: topDoorModel})
+			cells = append(cells, topBarCell{text: modelBase(id), paint: a.topBarPaint(topDoorModel, modelRest), door: topDoorModel})
 		}
 	}
 	// THE BRANCH, dirty star and all, as the legend carried it.
@@ -648,10 +722,12 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 		}
 	}
 	// YOLO, painted bad, never dropped: seeing the gate open has to offer the
-	// way to close it, at every width the bar is drawn at.
-	if a.approval == "allow" {
+	// way to close it, at every width the bar is drawn at. The word and the
+	// condition are [app.yoloSegment]'s, said once (render.go's negative-space
+	// safety law) — the bar is where it is DRAWN, not where it is decided.
+	if yolo := a.yoloSegment(); yolo != "" {
 		sep()
-		cells = append(cells, topBarCell{text: "YOLO", paint: a.pal.bad, door: topDoorYolo})
+		cells = append(cells, topBarCell{text: yolo, paint: a.topBarPaint(topDoorYolo, a.pal.bad), door: topDoorYolo})
 	}
 	// THE ROOM'S WAY OUT, the back word and the ✕, in the order a hand
 	// reaches for them. The ✕ outlives the back word's microcopy at narrow
@@ -659,29 +735,76 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 	if room {
 		if showBack {
 			sep()
-			cells = append(cells, topBarCell{text: roomBackWord, paint: accent, door: topDoorBack})
+			cells = append(cells, topBarCell{text: roomBackWord, paint: a.topBarPaint(topDoorBack, accent), door: topDoorBack})
 		}
 		if stop := a.roomStopWord(); stop != "" {
 			sep()
-			cells = append(cells, topBarCell{text: stop, paint: accent, door: topDoorStop})
+			cells = append(cells, topBarCell{text: stop, paint: a.topBarPaint(topDoorStop, accent), door: topDoorStop})
 		}
 	}
 	return cells
 }
 
-// paintTopModel paints the model cell with its hover lift: a label that is
-// also a control has to say so, and the lift is how it says it — accent in a
-// chat, ink in a room where the bar itself is accent (the same lift
-// [app.paintIdentity] gives the model on the status row).
-func (a *app) paintTopModel(text string) string {
-	if a.modelSpan.pressable() && a.hoveringStatusModel() {
-		lift := a.pal.accent
-		if a.roomOpen() {
-			lift = a.pal.ink
-		}
-		return lift(text)
+// ── THE BAR'S HOVER ────────────────────────────────────────────────────────
+//
+// EVERY DOOR ON THIS BAR LIGHTS, AND NOTHING ELSE DOES — hover.go's law, which
+// is that the set which lights is exactly the set the press acts on, each at the
+// size of its own span rather than of the row it rides. The bar is one row and a
+// band across it would offer to go home over cells that stop the work.
+//
+// THE STEP IS THE ROOM HEADER'S OWN, moved up with everything else. A cell in an
+// accent cluster lifts to [palette.ink] — which is what the ✕ has always done
+// inside that line — and a cell in a chat at rest, where the bar is ink and dim,
+// lifts to [palette.accent]. One step in both cases, and no new hue in either.
+//
+// YOLO IS THE EXCEPTION, and it is the only one: it wears [palette.bad] because
+// of what it MEANS, and both lifts above would paint the open gate in the hue of
+// something safe. So it takes the band instead — [palette.cursor] round exactly
+// its own four cells, which is the tray's answer for a chip whose own hue has to
+// survive the pointer (attach.go, effortchip.go) — and the word stays red under
+// it.
+
+// topBarPaint wraps a cell's resting hue in its door's hover step. A cell with
+// no door is returned untouched: a span that answers to nothing does not react.
+func (a *app) topBarPaint(door topBarDoor, rest func(string) string) func(string) string {
+	if door == topDoorNone {
+		return rest
 	}
-	return a.pal.ink(text)
+	return func(text string) string {
+		if !a.topBarHot(door) {
+			return rest(text)
+		}
+		if door == topDoorYolo {
+			return a.pal.cursor(rest(text), 0)
+		}
+		if a.roomOpen() {
+			return a.pal.ink(text)
+		}
+		return a.pal.accent(text)
+	}
+}
+
+// topBarHot reports whether the pointer is on this door — AND whether the door
+// was drawn at all. The span is the second half of that question and it is asked
+// here rather than trusted: the spans are written by the layout before the paint
+// runs ([app.topBarWord] says why the two are one walk), so a term the fitting
+// dropped has no columns, cannot be pressed, and must not light.
+func (a *app) topBarHot(door topBarDoor) bool {
+	switch door {
+	case topDoorModel:
+		return a.modelSpan.pressable() && a.hoveringStatusModel()
+	case topDoorYolo:
+		return a.topYoloSpan.pressable() && a.hoveringYolo()
+	case topDoorBack:
+		return a.backSpan.pressable() && a.hoveringRoomBack()
+	case topDoorStop:
+		return a.roomStop.pressable() && a.hoveringRoomStop()
+	case topDoorCrumbHome:
+		return a.crumbHomeSpan.pressable() && a.hoveringHome()
+	case topDoorCrumbChat:
+		return a.crumbChatSpan.pressable() && a.hoveringCrumbChat()
+	}
+	return false
 }
 
 // ── cells ──────────────────────────────────────────────────────────────────

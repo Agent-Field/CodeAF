@@ -141,8 +141,8 @@ const spendTodayWord = "today"
 // figure is whole, and cents when it is not.
 //
 // IT IS NOT [dollars], and the difference is the point. That function writes
-// what something COST — a measurement, always to the cent, `$0.00` on the status
-// line so its segments do not jump sideways. A limit is a figure somebody TYPED,
+// what something COST — a measurement, always to the cent. A limit is a figure
+// somebody TYPED,
 // and `$500.00` is that figure with two cells of noise on the end: nobody sets a
 // daily limit of five hundred dollars and no cents. The day's own spend on the
 // `today` row keeps [dollars], because that half of the line is a measurement.

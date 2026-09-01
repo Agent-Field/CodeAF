@@ -1914,7 +1914,7 @@ func (a *app) orchHeadWord(width int) string {
 	// the same width could be spent two ways. The run a person is in is the
 	// current step, and it is the one they can least afford to lose off the
 	// line, which is the ladder's own floor.
-	space := width - ansi.StringWidth(mark + " " + tail)
+	space := width - ansi.StringWidth(mark+" "+tail)
 	rung := trailFull
 	for rung < trailTitle && trailWidth(fitTrail(segs, rung), roomCrumbSep) > space {
 		rung++

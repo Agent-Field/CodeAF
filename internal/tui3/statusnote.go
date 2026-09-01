@@ -49,12 +49,12 @@ import (
 //	              — and a note is selectable text while a sheet at forty-four
 //	              columns would cut either. /help prints the file for the same
 //	              reason.
-//	a zero bill   the status line keeps "$0.00" because it is a LIVE row, and a
-//	              segment that came into existence on the first priced turn
-//	              would shove every segment beside it sideways. A note is
-//	              written once and read once, so design-law-v2 §16 applies to it
-//	              plainly — and /cost's answer to the same session is "nothing
-//	              spent yet", which this list has to agree with.
+//	a zero bill   nobody draws one any more. The status line used to keep
+//	              "$0.00" because it was a LIVE row whose segments would shove
+//	              each other sideways; the slow facts moved to the top bar, the
+//	              row stopped being crowded, and the exception went with the
+//	              crowding (render.go's [app.costSegment]). So the note, the row
+//	              and /cost now agree: "nothing spent yet".
 //
 // The crew used to be a third difference — a line this command added under the
 // model and the sheet did not have. It is on [app.deckItems] now, directly under

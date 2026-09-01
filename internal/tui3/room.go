@@ -2260,11 +2260,7 @@ func (a *app) roomStepUp() {
 		a.closeRoom()
 		return
 	}
-	byKey := map[string]*taskNode{}
-	for _, n := range a.tasks {
-		byKey[stripKey(n)] = n
-	}
-	if parent := byKey[node.ParentID()]; parent != nil {
+	if parent := a.nodesByKey()[node.ParentID()]; parent != nil {
 		a.openRoomFor(parent.id, parent.title)
 		return
 	}
@@ -2441,50 +2437,22 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 	return a.railNodeAt(y)
 }
 
-// ── THE FOCUS HEADER ────────────────────────────────────────────────────────
+// ── WHAT IS LEFT OF THE ROOM'S OWN HEADER ───────────────────────────────────
 //
-//	─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─
-//
-// A ROOM USED TO LOOK LIKE THE CONVERSATION. Same rows, same hues, same box
-// underneath, and the only two things saying otherwise were a word in the legend
-// and a placeholder in the box — both of which are read once and then stop being
-// read. A person who walked into a node, scrolled, and looked up two minutes
-// later had nothing on screen telling them that the sentence they were about to
-// type was going to a worktree somewhere else.
-//
-// So the room pins ONE line at the top of the body region, and it is the only
-// thing on this surface drawn in the accent that is not the person's own words:
-// WHERE YOU ARE (the trail), WHAT IT IS DOING (the state, its clock, its spend),
-// and HOW YOU LEAVE. It is pinned rather than scrolled for the reason a status
-// line is pinned — a fact that scrolls away is a fact that is only true at the
-// top of the page — and it is one line because a room is a place you are looking
-// THROUGH, not a page about a node.
-//
-// THE TRAIL IS A BREADCRUMB and it always names the root: "main ▸ <node>" one
-// level down, "main ▸ parent ▸ child" when a node's page grows a door into the
-// node it spawned. The root is on it even at one level deep because the trail's
-// job is to say what this page hangs off, and "main" is the one name this
-// surface has for the conversation itself.
+// A room used to pin a line of its own at the top of the body — the trail, the
+// state, the clock, the spend and the way out, drawn in the accent, task-only.
+// The top bar is that line worn by the chat as well (topbar.go), so the header
+// is gone and its facts are the bar's task form: [app.roomStateWord],
+// [app.roomClock], [app.roomSpend] and [app.roomMark] are still assembled here
+// and are read from up there. What stayed behind is the one number both designs
+// stand on.
 
-// roomHead is the pinned line, or "" when there is no room open and nothing to
-// pin. It is drawn by the frame (view.go), which is the only thing that knows
-// where the top of the body region is.
-// THE ✕ RIDES THE RIGHT END, AFTER THE WAY OUT (stop.go). The header already
-// ends in the two things a person needs from a page they are standing in — how
-// to leave it, and, now, how to stop what is in it — and they are in that order
-// because leaving is free and stopping is not.
-//
-// IT DEGRADES BEFORE THE BACK WORD DOES. The right label is tried at three
-// strengths, and the middle one keeps the ✕ alone: the key that leaves is
-// printed on the legend at the bottom of the frame and known by everybody who
-// has ever used a terminal, while the button is the only thing anywhere on the
-// surface that ends work with a pointer. So the mark outlives the microcopy —
-// the same ladder [app.legend] walks, spending the recoverable thing first.
-// roomHeadFloor is the narrowest frame that gets a pinned header at all: under
-// it there is not a trail and a way out's worth of room, and the row would be an
-// ellipsis. It is stated once because the kin rows under the header stand on it
-// too — a header region whose two halves disagreed about the floor would be rows
-// the geometry counted and the frame did not draw ([app.roomKinRows]).
+// roomHeadFloor is the narrowest a room's own title is ever said in: under twelve
+// columns there is no title left, only an ellipsis where one was. It is the last
+// rung of the crumb's give-way ladder — the current segment is truncated to this
+// and never dropped (topbar.go's [fitTrail]) — and it is stated once because a
+// surface whose two halves disagreed about the floor would be columns the
+// geometry counted and the frame did not draw.
 const roomHeadFloor = 12
 
 // roomNode is the node the open room is about, or nil when this surface has

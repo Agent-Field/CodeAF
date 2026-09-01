@@ -2519,15 +2519,10 @@ type railTwig struct {
 // session met them — the one order a family is allowed to use, because any other
 // one moves a row a person is watching for a reason they cannot see. The
 // alphabet is the parent seam's ([taskNode.ParentID] and [stripKey],
-// taskstrip.go): an orchestrate node id is a string, and "" is an honest
+// taskchip.go): an orchestrate node id is a string, and "" is an honest
 // "nobody spawned this".
 func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode) {
-	byKey = make(map[string]*taskNode, len(a.taskOrder))
-	for _, id := range a.taskOrder {
-		if node := a.tasks[id]; node != nil {
-			byKey[stripKey(node)] = node
-		}
-	}
+	byKey = a.nodesByKey()
 	for _, id := range a.taskOrder {
 		node := a.tasks[id]
 		if node == nil {

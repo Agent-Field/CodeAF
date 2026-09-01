@@ -16,6 +16,22 @@ import (
 // stripKey is a node's own key in the alphabet [taskNode.ParentID] speaks.
 func stripKey(node *taskNode) string { return itoa(int(node.id)) }
 
+// nodesByKey indexes every node this session has admitted by that key. It is
+// ONE index because three surfaces climb the same seam — the roster's forest
+// ([app.railKin]), the crumb's walk up the parents (topbar.go's
+// [app.crumbSegments]) and the one-level climb esc makes (room.go's
+// [app.roomStepUp]) — and a map each was three walks of [app.taskOrder] per
+// frame that could disagree about which nodes exist.
+func (a *app) nodesByKey() map[string]*taskNode {
+	byKey := make(map[string]*taskNode, len(a.taskOrder))
+	for _, id := range a.taskOrder {
+		if node := a.tasks[id]; node != nil {
+			byKey[stripKey(node)] = node
+		}
+	}
+	return byKey
+}
+
 // ── THE PARENT SEAM ─────────────────────────────────────────────────────────
 //
 // These two are the whole of what the roster's forest reads (task.go's

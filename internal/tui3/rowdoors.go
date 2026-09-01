@@ -17,18 +17,31 @@ import "github.com/charmbracelet/x/ansi"
 // [app.markMoneyDoor] for the meter: base is the column the right-hand cluster
 // starts at and row is which of the status row's rows it is on.
 func (a *app) markCtxDoor(parts []hudPart, base, row int) {
-	at := base
+	if at, w, ok := hudPartAt(parts, base, segCtx); ok {
+		a.ctxSpan = hudSpan{from: at, to: at + w}
+		a.ctxRow = row
+	}
+}
+
+// hudPartAt walks a painted cluster and answers where one segment landed: the
+// column it starts at and how wide it is, or false when the width ladder
+// dropped it. Both doors on this row ask it, so the arithmetic is said once —
+// and it is [legendJoin]'s own width rather than a 3, because a separator whose
+// spelling lives in one place and whose WIDTH lived in another is a separator
+// that can be changed correctly and still move every door on the row.
+func hudPartAt(parts []hudPart, base int, want hudSeg) (at, width int, ok bool) {
+	at = base
 	for i, part := range parts {
 		if i > 0 {
-			at += 3 // the " · " every cluster is joined on ([app.paintParts])
+			at += ansi.StringWidth(legendJoin)
 		}
-		if part.kind == segCtx {
-			a.ctxSpan = hudSpan{from: at, to: at + ansi.StringWidth(part.text)}
-			a.ctxRow = row
-			return
+		w := ansi.StringWidth(part.text)
+		if part.kind == want {
+			return at, w, true
 		}
-		at += ansi.StringWidth(part.text)
+		at += w
 	}
+	return 0, 0, false
 }
 
 // ctxPress prints /status into the transcript from the segment, and reports
@@ -54,17 +67,17 @@ func (a *app) ctxDoorAt(x, y int) bool {
 // markOpenDoor records where the open·want-you clause landed. It is
 // [app.markCtxDoor] for the clause: the same walk, the same bargain.
 func (a *app) markOpenDoor(parts []hudPart, base, row int) {
-	at := base
-	for i, part := range parts {
-		if i > 0 {
-			at += 3 // the " · " every cluster is joined on ([app.paintParts])
-		}
-		if part.kind == segOpen {
-			a.openSpan = hudSpan{from: at, to: at + ansi.StringWidth(part.text)}
-			a.openRow = row
-			return
-		}
-		at += ansi.StringWidth(part.text)
+	// A DOOR THAT CANNOT WORK IS NOT A DOOR. This build may have been handed no
+	// way to open a conversation at all (app.go's [app.canOpen] — the seam is a
+	// pair of optional functions), and a span registered anyway would be a count
+	// that brightens under the pointer and then prints a refusal. The count is
+	// still drawn: how many conversations are open is true either way.
+	if !a.canOpen() {
+		return
+	}
+	if at, w, ok := hudPartAt(parts, base, segOpen); ok {
+		a.openSpan = hudSpan{from: at, to: at + w}
+		a.openRow = row
 	}
 }
 

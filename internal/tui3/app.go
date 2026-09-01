@@ -1304,7 +1304,7 @@ type app struct {
 	// backSpan is the `esc/← back` word, the wider of the two ways out of a room
 	// (room.go's [app.roomBackWord]); crumbChatSpan is the precise one — the chat
 	// name's own step of the crumb, which climbs one level on a press.
-	backSpan     hudSpan
+	backSpan      hudSpan
 	crumbChatSpan hudSpan
 	// crumbHomeSpan is the project's step of the crumb: space space parity, the
 	// same door the legend's advertisement always opened.
@@ -7522,8 +7522,16 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// dollars formats a running cost the way the status line wants it: cents while
-// the session is cheap, so a first turn is not rendered as $0.00.
+// dollars formats a running cost: four places below a cent, so a first turn is
+// a real fraction rather than a rounded-away nothing, and two above.
+//
+// IT STILL SPELLS ZERO, and every caller that must not draw one asks first. That
+// is the shape the emptiness law takes for a formatter — a gauge with a tank
+// (roomorch.go), a ceiling somebody typed (settingspend.go) and a cap on the
+// composer's own offer are all figures where `$0.00` is the true reading, and a
+// formatter that refused to write it would be deciding a question that belongs
+// to the row. The ambient status row is one of the rows that refuses: see
+// render.go's [app.costSegment].
 func dollars(usd float64) string {
 	switch {
 	case usd <= 0:

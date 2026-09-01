@@ -189,12 +189,18 @@ const (
 	// right for a tool call and wrong for a paragraph, where the pressable thing
 	// is three words at the end of a table.
 	hoverTable
-	// hoverRoomBack is the top bar's way out for the pointer — the `esc/← back`
-	// word and the chat name's own step of the crumb, which climb one level
-	// (topbar.go's [app.topBarPress]). The two light as one kind because the
-	// press they answer is one climb; they light separately because they are
-	// separate spans, and what lights is what the press acts on.
+	// hoverRoomBack is the top bar's `esc/← back` word, which climbs exactly ONE
+	// crumb level — a sub-task's back word goes to its parent task, not to the
+	// chat (topbar.go's [app.topBarPress], room.go's [app.roomStepUp]).
 	hoverRoomBack
+	// hoverCrumbChat is the chat's own step of the crumb, and it is a kind of
+	// its own BECAUSE THE TWO PRESSES ARE NOT THE SAME PRESS. That step names
+	// the chat specifically, so it leaves the room however deep the trail is,
+	// while the back word beside it climbs one level. At one level down they land
+	// in the same place and at two they do not — and this file's law is that what
+	// lights is what the press acts on, so a hover that lit both would be the
+	// deeper of them promising the shallower one's destination.
+	hoverCrumbChat
 	// hoverRoomStop is the ✕ riding the right end of the top bar (stop.go's
 	// [app.stopMarkPress]). It is a kind of its own and not part of the back
 	// word beside it because ending work and leaving the page you were watching
@@ -642,16 +648,36 @@ func (a *app) hoveringRailGrip() bool { return a.hot.kind == hoverRailGrip }
 // door line, which is the same control in its other state.
 func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
 
-// hoveringStatusModel reports whether the pointer is on the status row's model
-// segment (render.go's [app.paintIdentity] is what it changes).
+// hoveringStatusModel reports whether the pointer is on the top bar's model
+// term (topbar.go's [app.paintTopModel] is what it changes).
 func (a *app) hoveringStatusModel() bool { return a.hot.kind == hoverStatusModel }
 
-// hoveringRoomBack reports whether the pointer is on the top bar's way out —
-// the back word or the chat name's own step of the crumb.
+// hoveringRoomBack reports whether the pointer is on the top bar's back word.
 func (a *app) hoveringRoomBack() bool { return a.hot.kind == hoverRoomBack }
+
+// hoveringCrumbChat reports whether the pointer is on the chat's own step of
+// the crumb, which is a different door from the back word beside it.
+func (a *app) hoveringCrumbChat() bool { return a.hot.kind == hoverCrumbChat }
 
 // hoveringRoomStop reports whether the pointer is on that ✕.
 func (a *app) hoveringRoomStop() bool { return a.hot.kind == hoverRoomStop }
+
+// hoveringHome reports whether the pointer is on the crumb's project step, the
+// door home (topbar.go).
+func (a *app) hoveringHome() bool { return a.hot.kind == hoverHome }
+
+// hoveringYolo reports whether the pointer is on the bar's YOLO term, the door
+// onto the Settings page's Safety tab (topbar.go).
+func (a *app) hoveringYolo() bool { return a.hot.kind == hoverYolo }
+
+// hoveringCtx reports whether the pointer is on the status row's context
+// percent, the door that prints /status (rowdoors.go).
+func (a *app) hoveringCtx() bool { return a.hot.kind == hoverCtx }
+
+// hoveringOpen reports whether the pointer is on the status row's
+// `N open · M want you` clause, the door onto the conversations list
+// (rowdoors.go).
+func (a *app) hoveringOpen() bool { return a.hot.kind == hoverOpen }
 
 // hoveringStopAnswer reports whether the pointer is on this answer of the stop
 // card.
