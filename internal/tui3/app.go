@@ -6842,13 +6842,32 @@ func (a *app) paste(text string) tea.Cmd {
 	// see until home was closed. It goes into the box the caret is actually in
 	// — the exchange pane's while that holds the keyboard, home's own otherwise
 	// — and home's list re-filters exactly as it does for a typed character.
+	//
+	// AND THE DROP DOOR IS ASKED FIRST, BY BOTH OF THOSE BOXES. It used to be
+	// reached only on the fall-through below, which is the conversation's draft
+	// — so a screenshot dragged onto home became the raw escaped path it arrived
+	// as, while the same gesture one screen away became a picture on the tray.
+	// One door, told which box it is writing into (imagepaste.go's
+	// [app.pasteFilesInto]); when it says the text was not files, the text goes
+	// in exactly as it always did.
 	if a.at(pageHome) {
 		if ex := a.paneExchange(); ex != nil && ex.focused {
-			ex.box.insert(text)
-		} else {
-			a.home.box.insert(text)
-			a.home.build()
+			// THE ERRAND'S TRAY IS ITS OWN, because an errand is its own
+			// conversation with its own next message (homeexchange.go).
+			if !a.pasteFilesInto(&ex.box, &ex.chips, text) {
+				ex.box.insert(text)
+			}
+			a.touch()
+			return nil
 		}
+		// HOME'S TRAY IS THE CONVERSATION'S TRAY, because what home's box starts
+		// IS a conversation: [app.renew] hands the chips to the one it opens, on
+		// the law that the draft goes with the person (detach.go).
+		if !a.pasteFilesInto(&a.home.box, &a.chips, text) {
+			a.home.box.insert(text)
+		}
+		a.home.carrying = len(a.chips) > 0
+		a.home.build()
 		a.touch()
 		return nil
 	}

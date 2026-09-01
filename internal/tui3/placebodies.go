@@ -1,5 +1,7 @@
 package tui3
 
+import "strings"
+
 // ── THE SHARED FOOT, AND THE HEAD THE POINTER COUNTS FROM ───────────────────
 //
 // What the frame draws for EVERY place and no place draws for itself: how tall
@@ -63,6 +65,40 @@ func (a *app) placeNote(width int) []string {
 		rows = append(rows, line)
 	}
 	return rows
+}
+
+// placeTray is the attachment tray drawn over a place's box, and it is home's
+// alone: home is the one place whose box starts a conversation, so it is the one
+// place a dropped picture can be waiting on (imagepaste.go's one door).
+//
+// IT IS THE CHIPS AND NOTHING ELSE, where the conversation's own row also
+// carries the picked harness and the thinking dial ([app.chipStrip]). Both of
+// those are things the CHAT composer does to the next turn, and neither is a
+// thing home's box can do — and the dial in particular records the columns a
+// press is resolved against, which on a screen that hit-tests against its own
+// two maps (homemouse.go) would be a click answering for a row this frame never
+// drew. So the tray here says what is being carried and offers no target.
+//
+// THE ERRAND'S TRAY IS DRAWN WHERE THE ERRAND'S BOX IS, which is this same row:
+// [placeHome.box] hands the composer the pane's line while the pane holds the
+// keyboard, and the cargo above it has to be that line's cargo
+// (homeexchange.go).
+func (a *app) placeTray(width int) []string {
+	if !a.at(pageHome) || a.home.phone {
+		return nil
+	}
+	chips := a.chips
+	if ex := a.paneExchange(); ex != nil && ex.focused {
+		chips = ex.chips
+	}
+	if len(chips) == 0 {
+		return nil
+	}
+	painted := make([]string, 0, len(chips))
+	for _, label := range chipLabels(chips, a.pal) {
+		painted = append(painted, a.pal.dim(label))
+	}
+	return []string{" " + fit(strings.Join(painted, chipGap), width-2)}
 }
 
 // ── a place with nothing of its own to draw ─────────────────────────────────

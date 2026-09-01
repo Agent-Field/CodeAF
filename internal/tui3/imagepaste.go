@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -51,118 +52,170 @@ const imageTokenHead = "[image #"
 // imageToken is what the draft holds in place of the nth attached picture.
 func imageToken(n int) string { return imageTokenHead + strconv.Itoa(n) + "]" }
 
-// pasteImages takes one pasted string, and reports whether it was pictures. When
-// it was, the files are on the tray and the tokens are in the draft; when it was
-// not, nothing has happened and the caller inserts the text.
-func (a *app) pasteImages(text string) bool {
+// imageTokenPattern is the token as a shape rather than as a number, and it is
+// spelled from [imageTokenHead] so the two can never drift apart.
+var imageTokenPattern = regexp.MustCompile(regexp.QuoteMeta(imageTokenHead) + `\d+\]`)
+
+// withoutImageTokens is a sentence with its picture tokens taken out, for the
+// one reader that wants the WORDS and not the cargo: home's box is a live query
+// over every project on the machine as well as the first line of a conversation
+// (home.go), and a dropped screenshot filled it with `[image #1]` — a query no
+// conversation on earth matches, so the list under it emptied.
+//
+// The cheap reject is first because every keystroke on home asks this.
+func withoutImageTokens(text string) string {
+	if !strings.Contains(text, imageTokenHead) {
+		return text
+	}
+	return imageTokenPattern.ReplaceAllString(text, " ")
+}
+
+// pasteFilesInto is THE ONE DOOR every box on this surface drops a file
+// through, and it is parametrized by the box because there is more than one box
+// a person can drop on: the conversation's draft, home's own line at the foot,
+// and the errand pane's ([app.paste] routes them). It used to be bound to
+// [app.input] alone, so a screenshot dropped on home became the raw escaped path
+// it arrived as — the model was handed a string and the person was handed a mess
+// to clean up.
+//
+// box is the line the text was aimed at and chips is the tray THAT box's next
+// message carries. Every one of them carries a picture as content and an
+// ordinary file as a path (attach.go), so there is one rule and not three.
+//
+// It reports whether the text was files. When it was, they are on that tray and
+// the tokens are in that box; when it was not, nothing has happened and the
+// caller inserts the text as the text it plainly is.
+func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 	// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE. `/image ` followed
 	// by a dropped file is somebody using the command exactly as documented, and
 	// turning its argument into `[image #1]` would break the one line on this
 	// surface whose whole job is to take a path. The same is true of `/export `.
-	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
-		return false
-	}
-	paths := a.pastedImages(text)
-	if len(paths) == 0 {
-		return false
-	}
-	// THE CEILING IS CHECKED AT THE DOOR, and a picture over it is refused here
-	// with its name rather than attached and refused at enter. The path stays in
-	// the draft as the text it arrived as, so nothing the person dropped is lost
-	// — they can still ask aforge to look at the file where it lies.
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			// Not a file on this machine, so the paste was never a picture. No
-			// note: there is nothing to tell somebody who pasted a sentence.
-			return false
-		}
-		if info.Size() > maxAttachBytes {
-			a.note(oversizeAttachment(chip{path: path}).Error())
-			return false
-		}
-	}
-
-	marks := make([]string, 0, len(paths))
-	for _, path := range paths {
-		a.attach(path)
-		marks = append(marks, imageToken(a.chipNumber(path)))
-	}
-	inserted := a.spacedTokens(marks)
-	at := a.input.cursor
-	a.input.insert(inserted)
-	a.editTags(at, at, len([]rune(inserted)))
-	a.touch()
-	return true
-}
-
-// pasteFiles recognizes the ordinary-file form of the same terminal gesture
-// pasteImages handles for pictures. A desktop drop arrives only as pasted local
-// paths, so putting those files on the existing tray is what lets hosted sends
-// carry their bytes instead of handing the engine names from the wrong disk.
-func (a *app) pasteFiles(text string) bool {
-	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
+	// It is THIS box that is asked, because the command is in the box the drop
+	// landed in and nowhere else.
+	if strings.HasPrefix(strings.TrimSpace(box.String()), "/") {
 		return false
 	}
 	words := pastedWords(text)
 	if len(words) == 0 {
 		return false
 	}
-	paths := make([]string, 0, len(words))
-	for _, word := range words {
-		candidate := a.resolvePath(pastedPath(word))
-		info, err := os.Stat(candidate)
+	paths := make([]string, len(words))
+	found := make([]os.FileInfo, len(words))
+	missing, first := 0, ""
+	for i, word := range words {
+		paths[i] = a.resolvePath(pastedPath(word))
+		info, err := os.Stat(paths[i])
 		if err != nil {
-			return false
+			missing++
+			if first == "" {
+				first = filepath.Base(paths[i])
+			}
+			continue
 		}
+		found[i] = info
+	}
+	// A DROP FROM ANOTHER MACHINE IS SAID OUT LOUD. iTerm2 → ssh → tmux hands a
+	// TUI running on the Linux box a path that means something on the Mac, and
+	// this door used to answer that by silently inserting it — a person watching
+	// their screenshot turn into text with nothing on the screen to explain it.
+	// The sentence is owed only where the paste was PLAINLY a drop
+	// ([droppedPathShape]: every word an absolute path with a separator in it),
+	// so a sentence that merely mentions a file is inserted in silence as before.
+	if missing > 0 {
+		if droppedPathShape(text) {
+			a.trayNote(notOnThisMachine(first, missing))
+		}
+		return false
+	}
+	for i, info := range found {
 		if info.IsDir() {
-			a.note(filepath.Base(candidate) + " is a folder · attach a file")
+			a.trayNote(filepath.Base(paths[i]) + " is a folder · attach a file")
 			return true
 		}
-		if isImagePath(candidate) {
+		if isImagePath(paths[i]) {
 			if info.Size() > maxAttachBytes {
-				a.note(oversizeAttachment(chip{path: candidate}).Error())
+				a.trayNote(oversizeAttachment(chip{path: paths[i]}).Error())
 				return false
 			}
-		} else if info.Size() > maxAttachedFileBytes {
-			a.note(oversizeFile(filepath.Base(candidate), info.Size()))
+			continue
+		}
+		if info.Size() > maxAttachedFileBytes {
+			a.trayNote(oversizeFile(filepath.Base(paths[i]), info.Size()))
 			return false
 		}
-		paths = append(paths, candidate)
 	}
 	marks := make([]string, 0, len(paths))
 	for _, candidate := range paths {
 		if isImagePath(candidate) {
-			a.attach(candidate)
-			marks = append(marks, imageToken(a.chipNumber(candidate)))
+			attachChipTo(chips, chip{path: candidate})
+			marks = append(marks, imageToken(chipNumberIn(*chips, candidate)))
 			continue
 		}
-		a.attachFile(candidate)
+		attachChipTo(chips, chip{path: candidate, file: true})
 	}
 	if len(marks) > 0 {
-		inserted := a.spacedTokens(marks)
-		at := a.input.cursor
-		a.input.insert(inserted)
-		a.editTags(at, at, len([]rune(inserted)))
+		inserted := box.spacedTokens(marks)
+		at := box.cursor
+		box.insert(inserted)
+		box.editTags(at, at, len([]rune(inserted)))
 	}
 	a.touch()
 	return true
 }
 
-// spacedTokens is the run of tokens as it is inserted: separated from the word
-// the caret was standing after, and followed by a space so the next thing typed
-// is a new word rather than a longer token.
-func (a *app) spacedTokens(marks []string) string {
+// pasteFiles is the conversation's own draft going through that door — the
+// caller this file was written for, and now one of three.
+func (a *app) pasteFiles(text string) bool {
+	return a.pasteFilesInto(&a.input, &a.chips, text)
+}
+
+// notOnThisMachine is what a drop that named nothing here says. ONE SENTENCE
+// FOR ANY NUMBER OF FILES: a person who dragged four screenshots off a Mac onto
+// a session running on a Linux box has one thing wrong, not four.
+func notOnThisMachine(name string, missing int) string {
+	if missing == 1 {
+		return name + " is not on this machine"
+	}
+	return strconv.Itoa(missing) + " files are not on this machine"
+}
+
+// trayNote is where this door's refusals are said, and it picks the voice by
+// WHERE THE PERSON IS STANDING. A note is a line in the conversation
+// ([app.note]), and while home has the frame the conversation is not on the
+// screen at all — so a folder refused there would be a sentence written
+// somewhere nobody can read it. Home has a line of its own under the rule
+// ([homeView.say], drawn by pages.go's [app.placeMsgLine]).
+func (a *app) trayNote(msg string) {
+	if a.at(pageHome) {
+		a.home.say(msg, "")
+		return
+	}
+	a.note(msg)
+}
+
+// spacedTokens is the run of tokens as it is inserted into one box: separated
+// from the word the caret was standing after, and followed by a space so the
+// next thing typed is a new word rather than a longer token.
+func (e *editor) spacedTokens(marks []string) string {
 	text := strings.Join(marks, " ") + " "
-	if a.input.cursor > 0 && !unicode.IsSpace(a.input.value[a.input.cursor-1]) {
+	if e.cursor > 0 && !unicode.IsSpace(e.value[e.cursor-1]) {
 		text = " " + text
 	}
 	return text
 }
 
-// chipNumber is the PICTURE's number, one-based, and 0 when that path is not on
-// the tray. It is the number the token, the chip and the message's content parts
-// all share.
+// spacedTokens is the main draft's, for the callers that only ever mean it
+// (pastechip.go).
+func (a *app) spacedTokens(marks []string) string { return a.input.spacedTokens(marks) }
+
+// chipNumber is the PICTURE's number on the conversation's own tray, one-based,
+// and 0 when that path is not on it.
+func (a *app) chipNumber(path string) int { return chipNumberIn(a.chips, path) }
+
+// chipNumberIn is that question asked of ANY tray, which is what lets home's box
+// and the errand pane's number their own pictures without a second idea of what
+// a number means. It is the number the token, the chip and the message's content
+// parts all share.
 //
 // IT COUNTS PICTURES AND NOT CHIPS, which is the whole of the fix: the tray
 // holds attached files as well now, and a position on the tray stopped being a
@@ -170,36 +223,13 @@ func (a *app) spacedTokens(marks []string) string {
 // meant a screenshot pasted while a log file sat in front of it was announced as
 // `[image #2]` when it was the first — and the token, the chip and the content
 // part would then disagree about which picture the person meant.
-func (a *app) chipNumber(path string) int {
-	for i, held := range a.chips {
+func chipNumberIn(chips []chip, path string) int {
+	for i, held := range chips {
 		if held.path == path {
-			return pictureOrdinal(a.chips, i)
+			return pictureOrdinal(chips, i)
 		}
 	}
 	return 0
-}
-
-// pastedImages resolves a paste to the pictures it names, or nil when it names
-// anything else at all.
-//
-// The all-or-nothing rule lives here: one word that is not one of the five
-// picture extensions and the whole paste is text. Existence is NOT asked here —
-// that is a syscall per word, and the caller stats only the pastes that got this
-// far.
-func (a *app) pastedImages(text string) []string {
-	words := pastedWords(text)
-	if len(words) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(words))
-	for _, word := range words {
-		path := a.resolvePath(pastedPath(word))
-		if !isImagePath(path) {
-			return nil
-		}
-		out = append(out, path)
-	}
-	return out
 }
 
 // pastedWords splits a paste the way the terminal that wrote it meant it to be

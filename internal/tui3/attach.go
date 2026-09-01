@@ -218,17 +218,28 @@ func (a *app) attachFile(path string) bool {
 }
 
 func (a *app) attachChip(held chip) bool {
+	if !attachChipTo(&a.chips, held) {
+		return false
+	}
+	a.touch()
+	return true
+}
+
+// attachChipTo is that put ONTO A NAMED TRAY, which is what lets the drop door
+// serve home's box and the errand pane's without a second idea of what a chip
+// is (imagepaste.go's [app.pasteFilesInto]). It draws nothing: the caller knows
+// whether anything on the screen changed.
+func attachChipTo(chips *[]chip, held chip) bool {
 	held.path = strings.TrimSpace(held.path)
 	if held.path == "" {
 		return false
 	}
-	for _, already := range a.chips {
+	for _, already := range *chips {
 		if already.path == held.path {
 			return false
 		}
 	}
-	a.chips = append(a.chips, held)
-	a.touch()
+	*chips = append(*chips, held)
 	return true
 }
 
@@ -548,8 +559,13 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	// (effortchip.go), so the field test asks about it too — and asks the cheap
 	// half first, because a session whose model wants no thinking at all draws no
 	// dial and should pay nothing for the question.
+	// AND A PLACE TAKING THE FRAME IS NOT THIS ROW AT ALL. Home draws a tray of
+	// its own over its own box (placebodies.go's [app.placeTray]) and resolves
+	// every press against its own two maps (homemouse.go); the geometry below is
+	// the CONVERSATION's, so a press answered here while a place is up would be a
+	// click on a chip the frame never drew.
 	if (len(a.chips) == 0 && len(cells) == 0 && a.effortChipText() == "") ||
-		a.at(pageSettings) || a.pick.open {
+		a.at(pageSettings) || a.at(pageHome) || a.pick.open {
 		return 0, false
 	}
 	width, height := a.size()

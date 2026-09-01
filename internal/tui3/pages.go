@@ -949,6 +949,12 @@ func placeFrameWithBar(a *app, width, height int,
 	inline := a.verbStripRow(width)
 	strip := a.placeStrip(width)
 	note := a.placeNote(width)
+	// AND THE TRAY IS A ROW OF THE FOOT, directly over the box, exactly where the
+	// conversation draws it (attach.go, input.go's [app.inputBlock]). It is
+	// measured with the foot for the composer layer's reason: a row that appeared
+	// without being counted would push the box down by a cell the moment
+	// somebody dropped a picture on the screen.
+	tray := a.placeTray(width)
 	// THE COMPOSER LAYER'S ROWS ARE PART OF THE FOOT AND ARE MEASURED WITH IT.
 	// The layer's whole claim is that the box does not move (composerlayer.go),
 	// which is only true if its three lines are taken from the BODY's room the
@@ -956,7 +962,7 @@ func placeFrameWithBar(a *app, width, height int,
 	// after the body would push the box down by three cells the moment the chord
 	// was pressed.
 	layer := a.composerRows(width, pal)
-	foot := 2 + len(note) + draftHeight + len(strip) + len(layer)
+	foot := 2 + len(note) + len(tray) + draftHeight + len(strip) + len(layer)
 	room := height - len(lines) - foot - spacingRuleClearance
 	if room < 1 {
 		room = 1
@@ -1045,6 +1051,9 @@ func placeFrameWithBar(a *app, width, height int,
 	// AT REST THERE IS NOTHING TO PLACE A CARET IN. With nothing typed the row
 	// carries a dim sentence about the place rather than a draft, so the span
 	// stays empty and a press falls through to the place underneath.
+	for _, row := range tray {
+		add(row, nil)
+	}
 	boxTop, boxHeight := len(lines), len(draftRows)
 	if len(draftRows) == 0 {
 		add(a.placeChipped(" "+pal.dim(fit(a.placeRestWord(), width-2)), chip, width, pal), nil)

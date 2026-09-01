@@ -26,6 +26,15 @@ type errandAgent struct {
 	fakeAgent
 	answered []session.StandingAnswer
 	answerID []uint64
+	// images is what an errand carrying a picture was handed, which is the only
+	// way to assert the bytes crossed rather than the path (homeexchange.go's
+	// [errandSend]).
+	images []session.Image
+}
+
+func (e *errandAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
+	e.images = append(e.images, images...)
+	return e.Submit(ctx, text)
 }
 
 func (e *errandAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
