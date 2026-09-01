@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -186,6 +187,33 @@ func TestAJoinKeepsTheSoundOfEveryClipAndTheLengthOfAllOfThem(t *testing.T) {
 	// in everything except the ear and this assertion.
 	if audio := audioLength(t, cut); !about(audio, facts.Length, 400*time.Millisecond) {
 		t.Errorf("audio runs %v under a %v cut — it must run the whole way", audio, facts.Length)
+	}
+}
+
+func TestTheJoinedCutsSoundSitsWhereItsOwnClipDid(t *testing.T) {
+	// One rung above the test before it. That one proves the cut HAS an audio
+	// stream spanning the whole thing, which a stream of silence would satisfy
+	// just as well — and a join whose generated silence came out the wrong
+	// length would produce exactly that: a full-length stream with the real
+	// audio slid off the picture it belongs to. Desync is not visible in a
+	// duration, so it is measured here in the one place it shows, which is how
+	// loud each half actually is.
+	home := requireEncoder(t)
+	silent := madeClip(t, home, "silent.mp4", 2, false)
+	loud := madeClip(t, home, "loud.mp4", 2, true)
+	cut := filepath.Join(home, "cut.mp4")
+
+	if _, err := Join(context.Background(), []string{silent, loud}, cut); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	opening := loudness(t, cut, 0, 1.8)
+	closing := loudness(t, cut, 2.2, 1.8)
+	t.Logf("the cut measures %.1f dB over its silent clip and %.1f dB over its loud one", opening, closing)
+	if opening > -40 {
+		t.Errorf("the first two seconds measure %.1f dB — the silent clip's half of the cut is not silent, so the audio has slid", opening)
+	}
+	if closing < -40 {
+		t.Errorf("the last two seconds measure %.1f dB — the loud clip's own sound is not under its own picture", closing)
 	}
 }
 
@@ -375,6 +403,36 @@ func audioLength(t *testing.T, path string) time.Duration {
 		t.Fatalf("could not measure the audio of %s: %v", path, err)
 	}
 	return readSeconds(string(spoken))
+}
+
+// loudness is the mean volume in dB of one stretch of a file, read out of
+// ffmpeg's own volumedetect filter. Digital silence reports -91 dB or lower; a
+// tone at full scale reports around -3.
+func loudness(t *testing.T, path string, from, length float64) float64 {
+	t.Helper()
+	said, err := exec.Command(ffmpegBinary, "-hide_banner", "-nostdin",
+		"-ss", fmt.Sprintf("%g", from), "-t", fmt.Sprintf("%g", length),
+		"-i", path, "-af", "volumedetect", "-f", "null", "-").CombinedOutput()
+	if err != nil {
+		t.Fatalf("could not measure the loudness of %s: %v\n%s", path, err, said)
+	}
+	const marker = "mean_volume:"
+	at := strings.Index(string(said), marker)
+	if at < 0 {
+		t.Fatalf("volumedetect said nothing about the mean volume of %s:\n%s", path, said)
+	}
+	spoken := strings.Fields(string(said)[at+len(marker):])
+	if len(spoken) == 0 {
+		t.Fatalf("volumedetect gave no figure for %s", path)
+	}
+	if spoken[0] == "-inf" {
+		return -200
+	}
+	measured, err := strconv.ParseFloat(spoken[0], 64)
+	if err != nil {
+		t.Fatalf("volumedetect said %q, which is not a number of decibels", spoken[0])
+	}
+	return measured
 }
 
 func read(t *testing.T, path string) []byte {

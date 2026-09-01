@@ -84,32 +84,43 @@ const framePicture = ".png"
 // saved as any of them is a valid reference to any other tool here.
 var frameFormats = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".webp": true}
 
-// The description's whole job is to stop the model reaching for bash. A model
-// that knows ffmpeg exists and does not know this verb exists will write a
-// filter graph, and the filter graph it writes will drop the sound — so the
-// first sentence says what this is for and the audio law is stated as a promise
-// rather than as advice.
+// WRITTEN FOR DENSITY, BECAUSE THIS STRING IS BILLED ON EVERY REQUEST OF EVERY
+// TURN (tools_jobs.go states the law, and prefixbudget_test.go enforces it: the
+// whole belt's schemas ride in front of every call the model makes, so a
+// paragraph here is paid dozens of times in one task and the prose around it is
+// paid never).
 //
-// The ceiling is interpolated from [video.Ceiling] and never typed, on this
-// codebase's one-source-of-truth law.
-var editVideoDescription = "Work on video files that ALREADY EXIST on this machine, with ffmpeg: measure one, save a frame out of one, join several into one longer video, or lay music under one. This is local, free and instant — nothing here is a render and nothing here costs money, so use it rather than writing ffmpeg command lines into bash. join CARRIES EVERY CLIP'S AUDIO: a clip with sound keeps it and a silent clip gets silence of its own length, so a joined cut can never go quiet part-way through, which is what a hand-written concat does. frame with at=closing saves a clip's final frame, which is how you connect two independent renders — hand that picture to generate_video as its opening frame_paths entry and the next shot continues out of this one. score loops or trims the music to the video's own length by itself, so generate_music's piece needs no measuring, and it mixes UNDER existing sound (at level " +
-	strconv.FormatFloat(scoreUnderLevel, 'f', -1, 64) + " unless you say otherwise) rather than replacing it. Every action answers with the file's measured facts, read back off the file that now exists. One call is given up on after " +
-	strconv.Itoa(int(video.Ceiling/time.Minute)) + " minutes and leaves nothing behind."
+// So the description carries exactly the facts that change what the model DOES
+// and hands the rest to the manual, which is a tool it can call: the four
+// actions, the audio law — stated as a promise, because a model that does not
+// know it will write the filter graph itself and the graph it writes drops the
+// sound — the frame-chaining trick, and the two figures. Everything else, the
+// arguments in full and every refusal's wording, is one `manual` call away.
+//
+// Every figure is INTERPOLATED from the constant that enforces it, on this
+// codebase's one-source-of-truth law: a digit typed here is the second copy, and
+// the second copy is the one that goes stale.
+var editVideoDescription = "ffmpeg on video files that ALREADY EXIST here: local, free, no model, so never write ffmpeg into bash. measure: length, sound, frame, size. frame: save a still; at=closing by default, and that png handed to generate_video as its opening frame_paths entry is how one render continues out of another. join: clips end to end, EVERY clip's audio carried (the concat you would write keeps only the first clip's) and each clip letterboxed into the first's frame. score: audio under a video, looped or trimmed to the picture's length, mixed UNDER existing sound. Answers carry the written file's measured facts. Given up on after " +
+	strconv.Itoa(int(video.Ceiling/time.Minute)) + " minutes, leaving nothing behind. The manual has the arguments in full."
 
 var editVideoSchemaJSON = `{"type":"object","properties":` +
 	`{"action":{"type":"string","description":"The op.","enum":["` +
 	editVideoMeasure + `","` + editVideoFrame + `","` + editVideoJoin + `","` + editVideoScore + `"]},` +
-	`"video":{"type":"string","description":"The video file to measure, take a frame out of, or lay a score under. A path in the workspace. Not used by join, which takes clips."},` +
-	`"clips":{"type":"array","items":{"type":"string"},"description":"For join: the video files to lay end to end, IN THE ORDER THEY SHOULD PLAY. At least two. Every clip is scaled to fit inside the FIRST clip's frame and letterboxed rather than stretched, and every clip's audio is carried."},` +
-	`"audio":{"type":"string","description":"For score: the audio file to lay under the video — an mp3 from generate_music or speak, or any file with sound in it. It is looped if it is shorter than the video and trimmed if it is longer, so its own length does not matter."},` +
-	`"at":{"type":"string","description":"For frame: which frame to save. 'closing' (the default) is the clip's final frame, which is the one that chains into the next render; 'opening' is its first; a number is that many seconds in."},` +
-	`"level":{"type":"number","description":"For score: how loud the music is, 1 being as recorded. Defaults to ` +
-	strconv.FormatFloat(scoreUnderLevel, 'f', -1, 64) + ` when the video already has sound to mix under and ` +
-	strconv.FormatFloat(scoreAloneLevel, 'f', -1, 64) + ` when it is silent."},` +
-	`"replace":{"type":"boolean","description":"For score: drop the video's own sound instead of mixing the music under it (default: false — the music goes under what is already there)."},` +
-	`"fade":{"type":"number","description":"For score: seconds to fade the music out over at the end. Worth naming when the music was looped, because a loop that stops dead mid-phrase sounds like a mistake (default: 0, a hard stop)."},` +
-	`"path":{"type":"string","description":"Where to save the result, relative to the workspace. Leave it out for a timestamped name where this session keeps its video (or its pictures, for a frame). An existing file there is overwritten, as with the write tool. Not used by measure."}},` +
+	`"video":{"type":"string","description":"The video to measure, frame, or score."},` +
+	`"clips":{"type":"array","items":{"type":"string"},"description":"For join: two or more videos, in playing order."},` +
+	`"audio":{"type":"string","description":"For score: the audio to lay under; its length does not matter."},` +
+	`"at":{"type":"string","description":"For frame: closing (default), opening, or seconds."},` +
+	`"level":{"type":"number","description":"For score: music loudness, 1 as recorded (default ` +
+	level(scoreUnderLevel) + ` under sound, ` + level(scoreAloneLevel) + ` over silence)."},` +
+	`"replace":{"type":"boolean","description":"For score: drop the video's own sound rather than mix under it."},` +
+	`"fade":{"type":"number","description":"For score: seconds of fade-out; a loop otherwise stops mid-phrase."},` +
+	`"path":{"type":"string","description":"Where to save it, relative to the workspace; overwrites as write does. Default: a timestamped name in this session's video (or picture) folder."}},` +
 	`"required":["action"],"additionalProperties":false}`
+
+// level is one of the two default loudnesses as the schema spells it.
+func level(loudness float64) string {
+	return strconv.FormatFloat(loudness, 'f', -1, 64)
+}
 
 // videoEditTools is the cutting verb, CONDITIONAL on the machine having the two
 // binaries — and on nothing else. Every other conditional verb on this belt asks
