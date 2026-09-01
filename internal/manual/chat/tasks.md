@@ -3,9 +3,10 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in its own copy of the repository and reports back when
-it lands. It never sees the conversation: what it reads is one written brief — your own
-message, word for word, then the work, what to produce and what done means. How that is
+conversation carries on. It works in a copy of its own — a worktree of your repository, or
+a copy of the folder when the work is about a folder — and reports back when it lands. It
+never sees the conversation: what it reads is one written brief — your own message, word
+for word, then the work, what to produce and what done means. How that is
 assembled is on the *how tasks run* page, under *What the task actually reads*.
 
 You can ask for the work in words, and the model grooms it and calls its `propose_task`
@@ -2361,9 +2362,13 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of the repository taken from its **parent's** copy, and its
-branch merges back into the parent's — so a family's work comes home as the parent's work,
-in one merge, not as three branches racing for yours.
+Each piece works in a copy of its **parent's** own working copy, and its branch merges
+back into the parent's — so a family's work comes home as the parent's work, in one merge,
+not as three branches racing for yours. That is true whether the family is working on a
+repository or on a plain folder: a family on a folder gets a private copy of it to work in,
+and the pieces branch off that copy and merge back into it, so two pieces writing different
+files never touch each other's directory. The person's own folder is written once, at the
+end, when the whole family lands.
 
 A parent never lands while a piece of it is still running. Its own turn may end long
 before; the task stays open, each report is put in front of it as it arrives, and only then
@@ -2384,8 +2389,8 @@ that from the sentence you typed.
 
 So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
 what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
-own copy of the repository, with its own branch coming home into the parent's. Your
-transcript says it in plain words — `split into 3 parts:` and then each part by number and
+own copy of the parent's working copy, with its own branch coming home into the parent's.
+Your transcript says it in plain words — `split into 3 parts:` and then each part by number and
 name.
 
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
@@ -2403,7 +2408,7 @@ does not do them again. *An answer that runs long is read and moved* is where th
 **Two things have to be true, and neither is the worker's confidence.**
 
 - **There must be enough separate items.** Below six, one worker doing them in order beats
-  paying for a copy of the repository, a check and a wait for each part. This was measured,
+  paying for a working copy, a check and a wait for each part. This was measured,
   not guessed: twelve image files won, four modules and three bugs lost. This count reads
   what the worker says it saw, and it counts a number standing beside a pile of things —
   "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.

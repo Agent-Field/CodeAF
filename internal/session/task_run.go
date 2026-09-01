@@ -3102,6 +3102,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if world := tree.world(); world != "" {
 		fmt.Fprintf(log, "its world is %s\n", world)
 	}
+	// AND WHAT THE WORLD COULD NOT BE, LOUDLY. A tree that fell short of what was
+	// promised about it says so here and again in the brief below, because a
+	// degradation nobody is told about is the shape this whole seam was written
+	// to end (task_tree_mirror.go).
+	if tree.note != "" {
+		fmt.Fprintf(log, "%s\n", tree.note)
+	}
 
 	// ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE MONEY ──
 	//
@@ -3245,7 +3252,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		}
 
 		var wrote []string
-		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), handedOut), tree.dir, a.taskLimits(node), room, log)
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.
@@ -5536,6 +5543,14 @@ type taskTree struct {
 	// universe is the furrow fork's name, when a fork made this world, and it is
 	// the only handle furrow takes for dropping the record afterwards.
 	universe string
+	// note is the one sentence this world owes the node standing in it, and it
+	// is empty for every world that came out as promised — which is nearly all
+	// of them. It exists because a promise that quietly did not hold is worse
+	// than one that was never made: a family whose tree could not be opened
+	// gives its parts the parent's own directory to share, and the parent has to
+	// be told so while it can still act on it (task_tree_mirror.go). The job log
+	// prints it and the worker's own brief carries it.
+	note string
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -5776,7 +5791,7 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
 	case TaskModeMirror:
 		dir, mode := taskOwnFolder(place, workspace, session, id)
-		return carveGround(ctx, groundOrder{
+		tree, err := carveGround(ctx, groundOrder{
 			place:   place,
 			ground:  ground,
 			dir:     dir,
@@ -5784,6 +5799,15 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 			title:   title,
 			promise: TaskModeMirror,
 		})
+		if err != nil {
+			return taskTree{}, err
+		}
+		// AND THE COPY IS OPENED AS THE FAMILY'S OWN TREE (task_tree_mirror.go).
+		// A mirror that is a repository is a mirror whose parts cut real
+		// worktrees off it and merge back into it through the one road every
+		// repository part already takes — which is how the promise both prompts
+		// make to a part becomes true for a folder as well.
+		return openFamilyTree(tree), nil
 	}
 	root, ok := repositoryRoot(ground)
 	if !ok || !hasCommit(root) {

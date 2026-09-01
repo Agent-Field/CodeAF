@@ -25,7 +25,7 @@ so grading every part careful says nothing at all.
 
 TWO THINGS DECIDE, AND NEITHER OF THEM IS YOUR CONFIDENCE. There must be enough
 separate items to be worth it — below the floor, one worker doing them in order
-beats paying for a copy of the repository, a check and a wait for each part —
+beats paying for a working copy, a check and a wait for each part —
 and somebody has to be free to pick the parts up. If either says no you are told
 so in one line and NOTHING HAPPENS: nothing is cancelled, nothing is spent, and
 you carry on with the work in your own hands exactly as you were. A no is not a
@@ -57,8 +57,15 @@ smaller than the one you asked for. Where the parts turn out to be stages of one
 procedure it is not split at all, and that is the same one-line no as any other.
 There is nothing here to do anything about and nothing to ask again.
 
-YOU DO NOT GO AWAY WHEN THE WORK SPLITS. The parts run under you, each in a copy
-of the repository taken from yours, and each one's branch comes home into yours.
+WHERE THE PARTS ACTUALLY WORK is a copy of the tree you are standing in, one
+apiece — whether that tree is a worktree of a repository or a copy of a folder,
+which is the same arrangement either way. They cannot see each other while they
+run, and each part's work comes back into your tree as it lands. That is the
+whole reason the parts have to be independent: two parts writing one file are
+two parts fighting over one line of your own deliverable.
+
+YOU DO NOT GO AWAY WHEN THE WORK SPLITS. The parts run under you, and each one's
+work comes home into yours.
 You keep whatever part of the work you decided to keep, every report reaches you
 as it lands, and your job at the end is one deliverable made out of all of it —
 not a list of what the parts said back to you. A part that failed is still a
