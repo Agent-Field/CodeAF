@@ -1,5 +1,7 @@
 package lane
 
+import "time"
+
 // ── ROLES: WHO IS ASKING, AND WHAT THAT IS WORTH ────────────────────────────
 //
 // Every model call in this build is made ON SOMEBODY'S BEHALF, and the four
@@ -109,21 +111,49 @@ type RoleFacts struct {
 	// "writing" for everything that makes text and "drawing" for media, and it
 	// is here rather than in the surface because a role is what decides it.
 	Verb string
+	// Patience is how many times [VisiblePatience] this role will wait before
+	// something is done about the silence, whatever is believed about the lane.
+	//
+	// IT SCALES THE CEILING AND NEVER DECIDES WHETHER THERE IS ONE. That is the
+	// funnel law said about waiting: a role sets what a second is worth and how
+	// long is too long, and no role is exempt from being asked. A role with no
+	// figure here reads as [RoleUnknown]'s, which is the conservative direction
+	// — a background errand waits longer than a person does, never less.
+	Patience float64
 }
+
+// VisiblePatience is the longest a person watching an empty line is asked to
+// wait before this build does something about it.
+//
+// TEN SECONDS IS A CEILING AND NOT A PRIOR. Everything else in this package is
+// learned; this one is a statement about people rather than about machines, and
+// it is what makes the invariant hold from a cold store, where there is nothing
+// to learn from. It is deliberately far above every believed first token the
+// measured world has — the slowest lane of seventeen starts at 3.0s at the
+// median and 9.3s at the ninetieth — so a healthy lane never reaches it and a
+// stalled one always does.
+const VisiblePatience = 10 * time.Second
+
+// ActionFloor is the shortest silence worth acting on, whatever a belief says.
+//
+// Below it a second request is racing the network rather than the lane: it has
+// its own handshake, its own router hop and its own prefill to pay before it can
+// say anything, and the measured floor for that is a few hundred milliseconds.
+const ActionFloor = 700 * time.Millisecond
 
 // roles is the table. THERE ARE NO NUMBERS OUTSIDE IT.
 var roles = map[Role]RoleFacts{
-	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing"},
-	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing"},
-	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing"},
-	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing"},
-	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing"},
-	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing"},
-	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing"},
-	RoleDesign:         {Interactive: false, Critical: true, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing"},
-	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing"},
-	RoleMedia:          {Interactive: true, Horizon: 1, Visible: true, Streams: false, Verb: "drawing"},
-	RoleUnknown:        {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing"},
+	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
+	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
+	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing", Patience: 3},
+	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
+	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
+	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleDesign:         {Interactive: false, Critical: true, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleProbe:          {Interactive: false, Horizon: 1, Visible: false, Streams: true, Verb: "writing", Patience: 0.5},
+	RoleMedia:          {Interactive: true, Horizon: 1, Visible: true, Streams: false, Verb: "drawing", Patience: 6},
+	RoleUnknown:        {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 }
 
 // Facts is what is believed about a role. An unregistered role reads as
@@ -153,6 +183,21 @@ func (r Role) Visible() bool { return r.Facts().Visible }
 func (r Role) Lambda() float64 {
 	facts := r.Facts()
 	return Lambda(facts.Interactive, facts.Critical, 0, 0, 0)
+}
+
+// Ceiling is the longest this role waits before something is done about a
+// silence, whatever is believed about the lane serving it.
+//
+// EVERY ROLE HAS ONE. A role that returned zero here would be a role outside the
+// invariant, and there is no such role: [RoleFacts.Patience] scales the ceiling
+// and a role the table forgot borrows [RoleUnknown]'s rather than being handed
+// forever.
+func (r Role) Ceiling() time.Duration {
+	patience := r.Facts().Patience
+	if patience <= 0 {
+		patience = roles[RoleUnknown].Patience
+	}
+	return time.Duration(patience * float64(VisiblePatience))
 }
 
 // Roles is every role in the table, for the structural test that insists each
