@@ -238,3 +238,103 @@ func TestARunsPageGetsADimSegment(t *testing.T) {
 		t.Fatalf("a run's segment claims a state it does not have:\n%q", lead)
 	}
 }
+
+// ── THE SEGMENT IS DRAWN ONCE, ON THE DRAFT'S OWN ROW ────────────────────────
+//
+// The tray takes the block's first row whenever there is one (attach.go's
+// [app.chipStrip]), so the draft is not always row zero — and the two lanes that
+// splice a placeholder onto the box wrote row zero blind. With a picture on the
+// tray or the thinking dial up, the placeholder landed ON the chips: the tray was
+// gone, and the room's segment was drawn twice, once on the row it had taken and
+// once on the draft row still beneath it. The owner saw both prompts stacked.
+
+// roomLeadRows is how many rows of the composer carry the room's segment. It
+// counts what a reader sees rather than what any one function returns, because
+// the defect was two functions each drawing one.
+func roomLeadRows(a *app, title string) int {
+	n := 0
+	for _, row := range composerRows(a) {
+		if strings.Contains(plain(row), title+" "+prompt) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestTheRoomsSegmentIsDrawnOnceWhateverIsOnTheTray(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.width, a.height = 100, 30
+	a.openRoom(7, "budget back bed")
+
+	if got := roomLeadRows(a, "budget back bed"); got != 1 {
+		t.Fatalf("a bare box draws the segment %d times, want 1:\n%q", got, composerRows(a))
+	}
+
+	// A PICTURE ON THE TRAY, which is what puts a row in front of the draft.
+	a.chips = []chip{{path: "/tmp/shot.png"}}
+	a.touch()
+	if strip := plain(a.chipStrip(a.width - len(inputPad))); !strings.Contains(strip, "shot.png") {
+		t.Fatalf("the fixture drew no tray: %q", strip)
+	}
+	if got := roomLeadRows(a, "budget back bed"); got != 1 {
+		t.Fatalf("with a tray up the segment is drawn %d times, want 1:\n%q", got, composerRows(a))
+	}
+	// AND THE TRAY SURVIVES THE PLACEHOLDER. The row was not just duplicated, it
+	// was overwritten: the chip a person had just attached vanished off the frame.
+	kept := false
+	for _, row := range composerRows(a) {
+		if strings.Contains(plain(row), "shot.png") {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatalf("the placeholder took the tray's row:\n%q", composerRows(a))
+	}
+
+	// AND A TYPED DRAFT IS THE SAME BOX. The placeholder is gone by now, so what
+	// is being asked is whether the segment itself moved.
+	a.input.setText("look at this")
+	a.touch()
+	if got := roomLeadRows(a, "budget back bed"); got != 1 {
+		t.Fatalf("a typed draft over a tray draws the segment %d times, want 1:\n%q",
+			got, composerRows(a))
+	}
+
+	// AND A WRAPPED DRAFT DOES NOT REPEAT THE SEGMENT PER ROW: it is a fact about
+	// the box, not a gutter down the side of the sentence.
+	a.width = 60
+	a.input.setText("fix the flake in the loader and then run the whole suite again please")
+	a.touch()
+	rows := composerRows(a)
+	if len(rows) < 3 {
+		t.Fatalf("the fixture did not wrap over a tray: %q", rows)
+	}
+	if got := roomLeadRows(a, "budget back bed"); got != 1 {
+		t.Fatalf("a wrapped draft draws the segment %d times, want 1:\n%q", got, rows)
+	}
+}
+
+// THE PLACEHOLDER SAYS WHO IS LISTENING AND NOTHING ELSE (ISSUE-126). It used to
+// end `… (esc: main)`, which is the way out — already named on the legend one row
+// above the box, at every width a room can be drawn at, and again on the top bar
+// wherever the bar is drawn. And it named the destination `main` where both of
+// those call it `back`.
+func TestTheSteerPlaceholderDoesNotRepeatTheWayOut(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.height = 30
+	for _, width := range []int{200, 120, 80, 60, 40} {
+		a.width = width
+		a.openRoom(7, "budget back bed")
+		box := ""
+		for _, row := range composerRows(a) {
+			box += plain(row) + "\n"
+		}
+		if strings.Contains(box, "esc") {
+			t.Fatalf("at %d columns the placeholder still names the way out:\n%s", width, box)
+		}
+		// AND THE WAY OUT IS STILL SAID, one row up, where the slot for it is.
+		if leg := plain(a.legend(width)); !strings.Contains(leg, roomLegendWord) {
+			t.Fatalf("at %d columns nothing names the way out: %q", width, leg)
+		}
+	}
+}

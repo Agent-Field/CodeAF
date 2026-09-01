@@ -1332,6 +1332,29 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	return block, caretX, caretRow
 }
 
+// draftHeadRow is which row of the input block the DRAFT's own first row is:
+// one when the tray is above it, zero when there is no tray. It is the row the
+// prompt, the room segment and every placeholder belong on.
+//
+// IT IS THE ONE ANSWER TO THAT QUESTION, and it is a function because four
+// callers were each working it out for themselves. Two of them — the lanes that
+// splice a placeholder onto the box (task.go's [app.redirectLane], room.go's
+// [app.roomSteerLaneRows]) — wrote row zero blind, so with a tray up they
+// replaced the chips with the placeholder and the room's segment was drawn
+// TWICE: once on the row they had taken, and once on the draft row still under
+// it. Two identical prompts, one bare, and no sign of the attachment.
+//
+// Asking [app.chipStrip] again costs a second lay-out of a row that is at most a
+// few chips wide, and it is safe to ask twice: the strip is a pure function of
+// the tray and the dial, and the columns it records for the pointer are the same
+// columns both times.
+func (a *app) draftHeadRow(width int) int {
+	if a.chipStrip(width) != "" {
+		return 1
+	}
+	return 0
+}
+
 // inputHeight is how many rows the input block is taking. Every geometric
 // question below the conversation goes through it, so a draft that grew to six
 // rows takes those rows from the transcript and from nothing else.

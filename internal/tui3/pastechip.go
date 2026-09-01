@@ -186,11 +186,11 @@ func (a *app) pastePointerAt(x, row int) int {
 	}
 	width, height := a.size()
 	boxWidth := width - len(inputPad)
-	if a.chipStrip(boxWidth) != "" {
-		if row == 0 {
-			return 0
-		}
-		row--
+	// The tray is the block's first row when there is one (input.go's
+	// [app.draftHeadRow]), and a press on it names no paste.
+	row -= a.draftHeadRow(boxWidth)
+	if row < 0 {
+		return 0
 	}
 	rows := min(draftRows, height-2)
 	head := ansi.StringWidth(a.roomLead(boxWidth)) + ansi.StringWidth(prompt)

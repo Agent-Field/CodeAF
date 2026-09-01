@@ -38,16 +38,13 @@ func (a *app) draftPress(x, y int) bool {
 	}
 	width, height := a.size()
 	boxWidth := width - len(inputPad)
-	// The tray is the block's first row when there is one (inputBlock). A click
-	// on it is the chips' own business and [app.chipPress] has already had its
-	// chance earlier in the dispatch — the row is consumed here so a miss on a
-	// chip does not park a drag on the tray.
-	at := mark.index
-	if a.chipStrip(boxWidth) != "" {
-		if at == 0 {
-			return true
-		}
-		at--
+	// The tray is the block's first row when there is one (input.go's
+	// [app.draftHeadRow]). A click on it is the chips' own business and
+	// [app.chipPress] has already had its chance earlier in the dispatch — the row
+	// is consumed here so a miss on a chip does not park a drag on the tray.
+	at := mark.index - a.draftHeadRow(boxWidth)
+	if at < 0 {
+		return true
 	}
 	// An empty draft has one row and one place the caret can be.
 	if len(a.input.value) == 0 {

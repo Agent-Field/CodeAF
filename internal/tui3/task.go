@@ -5551,7 +5551,15 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	// is every frame a proposal is normally answered on.
 	lead := a.roomLead(width)
 	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
+	// AND IT GOES ON THE DRAFT'S ROW, WHICH IS NOT ALWAYS ROW ZERO (input.go's
+	// [app.draftHeadRow]): the tray takes the block's first row whenever there is
+	// one, and a placeholder written blind to row zero replaces the chips and
+	// leaves the prompt drawn twice.
+	at := a.draftHeadRow(width)
+	if at >= len(rows) {
+		return rows
+	}
 	out := append([]string(nil), rows...)
-	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
+	out[at] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
 }

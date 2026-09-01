@@ -390,15 +390,26 @@ const (
 	roomYetWord = "nothing on this page yet — it fills in as the task works"
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
-	roomParkedWord = " is parked — "
+	roomParkedWord  = " is parked — "
 	roomLoadingWord = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
-	// the same box that talks to the model. It names the way out as well —
-	// the box is where a person's eye is, and "who is listening" and "how do I
-	// stop talking to them" are one question asked twice.
+	// the same box that talks to the model.
+	//
+	// IT SAYS THAT AND NOTHING ELSE (ISSUE-126). It used to carry the way out too
+	// — `Steer this task… (esc: main)` — from before there was anywhere else to
+	// put it. There is now: the legend one row above the box reads
+	// `room · esc/← back` at every width a room can be drawn at, and the top bar
+	// ends in `esc/← back · ✕` wherever the bar itself is drawn. Three spellings
+	// of one gesture, one of them naming a destination (`main`) the other two call
+	// `back`, is the placeholder answering a question the row above it had already
+	// answered better.
 	roomSteerLane = "Steer "
-	roomSteerBack = "… (esc: main)"
+	// roomSteerTail closes every one of these placeholders. It is a constant
+	// rather than a literal because three lanes end with it — the node by name,
+	// the node by "this task", the planner — and an ellipsis that drifted would
+	// read as a different kind of pause on one of them.
+	roomSteerTail = "…"
 	// roomBackWord is the top bar's right end: the two gestures that return to
 	// the conversation, in the order a hand reaches for them.
 	//
@@ -3084,9 +3095,9 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	// fitted by its own law — the door survives and the fact degrades
 	// (roomrefusal.go) — rather than by a cut from the right.
 	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
-	lane := roomSteerLane + a.room.title + roomSteerBack
+	lane := roomSteerLane + a.room.title + roomSteerTail
 	if lead != "" {
-		lane = roomSteerHere + roomSteerBack
+		lane = roomSteerHere + roomSteerTail
 	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
@@ -3094,7 +3105,7 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// (roomorch.go). The placeholder says whose ear it is for the reason it
 		// names a node out here — the box is the same box either way, and "who is
 		// listening" is the question it exists to answer.
-		lane = orchSteerLane + roomSteerBack
+		lane = orchSteerLane + roomSteerTail
 	}
 	if a.room.done {
 		lane = a.roomFinishedRefusal().fit(room)
@@ -3105,8 +3116,17 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// of them is asking the same question.
 		lane = roomJobRefusal.fit(room)
 	}
+	// THE PLACEHOLDER GOES ON THE DRAFT'S ROW, WHICH IS NOT ALWAYS ROW ZERO
+	// (input.go's [app.draftHeadRow]): with an attachment or the thinking dial up,
+	// the block's first row is the tray. This wrote row zero blind, which took the
+	// chips off the tray and left the room's segment drawn twice — once here and
+	// once on the draft row below.
+	at := a.draftHeadRow(width)
+	if at >= len(rows) {
+		return rows
+	}
 	out := append([]string(nil), rows...)
-	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
+	out[at] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
 	return out
 }
 

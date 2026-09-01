@@ -4116,7 +4116,7 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	if !strings.Contains(lane, "Fix the nil-map") {
 		t.Fatalf("the box does not name the node it is talking to:\n%s", lane)
 	}
-	if !strings.Contains(lane, roomSteerHere+roomSteerBack) {
+	if !strings.Contains(lane, roomSteerHere+roomSteerTail) {
 		t.Fatalf("the box does not offer the steering lane:\n%s", lane)
 	}
 
