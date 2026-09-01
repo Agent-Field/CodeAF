@@ -2028,7 +2028,13 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// record (taskgrade.go).
 	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
 	report, changed, _, _ := node.leavings()
-	merge, detail := tree.comeHome(node.title(), changed)
+	// AND IT LANDS THE FAMILY'S LEDGER, THROUGH THE ONE ROAD EVERY LANDING TAKES
+	// (task_ledger.go's [landHome]). An accept happens long after the run: the
+	// list it reads is whatever the first landing wrote onto the node, and a
+	// divider that landed unverified and is accepted in the morning must lay the
+	// same whole product a verified one laid at once. The fold is idempotent, so
+	// a list that is already complete costs a walk of itself.
+	changed, merge, detail := landHome(node, tree, changed)
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
 	// however sure the person was about the work. The node stays where it was —
 	// needing a look — with the conflicting files named, because what is being
@@ -2135,6 +2141,10 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 	// A LATE VERDICT IS STILL THE CHECK'S VERDICT, so the node carries it into
 	// the settle below exactly as the gate's own road does.
 	node.checkSaid(auditGrade(verdict), 0)
+	// AND IT SETTLES ON THE FAMILY'S LEDGER, on all three arms. Two of them do
+	// not merge and still write the list onto the node, which is what the accept
+	// after them will land (task_ledger.go).
+	changed = absorbedLedger(node, changed)
 	report, _, branch, merge := node.leavings()
 	// THE TWO HALVES OF THE CARD, PULLED APART BEFORE EITHER IS REWRITTEN. The
 	// report a landed unverified node carries is the last audit's line with the
@@ -2167,7 +2177,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		merged, detail := tree.comeHome(node.title(), changed)
+		changed, merged, detail := landHome(node, tree, changed)
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
