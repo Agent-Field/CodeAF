@@ -56,8 +56,7 @@ watching, so it is the one pocket that always has a bottom.
 | 8 | workflow run bound | `internal/craft/types.go` `DefaultRunBudgetUSD` | 2.50 | **50** | USD per run | *"Cost check -- … Say the word and I'll keep going"* | no — 0 reads as the default |
 | 9 | workflow ceiling | `internal/craft/types.go` `MaxRunBudgetUSD` | 10 | **500** | USD | the most a workflow file may grant itself | n/a |
 | 10 | workflow wall | `internal/craft/types.go` `DefaultWallClock` / `MaxWallClock` | 30m / 2h | **6h / 24h** | time | stops opening new rounds; running leaves finish | no |
-| 11 | coding-leaf backstop | `internal/exec/swe.go` `DefaultSWEMaxCost` | 10 | **100** | USD per leaf | budget-exhausted terminal the replan understands | env only |
-| 12 | discard consent gate | `internal/store/surgery.go` `SurgerySpendGateUSD` | 0.25 | **5** | USD already spent | asks before throwing running work away — raising it asks **less** | n/a |
+| 11 | discard consent gate | `internal/store/surgery.go` `SurgerySpendGateUSD` | 0.25 | **5** | USD already spent | asks before throwing running work away — raising it asks **less** | n/a |
 
 ### Rails that already shipped unbounded, and stay that way
 
@@ -92,7 +91,6 @@ explicit instruction and still errors.
 | lifted-tier cap | `AFORGE_RESPONSE_LIFT_CAP` | **no** — plumbing, turned when a provider misbehaves or a run is held to a price |
 | standing per-firing | — | `per_run_usd` on the `stand` tool, per item |
 | adaptive-run tank | — | the composer's third line, per run |
-| coding-leaf backstop | `AFORGE_SWE_MAX_COST` | no |
 | unattended budget | `AFORGE_MAX_COST` / `AFORGE_MAX_HOURS` | no — flags |
 
 ## One source of truth

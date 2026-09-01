@@ -11,7 +11,7 @@ import (
 
 // The §6 regression test.
 //
-// Measured on a real run: a swe leaf whose brief named the module, the file, the
+// Measured on a real run: a leaf whose brief named the module, the file, the
 // interface type, the constructor and a `go build` acceptance check failed, and
 // the node that replaced it carried 319 characters of title-and-summary — every
 // one of those facts gone. Nothing truncated them. The replacement was a

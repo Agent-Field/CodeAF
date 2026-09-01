@@ -163,7 +163,7 @@ func TestAPromotedCommandKeepsWhatItPrintedBeforeThePromotion(t *testing.T) {
 }
 
 // With nothing there to take the process, the law is exactly what it always was.
-// This is the bare executor's path, and a subharness leaf still gets it.
+// This is the path a tool taken straight off bare's belt runs on.
 func TestWithNobodyToPromoteItATimeoutStillKills(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)

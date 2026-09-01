@@ -21,8 +21,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
-// strictPreamble is prefixed to every command this package runs, exactly as
-// internal/swepro/codeaf/full_verification.go prefixes its own. A pipeline
+// strictPreamble is prefixed to every command this package runs. A pipeline
 // whose first stage fails and whose last stage succeeds exits 0 without it, so
 // a suite could go red behind a `tee` and be read as green.
 const strictPreamble = "set -euo pipefail\n"

@@ -47,30 +47,23 @@ func TestTheRecordedFanInIsDependenciesAndNeverTheTouchList(t *testing.T) {
 	}
 }
 
-// Attribution: the record has to name the worker that actually ran the leaf.
-// The plan node carried the planner's intention and only an escalation ever
-// updated it, so a leaf that ran on a coding pipeline for forty minutes was
-// journaled into the generalist's file — the one the generalist's ruler is
-// rewritten from.
+// Attribution: the record has to describe what actually ran the leaf, and the
+// plan node is what the record is written from. The claim is the moment both
+// facts are in hand, so it is where they are written down — the planner's
+// intention never updated itself, and a plan node still carrying it would
+// price the leaf as something it was not.
 func TestTheRecordFollowsTheWorkerThatActuallyRan(t *testing.T) {
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(exec.SubharnessInfo{
-		Name: "swe", Purpose: "an end-to-end software-engineering pipeline",
-	})
 	document := &plan.Graph{Goal: "ship it", NextID: 1}
 	document.Add(plan.Node{Kind: plan.KindWork, Stage: 1, Title: "Change the code",
 		Summary: "edit and test", Subharness: ""})
 	node := document.Node(1)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	plans.markClaimed(document, node, "swe", 4)
-	if node.Subharness != "swe" {
+	plans.markClaimed(document, node, exec.LinearSubharness, 4)
+	if node.Subharness != exec.LinearSubharness {
 		t.Fatalf("the plan node was not settled onto the worker the store promised: %q", node.Subharness)
 	}
 	if got := recordedFanIn(*node); got != 4 {
 		t.Fatalf("the measured fan-in did not reach the plan node: %d", got)
-	}
-	if profileSubharness(node.Subharness) != "swe" {
-		t.Fatalf("the record would be filed under %q", profileSubharness(node.Subharness))
 	}
 }

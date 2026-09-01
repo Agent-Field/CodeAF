@@ -113,10 +113,10 @@ type Layer int
 const (
 	// LayerBuiltIn is the compiled-in Go runners. They are layer zero — before
 	// every store — and that is deliberate: a bundle on disk MAY NOT SHADOW A
-	// NAME THIS BINARY SHIPS. The names the owner ships are the names the
-	// manual, the prompts and the menus all describe, and a store that could
-	// silently replace one would make every one of those documents a lie about
-	// the program that actually ran.
+	// NAME THIS BINARY SHIPS. The names the owner ships are the names the manual
+	// and the prompts describe, and a store that could silently replace one
+	// would make both of those documents a lie about the program that actually
+	// ran.
 	LayerBuiltIn Layer = iota
 	// LayerPacked is a zip appended to the binary itself. It is Phase 2 and
 	// nothing in this tree writes or reads one yet; the constant exists so the

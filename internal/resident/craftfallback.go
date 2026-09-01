@@ -171,7 +171,6 @@ func (r *Reconciler) craftFallback(ctx context.Context, node store.Node) bool {
 		WorkModel:   node.Provenance.WorkModel,
 		PlanModel:   node.Provenance.PlanModel,
 		RunModel:    node.Provenance.RunModel,
-		Subharness:  node.Provenance.Subharness,
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {

@@ -101,16 +101,9 @@ func endpointRefusalStatus(status int) bool {
 
 // endpointRefusalPhrases is the vocabulary a router has been SEEN to refuse a
 // parameter combination in. It is a HINT and no longer the gate — the header
-// above says what replaced it and what the two remaining jobs are.
-//
-// THE REMAINING VOCABULARY GATE IN THIS PROCESS IS NOT THIS ONE. internal/swepro's
-// adaptive router keeps a list like this one AS its detector
-// (internal/swepro/internal/router/adaptive/adaptive.go's
-// IsLikelyProviderIncompatible), and it is deliberately left alone: it is a port
-// of somebody else's engine, classifying a JS value rather than an HTTP
-// response, with no status, no envelope and no catalog in its hands to classify
-// by. It is named here so that the next person reading rule 1 of
-// docs/design/failsafe/FAILSAFE.md knows where the other one is.
+// above says what replaced it and what the two remaining jobs are. Rule 1 of
+// docs/design/failsafe/FAILSAFE.md is why it is a hint: a phrase list is
+// evidence, never the classification.
 var endpointRefusalPhrases = []string{
 	"no endpoints found",
 	"no endpoints that support",

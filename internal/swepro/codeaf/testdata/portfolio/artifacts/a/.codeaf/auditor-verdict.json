@@ -1,8 +1,0 @@
-{
-  "verdict": "fail",
-  "commands": [{"cmd": "go test ./...", "exit": 1}],
-  "blockers": [{"detail": "beta behavior is missing"}],
-  "clause_coverage": [
-    {"clause": "Alpha behavior works", "evidence": "go test alpha passed"}
-  ]
-}

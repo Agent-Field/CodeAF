@@ -12,7 +12,7 @@ import (
 //
 // The defect this pins (audit §11 D4): a run reported `spend: 0.5255` while its
 // own usage table summed to $0.8221 — a 36 % under-report, and the missing
-// third was one swe leaf that journaled its row on the way down from the wall,
+// third was one leaf that journaled its row on the way down from the wall,
 // after the figure had been read. The figure was also a subtraction of today's
 // spend across the whole store, so it was wrong about the day boundary and
 // about a store somebody else was also billing.
@@ -61,7 +61,7 @@ func TestErrandSpendSumsEveryKindOfUsageRow(t *testing.T) {
 	priceErrand(graph, session, openedAt, &outcome)
 	assertSpendIsTheTable(t, graph, outcome)
 
-	// The late row. This is the swe leaf that landed at the wall: it is written
+	// The late row. This is the leaf that landed at the wall: it is written
 	// after a receipt would once have been printed, and the only way the figure
 	// can carry it is by being a query rather than a counter read at settle
 	// time. A second pricing pass over the same store must move.

@@ -213,8 +213,8 @@ here is a proposal, and the template is for defects.
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
-`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `internal/swepro`
-packages, four `cmd/harness-design` tests, two `internal/guard`
+`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `cmd/harness-design`
+tests, two `internal/guard`
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
 `internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
 `internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,

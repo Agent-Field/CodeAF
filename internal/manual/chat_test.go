@@ -305,13 +305,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why were the files my task saved called unverified", "how-tasks-run"},
 		// And the other half: a fork whose hands declared their files in full and
 		// were refused every single write.
-		// The worker roster, asked the four ways somebody meets it: the two
-		// sentences the person who wanted it actually said, the config line
-		// they went looking for, and the note a typo in that line prints.
-		{"only use the normal workers", "how-tasks-run"},
-		{"turn off the specialist worker", "how-tasks-run"},
-		{"stop it using swe", "how-tasks-run"},
-		{"which workers are installed", "how-tasks-run"},
 		{"how do I say which files each hand may write", "tasks"},
 		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},

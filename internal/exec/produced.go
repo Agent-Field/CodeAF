@@ -151,8 +151,8 @@ func (t *Toolbox) recordProduced(before *TreeSnapshot) {
 // nothing of this workspace — because what the delivery gate is later shown is
 // this registry and nothing else: a leaf that wrote the file and never filed it
 // is convicted of not writing it, and a second leaf is spliced in to write it
-// again. The bare loop paid that twice on every run until it went through this
-// door.
+// again. A belt whose tools file nothing paid that twice on every run until it
+// went through this door.
 //
 // The findings go to BOTH accounts, and deliberately. A created or changed file
 // is recorded as a deliverable, which is what the footer and the gate read and

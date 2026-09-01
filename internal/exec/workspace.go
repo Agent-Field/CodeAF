@@ -473,12 +473,11 @@ func (w *Workspace) ArtifactFacts(leaf string) []ArtifactFact {
 	return ordered
 }
 
-// observedArtifactLimit bounds what one leaf's tree diff may claim, and it is
-// sweArtifactLimit rather than a second number because it bounds the same thing
-// for the same reason: a change set of this size is a tree rather than a
-// deliverable, and a files line naming three hundred paths names nothing. One
-// constant, so the two bounds cannot drift apart.
-const observedArtifactLimit = sweArtifactLimit
+// observedArtifactLimit bounds what one leaf's tree diff may claim. A change
+// set larger than this is a tree rather than a deliverable: a refactor that
+// touches four hundred files is a real outcome, but four hundred paths pasted
+// into three dependents' contexts is not.
+const observedArtifactLimit = 50
 
 // TreeSnapshot is the workspace as the filesystem itself showed it at one
 // instant: every path a deliverable could be, with enough of each file recorded

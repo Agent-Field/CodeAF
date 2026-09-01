@@ -156,9 +156,9 @@ const NoWall = time.Duration(-1)
 type SelfCloseRoom struct {
 	// Turns, Tokens and Wall are what is left on each meter that BOUNDS this
 	// belt. A belt that does not meter one of them leaves it at zero and says
-	// so through the flag below rather than reading as exhausted — the bare
-	// loop has no turn cap and no token ceiling, and reading its zero as "out
-	// of turns" would silently switch the mechanism off for a whole belt.
+	// so through the flag below rather than reading as exhausted — a belt with
+	// no turn cap and no token ceiling reads zero on both, and reading that as
+	// "out of turns" would silently switch the mechanism off for a whole belt.
 	Turns  int
 	Tokens int
 	Wall   time.Duration
@@ -172,8 +172,9 @@ type SelfCloseRoom struct {
 //
 // A NON-POSITIVE GRANT MEANS THIS BELT DOES NOT BOUND THAT, which is a different
 // fact from a grant that has run out, and the two must not be spelled the same
-// way: the bare loop has no turn cap and no token ceiling, and reading its zeros
-// as "spent" would switch this mechanism off for a whole belt.
+// way: a belt with no turn cap and no token ceiling reads zero on both, and
+// reading those zeros as "spent" would switch this mechanism off for a whole
+// belt.
 //
 // THE CLOCK IS THE OTHER WAY ROUND, because a clock is the one meter every belt
 // has and a spent one is the dangerous reading to get wrong. wall is what is
@@ -205,8 +206,8 @@ func RoomLeft(outcome *Outcome, maxTurns, maxTokens int, wall, reserve time.Dura
 	}
 	// AND THE LEAF'S OWN ACCOUNT OF ITSELF OVERRULES THE ARITHMETIC. A leaf can
 	// be inside every figure above and still have been told to land — by a
-	// straggler hand-back, by a deadline reserve it entered and then finished
-	// early inside. Exhausted is the field that carries exactly that, and a leaf
+	// deadline reserve it entered and then finished early inside. Exhausted is
+	// the field that carries exactly that, and a leaf
 	// that was told to stop must not be handed more work by a mechanism that
 	// only read the numbers.
 	if room.Left && outcome.Exhausted != "" {

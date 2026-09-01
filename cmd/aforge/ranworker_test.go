@@ -48,11 +48,10 @@ func ranOf(t *testing.T, graph *store.Store, id string) store.Node {
 }
 
 // THE DEFECT, IN ONE ASSERTION. Every node of the s9 sweep's ink and igel stores
-// carried a blank worker, because nothing routed them and nothing wrote down
-// that the generalist had therefore taken them. A blank is what four different
-// things look like — never planned, never claimed, never dispatched, routed to
-// something nobody recorded — so the autopsy could not begin.
-func TestTheGeneralistWritesItsOwnNameDown(t *testing.T) {
+// carried a blank worker, because nothing wrote down who had taken them. A blank
+// is what four different things look like — never planned, never claimed, never
+// dispatched, run by something nobody recorded — so the autopsy could not begin.
+func TestTheWorkerWritesItsOwnNameDown(t *testing.T) {
 	graph, build := ranFixture(t)
 	if worker := runningWorker("task-1", "", build, ""); worker.Subharness() != exec.LinearSubharness {
 		t.Fatalf("an unrouted node was built a %q", worker.Subharness())
@@ -61,8 +60,8 @@ func TestTheGeneralistWritesItsOwnNameDown(t *testing.T) {
 	if node.Ran != exec.LinearSubharness {
 		t.Fatalf("the node that ran says %q ran it, want %q", node.Ran, exec.LinearSubharness)
 	}
-	// The ASK is untouched. It is a different fact in a different column: the
-	// compiler routed nothing, and that stays true however the node was run.
+	// The ASK is untouched. It is a different fact in a different column: nobody
+	// wrote a name on this node, and that stays true however it was run.
 	if node.Subharness != "" {
 		t.Fatalf("recording who ran overwrote what was asked for: %q", node.Subharness)
 	}
@@ -75,56 +74,23 @@ func TestTheGeneralistWritesItsOwnNameDown(t *testing.T) {
 	}
 }
 
-// The other half of the rule: an escalation is a change of worker, and the
-// change is a fact about the run with a reason attached to it.
-func TestAnEscalatedNodeRecordsTheWorkerThatTookIt(t *testing.T) {
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
-	graph, build := ranFixture(t)
-
-	runningWorker("task-1", "", build, "")
-	reason := "escalated from linear after a failed attempt"
-	if worker := runningWorker("task-1", "swe", build, reason); worker.Subharness() != "swe" {
-		t.Fatalf("the escalation built a %q", worker.Subharness())
-	}
-	if node := ranOf(t, graph, "task-1"); node.Ran != "swe" {
-		t.Fatalf("the escalated node says %q ran it", node.Ran)
-	}
-	events := ranEvents(t, graph, "task-1")
-	if len(events) != 2 {
-		t.Fatalf("the hand-over left %d events, want 2", len(events))
-	}
-	last := events[len(events)-1]
-	if last.Subharness != "swe" || last.Previous != exec.LinearSubharness {
-		t.Fatalf("the escalation event reads %q from %q", last.Subharness, last.Previous)
-	}
-	if last.Reason != reason {
-		t.Fatalf("the escalation event lost its reason: %q", last.Reason)
-	}
-	// And it survives the rebuild, because the row is a view of the journal and
-	// a leaf reclaimed after a restart must not read back as generalist work.
-	if err := graph.Rebuild(); err != nil {
-		t.Fatal(err)
-	}
-	if node := ranOf(t, graph, "task-1"); node.Ran != "swe" {
-		t.Fatalf("the rebuild forgot who ran it: %q", node.Ran)
-	}
-}
-
-// A worker this build cannot construct runs the generalist — that has always
-// been the registry's promise — and the store now says which of the two
-// actually happened, with the promise it could not keep beside it. A benchmark
-// cell that silently became a default cell is a measurement of the wrong thing.
+// A name this build cannot construct runs linear — that has always been the
+// registry's promise — and the store says which of the two actually happened,
+// with the promise it could not keep beside it. A run that silently became an
+// ordinary run is a measurement of the wrong thing.
 func TestADegradedWorkerRecordsWhatActuallyRanAndWhy(t *testing.T) {
 	graph, build := ranFixture(t)
-	runningWorker("task-1", "swe", build, "")
+	runningWorker("task-1", "retired-worker", build, "")
 	node := ranOf(t, graph, "task-1")
 	if node.Ran != exec.LinearSubharness {
-		t.Fatalf("a worker this build has not says %q ran it", node.Ran)
+		t.Fatalf("a name this build has not says %q ran it", node.Ran)
 	}
 	events := ranEvents(t, graph, "task-1")
-	if len(events) != 1 || !strings.Contains(events[0].Reason, "swe") {
+	if len(events) != 1 || !strings.Contains(events[0].Reason, "retired-worker") {
 		t.Fatalf("the degradation was recorded as %+v", events)
+	}
+	if !strings.Contains(events[0].Reason, "one worker") {
+		t.Fatalf("the reason does not say what this build has: %+v", events)
 	}
 }
 
@@ -207,10 +173,9 @@ func TestTheWorkerThatRanIsWrittenAtOneSeam(t *testing.T) {
 }
 
 // The stream says it too, so that a person watching a run does not have to open
-// a database to answer "who is doing this". The compile summary has named a
-// specialist since it existed; this is the same courtesy on every node, and it
-// includes the generalist, because the runs that were unreadable were exactly
-// the runs where every worker was the generalist.
+// a database to answer "who is doing this". It says it on every node, including
+// the ordinary ones, because the runs that were unreadable were exactly the runs
+// where nothing was named.
 func TestTheRunningLineNamesTheWorkerAndWaitsForIt(t *testing.T) {
 	said := &strings.Builder{}
 	watcher := &settlementWatch{progress: said, started: time.Now(), structured: true}
@@ -231,15 +196,14 @@ func TestTheRunningLineNamesTheWorkerAndWaitsForIt(t *testing.T) {
 		t.Fatal("the running line never arrived")
 	}
 	if !strings.Contains(said.String(), "▶") || !strings.Contains(said.String(), "(linear)") {
-		t.Fatalf("the running line does not name the generalist: %q", said.String())
+		t.Fatalf("the running line does not name the worker: %q", said.String())
 	}
 
-	// And the finishing line names whoever finished it, which after an
-	// escalation is not who started it.
+	// And the finishing line names whoever finished it, read off the same column.
 	said.Reset()
-	node.Status, node.Ran = store.Done, "swe"
+	node.Status = store.Done
 	watcher.report([]store.Node{node})
-	if !strings.Contains(said.String(), "✓") || !strings.Contains(said.String(), "(swe)") {
+	if !strings.Contains(said.String(), "✓") || !strings.Contains(said.String(), "(linear)") {
 		t.Fatalf("the finishing line does not name the worker: %q", said.String())
 	}
 }

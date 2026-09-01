@@ -73,8 +73,8 @@ func DeoptHeldLine(because string) string {
 // would climb over.
 //
 // Two spellings because two belts use two: a conversation's belt calls it `bash`
-// (internal/exec/bare) and a leaf's own belt calls it `sh` ([Toolbox]). A
-// manifest may honestly have been written against either.
+// (internal/exec/bare, the wire tool library) and a leaf's own belt calls it
+// `sh` ([Toolbox]). A manifest may honestly have been written against either.
 var deoptShellNames = []string{"bash", "sh"}
 
 // DeoptHeld reports that this program's ceiling does not reach the long way, so
@@ -160,10 +160,10 @@ func Deopt(ctx context.Context, registry *Registry, manifest Manifest, input jso
 	}
 	runner, err := registry.Subharness(LinearSubharness)
 	if err != nil {
-		// The registry may have been built without the baseline fronted as a
-		// runner — a surface that registered specialists and nothing else. The
-		// executor underneath it is the same worker either way, so it is fronted
-		// here rather than refused.
+		// The registry may have been built without the worker fronted as a
+		// runner — a surface that registered saved programs and nothing else.
+		// The executor underneath it is the same worker either way, so it is
+		// fronted here rather than refused.
 		general := registry.Generalist()
 		if general == nil {
 			return RunResult{}, errors.New("there is no worker here to hand this to")

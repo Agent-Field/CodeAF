@@ -161,11 +161,6 @@ type brainOptions struct {
 	// auxiliary call — a window that folded its crew into the session model
 	// would be answering the conversation on the work class.
 	seats *config.Seats
-	// subharness forces every job this brain admits onto one worker. It is a
-	// benchmarking instrument: a run comparing two workers on the same corpus
-	// cannot let the choice be the variable it is measuring. Empty is the
-	// ordinary path, where the compiler chooses and usually chooses nothing.
-	subharness string
 	// wall is how long this brain's work has to finish in. Zero is a window,
 	// which has no wall; an errand's is its own timeout, and it is handed on so
 	// the work can see the clock it is being judged against.
@@ -340,13 +335,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// plans: the anchors measure how the executor spends turns, and the plan
 	// model only reads them to size work for that executor.
 	measured := installMeasuredRulers(settings, taskClient.Model())
-	// What each worker has actually cost, under its own name on the menu. The
-	// hook is read at render time rather than captured, so a specialist that
-	// crosses its evidence gate mid-session is grounded in that session.
-	exec.UseSubharnessKnowledge(func(subharness string) string {
-		return subharnessKnowledge(settings, taskClient.Model(), subharness)
-	})
-
 	// Every structuring call this surface makes now bills the same rail its
 	// leaves bill. A journal write that fails is not a reason to fail the call
 	// it is describing, so this is best-effort by construction — but it fails
@@ -416,9 +404,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	if opts.sharedWorkspace {
 		terrainRoot = workspaceRoot
 	}
-	// Where this surface's jobs work, so a leaf promised a worker this build does
-	// not have can say so once in its own flight recorder rather than degrading
-	// in silence.
+	// Where this surface's jobs work, so a leaf whose stored row names a worker
+	// this build does not have can say so once in its own flight recorder rather
+	// than degrading in silence.
 	seatLeafWorkerNotes(workspaceRoot, scratchRoot, graph)
 
 	// The lease proves that no live resident can still own a claim in this DB.
@@ -543,11 +531,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// stand straight back down, and the role would circle the open windows
 	// forever.
 	reconciler = reconciler.WithHandover(opts.hand).WithResidentSince(time.Now())
-	// A forced worker takes the choice away from the compiler for this whole
-	// process. It is what a measurement run asks for and nothing else asks for.
-	if forced := resolveSubharnessFlag(opts.subharness, os.Stderr); forced != "" {
-		reconciler = reconciler.WithSubharness(forced)
-	}
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -758,14 +741,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// record is later written from.
 			plans.markClaimed(planGraph, planNode, subharness, fanIn.Count)
 		}
-		// One ledger bucket per worker and no finer. What a router learns about
-		// a specialist says nothing about a generalist leaf, and a key any
-		// finer than this never accumulates enough graded outcomes to mean
-		// anything — see exec.LeafShape, which splits on the same principle.
-		if exec.KnownSubharness(subharness) {
-			shape = subharness
-		}
-
 		// Every input is named. Untitled, they render as `=== from "" ===`
 		// under a header that says the results are prior work the leaf already
 		// has and must not gather again — so a standing lesson reading "check X
@@ -1036,11 +1011,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// Within-node progress, through the one channel the thread already
 			// has for "this is still happening": the same replaceable rows a
 			// compile posts, anchored to the job rather than typed into it.
-			// The generalist passes nothing here and pays nothing for it; a
-			// worker whose leaf runs for the better part of an hour would
-			// otherwise be a spinner, and the two alternatives — splicing its
-			// insides into the graph, or narrating them as messages — are the
-			// two things the subharness law forbids by name.
+			// A leaf that runs for the better part of an hour would otherwise
+			// be a spinner, and the two alternatives — splicing its insides
+			// into the graph, or narrating them as messages — are the two
+			// things the leaf contract forbids by name.
 			Progress: leafProgress(graph, resident.PlanAnchor{
 				NodeID: jobRoot, SessionID: node.Provenance.SessionID,
 			}),
@@ -1056,16 +1030,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// than a silent hang, and a leaf whose verdict says a stronger model
 		// might fix it gets exactly one escalation when a panel offers one.
 		//
-		// A stronger model is not the only second rung there is. A leaf whose
-		// work is, in its essence, the thing a registered specialist exists for
-		// has somewhere else to go — a different KIND of worker rather than a
-		// bigger version of the same one — and that is the rung the boundary
-		// between the two rulers is actually made of. It is offered here, on the
-		// existing loop, and the menu it is chosen from excludes whoever just
-		// failed, so no worker is ever handed back its own failure.
+		// A STRONGER MODEL IS THE ONLY SECOND RUNG THERE IS. There is one
+		// worker, so a retry is the same worker with whatever the model ladder
+		// can offer it, and a leaf that still cannot do the work ends with its
+		// failure named rather than being handed somewhere else.
 		//
-		// In a build with no specialist the menu is empty, the condition below
-		// reads exactly as it always did, and not one extra call is made.
 		// The acceptance checklist, journaled against the work it will be used
 		// to judge, before that work starts. It is written here rather than at
 		// plan time because a node has to exist for an event to hang on, and
@@ -1078,17 +1047,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// in do.go). A fail-safe that does not reach the person reading the
 		// verdict is decoration — FAILSAFE clause 3.
 		journalAcceptance(graph, node, task.Spec)
-		specialists := exec.MenuTextExcept(subharness)
 		attempts := 1
-		if !isReflex && (escalatable || specialists != "") {
+		if !isReflex && escalatable {
 			attempts = 2
 		}
-		// escalatedFrom remembers that this leaf reached its worker through a
-		// failure rather than through a choice. It is the one piece of evidence
-		// that says a boundary sits too high — "the generalist could not, this
-		// one could" — and it is worth nothing unless it survives into the
-		// profile record, which is where recalibration reads it.
-		escalatedFrom := ""
 		// One job is one cache lineage, exactly as one headless run is: the
 		// affinity key rides every leaf of the job so a prefix cache warmed
 		// by one worker serves its siblings.
@@ -1103,32 +1065,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		var spentShape []exec.TurnUsage
 		spentTurns := 0
 		workerModel := taskClient.Model()
-		// The straggler watch: the same judgement the retry loop below makes,
-		// asked while the siblings are still waiting at the barrier this leaf is
-		// holding rather than after its money is gone. It is installed only
-		// where this worker's own record can derive a threshold, so a fresh
-		// machine and every reflex leaf carry nothing at all and the loop is
-		// exactly what it always was. See straggler.go.
-		//
-		// stragglerChoice holds a judgement that has already been made and paid
-		// for. Without it a handed-back leaf would reach the retry below and be
-		// asked the identical question a second time, of the same judge, about
-		// the same leaf.
-		stragglerChoice := &stragglerHandoff{}
-		if !isReflex {
-			task.Overrun = stragglerWatch(settings, workingModel, stragglerJudge{
-				ctx:      ctx,
-				settings: settings,
-				graph:    graph,
-				client:   planClient,
-				node:     node,
-				worker:   subharness,
-				menu:     specialists,
-				brief:    task.Brief,
-				model:    func() string { return workerModel },
-				chose:    stragglerChoice.set,
-			})
-		}
 		// Every gathering node runs. There was once one that did not: the sink
 		// of a declared bundle, whose parts were the person's own requests
 		// verbatim and therefore self-contained deliveries, so joining them in
@@ -1173,89 +1109,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					}); modeErr != nil {
 						log.Printf("note: could not journal the retry shape of %s: %v", node.ID, modeErr)
 					}
-				}
-				// Who takes the retry, asked once, of the same judge machinery
-				// that already reads failures. An empty menu never reaches here.
-				//
-				// The failure is the judge's evidence channel, so a recorded
-				// out-of-envelope cost rides in on it rather than in the brief:
-				// the brief is the assignment and is handed on to whoever takes
-				// the retry, while this is a fact about the last attempt and has
-				// no business surviving into the next one's prompt. A judge
-				// choosing between a generalist and a specialist should know the
-				// last attempt cost multiples of what anything predicted.
-				failed := err
-				if failed != nil {
-					if clause := surpriseEvidence(graph, node.ID); clause != "" {
-						failed = fmt.Errorf("%s — %s", firstLine(err.Error()), clause)
-					}
-				}
-				// Asked once is literal. A leaf handed back mid-flight was put
-				// to this judge while it was still running and the answer is
-				// carried here, because the question — whose essence is this
-				// assignment, and does it match a specialist — is answered by
-				// the assignment rather than by how far the attempt got, and
-				// paying for the same answer twice would be the mechanism
-				// charging for its own promptness.
-				chosen := stragglerChoice.take()
-				if chosen == "" {
-					chosen = revision.JudgeRetryWorker(ctx, settings, planClient, node,
-						attempted, outcome, failed, specialists, workerModel)
-				}
-				// The class-stability rule, and it is a veto rather than a
-				// preference. An attempt that died on the clock was WORKING; the
-				// hour ran out, and an hour says nothing about what KIND of
-				// worker the assignment needs. Measured: a leaf that had just
-				// announced its finished comparison document, four algorithms
-				// benchmarked on three datasets, hit its time ceiling and was
-				// recalibrated onto the SWE coding pipeline — whose retry opened
-				// by "preparing the repository" for a writeup.
-				//
-				// What may move a class is capability evidence, and which
-				// endings are that is not a new judgement: provider.Verdict has
-				// separated what may be learned from from what may not since the
-				// router lab, and resident.MayReclassify is that same question
-				// asked about a different rung. It is applied here, at the point
-				// the change would land, so it covers both ways a name arrives —
-				// the judge's answer and a straggler hand-back already paid for.
-				if chosen != "" && !resident.MayReclassify(outcome, err) {
-					log.Printf("note: %s kept its worker after a deadline death; the clock is not evidence about %s", node.ID, chosen)
-					chosen = ""
-				}
-				if chosen != "" {
-					escalatedFrom = subharness
-					if escalatedFrom == "" {
-						escalatedFrom = exec.LinearSubharness
-					}
-					subharness = chosen
-					attempted.Subharness = chosen
-					// The row this function goes on to read for the profile
-					// key. Without it the specialist's leaf would be measured
-					// into the generalist's file — the one the generalist's
-					// ruler is rewritten from — and one coding pipeline's forty
-					// minutes would teach the planner that ordinary leaves are
-					// enormous.
-					node.Subharness = chosen
-					// Durable, because the promise has to outlive this process:
-					// a leaf whose retry is interrupted and claimed again must
-					// be claimed by the worker it was moved to, not by the one
-					// that already failed at it.
-					if _, changeErr := graph.SetNodeSubharness(node.ID, chosen,
-						"escalated from "+escalatedFrom+" after a failed attempt"); changeErr != nil {
-						log.Printf("note: could not journal the worker change for %s: %v", node.ID, changeErr)
-					}
-					if planNode != nil {
-						plans.markWorker(planGraph, planNode, chosen)
-					}
-					// The budget shape belongs to the worker, not to the leaf:
-					// the generalist's fifteen-minute backstop applied to a
-					// coding pipeline is a guillotine at its first merge.
-					chosenRoom := exec.SubharnessFor(chosen)
-					build.deadline = chosenRoom.Deadline(tokens)
-					watchdog = chosenRoom.Watchdog(tokens)
-					worker = runningWorker(node.ID, chosen, build,
-						"escalated from "+escalatedFrom+" after a failed attempt")
-					shape = chosen
 				}
 				task = attempted
 			}
@@ -1303,7 +1156,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 		}
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, err, escalatedFrom)
+			plans.recordOutcome(planGraph, planNode, outcome, err)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
 			// A cancel is news for the plan above this leaf, and it is the one
@@ -1390,7 +1243,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					})
 				} else {
 					guard.Go("chat/record-single-leaf", func() {
-						record, ok := recordSingleLeaf(settings, workerModel, node, outcome, escalatedFrom)
+						record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 						if ok {
 							recordProfileSurprise(graph, node.ID, record)
 						}
@@ -1467,8 +1320,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// predicate the record already uses for exactly this question, and the
 		// judge below is what stops a finished leaf being continued anyway.
 		if !isReflex && leafRanOutOfRoom(outcome) {
-			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text,
-				exec.MenuTextExcept(promisedWorker(node)), workerModel)
+			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text, workerModel)
 			if remainder.Checked && remainder.Done {
 				outcome.Verdict = provider.VerdictVerifiedSuccess
 			} else {
@@ -1492,7 +1344,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// the textual run of 2026-08-29 spliced fourteen cold children
 				// on `reason: gap` to prove it. See resident.LineageBank.
 				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
-					settings.DailyBudgetUSD, remainder.Worker,
+					settings.DailyBudgetUSD,
 					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
 					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
@@ -2052,7 +1904,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		outcome.Usage = spent
 		outcome.Turns = spentTurns
 		if planNode != nil {
-			plans.recordOutcome(planGraph, planNode, outcome, nil, escalatedFrom)
+			plans.recordOutcome(planGraph, planNode, outcome, nil)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
 			// The recalibration report reaches the job's RECORD, not a stdout the
@@ -2083,7 +1935,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			} else {
 				guard.Go("chat/record-single-leaf", func() {
-					record, ok := recordSingleLeaf(settings, workerModel, node, outcome, escalatedFrom)
+					record, ok := recordSingleLeaf(settings, workerModel, node, outcome)
 					if ok {
 						recordProfileSurprise(graph, node.ID, record)
 					}
@@ -2894,9 +2746,8 @@ func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked ex
 	// THE SUMMED ROW IS THE REMAINDER, NEVER THE TOTAL. Calls banked as they
 	// were billed are already on disk, and summing them again here would charge
 	// the node twice for one leaf. What is left over is real spend nobody has
-	// written down: a worker that drives another process makes no call this
-	// adapter can see, so a leaf that escalated from a banking worker to one of
-	// those must still journal the second attempt.
+	// written down — a call the billing adapter never saw — and a second
+	// attempt must still journal it.
 	//
 	// Clamped at zero per field rather than trusted, because the two totals are
 	// summed from the same responses in different places and an arithmetic
@@ -3312,16 +3163,14 @@ func pinnedWorkClient(pool *messageClientPool, node store.Node) (*liveClient, bo
 	return client, true
 }
 
-// leafSubharness reads what was promised, not what could be chosen now. The
-// node's own row holds the settled answer — its own choice where the sizing
-// pass made one, the splice's otherwise — and the provenance behind it is read
-// only for a node written before the row carried it.
+// leafSubharness reads what the node's row promised. This build has one worker,
+// so the answer never changes what runs — but a graph written before it does
+// carry names, and reading the promise is the moment this build discovers it
+// cannot keep one. The leaf still runs, on linear, exactly as the registry
+// promises, and the node's own recorder carries the one line that tells a
+// reader afterwards which of the two actually happened.
 func leafSubharness(node store.Node) string {
 	settled := promisedWorker(node)
-	// Reading the promise is also the moment this build discovers it cannot keep
-	// it. The leaf still runs, on the generalist, exactly as the registry
-	// promises — and the node's own recorder now carries the one line that tells
-	// a reader afterwards which of the two actually happened.
 	noteDegradedLeafWorker(node, settled)
 	return settled
 }
@@ -3553,7 +3402,6 @@ type (
 var (
 	newConsentDesk     = consent.NewDesk
 	estimateJob        = consent.EstimateJob
-	medianProfileCost  = consent.MedianLeafCost
 	jobRootOf          = consent.JobRootOf
 	planConsentApprove = consent.Approve
 )
@@ -4188,22 +4036,10 @@ func (j *jobPlans) lookup(nodeID string) (string, *plan.Graph, *plan.Node, strin
 
 // recordOutcome writes a leaf's measured ending onto its plan node — the same
 // fields, in the same shape, that the headless scheduler records.
-// markWorker settles a plan node onto a different worker mid-flight, so the
-// measurement this node becomes is filed under whoever actually ran it. A leaf
-// escalated to a specialist and recorded against the generalist would teach the
-// generalist's ruler that ordinary leaves cost what a specialist costs.
-func (j *jobPlans) markWorker(graph *plan.Graph, node *plan.Node, subharness string) {
+func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error) {
 	locks := j.locksFor(graph)
 	locks.document.Lock()
 	defer locks.document.Unlock()
-	node.Subharness = strings.TrimSpace(subharness)
-}
-
-func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *exec.Outcome, err error, escalatedFrom string) {
-	locks := j.locksFor(graph)
-	locks.document.Lock()
-	defer locks.document.Unlock()
-	node.EscalatedFrom = strings.TrimSpace(escalatedFrom)
 	if outcome != nil {
 		node.Turns = outcome.Turns
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
@@ -4265,14 +4101,12 @@ func (j *jobPlans) takeIfRoot(nodeID string) (*plan.Graph, string) {
 //
 // Three facts, one lock, because they are one event. The state is the freeze the
 // sentinel obeys. The worker is whoever the STORE says will run this leaf, and
-// it is written here because the store's answer is the one that is true: the
-// plan node carried the planner's intention and nothing updated it except an
-// escalation, so a leaf promised to a coding pipeline at splice time ran forty
-// minutes on the specialist and was then journaled into the generalist's file —
-// the file the generalist's ruler is rewritten from. The fan-in is what actually
-// landed in this leaf, measured against the live store moments ago, and it is
-// the number a join is priced from; without it the profile had only the
-// touch-list, which is a different fact and made reassembly look free.
+// it is written here because the store's answer is the one that is true — the
+// plan node carries the planner's intention, and what a measurement has to
+// describe is what ran. The fan-in is what actually landed in this leaf,
+// measured against the live store moments ago, and it is the number a join is
+// priced from; without it the profile had only the touch-list, which is a
+// different fact and made reassembly look free.
 func (j *jobPlans) markClaimed(graph *plan.Graph, node *plan.Node, subharness string, fanIn int) {
 	locks := j.locksFor(graph)
 	locks.document.Lock()
@@ -4778,17 +4612,15 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 // recordSingleLeaf keeps direct-job costs available to compiler self-knowledge
 // without pretending an unplanned task was atomic ruler evidence.
 //
-// The profile it lands in is the one belonging to whatever actually ran the
-// leaf. A specialist's cost written into the generalist's file would not merely
-// be misfiled: it is the file the ruler is recalibrated from, so one coding
-// pipeline's forty minutes would teach the planner that ordinary leaves are
-// enormous and it would stop splitting anything.
-func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome, escalatedFrom string) (profile.Record, bool) {
+// It reads the leaf's promised worker on the way past, which is what makes an
+// old graph's unrecognised name reach that node's flight recorder once — see
+// leafSubharness. The record itself lands in the one profile there is.
+func recordSingleLeaf(settings config.Config, model string, node store.Node, outcome *exec.Outcome) (profile.Record, bool) {
 	if strings.TrimSpace(model) == "" {
 		model = settings.Model
 	}
-	worker := profileSubharness(leafSubharness(node))
-	measured, err := profile.Load(settings.ProfileDir, model, worker)
+	leafSubharness(node)
+	measured, err := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
 	if err != nil {
 		return profile.Record{}, false
 	}
@@ -4805,16 +4637,13 @@ func recordSingleLeaf(settings config.Config, model string, node store.Node, out
 		// The cost was measured all along and thrown away here, which left every
 		// direct record priced at zero — and the self-knowledge line the compiler
 		// reads off these records has been quoting an average cost of $0.0000
-		// ever since. It is also the figure the boundary comparison below is
-		// made of, so a specialist could never be found to have undercut the
-		// generalist: both sides of the comparison were zero.
-		Cost:          outcome.Usage.Cost,
-		Stop:          string(outcome.Stop),
-		Verdict:       outcome.Verdict,
-		Calibration:   append([]string(nil), outcome.Calibration...),
-		EscalatedFrom: strings.TrimSpace(escalatedFrom),
+		// ever since.
+		Cost:        outcome.Usage.Cost,
+		Stop:        string(outcome.Stop),
+		Verdict:     outcome.Verdict,
+		Calibration: append([]string(nil), outcome.Calibration...),
 	}
-	added := measured.Add(withBoundaryEvidence(settings, model, worker, record))
+	added := measured.Add(record)
 	if len(added) == 0 || measured.Save() != nil {
 		return profile.Record{}, false
 	}

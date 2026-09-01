@@ -332,7 +332,7 @@ func TestSchedulerDispatchAndBlocking(t *testing.T) {
 	}
 
 	fake := &scriptedExecutor{fail: map[int]bool{doomed: true}}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(NewGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestSchedulerRoutesOnlyDeclaredInputs(t *testing.T) {
 	}
 
 	fake := &scriptedExecutor{}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(NewGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

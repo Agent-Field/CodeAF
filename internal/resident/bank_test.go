@@ -1,15 +1,11 @@
 package resident
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
@@ -144,81 +140,6 @@ func TestACraftRootedLeafBanksExactlyAsATaskLeafDoes(t *testing.T) {
 	}
 	if !strings.Contains(crafted, "the writeup is assembled") {
 		t.Fatalf("the craft root's bank lost its progress:\n%s", crafted)
-	}
-}
-
-// The class-stability rule. Four spellings of one ending — the executor's own
-// stop reason, the node watchdog's abandonment, an expired context, a provider
-// answering with a timeout status — and one answer: the worker was working, the
-// hour ran out, and an hour is not evidence about which KIND of worker this
-// assignment needs.
-func TestADeadlineDeathIsNotEvidenceAboutTheWorkersClass(t *testing.T) {
-	deadlines := []struct {
-		name    string
-		outcome *executor.Outcome
-		err     error
-	}{
-		{"the executor's own loop ran out of wall clock",
-			&executor.Outcome{Stop: executor.StopDeadline, Verdict: provider.VerdictProviderFailure}, nil},
-		{"the loop was ordered to land because the clock was close",
-			&executor.Outcome{Stop: executor.StopDone, Exhausted: executor.StopDeadline,
-				Text: "the benchmark finished on three of the four datasets before hitting a timeout"}, nil},
-		{"the node watchdog gave up waiting", nil, &executor.Abandoned{After: 17 * time.Minute}},
-		{"the context expired", nil, fmt.Errorf("post completions: %w", context.DeadlineExceeded)},
-		{"the provider answered with a gateway timeout", nil, &provider.APIError{Status: 504, Message: "upstream timed out"}},
-	}
-	for _, deadline := range deadlines {
-		if MayReclassify(deadline.outcome, deadline.err) {
-			t.Fatalf("%s moved the worker's class", deadline.name)
-		}
-		if !ClockDeath(deadline.outcome, deadline.err) {
-			t.Fatalf("%s was not read as a death on the clock", deadline.name)
-		}
-	}
-	// The watchdog's sentence is unchanged by becoming a type: the room reads it.
-	if got := (&executor.Abandoned{After: 17 * time.Minute}).Error(); got != "executor did not return within 17m0s; abandoned" {
-		t.Fatalf("the watchdog's sentence changed: %q", got)
-	}
-}
-
-// The other half of the same rule, and the reason it is a taxonomy rather than a
-// blanket refusal: an ending that IS evidence about capability still moves the
-// class. An empty response is the named one — full price, nothing delivered.
-func TestACapabilityFailureStillMovesTheWorkersClass(t *testing.T) {
-	capability := []struct {
-		name    string
-		outcome *executor.Outcome
-		err     error
-	}{
-		{"the whole budget spent on private deliberation",
-			&executor.Outcome{Stop: executor.StopEmpty, Verdict: provider.VerdictEmptyResponse}, nil},
-		{"the reply did not parse",
-			&executor.Outcome{Verdict: provider.VerdictFormatFailure}, nil},
-		{"it parsed and was wrong",
-			&executor.Outcome{Verdict: provider.VerdictSemanticFailure}, nil},
-		{"it could not converge inside its grant",
-			&executor.Outcome{Stop: executor.StopBudget, Verdict: provider.VerdictBudgetStop}, nil},
-		{"a straggler handed back on measured evidence",
-			&executor.Outcome{Stop: executor.StopOverrun, Verdict: provider.VerdictBudgetStop}, nil},
-		{"the tools it was given were refused, and nothing ran",
-			nil, &provider.APIError{Status: 404, Message: "No endpoints found that support tool use"}},
-	}
-	for _, failure := range capability {
-		if ClockDeath(failure.outcome, failure.err) {
-			t.Fatalf("%s was misread as a death on the clock", failure.name)
-		}
-		if !MayReclassify(failure.outcome, failure.err) {
-			t.Fatalf("%s was refused as evidence about the worker's class", failure.name)
-		}
-	}
-	// Weather is not capability either, and the taxonomy already said so: a
-	// provider failure grades nothing, so it moves nothing.
-	if MayReclassify(&executor.Outcome{Verdict: provider.VerdictProviderFailure}, nil) {
-		t.Fatal("a provider failure moved the worker's class")
-	}
-	// And an ending nobody reported is not an ending.
-	if MayReclassify(nil, nil) {
-		t.Fatal("a leaf that neither failed nor produced anything moved the worker's class")
 	}
 }
 

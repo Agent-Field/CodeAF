@@ -47,8 +47,9 @@ func TestAManifestSaysWhatIsMissingInWordsItsAuthorCanActOn(t *testing.T) {
 	}
 }
 
-// The baseline is the one exemption, and it is exempt by name: linear's purpose
-// is deliberately empty because linear is never on a menu.
+// The worker is the one exemption, and it is exempt by name: its purpose is
+// deliberately empty because it is never something anyone picks — it is what
+// the work gets.
 func TestTheBaselineIsTheOneManifestAllowedNoPurpose(t *testing.T) {
 	if err := linearManifest.Validate(); err != nil {
 		t.Fatalf("the baseline does not validate: %v", err)
@@ -221,17 +222,17 @@ func (s *swallowingExecutor) Run(_ context.Context, task Task) (*Outcome, error)
 	return s.outcome, nil
 }
 
-// linear and swe are re-fronted rather than rewritten: the same executor, a
+// A leaf worker is re-fronted rather than rewritten: the same executor, a
 // typed front door in front of it.
 func TestAWorkerFrontedAsASubharnessTakesTypedInputAndPromisesTypedOutput(t *testing.T) {
-	worker := &swallowingExecutor{name: "swe", outcome: &Outcome{
+	worker := &swallowingExecutor{name: "digger", outcome: &Outcome{
 		Text:      "the flake was a shared temp directory",
 		Artifacts: []string{"/tmp/patch.diff"},
 		Stop:      StopDone,
 		Usage:     Usage{Calls: 3, PromptTokens: 10, CompletionTokens: 4, Cost: 0.5},
 	}}
 	runner, err := FrontExecutor(worker, LeafManifest(SubharnessInfo{
-		Name: "swe", Purpose: "software engineering taken whole", DeadlineFloor: time.Hour,
+		Name: "digger", Purpose: "chasing one flake to its cause", DeadlineFloor: time.Hour,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -279,11 +280,11 @@ func TestAWorkerFrontedAsASubharnessTakesTypedInputAndPromisesTypedOutput(t *tes
 // A run needs something to do, and a manifest cannot be filed under a name that
 // is not the worker's.
 func TestTheTypedDoorRefusesWhatItCannotRun(t *testing.T) {
-	worker := &swallowingExecutor{name: "swe", outcome: &Outcome{Text: "ok"}}
+	worker := &swallowingExecutor{name: "digger", outcome: &Outcome{Text: "ok"}}
 	if _, err := FrontExecutor(worker, manifestNamed("marketing")); err == nil {
 		t.Fatal("a worker was filed under somebody else's name")
 	}
-	runner, err := FrontExecutor(worker, LeafManifest(SubharnessInfo{Name: "swe", Purpose: "coding"}))
+	runner, err := FrontExecutor(worker, LeafManifest(SubharnessInfo{Name: "digger", Purpose: "chasing one flake to its cause"}))
 	if err != nil {
 		t.Fatal(err)
 	}

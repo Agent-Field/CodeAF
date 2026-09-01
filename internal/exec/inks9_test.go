@@ -113,11 +113,11 @@ func TestALandedLeafSaysWhichBoundLandedIt(t *testing.T) {
 	}
 }
 
-// THE GENERALIST LEAVES A RECORD. exec.TranscriptFrom had one reader in the
-// whole tree — the bare belt — so a run on the default worker left a store with
-// no transcript at all: BankedRun found nothing, every continuation started
-// cold, and the resumption the lease lane built could never fire. ink s9's store
-// holds zero transcript rows across three leaves.
+// THE WORKER LEAVES A RECORD. exec.TranscriptFrom had one reader in the whole
+// tree, and it was not the leaf belt — so a run left a store with no transcript
+// at all: BankedRun found nothing, every continuation started cold, and the
+// resumption the lease lane built could never fire. ink s9's store holds zero
+// transcript rows across three leaves.
 func TestTheGeneralistRecordsItsTurnsUnderTheNode(t *testing.T) {
 	space := workspace(t)
 	sink := &countingSink{}

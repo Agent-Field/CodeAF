@@ -17,7 +17,6 @@ schema, and a person needs to know which command actually thinks.
 ```
 aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout N]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
-                   [--subharness name]
                    [--context-fill N] [--completion-reserve N]
 ```
 
@@ -46,7 +45,6 @@ done.
 | `--plan-model slug` | the ladder below | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
 | `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
 | `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Sets `AFORGE_COMPLETION_RESERVE` for this run. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
-| `--subharness name` | the compiler chooses per node | Force every leaf onto one worker. This build has **`swe`** — a whole software-engineering pipeline that takes a coding issue in a git repository whole: it plans internally, edits in parallel worktrees, judges each change before merging, and audits the result against that repository's own build and tests. It exists for measuring one worker against another; an unknown name is a note on stderr and the default worker, never a refusal. `aforge run` takes the same flag. |
 
 Flags may appear after the task text; `do` reorders its own arguments. Naming
 neither context flag touches the environment at all, so a wrapper script that
@@ -90,12 +88,11 @@ is taken byte for byte, exactly as a quoted argument is.
 
 **What you pass to `do` becomes the goal, byte for byte.** The compile stage
 still runs, and the planner still gets everything it reads from it — how large
-the work is, what parts it splits into, which worker takes it, which earlier
-jobs it continues, the model words, the title. What it does not get is a
-rewrite: the goal it plans against is the sentence you submitted, trimmed of
-surrounding whitespace and otherwise untouched, and the compiler's speculative
-assumptions are dropped rather than anchored into the leaves as decisions the
-work is held to.
+the work is, what parts it splits into, which earlier jobs it continues, the
+model words, the title. What it does not get is a rewrite: the goal it plans
+against is the sentence you submitted, trimmed of surrounding whitespace and
+otherwise untouched, and the compiler's speculative assumptions are dropped
+rather than anchored into the leaves as decisions the work is held to.
 
 This is the one deliberate difference between `do` and the chat surface. Chat's
 value at this seam is precisely that it re-asks the question better — it rewords
@@ -116,13 +113,6 @@ question was not the compiler's to answer at all.
 
 The corollary for a harness: put the answer in the ask. Anything you leave
 implicit is something `do` will decide for you and tell you it decided.
-
-A `swe` leaf is an ordinary node in every way that matters headlessly: it
-reports one `exec.Outcome`, it obeys pause and cancel, its cost lands in
-`--json`'s usage, its milestones land in `learned[]`, and the whole of the
-engine's event stream is written to `.obs/<node>.trace.log` in the workspace.
-Its exit codes are the ordinary ones — nothing about the verdict table below
-changes when a specialist ran the leaf. See `docs/SUBHARNESSES.md`.
 
 ### Which models a run uses — one ladder, four rungs
 
@@ -505,7 +495,7 @@ esac
 | --- | --- |
 | `aforge chat --once "<text>" [--model slug] [--yolo] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. See below — it is a different shape from `do`. |
 | `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. |
-| `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--subharness name]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
+| `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
 | `aforge show <graph.json>` | Print a graph. |
 | `aforge exec ["<prompt>"] [-w dir] [--turns N] [--budget N] [--timeout N] [--json] [-o file]` | One linear worker with no graph behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
@@ -611,7 +601,6 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_EXEC_TURNS` | unset | `aforge exec` only: the turn cap when `--turns` was not passed. |
 | `AFORGE_EXEC_BUDGET` | unset | `aforge exec` only: the token budget when `--budget` was not passed. |
 | `AFORGE_EXEC_TIMEOUT` | unset | `aforge exec` only: the wall in seconds when `--timeout` was not passed. A typed flag always wins over all three; see section 2. |
-| `AFORGE_SWE_MAX_COST` | `10.0` | Dollar ceiling on one `swe` leaf's run inside the coding pipeline. Crossing it ends the leaf as a budget stop with a resume checkpoint on disk, not as a failure. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.
@@ -627,7 +616,7 @@ Rules that came from getting them wrong:
   answer overstates capability failure and hides an unanswered question.
 - **The task string is the prompt under test.** `do` runs it verbatim, so a
   benchmark's phrasing is the phrasing that was measured — no compiler is
-  quietly repairing a bad one, and no campaign is comparing two workers on two
+  quietly repairing a bad one, and no campaign is comparing two runs on two
   differently-reworded asks. What you leave implicit gets assumed and declared,
   not asked back about; if that matters to your score, say it in the ask.
 - **Report `seconds` and `spend` from the JSON**, not from your own wall clock

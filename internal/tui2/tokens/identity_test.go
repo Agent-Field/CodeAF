@@ -85,7 +85,7 @@ func TestIdentityDistribution(t *testing.T) {
 func TestNoAdjacentSharing(t *testing.T) {
 	// A realistic rail.
 	ids := []string{"wisp-parity", "perf-audit", "docs-sweep", "flaky-triage",
-		"chat-v2", "spark-handoff", "terrain", "swepro", "rail-wave", "assembly"}
+		"chat-v2", "spark-handoff", "terrain", "lantern", "rail-wave", "assembly"}
 	assertNoAdjacent(t, ids)
 
 	// The adversarial rail: ten ids that all hash to the same bucket. Finding

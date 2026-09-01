@@ -60,7 +60,7 @@ func TestCancelledRunLandsWithOutcomesAndStopReason(t *testing.T) {
 	}
 
 	fake := &blockingExecutor{fast: map[int]bool{finished: true}, started: make(chan int, 1)}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(NewGovernor())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -109,7 +109,7 @@ func TestGlobalBudgetStopsLaunchingAndLands(t *testing.T) {
 	}
 
 	fake := &blockingExecutor{fast: map[int]bool{ids[0]: true, ids[1]: true, ids[2]: true, ids[3]: true}}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 1).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 1).WithGovernor(NewGovernor())
 	scheduler.Budget = 150 // two nodes at 110 tokens each cross it
 
 	err := scheduler.Run(context.Background(), graph)
@@ -179,7 +179,7 @@ func TestBeforeLaunchStopsClaimsAndLandsInflightWork(t *testing.T) {
 	second := graph.Add(plan.Node{Stage: 1, Title: "Second"})
 	third := graph.Add(plan.Node{Stage: 1, Title: "Third"})
 	fake := &landingExecutor{first: first, second: second, secondStarted: make(chan struct{}), releaseSecond: make(chan struct{})}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(NewGovernor())
 	stop := errors.New("daily rail pause")
 	checks := 0
 	scheduler.BeforeLaunch = func(context.Context) error {
@@ -219,7 +219,7 @@ func TestWatchdogAbandonsWedgedExecutor(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	fake := &wedgedExecutor{healthy: healthy, release: release}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 4).WithGovernor(NewGovernor())
 	scheduler.NodeTimeout = 100 * time.Millisecond
 
 	finished := make(chan error, 1)
@@ -268,7 +268,7 @@ func TestExecutorPanicIsARecordedFailure(t *testing.T) {
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	doomed := graph.Add(plan.Node{Stage: 1, Title: "Doomed"})
 
-	scheduler := NewScheduler(NewRegistry(panickyExecutor{}), workspace(t), 1).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(panickyExecutor{}), workspace(t), 1).WithGovernor(NewGovernor())
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -360,16 +360,16 @@ func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error)
 	return &Outcome{Text: "done", Turns: 1, Stop: StopDone, Usage: Usage{Calls: 1}}, nil
 }
 
-// TestSchedulerLaunchesEveryReadyAPIBoundLeafOnASaturatedHost is the headless
-// half of the admission doctrine. The gate used to be the host's load average
-// for every leaf, and a leaf here is a goroutine parked on a socket waiting for
-// a model — so `aforge run --concurrency 8` on a machine somebody else was
-// compiling on launched three leaves and then waited, forever, for a reading
-// that its own idle sockets could never bring down. Concurrency belongs to the
-// graph: a node runs when the nodes it needs have landed. What the panel asked
-// for is the bound; the host is not consulted about this class at all.
-func TestSchedulerLaunchesEveryReadyAPIBoundLeafOnASaturatedHost(t *testing.T) {
-	leaves := GovernorLocalFloor + 3
+// TestSchedulerLaunchesEveryReadyLeafHoweverBusyTheHostIs is the headless half
+// of the admission doctrine. The gate used to be the host's load average, and a
+// leaf is a goroutine parked on a socket waiting for a model — so `aforge run
+// --concurrency 8` on a machine somebody else was compiling on launched three
+// leaves and then waited, forever, for a reading that its own idle sockets could
+// never bring down. Concurrency belongs to the graph: a node runs when the nodes
+// it needs have landed. What the panel asked for is the bound; the host is not
+// consulted at all.
+func TestSchedulerLaunchesEveryReadyLeafHoweverBusyTheHostIs(t *testing.T) {
+	leaves := 6
 	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
 	for index := range leaves {
 		graph.Add(plan.Node{Stage: 1, Title: fmt.Sprintf("leaf-%d", index)})
@@ -379,9 +379,9 @@ func TestSchedulerLaunchesEveryReadyAPIBoundLeafOnASaturatedHost(t *testing.T) {
 		release: make(chan struct{}),
 	}
 
-	// Ten times over the load ceiling, and irrelevant: nothing these leaves do
+	// However busy the machine is, it is irrelevant: nothing these leaves do
 	// touches a core.
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), leaves+4).WithGovernor(saturatedGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), leaves+4).WithGovernor(NewGovernor())
 	stopped := make(chan error, 1)
 	go func() { stopped <- scheduler.Run(context.Background(), graph) }()
 	for launched := range leaves {

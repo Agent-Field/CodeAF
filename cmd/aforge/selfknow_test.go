@@ -108,3 +108,29 @@ func TestMeasureSelfKnowledgeAddsCompilerErrorBars(t *testing.T) {
 		}
 	}
 }
+
+// The invoice reaches the planner only from real measurements, and it reaches it
+// through the same profile file everything else reads.
+func TestTheMeasuredInvoiceIsEmptyUntilThereIsSomethingToInvoice(t *testing.T) {
+	fresh := config.Config{ProfileDir: t.TempDir(), Model: "vendor/model"}
+	if got := measuredInvoice(fresh, fresh.Model); got != "" {
+		t.Fatalf("an unmeasured machine rendered a price list:\n%s", got)
+	}
+
+	settings := config.Config{ProfileDir: t.TempDir(), Model: "vendor/model"}
+	measured, err := profile.Load(settings.ProfileDir, settings.Model, "linear")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < profile.MinSamples; index++ {
+		measured.Add(profile.Record{Title: "a leaf", Size: "atomic", Turns: 6,
+			Tokens: 40_000, Cost: 0.05, Verdict: provider.VerdictVerifiedSuccess})
+	}
+	if err := measured.Save(); err != nil {
+		t.Fatal(err)
+	}
+	rendered := measuredInvoice(settings, settings.Model)
+	if !strings.Contains(rendered, "MEASURED HERE") || !strings.Contains(rendered, "40,000 tokens") {
+		t.Fatalf("a measured machine did not render its own numbers:\n%s", rendered)
+	}
+}

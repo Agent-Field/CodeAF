@@ -5,7 +5,7 @@ ROOT="$1"; shift
 mkdir -p "$ROOT"
 for i in 20 21 22 23; do
   (
-    AFORGE_MODE=select \
+    AFORGE_MODE=do \
     AFORGE_BIN="${AFORGE_BIN:-$(pwd)/bin/aforge}" \
     HARNESSES=aforge \
     ISSUES="$i" \

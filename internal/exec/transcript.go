@@ -12,8 +12,8 @@ import (
 // The seam by which a worker's turns reach the record.
 //
 // A leaf used to be observable only by what it left on disk. When it left
-// nothing — and internal/exec/bare's loop could burn 1.29M prompt tokens and
-// fifty cents and leave nothing — there was no way to say what it had done,
+// nothing — and a leaf could burn 1.29M prompt tokens and fifty cents and leave
+// nothing — there was no way to say what it had done,
 // because its transcript lived in a slice that went away with the process. The
 // fix is not a log file: a log file is not addressable by node, is not there
 // when someone asks a week later, and is not what the rest of this system means

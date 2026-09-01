@@ -283,9 +283,6 @@ const (
 	// inside what one worker carries, so division buys no wait it does not
 	// already have and costs a briefing and a reassembly it does not pay now.
 	RefusalWithinReach = "it is already within one worker's reach"
-	// RefusalTakenWhole is the inversion sizing exists for — a node oversized
-	// for one worker alone that is exactly one job for another.
-	RefusalTakenWhole = "one worker takes it whole, so it is atomic for that worker"
 	// RefusalDepth and RefusalNoRoom are the two arithmetic refusals. They are
 	// not judgments about the work and say so, so that a reader does not read
 	// the graph's shape as a reading of the material when it was a ceiling.
@@ -317,9 +314,9 @@ const (
 // Measured capacity sharpens only the last boundary. When enough journaled
 // leaves show that atomic-sized work often overruns, an atomic node that has
 // already cleared every refusal above and named independent parts may divide.
-// This does not rescue an unnamed split, bypass a specialist, or invert the
-// null hypothesis. Zero measurements — including every non-swarm caller —
-// therefore take the old branches byte for byte.
+// This does not rescue an unnamed split or invert the null hypothesis. Zero
+// measurements — including every non-swarm caller — therefore take the old
+// branches byte for byte.
 //
 // It is a free function over a node and the options rather than a step inside
 // the level loop, and that shape is the point: the same question has to be
@@ -339,11 +336,6 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	}
 	if node.Depth >= options.MaxDepth {
 		return SplitVerdict{Reason: RefusalDepth}
-	}
-	// A named specialist already answered the size question by inverting it, so
-	// the ruler this node was measured against no longer applies to it.
-	if KnownSubharness(node.Subharness) {
-		return SplitVerdict{Reason: RefusalTakenWhole}
 	}
 	// The pre-check. Sizing already named the parts this node would split into,
 	// at no extra cost, and a node that could not name two of them is a node

@@ -315,10 +315,9 @@ func TestTheWorkerPremiseIsStatedOnceForThePromptsThatWriteForTheWorker(t *testi
 	}
 	// Deliberately specialised, and pinned as such: sizing states the worker's
 	// serial capacity because capacity is what it measures, and the ruler states
-	// whose envelope is being redrawn because a specialist replaces exactly that
-	// sentence.
+	// whose envelope is being redrawn because that is the fact it is rewriting.
 	for name, prompt := range map[string]string{
-		"sizing":    sizePromptFor(sizeAnchors, nil),
+		"sizing":    sizePromptWith(sizeAnchors),
 		"the ruler": recalibratePrompt,
 	} {
 		if strings.Contains(prompt, workerPremise) {

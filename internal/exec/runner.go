@@ -22,7 +22,7 @@ import (
 //
 //   - A GO RUNNER implements this natively and is registered at compile time.
 //     The owner's custom Go subharnesses land here first-class with zero porting,
-//     and `linear` and `swe` are re-fronted through it ([ExecutorRunner]).
+//     and the worker itself is re-fronted through it ([ExecutorRunner]).
 //   - THE JS RUNNER IS ONE GENERIC GO RUNNER parameterized by a bundle. There is
 //     not one runner per bundle: there is one goja host, and a bundle is its
 //     argument. The runtime lane builds it; this file defines the door it comes
@@ -189,9 +189,9 @@ func (r *Registry) UseBundles(layer Layer, source BundleSource) {
 //
 // COMPILED-IN IS LAYER ZERO AND WINS, which is this build's reading of "Go-native
 // subharnesses are layer 0 implicitly". A bundle on disk may not shadow a name
-// the binary ships, because those names are what the manual, the system prompt
-// and every menu describe — a store that could quietly replace one would turn
-// all three into documents about a program that did not run.
+// the binary ships, because those names are what the manual and the system
+// prompt describe — a store that could quietly replace one would turn both into
+// documents about a program that did not run.
 //
 // A name nothing has is [ErrNoSubharness]. That is the difference between this
 // door and [Registry.For] beside it: For serves a leaf that asked for a worker
@@ -272,16 +272,14 @@ type stamped struct {
 
 func (s stamped) Manifest() Manifest { return s.manifest }
 
-// ── Re-fronting the workers this build already has ──────────────────────────
+// ── Re-fronting the worker this build already has ───────────────────────────
 //
-// `linear` and `swe` are the first Go-native subharnesses under this contract,
-// and they are re-fronted rather than rewritten: an [Executor] is already a
+// `linear` is re-fronted rather than rewritten: an [Executor] is already a
 // worker that takes a job and produces an outcome, so what stands between it and
 // a [Runner] is a typed front door and a typed answer. [ExecutorRunner] is that
-// door and nothing else. Every existing caller of Registry.For, of
-// executorFor, and of the leaf table in cmd/aforge reaches the same executor by
-// the same path it always did — this is a second way IN, not a change to what
-// runs.
+// door and nothing else. Every existing caller of Registry.For and of
+// executorFor reaches the same executor by the same path it always did — this is
+// a second way IN, not a change to what runs.
 
 // TaskInput is the typed front door of every subharness that is really a leaf
 // worker. It is [Task]'s four prose fields and no more, because those are the
@@ -334,21 +332,19 @@ const (
 }`
 )
 
-// LeafManifest grows one leaf worker's registration into a manifest.
+// LeafManifest grows the leaf worker's registration into a manifest.
 //
-// EVERY REGISTRATION MADE THROUGH [RegisterSubharness] IS A LEAF WORKER, without
-// exception in this tree: linear, swe, bare, and the owner's next Go one are all
-// workers that are handed a job and produce an outcome. So they all have the
-// same typed front door and the same typed promise — [TaskInput] and
-// [TaskOutput] — and stating that here, once, is what re-fronts every one of
-// them under the subharness contract without a single caller changing a line.
+// A LEAF WORKER IS HANDED A JOB AND PRODUCES AN OUTCOME, so it has the same
+// typed front door and the same typed promise as anything else under this
+// contract — [TaskInput] and [TaskOutput] — and stating that here, once, is what
+// re-fronts the worker under the subharness contract without a single caller
+// changing a line.
 //
 // It leaves cues, whitelist and guards empty, and that is honest rather than
-// unfinished: a leaf worker matches by being CHOSEN by the compiler from the
-// menu its purpose is on, its tools are the belt its surface built it with, and
-// there is no cheap precondition to check before handing somebody a general
-// agent. A worker that wants any of the three fills them in and registers
-// through [RegisterManifest] instead.
+// unfinished: the worker is what a job gets when nothing was named, its tools
+// are the belt its surface built it with, and there is no cheap precondition to
+// check before handing somebody a general agent. A saved program that wants any
+// of the three fills them in and registers through [RegisterManifest] instead.
 func LeafManifest(info SubharnessInfo) Manifest {
 	return Manifest{
 		SubharnessInfo: info,

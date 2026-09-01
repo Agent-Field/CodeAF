@@ -19,24 +19,15 @@ func TestChoiceReceiptSpeaksOnlyForChoices(t *testing.T) {
 	}{
 		{"default job", jobCard{}, ""},
 		{"pinned model only", jobCard{WorkModel: "moonshotai/kimi-k2"}, "kimi-k2"},
-		{"worker only", jobCard{Subharness: "swe"}, "swe"},
-		{"worker and model", jobCard{Subharness: "swe", WorkModel: "moonshotai/kimi-k2"},
-			"swe · kimi-k2"},
 		{"model and planner", jobCard{WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5"},
 			"kimi-k2 · planned by claude-opus-5"},
 		{"planner only", jobCard{PlanModel: "anthropic/claude-opus-5"},
 			"planned by claude-opus-5"},
-		{"all three", jobCard{
-			Subharness: "swe", WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5"},
-			"swe · kimi-k2 · planned by claude-opus-5"},
 		// The ordinary split: nobody pinned anything, the plan slot is its own
 		// model, and the line has to name the one that did the work first.
 		{"a split names who ran it and who planned it", jobCard{
 			RunModel: "~deepseek/deepseek-v4-flash", PlanModel: "zai/glm-5-2"},
 			"ran by deepseek-v4-flash · planned by glm-5-2"},
-		{"worker and a split", jobCard{
-			Subharness: "swe", RunModel: "~deepseek/deepseek-v4-flash", PlanModel: "zai/glm-5-2"},
-			"swe · ran by deepseek-v4-flash · planned by glm-5-2"},
 		{"a pinned model is not said twice", jobCard{
 			WorkModel: "moonshotai/kimi-k2", RunModel: "moonshotai/kimi-k2", PlanModel: "zai/glm-5-2"},
 			"kimi-k2 · planned by glm-5-2"},
@@ -44,7 +35,7 @@ func TestChoiceReceiptSpeaksOnlyForChoices(t *testing.T) {
 			"planned by glm-5-2"},
 		{"nothing split, nothing to say", jobCard{RunModel: "~deepseek/deepseek-v4-flash"}, ""},
 		{"whitespace is not a choice", jobCard{
-			Subharness: "  ", WorkModel: " ", RunModel: " ", PlanModel: "\t"}, ""},
+			WorkModel: " ", RunModel: " ", PlanModel: "\t"}, ""},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			if got := cardChoiceReceipt(probe.card); got != probe.want {
@@ -61,7 +52,7 @@ func TestChoiceReceiptCostsNoHeightOnAnOrdinaryJob(t *testing.T) {
 	model.setSize(110, 34)
 	ordinary := jobCard{ID: "job", Title: "Draft the launch note", State: cardWorking}
 	chosen := ordinary
-	chosen.Subharness, chosen.WorkModel = "swe", "moonshotai/kimi-k2"
+	chosen.WorkModel, chosen.PlanModel = "moonshotai/kimi-k2", "anthropic/claude-opus-5"
 
 	plain := ansi.Strip(model.renderJobCard(ordinary, 100, false, 0, false, false))
 	receipted := ansi.Strip(model.renderJobCard(chosen, 100, false, 0, false, false))
@@ -72,7 +63,7 @@ func TestChoiceReceiptCostsNoHeightOnAnOrdinaryJob(t *testing.T) {
 		t.Fatalf("chosen card is %d lines, want %d:\n%s", got, want, receipted)
 	}
 	second := strings.Split(receipted, "\n")[1]
-	if !strings.Contains(second, "swe · kimi-k2") {
+	if !strings.Contains(second, "kimi-k2 · planned by claude-opus-5") {
 		t.Fatalf("the receipt is not under the title: %q", second)
 	}
 	if strings.Contains(second, "moonshotai/") {
@@ -87,7 +78,7 @@ func TestChoiceReceiptOnACardIsNotFaint(t *testing.T) {
 	model.setSize(110, 34)
 	card := jobCard{
 		ID: "job", Title: "Draft the launch note", State: cardWorking,
-		Subharness: "swe", WorkModel: "moonshotai/kimi-k2",
+		WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5",
 	}
 	if cardReceiptStyle.GetFaint() {
 		t.Fatal("the choice receipt still speaks in faint ink")
@@ -96,7 +87,7 @@ func TestChoiceReceiptOnACardIsNotFaint(t *testing.T) {
 		t.Fatal("the card frame stopped receding — structure is faint, words are not")
 	}
 	frame := model.renderJobCard(card, 100, false, 0, false, false)
-	if !strings.Contains(frame, cardReceiptStyle.Render("swe · kimi-k2")) {
+	if !strings.Contains(frame, cardReceiptStyle.Render("kimi-k2 · planned by claude-opus-5")) {
 		t.Fatalf("the receipt is not rendered in the receipt's own ink:\n%q", frame)
 	}
 }
@@ -108,7 +99,7 @@ func TestChoiceReceiptTruncatesInsteadOfWrapping(t *testing.T) {
 	model.setSize(110, 34)
 	card := jobCard{
 		ID: "job", Title: "Draft the launch note", State: cardWorking,
-		Subharness: "swe", WorkModel: "moonshotai/kimi-k2-instruct",
+		WorkModel: "moonshotai/kimi-k2-instruct",
 		PlanModel: "anthropic/claude-opus-5",
 	}
 	for _, width := range []int{24, 40, 100} {
@@ -122,22 +113,20 @@ func TestChoiceReceiptTruncatesInsteadOfWrapping(t *testing.T) {
 }
 
 // The card reads the durable row, and it reads it from the job's own root. A
-// worker settled on one leaf is that leaf's business — the root card speaks for
+// model pinned on one leaf is that leaf's business — the root card speaks for
 // the job it is the face of.
 func TestChoiceReceiptRidesTheRootRowOnly(t *testing.T) {
 	root := store.Node{
 		ID: "job", Parent: store.RootID, Title: "Land the migration", Status: store.Running,
-		Subharness: "swe",
 		Provenance: store.Provenance{
 			Origin: store.OriginUser, SessionID: "cards",
 			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5",
-			Subharness: "swe",
 		},
 	}
 	leaf := store.Node{
 		ID: "job-leaf", Parent: "job", Title: "Write the code", Status: store.Running,
-		Subharness: "swe",
-		Provenance: store.Provenance{Origin: store.OriginUser, SessionID: "cards"},
+		Provenance: store.Provenance{Origin: store.OriginUser, SessionID: "cards",
+			WorkModel: "zai/glm-5-2"},
 	}
 	plain := store.Node{
 		ID: "chore", Parent: store.RootID, Title: "Read the file", Status: store.Running,
@@ -152,7 +141,7 @@ func TestChoiceReceiptRidesTheRootRowOnly(t *testing.T) {
 	for _, card := range cards {
 		byID[card.ID] = card
 	}
-	if got := cardChoiceReceipt(byID["job"]); got != "swe · kimi-k2 · planned by claude-opus-5" {
+	if got := cardChoiceReceipt(byID["job"]); got != "kimi-k2 · planned by claude-opus-5" {
 		t.Fatalf("chosen job receipt = %q", got)
 	}
 	if got := cardChoiceReceipt(byID["chore"]); got != "" {
@@ -171,24 +160,8 @@ func TestChoiceReceiptRidesTheRootRowOnly(t *testing.T) {
 	if receipts != 1 {
 		t.Fatalf("the expanded card said it %d times:\n%s", receipts, frame)
 	}
-	if strings.Contains(frame, "Write the code — running\nswe") {
+	if strings.Contains(frame, "Write the code — running\nglm-5-2") {
 		t.Fatalf("a part carried a receipt:\n%s", frame)
-	}
-}
-
-// The splice's choice reaches the card even when the row's own worker column is
-// empty, which is how a subtree-wide choice was always meant to be read.
-func TestSettledWorkerFallsBackToTheSplicesChoice(t *testing.T) {
-	node := store.Node{Provenance: store.Provenance{Subharness: "swe"}}
-	if got := settledWorker(node); got != "swe" {
-		t.Fatalf("settledWorker = %q", got)
-	}
-	node.Subharness = "review"
-	if got := settledWorker(node); got != "review" {
-		t.Fatalf("the row's own worker lost to the splice: %q", got)
-	}
-	if got := settledWorker(store.Node{}); got != "" {
-		t.Fatalf("an ordinary node named a worker: %q", got)
 	}
 }
 
@@ -216,13 +189,12 @@ func TestNodeDrillDownCarriesTheUntruncatedChoice(t *testing.T) {
 	model.setSize(110, 34)
 	model.inspectedNode = store.Node{
 		ID: "job-leaf", Parent: "job", Brief: "Land the migration", Status: store.Running,
-		Subharness: "swe",
 		Provenance: store.Provenance{
 			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/claude-opus-5",
 		},
 	}
 	details := ansi.Strip(model.renderNodeDetailsContent(100))
-	if !strings.Contains(details, "swe · moonshotai/kimi-k2 · planned by anthropic/claude-opus-5") {
+	if !strings.Contains(details, "moonshotai/kimi-k2 · planned by anthropic/claude-opus-5") {
 		t.Fatalf("node details lost the choice:\n%s", details)
 	}
 
@@ -284,14 +256,13 @@ func TestNodeDrillDownReceiptRidesTheStickyTitle(t *testing.T) {
 	model.setSize(120, 30)
 	model.inspectedNode = store.Node{
 		ID: "worker", Parent: store.RootID, Brief: "Land the migration", Status: store.Running,
-		Subharness: "swe",
 		Provenance: store.Provenance{
 			WorkModel: "moonshotai/kimi-k2", PlanModel: "anthropic/glm-5-2",
 		},
 	}
 	model.setSize(120, 30)
 	title := ansi.Strip(strings.Split(model.renderNodePane(), "\n")[0])
-	if !strings.Contains(title, "swe · kimi-k2 · planned by glm-5-2") {
+	if !strings.Contains(title, "kimi-k2 · planned by glm-5-2") {
 		t.Fatalf("the sticky title lost the receipt:\n%q", title)
 	}
 	if strings.Contains(title, "moonshotai/") {
@@ -314,7 +285,6 @@ func TestNodeDrillDownReceiptRidesTheStickyTitle(t *testing.T) {
 
 	model.setSize(120, 30)
 	model.inspectedNode.Provenance = store.Provenance{}
-	model.inspectedNode.Subharness = ""
 	plain := ansi.Strip(strings.Split(model.renderNodePane(), "\n")[0])
 	if strings.Contains(plain, "planned by") {
 		t.Fatalf("an ordinary worker's title spoke: %q", plain)

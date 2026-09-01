@@ -152,18 +152,17 @@ was found at, at both `Subharness` and `Manifests`.
 
 | what | where it registers | when |
 | --- | --- | --- |
-| a description (name, purpose, ruler, budget) | `exec.RegisterSubharness` / `exec.RegisterManifest` — process-global | `installSubharnesses()`, once per process |
+| a description (name, purpose, ruler, budget) | `exec.RegisterManifest` — process-global | once per process, at build |
 | a Go runner | `Registry.RegisterRunner` — per registry | `registerSubharnessRunners`, per run |
 | a store of bundles | `Registry.UseBundles(layer, source)` — per registry | store lane, at launch |
 
 The split is the one this package always drew: a **description** is a fact about
 the process; a **worker** is built by a surface out of its own clients and
-workspaces. The process-global table now holds `Manifest` instead of
-`SubharnessInfo` — `Subharnesses()` and `SubharnessFor()` project the embedded
-half out and every existing caller is byte-identical. New doors beside them:
-`RegisterManifest`, `RegisteredManifests`, `ManifestFor`.
+workspaces. The process-global table holds `Manifest` rather than
+`SubharnessInfo` — `SubharnessFor()` projects the embedded half out, and
+`RegisterManifest` and `ManifestFor` are the doors onto the table itself.
 
-### linear and swe, re-fronted
+### the generalist, re-fronted
 
 `ExecutorRunner` fronts any `Executor` as a `Runner`, with `TaskInput`
 (`brief` required, plus `goal`, `contract`, `title`) and `TaskOutput`
@@ -175,12 +174,11 @@ func LeafManifest(info SubharnessInfo) Manifest
 func FrontExecutor(executor Executor, manifest Manifest) (*ExecutorRunner, error)
 ```
 
-`RegisterSubharness` now routes through `LeafManifest`, so `linear`, `swe`,
-`bare` and every test registration in the tree grew the typed front door without
-one caller changing a line. `cmd/aforge`'s `registerSubharnessRunners` fronts
-each of them from **the same constructor table** `executorFor` uses, which is
-what makes the deopt honest: falling back to the long way means falling back to
-the worker the person would otherwise have had.
+Registration routes through `LeafManifest`, so `linear` carries the typed front
+door without a caller changing a line. `cmd/aforge`'s
+`registerSubharnessRunners` fronts it from **the same constructor**
+`executorFor` uses, which is what makes the deopt honest: falling back to the
+long way means falling back to the worker the person would otherwise have had.
 
 The ending is read from `Outcome.Overran()`, never from `Stop` alone — a leaf
 whose budget ran out lands truthfully on `StopDone`, and reading `Stop` would
@@ -318,7 +316,7 @@ describe, and a store that could silently replace one would turn all three into
 documents about a program that did not run.
 
 **3. `linear` is a registered runner but is on no list.**
-PRD §3 says `linear` and `swe` are re-fronted through the registry, and §9 says
+PRD §3 says the generalist is re-fronted through the registry, and §9 says
 `/subharness` opens a list. Both are true here without contradiction: `linear`
 resolves by name (the deopt path and the headless runner both need it) and
 appears on nothing a person picks from. That is the same law

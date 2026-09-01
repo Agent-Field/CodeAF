@@ -70,10 +70,11 @@ var measuredCostPattern = regexp.MustCompile(`(?i)(?:avg(?:erage)?\s+cost|cost)\
 // at, read off the measured history rather than guessed.
 //
 // It takes the MEDIAN of every measurement in the block rather than the first,
-// and the reason is what the block contains: one line per specialist, each with
-// its own history, because a median that averaged a coding pipeline with a
-// lookup would describe neither. Reading only the first line meant the price of
-// every standing rule was set by whichever worker happened to sort first.
+// and the reason is what the block contains: one line per measured population,
+// each with a history of its own, because a figure that averaged a long
+// research leaf with a lookup would describe neither. Reading only the first
+// line meant the price of every standing rule was set by whichever line
+// happened to sort first.
 func measuredStandingCost(context string) (float64, bool) {
 	matches := measuredCostPattern.FindAllStringSubmatch(context, -1)
 	costs := make([]float64, 0, len(matches))

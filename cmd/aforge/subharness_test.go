@@ -1,10 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
+	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -16,195 +18,175 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// A measurement belongs in the file of whatever actually ran the leaf. The
-// generalist's profile is what the planner's ruler is rewritten from, so a
-// specialist's cost landing there would not merely be misfiled — it would teach
-// the planner that ordinary leaves are enormous and stop it splitting anything.
-func TestMeasurementsLandInTheirOwnWorkersFile(t *testing.T) {
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "coding"})
-
+// There is one profile file because there is one worker, and every measurement
+// belongs in it. A record filed anywhere else would be a record no ruler is
+// rewritten from — the planner reads this one file and nothing else.
+func TestEveryMeasurementLandsInTheOneWorkersFile(t *testing.T) {
 	dir := t.TempDir()
 	settings := config.Config{ProfileDir: dir, Model: "worker/model"}
 	outcome := &exec.Outcome{Turns: 4, Verdict: provider.VerdictVerifiedSuccess}
 	outcome.Usage.PromptTokens = 1000
 
-	specialist := store.Node{ID: "a", Title: "fix the parser", Brief: "fix it", Subharness: "swe"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, specialist, outcome, ""); !ok {
-		t.Fatal("the specialist's leaf was not recorded")
-	}
-	ordinary := store.Node{ID: "b", Title: "read the file", Brief: "read it"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, ordinary, outcome, ""); !ok {
+	ordinary := store.Node{ID: "a", Title: "read the file", Brief: "read it"}
+	if _, ok := recordSingleLeaf(settings, settings.Model, ordinary, outcome); !ok {
 		t.Fatal("the ordinary leaf was not recorded")
 	}
-	// A worker this build does not have is served by the generalist, so its
-	// record describes what happened rather than what was asked for.
-	stranger := store.Node{ID: "c", Title: "review it", Brief: "review", Subharness: "reviewer"}
-	if _, ok := recordSingleLeaf(settings, settings.Model, stranger, outcome, ""); !ok {
-		t.Fatal("the degraded leaf was not recorded")
+	// A row an older graph wrote, naming a worker this build does not have. It
+	// ran on linear, so its record describes linear — a record has to say what
+	// happened rather than what was asked for.
+	stored := store.Node{ID: "b", Title: "review it", Brief: "review", Subharness: "retired-worker"}
+	if _, ok := recordSingleLeaf(settings, settings.Model, stored, outcome); !ok {
+		t.Fatal("the leaf from an older graph was not recorded")
 	}
 
-	for _, testCase := range []struct {
-		worker string
-		file   string
-		count  int
-	}{
-		{"swe", "profile-worker-model-swe.json", 1},
-		{"linear", "profile-worker-model-linear.json", 2},
-	} {
-		if _, err := os.Stat(filepath.Join(dir, testCase.file)); err != nil {
-			t.Fatalf("%s was never written: %v", testCase.file, err)
+	loaded, err := profile.Load(dir, settings.Model, exec.LinearSubharness)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Records) != 2 {
+		t.Fatalf("the profile holds %d records, want both of them", len(loaded.Records))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, "profile-") {
+			continue
 		}
-		loaded, err := profile.Load(dir, settings.Model, testCase.worker)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(loaded.Records) != testCase.count {
-			t.Fatalf("%s holds %d records, want %d", testCase.file, len(loaded.Records), testCase.count)
+		if name != "profile-worker-model-linear.json" {
+			t.Fatalf("a second profile file was written: %s", name)
 		}
 	}
 }
 
-// The flag exists for measurement runs. A build that shipped without the worker
-// somebody named must still do the work — a benchmark that dies at argument
-// parsing has wasted more than the measurement was worth.
-func TestSubharnessFlagDegradesWithANote(t *testing.T) {
-	var stderr bytes.Buffer
-	if got := resolveSubharnessFlag("swe", &stderr); got != "" {
-		t.Fatalf("an unregistered name resolved to %q", got)
-	}
-	if !strings.Contains(stderr.String(), `no subharness named "swe"`) ||
-		!strings.Contains(stderr.String(), "none are registered in this build") {
-		t.Fatalf("the note does not say what happened: %q", stderr.String())
-	}
-
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "coding"})
-	stderr.Reset()
-	if got := resolveSubharnessFlag("swe", &stderr); got != "swe" {
-		t.Fatalf("a registered name resolved to %q", got)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("a good name still said something: %q", stderr.String())
-	}
-	// Only an empty flag is "nobody forced anything". Naming the generalist is
-	// a forcing like any other and comes back as the generalist's own name —
-	// without that, the arm of a measurement that holds the default worker
-	// fixed cannot be expressed at all.
-	for _, baseline := range []string{"", "  "} {
-		if got := resolveSubharnessFlag(baseline, &stderr); got != "" {
-			t.Fatalf("resolveSubharnessFlag(%q) = %q, want no forcing", baseline, got)
-		}
-	}
-	for _, named := range []string{"linear", " linear "} {
-		if got := resolveSubharnessFlag(named, &stderr); got != exec.LinearSubharness {
-			t.Fatalf("resolveSubharnessFlag(%q) = %q, want the generalist forced", named, got)
-		}
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("naming the generalist said something: %q", stderr.String())
-	}
-	stderr.Reset()
-	if got := resolveSubharnessFlag("reviewer", &stderr); got != "" {
-		t.Fatalf("an unknown name resolved to %q", got)
-	}
-	if !strings.Contains(stderr.String(), "this build has: swe") {
-		t.Fatalf("the note does not name what is available: %q", stderr.String())
-	}
-}
-
-// Every leaf still resolves to a worker, and with one registered that worker is
-// the one every leaf has always had.
+// Every leaf still resolves to a worker, whatever name it arrives carrying.
 func TestExecutorForAlwaysResolvesToSomething(t *testing.T) {
 	build := leafBuild{settings: config.Config{ProfileDir: t.TempDir()}, maxTurns: 1, maxTokens: 1000}
-	for _, name := range []string{"", "linear", "swe", "nobody"} {
+	for _, name := range []string{"", "linear", "retired-worker", "nobody"} {
 		worker := executorFor(name, build)
 		if worker == nil {
 			t.Fatalf("executorFor(%q) built nothing", name)
 		}
 		if got := worker.Subharness(); got != exec.LinearSubharness {
-			t.Fatalf("executorFor(%q) = %q, want the generalist", name, got)
+			t.Fatalf("executorFor(%q) = %q, want the one worker", name, got)
 		}
 	}
 }
 
-// The measured line under a worker's purpose says nothing until there is enough
-// of it to be honest — a median of three leaves is not a measurement.
-func TestSubharnessKnowledgeWaitsForItsEvidenceGate(t *testing.T) {
-	settings := config.Config{ProfileDir: t.TempDir(), Model: "worker/model"}
-	measured, err := profile.Load(settings.ProfileDir, settings.Model, "swe")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for index := 1; index < profile.MinSamples; index++ {
-		measured.Add(profile.Record{Title: "coding", Turns: index, Tokens: index * 1000,
-			Cost: 0.01, Verdict: provider.VerdictVerifiedSuccess})
-	}
-	if err := measured.Save(); err != nil {
-		t.Fatal(err)
-	}
-	if line := subharnessKnowledge(settings, settings.Model, "swe"); line != "" {
-		t.Fatalf("it spoke below the gate: %q", line)
-	}
-	measured.Add(profile.Record{Title: "coding", Turns: 9, Tokens: 9000,
-		Cost: 0.01, Verdict: provider.VerdictSemanticFailure})
-	if err := measured.Save(); err != nil {
-		t.Fatal(err)
-	}
-	line := subharnessKnowledge(settings, settings.Model, "swe")
-	for _, want := range []string{"median", "over 8 runs", "88% succeeded"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("the measured line is missing %q: %q", want, line)
-		}
-	}
-}
-
-// The other arm of a worker measurement: `aforge do --subharness linear` on an
-// ask the compiler reads as coding must actually be measured on the generalist.
+// `--subharness` is not a flag, and the way to prove that is the flag package's
+// own sentence rather than a grep: a person who types it is told the flag does
+// not exist, and the run stops there.
 //
-// It could not be, and the reason was one representation: the generalist and
-// "nobody said" were both the empty string, so the flag that named it was
-// indistinguishable from a flag nobody passed, and the run went to the
-// specialist the compiler had chosen — the exact variable the benchmark was
-// holding fixed. The name is the fix, and this is the assertion that the name
-// reaches all the way to what ran.
-func TestSubharnessFlagForcesTheGeneralistOnACodingAsk(t *testing.T) {
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(sweInfo())
+// The usage text is the other half. It is what `aforge --help` prints, and a
+// program that had stopped taking the flag while still advertising it would be
+// telling everybody to type something that fails.
+func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
+	err := runDo([]string{"--subharness", "linear", "fix the failing test"})
+	if err == nil {
+		t.Fatal("do accepted --subharness")
+	}
+	if !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("do answered %q, want the flag package's own not-defined error", err)
+	}
+	if !errors.Is(err, flag.ErrHelp) && !strings.Contains(err.Error(), "subharness") {
+		t.Fatalf("the error does not name what was typed: %q", err)
+	}
+	if err := runExecute([]string{"--subharness", "linear", "graph.json"}); err == nil ||
+		!strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("run answered %v, want the flag package's own not-defined error", err)
+	}
 
+	for _, banned := range []string{"--subharness", "Workers:"} {
+		if strings.Contains(usageText, banned) {
+			t.Fatalf("the usage text still offers %q", banned)
+		}
+	}
+	// `swe` as a word, because "answer" carries the three letters and the usage
+	// text is full of answers.
+	if word := regexp.MustCompile(`\bswe\b`); word.MatchString(usageText) {
+		t.Fatalf("the usage text still names a worker: %q", word.FindString(usageText))
+	}
+
+	// The saved-program door is a different feature and still opens. `run
+	// subharness` with nothing after it answers with its own usage line, which
+	// is proof the word routed to runSubharnessCommand rather than to the graph
+	// runner.
+	err = runExecute([]string{"subharness"})
+	if err == nil || !strings.Contains(err.Error(), "aforge run subharness <name>") {
+		t.Fatalf("`run subharness` answered %v, want the saved-program usage", err)
+	}
+}
+
+// #207's replication, deterministic: a leaf that cannot do the work ends with
+// its failure named, and nothing hands it to anybody else.
+//
+// The defect it pins is one line of narration a benchmark read as recovery: an
+// arrow from one worker to another, printed after a failed attempt, on a run
+// that had been pinned to one worker. There is one worker now, so a failed
+// attempt is retried on it or the node ends — and what proves it is not a grep
+// over this package but the run's own journal, which must carry no worker
+// change at all.
+func TestAFailedAttemptEndsWithItsFailureNamedAndIsHandedToNobody(t *testing.T) {
 	script := newScriptedBrain(t)
-	// The compiler reads this ask the way it reads any coding ask: one job for
-	// the coding pipeline. Nothing about the ask is in dispute; the flag is.
-	script.compileSubharness = exec.SWESubharness
-	script.gatePasses = true
+	script.leafFails = true
 	defer script.close()
 
+	database := filepath.Join(t.TempDir(), "graph.db")
 	var stdout, stderr strings.Builder
-	if err := doErrand(doRequest{
-		task:       "fix the failing parser tests and add a regression test",
-		timeout:    60 * time.Second,
-		asJSON:     true,
-		subharness: "linear",
-		stdout:     &stdout, stderr: &stderr,
-		newClient: script.client,
-	}); err != nil {
-		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s",
-			err, stdout.String(), stderr.String())
+	err := doErrand(doRequest{
+		task:     "fix the failing parser tests",
+		database: database, keep: true,
+		timeout: 60 * time.Second, asJSON: true,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	var status exitStatus
+	if !asExitStatus(err, &status) || (status != exitFailed && status != exitPartial) {
+		t.Fatalf("a run whose every leaf failed left with %v, want exit 1 or 2\nstderr:\n%s",
+			err, stderr.String())
+	}
+	if script.count("leaf-failed") == 0 {
+		t.Fatalf("no leaf was ever attempted\nstderr:\n%s", stderr.String())
 	}
 
 	var outcome struct {
-		Subharness string `json:"subharness"`
+		Deliverable string `json:"deliverable"`
+		Subharness  string `json:"subharness"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
 		t.Fatalf("stdout is not the machine-readable outcome: %v\n%s", err, stdout.String())
 	}
-	if outcome.Subharness != exec.LinearSubharness {
-		t.Fatalf("the errand ran on %q despite --subharness linear", outcome.Subharness)
+	if strings.TrimSpace(outcome.Deliverable) == "" {
+		t.Fatalf("the run ended without naming what went wrong:\n%s", stdout.String())
 	}
-	// The generalist did not merely get the credit: it did the work. The
-	// scripted worker only ever answers the generalist's leaf loop, so a draft
-	// is proof that no coding pipeline was constructed for this leaf.
-	if script.count("draft") == 0 {
-		t.Fatalf("no generalist leaf ever ran\nstderr:\n%s", stderr.String())
+	if outcome.Subharness != exec.LinearSubharness {
+		t.Fatalf("the run reports it was taken by %q", outcome.Subharness)
+	}
+
+	// The journal. A worker change is an event, and no run of this build may
+	// write one.
+	graph, openErr := store.Open(database)
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer graph.Close()
+	events, eventsErr := graph.Events(0, 5000)
+	if eventsErr != nil {
+		t.Fatal(eventsErr)
+	}
+	for _, event := range events {
+		if event.Kind == store.EventNodeWorkerChanged {
+			t.Fatalf("the run journaled a change of worker: %s", string(event.Payload))
+		}
+	}
+
+	// And the stream a person reads. The arrow and the hand-over are the two
+	// sentences the incident was read from.
+	said := stdout.String() + stderr.String()
+	for _, banned := range []string{"escalated linear", "handed to", "↻"} {
+		if strings.Contains(said, banned) {
+			t.Fatalf("the run said %q:\n%s", banned, said)
+		}
 	}
 }

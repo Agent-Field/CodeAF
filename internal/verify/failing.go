@@ -2,8 +2,8 @@ package verify
 
 // Reading a test runner's failures, and subtracting one reading from another.
 //
-// This is the half of the law that used to live unexported inside
-// internal/swepro/codeaf/baseline.go, where exactly one worker could reach it.
+// This is the half of the law that reads a reading. It is exported, and in its
+// own package, so that every caller can reach it rather than one.
 // Nothing here knows what language the workspace is in. It does not run the
 // tests — the caller already knows how to do that — it only reads the runners'
 // own failure vocabulary, which is small, stable, and shared across every

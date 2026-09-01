@@ -49,14 +49,14 @@ func TestBothSurfacesSendTheirMachineryOutOfTheLeafsDirectory(t *testing.T) {
 	}
 }
 
-// The surface's own note to a node — that this build has no worker it was
-// promised — has to land in the same file the recorder is about to open, and the
-// recorder is in the scratch home now. It has been out of step with the recorder
+// The surface's own note to a node — that an older graph named a worker this
+// build does not have — has to land in the same file the recorder is about to
+// open, and the recorder is in the scratch home now. It has been out of step with the recorder
 // once before, one directory earlier, which is why it is seated rather than
 // spelled here.
 func TestTheDegradationNoteFollowsTheRecorderIntoTheScratchHome(t *testing.T) {
 	session := "chat-scratch"
-	graph := seedErrandGraph(t, session, "swe")
+	graph := seedErrandGraph(t, session, "retired-worker")
 	workspace, scratch := t.TempDir(), t.TempDir()
 	seatLeafWorkerNotes(workspace, scratch, graph)
 	t.Cleanup(func() { seatLeafWorkerNotes("", "", nil) })
@@ -71,7 +71,7 @@ func TestTheDegradationNoteFollowsTheRecorderIntoTheScratchHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the note did not follow the recorder into the scratch home: %v", err)
 	}
-	if want := `note: worker "swe" not in this build`; !strings.Contains(string(body), want) {
+	if want := `note: "retired-worker" is not a worker`; !strings.Contains(string(body), want) {
 		t.Fatalf("the recorder does not carry the note: %q", string(body))
 	}
 	// And nothing at all was written beside the person's work.

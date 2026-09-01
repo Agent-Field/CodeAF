@@ -15,8 +15,8 @@ import (
 // a split has to be bought on wall time, cost and quality together — and then
 // hands the model no prices with which to do the arithmetic. So the burden is
 // discharged on plausibility: a division that sounds parallel sounds bought. The
-// measured lines that would settle it exist, are already collected per (model,
-// subharness), and reach exactly one reader today as decoration under a menu.
+// measured lines that would settle it exist and are already collected, and
+// reached exactly one reader before this: nobody.
 //
 // This is that measurement rendered as evidence for the three decisions that
 // actually divide work. It adds no rule and replaces no principle: the prompts
@@ -29,9 +29,8 @@ import (
 // Cache shape (L7): an invoice moves every time a leaf finishes, so it is never
 // part of a shared prefix. Every injection site below appends it to the tail of
 // the last user message of its own call, behind everything stable — the same
-// position, and for the same reason, that the worker menu takes in the retry
-// judgements (internal/revision/judge.go) and the measured line takes in the
-// compiler.
+// position, and for the same reason, that every other measured block takes:
+// what churns sinks, so the constant above it stays a matchable prefix.
 
 // Invoice is one worker's measured price list.
 //
@@ -40,9 +39,9 @@ import (
 // fitted, extrapolated or smoothed, so every number in the rendered block is a
 // thing that actually happened to a real leaf.
 type Invoice struct {
-	// Worker names whose price list this is. Prices are per (model, subharness)
-	// because capacity is a property of the executor: a coding pipeline and a
-	// lookup share no envelope, and one average over both describes neither.
+	// Worker names whose price list this is. Prices are kept per worker because
+	// capacity is a property of the executor, and a price list that averaged
+	// over several of them would describe none of them.
 	Worker string
 	// Shapes are the per-size rows, in the order sizes are worth reading.
 	Shapes []InvoiceShape
@@ -107,8 +106,8 @@ var invoiceShapeOrder = []string{
 
 // InvoiceFor prices one worker from its journaled records.
 //
-// The evidence floor is profile.MinSamples per row, the same gate the ruler and
-// the measured menu line are held to. A shape below it is not rendered at a
+// The evidence floor is profile.MinSamples per row, the same gate the ruler is
+// held to. A shape below it is not rendered at a
 // lower confidence — it is not rendered, because the whole value of this block
 // is that a number in it can be trusted without qualification.
 //

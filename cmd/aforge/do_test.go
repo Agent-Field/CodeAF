@@ -1169,6 +1169,10 @@ type scriptedBrain struct {
 
 	// stall makes every leaf call hang, so a wall can be proved.
 	stall bool
+	// leafFails makes every leaf call fail at the provider, so a leaf that
+	// cannot do the work can be followed all the way to what the run says
+	// about it.
+	leafFails bool
 	// inventedGap makes the gate fail the deliverable against a standard
 	// nobody asked for — the shape of the one measured round that made a
 	// deliverable worse.
@@ -1193,9 +1197,6 @@ type scriptedBrain struct {
 	compileDraftsCharter bool
 	// compilerAsks makes the compiler stop on a question instead of compiling.
 	compilerAsks string
-	// compileSubharness makes the compiler read the ask as one specialist's
-	// kind of job, which is what a coding-shaped ask gets from the real one.
-	compileSubharness string
 	// gatePasses lets a deliverable through on the first look, for the runs
 	// whose subject is not the gate.
 	gatePasses bool
@@ -1283,6 +1284,12 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 		}
 		return
 	}
+	if s.leafFails && strings.Contains(body, "You complete one piece of work, alone, using tools") {
+		s.tally("leaf-failed")
+		http.Error(writer, `{"error":{"message":"the model refused this request","code":400}}`,
+			http.StatusBadRequest)
+		return
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(writer, s.reply(body))
 }
@@ -1313,8 +1320,7 @@ func (s *scriptedBrain) reply(body string) string {
 		// earns a written working method and still faces the gate.
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
 			`"title":"Release note and migration",` +
-			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0,` +
-			`"subharness":` + jsonString(s.compileSubharness) + `}`)
+			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
 
 	case strings.Contains(body, "You write the working method for one agent"):
 		s.tally("contract")
@@ -1445,12 +1451,6 @@ func (s *scriptedBrain) leaf(body string) string {
 		}
 		return s.say(firstDraftAnswer)
 	}
-}
-
-// jsonString quotes one value for a hand-written body above.
-func jsonString(value string) string {
-	encoded, _ := json.Marshal(value)
-	return string(encoded)
 }
 
 func (s *scriptedBrain) say(content string) string {

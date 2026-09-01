@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
@@ -36,36 +34,10 @@ type doctorSnapshot struct {
 	RailUnlimited    bool
 	ActiveCharters   int
 	PendingQuestions int
-	SWEModel         sweModelReport
 	// CallLog is where the model-call log is and how big it has got
 	// (internal/calllog), or nothing when nothing has ever been written to it.
 	CallLog callLogReport
 	Now     time.Time
-}
-
-// sweModelReport is doctor's answer to the one precondition of coding work that
-// nothing else in the product can see: the swe leaf runs in a second process
-// with a second catalog, and a model that catalog has never heard of kills it at
-// startup, before a cent is spent and long after the person walked away.
-//
-// The failure it was written for was live and cost nothing to reproduce: the
-// default model of every install, translated into a dated spelling models.dev
-// does not publish. That was a config a person could not have known was broken
-// until a job died on it.
-type sweModelReport struct {
-	// Model is the work model as configured, in aforge's spelling.
-	Model string
-	// Sent is what a swe leaf would actually hand the engine — the same
-	// translation the executor makes, made here so doctor cannot be right about
-	// a model the run does not use.
-	Sent string
-	// Resolves is whether the engine's catalog carries Sent.
-	Resolves bool
-	// Unknown is "nobody could be asked" — the catalog would not load — and is
-	// a different report from a model that is genuinely absent.
-	Unknown bool
-	// Detail explains an Unknown, in the words of whatever failed.
-	Detail string
 }
 
 // callLogReport is where the model-call log is and how big it has got, or
@@ -86,15 +58,12 @@ func runDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	return runDoctorWith(args, os.Stdout, dailyBudget, nil, sweModelCheck)
+	return runDoctorWith(args, os.Stdout, dailyBudget, nil)
 }
 
-// runDoctorWith is doctor with its two outside readings injectable: the standing
-// watch, and the coding worker's model probe. A test passing nil for the probe
-// gets the block exactly as it was before the probe existed, which is also what
-// it must render when nobody asks.
-func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus,
-	sweModel func(profileDir string) sweModelReport) error {
+// runDoctorWith is doctor with its one outside reading injectable: the standing
+// watch.
+func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
@@ -135,7 +104,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 		}
 		watch = manager
 	}
-	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, sweModel, time.Now())
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
 	if err != nil {
 		return err
 	}
@@ -161,39 +130,6 @@ func readCallLogReport(path string) callLogReport {
 	return callLogReport{Path: path, Size: info.Size()}
 }
 
-// sweModelCheck asks the engine's catalog, from this side of the process
-// boundary, whether the configured work model is a model it can find — the same
-// question a swe leaf answers at startup, asked before a job is riding on it.
-//
-// The translation is the executor's own (engineModelID), because doctor
-// reporting on a spelling the run does not use would be worse than not
-// reporting at all. Everything here is a file read at steady state: models.dev
-// is cached by the engine, and the OpenRouter catalog by this process's own
-// daily cache.
-func sweModelCheck(profileDir string) sweModelReport {
-	prefs := loadChatPrefs(profileDir)
-	model := firstNonEmptyString(prefs.TaskModel, os.Getenv("AFORGE_MODEL"), config.DefaultModel)
-	report := sweModelReport{Model: model, Sent: model}
-	resolver, err := sweModelResolver()
-	if err != nil || resolver == nil {
-		report.Unknown = true
-		if err != nil {
-			report.Detail = err.Error()
-		}
-		return report
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), sweModelProbeTimeout)
-	defer cancel()
-	// No key: the listing is public, and doctor must work in a profile whose
-	// key lives somewhere this function has no business reading.
-	models := catalog.Load(ctx, catalog.Options{
-		BaseURL: config.DefaultBaseURL, Dir: os.Getenv("AFORGE_PROFILE_DIR"),
-	})
-	report.Sent = models.Concrete(model, resolver)
-	report.Resolves = resolver(report.Sent)
-	return report
-}
-
 func newStandingWatchManager(graph *store.Store) (*watchdog.Manager, error) {
 	var lastWake watchdog.LastWakeFunc
 	if graph != nil {
@@ -202,18 +138,12 @@ func newStandingWatchManager(graph *store.Store) (*watchdog.Manager, error) {
 	return watchdog.New(watchdog.Options{LastWake: lastWake})
 }
 
-// collectDoctorSnapshot reads everything doctor reports. sweModel is the coding
-// worker's model probe and may be nil, which is how a caller that only wants the
-// store's own state — the head's standing grounding — declines to pay for a
-// catalog read on every question about the watch.
+// collectDoctorSnapshot reads everything doctor reports.
 func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64,
-	sweModel func(profileDir string) sweModelReport, now time.Time) (doctorSnapshot, error) {
+	now time.Time) (doctorSnapshot, error) {
 	snapshot := doctorSnapshot{
 		BrainPath: path, Resident: readResident(residentLockFor(path)),
 		Rail: dailyBudget, RailUnlimited: dailyBudget <= 0, Now: now,
-	}
-	if sweModel != nil {
-		snapshot.SWEModel = sweModel(filepath.Dir(path))
 	}
 	if info, err := os.Stat(path); err == nil {
 		snapshot.BrainExists, snapshot.BrainSize = true, info.Size()
@@ -285,9 +215,6 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		"standing watch", watch,
 		"spend", spend,
 		"standing", standing)
-	if line := formatSWEModel(snapshot.SWEModel); line != "" {
-		block += fmt.Sprintf("%-16s %s\n", "coding model", line)
-	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
 	}
@@ -306,30 +233,6 @@ func formatCallLog(report callLogReport) string {
 		return ""
 	}
 	return report.Path + " · " + humanBytes(report.Size)
-}
-
-// formatSWEModel says whether coding work can start, in one line and in the
-// words of the failure it prevents. Nothing is printed when the probe did not
-// run, because a line that only ever means "we did not look" is a line a person
-// learns to read past.
-func formatSWEModel(report sweModelReport) string {
-	if strings.TrimSpace(report.Model) == "" {
-		return ""
-	}
-	line := report.Model
-	if report.Sent != "" && report.Sent != report.Model {
-		line += " → " + report.Sent
-	}
-	switch {
-	case report.Unknown:
-		// Not a verdict on the model. The engine's catalog could not be read,
-		// and doctor says which so the next step is obvious.
-		return line + " · unchecked, the engine's model catalog is unavailable" + detailSuffix(report.Detail)
-	case report.Resolves:
-		return line + " · the coding worker can price it"
-	default:
-		return line + " · the coding worker's catalog (models.dev) has no such model — swe leaves will fail at startup"
-	}
 }
 
 func detailSuffix(detail string) string {
@@ -353,11 +256,8 @@ const standingWatchCharterCap = 8
 // in full three surfaces over, so the head could report a number and nothing a
 // person would recognise as an answer. The lines are the /standing lines
 // verbatim, because two renderings of one thing eventually disagree.
-// The coding-model probe is deliberately not asked for here: the head's
-// question is about the watch, and a standing read must not spend a catalog
-// lookup — or a line of the answer — on a worker nobody asked about.
 func watchGrounding(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64) string {
-	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, nil, time.Now())
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
 	if err != nil {
 		return "standing watch status unavailable: " + err.Error()
 	}

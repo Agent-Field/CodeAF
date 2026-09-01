@@ -210,23 +210,6 @@ func TestJudgeSplitUsesMeasuredCapacityOnlyAtTheAtomicBoundary(t *testing.T) {
 	}
 }
 
-// A specialist that takes the node whole is the one refusal that is an
-// inversion rather than a shortfall, and it has to survive a named part list —
-// the parts were named against a ruler that no longer applies to this node.
-func TestSpecialistRefusalOutranksNamedParts(t *testing.T) {
-	defer ForgetSubharnesses()
-	UseSubharness(Subharness{Name: "swe", Purpose: "taken whole"}, "")
-
-	node := Node{Kind: KindWork, Size: SizeOversized, Subharness: "swe", Parts: []string{"one", "two"}}
-	verdict := JudgeSplit(&node, Options{MaxDepth: 3})
-	if verdict.Divide {
-		t.Fatal("a node one worker takes whole was admitted for splitting")
-	}
-	if verdict.Reason != RefusalTakenWhole {
-		t.Fatalf("Reason = %q, want %q", verdict.Reason, RefusalTakenWhole)
-	}
-}
-
 // Every refusal at selection is written onto the node it refused, and the
 // generalist's ordinary leaf — the one that named no parts — is the one that
 // most needs the note, since it is otherwise indistinguishable from a leaf

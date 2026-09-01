@@ -59,13 +59,11 @@ const (
 	// input token a re-send of something the model had already been shown.
 	//
 	// So the pot the law fills is min(window, this) rather than the window. The
-	// number is the vendored swe engine's own, arrived at independently and
-	// running in this tree: internal/swepro/.../calc/overflow.go names
-	// EFFECTIVE_CONTEXT_CAP_DEFAULT = 160_000 as "the universal cap on the live
-	// working set, applied BEFORE the trigger percentage", with the same 0.6
-	// trigger. Two engines reaching the same shape from different evidence is the
-	// strongest argument available for it, and AFORGE_WORKING_SET is here for the
-	// operator who has evidence of their own.
+	// number is not this program's invention: another agent engine, measured
+	// independently, caps its live working set at 160,000 tokens and applies that
+	// cap BEFORE the same 0.6 trigger. Two engines reaching the same shape from
+	// different evidence is the strongest argument available for it, and
+	// AFORGE_WORKING_SET is here for the operator who has evidence of their own.
 	//
 	// A model whose whole window is smaller than this is unaffected: the minimum
 	// keeps the law exactly what it was for it.

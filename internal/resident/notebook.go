@@ -137,10 +137,6 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 	if err != nil || len(facts) == 0 {
 		return ""
 	}
-	facts = harnessScoped(graph, nodeID, facts)
-	if len(facts) == 0 {
-		return ""
-	}
 	if nodeID != "" {
 		seqs := make([]int64, 0, len(facts))
 		for _, fact := range facts {
@@ -173,108 +169,6 @@ func NotebookDigest(graph *store.Store, nodeID, brief, goal string, limit int) s
 		digest.WriteByte('\n')
 	}
 	return strings.TrimSuffix(digest.String(), "\n")
-}
-
-// harnessScoped keeps a working method inside the kind of work that earned it.
-//
-// Retrieval matches on cues and on words, and a lesson about how to hand over a
-// written deliverable shares plenty of both with a request to write a program.
-// Measured: two lessons distilled from a prose research job — about assembling
-// items into one contiguous final message rather than filing them — were
-// injected verbatim into a Go coding leaf run by the specialist, where the
-// deliverable is a compiled repository and "one contiguous message" is not a
-// thing that can be done. Method knowledge does not generalise across workers,
-// and until now nothing said so.
-//
-// This reads a name it must never branch on, so it does not: the comparison is
-// between two nodes' recorded choices, whatever they happen to be, and a worker
-// registered tomorrow is scoped by the same three lines with nothing added.
-//
-// The scope a lesson carries is the harness of the job that taught it, read off
-// the graph rather than stored twice: Fact.NodeID already names that job, and
-// the node already names its worker. Two rules, both narrow:
-//
-//   - only the METHOD kinds are scoped — lesson and playbook, the "how to work"
-//     lines. Who the user is, what they prefer, and what is true about their
-//     environment cross every worker, and filtering those would cost real
-//     knowledge to fix a problem they do not have.
-//   - only a KNOWN mismatch drops. A fact whose teaching job cannot be resolved,
-//     or either side of which never recorded a worker, is neutral and passes: a
-//     silence must not read as a conflict.
-//
-// Nothing is added, only withheld, so the digest can only get more relevant —
-// and the withheld line is never recorded as injected, which is what keeps the
-// attribution honest about what the leaf actually read.
-func harnessScoped(graph *store.Store, nodeID string, facts []store.Fact) []store.Fact {
-	if graph == nil || strings.TrimSpace(nodeID) == "" || len(facts) == 0 {
-		return facts
-	}
-	resolved := make(map[string]string, len(facts)+1)
-	receiving := workHarness(graph, nodeID, resolved)
-	if receiving == "" {
-		return facts
-	}
-	kept := make([]store.Fact, 0, len(facts))
-	for _, fact := range facts {
-		if !scopedFactKind(fact.Kind) || fact.Channel == store.FactChannelStated {
-			kept = append(kept, fact)
-			continue
-		}
-		taught := workHarness(graph, fact.NodeID, resolved)
-		if taught == "" || strings.EqualFold(taught, receiving) {
-			kept = append(kept, fact)
-		}
-	}
-	return kept
-}
-
-// scopedFactKind names the kinds that describe a way of working rather than a
-// standing truth about the person or their world.
-func scopedFactKind(kind store.FactKind) bool {
-	return kind == store.FactLesson || kind == store.FactPlaybook
-}
-
-// workHarness answers "what kind of work is this" for one node: the worker it
-// settled on, or — for a job root, which is a container and runs nothing itself
-// — the worker its leaves unanimously ran under. Disagreement among the leaves
-// is an honest empty: a mixed job taught nothing that belongs to one worker.
-func workHarness(graph *store.Store, nodeID string, resolved map[string]string) string {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return ""
-	}
-	if harness, seen := resolved[nodeID]; seen {
-		return harness
-	}
-	resolved[nodeID] = ""
-	node, ok, err := graph.Node(nodeID)
-	if err != nil || !ok {
-		return ""
-	}
-	if harness := strings.TrimSpace(node.Subharness); harness != "" {
-		resolved[nodeID] = harness
-		return harness
-	}
-	subtree, err := graph.SubtreeNodes(nodeID)
-	if err != nil {
-		return ""
-	}
-	agreed := ""
-	for _, descendant := range subtree {
-		harness := strings.TrimSpace(descendant.Subharness)
-		if harness == "" {
-			continue
-		}
-		if agreed == "" {
-			agreed = harness
-			continue
-		}
-		if !strings.EqualFold(agreed, harness) {
-			return ""
-		}
-	}
-	resolved[nodeID] = agreed
-	return agreed
 }
 
 // statedFirst lifts what the person said in their own voice above what the

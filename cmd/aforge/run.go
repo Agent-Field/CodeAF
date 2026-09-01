@@ -46,7 +46,6 @@ func runExecute(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model ("+planLadderHelp+")")
-	subharness := flags.String("subharness", "", "force every leaf of this run onto one worker, for measuring workers against each other (default: what the graph chose)")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
@@ -62,17 +61,6 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
-	// A forced worker is written into the graph rather than carried beside it,
-	// so the leaves the scheduler dispatches say who runs them for the same
-	// reason every other leaf does — the node is the record.
-	if forced := resolveSubharnessFlag(*subharness, os.Stderr); forced != "" {
-		for index := range graph.Nodes {
-			if graph.Nodes[index].Kind == plan.KindWork {
-				graph.Nodes[index].Subharness = forced
-			}
-		}
-	}
-
 	settings, err := config.Load()
 	if err != nil {
 		return err
@@ -242,18 +230,19 @@ func runExecute(args []string) error {
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
 		WithStore(history).WithMedia(mediaTools).WithAttribution(settings.Attribution).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
-	// Every worker this build can construct, offered to the scheduler by name.
-	// The headless surface resolves a node's choice through this registry while
-	// the resident surface builds one per leaf; the covenant is that both reach
-	// the same table, so a worker cannot work on one surface and not the other.
+	// The worker this build constructs, offered to the scheduler. The headless
+	// surface resolves a node's leaf through this registry while the resident
+	// surface builds one per leaf; the covenant is that both reach the same
+	// constructor, so a leaf cannot behave one way on one surface and another
+	// way on the other.
 	registry := exec.NewRegistry(linear)
 	registerLeafExecutors(registry, leafBuild{
 		settings: settings, client: client, workspace: space, web: web,
 		graph: history, media: mediaTools, model: settings.Model, models: modelCatalog,
 		maxTurns: *maxTurns, maxTokens: *maxTokens, deadline: deadline,
 	})
-	// A graph may name a worker this build was not compiled with. The registry
-	// will hand those leaves to the generalist and say nothing, which is the
+	// A graph written by an older build may name a worker that no longer exists.
+	// The registry will hand those leaves to linear and say nothing, which is the
 	// right behavior and the wrong silence: said once per node, here, before
 	// anything is spent, it is the difference between a degraded run and a run
 	// that lied about which worker it measured.
@@ -448,27 +437,21 @@ type landedProfileRecord struct {
 	record profile.Record
 }
 
-// recordAndCalibrateDetailed splits the run's leaves by what actually ran them
-// and calibrates each worker against its own evidence and nobody else's.
+// recordAndCalibrateDetailed turns the run's landed leaves into profile records
+// and recalibrates the ruler against them.
 //
-// One measurement, one file, one ruler. A specialist's cost written into the
-// generalist's profile would not merely be misfiled: that profile is what the
-// planner's ruler is rewritten from, so one long specialist run would teach the
-// planner that ordinary leaves are enormous and it would stop splitting
-// anything. The generalist is always processed, with or without evidence,
-// because its report line is the one this function has always returned.
+// One measurement, one file, one ruler. The profile is what the planner's ruler
+// is rewritten from, so a record that describes something other than an
+// ordinary leaf would teach the planner the wrong size for every leaf after it.
+// It runs with or without evidence, because its report line is the one this
+// function has always returned.
 func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, settings config.Config, model string, graph *plan.Graph) (string, []landedProfileRecord) {
-	byWorker := map[string][]landedProfileRecord{}
-	order := []string{profileSubharness("")}
+	pending := make([]landedProfileRecord, 0, len(graph.Nodes))
 	for _, node := range graph.Nodes {
 		if node.Kind != plan.KindWork || node.Turns == 0 || strings.TrimSpace(node.Title) == "" {
 			continue
 		}
-		worker := profileSubharness(node.Subharness)
-		if _, seen := byWorker[worker]; !seen && worker != order[0] {
-			order = append(order, worker)
-		}
-		byWorker[worker] = append(byWorker[worker], landedProfileRecord{planID: node.ID, record: withBoundaryEvidence(settings, model, worker, profile.Record{
+		pending = append(pending, landedProfileRecord{planID: node.ID, record: profile.Record{
 			Title:   node.Title,
 			Summary: node.Summary,
 			// The touch-list and the fan-in, which are two different facts and
@@ -484,26 +467,13 @@ func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, sett
 			Cost:         node.Cost,
 			Stop:         node.Stop,
 			Verdict:      node.Verdict,
-			// What the worker said about its own fit, and whoever tried this
-			// node before it did. Both are empty on every node the generalist
-			// took first and finished, which is the additive law arriving at the
-			// profile file: an existing profile gains no new keys.
-			Calibration:   append([]string(nil), node.Calibration...),
-			EscalatedFrom: node.EscalatedFrom,
-		})})
+			// What the worker said about its own fit. It is empty on every node
+			// that was taken and finished, which is the additive law arriving at
+			// the profile file: an existing profile gains no new keys.
+			Calibration: append([]string(nil), node.Calibration...),
+		}})
 	}
-
-	var reports []string
-	var landed []landedProfileRecord
-	for _, worker := range order {
-		report, pending := recordAndCalibrateWorker(ctx, client, settings, model, worker, byWorker[worker])
-		if worker != order[0] {
-			report = worker + " " + report
-		}
-		reports = append(reports, report)
-		landed = append(landed, pending...)
-	}
-	return strings.Join(reports, "\n"), landed
+	return recordAndCalibrateWorker(ctx, client, settings, model, pending)
 }
 
 // recordedSize is the shape this leaf is journaled under, and it never writes
@@ -538,11 +508,11 @@ func recordedFanIn(node plan.Node) int {
 	return len(node.Needs)
 }
 
-// recordAndCalibrateWorker is that loop for one worker: its records into its
-// file, its evidence against its own three examples.
+// recordAndCalibrateWorker writes the records into the profile file and
+// recalibrates the ruler against its own three examples.
 func recordAndCalibrateWorker(ctx context.Context, client plan.Completer, settings config.Config,
-	model, worker string, pending []landedProfileRecord) (string, []landedProfileRecord) {
-	measured, err := profile.Load(settings.ProfileDir, model, worker)
+	model string, pending []landedProfileRecord) (string, []landedProfileRecord) {
+	measured, err := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
 	if err != nil {
 		return fmt.Sprintf("ruler: could not load profile: %v", err), nil
 	}
@@ -555,14 +525,14 @@ func recordAndCalibrateWorker(ctx context.Context, client plan.Completer, settin
 		pending[index].record = added[index]
 	}
 
-	anchors, reason, _, recalibrateErr := plan.RecalibrateFor(ctx, client, measured, worker)
+	anchors, reason, _, recalibrateErr := plan.Recalibrate(ctx, client, measured)
 	var report string
 	switch {
 	case recalibrateErr != nil:
 		report = fmt.Sprintf("ruler: could not recalibrate: %v", recalibrateErr)
 	case anchors != "":
 		measured.Anchors = anchors
-		plan.UseAnchorsFor(worker, anchors)
+		plan.UseAnchors(anchors)
 		var rendered strings.Builder
 		fmt.Fprintf(&rendered, "ruler recalibrated: %s", reason)
 		for _, line := range strings.Split(anchors, "\n") {

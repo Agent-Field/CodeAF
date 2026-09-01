@@ -32,8 +32,8 @@ def mmss(s):
     return f'{int(s)//60}m{int(s)%60:02d}s'
 
 print(f'ROOT: {root}\n')
-print('## v3 `aforge do` (select) — raw cells\n')
-hdr = f"{'issue':<6}{'exit':<6}{'files':<7}{'pass':<7}{'fail':<6}{'time':<9}{'cost':<10}{'worker':<12}{'nodes_failed'}"
+print('## v3 `aforge do` — raw cells\n')
+hdr = f"{'issue':<6}{'exit':<6}{'files':<7}{'pass':<7}{'fail':<6}{'time':<9}{'cost':<10}{'nodes_failed'}"
 print(hdr); print('-'*len(hdr))
 tot_cost = 0.0; tot_sec = 0
 for r in sorted(rows, key=lambda x: x['issue']):
@@ -41,7 +41,7 @@ for r in sorted(rows, key=lambda x: x['issue']):
     if c: tot_cost += c
     if s: tot_sec = max(tot_sec, int(s))
     print(f"{'#'+r['issue']:<6}{r['exit']:<6}{r['changed_files']:<7}{r['passed']:<7}{r['failed']:<6}"
-          f"{mmss(s):<9}{('$%.3f'%c) if c else 'n/a':<10}{r.get('subharness_chosen','?'):<12}{r.get('nodes_failed','?')}")
+          f"{mmss(s):<9}{('$%.3f'%c) if c else 'n/a':<10}{r.get('nodes_failed','?')}")
 print(f"\ntotal cost ${tot_cost:.3f} | wall clock (parallel, slowest cell) {mmss(tot_sec)}")
 
 print('\n## v3 `do` vs master `node` vs pi\n')
@@ -59,7 +59,7 @@ for r in sorted(rows, key=lambda x: x['issue']):
     print(f"{'#'+i:<7}{str(vp):<10}{str(m['passed']):<10}{str(p[1]):<8}{mmss(vs):<10}{mmss(m['sec']):<10}"
           f"{('$%.3f'%vc) if vc else 'n/a':<10}{'$%.3f'%m['cost']:<10}{verdict}")
 
-print('\n## ranking (per axis, v3 select vs master node)\n')
+print('\n## ranking (per axis, v3 do vs master node)\n')
 qual = sum(1 for r in rows if MASTER[r['issue']]['passed'] and num(r['passed'],int) and num(r['passed'],int) >= MASTER[r['issue']]['passed'])
 scored = sum(1 for r in rows if MASTER[r['issue']]['passed'])
 faster = sum(1 for r in rows if num(r['seconds'],float) and num(r['seconds'],float) < MASTER[r['issue']]['sec'])

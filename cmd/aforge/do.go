@@ -145,9 +145,9 @@ type headlessOutcome struct {
 	PlanModelSource string `json:"plan_model_source"`
 	// Subharness is the worker that took the deliverable, read back from the
 	// durable row rather than from what was asked for. It is always present and
-	// never empty — "linear" is the generalist, and a caller comparing workers
-	// on a corpus needs the default spelled out as much as the specialist, or an
-	// absent field is indistinguishable from an older binary.
+	// never empty, because an absent key is indistinguishable from an older
+	// binary — and a graph written by one of those may still name a worker this
+	// build does not have.
 	Subharness string `json:"subharness"`
 	// Error is the sentence a run that never reached an outcome left behind:
 	// the store that would not open, the working directory that could not be
@@ -181,7 +181,6 @@ func runDo(args []string) error {
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
-	subharness := flags.String("subharness", "", "force this errand onto one worker, for measuring workers against each other (default: let the compiler choose)")
 	contextFill := flags.Int("context-fill", 0,
 		"how full a model's context window may get before it is compacted, in percent (default 60, clamped 10-90); "+
 			"sets AFORGE_CONTEXT_FILL_PCT for this run")
@@ -202,7 +201,6 @@ func runDo(args []string) error {
 		task: task, database: *database, keep: *keep, workspace: *workspace,
 		timeout: time.Duration(*timeout) * time.Second, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
-		subharness:  *subharness,
 		contextFill: *contextFill, completionReserve: *completionReserve,
 		stdout: os.Stdout, stderr: os.Stderr,
 	})
@@ -220,10 +218,6 @@ type doRequest struct {
 	yesSpend  bool
 	model     string
 	planModel string
-	// subharness forces this errand onto one worker. It is the benchmarking
-	// path: an unknown name is a note on stderr and the default worker, so a
-	// measurement run never dies at argument parsing.
-	subharness string
 	// contextFill and completionReserve are this run's two dials on the window
 	// law (internal/ctxbudget). They are integers rather than a struct because
 	// zero has to mean "not asked for": the law's own defaults are the answer
@@ -456,7 +450,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	// The wall is the case that made this necessary. A leaf cancelled by the
 	// timeout journals its usage row on the way down, which is after the
 	// watcher has returned and — until this line moved the shutdown ahead of
-	// the read — after the receipt had already been printed without it. One swe
+	// the read — after the receipt had already been printed without it. One
 	// leaf landing that late is the whole of the 36 % under-report.
 	settle()
 	priceErrand(graph, session, openedAt, &outcome)
@@ -519,9 +513,8 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
-		seats:      &seats,
-		subharness: request.subharness,
-		consent:    consent, newClient: request.newClient,
+		seats:   &seats,
+		consent: consent, newClient: request.newClient,
 		produced: produced,
 		// THE WALL THE WATCHER IS WATCHING IS THE WALL THE WORK RUNS UNDER.
 		// Until this line the errand's timeout reached the settlement watcher
@@ -1069,21 +1062,13 @@ func (w *settlementWatch) report(nodes []store.Node) bool {
 	// never claimed printed nothing whatsoever for the whole of its life.
 	if !w.structured {
 		w.structured = true
-		// The ask became work, and on the rare errand that named a specialist it
-		// says which one — once, in the line that already exists, in the same
-		// breath as how much work it became. A generalist errand reads exactly as
-		// it always did.
-		worker := ""
-		if named := errandWorker(nodes); named != "" {
-			worker = " (" + named + ")"
-		}
-		fmt.Fprintf(w.progress, "  · understood · %s%s %s\n",
-			plural(len(nodes), "task"), worker, time.Since(w.started).Round(time.Second))
+		fmt.Fprintf(w.progress, "  · understood · %s %s\n",
+			plural(len(nodes), "task"), time.Since(w.started).Round(time.Second))
 	}
 	w.noteDegradedWorkers(nodes)
 	// Everything the journal knows that a status column cannot say. It runs
-	// before the status lines so that the fault which caused an escalation is
-	// read above the escalation, in the order the two things happened.
+	// before the status lines so that a fault is read above what it caused, in
+	// the order the two things happened.
 	w.narrate(nodes)
 	changed := false
 	for _, node := range nodes {
@@ -1147,16 +1132,9 @@ func (w *settlementWatch) holdForWorker(node store.Node) bool {
 }
 
 // ranWords is the worker in parentheses, on every line this stream writes about
-// a node rather than only on the interesting ones. The ▶ says who took the work
-// and the ✓ says who finished it, which on an escalated node are two different
-// answers and are the whole reason the escalation line between them is there.
-//
-// The compile summary has named a specialist since it existed, and that was the
-// wrong half of the rule: the runs worth reading afterwards are the ones where
-// nobody routed anything, and those printed a stream of ▶ marks over a table of
-// blanks. The generalist says "linear" here for the same reason it says it in
-// the store — an unnamed worker and a worker nobody recorded look identical,
-// and telling them apart cost the s9 sweep a day.
+// a node. It says "linear" here for the same reason the store says it — an
+// unnamed worker and a worker nobody recorded look identical, and telling them
+// apart cost the s9 sweep a day.
 func ranWords(node store.Node) string {
 	if ran := strings.TrimSpace(node.Ran); ran != "" {
 		return " (" + ran + ")"
@@ -1164,27 +1142,11 @@ func ranWords(node store.Node) string {
 	return ""
 }
 
-// errandWorker is the specialist this errand was given, if it was given one. It
-// reads the roots because the choice is a fact about the job rather than about
-// one leaf, and it names nothing when the answer is the generalist — a run that
-// took the default is the run everyone already knows how to read.
-func errandWorker(nodes []store.Node) string {
-	for _, node := range nodes {
-		if node.Parent != store.RootID {
-			continue
-		}
-		if worker := promisedWorker(node); worker != "" && worker != exec.LinearSubharness {
-			return worker
-		}
-	}
-	return ""
-}
-
-// noteDegradedWorkers says once, per node, that this build could not honor the
-// worker the node was promised. The run continues on the generalist — that is
-// the registry's promise and it is not changing — but a benchmark cell that
-// silently became a default cell is a measurement of the wrong thing, and the
-// only honest place to learn that was a profile file that may never be written.
+// noteDegradedWorkers says once, per node, that a stored row names a worker this
+// build does not have. The run continues on linear — that is the registry's
+// promise and it is not changing — but a run that silently became something
+// else is a measurement of the wrong thing, and the only honest place to learn
+// that was a profile file that may never be written.
 func (w *settlementWatch) noteDegradedWorkers(nodes []store.Node) {
 	if w.progress == nil {
 		return
@@ -1215,18 +1177,17 @@ const narrationLimit = 200
 //
 // The status column above it can only say pending, running, done, failed. That
 // was the whole of the headless stream on 2026-08-28, and it is why a run that
-// was recovering correctly was killed: a leaf faulted, the scheduler escalated
-// it from bare to swe two seconds later, the swe engine started a seven-minute
-// baseline — three facts, all of them in the journal, none of them in the
-// stream, which said `still waiting: 0 tasks pending, 1 running — 10m57s`. The
-// operator read it as a hang.
+// was recovering correctly was killed: a leaf faulted, and the recovery that
+// followed it took minutes — facts all in the journal, none in the stream,
+// which said `still waiting: 0 tasks pending, 1 running — 10m57s`. The operator
+// read it as a hang.
 //
 // A FAIL-SAFE PROPAGATES TO THE VERDICT THE PERSON READS. Four kinds of fact
 // change what somebody watching should expect, so four kinds of fact get a line
-// in the same register as ▶ and ✓: a caught fault, a change of worker, a
-// subharness phase, and the delivery gate's judgement. Nothing here is a new
-// flag and nothing here spends money — every one of them is already written
-// down, and until now nobody read it.
+// in the same register as ▶ and ✓: a caught fault, a change of worker in an
+// older graph's journal, a phase, and the delivery gate's judgement. Nothing
+// here is a new flag and nothing here spends money — every one of them is
+// already written down, and until now nobody read it.
 //
 // It is a read of event KINDS and payload fields, never of prose. A narrator
 // that recognised its facts by the words they were phrased in would be one
@@ -1322,9 +1283,6 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		}
 		w.phase[node.ID] = phase
 		subject := phase
-		if worker := phaseWorker(node, nodes); worker != "" {
-			subject = worker + ": " + phase
-		}
 		if message.Progress.Total > 0 {
 			subject += fmt.Sprintf(" · %d of %d", message.Progress.Done, message.Progress.Total)
 		}
@@ -1534,7 +1492,7 @@ func unexercisedWords(points []string) string {
 // rebuilt here, so a person watching and a person reading the record afterwards
 // are looking at one sentence: "plan: answer cut at the ceiling — continued".
 // The mark is ↻ because that is what this stream already means by it — something
-// was tried again — and it is the same register the escalation line uses.
+// was tried again — and it is the same register every other retry line uses.
 func (w *settlementWatch) narrateRepair(event store.Event) bool {
 	var repair store.StructuredRepair
 	if json.Unmarshal(event.Payload, &repair) != nil {
@@ -1569,11 +1527,12 @@ func (w *settlementWatch) note(subject, detail string) {
 	fmt.Fprintf(w.progress, "  %s — %s  %s\n", subject, detail, elapsed)
 }
 
-// workerChangeWords says which worker took the work over. An escalation is the
-// usual case and it names both ends, because "escalated bare → swe" is the fact
-// that explains why the next thing the run does looks nothing like the last.
-// A node given a worker it did not previously have was not escalated from
-// anything, and saying it was would invent a failure.
+// workerChangeWords says which worker took the work over, for a journal written
+// when one could. Nothing writes the event any more — this build has one worker
+// — but every graph.db that carries it still opens here, and a line that named
+// both ends is the fact that explains why the next thing that run did looked
+// nothing like the last. A node given a worker it did not previously have was
+// not escalated from anything, and saying it was would invent a failure.
 func workerChangeWords(previous, subharness, reason string) string {
 	previous, subharness = strings.TrimSpace(previous), strings.TrimSpace(subharness)
 	words := "handed to " + subharness
@@ -1720,35 +1679,6 @@ func acceptanceWords(points int) string {
 		return "1 point from the request"
 	}
 	return fmt.Sprintf("%d points from the request", points)
-}
-
-// phaseWorker names the specialist a phase belongs to, and names nothing when it
-// cannot be sure.
-//
-// Progress is anchored on the job's root node, so the root's own worker is the
-// answer whenever the job has one. When the root is the generalist the phase
-// still came from somewhere, and the only structural candidate is a leaf that is
-// still running under a specialist: exactly one of those is an answer, two is a
-// guess, and a guess would put the wrong worker's name on the wrong stage.
-func phaseWorker(anchor store.Node, nodes []store.Node) string {
-	if worker := promisedWorker(anchor); worker != "" && worker != exec.LinearSubharness {
-		return worker
-	}
-	found := ""
-	for _, node := range nodes {
-		if terminalStatus(node.Status) {
-			continue
-		}
-		worker := promisedWorker(node)
-		if worker == "" || worker == exec.LinearSubharness {
-			continue
-		}
-		if found != "" && found != worker {
-			return ""
-		}
-		found = worker
-	}
-	return found
 }
 
 // phaseHint turns a phase name into an expectation, for the handful of stages

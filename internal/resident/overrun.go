@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 
-	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
@@ -177,31 +176,7 @@ func RemainderDigest(gap string) string {
 // Returns the spliced node count and the repair sink's id. DailyBudgetUSD zero
 // is unlimited; at the rail the durable question is posted and no splice lands.
 func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, planRemainder OverrunPlanFunc) (int, string, error) {
-	return ReplanOverrunOn(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", planRemainder)
-}
-
-// ReplanOverrunOn is the same splice with the remaining work handed to a named
-// worker.
-//
-// The name comes from the judgement that decided there was a remainder at all —
-// the same call, one question wider — and it rides the subtree's provenance,
-// which is where every other whole-subtree choice already rides. Empty is the
-// default worker and is what every caller passed before this existed, so the
-// splice is unchanged for a build with nothing to choose between.
-//
-// The choice is not inherited from the exhausted node verbatim — a worker that
-// ran out of resources on a piece of work has said nothing about who should
-// finish it — but it is never repeated either. An exhaustion is evidence the
-// sitting was bigger than the envelope, and re-running the same envelope is
-// paying to learn the same lesson twice. So the continuation escalates one
-// rung up the generalist ladder (bare → linear) and keeps the generalist at
-// its ceiling (linear), while a specialist the judge recognised is never
-// downgraded and the frozen engine is left to its own continuation
-// semantics. See escalateContinuation. The baseline for a worker nobody
-// chose remains the baseline — which is what "degradation, never failure"
-// means at a splice.
-func ReplanOverrunOn(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, worker string, planRemainder OverrunPlanFunc) (int, string, error) {
-	return ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, worker, Growth{Reason: GrowOverrun}, planRemainder)
+	return ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, Growth{Reason: GrowOverrun}, planRemainder)
 }
 
 // ReplanOverrunAs is the same splice with the growth named for what asked.
@@ -211,111 +186,16 @@ func ReplanOverrunOn(ctx context.Context, graph *store.Store, node store.Node, p
 // path's governors by borrowing its whole function, which left the journal
 // unable to say afterwards which of the two had spent the round. The reason
 // travels now; everything else is identical.
-func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, worker string, growth Growth, planRemainder OverrunPlanFunc) (int, string, error) {
-	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", worker, growth, planRemainder)
+func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, growth Growth, planRemainder OverrunPlanFunc) (int, string, error) {
+	spliced, sink, _, err := replanOverrun(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, "", growth, planRemainder)
 	return spliced, sink, err
-}
-
-// escalateContinuation decides the subharness a continuation node runs on,
-// from the envelope the dead leaf ran on (dead) and the worker the caller
-// judged the remainder belongs to (judged). It is the continuation half of
-// the routing decision: the initial plan's sizing pass chose the dead leaf's
-// envelope; here, the exhaustion of that envelope is the evidence the next
-// decision is made from.
-//
-// An exhaustion is evidence the sitting was bigger than the envelope, and
-// re-running the same envelope is paying to learn the same lesson twice. So
-// the continuation escalates one rung up the generalist ladder — bare to
-// linear — instead of repeating the envelope that just ran out. linear is the
-// generalist ceiling: it is the largest single-agent envelope, so an
-// exhaustion there has no higher generalist rung to climb to, and repeating it
-// is correct rather than a reflex. A specialist the judge recognised is never
-// downgraded by the escalation — the clock exhausting a generalist says
-// nothing about whether the work was the judge's to route to a specialist.
-//
-// The frozen engine has its own continuation semantics — it resumes from
-// its own checkpoints rather than splicing a fresh node — so exhausting it is
-// not evidence the envelope was too small: the caller's choice stands and the
-// ladder does not touch it. A dead leaf nobody sized promised no envelope, so
-// its continuation keeps whatever the caller judged (or the baseline when
-// nothing was), preserving the splice's "degradation, never failure" default.
-//
-// EVERY RUNG IS GATED ON THE WORKER BEING INSTALLED HERE. A judgment is a
-// claim about the work; whether this install has the worker to act on it is a
-// separate fact, and the profile's roster (internal/config's workers.go) is
-// what answers it. A name that reaches no installed worker would run on the
-// generalist anyway — the registry degrades rather than fails — but it would
-// be WRITTEN onto the continuation node and into the ledger, so a profile that
-// holds no coding pipeline would keep filing generalist leaves under the
-// pipeline's name. The gate is the same one the provenance rung has always
-// had, said once at the top so that every road out of this function obeys it.
-func escalateContinuation(dead, judged, provenance string) string {
-	dead = strings.TrimSpace(dead)
-	judged = strings.TrimSpace(judged)
-	// A judged worker this install does not have is THE GENERALIST, NAMED —
-	// not silence. Somebody did answer the question, and blanking their answer
-	// would make it indistinguishable from the verdict nobody made, which every
-	// reader downstream fills in from somewhere else. The generalist is left
-	// alone because it is never a registration, and an unanswered question is
-	// left alone because it is not an answer.
-	if executor.SubharnessChosen(judged) && !executor.GeneralistSubharness(judged) &&
-		!executor.KnownSubharness(judged) {
-		judged = executor.LinearSubharness
-	}
-	// The frozen engine first: its exhaustion is its own business, and the
-	// caller's choice — judged or empty — is returned unchanged.
-	if strings.EqualFold(dead, executor.SWESubharness) {
-		return judged
-	}
-	// A specialist the judge recognised is the top of the ladder; escalation
-	// only ever climbs, never downgrades it. It reaches here only when this
-	// install actually has that worker, by the gate above.
-	if strings.EqualFold(judged, executor.SWESubharness) {
-		return executor.SWESubharness
-	}
-	// bare is the smallest envelope. Escalate it to the generalist rather than
-	// repeat it: the bare sitting just proved the work was bigger than bare,
-	// and a second bare leaf would pay to learn the same lesson twice.
-	if strings.EqualFold(dead, executor.BareSubharness) {
-		return executor.LinearSubharness
-	}
-	// linear is ordinarily the generalist ceiling — the largest single-agent
-	// envelope. There is one rung above it, and only when the job's own
-	// provenance names it: the compiler judged the ask's shape at admission
-	// ("this is specialist work") and two exhausted single-agent envelopes are
-	// the size evidence that shape judgment was waiting for. A linear
-	// exhaustion on such a job climbs to the provenance's specialist; on any
-	// other job the generalist is kept, named, because there is no higher
-	// rung to climb to.
-	if executor.GeneralistSubharness(dead) {
-		if specialist := strings.TrimSpace(provenance); specialist != "" &&
-			!executor.GeneralistSubharness(specialist) &&
-			!strings.EqualFold(specialist, executor.BareSubharness) &&
-			executor.KnownSubharness(specialist) {
-			return specialist
-		}
-		return executor.LinearSubharness
-	}
-	// A dead leaf nobody sized promised no envelope, so the caller's choice
-	// stands unchanged — the continuation inherits whatever was judged, or the
-	// baseline when nothing was.
-	return judged
 }
 
 // replanOverrun reports capped=true when a governor refused the splice: the
 // repair is abandoned for good, unlike the rail's zero-splice pause, which is
 // waiting for consent. Deferred resumption needs the difference — a capped
 // repair must resolve rather than wait forever.
-func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix, worker string, growth Growth, planRemainder OverrunPlanFunc) (int, string, bool, error) {
-	// The continuation escalates one rung up the ladder from the envelope that
-	// just exhausted, instead of repeating it. This is decided here — at the
-	// splice, where the continuation node's subharness is journaled onto the
-	// subtree's provenance — so it flows to the deferred record at the rail and
-	// re-applies idempotently on resume. The dead leaf's envelope is on its node
-	// record; the caller's judgement rides the worker parameter.
-	if !growth.KeepEnvelope {
-		worker = escalateContinuation(node.Subharness, worker, node.Provenance.Subharness)
-	}
+func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix string, growth Growth, planRemainder OverrunPlanFunc) (int, string, bool, error) {
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
@@ -370,7 +250,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			// The remainder planned on resumption is told exactly that, and its
 			// methods say so rather than improvising. See Growth.Records.
 			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
-				Artifacts: artifacts, Prefix: prefix, Subharness: worker, State: growth.State}
+				Artifacts: artifacts, Prefix: prefix, State: growth.State}
 			if err := graph.DeferOverrun(deferred); err != nil {
 				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
@@ -457,10 +337,6 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 		SessionID:   node.Provenance.SessionID,
 		Intent:      node.Provenance.Intent,
 		Attachments: append([]string(nil), node.Provenance.Attachments...),
-		// The worker the remainder was judged to belong to, journaled at the
-		// splice exactly as the compiler's own choice is — once, durably, on the
-		// subtree, so every leaf under it is claimed by what it was promised.
-		Subharness: strings.TrimSpace(worker),
 	}
 	if err := graph.Splice(parent, subtree, provenance); err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
@@ -593,7 +469,7 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			continue
 		}
 		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
-			dailyBudgetUSD, deferred.Prefix, deferred.Subharness, Growth{Reason: GrowOverrun, State: deferred.State}, planRemainder)
+			dailyBudgetUSD, deferred.Prefix, Growth{Reason: GrowOverrun, State: deferred.State}, planRemainder)
 		if err != nil {
 			return resumed, err
 		}

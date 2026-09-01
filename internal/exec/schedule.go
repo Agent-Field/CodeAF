@@ -208,7 +208,7 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				leafCtx, cancel := context.WithCancel(ctx)
 				control := &leafControl{}
 				task.control = control
-				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.timeoutFor(task)}
+				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.NodeTimeout}
 				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
 			}
 		}
@@ -303,26 +303,6 @@ type leafFlight struct {
 	timeout time.Duration
 }
 
-// timeoutFor shapes the watchdog to the leaf's worker. The generalist keeps
-// NodeTimeout as configured; a specialist whose registered budget floor plus
-// the same landing pad exceeds it gets the larger figure, because a watchdog
-// below the worker's own deadline is not a backstop, it is the thing that
-// fires first.
-func (s *Scheduler) timeoutFor(task Task) time.Duration {
-	timeout := s.NodeTimeout
-	if timeout <= 0 {
-		return 0
-	}
-	name := strings.TrimSpace(task.Subharness)
-	if name == "" || name == LinearSubharness || !KnownSubharness(name) {
-		return timeout
-	}
-	if shaped := SubharnessFor(name).Watchdog(0); shaped > timeout {
-		return shaped
-	}
-	return timeout
-}
-
 // work runs one node and always reports back, even when the executor panics —
 // a panic that unwinds a worker silently would strand the scheduler waiting on
 // a completion that can never come.
@@ -377,13 +357,6 @@ func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, sh
 // and because erring that way keeps a lesson learned on a doubtful leaf away
 // from the leaves nobody doubted.
 func leafShape(node *plan.Node) string {
-	// A specialist is its own population, and exactly one: what a router learns
-	// about a coding pipeline says nothing about a generalist leaf, and slicing
-	// a specialist further by size would be the fine-key mistake this comment
-	// warns about with a tenth of the traffic to survive it.
-	if KnownSubharness(node.Subharness) {
-		return node.Subharness
-	}
 	if node.Kind == plan.KindSynthesis {
 		return "synthesis"
 	}
@@ -650,9 +623,9 @@ const maxInputBytes = 6 << 10
 //
 // It asks the executor rather than the plan, because the window belongs to the
 // model the worker will actually run on and the registry is where that worker
-// is known. An executor with nothing to say — the SWE subharness, a test double,
-// a scheduler built without a registry — leaves the window unknown, and unknown
-// is the fallback rather than a guess.
+// is known. An executor with nothing to say — a test double, a scheduler built
+// without a registry — leaves the window unknown, and unknown is the fallback
+// rather than a guess.
 func (s *Scheduler) inputBudget(subharness string) int {
 	tokens := 0
 	if s.registry != nil {

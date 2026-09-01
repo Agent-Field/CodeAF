@@ -82,12 +82,12 @@ func TestTwoBilledCallsLeaveTwoUsageRowsWithoutALanding(t *testing.T) {
 		t.Fatalf("the landing would journal %d/%d prompt/completion tokens and $%v a second time",
 			landing.PromptTokens, landing.CompletionTokens, landing.Cost)
 	}
-	// A worker whose calls this adapter cannot see — one that drives another
-	// process — still journals what it spent, even after a banked attempt.
+	// A retry on a stronger model still journals what it spent, even after a
+	// banked attempt: what is already in the bank is not billed a second time.
 	escalated := leafSpend(exec.Usage{
 		PromptTokens: 4563 + 11002 + 90000, CompletionTokens: 610 + 318 + 2000,
 		CachedTokens: 3840 + 8192, Cost: 0.000228 + 0.00051 + 0.4,
-	}, nil, "swe", banker.banked())
+	}, nil, "vendor/strong-model", banker.banked())
 	if escalated.PromptTokens != 90000 || escalated.CompletionTokens != 2000 {
 		t.Fatalf("an escalation's own spend came out as %d/%d, want the 90000/2000 nobody banked",
 			escalated.PromptTokens, escalated.CompletionTokens)

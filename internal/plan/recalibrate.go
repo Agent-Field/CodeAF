@@ -23,11 +23,7 @@ import (
 //
 // Its second paragraph names the worker in its own words rather than reusing
 // workerPremise, which is the source of truth for the shared fact. The sentence
-// here is doing something else: it says whose envelope is being redrawn, and
-// specialistPreamble replaces exactly that sentence when the ruler belongs to a
-// specialist. A shared constant in its place would either be wrong for every
-// specialist or would have to be overridable, which is what the preamble
-// already is.
+// here is doing something else: it says whose envelope is being redrawn.
 const recalibratePrompt = `You rewrite the ruler used to judge whether a task is the right size for one agent.
 
 That agent works alone and in order, with tools. Below are tasks it really ran,
@@ -50,28 +46,6 @@ with the same guidance the current ruler ends with: judge by the breadth of the
 subject rather than the volume of material, since a great deal of material on one
 subject is a single job while a little across five unrelated subjects is not.`
 
-// specialistPreamble replaces the prompt's opening sentence about the worker
-// when the ruler being rewritten belongs to a specialist.
-//
-// The default prompt describes linear in its second paragraph — "that agent
-// works alone and in order, with tools" — and handing that description to a
-// model rewriting a coding pipeline's ruler would have it calibrate the wrong
-// worker. An empty purpose leaves every byte of the prompt where it was, which
-// is what a process with only the generalist always sees.
-func specialistPreamble(purpose string) string {
-	purpose = strings.TrimSpace(purpose)
-	if purpose == "" {
-		return ""
-	}
-	return "\n\nThe worker this ruler is for is not the default one. It is a specialist, and " +
-		"this is what it is for:\n\n" + purpose +
-		"\n\nJudge size against THAT worker's capacity and nothing else. Work that is far too " +
-		"much for one ordinary agent may be one comfortable job here, and work that is an " +
-		"ordinary job elsewhere may be beneath this worker entirely — both belong in the " +
-		"examples you write."
-
-}
-
 // boundaryPreamble introduces the worker's own notes about its fit. It is a
 // separate paragraph because the notes are a different kind of evidence from
 // the turn counts: a count says what the work cost, a note says whether the
@@ -79,8 +53,7 @@ func specialistPreamble(purpose string) string {
 const boundaryPreamble = "\n\nWhat the worker itself noticed about its fit for the " +
 	"work it was given (a run that says it was far inside its envelope is evidence the " +
 	"ruler's TOO SMALL example is set too low; one that says it was at the top of its " +
-	"envelope is evidence the RIGHT example is set too high; a task another worker tried " +
-	"first and could not finish is evidence this worker should be reached for sooner):\n\n"
+	"envelope is evidence the RIGHT example is set too high):\n\n"
 
 var recalibrateSchema = json.RawMessage(`{
   "type": "object",
@@ -119,13 +92,6 @@ func calibrationEvidence(small, middle, large []profile.Record) string {
 // and whether anything changed. It is a no-op unless the profile both has enough
 // evidence and disagrees with the ruler in force.
 func Recalibrate(ctx context.Context, client Completer, store *profile.Profile) (string, string, Usage, error) {
-	return RecalibrateFor(ctx, client, store, LinearSubharness)
-}
-
-// RecalibrateFor is the same loop keyed to one subharness. Each measures a
-// different capacity, so each rewrites its own three examples from its own
-// evidence and nothing else — the ruler doc's promise kept literally.
-func RecalibrateFor(ctx context.Context, client Completer, store *profile.Profile, subharness string) (string, string, Usage, error) {
 	var usage Usage
 	needed, reason := store.NeedsRecalibration()
 	if !needed {
@@ -139,8 +105,8 @@ func RecalibrateFor(ctx context.Context, client Completer, store *profile.Profil
 	}
 
 	messages := []ai.Message{
-		systemMessage(recalibratePrompt + specialistPreamble(PurposeFor(subharness))),
-		userMessage("The ruler currently in force:\n\n" + AnchorsFor(subharness)),
+		systemMessage(recalibratePrompt),
+		userMessage("The ruler currently in force:\n\n" + Anchors()),
 		userMessage("Tasks this model actually ran:\n\n" + evidence + boundaryEvidence(store)),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanRecalibrate)
@@ -173,8 +139,8 @@ func appendCalibrationEvidence(evidence *strings.Builder, label string, record p
 }
 
 // boundaryEvidence is the fit half of the ruler's evidence, rendered only when
-// there is any. A generalist profile has none and never will, so the recalibrate
-// call it makes is the call it has always made.
+// there is any. A profile with no notes renders none, and the recalibrate call
+// it makes is the call it has always made.
 //
 // Records already shown in the three bands carry their notes inline; this
 // section exists because the bands are picked by turn count and a record that
@@ -199,9 +165,6 @@ func boundaryEvidence(store *profile.Profile) string {
 const boundaryEvidenceCount = 6
 
 func appendBoundaryNotes(evidence *strings.Builder, indent string, record profile.Record) {
-	if from := strings.TrimSpace(record.EscalatedFrom); from != "" {
-		fmt.Fprintf(evidence, "%s· the %s worker tried this first and could not finish it\n", indent, from)
-	}
 	for _, note := range record.Calibration {
 		if note = strings.TrimSpace(note); note != "" {
 			fmt.Fprintf(evidence, "%s· %s\n", indent, note)

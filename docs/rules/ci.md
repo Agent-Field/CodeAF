@@ -55,8 +55,8 @@ go test ./internal/manual/ && go test -run Manual ./internal/tui3/ ./internal/se
 
 `ci-full.yml`, four jobs:
 
-- **`full tests`** — every package except `internal/swepro`, minus the ledger
-  below, split round-robin across three runners. Not for speed first: the
+- **`full tests`** — every package, minus the ledger below, split round-robin
+  across three runners. Not for speed first: the
   free-plan runner has seven gigabytes, this repository's test binaries are
   heavy, and the suite's first run was killed under the link load of its last
   eight packages. Three machines carrying a third each stay inside their memory.

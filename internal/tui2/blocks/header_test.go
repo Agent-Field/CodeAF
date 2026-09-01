@@ -8,7 +8,7 @@ import (
 func TestHeaderGrammar(t *testing.T) {
 	h := Header{
 		Glyph: "◐",
-		Title: "swe",
+		Title: "fix",
 		Desc:  "rewriting the executor harness",
 		Badges: []Badge{
 			{Text: "?2", Hue: HueAttention},
@@ -16,7 +16,7 @@ func TestHeaderGrammar(t *testing.T) {
 		Meta: []string{"K3 ▄ $8.65", "4m"},
 	}
 	got := h.Render(80, Plain)
-	want := "◐ swe: rewriting the executor harness [?2] · K3 ▄ $8.65 · 4m"
+	want := "◐ fix: rewriting the executor harness [?2] · K3 ▄ $8.65 · 4m"
 	if got != want {
 		t.Fatalf("header grammar broke:\n got %q\nwant %q", got, want)
 	}
@@ -432,12 +432,12 @@ func TestHeaderDropsATightReceiptWholeAndKeepsTheDoor(t *testing.T) {
 // goldens still.
 func TestHeaderWithoutAReceiptIsUnchanged(t *testing.T) {
 	h := Header{
-		Glyph: "◐", Title: "swe", Desc: "rewriting the executor harness",
+		Glyph: "◐", Title: "fix", Desc: "rewriting the executor harness",
 		Badges: []Badge{{Text: "?2", Hue: HueAttention}},
 		Meta:   []string{"K3 ▄ $8.65", "4m"},
 		Hint:   Disclose(false, 12, "line", "lines"),
 	}
-	want := "◐ swe: rewriting the executor harness [?2] · K3 ▄ $8.65 · 4m  ▸ 12 lines"
+	want := "◐ fix: rewriting the executor harness [?2] · K3 ▄ $8.65 · 4m  ▸ 12 lines"
 	if got := h.Render(80, Plain); got != want {
 		t.Fatalf("the flow moved without a receipt:\n got %q\nwant %q", got, want)
 	}

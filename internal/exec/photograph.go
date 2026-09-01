@@ -3,13 +3,11 @@ package exec
 // Two readings of the project's own verification, one on either side of the
 // work, for EVERY belt rather than for one of them.
 //
-// This glue was written inside internal/exec/bare, where only the whole-taker
-// `aforge do` uses on the plain path could reach it. That made the measurement
-// a property of a worker instead of a property of a run: the generalist belt in
-// linear.go — the default every unrouted node gets — took no reading at all, and
-// a graded run on it left a store with no verification event in it. The three
-// leaves of ink-grid-box-layout's s9 run are all `linear` and not one of them
-// journaled a row.
+// This glue used to live beside one belt, where only that belt could reach it.
+// That made the measurement a property of one loop instead of a property of a
+// run: the leaf belt in linear.go — the belt every node gets — took no reading
+// at all, and a graded run on it left a store with no verification event in it.
+// The three leaves of ink-grid-box-layout's s9 run journaled not one row.
 //
 // That silence is FAILSAFE.md's sixth failure exactly. AN ABSENCE IN THE RECORD
 // IS NEVER A DIAGNOSIS; it is the four diagnoses nobody can tell apart — a
@@ -34,11 +32,11 @@ import (
 )
 
 // The budget both readings are taken on, the floor under it and the arithmetic
-// between them are verify.ReadingBudget. They used to be three constants in the
-// bare worker's own file, where only that worker could reach them; the delivery
-// gate weighs the same photograph and takes one of its own where none exists,
-// and two readers of one cap is how a number in this repository drifts. See
-// PERF.md, "The verification photograph's budget".
+// between them are verify.ReadingBudget. They used to be three constants inside
+// one belt's own file, where only that belt could reach them; the delivery gate
+// weighs the same photograph and takes one of its own where none exists, and two
+// readers of one cap is how a number in this repository drifts. See PERF.md,
+// "The verification photograph's budget".
 
 // PhotographBefore is the reading the whole comparison is subtracted from, and
 // it is the JOB's reading rather than this leaf's.
@@ -60,10 +58,10 @@ import (
 // owes it that ordering.
 //
 // EVERY OUTCOME IS JOURNALED, including every way of having no reading. That is
-// the whole repair of the s6 silence: the bare leaf spent five minutes and
-// twenty-seven seconds on a reading that was killed at its ceiling, and the
-// finished store held no row saying so, which read from outside exactly like a
-// project that declares no verification at all.
+// the whole repair of the s6 silence: a leaf spent five minutes and twenty-seven
+// seconds on a reading that was killed at its ceiling, and the finished store
+// held no row saying so, which read from outside exactly like a project that
+// declares no verification at all.
 //
 // The worker's own wall is passed in rather than read off a belt, because the
 // three belts hold it under three different names and a shared measurement must
@@ -408,10 +406,11 @@ func journalReading(
 // reads is: a suite with two hundred reds says nothing more than a suite with
 // eight and a count.
 //
-// codeaf's describeFailing is its sibling and spells the same eight-and-a-count
-// rule. They are deliberately two, because one words a swepro auditor's prompt
-// and this one words an outcome sentence; if a third ever appears, that is the
-// moment the rule belongs in internal/verify instead of in each caller.
+// The delivery gate's own naming of failing checks spells the same
+// eight-and-a-count rule, and the two are deliberately separate because one
+// words a gate's refusal and this one words an outcome sentence; if a third ever
+// appears, that is the moment the rule belongs in internal/verify instead of in
+// each caller.
 func describeChecks(names []string) string {
 	if len(names) == 0 {
 		return "no individually named tests"

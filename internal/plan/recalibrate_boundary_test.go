@@ -1,58 +1,31 @@
 package plan
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 )
 
-// The additive law where a prompt is built: with no specialist registered, the
-// system message of a recalibration call is the constant and nothing else. A
-// byte added here would be a byte added to every process that has never had a
-// second worker.
-func TestRecalibratePromptIsByteIdenticalWithoutASpecialist(t *testing.T) {
-	if got := specialistPreamble(PurposeFor(LinearSubharness)); got != "" {
-		t.Fatalf("the generalist's ruler is rewritten with a specialist preamble:\n%s", got)
+// The recalibration call's system message is the constant and nothing else, and
+// it is pinned byte for byte. It is the prompt that rewrites the ruler every
+// plan is then judged against, so a sentence added here moves every size
+// judgment the harness will ever make, silently and everywhere.
+func TestRecalibratePromptIsByteIdentical(t *testing.T) {
+	want, err := os.ReadFile("testdata/recalibrate_prompt_baseline.golden")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := specialistPreamble(PurposeFor("")); got != "" {
-		t.Fatalf("an unnamed worker grew a preamble:\n%s", got)
-	}
-	if got := specialistPreamble(PurposeFor("nobody-registered-this")); got != "" {
-		t.Fatalf("an unregistered worker grew a preamble:\n%s", got)
-	}
-}
-
-// And what a specialist's ruler is rewritten with: its own purpose, so the model
-// knows which worker's capacity it is describing. Without it the prompt's own
-// second paragraph — "that agent works alone and in order, with tools" — is the
-// only description in the call, and it describes the wrong worker.
-func TestARewrittenSpecialistRulerIsToldWhatTheWorkerIsFor(t *testing.T) {
-	defer ForgetSubharnesses()
-	UseSubharness(Subharness{Name: "swe", Purpose: "an end-to-end software-engineering pipeline"}, "swe ruler")
-
-	if got := PurposeFor("swe"); got != "an end-to-end software-engineering pipeline" {
-		t.Fatalf("purpose = %q", got)
-	}
-	preamble := specialistPreamble(PurposeFor("swe"))
-	if !strings.Contains(preamble, "an end-to-end software-engineering pipeline") {
-		t.Fatalf("the worker's purpose is not in its own recalibration prompt:\n%s", preamble)
-	}
-	if !strings.Contains(preamble, "not the default one") {
-		t.Fatalf("the prompt never says this is a specialist:\n%s", preamble)
-	}
-	// The ruler that is rewritten is that worker's own, seated from its prior.
-	if got := AnchorsFor("swe"); got != "swe ruler" {
-		t.Fatalf("anchors in force for swe = %q", got)
-	}
-	if AnchorsFor(LinearSubharness) == "swe ruler" {
-		t.Fatal("registering a specialist replaced the generalist's ruler")
+	if recalibratePrompt != string(want) {
+		t.Fatalf("the recalibrate prompt drifted from its pinned bytes:\n%s",
+			diffLine(recalibratePrompt, string(want)))
 	}
 }
 
-// The boundary evidence: what a worker said about its own fit, and who tried
-// the work before it, rendered where the model rewriting the ruler will read
-// it. A generalist profile carries none of either and renders nothing at all.
+// The boundary evidence: what the worker said about its own fit for the work it
+// was given, rendered where the model rewriting the ruler will read it. A
+// profile with nothing to say renders nothing at all.
 func TestBoundaryEvidenceRendersWhatTheWorkerNoticed(t *testing.T) {
 	generalist := &profile.Profile{}
 	generalist.Add(profile.Record{Title: "ordinary", Size: "atomic", Turns: 6, Tokens: 40_000})
@@ -60,17 +33,17 @@ func TestBoundaryEvidenceRendersWhatTheWorkerNoticed(t *testing.T) {
 		t.Fatalf("a profile with nothing to say said:\n%s", got)
 	}
 
-	specialist := &profile.Profile{}
-	specialist.Add(
+	noticing := &profile.Profile{}
+	noticing.Add(
 		profile.Record{Title: "typo fix", Size: "atomic", Turns: 3, Tokens: 9_000,
-			Calibration: []string{"the engine judged this goal small enough to run whole (root-cut: xs)"}},
+			Calibration: []string{"far inside this leaf's envelope (root-cut: xs)"}},
 		profile.Record{Title: "parser bug", Size: "atomic", Turns: 20, Tokens: 300_000,
-			EscalatedFrom: "linear"},
+			Calibration: []string{"at the very top of this leaf's envelope"}},
 	)
-	rendered := boundaryEvidence(specialist)
+	rendered := boundaryEvidence(noticing)
 	for _, want := range []string{
 		"root-cut: xs",
-		"the linear worker tried this first and could not finish it",
+		"at the very top of this leaf's envelope",
 		"TOO SMALL example is set too low", // the preamble teaching how to read the notes
 	} {
 		if !strings.Contains(rendered, want) {

@@ -14,8 +14,8 @@ import (
 //
 // The doctrine is stated at internal/provider/wire.go: "~x and x are one model".
 // Every other reader honours it — the adapter memoises quirks under a normalised
-// key, the catalog resolves aliases, the subharness translates a spelling before
-// handing it to another process. The ruler keyed its file on slug(whatever the
+// key, the catalog resolves aliases, the wire translates a spelling before it
+// leaves the process. The ruler keyed its file on slug(whatever the
 // operator typed), so two spellings of one model accumulated two histories and
 // two rulers: measured, medians of 13,223 and 44,704 tokens for the same model
 // on the same machine, each of them a real average of half the evidence, and the

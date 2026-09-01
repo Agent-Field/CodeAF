@@ -208,16 +208,16 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			Title: strings.TrimSpace(node.Title),
 			Group: groupOf(node),
 			Stage: node.Stage,
-			// The sizing pass's other verdict. A node the planner judged atomic
-			// for a specialist arrives here as one admitted leaf rather than as
-			// the eight the baseline ruler would have cut it into, and the name
-			// of who it is for has to arrive with it or the cut was for nothing.
+			// The worker column travels with the node rather than being
+			// re-derived at the splice. A graph written by an older build names
+			// what it named, and a reader downstream can still tell "nobody
+			// wrote this" from "this was written and said linear".
 			Subharness: strings.TrimSpace(node.Subharness),
 			// The task object travels with the node it was authored for. Brief
 			// above is still the instruction a person would recognise and still
 			// what the executor reads; this is the same work stated once as an
 			// object, so the criterion survives everything that happens to the
-			// node afterwards — including being re-aimed at a different worker.
+			// node afterwards.
 			Spec: EncodeSpec(node.Spec),
 		}
 		if node.ID != rootID {

@@ -146,9 +146,9 @@ func TestAFloatingAliasResolvesToTheModelBehindIt(t *testing.T) {
 	}
 }
 
-// The bug this test exists for cost a run: the swe leaf's catalog HAD the model
+// The bug this test exists for cost a run: the target catalog HAD the model
 // under the plain name, Concrete swapped it for the dated canonical slug that
-// catalog has never published, and the engine died at startup naming an id
+// catalog has never published, and the far side died at startup naming an id
 // nobody chose.
 //
 // models.dev on 2026-08-11 carried deepseek/deepseek-v4-flash and

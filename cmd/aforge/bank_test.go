@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -104,13 +103,8 @@ func TestTheRetryOfALeafThatDiedOnTheClockCarriesItsBank(t *testing.T) {
 		t.Fatalf("bank input title = %q", bank.Input().Title)
 	}
 
-	// The class does not move, because the clock is not evidence about it.
-	if resident.MayReclassify(nil, &exec.Abandoned{After: 17 * time.Minute}) {
-		t.Fatal("a leaf abandoned by the watchdog was reclassified")
-	}
-	if resident.MayReclassify(&exec.Outcome{Stop: exec.StopDeadline}, nil) {
-		t.Fatal("a leaf that ran out of wall clock was reclassified")
-	}
+	// And nothing about the retry moved the leaf's row: a banked attempt is a
+	// second attempt by the same worker on the same node.
 	if node.Subharness != "" {
 		t.Fatalf("the leaf's promised worker changed before it ever ran: %q", node.Subharness)
 	}

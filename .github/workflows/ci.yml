@@ -64,7 +64,7 @@ jobs:
       - name: The packed corpora build from their folders
         run: |
           set -euo pipefail
-          go generate ./internal/manual ./internal/swepro/internal/baked ./internal/swepro/internal/assets
+          go generate ./internal/manual
           go test -tags=aforge_packed_manual ./internal/manual
           if ! git diff --exit-code; then
             echo

@@ -1,8 +1,9 @@
-// Package bare replicates pi 0.82.1's four default wire tools (read, bash,
-// edit, write) so an atomic leaf runs at pi's own cost and wall time. It is
-// aforge-owned code — not a vendored copy of pi — but the tool descriptions,
-// schemas, result strings, and truncation footers are pinned to pi's source so
-// the wire bytes are identical.
+// Package bare is the wire tool library: pi 0.82.1's seven tools (read, bash,
+// edit, write, grep, find, ls) with the matching, truncation and streaming
+// logic behind them. Chat's tool surface is built from it. It is aforge-owned
+// code — not a vendored copy of pi — but the tool descriptions, schemas, result
+// strings and truncation footers are pinned to pi's source so the wire bytes a
+// model sees are identical to the ones these tools were measured on.
 package bare
 
 import "strings"
