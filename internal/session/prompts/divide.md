@@ -60,3 +60,10 @@ DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
 edit the same file are not independent. A part that needs what another part
 learned is a second step, not a second worker. When you are unsure, keep working:
 you can ask again later, and the work you did in the meantime is not wasted.
+
+EVERY PART OWNS ITS OWN FILES. Each part must name the files it owns, and two
+parts must not name the same file. Two parts in one directory on different
+files are fine, and sharing a folder while another part owns a file inside it
+is fine. If you cannot draw that boundary, do not call `divide_work` — keep
+working, or fold those parts into one. An overlapping claim is not a division:
+it will be refused and nothing is handed out.

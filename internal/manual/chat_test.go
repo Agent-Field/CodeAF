@@ -813,6 +813,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// Exclusive file ownership: the person who watched a split not happen
+		// because two parts wanted the same file asks in those words, not in
+		// the worker's ALL-CAPS heading.
+		{"why was the split refused because two parts wanted the same file", "tasks"},
 		// Hands: the third weight, and the one a person meets as a line they did
 		// not ask for in the middle of their own answer. They ask in the words on
 		// the screen — "three hands on it" — or in the words for what they saw,

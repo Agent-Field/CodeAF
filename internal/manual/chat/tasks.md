@@ -2381,9 +2381,11 @@ you type into its room is what wakes it, and it goes back to waiting afterwards 
 task that is waiting on its pieces*). If you stop a parent, its unfinished pieces are
 stopped with it and their branches are kept.
 
-## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task
+## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task, two parts wanted the same file, overlap, same file
 
 A task is usually one worker. It is not fixed to one.
+
+**Each part owns its own files.** The worker is told `EVERY PART OWNS ITS OWN FILES`: each part must name the files it owns, and two parts must not name the same file. Two parts in one directory on different files are fine, and sharing a folder while another part owns a file inside it is fine. If it cannot draw that boundary it is told not to call `divide_work` — keep working, or fold those parts into one. An overlapping claim is not a division: the split does not happen and nothing is handed out. The worker is told not to ask.
 
 The section above is about parts a task can see from its brief. This is the other moment:
 the worker has **opened the material** and there is more of it than anybody knew when the
