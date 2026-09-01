@@ -29,10 +29,12 @@ func siblingSentence(brief string) string {
 	return said
 }
 
-// divideScopedArgs is one well-formed call whose parts carry the titles,
+// divideWrittenArgs is one well-formed call whose parts carry the titles,
 // summaries and scopes named — the shape a worker writes when it says what each
-// part owns and nothing about the work it came out of.
-func divideScopedArgs(evidence string, parts ...dividePart) json.RawMessage {
+// part owns and nothing about the work it came out of. It is [divideScopedArgs]
+// with the two fields the composer reads besides the scope, which that one
+// spells for every part alike.
+func divideWrittenArgs(evidence string, parts ...dividePart) json.RawMessage {
 	written := make([]string, 0, len(parts))
 	for _, part := range parts {
 		written = append(written, fmt.Sprintf(`{"title":%q,"summary":%q,"brief":%q,"acceptance":"a"}`,
@@ -53,7 +55,7 @@ func divideScopedArgs(evidence string, parts ...dividePart) json.RawMessage {
 func TestAWorkerWrittenPartOpensOnTheParentsBriefAndItsSiblingsScope(t *testing.T) {
 	nest := newDivideNest(t, wideBrief, 0)
 
-	nest.divide(t, divideScopedArgs(wideEvidence,
+	nest.divide(t, divideWrittenArgs(wideEvidence,
 		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only, and the Port interface it names"},
 		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
 
@@ -115,7 +117,7 @@ func TestAPartInheritsWhatTheWorkBeforeItsParentLearned(t *testing.T) {
 	nest.parent.dependsOn = []uint64{before}
 	nest.graph.mu.Unlock()
 
-	nest.divide(t, divideScopedArgs(wideEvidence,
+	nest.divide(t, divideWrittenArgs(wideEvidence,
 		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only"},
 		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
 
@@ -146,7 +148,7 @@ func TestASketchPartAndAWorkerWrittenPartGetTheSameFamilyContext(t *testing.T) {
 	// The same two parts as the drawing bore, said by a worker instead: the
 	// legend's words as the scope, and the name the sketch road mints from it.
 	written := newDivideNestFrom(t, spec, 0, &scriptedCompleter{}, nil)
-	written.divide(t, divideScopedArgs(wideEvidence,
+	written.divide(t, divideWrittenArgs(wideEvidence,
 		dividePart{Title: "the flaking auth", Summary: "the flaking auth test", Brief: "A: the flaking auth test"},
 		dividePart{Title: "the release notes", Summary: "the release notes", Brief: "B: the release notes"}))
 
@@ -193,7 +195,7 @@ func TestAPartsBriefHoldsItsBoundWhateverLengthTheFieldsArriveAt(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			nest := newDivideNest(t, wideBrief, 0)
-			nest.divide(t, divideScopedArgs(wideEvidence, test.parts...))
+			nest.divide(t, divideWrittenArgs(wideEvidence, test.parts...))
 
 			kids := nest.graph.children(nest.parent.id)
 			if len(kids) != 2 {
