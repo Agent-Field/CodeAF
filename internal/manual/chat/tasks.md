@@ -2462,6 +2462,18 @@ without doing anything*, is what you see. This is a deliberate word the mastermi
 reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
 this, has refused a division and the worker carries on with the work exactly as above.
 
+**No two parts may own the same file, and that one is not a judgement — it is
+enforced.** Once the mastermind has settled the parts, the files each part's brief and
+done-condition name are checked against each other, and if the same file is claimed by
+more than one part the division is **refused before anything is handed out**: no part
+starts, no copy of the repository is made, nothing is spent. The worker is told which
+file — "`report.md` is claimed by more than one part" — and can redraw the boundary and
+ask again. The reason is that everything the parts write goes into **one deliverable**:
+a file two parts wrote is kept once, and the other part's version of it would simply be
+gone, with no conflict for anybody to notice. Only the **same file** counts. Two parts
+working in one directory on different files are independent and always were, and so is
+one part owning a folder while another owns a file inside it.
+
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
 worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
