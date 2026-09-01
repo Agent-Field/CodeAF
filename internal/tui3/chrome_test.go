@@ -702,9 +702,15 @@ func TestTheStarterLineDissolvesOnTheFirstKeystroke(t *testing.T) {
 }
 
 // A FRESH SCREEN HAS NO COLUMN AND NO NUMBERS. No `+ /task`, no `+ /standing`,
-// no `ctrl+g`, no closed-column edge, no `$0.00`, no context meter — only the
-// identity and the state word on the status row. The column arrives with the
-// conversation.
+// no `ctrl+g`, no closed-column edge, no `$0.00`, no context meter. The column
+// arrives with the conversation.
+//
+// AND THE BOTTOM ROW IS EMPTY WHILE THE GREETING IS UP (ISSUE-126). It used to
+// carry the identity and the state word, which is what the row was FOR before
+// the top bar existed; the identity is the bar's crumb now and the row holds
+// only things that tick, so over a box asking for a first sentence there is
+// nothing true for it to say (render.go's [app.statusQuiet]). The bar itself is
+// quieted to that crumb: no model, no branch, no host.
 func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	a.width = 140
@@ -726,10 +732,18 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 		t.Fatal("the closed column's edge is on a fresh screen")
 	}
 	a.railAway = false
-	status := plain(a.status(140))
-	for _, want := range []string{"gpt-4.1-mini", "idle"} {
-		if !strings.Contains(status, want) {
-			t.Fatalf("the quiet status row lost %q: %q", want, status)
+	if status := strings.TrimSpace(plain(a.status(140))); status != "" {
+		t.Fatalf("the greeting's status row says %q, want nothing at all", status)
+	}
+	// The bar is the crumb and nothing else: the terms live at its right end and
+	// none of them is true of a conversation nobody has started.
+	bar := plain(a.topBarWord(140))
+	if !strings.Contains(bar, a.place) {
+		t.Fatalf("the quiet bar lost its crumb: %q", bar)
+	}
+	for _, gone := range []string{"gpt-4.1-mini", "YOLO"} {
+		if strings.Contains(bar, gone) {
+			t.Fatalf("the quiet bar drew %q: %q", gone, bar)
 		}
 	}
 	// The first keystroke begins the conversation, and the column stands.
@@ -739,6 +753,11 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	}
 	if screen := plain(frame(a)); !strings.Contains(screen, marginDoorWord(marginTaskType)) {
 		t.Fatalf("the column's door is not drawn once the conversation began:\n%s", screen)
+	}
+	// And the bar has its terms back the moment there is a conversation for them
+	// to be about.
+	if bar := plain(a.topBarWord(140)); !strings.Contains(bar, "gpt-4.1-mini") {
+		t.Fatalf("the bar did not name the model once the conversation began: %q", bar)
 	}
 }
 
@@ -790,15 +809,22 @@ func TestRecentSessionsRenderRowsOrNothing(t *testing.T) {
 	}
 }
 
-// THE NUMBERS ARRIVE WITH THE FIRST TURN, at both widths, and from then on the
-// status row is exactly what it always was — `$0.00` included, so its segments
-// do not jump.
+// THE ROW ARRIVES WITH THE FIRST TURN, AND THE BILL ARRIVES WITH THE SPENDING.
+//
+// `$0.00` used to be the one deliberate exception to the emptiness law: the row
+// carried the model, the branch and the host beside the money, so a segment that
+// came into existence on the first priced turn shoved its neighbours sideways
+// under a reader's eye. Those slow facts are the top bar's now (ISSUE-126), the
+// row holds only things that tick, and the exception died with the crowding that
+// justified it (render.go's [app.costSegment]). So a conversation that has spent
+// nothing has no `$` on it at ANY point — before the first turn or after it —
+// and what the first turn actually restores is the row itself.
 func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	a, _ := welcomeApp(t, nil)
 	a.width = 140
 	a.touch()
-	if status := plain(a.status(140)); strings.Contains(status, "$") {
-		t.Fatalf("a session that has sent nothing is billed: %q", status)
+	if status := strings.TrimSpace(plain(a.status(140))); status != "" {
+		t.Fatalf("the greeting's status row says %q, want nothing at all", status)
 	}
 	if deck := plain(strings.Join(a.statusRows(44), "\n")); strings.Contains(deck, "$") {
 		t.Fatalf("the phone deck bills a session that has sent nothing: %q", deck)
@@ -807,11 +833,24 @@ func TestTheStatusLineRegainsItsSegmentsAfterTheFirstTurn(t *testing.T) {
 	if a.statusQuiet() {
 		t.Fatal("a submitted line did not count as a turn")
 	}
-	if status := plain(a.status(140)); !strings.Contains(status, "$0.00") {
-		t.Fatalf("the running status row lost its spend segment: %q", status)
+	if status := strings.TrimSpace(plain(a.status(140))); status == "" {
+		t.Fatal("the row stayed empty after the conversation began")
 	}
-	if deck := plain(strings.Join(a.statusRows(44), "\n")); !strings.Contains(deck, "$0.00") {
-		t.Fatalf("the phone deck lost its spend segment: %q", deck)
+	if status := plain(a.status(140)); strings.Contains(status, "$") {
+		t.Fatalf("a turn that has cost nothing is billed: %q", status)
+	}
+	if deck := plain(strings.Join(a.statusRows(44), "\n")); strings.Contains(deck, "$") {
+		t.Fatalf("the phone deck bills a turn that has cost nothing: %q", deck)
+	}
+
+	// And the segment appears the moment there is money to say — which is the
+	// other half of the law: it comes and goes with a real change in what is true.
+	a.cost = 0.14
+	if status := plain(a.status(140)); !strings.Contains(status, "$0.14") {
+		t.Fatalf("a priced turn drew no bill: %q", status)
+	}
+	if deck := plain(strings.Join(a.statusRows(44), "\n")); !strings.Contains(deck, "$0.14") {
+		t.Fatalf("the phone deck drew no bill for a priced turn: %q", deck)
 	}
 }
 
@@ -1012,43 +1051,54 @@ func releaseAt(x, y int) tea.MouseReleaseMsg {
 
 // ── the numbers: the meter, the warm share, the savings note ────────────────
 
-// The status meter is TOKENS OVER WINDOW, and the percentage only when there is
-// one worth reading.
+// The meter is TOKENS OVER WINDOW, and the percentage only when there is one
+// worth reading — that is the segment ([app.contextSegment]).
+//
+// WHAT THE BOTTOM ROW WEARS IS A PERCENT ALONE (ISSUE-126, [app.ctxAmbient]).
+// The fraction is the workings, and twenty cells of workings on a row a person
+// reads on every keystroke answered no question at 10%. It comes back exactly
+// where it is needed — past [app.ctxCrowded], where the decision is whether to
+// compact now or finish a thought first — and under one percent the row draws
+// nothing at all. The full spelling is always in the sheet and in /status
+// ([app.telemetrySheet]), which is where a person goes to look at the workings.
 func TestTheContextSegmentReadsTokensOverWindow(t *testing.T) {
 	cases := []struct {
 		name    string
 		tokens  int
 		window  int
 		want    string
+		row     string
 		crowded bool
 	}{
 		{
 			// The shape the wave was specified in.
 			name: "the ordinary reading", tokens: 12_400, window: 128_000,
-			want: "12.4k/128k · 10%",
+			want: "12.4k/128k · 10%", row: "10%",
 		},
 		{
 			// Under one percent the percentage is DROPPED, not rounded to 0 or
 			// floored to 1. Parking at "1%" for the first twenty turns is what
-			// the byte-counting meter this replaced actually did.
+			// the byte-counting meter this replaced actually did — and a row that
+			// is the percentage alone therefore has nothing to draw.
 			name: "under one percent", tokens: 900, window: 1_000_000,
-			want: "900/1M",
+			want: "900/1M", row: "",
 		},
 		{
 			// A round figure is round: never "128.0k".
 			name: "a round figure", tokens: 128_000, window: 1_000_000,
-			want: "128k/1M · 13%",
+			want: "128k/1M · 13%", row: "13%",
 		},
 		{
 			// 85% of a 200k window is past 80% of its 170k compaction
-			// threshold, so the segment stops being furniture.
+			// threshold, so the segment stops being furniture — and the row takes
+			// the workings back.
 			name: "close to compaction", tokens: 170_000, window: 200_000,
-			want: "170k/200k · 85%", crowded: true,
+			want: "170k/200k · 85%", row: "170k/200k · 85%", crowded: true,
 		},
 		{
 			// Half a window is nowhere near the threshold.
 			name: "half a window", tokens: 100_000, window: 200_000,
-			want: "100k/200k · 50%",
+			want: "100k/200k · 50%", row: "50%",
 		},
 	}
 	for _, test := range cases {
@@ -1062,8 +1112,26 @@ func TestTheContextSegmentReadsTokensOverWindow(t *testing.T) {
 			if crowded != test.crowded {
 				t.Fatalf("crowded = %v, want %v", crowded, test.crowded)
 			}
-			if line := plain(frame(a)); !strings.Contains(line, test.want) {
-				t.Fatalf("the status line is missing %q:\n%s", test.want, line)
+			if got := a.ctxAmbient(); got != test.row {
+				t.Fatalf("the row's meter reads %q, want %q", got, test.row)
+			}
+			line := plain(frame(a))
+			if test.row != "" && !strings.Contains(line, test.row) {
+				t.Fatalf("the status line is missing %q:\n%s", test.row, line)
+			}
+			if !test.crowded && strings.Contains(line, test.want) {
+				t.Fatalf("a calm row is still carrying the workings %q:\n%s", test.want, line)
+			}
+			// THE FRACTION DID NOT DIE, IT CHANGED SURFACE: the sheet says it in
+			// full at every reading the row abbreviates or drops.
+			sheet := ""
+			for _, part := range a.telemetrySheet() {
+				if part.kind == segCtx {
+					sheet = part.text
+				}
+			}
+			if !strings.Contains(sheet, test.want) {
+				t.Fatalf("the sheet's meter reads %q, want it to carry %q", sheet, test.want)
 			}
 		})
 	}
@@ -1075,10 +1143,15 @@ func TestTheContextSegmentReadsTokensOverWindow(t *testing.T) {
 	if got, _ := a.contextSegment(); got != "" {
 		t.Fatalf("the segment was drawn without a window: %q", got)
 	}
+	if got := a.ctxAmbient(); got != "" {
+		t.Fatalf("the row drew a meter without a window: %q", got)
+	}
 }
 
 // The crowded segment is PAINTED, and it is the only thing on the line besides
-// the state word that ever is.
+// the state word that ever is. The paint is asked of the row's own spelling of
+// the meter ([app.ctxAmbient]) rather than of the full segment, because a calm
+// row wears the percent alone now.
 func TestTheContextSegmentIsPaintedOnlyWhenItIsCrowded(t *testing.T) {
 	calm := newTestApp(&fakeAgent{model: "m"})
 	calm.ctxWindow, calm.ctxTokens = 200_000, 100_000
@@ -1086,7 +1159,7 @@ func TestTheContextSegmentIsPaintedOnlyWhenItIsCrowded(t *testing.T) {
 	crowded.ctxWindow, crowded.ctxTokens = 200_000, 170_000
 
 	quiet, loud := calm.status(90), crowded.status(90)
-	segment, _ := crowded.contextSegment()
+	segment := crowded.ctxAmbient()
 	if !strings.Contains(plain(loud), segment) {
 		t.Fatalf("the crowded segment is missing from the line:\n%q", plain(loud))
 	}
@@ -1095,13 +1168,18 @@ func TestTheContextSegmentIsPaintedOnlyWhenItIsCrowded(t *testing.T) {
 	if strings.Contains(loud, calm.pal.dim(segment)) {
 		t.Fatal("a conversation about to compact is still drawn as furniture")
 	}
-	if calmSegment, _ := calm.contextSegment(); !strings.Contains(quiet, calm.pal.dim(calmSegment)) {
+	if !strings.Contains(quiet, calm.pal.dim(calm.ctxAmbient())) {
 		t.Fatal("a calm meter is painted; the line's own facts are always dim")
 	}
 }
 
-// The session-total warm share, and the dialect reconciliation showing through
-// to the screen.
+// The session-total warm share, and the dialect reconciliation under it.
+//
+// IT IS THE SHEET'S NOW AND NOT THE ROW'S (ISSUE-126). The bottom row keeps only
+// what a person acts on between keystrokes, and a running cache hit rate is a
+// real number that nobody has ever changed a keystroke over — so it is routed to
+// the sheet, /status and the Spending tab (render.go's [hudLaneOf]). The
+// arithmetic is still this segment's, which is why it is still asked of it here.
 func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	if got := a.warmSegment(); got != "" {
@@ -1113,8 +1191,11 @@ func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 	if got := a.warmSegment(); got != "⟲ 62% cached" {
 		t.Fatalf("the warm share reads %q, want ⟲ 62%% cached", got)
 	}
-	if line := plain(a.status(90)); !strings.Contains(line, "⟲ 62% cached") {
-		t.Fatalf("the status line is missing the warm share:\n%s", line)
+	if line := plain(a.status(90)); strings.Contains(line, "⟲") {
+		t.Fatalf("the warm share is back on the row it was demoted from:\n%s", line)
+	}
+	if !deckHolds(a, "cache", "⟲ 62% cached") {
+		t.Fatalf("the sheet lost the warm share:\n%s", plain(a.statusText()))
 	}
 
 	// Anthropic-style: they sit beside it. Same 62%, not 620%.
@@ -1122,6 +1203,19 @@ func TestTheWarmShareSegmentIsTheSessionsCachedInput(t *testing.T) {
 	if got := a.warmSegment(); got != "⟲ 62% cached" {
 		t.Fatalf("the disjoint dialect reads %q, want ⟲ 62%% cached", got)
 	}
+}
+
+// deckHolds reports whether the status sheet — the same list /status prints
+// ([app.deckItems], statusnote.go) — carries this value under this label. It is
+// the assertion every fact demoted off the bottom row is pinned with: the fact
+// did not die, it changed surface.
+func deckHolds(a *app, label, want string) bool {
+	for _, item := range a.deckItems() {
+		if item.label == label && strings.Contains(item.value, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // THE SAVINGS NOTE, and the arithmetic under it: a cache read is CHEAPER, never
