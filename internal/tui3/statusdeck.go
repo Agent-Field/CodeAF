@@ -233,7 +233,11 @@ func (a *app) deckSpend() (string, string) {
 	if a.statusQuiet() {
 		return "", ""
 	}
-	if cost := dollars(a.cost); cost != "" {
+	// The wide row's own figure, which is the whole tree's ([app.spendShown]).
+	// The phone keeps this segment because it is one a person cannot recover by
+	// looking at anything else, and that is truer still of a number the work
+	// under the conversation is moving.
+	if cost := dollars(a.spendShown()); cost != "" {
 		parts = append(parts, hudPart{kind: segCost, text: cost})
 	}
 	if pct, ok := a.ctxPercent(); ok {

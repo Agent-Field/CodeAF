@@ -67,10 +67,15 @@ func (a *app) statusText() string {
 	// on these fields ([app.take] keeps the larger of the two, so this can only
 	// move figures forward).
 	a.refreshUsage()
+	// AND THE WORK'S HALF OF THE BILL IS REFRESHED WITH IT, for the same reason:
+	// a command typed between turns answers from the ledger as it stands now
+	// rather than from whatever the frame clock last left on the field
+	// (treespend.go).
+	a.readTreeSpend()
 	sheet := a.deckItems()
 	items := make([]deckItem, 0, len(sheet)+1)
 	for _, item := range sheet {
-		if item.label == deckSegWords[segCost] && a.cost <= 0 {
+		if item.label == deckSegWords[segCost] && a.spendShown() <= 0 {
 			continue
 		}
 		// THE PLACE IS SAID IN FULL HERE, and on a remote session that is the
@@ -184,8 +189,11 @@ func (a *app) costText() string {
 		u = a.agent.Usage()
 	}
 	a.take(u)
+	// AND THE WORK'S HALF, off the ledger, so the split below is this moment's
+	// and not the last frame's (treespend.go).
+	a.readTreeSpend()
 
-	items := make([]deckItem, 0, 6)
+	items := make([]deckItem, 0, 8)
 	add := func(label, value string) {
 		if value != "" {
 			items = append(items, deckItem{label: label, value: value})
@@ -195,8 +203,20 @@ func (a *app) costText() string {
 	// The label is the sheet's word for the same figure ([deckSegWords]), and so
 	// are "context" and "cache" — a person who has read one of these surfaces has
 	// read the vocabulary of the other.
-	if a.cost > 0 {
-		add(deckSegWords[segCost], dollars(a.cost))
+	if spent := a.spendShown(); spent > 0 {
+		add(deckSegWords[segCost], dollars(spent))
+		// AND THIS IS THE ONE PLACE THE BILL IS TAKEN APART. The figure above is
+		// the whole tree — the conversation and every task it started — because
+		// that is the number a person is deciding on, and the status line has
+		// room for exactly one. Here there is room to say what it is made of, so
+		// somebody who watched it jump can see which half moved without opening
+		// another page. The two lines add up to the line above them, always: the
+		// split is drawn only when both halves come off the ledger
+		// ([app.spendSplit]).
+		if conversation, tasks, ok := a.spendSplit(); ok {
+			add("conversation", dollars(conversation))
+			add("tasks", dollars(tasks))
+		}
 	}
 	add("tokens", tokenHalves(a.inputTokens, a.outputTokens, a.tokens))
 	add(deckSegWords[segCache], cacheWords(a.cacheRead, a.cacheSaved))

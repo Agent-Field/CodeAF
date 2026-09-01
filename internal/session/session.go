@@ -1623,6 +1623,20 @@ type Config struct {
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
 
+	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
+	// and it is empty in a conversation — where the agent's own journal already
+	// names it — and set on every agent built for a piece of work, however deep
+	// (task_run.go's [Agent.newTaskAgentOn]).
+	//
+	// It exists because a node's ledger line names the node's own journal and
+	// not the conversation that asked for the work (usage_ledger.go's
+	// [UsageLine.Session]), so nothing outside the family could add a running
+	// tree's spend back onto the conversation until the tally was folded in at
+	// close. It is private for [Config.usageLedger]'s reason: no surface sets
+	// it, because the only honest source for it is the agent that built the
+	// worker.
+	rootSession string
+
 	// standingItemID is the id of the standing item whose firing this agent IS
 	// (standing_run.go), and empty in every conversation and every ordinary task.
 	// It rides on the config for [Config.taskID]'s reason: the money a firing

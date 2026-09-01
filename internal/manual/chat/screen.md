@@ -543,6 +543,19 @@ On a terminal below 256 colours, and with `NO_COLOR` set, there is no ramp to fa
 and the rows are drawn plainly. Linear mode (`--linear`) drops it too, for the same reason
 it drops the thinking window's gradient.
 
+## What the `$` on the status line counts — the conversation and its tasks
+
+The money segment is **this conversation and every task it started**, added up while the
+work is still running. One figure, not two: the row is the most crowded thing on the
+screen, and its segments must not grow and shrink under your eye.
+
+It is also a **door** — pressing it opens the Spending tab — and it takes the warm ink at
+four fifths of this conversation's own limit, measured on that same whole-tree figure.
+
+`/cost` is where the figure is taken apart: it prints `conversation` and `tasks` under the
+total, and they add up to it. See *Does the status line's money include what my tasks are
+spending* on the models and cost page.
+
 ## Why the status line says $0.00
 
 A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown context
