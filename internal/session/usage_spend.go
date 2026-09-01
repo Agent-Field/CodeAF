@@ -511,6 +511,15 @@ type SubjectSpend struct {
 // a conversation, for the same reason — the work is the thing that was asked
 // for.
 //
+// AND WORK WITH NO ID OF ITS OWN BELONGS TO THE CONVERSATION IT WAS ROOTED IN.
+// A fork's hand, and the check that reads what a node left, are whole agents
+// with no row anywhere: a hand keeps no journal at all, so its lines name the
+// stand-in `unfiled`, and a check's name its own transcript. Grouped on that
+// name they drew a row headed by an id nothing in the product can put a title
+// on, beside a conversation row missing exactly that money. [UsageLine.Root]
+// says whose the work was, so the row it belongs on is the conversation's own —
+// which is also where the fold puts the money in that conversation's books.
+//
 // Ties break the way [UsageByModel]'s do, so the table is stable.
 func UsageBySubject(lines []UsageLine) []SubjectSpend {
 	type key struct{ kind, id, session string }
@@ -522,8 +531,17 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 			kind, id = SubjectStanding, strings.TrimSpace(line.Standing)
 		case strings.TrimSpace(line.Task) != "":
 			kind, id = SubjectTask, strings.TrimSpace(line.Task)
+		case strings.TrimSpace(line.Root) != "":
+			id = strings.TrimSpace(line.Root)
 		}
 		at := key{kind, id, strings.TrimSpace(line.Session)}
+		if kind == SubjectConversation {
+			// A CONVERSATION ROW'S SESSION IS ITS ID, which is what
+			// [SubjectSpend.Session] promises — and it is what merges the work
+			// above into the conversation rather than leaving it beside it under
+			// the journal it happened to run in.
+			at.session = id
+		}
 		if kind == SubjectStanding {
 			// A promise fires in a new folder every time, so grouping a standing
 			// row by the session it happened in would draw one row per firing —

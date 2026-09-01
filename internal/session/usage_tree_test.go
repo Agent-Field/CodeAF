@@ -435,3 +435,39 @@ func TestAnAdaptiveRunsNodeSpendRaisesTheDayTotalOnce(t *testing.T) {
 		t.Fatalf("the run's spend reads %v on the tree, want 1.00: %+v", tree.TasksUSD, lines)
 	}
 }
+
+// A HAND'S MONEY IS ON THE CONVERSATION'S OWN ROW OF THE SPEND PLACE, not on a
+// row headed by an id nothing can name.
+//
+// A hand keeps no journal, so its ledger lines say `unfiled` where a
+// conversation says its own id. Grouped on that, a fork drew a row nothing could
+// put a title on — and the conversation it belonged to was short by exactly that
+// money once its fold stopped writing a line of its own.
+func TestWorkWithNoIdOfItsOwnIsOnItsConversationsSpendRow(t *testing.T) {
+	const mine = "1111111111111111"
+	now := time.Now()
+	rows := UsageBySubject([]UsageLine{
+		// The conversation's own turn.
+		{At: now, Session: mine, USD: 2.00, Calls: 1},
+		// Two hands of one of its replies, and the check that read what a node
+		// left: three agents, no id of their own, all this conversation's work.
+		{At: now, Session: "unfiled", Root: mine, USD: 1.00, Calls: 1},
+		{At: now, Session: "unfiled", Root: mine, USD: 1.00, Calls: 1},
+		{At: now, Session: "cccc", Root: mine, USD: 0.50, Calls: 1},
+		// And a node of the same conversation, which HAS an id and keeps its own
+		// row: this is not a change to how work with a name is grouped.
+		{At: now, Session: "aaaa", Task: "1", Root: mine, USD: 10.00, Calls: 1},
+	})
+	if len(rows) != 2 {
+		t.Fatalf("grouped into %d rows, want the node and the conversation: %+v", len(rows), rows)
+	}
+	if rows[0].Kind != SubjectTask || rows[0].ID != "1" || !treeNear(rows[0].USD, 10.00) {
+		t.Fatalf("the node's row is %+v", rows[0])
+	}
+	if rows[1].Kind != SubjectConversation || rows[1].ID != mine || !treeNear(rows[1].USD, 4.50) {
+		t.Fatalf("the conversation's row is %+v, want its own turn and the three agents under it", rows[1])
+	}
+	if rows[1].Session != rows[1].ID {
+		t.Fatalf("a conversation row names the session %q against the id %q", rows[1].Session, rows[1].ID)
+	}
+}

@@ -1214,7 +1214,9 @@ same three-second beat every place runs on, and it draws three things:
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
-  shown and the rest fold into one line.
+  shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
+  forks, the check that reads what a piece of work left — is on the row of the conversation
+  it belongs to, because that is the only name it has.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a
