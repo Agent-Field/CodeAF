@@ -35,13 +35,13 @@ var taskNewsPairReaders = map[string]string{
 	"taskNewsStanding": "THE LOCKED READ ITSELF. Both facts are taken under the handover, which is " +
 		"the lock a delivery makes its own two writes under ([Agent.handOverTaskNews]), so no " +
 		"caller of this can see half a delivery. Every decision that costs a turn goes through it.",
-	"runTaskChild": "the no-progress switch reads the two one at a time, and deliberately: this is " +
-		"the event drain, and evaluating `childrenOutstanding` eagerly would walk the graph on " +
-		"every event to answer a question the earlier cases usually settle. A tear there is " +
-		"harmless — BOTH branches suspend the counter and neither ends anything — so the worst it " +
-		"can do is count one step against a node whose last part just landed, which the report " +
-		"count resets on the next event anyway. The PARK decision, which is the one that buys a " +
-		"model turn, is taken through [Agent.taskNewsStanding].",
+	"count": "the no-progress switch ([childRun.count]) reads the two one at a time, and " +
+		"deliberately: this is the event drain, and evaluating `childrenOutstanding` eagerly would " +
+		"walk the graph on every event to answer a question the earlier cases usually settle. A " +
+		"tear there is harmless — BOTH branches suspend the counter and neither ends anything — so " +
+		"the worst it can do is count one step against a node whose last part just landed, which " +
+		"the report count resets on the next event anyway. The PARK decision, which is the one " +
+		"that buys a model turn, is taken through [Agent.taskNewsStanding] in [childRun.foldParts].",
 }
 
 // TestEveryReaderOfAParkedParentsPairSaysHowItReadsIt fails when a function
@@ -143,10 +143,10 @@ func TestTheWakeIsOnlyPostedInsideTheHandover(t *testing.T) {
 
 // intoClosures and stayingHere are the two readings of "what does this ask",
 // and both are needed. A function OWNS what the closures written inside it ask —
-// the drain in [runTaskChild] is that function's own reading — so the entry above
-// is answered for the whole declaration. A STATEMENT does not: `drain := func…`
-// asks nothing itself, and reading it as though it did would put every closure's
-// two questions on the line that names it.
+// a drain written as `drain := func…` is still its enclosing function's own
+// reading — so the entry above is answered for the whole declaration. A STATEMENT
+// does not: `drain := func…` asks nothing itself, and reading it as though it did
+// would put every closure's two questions on the line that names it.
 const (
 	intoClosures = true
 	stayingHere  = false

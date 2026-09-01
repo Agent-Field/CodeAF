@@ -3165,11 +3165,17 @@ func (g *TaskGraph) stopChildren(parent uint64) {
 	}
 }
 
-// workTaskNode does the work and reports the state the node ended in. Every
-// failure is a state and a report rather than an error: a node that could not
-// get a working copy has to be able to say so to the person who asked for it.
-func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
-	log := taskLog(listed)
+// openTaskWorld makes the working copy this node will live in and writes down
+// what it is, and it answers false having settled the node when there is no
+// copy to be had.
+//
+// It is the first thing that happens to a node and it happens before anything
+// costs money: a directory, a branch, and four lines in the log saying what the
+// directory is a copy of. Each of those lines is written under the emptiness
+// law — a task standing in the folder it was already about has no second world
+// to name, and a line saying so would be the log explaining a distinction that
+// does not exist here.
+func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer) (taskTree, bool) {
 	// The FAMILY'S place and the OWNER'S workspace, which are two different
 	// questions: where this session keeps things ([Agent.familyPlace]) and which
 	// checkout this node's branch comes off, which for a part is its parent's
@@ -3183,7 +3189,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if err != nil {
 		node.end(TaskEndingError)
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
-		return TaskFailed
+		return taskTree{}, false
 	}
 	// Written down before a single tool call runs in it: from here on, a process
 	// that dies leaves a checkpoint that knows where this node's work is.
@@ -3210,27 +3216,102 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if tree.note != "" {
 		fmt.Fprintf(log, "%s\n", tree.note)
 	}
+	return tree, true
+}
 
-	// ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE MONEY ──
-	//
-	// The brief says what this work assumes about its world; the world has just
-	// been made. This is the one moment the two can be held up against each
-	// other for nothing, and it is BEFORE the first worker is built rather than
-	// inside its first turn, so a contract that does not hold costs a directory
-	// walk instead of a model call (handoffcontract.go).
-	//
-	// It is journaled either way. A contract that held is one line and the run
-	// goes on; a contract that did not is the node's whole report, and it names
-	// every expectation that failed rather than the first, because a brief
-	// written against a world one commit behind fails several at once.
-	if expects := node.expectations(); len(expects) > 0 {
-		if unmet := preflightExpectations(tree.dir, expects); len(unmet) > 0 {
-			fmt.Fprintf(log, "its brief does not match its world:\n%s\n", strings.Join(unmet, "\n"))
-			node.end(TaskEndingStale)
-			node.finish(staleGroundReport(tree.world(), unmet), nil, tree.branch, abortedMerge(tree))
-			return TaskFailed
+// briefMatchesItsWorld is ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE
+// MONEY ──
+//
+// The brief says what this work assumes about its world; the world has just
+// been made. This is the one moment the two can be held up against each
+// other for nothing, and it is BEFORE the first worker is built rather than
+// inside its first turn, so a contract that does not hold costs a directory
+// walk instead of a model call (handoffcontract.go).
+//
+// It is journaled either way. A contract that held is one line and the run
+// goes on; a contract that did not is the node's whole report, and it names
+// every expectation that failed rather than the first, because a brief
+// written against a world one commit behind fails several at once.
+func (a *Agent) briefMatchesItsWorld(node *TaskNode, tree taskTree, log io.Writer) bool {
+	expects := node.expectations()
+	if len(expects) == 0 {
+		return true
+	}
+	if unmet := preflightExpectations(tree.dir, expects); len(unmet) > 0 {
+		fmt.Fprintf(log, "its brief does not match its world:\n%s\n", strings.Join(unmet, "\n"))
+		node.end(TaskEndingStale)
+		node.finish(staleGroundReport(tree.world(), unmet), nil, tree.branch, abortedMerge(tree))
+		return false
+	}
+	fmt.Fprintf(log, "its brief matches its world · %d checked\n", len(expects))
+	return true
+}
+
+// settleUnfinished is the three roads out of a run where the work never reached
+// the gate at all, and it answers false when none of them was taken — which is
+// the ordinary case of a node that finished and is about to be checked.
+//
+// THEY ARE READ IN THIS ORDER AND THE ORDER IS THE ANSWER. The threshold comes
+// FIRST because it is the most specific: it cancelled the child itself, so every
+// check below it would also be true, and each of them would say something less
+// useful than the name of the threshold that fired.
+//
+// NONE OF THE THREE MERGES. Two of them keep the branch with the work committed
+// on it ([keepHome]), because a run that was cut is not a finding about the
+// deliverable and the person is owed what was made; the third leaves the
+// checkpoint resumable and settles nothing at all.
+func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, stopped string, runErr error, log io.Writer) (TaskState, bool) {
+	switch {
+	case stopped != "":
+		fmt.Fprintf(log, "%s\n", stopped)
+		// A THRESHOLD IS NOT A REASON TO LOSE THE WORK, and it is not a finding
+		// about it either. The landing turn has already run and whatever the node
+		// made is on disk, so the work is judged before anything is written down
+		// about it ([Agent.landStopped]).
+		return a.landStopped(ctx, node, tree, changed, report, stopped, log), true
+	case ctx.Err() != nil:
+		if node.wasStopped() {
+			merge, changed := keepHome(node, tree, changed)
+			node.end(TaskEndingStopped)
+			node.finish(withReport("stopped", report), changed, tree.branch, merge)
+			return TaskFailed, true
 		}
-		fmt.Fprintf(log, "its brief matches its world · %d checked\n", len(expects))
+		// Lifecycle cancellation is an interruption, never a finding about the
+		// work. The running checkpoint is deliberately left resumable.
+		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
+		return "", true
+	case runErr != nil:
+		merge, changed := keepHome(node, tree, changed)
+		// THE WIRE AND AN ERROR ARE DIFFERENT NEWS. Both end the node, but a
+		// person reading "lost the connection" restarts it and a person reading
+		// "ended with an error" goes looking for the fault; the report keeps the
+		// error's own words either way.
+		if diedOnTheWire(runErr) {
+			node.end(TaskEndingWire)
+			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
+			return TaskFailed, true
+		}
+		node.end(TaskEndingError)
+		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
+		return TaskFailed, true
+	}
+	return "", false
+}
+
+// workTaskNode does the work and reports the state the node ended in. Every
+// failure is a state and a report rather than an error: a node that could not
+// get a working copy has to be able to say so to the person who asked for it.
+func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
+	log := taskLog(listed)
+	// THE WORLD IS MADE AND THEN ASKED WHETHER IT IS THE ONE THE BRIEF ASSUMED,
+	// and both happen before a single model call is bought. Either can settle the
+	// node outright, and both say so the same way.
+	tree, ok := a.openTaskWorld(ctx, node, log)
+	if !ok {
+		return TaskFailed
+	}
+	if !a.briefMatchesItsWorld(node, tree, log) {
+		return TaskFailed
 	}
 
 	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
@@ -3422,43 +3503,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		report = withReport(taskModelMovedSentence(movedFrom, node.runModel()), report)
 	}
 
-	switch {
-	// The threshold comes FIRST because it is the most specific answer: it
-	// cancelled the child itself, so every check below would also be true, and
-	// each of them would say something less useful than the name of the
-	// threshold that fired.
-	case stopped != "":
-		fmt.Fprintf(log, "%s\n", stopped)
-		// A THRESHOLD IS NOT A REASON TO LOSE THE WORK, and it is not a finding
-		// about it either. The landing turn has already run and whatever the node
-		// made is on disk, so the work is judged before anything is written down
-		// about it ([Agent.landStopped]).
-		return a.landStopped(ctx, node, tree, changed, report, stopped, log)
-	case ctx.Err() != nil:
-		if node.wasStopped() {
-			merge, changed := keepHome(node, tree, changed)
-			node.end(TaskEndingStopped)
-			node.finish(withReport("stopped", report), changed, tree.branch, merge)
-			return TaskFailed
-		}
-		// Lifecycle cancellation is an interruption, never a finding about the
-		// work. The running checkpoint is deliberately left resumable.
-		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
-		return ""
-	case runErr != nil:
-		merge, changed := keepHome(node, tree, changed)
-		// THE WIRE AND AN ERROR ARE DIFFERENT NEWS. Both end the node, but a
-		// person reading "lost the connection" restarts it and a person reading
-		// "ended with an error" goes looking for the fault; the report keeps the
-		// error's own words either way.
-		if diedOnTheWire(runErr) {
-			node.end(TaskEndingWire)
-			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
-			return TaskFailed
-		}
-		node.end(TaskEndingError)
-		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
-		return TaskFailed
+	// THE THREE WAYS A RUN ENDS WITHOUT THE WORK EVER REACHING THE GATE — a
+	// threshold, a cancel, an error — settle here and nothing below them runs
+	// ([Agent.settleUnfinished]).
+	if settled, ended := a.settleUnfinished(ctx, node, tree, changed, report, stopped, runErr, log); ended {
+		return settled
 	}
 	// WHY THE RUN ENDED WHEN IT DID NOT CHOOSE TO is written before the gate
 	// reads it, so that a check refusing a run that had already given up does not
@@ -3475,27 +3524,17 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
 	if !a.config.TaskAudit {
-		// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE, and with the check off
-		// this is one of the places it would. A person who turned verification off
-		// has not asked to be merged over the top of another window (groundladder.go).
-		if shift := a.groundShift(node, changed); shift != "" {
-			return a.landShifted(node, tree, changed,
-				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
-		}
-		changed, merge, detail := landHome(node, tree, changed)
-		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
-		if !cameHome(merge) {
-			return a.landConflicted(node, tree, changed,
-				withReport("nothing checked this work: the task.audit setting is off", report), merge, detail, log)
-		}
+		// THE SENTENCE SAYING NOTHING CHECKED THIS LEADS, and the node's own
+		// account stands under it — which is the one place this road differs from
+		// the ordinary finishing line it otherwise shares ([Agent.landFinished]).
+		//
 		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
 		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
 		// off, this is the row's name, and a sentence that translated it would
 		// leave them holding a word their settings sheet does not answer to
 		// (task_audit.go's vocabulary law). Everything either side of it is plain.
-		node.finish(withReport("nothing checked this work: the task.audit setting is off",
-			withReport(report, detail)), changed, tree.branch, merge)
-		return TaskDone
+		return a.landFinished(node, tree, changed,
+			"nothing checked this work: the task.audit setting is off", report, " (unaudited)", log)
 	}
 	// THE GATE MAY SEND THE WORK BACK BEFORE IT ANSWERS. What returns from here
 	// is the end of the whole loop — the last verdict, the gaps of every round,
@@ -3546,35 +3585,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return TaskFailed
 	}
 
-	// THE WORK HOLDS, AND THE QUESTION IS WHETHER IT HOLDS AGAINST TODAY. The
-	// check the gate ran was run inside this node's own working copy, which is a
-	// copy of the world as it was when the node started — so a verdict of
-	// verified says nothing at all about a file another window has landed in
-	// since. That is the one question left before a merge, and taskground.go is
-	// where it is asked.
-	if shift := a.groundShift(node, changed); shift != "" {
-		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
-	}
-
-	changed, merge, detail := landHome(node, tree, changed)
-	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
-	if !cameHome(merge) {
-		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), merge, detail, log)
-	}
-	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
-	// Everything downstream reads this report from the top: the settle card quotes
-	// its first sentence as what came of the work, the project's index keeps that
-	// same line as the row's outcome (task_index.go's taskOutcome), and the chat
-	// model reads it before writing the paragraph the person actually asked for.
-	// With the check's evidence in front, all three carried a verification command
-	// — "`git diff --cached --stat` shows staged new file …" — where what the work
-	// FOUND belonged, and a model handed proof-of-check as the headline grades the
-	// deliverable instead of delivering it (prompts/system.md's rule for the moment
-	// work lands). The evidence is still here, because a finished card is owed what
-	// was checked; it is simply not the news. The state says "done" — nothing here
-	// says it a second time in the harness's own vocabulary.
-	node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merge)
-	return TaskDone
+	// THE WORK HOLDS. Its own account leads and what it was checked on stands
+	// under it, which is the ordinary shape of a finished node's report — and
+	// every remaining question, the ground and the merge, is the one every road
+	// home asks ([Agent.landFinished]).
+	return a.landFinished(node, tree, changed, report, verdict.doneOutcome(), "", log)
 }
 
 // landStopped settles a node whose threshold fired — and it is where a landing
@@ -3625,25 +3640,15 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
-			// The same last question the ordinary finishing line asks, for the same
-			// reason: this branch is about to merge (groundladder.go). The threshold's
-			// own sentence is left out of what follows exactly as it is left out of
-			// the merge below — the run was interrupted, the deliverable was not, and
-			// the news here is the file somebody else is in.
-			if shift := a.groundShift(node, changed); shift != "" {
-				return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
-			}
-			changed, merge, detail := landHome(node, tree, changed)
-			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
-			if !cameHome(merge) {
-				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), merge, detail, log)
-			}
-			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
-			// leads, what it was checked on stands under it, and nothing anywhere in
-			// it mentions the counter — the run was interrupted, the deliverable was
-			// not (see [Agent.workTaskNode]'s finishing line, which this mirrors).
-			node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merge)
-			return TaskDone
+			// THE SAME ROAD HOME A NODE THAT FINISHED ON ITS OWN TAKES, and it is
+			// the same function ([Agent.landFinished]): the same last question about
+			// the ground, the same merge, the same report with the node's own account
+			// leading and what it was checked on under it. Nothing anywhere in it
+			// mentions the counter — the run was interrupted, the deliverable was not
+			// — and the threshold's own sentence appears only in the log line, where
+			// whoever is reading the machinery is the only one who wants it.
+			return a.landFinished(node, tree, changed, report, verdict.doneOutcome(),
+				" ("+stopped+", and the work holds)", log)
 		}
 		fmt.Fprintf(log, "landed work was not accepted: %s\n", verdict.report())
 	}
@@ -3870,600 +3875,6 @@ func (t taskTree) releaseKeptLocked() {
 	}
 	_, _ = git(t.root, "worktree", "prune")
 	_ = os.Remove(filepath.Dir(t.dir))
-}
-
-// runTaskChild submits the brief, consumes the node's own events internally,
-// and enforces the two thresholds from the same stream.
-//
-// The events are NOT forwarded INTO THE CONVERSATION. A node's tool rows belong
-// to its journal, not to the chat: a person watching a chat must not have forty
-// of somebody else's greps scroll past. What is kept for the chat is the one
-// thing the person needs to see afterwards — which files the node wrote — read
-// off the edit and write calls as they end.
-//
-// They ARE forwarded into the node's own ROOM, which is the other half of that
-// same rule: the events a chat must not carry are exactly the events somebody
-// who walked into this node's page came to see (task_room.go). The publish is
-// the first thing this loop does with an event, so a watcher sees the child's
-// narrative in the order it happened rather than in the order this side of the
-// wall got round to counting it — and it runs for a nil room too, which is the
-// ordinary case of a node nobody is watching.
-//
-// THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
-// out here: the child's model round-trips are inside its own loop, and this
-// side of the wall sees the calls they produce. PROGRESS is any of the three
-// halves of the job ([addedSomething]) — a SUCCESSFUL call that actually saved a
-// file ([producedAFile], on EventToolEnd and never EventToolFailed, because an
-// edit whose oldText did not match changed nothing and a node repeating it is
-// the exact spin the counter exists to catch), a step that left the worktree
-// different from how it found it ([worktreeMoved]), or a step that TAUGHT the
-// node something it did not know ([taughtSomething]). What the counter kills is
-// the fourth thing: the same call again, changing nothing, learning nothing.
-//
-// AND "TAUGHT" IS ASKED OF THE SHAPE IT WAS BUILT FOR. A reading taken over a
-// deliverable that has just changed is information by construction, and so is a
-// question the node has never asked whose answer brought something back; line
-// novelty judges the third case, which is the same question asked again of work
-// that has not moved (novelty.go's [progressLedger]). The unit is still the
-// STEP and not the second: what the counter is spending is a model round-trip
-// and a tool call, and six of those that added nothing is a spin whether they
-// took eighteen seconds or eighteen minutes.
-//
-// The cancel is this function's own, hung off the node's context, so tripping a
-// threshold ends the child the way `jobs kill` does — a cancelled turn, its
-// partial work kept, its branch intact — and the caller is told WHICH threshold
-// fired rather than being left to infer it from a context error that has three
-// possible causes.
-func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction, dir string, limits taskLimits, room *taskRoom, log io.Writer) ([]string, string, error) {
-	if limits.deadline <= 0 {
-		limits.deadline = taskDeadline
-	}
-	runCtx, stop := context.WithCancel(ctx)
-	defer stop()
-	// ── THE DOOR SHUTS ON EVERY ROAD OUT, NOT JUST THE CLEAN ONE ──
-	//
-	// From the moment this function returns, this child never reads again — the
-	// check and the landing are other hands — but it stays OPEN until the
-	// caller's retire, which on a checked node is minutes away. A line steered
-	// in during that window would still be TAKEN ([Agent.enqueueSteeredLine]
-	// answers whether the agent is closed, not whether anybody will drain it),
-	// echoed by the room as said, and closed over unread: the #273 swallow. The
-	// tail loop below also withdraws at its own last read, which is earlier on
-	// the ordinary road; this defer is for the roads the loop never takes — a
-	// threshold stop, a cancelled context, a turn that errored — where the
-	// swallow was otherwise alive and well. A caller that put somebody else in
-	// the room restores them itself (task_audit.go's repair round).
-	defer room.speaking(nil)
-
-	var (
-		changed  []string
-		seen     = map[string]bool{}
-		ledger   = newProgressLedger()
-		lastDirt string
-		failure  error
-		stopped  string
-		steps    int
-		idle     int
-		// ranCheck says this node had been RUNNING its work — a build, a test, a
-		// script — before anything was taken off its belt. It is what makes the
-		// landing's "unverified" sentence a fact rather than a guess: a node that
-		// never ran a check is not a node whose last edits went unchecked.
-		ranCheck   bool
-		extensions int
-		deadline   = time.Now().Add(limits.deadline)
-		evidence   []string
-		// effects is what this node has PRODUCED, as opposed to what it has done
-		// (effects.go). The evidence above is a narrative of calls and a
-		// narrative of successful calls reads as work whatever the calls left
-		// behind; this is the one fact under it — whether anything is different
-		// now — and it is what the checkpoint is handed alongside the story.
-		effects = newEffectLedger()
-		// reportedParts is monotone for this worker's division. A landing is
-		// progress even when its note races the event drain below.
-		reportedParts = child.reportedChildren()
-	)
-	// checkpoint puts the WORKING or CIRCLING question and answers whether the
-	// work carries on.
-	//
-	// `renew` is whether an answer of WORKING buys the node MORE — the next equal
-	// slice of the deadline and, with it, the next slice of the step budget
-	// ([taskMaxExtensions]). It is true for the two thresholds that are BOUNDS
-	// being met: the node has spent its steps or its hour, and carrying on means
-	// being granted another allowance. It is false for the threshold that is a
-	// FINDING about the work — a run of actions that produced nothing new — where
-	// carrying on means only "keep going on what you already have". A finding
-	// that handed out another two hundred steps would be a spin buying itself
-	// room, which is the opposite of what noticing it is for.
-	checkpoint := func(threshold string, renew bool) bool {
-		if node == nil {
-			stopped = "stopped at " + threshold
-			stop()
-			return false
-		}
-		owner := node.owner
-		if owner == nil {
-			owner = node.graph.home
-		}
-		if owner == nil {
-			stopped = "stopped at " + threshold
-			stop()
-			return false
-		}
-		// THE FACT GOES IN FRONT OF THE STORY. A reader handed twenty lines of
-		// successful calls has to infer repetition from them and will not; handed
-		// one sentence saying how many of them changed nothing, it has the finding
-		// outright and can spend its reading on the working copy instead.
-		asked := evidence
-		if line := effects.sameEffectLine(); line != "" {
-			asked = append([]string{line}, evidence...)
-		}
-		working, reason := owner.taskProgress(ctx, node, dir, asked, log)
-		if working && !renew {
-			// THE READER LOOKED AT THIS RUN AND SAID CARRY ON, so the run starts
-			// again from here. Without the reset the next action would meet the
-			// same count and ask the same question of the same reader, which is a
-			// model call per step for as long as the node keeps going.
-			effects.pardon()
-			fmt.Fprintf(log, "checkpoint: working — carrying on\n")
-			return true
-		}
-		if working && extensions < taskMaxExtensions {
-			extensions++
-			deadline = deadline.Add(limits.deadline)
-			fmt.Fprintf(log, "checkpoint: working — renewed %d of %d\n", extensions, taskMaxExtensions)
-			return true
-		}
-		if working {
-			reason = "the work used all 4 extensions"
-		}
-		stopped = fmt.Sprintf("stopped at %s: %s", threshold, strings.TrimSpace(reason))
-		stop()
-		return false
-	}
-	drain := func(events <-chan Event) {
-		for event := range events {
-			room.publish(event)
-			switch event.Kind {
-			case EventToolBegin:
-				fmt.Fprintf(log, "· %s\n", event.Hint)
-			case EventToolEnd, EventToolFailed:
-				steps++
-				// AND WHETHER THIS NODE WAS RUNNING ITS WORK, which is not a
-				// question about progress at all — it is what makes the landing's
-				// "unverified" sentence below a fact rather than a guess
-				// (withdrawn.go's [checkingTools]). A harness-made failure does not
-				// count: an answer this side of the wall wrote is not the node
-				// having run anything.
-				if checkingTools[event.Tool] && !event.HarnessMade {
-					ranCheck = true
-				}
-				// ALL THREE QUESTIONS ARE ASKED OF EVERY STEP, and each is
-				// asked before any of them is read, because two of them RECORD
-				// as they answer. The worktree fingerprint has to be refreshed
-				// on the step that moved it whichever question noticed, or the
-				// next step inherits a stale one and reads somebody else's dirt
-				// as its own; the target has to be recorded even on a step that
-				// was already progress for another reason, or the same call can
-				// be spent twice. A short-circuiting `switch` did both wrong.
-				//
-				// THE THREE ARE READ IN ONE PLACE ([addedSomething]), because
-				// they are one rule and because the ledger they keep has state
-				// now — a step that moved the work arms the reading after it
-				// (novelty.go's [progressLedger]) — and a rule with state that
-				// is spelled out at its call site is a rule with two versions.
-				moved := worktreeMoved(dir, &lastDirt)
-				path, wrote := changedPath(event, dir)
-				saved := wrote && event.Kind == EventToolEnd
-				// ── AND THE JOURNAL RECORDS WHAT THE STEP PRODUCED ──
-				//
-				// The line the checkpoint will read used to be the hand and its
-				// arguments and nothing else, which is a story about what the node
-				// SET OUT to do. A story of successful calls reads as work whatever
-				// the calls left behind, and that is the whole of the defect this
-				// answers: a worker rewriting one file with the same bytes writes a
-				// perfect narrative of editing. So every line now carries the one
-				// fact a reader cannot get from an exit code — whether anything is
-				// different because of the call (effects.go).
-				//
-				// IT IS RECORDED HERE, after the saving call's file is known,
-				// because the effect of a call that saves something is the file and
-				// not the sentence it answered with.
-				effect, produced := effectPrintOf(event, dir, path, saved, moved, lastDirt)
-				repeat := effects.saw(event.Tool, effect, produced)
-				evidence = append(evidence, effectEvidence(event, repeat))
-				if len(evidence) > 24 {
-					evidence = evidence[len(evidence)-24:]
-				}
-				added := addedSomething(event, saved, moved, ledger)
-				// AND THE RUN IS FOLDED IN BESIDE THE COUNTER, off the same
-				// reading of the same step. It grows only where the counter was
-				// reset by a step that changed nothing, which is the one shape
-				// the counter cannot see ([effectLedger.counted]).
-				effects.counted(event.Tool, added, repeat)
-				reports := child.reportedChildren()
-				partLanded := reports > reportedParts
-				if partLanded {
-					reportedParts = reports
-				}
-				if saved && !seen[path] {
-					seen[path] = true
-					changed = append(changed, path)
-					// SAID OUT LOUD THE MOMENT IT IS TRUE. The node's leavings are
-					// written once at the end; this is the same fact told while
-					// another window could still act on it.
-					node.noteWrote(path)
-				}
-				switch {
-				// A PART LANDING IS PROGRESS EVEN WHEN THIS EVENT IS OLD NEWS. Tool
-				// events and model requests travel on separate lanes, so a fast part
-				// can report after a request was made but before this drain reaches
-				// that request's last tool event. Reading only
-				// [Agent.childrenOutstanding] at this instant then mislabels the old
-				// step as a new idle one. The monotone report count gives the landing
-				// one exact place in the ledger, whether the part finished or failed.
-				//
-				// AND THAT RACE IS ALL IT IS FOR. A report the node was parked on has
-				// already been paid for by the tail loop's own reset, and the mark is
-				// squared up against every request made there, so a landing can buy
-				// the counter one reset and never two.
-				case partLanded:
-					idle = 0
-				// ── A STEP THE HARNESS FAILED IS THE HARNESS'S STEP ──
-				//
-				// It comes FIRST, ahead of every other reading, because it is not a
-				// finding about the node at all: the tool never ran, the world never
-				// answered, and the bytes the node read were written on this side of
-				// the wall — a hand that was withdrawn, a door that refused the call
-				// (withdrawn.go's [Event.HarnessMade]).
-				//
-				// Measured in SWE-Marathon s4: the landing pass took `bash` off a
-				// worker's belt and the harness then answered eight retries with
-				// "Unknown tool", each of which was a step that taught nothing, saved
-				// nothing and moved no worktree — a counter reading them would have
-				// been counting its own refusals against the model. NEITHER
-				// DIRECTION: it is not progress either, so a harness failure cannot
-				// launder a genuine spin by resetting the count. The step still
-				// costs a step and still stands in the evidence, because the money
-				// was really spent and the auditor should see what happened.
-				case event.HarnessMade:
-				case child.taskNewsOwed() > 0:
-					// AND A REPORT WAITING FOR ITS READER SUSPENDS OLD STEPS. Until
-					// the next request carries the queued note, an event reaching this
-					// drain may still belong to the turn from before the report landed.
-					// Counting those delayed events would spend the freshly reset
-					// allowance before the parent had seen the news it is meant to
-					// integrate. Once [Agent.drainSteering] carries the note it clears
-					// this count, and genuine spinning over the fold is counted again.
-				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
-				// node may never write until its final words; a build node may
-				// spend its first dozen steps reading; a node making pictures
-				// paints, looks at what it painted, and paints again without
-				// ever calling edit or write. What stops a node is SPINNING —
-				// the same target again, no new file, no new dirt — not the
-				// absence of an edit (PMCoder's "reads saturated", not "reads
-				// happened").
-				case added:
-					idle = 0
-				case child.childrenOutstanding():
-					// AND A NODE WHOSE WORK IS IN SOMEBODY ELSE'S HANDS IS NOT
-					// SPINNING. The counter's whole claim is that a step which
-					// taught nothing and saved nothing is a step the node had no
-					// business taking — and that claim is false the moment the
-					// work itself is elsewhere. A parent between its parts' reports
-					// has nothing left to write (the parts hold it), nothing left
-					// to learn (the answer is being made in three other
-					// worktrees), and the only hands it can reach for are the ones
-					// that look at what its parts are doing. Six of those and it
-					// killed itself while every part was still working — the
-					// division bought three workers and delivered nothing, because
-					// the one node that could integrate them was gone.
-					//
-					// SUSPENDED AND NOT SWITCHED OFF. The moment the last report
-					// lands the counter starts again from zero, so a parent that
-					// spins over the FOLD is caught exactly as it always was. What
-					// is still standing over this stretch is the step budget
-					// ([taskLimits.maxSteps]) and the deadline, which are bounds on
-					// spend rather than findings about the work.
-				default:
-					idle++
-				}
-				// Named once. The loop keeps draining after the cancel — the child
-				// is still finishing its batch and closing its stream — and a second
-				// threshold tripping on the way out must not rewrite the reason the
-				// node was stopped.
-				if stopped != "" {
-					continue
-				}
-				switch {
-				case steps >= limits.maxSteps*(extensions+1):
-					checkpoint(fmt.Sprintf("%d-step checkpoint", limits.maxSteps*(extensions+1)), true)
-				case !time.Now().Before(deadline):
-					checkpoint("deadline checkpoint", true)
-				case idle >= limits.noProgress:
-					stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
-					stop()
-				// ── AND THE STEPS THAT LOOK LIKE PROGRESS AND ARE NOT ──
-				//
-				// It comes LAST, under the counter, and that placement is the whole
-				// of its scope. Everything the counter already catches — the same
-				// question asked again, the same directory listed again — reaches
-				// its threshold on the same step and is stopped there, exactly as
-				// it always was. What is left underneath is the one shape the
-				// counter is blind to by construction: a SUCCESSFUL SAVE, which
-				// resets it ([addedSomething]) without anybody ever asking what
-				// landed. Measured on 2026-08-31: one file rewritten twenty times
-				// in twenty-two minutes for $7.99, every call clean, the counter at
-				// zero throughout, and the step cap the only thing that ended it.
-				//
-				// NOTHING IS DECIDED HERE. The run length says WHEN TO ASK and
-				// never what the answer is: the reader is handed the sentence
-				// counting the run and the working copy it is standing in, and it
-				// rules. A number in this file saying how many identical writes are
-				// too many would be a number wrong for the next kind of work — the
-				// reason the leash was fed a narrative in the first place is that
-				// nobody could write that number down honestly.
-				//
-				// AND IT IS THE NODE'S OWN THRESHOLD IT BORROWS, not one of its
-				// own. `no_progress` is already this harness's single answer to
-				// "how many in a row is worth stopping over", it is on the wire so
-				// a brief can raise it for work that is legitimately repetitive,
-				// and a second number beside it would be the drift the
-				// one-source-of-truth law forbids (CLAUDE.md's design laws).
-				case effects.sameEffectRun() >= limits.noProgress:
-					checkpoint("repeat checkpoint", false)
-				}
-			case EventError:
-				failure = event.Err
-			}
-		}
-	}
-	// ── THE FIRST REQUEST, OR NONE AT ALL ──
-	//
-	// A node that was handed a drawn division before it started has ALREADY given
-	// its work away: the parts were submitted on its behalf between the worker
-	// being built and this line (task_divide_sketch.go), and they are running now.
-	// Asking it anything before their reports are in is buying a turn about
-	// waiting — which is exactly what was measured: thirty-one requests at a five
-	// second cadence, none of them able to write a line the parts were not already
-	// writing, ending in the no-progress counter killing the one node that could
-	// have folded them together.
-	//
-	// SO THE BRIEF IS QUEUED RATHER THAN ASKED. It sits on the steering queue with
-	// nobody having read it, the tail loop below parks, and the turn that reads it
-	// is the turn the last report starts — one request holding the brief, the
-	// drawing's own "AND THIS IS YOURS, ONCE THEIR REPORTS ARE IN"
-	// ([drawnDivision.afterParts]) and every part's news at once, which is the
-	// integration the division was drawn for.
-	//
-	// EVERY OTHER NODE OPENS EXACTLY AS IT ALWAYS DID. A node with no parts out —
-	// which is nearly all of them, including one that divides mid-run and is
-	// already talking when it does — submits its brief here and runs.
-	if child.childrenOutstanding() {
-		child.enqueueNote(briefNote(instruction))
-	} else {
-		events, err := child.Submit(runCtx, instruction)
-		if err != nil {
-			return nil, "", err
-		}
-		drain(events)
-	}
-	if stopped != "" && ctx.Err() == nil {
-		// THE LANDING TURN happens after the active request has drained. It is a
-		// fresh turn so no request is killed mid-flight; the instruction forbids
-		// exploration and permits only writing the deliverable already in hand.
-		//
-		// THE LANDING BELT IS [savingTools] AND NOT A PAIR OF NAMES. A node
-		// whose deliverable is a picture, a piece of music or a video saves it
-		// with the verb that makes it, and a landing pass that admitted only
-		// write and edit took that verb away at the one moment the node was
-		// being ordered to produce — see [landingInstruction] for what the node
-		// then said. The instruction is generated FROM the belt, so a media verb
-		// the machine does not have is neither offered nor named.
-		//
-		// THE NARROWING IS A WITHDRAWAL AND SAYS SO (withdrawn.go). It used to be
-		// two slice headers swapped in place, which left the dispatcher unable to
-		// tell a hand that was TAKEN from a name that never existed — so a node
-		// reaching for its build was answered "Unknown tool: bash", retried eight
-		// times because eighteen bytes gave it no reason not to, and was then
-		// nudged for repeating itself. Going through [Agent.withdrawTools] records
-		// what went and what is left, under the same lock as the swap.
-		restore := child.withdrawTools(landingBelt, landingWithdrawal)
-		landing := landingInstruction(child.beltTools())
-		savedInLanding := false
-		if events, err := child.Submit(ctx, landing); err == nil {
-			for event := range events {
-				room.publish(event)
-				if event.Kind == EventToolEnd {
-					if path, wrote := changedPath(event, dir); wrote && !seen[path] {
-						seen[path] = true
-						changed = append(changed, path)
-						node.noteWrote(path)
-					}
-					// AND THE LANDING SAVED SOMETHING ONLY IF THE CALL DID
-					// ([producedAFile]). The sentence three checks below is
-					// about work nobody looked at, and a landing turn that only
-					// measured a clip produced no work to look at.
-					if producedAFile(event.Tool, event.Args) {
-						savedInLanding = true
-					}
-				}
-			}
-		}
-		lostItsCheck := child.landingLostTheCheck()
-		restore()
-		// ── AND WHAT IT SAVED IN THAT TURN WAS NEVER CHECKED ──
-		//
-		// Measured in SWE-Marathon s4: a worker that had been building and testing
-		// all run was landed, lost `bash` with the narrowing, and then edited two
-		// source files anyway — the last two things it did. They never compiled.
-		// The report said the work was done, the parent believed it, and the
-		// conversation discovered the breakage five minutes later.
-		//
-		// THREE FACTS MAKE THE SENTENCE TRUE, and it is written only when all
-		// three hold: the node had been running a check, the narrowing took that
-		// hand away, and it saved something afterwards. It says nothing about what
-		// the check was, what language the work is in, or whether the edits are
-		// good — only that nothing looked at them, which is the one thing the
-		// reader downstream cannot see for itself. The words are the vocabulary a
-		// landing already uses for work nobody could stand behind, and they lead
-		// the report, so a parent reading a stopped node's account is never handed
-		// unverified edits as finished ones ([Agent.landStopped]).
-		if savedInLanding && ranCheck && lostItsCheck {
-			stopped = withReport(stopped, unverifiedEdits)
-		}
-	}
-
-	// ── THE NODE THAT HANDED PART OF ITS WORK OUT ──
-	//
-	// A parent's turn ends the moment it has nothing left to say, and its
-	// sub-tasks are still working: the belt hands the id back immediately and
-	// tells it not to wait (task.go). So the turn ending is NOT the node ending.
-	// The runner holds it open, and every report that lands re-enters the model
-	// with it — the same turn a landing starts in a conversation, started here
-	// by the one who is reading it ([Agent.resumeTurn]).
-	//
-	// THE WAIT IS ON THE REPORT AND NEVER ON THE STATE. A node is settled a
-	// moment before its news is handed over ([Agent.deliverTaskNote]), and a
-	// waiter watching the state would stop waiting inside that moment and land
-	// its parent on a report nobody read.
-	//
-	// A tripped threshold or a cut context ends this exactly as it ends the
-	// turn above: the children are stopped with the parent (see
-	// [TaskGraph.stopChildren]) and their branches are kept.
-	//
-	// AND THE PERSON CAN STILL REACH IT WHILE IT WAITS. A parent parked on its
-	// pieces has no turn running, and [Agent.wakeLocked] declines inside a task —
-	// so a line steered into its room (task_room.go) has nothing of its own to
-	// land in. It is held on the same queue the reports ride and it is READ HERE:
-	// `held` keeps this loop from parking on top of somebody's words and from
-	// closing the child while they are still queued, and the resumeTurn below is
-	// the turn that puts them in front of the model. Without it the sentence sat
-	// there for as long as the slowest piece ran and was dropped outright when
-	// the last report came in, having been accepted with a note saying it had
-	// arrived.
-	for stopped == "" && runCtx.Err() == nil {
-		// The generation is taken BEFORE the question, so a report landing
-		// between the two closes the channel this select is about to wait on.
-		news := child.taskNewsWait()
-		// ── AND THE TWO FACTS ARE READ AS ONE ──
-		//
-		// A delivery writes the queue, then the fact, then the wake, and never in
-		// any other order ([Agent.deliverTaskNote]) — and a PAIR of reads defeats
-		// that order whichever way round it is taken, because the last part of a
-		// division can land between them. Read owed first and this node takes its
-		// integration turn holding every report and is then told about news that
-		// turn already carried, which is one model turn spent on an empty request.
-		// Read outstanding first and it leaves this loop with a report nobody has
-		// read. One locked read answers both ([Agent.taskNewsStanding]).
-		owed, working := child.taskNewsStanding()
-		held := child.steeringHeld()
-		if owed == 0 && !held && !working {
-			// ── THE DOOR SHUTS BEFORE THE LOOP LEAVES ──
-			//
-			// From here the child never reads again — the check and the landing
-			// are other hands — but it stays OPEN until [runTaskNode]'s retire,
-			// which on a checked node is minutes away. A line steered in during
-			// that window would still be TAKEN ([Agent.enqueueSteeredLine]
-			// answers whether the agent is closed, not whether anybody will
-			// drain it), echoed by the room as said, and then closed over: the
-			// exact swallow the speaker's clearing at close exists to prevent
-			// (task_room.go's [taskRoom.speaker]), happening in the gap before
-			// close. So the speaker is withdrawn HERE, at the moment "nobody is
-			// in there to read it" becomes true, and the queue is asked once
-			// more: a line that raced the withdrawal — the room's own lock
-			// orders the two, see [taskRoom.steerIn] — is answered by one more
-			// turn instead of dying with the worker (#273).
-			//
-			// AND A CAUGHT LINE PUTS THE SPEAKER BACK. The turn that answers it
-			// is a turn the worker is reading again: a follow-up steer must be
-			// deliverable, and a part that lands while it runs must reach THIS
-			// worker rather than being misrouted to the person's own
-			// conversation ([Agent.deliverTaskNote] reads the speaker to decide
-			// who is owed the report). The next pass through this gate takes
-			// the speaker away again.
-			room.speaking(nil)
-			if !child.steeringHeld() {
-				break
-			}
-			room.speaking(child)
-		}
-		// ── WAITING IS NOT WORKING, AND IT IS NOT ASKED FOR EITHER ──
-		//
-		// While ANY part is still out this node is PARKED: no request, no step, no
-		// counter, no clock. It used to be parked only in the gaps between reports
-		// and re-entered on each one, and the difference is a whole coordination
-		// pattern. A parent asked after the first of three reports has two thirds
-		// of an answer and one honest thing to say about it — that it is waiting —
-		// and every turn it spends saying so is money, transcript and, because the
-		// harness cannot tell waiting from spinning, six steps closer to being
-		// killed on the spot. The reports simply QUEUE instead ([Agent.enqueueNote]
-		// keeps them in the order they landed), and the turn that reads them reads
-		// all of them, which is the only turn whose brief — fold these into one
-		// deliverable — it can actually carry out.
-		//
-		// THE PERSON IS THE EXCEPTION AND THE ONLY ONE. A line steered into this
-		// node's room (task_room.go) is somebody at a keyboard waiting for an
-		// answer, and holding it for as long as the slowest part runs would be the
-		// room going silent on them. `held` takes the loop past the park, the turn
-		// answers them, and the park takes it back on the next pass.
-		if working && !held {
-			// The lane goes back for exactly as long as the wait lasts
-			// ([TaskGraph.park]).
-			since := time.Now()
-			node.park()
-			select {
-			case <-news:
-			case <-runCtx.Done():
-			}
-			node.unpark()
-			// ── AND THE WAIT COSTS THE NODE NOTHING IT WOULD HAVE SPENT WORKING ──
-			//
-			// THE CLOCK IS PUSHED BY EXACTLY THE PARKED TIME. The deadline is a
-			// bound on how long this node may WORK before somebody looks at whether
-			// it is getting anywhere ([taskLimits.deadline]); a stretch in which it
-			// made no request and took no step is not that. Left running, it was a
-			// node whose parts took twenty minutes tripping the deadline checkpoint
-			// on its first step of integration and being audited for spinning while
-			// holding three finished reports it had not been given a chance to read.
-			//
-			// AND THE NO-PROGRESS COUNTER STARTS AGAIN FROM ZERO, because a report
-			// landing is the largest single thing this node can learn. Whatever it
-			// had accrued reaching for the only hands it had while it waited is
-			// spent, and the fold is judged on the fold.
-			//
-			// THE STEP BUDGET NEEDS NOTHING DONE TO IT: a step is one finished tool
-			// call and a parked node makes none. Nor does the harness's own ceiling,
-			// which never stands over a node at all ([Agent.checkpoints] refuses
-			// InTask) — so a park cannot move that meter either.
-			deadline = deadline.Add(time.Since(since))
-			idle = 0
-			continue
-		}
-		// ── AND A LANDING IS SPENT EXACTLY ONCE ──
-		//
-		// The reset above is this node's whole payment for every report that came
-		// in while it was parked. So the mark those reports are counted against is
-		// squared up HERE, at the instant a request is made: everything reported by
-		// now is news this request is carrying, and it has been paid for. Left at
-		// its old value, the first step of the fold read the same landings a second
-		// time through `partLanded` and was handed a free step off news the node had
-		// already been paid for — one more step than a threshold of two can afford,
-		// and the spin the fold is judged on went uncounted.
-		//
-		// THE MARK IS TAKEN HERE AND NOT AT THE UNPARK, because a report and the
-		// question "is anything still outstanding" are two reads at two instants:
-		// the last of three parts can land between them, park the node one more
-		// time and leave a mark one short. Taken against the request, there is no
-		// gap — a report that lands after this line is a report this request could
-		// not have carried, which is exactly the race `partLanded` is for.
-		reportedParts = child.reportedChildren()
-		next := child.resumeTurn(runCtx)
-		if next == nil {
-			break
-		}
-		drain(next)
-	}
-	return changed, stopped, failure
 }
 
 func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, evidence []string, log io.Writer) (bool, string) {
