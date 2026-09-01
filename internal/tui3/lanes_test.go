@@ -798,3 +798,57 @@ func TestTheServedRiderSaysTheWaitInSeconds(t *testing.T) {
 		t.Fatalf("the served rider spelled a wait in milliseconds: %q", got)
 	}
 }
+
+// ── THE STANDING IS SAID OUT LOUD ───────────────────────────────────────────
+
+// TestALaneServingBadRepliesSaysSoOnItsRow is the visible half of the quality
+// loop. A demotion nobody can see is a harness quietly disagreeing with the
+// person about which machine is good, and the whole reason the account belongs
+// on the row rather than only in the ledger.
+func TestALaneServingBadRepliesSaysSoOnItsRow(t *testing.T) {
+	facts := lane.Facts{Tools: true, Quant: "fp8", MaxOut: 200_000, Uptime5m: 100, PriceOut: 0.3}
+	now := time.Now()
+
+	// A lane whose answers keep coming back unusable: the quality belief has
+	// been walked well under what a conversation asks for.
+	poor := laneBelief(flash, "gusher", 400, 200, 0.2, facts)
+	poor.Quality = lane.Beta{A: 8, B: 6}
+	poor.QualityAt = now
+	// And one that has been serving properly all along.
+	good := laneBelief(flash, "steady", 500, 180, 0.2, facts)
+	good.Quality = lane.Beta{A: 20, B: 1}
+	good.QualityAt = now
+
+	laneLab(t, map[string][]lane.Belief{flash: {poor, good}})
+
+	views := laneViews(flash, now)
+	if len(views) != 2 {
+		t.Fatalf("drew %d rows, want both lanes", len(views))
+	}
+	for _, view := range views {
+		switch view.Name {
+		case "gusher":
+			if !view.Poor {
+				t.Fatal("a lane whose replies keep coming back unusable is drawn as though it were fine")
+			}
+			if got := laneNote(view); got != "bad replies" {
+				t.Fatalf("note = %q, want the row to say what is wrong", got)
+			}
+		case "steady":
+			if view.Poor {
+				t.Fatal("a lane that has been serving properly is accused of bad replies")
+			}
+			if got := laneNote(view); got == "bad replies" {
+				t.Fatalf("note = %q on a healthy lane", got)
+			}
+		}
+	}
+
+	// AND A LANE NOBODY HAS JUDGED SAYS NOTHING, which is the emptiness law on
+	// this axis: an unjudged lane is not a suspect.
+	unjudged := laneBelief(flash, "newcomer", 450, 190, 0.2, facts)
+	unjudged.Quality = lane.Beta{}
+	if poorlyServing(unjudged, now) {
+		t.Fatal("a lane nobody has judged was drawn as a bad one")
+	}
+}

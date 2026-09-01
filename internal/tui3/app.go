@@ -7133,7 +7133,7 @@ const (
 )
 
 func (a *app) ctxHeat() ctxHeat {
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || a.ctxTokens <= 0 {
 		return ctxCalm
 	}

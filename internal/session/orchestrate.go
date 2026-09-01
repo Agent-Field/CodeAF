@@ -83,7 +83,6 @@ const (
 	// because every lane is a whole child agent with its own context.
 	orchestrateLanes = 4
 
-
 	// The planner's own budget. It writes an amendment, not a page, and the
 	// answer to most completions is `{}` — what the tokens are actually for is
 	// a reasoning model's thinking.
@@ -968,12 +967,10 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	model := e.model()
 	a.mu.Lock()
 	parent := a.config
-	window := parent.ContextWindow
-	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {
-		// A window measured for another model is not a fact about this one
-		// (newTaskAgent states the whole argument).
-		window = 0
-	}
+	// The card's window for the model this worker will actually run, which is
+	// this session's own when they match (loop.go's [Agent.childWindow] states
+	// the whole argument, and newTaskAgent asks for it the same way).
+	window := a.childWindow(model)
 	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	// The rung this session's own next turn would ask for, carried into the node
@@ -990,30 +987,34 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		// And its litter follows the run's own session rather than the directory
 		// the node works in, for a task node's reason exactly (task_run.go's
 		// newChild counterpart, landing.go).
-		droppings:      parent.droppingsPlace(),
-		Workspace:      dir,
-		Model:          model,
-		APIKey:         parent.APIKey,
-		BaseURL:        parent.BaseURL,
-		ContextWindow:  window,
-		CompactEnabled: parent.CompactEnabled,
-		SessionFile:    journal,
-		EffortRole:     effort.RoleWorker,
-		DefaultEffort:  inherited,
-		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
-		AskConsent:     false,
-		InTask:         true,
-		writeScope:     node.WriteScope,
-		SupportsImages: parent.SupportsImages,
-		RolesSource:    parent.RolesSource,
-		SearchProvider: parent.SearchProvider,
-		SearchFetcher:  parent.SearchFetcher,
-		Connect:        parent.Connect,
-		connectHub:     parent.connectHub,
-		Media:          parent.Media,
-		MediaModel:     parent.MediaModel,
-		MediaPick:      parent.MediaPick,
-		DocumentEngine: parent.DocumentEngine,
+		droppings:     parent.droppingsPlace(),
+		Workspace:     dir,
+		Model:         model,
+		APIKey:        parent.APIKey,
+		BaseURL:       parent.BaseURL,
+		ContextWindow: window,
+		// And the catalog with it, for the reason newTaskAgent hands it down:
+		// a worker that switches its own model has to be able to learn that
+		// model's window.
+		ContextWindowFor: parent.ContextWindowFor,
+		CompactEnabled:   parent.CompactEnabled,
+		SessionFile:      journal,
+		EffortRole:       effort.RoleWorker,
+		DefaultEffort:    inherited,
+		ApprovalPolicy:   &approval.Policy{Default: approval.ActionAllow},
+		AskConsent:       false,
+		InTask:           true,
+		writeScope:       node.WriteScope,
+		SupportsImages:   parent.SupportsImages,
+		RolesSource:      parent.RolesSource,
+		SearchProvider:   parent.SearchProvider,
+		SearchFetcher:    parent.SearchFetcher,
+		Connect:          parent.Connect,
+		connectHub:       parent.connectHub,
+		Media:            parent.Media,
+		MediaModel:       parent.MediaModel,
+		MediaPick:        parent.MediaPick,
+		DocumentEngine:   parent.DocumentEngine,
 	}, client)
 	if err != nil {
 		return nil, err
