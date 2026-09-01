@@ -5688,7 +5688,15 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// somebody a merge of their own unfinished edits — which git refuses
 	// outright (groundladder.go's [taskTree.replayOwnWork]). It is nothing at all
 	// for a tree whose parent had nothing uncommitted, which is most of them.
-	t.replayOwnWork()
+	//
+	// AND A LIFT THAT WOULD NOT GO IS SAID OUT LOUD, on every road out of here.
+	// The branch then holds the person's own unfinished edits as well as the
+	// node's work, the report is the only place they can learn it, and the
+	// silence used to be the whole of the account (groundcarry.go).
+	stranded := ""
+	if t.replayOwnWork() {
+		stranded = strandedGroundSentence(t.branch)
+	}
 	// Read AFTER the commit and BEFORE the worktree is removed: what is still
 	// sitting there once the node's own work is committed is by definition what
 	// the node did not write, and this is the only moment it can be named.
@@ -5702,28 +5710,22 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// roads (groundladder.go's [taskTree.carryBranchHomeLocked]).
 	if out, err := t.carryBranchHomeLocked(); err != nil {
 		t.releaseKeptLocked()
-		return mergeConflicted, withReport(unreachedSentence(t.branch, t.dir, out),
+		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true))
 	}
-	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
-	// ([commitTaskWork]). A merge that is not a fast-forward writes a commit,
-	// and git refuses to write one for a checkout with no user.name — which is
-	// every hermetic HOME and some fresh machines — so without these two flags
-	// a clean merge came back as "conflicted: Committer identity unknown" and
-	// the branch was kept for a conflict that never existed.
-	if out, err := git(t.root,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"merge", "--no-edit", t.branch); err != nil {
-		// THE PATHS ARE READ BEFORE THE MERGE IS ABANDONED, because abandoning it
-		// is what removes the evidence: a conflicted index knows which files were
-		// changed on both sides, and one second later nothing does.
-		clashing := conflictedPaths(t.root)
-		abandonMerge(t.root)
+	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
+	// task was carved from is the ground it merges into: work of the person's own
+	// standing in the way is set aside for the merge and put back afterwards, and
+	// where it cannot be put back the tree goes back exactly as it was and the
+	// branch is kept with the files NAMED. It never fails with a sentence that
+	// names nothing, which is what this used to do.
+	landed, said := t.mergeIntoGround()
+	if !landed {
 		// The committed branch is the durable recovery point. Keeping the failed
 		// worktree registered would leave the person's repository pointing into a
 		// task folder that a later sweep may remove underneath it.
 		t.releaseKeptLocked()
-		return mergeConflicted, withReport(conflictSentence(t.branch, clashing, out),
+		return mergeConflicted, withReport(withReport(said, stranded),
 			leftBehindSentence(left, true))
 	}
 	// The working copy is given back only once its work is in, and which road
@@ -5732,7 +5734,8 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
-	return mergeMerged, leftBehindSentence(left, false)
+	return mergeMerged, withReport(withReport(said, stranded),
+		leftBehindSentence(left, false))
 }
 
 // landMirror brings a mirrored folder home: the files the node wrote, laid over
@@ -5784,10 +5787,23 @@ func (t taskTree) landMirror(wrote []string) (string, string) {
 // overwrite), where git's own sentence is the only account there is.
 func conflictSentence(branch string, clashing []string, out string) string {
 	line := "its branch " + branch + " did not merge cleanly and was kept: "
-	if len(clashing) == 0 {
-		return line + firstLine(out)
+	if len(clashing) > 0 {
+		return line + namedFew(clashing, conflictNamesShown) + " changed on both sides"
 	}
-	return line + namedFew(clashing, conflictNamesShown) + " changed on both sides"
+	// THE ONE SHAPE WHERE AN EMPTY INDEX IS THE TRUTH. A merge git refused before
+	// it started never touched the index, so there is nothing to read there and
+	// the file list is in the BODY of git's message rather than on its first line
+	// (groundcarry.go's [overwrittenPaths]). Quoting the first line alone is what
+	// ended a person's whole report in a bare colon naming no files at all.
+	if blocked, _ := overwrittenPaths(out); len(blocked) > 0 {
+		return line + namedFew(blocked, conflictNamesShown) + " already hold work of your own"
+	}
+	if said := firstLine(out); said != "" && !strings.HasSuffix(strings.TrimSpace(said), ":") {
+		return line + said
+	}
+	// AND NEVER A BARE COLON. git said nothing this can hand a person, and saying
+	// so is a whole sentence; trailing off is not.
+	return line + "git would not say which files it was about"
 }
 
 // unreachedSentence is what a person reads when a node worked in a copy of their

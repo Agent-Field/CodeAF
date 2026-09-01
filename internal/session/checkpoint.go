@@ -1280,6 +1280,11 @@ const (
 	checkpointDecisionSplit    = "split"
 	checkpointDecisionContinue = "continue"
 	checkpointDecisionFailed   = "failed"
+	// checkpointDecisionWrote is the write seam's own word (writeseam.go). It is
+	// distinct from the ceiling's because the two moments are different facts
+	// about a turn — one outran the reading, one outran the small edit — and a
+	// bench that spelled them the same could not tell them apart afterwards.
+	checkpointDecisionWrote = "wrote"
 
 	checkpointCeilingMoved   = "moved"
 	checkpointCeilingNothing = "dropped:nothing-left"
@@ -1911,6 +1916,14 @@ func checkpointLastSaid(messages []ai.Message) string {
 func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string) bool {
 	if !a.checkpoints(ctx, user) {
 		return false
+	}
+	// THE WRITE SEAM IS ASKED FIRST, and it is asked at every boundary rather
+	// than at a mark: the allowance is a count of what this turn has DONE to the
+	// disk, and a turn that crosses it on round three must not wait until round
+	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
+	// the ceiling govern the turn exactly as they always did.
+	if a.writeMeterNow().pastAllowance() {
+		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced)
 	}
 	mark := meter.round()
 	if mark == 0 {
