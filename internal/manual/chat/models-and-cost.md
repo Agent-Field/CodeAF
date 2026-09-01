@@ -1539,7 +1539,10 @@ every original line, and scrolling up above the boundary is given those rather t
 shortened copy — with one dim line, `· above here the model keeps a shortened record — you
 can still read it all`, where the two meet. What shrank is the model's copy, not yours (the
 screen page has the whole of that line's meaning, and the limit: a session compacted by an
-older aforge is still drawn from the shortened copy).
+older aforge is still drawn from the shortened copy). The fold marker the model sees names
+that journal as a real path — `[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]`
+— so aforge can open the lines that left the window itself. *Where did the folded messages
+go* on the compacting page is the whole of that.
 
 Four ways a pass starts:
 

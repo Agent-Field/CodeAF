@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -155,13 +156,17 @@ func TestCompactionFoldsTheOldestAssistantWorkAndKeepsTheWords(t *testing.T) {
 		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
 	})
 	long := strings.Repeat("thinking about the parser. ", 100)
+	// The two long messages are told apart, because the check that the marker
+	// points at the folded run has to fail when it points at the run that
+	// stayed in the window.
+	oldest, newest := long+"and that is the oldest sweep.", long+"and that is the newer sweep."
 
 	agent.mu.Lock()
 	for _, message := range []ai.Message{
 		textMessage("user", "the first question"),
-		textMessage("assistant", long),
+		textMessage("assistant", oldest),
 		textMessage("user", "the second question"),
-		textMessage("assistant", long),
+		textMessage("assistant", newest),
 		textMessage("user", "the third question"),
 		textMessage("assistant", "the short last word"),
 	} {
@@ -201,13 +206,44 @@ func TestCompactionFoldsTheOldestAssistantWorkAndKeepsTheWords(t *testing.T) {
 	if marker == "" {
 		t.Fatalf("no fold marker in %v", rolesOf(messages))
 	}
-	if !strings.Contains(marker, "message") || !strings.HasSuffix(marker, "]") {
+	if !strings.HasPrefix(marker, foldMarkerPrefix) || !strings.HasSuffix(marker, "]") {
+		t.Fatalf("fold marker is not a closed [folded …] line: %q", marker)
+	}
+	if !strings.Contains(marker, "message") {
 		t.Fatalf("fold marker = %q", marker)
 	}
-	// With no store behind this session the marker points at exact lines in the
-	// floor it actually has, which is the journal.
-	if !strings.Contains(marker, "journal:line-") {
-		t.Fatalf("the marker points nowhere: %q", marker)
+	// The marker names the journal file this session is writing — a path the
+	// model can grep or read — not a store: or journal:line- token neither
+	// tool can open, and it says which tool opens it.
+	journal := agent.config.SessionFile
+	if journal == "" || !strings.Contains(marker, journal) {
+		t.Fatalf("the marker does not name the journal %q: %q", journal, marker)
+	}
+	if !strings.Contains(marker, "grep or read "+journal) {
+		t.Fatalf("the marker names the journal without saying it can be opened: %q", marker)
+	}
+	if strings.Contains(marker, "journal:line-") {
+		t.Fatalf("the marker still uses the unreadable journal:line- form: %q", marker)
+	}
+
+	// THE ISSUE'S VERIFICATION, FOLLOWED THROUGH: take the path out of the
+	// marker the way the model would, open it, and find the folded words at
+	// the lines the marker named. A pointer no test ever follows is a pointer
+	// nobody has checked.
+	path, from, to := foldMarkerTarget(t, marker)
+	if path != journal {
+		t.Fatalf("the marker points at %q, not at this session's journal %q", path, journal)
+	}
+	record, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the path the marker names does not open: %v", err)
+	}
+	lines := strings.Split(strings.TrimRight(string(record), "\n"), "\n")
+	if from < 1 || to > len(lines) || from > to {
+		t.Fatalf("the marker names lines %d..%d of a journal %d lines long: %q", from, to, len(lines), marker)
+	}
+	if !strings.Contains(strings.Join(lines[from-1:to], "\n"), "and that is the oldest sweep") {
+		t.Fatalf("lines %d..%d of %s do not hold the folded work", from, to, path)
 	}
 
 	// EVERY QUESTION IS STILL THERE. Nothing else in a transcript can be
@@ -220,6 +256,65 @@ func TestCompactionFoldsTheOldestAssistantWorkAndKeepsTheWords(t *testing.T) {
 	// And the tail is verbatim.
 	if !holdsText(messages, "the short last word") {
 		t.Fatalf("the recent tail went into the fold: %v", rolesOf(messages))
+	}
+}
+
+// foldMarkerTarget reads a fold marker the way the model is asked to: the file
+// is the word after `grep or read`, and the lines it folded are said after the
+// path in prose so that the path itself stays a word either tool takes.
+func foldMarkerTarget(t *testing.T, marker string) (path string, from, to int) {
+	t.Helper()
+	_, target, opened := strings.Cut(strings.TrimSuffix(marker, "]"), "grep or read ")
+	if !opened {
+		t.Fatalf("the marker names no file to open: %q", marker)
+	}
+	path, span, ranged := strings.Cut(target, ", lines ")
+	if !ranged {
+		path, span, ranged = strings.Cut(target, ", line ")
+	}
+	if !ranged {
+		return path, 0, 0
+	}
+	firstText, lastText, spanned := strings.Cut(span, "..")
+	if !spanned {
+		lastText = firstText
+	}
+	first, firstErr := strconv.Atoi(firstText)
+	last, lastErr := strconv.Atoi(lastText)
+	if firstErr != nil || lastErr != nil {
+		t.Fatalf("the marker's line span is not a pair of numbers: %q", marker)
+	}
+	return path, first, last
+}
+
+// foldMarker itself, as the examples in its comment: a journal path with a
+// line span, a path alone when the lines cannot be named, and the honest
+// fallback when there is no file at all.
+func TestFoldMarkerNamesAGrepableJournalPath(t *testing.T) {
+	const journal = "/home/x/.aforge/v3/sessions/abc.jsonl"
+	cases := []struct {
+		journal  string
+		from, to int
+		stored   bool
+		want     string
+	}{
+		{journal, 12, 40, false, "[folded 31 messages · grep or read " + journal + ", lines 12..40]"},
+		{journal, 12, 12, false, "[folded 31 messages · grep or read " + journal + ", line 12]"},
+		// One end without the other would read as the location of the whole
+		// run, so the file goes alone rather than pointing at a line where a
+		// hundred of them went.
+		{journal, 0, 40, false, "[folded 31 messages · grep or read " + journal + "]"},
+		{journal, 12, 0, false, "[folded 31 messages · grep or read " + journal + "]"},
+		{journal, 0, 0, false, "[folded 31 messages · grep or read " + journal + "]"},
+		// No file to name. The store is the record that is left, and saying
+		// the journal there would send the model to a path that is not there.
+		{"", 0, 0, true, "[folded 31 messages · full record in the store]"},
+		{"", 0, 0, false, "[folded 31 messages · full record in the session journal]"},
+	}
+	for _, one := range cases {
+		if got := foldMarker(31, one.journal, one.from, one.to, one.stored); got != one.want {
+			t.Fatalf("foldMarker(%q, %d, %d, %v) =\n%q\nwant\n%q", one.journal, one.from, one.to, one.stored, got, one.want)
+		}
 	}
 }
 
@@ -276,8 +371,12 @@ func TestCompactionLeavesEveryEvictedMessageReadableInTheStore(t *testing.T) {
 	if len(huge) <= store.MaxMessageBytes {
 		t.Fatalf("the oversized result is only %d bytes", len(huge))
 	}
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
 	agent, brain := brainAgent(t, &refusingCompleter{t: t}, func(config *Config) {
 		config.ContextWindow = 2000
+		// The store is on and still the journal path is the required pointer
+		// — store:N is not something grep or read can open.
+		config.SessionFile = journal
 	})
 	workspace := agent.config.Workspace
 	if agent.chatlog == nil {
@@ -327,21 +426,24 @@ func TestCompactionLeavesEveryEvictedMessageReadableInTheStore(t *testing.T) {
 	// The pass did both halves of its job: the heavy result is a stub, and the
 	// oldest assistant work is a marker.
 	stub := ""
-	folded := false
+	marker := ""
 	for _, message := range messages {
 		text := messageText(message)
 		if strings.HasPrefix(text, "[tool: bash · ") {
 			stub = text
 		}
 		if strings.HasPrefix(text, foldMarkerPrefix) {
-			folded = true
+			marker = text
 		}
 	}
 	if stub == "" {
 		t.Fatalf("the heavy result was never stubbed: %v", rolesOf(messages))
 	}
-	if !folded {
+	if marker == "" {
 		t.Fatalf("nothing was folded, so this proves nothing about eviction: %v", rolesOf(messages))
+	}
+	if !strings.Contains(marker, journal) || !strings.HasSuffix(marker, "]") {
+		t.Fatalf("a stored session still has to name the journal: %q", marker)
 	}
 
 	posted, err := brain.Messages(agent.id, 0, 500)
