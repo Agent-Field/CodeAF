@@ -7158,12 +7158,20 @@ func (a *app) paste(text string) tea.Cmd {
 	// so the model gets the pixels rather than a string it has to guess about
 	// (imagepaste.go). Anything else falls through and is inserted as the text
 	// it plainly is.
+	before := a.input.String()
 	if !a.pasteFiles(text) {
 		if !a.pasteText(text) {
 			at := a.input.cursor
 			a.input.insert(text)
 			a.editTags(at, at, len([]rune(text)))
 		}
+	}
+	// A PASTE INTO THE CONVERSATION BOX IS THE SAME REACH FOR THE KEYBOARD AS
+	// a typed rune. Compare the box rather than the clipboard so settings, home,
+	// key boxes, refused drops, and other overlays do not hold a proposal they
+	// never edited; folded pastes and image tokens do because they changed it.
+	if a.input.String() != before {
+		a.holdTask()
 	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard

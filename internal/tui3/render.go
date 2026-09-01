@@ -3118,7 +3118,7 @@ const hopDoorWord = hopOpenKey + " switch"
 //	the welcome box is up ↑↓ recent · enter open
 //	a path is completing  tab take · enter run · esc
 //	a list is open        ↑↓ · enter · esc
-//	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
+//	a proposal is up      enter answer · r redirect · esc no (task.go's own keys)
 //	a question is up      a allow · t always · d deny  (consent.go's own keys)
 //	a room is open        x stop, or ↑↓ history mid-walk  (room.go's [app.roomHint])
 //	a turn is running     send · stop-and-send · background · stop (when true)

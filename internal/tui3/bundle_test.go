@@ -2456,6 +2456,7 @@ func TestTheBranchArrivesAsAMessageAndCanGoAway(t *testing.T) {
 type taskFake struct {
 	*fakeAgent
 	answered []taskReply
+	held     []uint64
 	updates  chan session.Event
 	pending  []uint64
 	work     []session.WorkNode
@@ -2477,6 +2478,8 @@ func (f *taskFake) ResolveTask(id uint64, answer session.TaskAnswer) {
 		}
 	}
 }
+
+func (f *taskFake) HoldTask(id uint64) { f.held = append(f.held, id) }
 
 func (f *taskFake) TaskUpdates() <-chan session.Event { return f.updates }
 func (f *taskFake) PendingTasks() []uint64            { return f.pending }
@@ -2614,6 +2617,17 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	}
 }
 
+// V1: A proposal using the fresh-profile countdown announces the full fifteen
+// seconds on its card.
+func TestTheDefaultTaskCountdownRendersFifteenSeconds(t *testing.T) {
+	a, _, _ := taskApp(t)
+	window := time.Duration(config.DefaultTaskAutoApprove) * time.Second
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, window)})
+	if !strings.Contains(taskText(a), "auto-starts in 15s") {
+		t.Fatalf("default proposal card does not announce 15s:\n%s", taskText(a))
+	}
+}
+
 // THE COUNTDOWN TICKS ON THE FRAME CLOCK — no ticker of its own — and at the
 // deadline the row stops asking: the engine's clock owns the answer, and a card
 // still counting down would be a question nobody can answer any more.
@@ -2654,6 +2668,161 @@ func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
 	// The clock is the ENGINE's: the surface stops asking and answers nothing.
 	if len(agent.answered) != 0 {
 		t.Fatalf("the surface raced the engine's clock: %+v", agent.answered)
+	}
+}
+
+// V2: The first typed rune holds the proposal for this surface and every
+// watcher, and erasing the draft cannot restore the old clock.
+func TestTypingHoldsTheProposalClock(t *testing.T) {
+	a, agent, advance := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"))
+
+	if len(agent.held) != 1 || agent.held[0] != 7 {
+		t.Fatalf("first rune held proposals %v, want [7]", agent.held)
+	}
+	if !a.task.deadline.IsZero() || !strings.Contains(taskText(a), taskWaitingWord) {
+		t.Fatalf("typed proposal did not change to waiting on you:\n%s", taskText(a))
+	}
+	card := a.task
+	held := proposal(a, 7, 0)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: held})
+	if a.task != card || a.input.String() != "x" {
+		t.Fatalf("the engine's hold update replaced the card or its draft")
+	}
+
+	watcher, _, watcherAdvance := taskApp(t)
+	drive(t, watcher,
+		streamEventMsg{gen: watcher.gen, ev: proposal(watcher, 7, 15*time.Second)},
+		streamEventMsg{gen: watcher.gen, ev: proposal(watcher, 7, 0)},
+	)
+	if !strings.Contains(taskText(watcher), taskWaitingWord) {
+		t.Fatalf("a watching surface kept the old countdown:\n%s", taskText(watcher))
+	}
+
+	drive(t, a, key("backspace"))
+	advance(16 * time.Second)
+	watcherAdvance(16 * time.Second)
+	drive(t, a, frameMsg{})
+	if a.input.String() != "" || !a.awaitingTask() || len(agent.answered) != 0 {
+		t.Fatalf("deleting after hold restarted or answered the proposal: draft=%q awaiting=%v answers=%+v",
+			a.input.String(), a.awaitingTask(), agent.answered)
+	}
+	if !strings.Contains(taskText(a), taskWaitingWord) {
+		t.Fatalf("held proposal stopped saying waiting on you:\n%s", taskText(a))
+	}
+}
+
+// V2: A clipboard edit holds the same proposal clock as a typed rune, and the
+// old deadline cannot take the waiting card away.
+func TestPastingHoldsTheProposalClock(t *testing.T) {
+	a, agent, advance := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)},
+		tea.PasteMsg{Content: "wait"},
+	)
+
+	if len(agent.held) != 1 || agent.held[0] != 7 {
+		t.Fatalf("paste held proposals %v, want [7]", agent.held)
+	}
+	if a.input.String() != "wait" || !a.task.deadline.IsZero() {
+		t.Fatalf("paste left draft=%q deadline=%v", a.input.String(), a.task.deadline)
+	}
+	advance(16 * time.Second)
+	drive(t, a, frameMsg{})
+	if !a.awaitingTask() || len(agent.answered) != 0 || !strings.Contains(taskText(a), taskWaitingWord) {
+		t.Fatalf("pasted proposal did not remain waiting past its old deadline: awaiting=%v answers=%+v\n%s",
+			a.awaitingTask(), agent.answered, taskText(a))
+	}
+}
+
+// V3: Once typing has held the clock, escape declines, text redirects, and an
+// empty enter approves exactly as the proposal row promises.
+func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
+	t.Run("escape declines", func(t *testing.T) {
+		a, agent, _ := taskApp(t)
+		agent.pending = []uint64{7}
+		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"), key("esc"))
+		if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
+			t.Fatalf("escape after hold = %+v", agent.answered)
+		}
+	})
+
+	t.Run("text redirects", func(t *testing.T) {
+		a, agent, _ := taskApp(t)
+		agent.pending = []uint64{7}
+		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("u"))
+		for _, typed := range "se the flag" {
+			drive(t, a, key(string(typed)))
+		}
+		drive(t, a, key("enter"))
+		if len(agent.answered) != 1 || !agent.answered[0].answer.Approved ||
+			agent.answered[0].answer.Redirect != "use the flag" {
+			t.Fatalf("text after hold = %+v", agent.answered)
+		}
+	})
+
+	t.Run("empty enter approves", func(t *testing.T) {
+		a, agent, _ := taskApp(t)
+		agent.pending = []uint64{7}
+		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"), key("backspace"), key("enter"))
+		if len(agent.answered) != 1 || !agent.answered[0].answer.Approved ||
+			agent.answered[0].answer.Redirect != "" {
+			t.Fatalf("empty enter after hold = %+v", agent.answered)
+		}
+	})
+}
+
+// V4: Every settled bare word typed directly into the empty proposal box
+// answers once on enter, punctuation and case are ignored, and a longer
+// sentence remains a redirect rather than leaking into a chat turn.
+func TestBareTaskAnswersAreExactWords(t *testing.T) {
+	cases := []struct {
+		name     string
+		text     string
+		approve  bool
+		redirect string
+	}{
+		{name: "no", text: "no"},
+		{name: "nope", text: "nope"},
+		{name: "n", text: "n"},
+		{name: "stop", text: "stop"},
+		{name: "cancel", text: "cancel"},
+		{name: "don't", text: "don't"},
+		{name: "dont", text: "dont"},
+		{name: "yes", text: "yes", approve: true},
+		{name: "y", text: "y", approve: true},
+		{name: "ok", text: "ok", approve: true},
+		{name: "okay", text: "okay", approve: true},
+		{name: "go", text: "go", approve: true},
+		{name: "sure", text: "sure", approve: true},
+		{name: "exact mixed-case period", text: "No."},
+		{name: "case and bang", text: "NO!  "},
+		{name: "case and period", text: "Okay.", approve: true},
+		{name: "longer redirect", text: "no, use the flag", approve: true, redirect: "no, use the flag"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			a, agent, _ := taskApp(t)
+			agent.pending = []uint64{7}
+			drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)})
+			for _, typed := range test.text {
+				drive(t, a, key(string(typed)))
+			}
+			drive(t, a, key("enter"))
+			if len(agent.answered) != 1 {
+				t.Fatalf("%q answered %d proposals", test.text, len(agent.answered))
+			}
+			got := agent.answered[0].answer
+			if got.Approved != test.approve || got.Redirect != test.redirect {
+				t.Fatalf("%q = %+v, want approved=%v redirect=%q", test.text, got, test.approve, test.redirect)
+			}
+			if agent.answered[0].id != 7 || len(agent.sent) != 0 || a.input.String() != "" {
+				t.Fatalf("%q leaked after answering: draft=%q sent=%v answers=%+v",
+					test.text, a.input.String(), agent.sent, agent.answered)
+			}
+		})
 	}
 }
 
@@ -2712,10 +2881,9 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 	}
 }
 
-// THE ANSWERS ARE ON SCREEN AND THEY ARE REACHABLE THREE WAYS: the pointer, the
-// arrows with enter, and the letter each option starts with. Settled, the block
-// collapses to its head and keeps both halves of what happened — the option that
-// was chosen and what it came to.
+// THE ANSWERS ARE ON SCREEN AND THEY ARE REACHABLE BY POINTER OR BY ARROWS WITH
+// enter. Settled, the block collapses to its head and keeps both halves of what
+// happened — the option that was chosen and what it came to.
 func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
@@ -2756,16 +2924,23 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	}
 
 	// THE POINTER: the row's third option is "no", and a click on its columns
-	// declines. A press on the row is the row's whatever column it landed in, so
-	// the target is taken from the spans the renderer published.
+	// declines even when the box holds a correction. A press on the row is the
+	// row's whatever column it landed in, so the target is taken from the spans
+	// the renderer published.
 	agent.pending = []uint64{8}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 4*time.Second)})
+	for _, typed := range "use the flag" {
+		drive(t, a, key(string(typed)))
+	}
 	x, y := choiceAt(t, a, choiceNo)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	last := agent.answered[len(agent.answered)-1]
-	if last.id != 8 || last.answer.Approved {
+	if last.id != 8 || last.answer.Approved || last.answer.Redirect != "" {
 		t.Fatalf("a click on [ no ] reached the engine as %+v", last)
+	}
+	if len(agent.sent) != 0 || a.input.String() != "" {
+		t.Fatalf("a click on [ no ] leaked its draft: draft=%q sent=%v", a.input.String(), agent.sent)
 	}
 	if !strings.Contains(taskText(a), taskChoiceWords[choiceNo]+" · "+taskDeclinedWord) {
 		t.Fatalf("the declined block does not keep the option it was declined with:\n%s", taskText(a))

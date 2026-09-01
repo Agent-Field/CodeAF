@@ -202,11 +202,19 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 				t.Fatalf("the letter reached home's box as %q, want %q", got, "y")
 			}
 
-			// With home closed it is the answer it has always been.
+			// With home closed it answers in that question's own grammar. A task
+			// proposal keeps the y in its box until enter sees the complete answer;
+			// the two modal offers still answer on their single key.
 			a, ev, answered = tc.start(t)
 			drive(t, a, streamOf(a, ev), key("y"))
+			if tc.name == "the task proposal" {
+				if answered() {
+					t.Fatal("y answered the task proposal before enter")
+				}
+				drive(t, a, key("enter"))
+			}
 			if !answered() {
-				t.Fatal("y stopped answering the question with home closed")
+				t.Fatal("the visible question did not take its answer with home closed")
 			}
 		})
 	}
