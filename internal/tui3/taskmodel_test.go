@@ -150,7 +150,7 @@ func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
 
 // THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it on the telemetry row
 // under the name, the room's header states it, and the landed card keeps it
-// beside the worktree.
+// beside the working copy.
 func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	a, _, advance := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 0, "openai/gpt-5", nil)})
@@ -192,7 +192,7 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "Fix the nil-map crash", session.TaskDone,
 		session.TaskNotice{Model: "openai/gpt-5", Report: "the guard is in", Merge: "merged"})})
 
-	// The landed card keeps it INSIDE, beside the worktree: the head is what
+	// The landed card keeps it INSIDE, beside the working copy: the head is what
 	// happened, and this is a fact somebody opens the card to check.
 	if strings.Contains(taskText(a), "openai/gpt-5") {
 		t.Fatalf("the collapsed card recites the model:\n%s", taskText(a))

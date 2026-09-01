@@ -1307,9 +1307,15 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		return record, ""
 	}
 	report := "paused — it resumes; branch " + branch + " kept"
+	// IT IS A WORKING COPY AND NEVER A `worktree` IN THIS SENTENCE. The word is
+	// the machinery's, which this house bans in anything a person reads, and it
+	// is not even reliably true: a repository task is grounded in a fork whenever
+	// furrow can make one (groundladder.go), and the directory named here is then
+	// a copy of the whole folder rather than anything git has registered. The two
+	// sentences above already call it a working copy.
 	if worktree := strings.TrimSpace(record.Worktree); worktree != "" {
 		if _, err := os.Stat(worktree); err == nil {
-			report += ", its worktree is at " + worktree
+			report += ", its working copy is at " + worktree
 		}
 	}
 	record.Report = report
