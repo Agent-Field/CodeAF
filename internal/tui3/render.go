@@ -647,8 +647,8 @@ func (a *app) entryRows(d deck, i, width int) []string {
 		return a.renderEntry(i, e, width)
 	}
 	// AN OPEN PROPOSAL IS NOT CACHED EITHER, and for the same reason: its
-	// countdown is a function of the frame (task.go). It rejoins the cache the
-	// moment it is answered, which is the moment the clock stops.
+	// countdown or count-up is a function of the frame (task.go). It rejoins the
+	// cache the moment it is answered, which is the moment the clock stops.
 	if e.kind == entryTask && e.card != nil && !e.card.settled() {
 		return a.renderEntry(i, e, width)
 	}

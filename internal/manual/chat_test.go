@@ -730,6 +730,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The proposal's own forming card is a different block from `/task`'s
+		// shaping line. Its still head mark is deliberate; the row below must move.
+		{"the proposal card is frozen", "tasks"},
+		{"the forming card is not moving", "tasks"},
 		// The wait a person can now see into: the preview row under the phase
 		// row, asked the three ways somebody meets it — wanting it, describing
 		// it, and asking what the extra line is.
