@@ -212,6 +212,26 @@ of its own: *Does my task see my .env* below says when it happens and how to tel
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
 
+## Do the parts see the work I had not committed yet — when is the parent's work frozen for its parts, unfinished work at a split
+
+**Yes.** When a task splits itself (`divide_work`), the parts start from the parent's folder
+**as it stood at the moment of the split** — the edits the parent had not committed, and
+the files it had never added. That freeze happens **once**, when the split is taken, before
+any part is given its own copy. Every part starts from that same world. Work the parent
+does after the split does not reach them.
+
+The freeze is the same kind of commit a new task already gets, worded for the split:
+`the world this division starts from: <the parent's title>`. Your own checkout is not
+touched: HEAD does not move, the index does not move, and the unfinished work is still
+unfinished in front of you. On a folder that is not a repository — a plain folder, or work
+you asked to happen in place in a directory with no git history — there is nothing to
+freeze that way, and aforge does not create a repository in your folder to pretend there
+is.
+
+See *Does a task see my unsaved changes* above for how a task you start yourself gets the
+same kind of world, and the tasks page *When a task turns out to be too wide* for the split
+itself.
+
 ## Does my task see my .env — does a task get node_modules, an installed dependency tree, the dev database, the files git ignores
 
 **Usually yes.** A task's world is a copy of your whole folder, made by furrow, which every

@@ -49,7 +49,9 @@ procedure it is not split at all, and that is the same one-line no as any other.
 There is nothing here to do anything about and nothing to ask again.
 
 YOU DO NOT GO AWAY WHEN THE WORK SPLITS. The parts run under you, each in a copy
-of the repository taken from yours, and each one's branch comes home into yours.
+of the repository taken from yours as it stood at the moment of the split —
+unfinished work you had not committed included — and each one's branch comes
+home into yours.
 You keep whatever part of the work you decided to keep, every report reaches you
 as it lands, and your job at the end is one deliverable made out of all of it —
 not a list of what the parts said back to you. A part that failed is still a

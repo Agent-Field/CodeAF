@@ -571,6 +571,15 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 // and it cannot: those files are not in git's world at all. Carrying them is
 // exactly what the rung above this one is for.
 func sealGroundWork(dir, title string) string {
+	return sealGroundWorkMessage(dir, groundCommitMessage(title))
+}
+
+// sealGroundWorkMessage is [sealGroundWork] with the commit's words already
+// settled. THE SEALER IS THIS FUNCTION AND ONLY THIS FUNCTION: a second body
+// that staged a tree and wrote a commit-tree would be a second answer to what
+// a freeze is. Callers that need a different sentence — a division freeze
+// rather than a task's inheritance — write the sentence and come here.
+func sealGroundWorkMessage(dir, message string) string {
 	index := filepath.Join(dir, ".git", "aforge-ground-index")
 	// A worktree's .git is a file, so the private index goes beside the real one
 	// wherever git actually keeps it.
@@ -618,7 +627,7 @@ func sealGroundWork(dir, title string) string {
 	}
 	commit, err := git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"commit-tree", tree, "-p", "HEAD", "-m", groundCommitMessage(title))
+		"commit-tree", tree, "-p", "HEAD", "-m", message)
 	if err != nil {
 		return ""
 	}
@@ -629,11 +638,50 @@ func sealGroundWork(dir, title string) string {
 // person's words, because somebody reading `git log` after a task has landed is
 // entitled to know why a commit they did not make is sitting in their history.
 func groundCommitMessage(title string) string {
+	return sealedWorldMessage("the world this task started from", title)
+}
+
+// divisionCommitMessage is the divide-door sibling of [groundCommitMessage]:
+// the same voice, naming the split rather than one task's inheritance, so a
+// person reading `git log` can tell the freeze that started a family from the
+// one that started a single worker.
+func divisionCommitMessage(title string) string {
+	return sealedWorldMessage("the world this division starts from", title)
+}
+
+// sealedWorldMessage is the one spelling of a machine-commit title. The stem
+// is the sentence; the title is clipped onto it the way both callers already
+// clipped, so a long parent name cannot push the why off the end of `git log
+// --oneline`.
+func sealedWorldMessage(stem, title string) string {
 	title = clip(firstLine(strings.TrimSpace(title)), 60)
 	if title == "" {
-		return "the world this task started from"
+		return stem
 	}
-	return "the world this task started from: " + title
+	return stem + ": " + title
+}
+
+// sealDivisionWorld freezes the parent's working copy ONCE, at the moment a
+// division is admitted, so every part starts from the same world.
+//
+// IT IS THE SAME SEALER THE LADDER ALREADY HAS ([sealGroundWorkMessage]). The
+// title is [divisionCommitMessage], the divide-specific sibling of
+// [groundCommitMessage].
+//
+// A DIRECTORY THAT IS NOT A REPOSITORY IS LEFT ALONE. The plain-folder mirror
+// this branch still uses is not a git repository, and an in-place "work here"
+// family is standing in the person's own folder. #230 is what turns a
+// folder-ground family's mirror into a repo. git-init here would plant a fake
+// .git in one of those places. THE LAW: a capability that cannot work is
+// absent, not broken.
+func sealDivisionWorld(dir, title string) string {
+	if strings.TrimSpace(dir) == "" {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return ""
+	}
+	return sealGroundWorkMessage(dir, divisionCommitMessage(title))
 }
 
 // ── the bottom rung: a copy ─────────────────────────────────────────────────

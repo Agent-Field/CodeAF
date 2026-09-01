@@ -227,6 +227,150 @@ func (n *divideNest) divide(t *testing.T, args json.RawMessage) string {
 	return answer
 }
 
+// standingIn points the dividing worker at a real directory, which is what
+// [Agent.divideOnce] freezes. The scripted nest otherwise stands in an empty
+// temp folder that is not a repository, so a seal there would be the absent
+// case rather than the one these tests are about.
+func (n *divideNest) standingIn(dir string, mode TaskMode) {
+	n.node.config.Workspace = dir
+	tree := taskTree{dir: dir, ground: dir, mode: mode}
+	if mode == TaskModeInPlace || mode == TaskModeFolder {
+		tree.merge = mergeInPlace
+		tree.rung = GroundRungHere
+	} else {
+		tree.root = dir
+	}
+	n.parent.setTree(tree)
+}
+
+// admittedDivision is the one journal line a successful split writes, or a
+// fatal if the road did not admit the parts.
+func (n *divideNest) admittedDivision(t *testing.T) journalDivision {
+	t.Helper()
+	lines := journaledDivisions(t, n.journal)
+	if len(lines) != 1 {
+		t.Fatalf("the journal held %d division lines, want the one this call wrote", len(lines))
+	}
+	if lines[0].Decision != divisionAdmitted {
+		t.Fatalf("decision = %q, want %q", lines[0].Decision, divisionAdmitted)
+	}
+	return lines[0]
+}
+
+// ── the parent's world is frozen once, at the moment it divides ─────────────
+
+// THE ACCEPTANCE: a repository parent holding uncommitted work divides, and
+// that work is in a commit on the parent's tree before any part is cut. Both
+// parts, prepared afterwards, see the same file and the same tree — which is
+// the race this freeze exists to close.
+func TestADivisionSealsTheParentsUncommittedWorkOnce(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
+	head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	before := gitOut(t, repo, "status", "--porcelain")
+
+	nest := newDivideNest(t, wideBrief, 0)
+	nest.standingIn(repo, TaskModeWorktree)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 2))
+	if !strings.Contains(answer, "split into 2 parts") {
+		t.Fatalf("the worker was told %q, want the parts admitted", answer)
+	}
+
+	line := nest.admittedDivision(t)
+	if strings.TrimSpace(line.Seal) == "" {
+		t.Fatal("an admitted division of a dirty parent wrote no seal; the parts have no shared world")
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "log", "-1", "--format=%s", line.Seal)); got != divisionCommitMessage(nest.parent.title()) {
+		t.Fatalf("the seal says %q, want %q", got, divisionCommitMessage(nest.parent.title()))
+	}
+	if got := gitOut(t, repo, "show", line.Seal+":wip.txt"); !strings.Contains(got, "the parent's unfinished line") {
+		t.Fatalf("the seal commit does not hold the parent's unfinished file: %q", got)
+	}
+	// THE PARENT'S OWN CHECKOUT IS LEFT ALONE, exactly as [sealGroundWork]
+	// promises: the freeze is a commit object, not a rewrite of somebody's
+	// index or HEAD.
+	if now := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); now != head {
+		t.Fatalf("the parent's HEAD moved from %s to %s", head, now)
+	}
+	if now := gitOut(t, repo, "status", "--porcelain"); now != before {
+		t.Fatalf("the parent's working tree changed:\nbefore:\n%s\nafter:\n%s", before, now)
+	}
+
+	// BOTH PARTS, CUT AFTER THE SEAL, SEE THE SAME WORLD. prepareTaskTreeOn
+	// is the door [Agent.workTaskNode] uses when a part actually starts.
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the parent has %d parts, want 2", len(kids))
+	}
+	var trees []string
+	for _, kid := range kids {
+		tree, err := prepareTaskTreeOn(context.Background(), place, repo, "sess-divide-seal", kid.id, kid.title(),
+			taskStand{dir: repo, mode: TaskModeWorktree})
+		if err != nil {
+			t.Fatalf("prepareTaskTreeOn for %s: %v", kid.title(), err)
+		}
+		if got := readFile(t, filepath.Join(tree.dir, "wip.txt")); !strings.Contains(got, "the parent's unfinished line") {
+			t.Fatalf("%s woke up without the parent's unfinished file: %q", kid.title(), got)
+		}
+		trees = append(trees, strings.TrimSpace(gitOut(t, tree.dir, "rev-parse", "HEAD^{tree}")))
+	}
+	want := strings.TrimSpace(gitOut(t, repo, "rev-parse", line.Seal+"^{tree}"))
+	if trees[0] != want || trees[1] != want {
+		t.Fatalf("the parts stand on %q and %q; the divide freeze is %q — they must be one world",
+			trees[0], trees[1], want)
+	}
+}
+
+// A CLEAN PARENT STILL DIVIDES. There is nothing to freeze when HEAD already
+// is the parent's world, so the seal is empty and the road does not invent a
+// second identity to write one.
+func TestACleanParentDividesWithoutASealCommit(t *testing.T) {
+	repo := newTestRepo(t)
+	nest := newDivideNest(t, wideBrief, 0)
+	nest.standingIn(repo, TaskModeWorktree)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 2))
+	if !strings.Contains(answer, "split into 2 parts") {
+		t.Fatalf("the worker was told %q, want the parts admitted", answer)
+	}
+	line := nest.admittedDivision(t)
+	if line.Seal != "" {
+		t.Fatalf("a clean parent wrote seal %q; a freeze of nothing is a commit nobody would read", line.Seal)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 2 {
+		t.Fatalf("the parent has %d parts, want 2", len(kids))
+	}
+}
+
+// AN IN-PLACE FAMILY DOES NOT GAIN A REPOSITORY. "Work here" is standing in
+// the person's own folder, and that folder is not ours to `git init`. #230
+// is what turns a folder-ground family's mirror into a repo; this door must
+// not plant a fake .git in the meantime.
+func TestAnInPlaceDivisionDoesNotCreateAGitRepository(t *testing.T) {
+	folder := t.TempDir()
+	writeFile(t, filepath.Join(folder, "notes.md"), "what the parent gathered\n")
+	if _, err := os.Stat(filepath.Join(folder, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the person's folder already has a .git: %v", err)
+	}
+
+	nest := newDivideNest(t, wideBrief, 0)
+	nest.standingIn(folder, TaskModeInPlace)
+
+	answer := nest.divide(t, divideArgs(wideEvidence, 2))
+	if !strings.Contains(answer, "split into 2 parts") {
+		t.Fatalf("the worker was told %q, want the parts admitted", answer)
+	}
+	line := nest.admittedDivision(t)
+	if line.Seal != "" {
+		t.Fatalf("an in-place folder wrote seal %q; there is no repository to freeze", line.Seal)
+	}
+	if _, err := os.Stat(filepath.Join(folder, ".git")); !os.IsNotExist(err) {
+		t.Fatal("an in-place division created a .git in the person's folder")
+	}
+}
+
 // ── the road is armed, and only where something said the work might be wide ──
 
 func TestNarrowWorkNeverCarriesTheDivisionVerb(t *testing.T) {

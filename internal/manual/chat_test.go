@@ -337,6 +337,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},
 		{"my task worked on an old version of the file", "how-tasks-run"},
+		// A parent that divided while holding unfinished work: the parts start
+		// from that world, frozen once at the split — asked the two ways a
+		// person meets it.
+		{"do the parts see the work I had not committed yet", "how-tasks-run"},
+		{"when is the parent's work frozen for its parts", "how-tasks-run"},
 		// The owned workspace, asked the two ways it actually gets discovered:
 		// before, wondering where the work will land, and after, when the folder
 		// went and took the work with it.

@@ -15,8 +15,10 @@ Some steps are one call. Some steps fan out.
 When a step has TWO OR THREE PARTS THAT DO NOT NEED EACH OTHER — different
 files, different subsystems, nothing half-finished passing between them —
 propose each part with `propose_task` and keep the coordination here. They run
-at the same time, each in a copy of the repository taken from yours, and each
-one's branch merges back into yours: their work comes home as your work.
+at the same time, each in a copy of the repository taken from yours as it
+stood when you handed them out — unfinished work you had not committed
+included — and each one's branch merges back into yours: their work comes
+home as your work.
 
 When the parts are SEQUENTIAL, or share heavy context — the second needs what
 the first learned, both are edits to the same file, both hang on a decision you

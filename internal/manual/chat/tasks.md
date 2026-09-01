@@ -2370,9 +2370,10 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of the repository taken from its **parent's** copy, and its
-branch merges back into the parent's — so a family's work comes home as the parent's work,
-in one merge, not as three branches racing for yours.
+Each piece works in a copy of the repository taken from its **parent's** copy **as that
+copy stood when the piece was handed out** — unfinished work the parent had not committed
+included — and its branch merges back into the parent's — so a family's work comes home as
+the parent's work, in one merge, not as three branches racing for yours.
 
 A parent never lands while a piece of it is still running. Its own turn may end long
 before; the task stays open, each report is put in front of it as it arrives, and only then
@@ -2393,9 +2394,17 @@ that from the sentence you typed.
 
 So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
 what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
-own copy of the repository, with its own branch coming home into the parent's. Your
+own copy of the repository as the parent left it at the moment of the split — unfinished
+work the parent had not committed included — with its own branch coming home into the
+parent's. Your
 transcript says it in plain words — `split into 3 parts:` and then each part by number and
 name.
+
+The parts start from the parent's folder **as it stood at the moment of the split**,
+including unfinished work the parent had not committed. That world is frozen once, when
+the work splits, so every part is handed the same folder. The how-tasks-run page, *Do the
+parts see the work I had not committed yet*, says how the freeze is written and what it
+does not do to your own checkout.
 
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
 report reaches it as that part lands, and the one thing it owes you at the end is a single

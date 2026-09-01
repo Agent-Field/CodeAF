@@ -571,6 +571,13 @@ type journalDivision struct {
 	// it is the one place an autopsy can tell a part that was CALLED careful from
 	// one that EARNED it.
 	Lifted []string `json:"lifted,omitempty"`
+	// Seal is the machine commit of the parent's world as it stood at the
+	// moment the split was admitted — the freeze that makes every part start
+	// from the same tree (task_divide.go's [sealDivisionWorld]). Empty when
+	// the parent was already clean, or when the parent is standing in a
+	// folder that is not a repository yet (the plain-folder mirror this
+	// branch still uses).
+	Seal string `json:"seal,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.

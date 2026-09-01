@@ -162,7 +162,7 @@ func init() {
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in its own copy of the repository, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, no shared file two of them edit — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a copy of the repository, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in its own copy of the repository as it stood at the moment of the split — unfinished work included — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, no shared file two of them edit — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a copy of the repository, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -866,7 +866,40 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		titles = append(titles, part.Title)
 	}
 	line.Decision, line.Admitted = divisionAdmitted, len(ids)
+	// ONE FREEZE, HERE, BEFORE ANY PART IS CUT. Each part's worktree is
+	// prepared later and independently; without a seal at this door a parent
+	// that kept writing between those cuts would hand its siblings different
+	// worlds. The sealer is [sealDivisionWorld] → [sealGroundWork], so there
+	// is one answer to what a freeze is. A folder that is not a repository
+	// yet is left alone — #230 is what turns that mirror into a repo, and
+	// git-init here would be planting a fake .git in the person's folder or
+	// the shared mirror. DEGRADATION IS ABSENT, NOT A FAKE REPOSITORY.
+	title := ""
+	if node != nil {
+		title = node.title()
+	}
+	if sha := sealDivisionWorld(parentWorldDir(a, node), title); sha != "" {
+		line.Seal = sha
+	}
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
+}
+
+// parentWorldDir is the directory the dividing worker is standing in: the
+// worktree or folder the parent node already has, falling back to the agent's
+// workspace, which is the same path [Agent.newTaskAgent] handed it.
+func parentWorldDir(a *Agent, node *TaskNode) string {
+	if node != nil && node.graph != nil {
+		node.graph.mu.Lock()
+		dir := strings.TrimSpace(node.worktree)
+		node.graph.mu.Unlock()
+		if dir != "" {
+			return dir
+		}
+	}
+	if a != nil {
+		return strings.TrimSpace(a.config.Workspace)
+	}
+	return ""
 }
 
 // personsOwnJob is the reviewer's reason with the record's own prefix taken back
