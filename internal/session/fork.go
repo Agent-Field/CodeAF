@@ -458,7 +458,7 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 	}
 	if len(parsed.Parts) > forkFanLimit {
 		return parsed, fmt.Sprintf("not forked: %d hands is over the limit of %d. If the work really has that many "+
-			"separate slices it is wide enough to be a task, which gets each part its own copy of the repository.",
+			"separate slices it is wide enough to be a task, which gets each part a copy of its own.",
 			len(parsed.Parts), forkFanLimit)
 	}
 	for index, part := range parsed.Parts {
