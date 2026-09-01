@@ -1,6 +1,6 @@
 ---
 kind: added
-title: a real-model lane that proves a task family's parts work apart and land, on a repository and on a plain folder
+title: a real-model lane that proves a family's parts work apart and land, on a repository and a folder
 pr: 280
 surface: [engine]
 invalidates:
