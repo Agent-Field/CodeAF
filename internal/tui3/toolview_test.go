@@ -389,6 +389,24 @@ func TestEveryToolCarriesItsOwnStat(t *testing.T) {
 			output: "a\nb\n\n[500 entries limit reached. Use limit=1000 for more]",
 			want:   "2 entries",
 		},
+		{
+			name: "web search names a complete result set and its plug",
+			tool: "web_search", args: `{"query":"go"}`,
+			output: "1. Go — https://go.dev\n\n5 results · firecrawl",
+			want:   "5 results · firecrawl",
+		},
+		{
+			name: "web search keeps a capped count and its plug",
+			tool: "web_search", args: `{"query":"go"}`,
+			output: "1. Go — https://go.dev\n\n3 of 8 results · exa",
+			want:   "3 of 8 results · exa",
+		},
+		{
+			name: "web search names the plug that found nothing",
+			tool: "web_search", args: `{"query":"go"}`,
+			output: "no results · firecrawl",
+			want:   "no results · firecrawl",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -397,6 +415,19 @@ func TestEveryToolCarriesItsOwnStat(t *testing.T) {
 				t.Fatalf("the %s line is %q, want it to carry %q", tc.tool, line, tc.want)
 			}
 		})
+	}
+}
+
+// V2: a failed search keeps its exact body and never grows a success stat.
+func TestAFailedWebSearchKeepsItsFailureWithoutASuccessStat(t *testing.T) {
+	output := "Search failed (exa): no API key"
+	a := toolApp(t, tokens.NoColor, failedCall("web_search", `{"query":"go"}`, output, output))
+	line := toolLineOf(t, a)
+	if strings.Contains(line, "results ·") {
+		t.Fatalf("a failed search drew a success receipt: %q", line)
+	}
+	if body := strings.Join(openFirst(t, a), "\n"); !strings.Contains(body, output) {
+		t.Fatalf("the failure changed while reaching the transcript:\n%s", body)
 	}
 }
 
