@@ -85,6 +85,11 @@ type taskStand struct {
 	ask string
 	// refusal is an honest sentence about work that cannot be placed at all.
 	refusal string
+	// frozen is the parent's divide-time seal, when this stand is a part of a
+	// family that froze its world. [snapshotRung] cuts from it instead of
+	// sealing the parent's tree again. Empty is every stand that is not a
+	// part, and every part whose parent had nothing to freeze.
+	frozen string
 	// kept marks a ground that answered at SAID because the CONVERSATION
 	// remembered it rather than because anybody said it out loud — a place this
 	// conversation resolved once and wrote down (places.go's [PlaceKept]).

@@ -297,8 +297,16 @@ func TestADivisionSealsTheParentsUncommittedWorkOnce(t *testing.T) {
 		t.Fatalf("the parent's working tree changed:\nbefore:\n%s\nafter:\n%s", before, now)
 	}
 
+	// THE PARENT KEEPS WRITING AFTER THE SPLIT. That is the race: without
+	// the freeze, each part's later cut would seal this later tree and the
+	// siblings would start from a world the division never named.
+	writeFile(t, filepath.Join(repo, "wip.txt"), "later work that must not reach the parts\n")
+	writeFile(t, filepath.Join(repo, "later.txt"), "written after the split\n")
+
 	// BOTH PARTS, CUT AFTER THE SEAL, SEE THE SAME WORLD. prepareTaskTreeOn
 	// is the door [Agent.workTaskNode] uses when a part actually starts.
+	// stand() carries the parent's freeze so the snapshot rung does not
+	// reseal.
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 	kids := nest.graph.children(nest.parent.id)
 	if len(kids) != 2 {
@@ -307,12 +315,18 @@ func TestADivisionSealsTheParentsUncommittedWorkOnce(t *testing.T) {
 	var trees []string
 	for _, kid := range kids {
 		tree, err := prepareTaskTreeOn(context.Background(), place, repo, "sess-divide-seal", kid.id, kid.title(),
-			taskStand{dir: repo, mode: TaskModeWorktree})
+			kid.stand())
 		if err != nil {
 			t.Fatalf("prepareTaskTreeOn for %s: %v", kid.title(), err)
 		}
 		if got := readFile(t, filepath.Join(tree.dir, "wip.txt")); !strings.Contains(got, "the parent's unfinished line") {
 			t.Fatalf("%s woke up without the parent's unfinished file: %q", kid.title(), got)
+		}
+		if _, err := os.Stat(filepath.Join(tree.dir, "later.txt")); !os.IsNotExist(err) {
+			t.Fatalf("%s can see work the parent wrote after the split", kid.title())
+		}
+		if tree.base != line.Seal {
+			t.Fatalf("%s was cut from %q, want the divide freeze %q", kid.title(), tree.base, line.Seal)
 		}
 		trees = append(trees, strings.TrimSpace(gitOut(t, tree.dir, "rev-parse", "HEAD^{tree}")))
 	}

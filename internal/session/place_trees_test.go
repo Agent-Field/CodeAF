@@ -67,7 +67,7 @@ func TestAWorktreeLandsInsideTheSessionFolder(t *testing.T) {
 func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing.T) {
 	place, work := newOwnedPlace(t)
 
-	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "")
+	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "", "")
 	if err != nil {
 		t.Fatalf("prepareTaskTreeAt: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestATaskInAConversationWithNoProjectBranchesFromItsOwnWorkspace(t *testing
 
 	// The other two roads are untouched: explicitly non-code work still stays in
 	// the conversation's directory and says so.
-	inPlace, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 2, "write notes", "in place")
+	inPlace, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 2, "write notes", "in place", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestATaskInAnUninitialisedOwnedWorkspaceRunsInPlace(t *testing.T) {
 	}
 	place := Place{Dir: dir, Workspace: work, Owned: true}
 
-	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "")
+	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "", "")
 	if err != nil {
 		t.Fatalf("prepareTaskTreeAt: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestATaskInAnUninitialisedOwnedWorkspaceRunsInPlace(t *testing.T) {
 // never described this way.
 func TestAWorkerInTheConversationsOwnSpaceIsToldThereIsNoProject(t *testing.T) {
 	place, work := newOwnedPlace(t)
-	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "")
+	tree, err := prepareTaskTreeAt(context.Background(), place, work, "owned", 1, "file the issue", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestAnExplicitTaskPlaceIsTheWorkersExactDirectory(t *testing.T) {
 	repo := newTestRepo(t)
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 	named := t.TempDir()
-	tree, err := prepareTaskTreeAt(context.Background(), place, repo, "named", 3, "write there", named)
+	tree, err := prepareTaskTreeAt(context.Background(), place, repo, "named", 3, "write there", named, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestANamedPlaceThatIsNotThereYetIsCreated(t *testing.T) {
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 	fresh := filepath.Join(t.TempDir(), "new-scratch", "reports")
 
-	tree, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 5, "write the report", fresh)
+	tree, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 5, "write the report", fresh, "")
 	if err != nil {
 		t.Fatalf("prepareTaskTreeAt: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestANamedPlaceThatIsNotThereYetIsCreated(t *testing.T) {
 
 	// A relative name still hangs off the conversation's own workspace, and it
 	// is made there and nowhere else.
-	if _, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 6, "write more", "notes/out"); err != nil {
+	if _, err := prepareTaskTreeAt(context.Background(), place, repo, "fresh", 6, "write more", "notes/out", ""); err != nil {
 		t.Fatalf("relative fresh place: %v", err)
 	}
 	if info, err := os.Stat(filepath.Join(repo, "notes", "out")); err != nil || !info.IsDir() {
@@ -228,7 +228,7 @@ func TestANamedPlaceThatIsAFileIsStillRefused(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "notes.md")
 	writeFile(t, file, "not a folder\n")
 
-	_, err := prepareTaskTreeAt(context.Background(), place, repo, "file", 7, "write there", file)
+	_, err := prepareTaskTreeAt(context.Background(), place, repo, "file", 7, "write there", file, "")
 	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
 		t.Fatalf("error = %v, want the not-a-directory refusal", err)
 	}

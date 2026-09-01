@@ -304,6 +304,14 @@ type TaskNode struct {
 	// are what lets a report say what world the work was done in.
 	Rung GroundRung
 	Seal string
+	// frozen is the divide-time seal: the one commit every part of this node
+	// must start from. It is written once by [divideOnce] and read by a child's
+	// [TaskNode.stand], so [snapshotRung] cuts from that SHA instead of
+	// sealing again. Without it a parent that kept writing between two cuts
+	// would hand its siblings different worlds — the race #232 exists to close.
+	// Empty is the ordinary case: this node never divided, or had nothing
+	// uncommitted to freeze.
+	frozen string
 	// Base is the machine commit the parent's world was sealed into and Universe
 	// is furrow's name for the fork, when a rung made either. They are here for
 	// the SAME REASON Rung and Seal are — the landing needs them and the landing
@@ -2103,7 +2111,36 @@ func (n *TaskNode) groundNow() (string, TaskMode) {
 // exactly once, at the door.
 func (n *TaskNode) stand() taskStand {
 	ground, mode := n.groundNow()
-	return taskStand{dir: ground, mode: mode}
+	return taskStand{dir: ground, mode: mode, frozen: n.familyFreeze()}
+}
+
+// familyFreeze is the SHA the parent froze at divide time, or empty. A part
+// cut without it reseals the parent's tree as it stands now, which is the
+// race the freeze exists to close.
+func (n *TaskNode) familyFreeze() string {
+	if n == nil || n.graph == nil || n.parent == 0 {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	parent := n.graph.nodes[n.parent]
+	if parent == nil {
+		return ""
+	}
+	return parent.frozen
+}
+
+// freezeFamily records the divide-time seal so every part this node hands
+// out starts from the same world.
+func (n *TaskNode) freezeFamily(sha string) {
+	if n == nil || strings.TrimSpace(sha) == "" {
+		return
+	}
+	if n.graph != nil {
+		n.graph.mu.Lock()
+		defer n.graph.mu.Unlock()
+	}
+	n.frozen = sha
 }
 
 // openRoom returns the node's room, opening it on first use — the runner
@@ -5579,13 +5616,13 @@ var gitRoot sync.Mutex
 // one session's folder, so the forced remove below can only ever be reclaiming
 // after ourselves.
 func prepareTaskTree(place Place, workspace, session string, id uint64, title string) (taskTree, error) {
-	return prepareTaskTreeAt(context.Background(), place, workspace, session, id, title, "")
+	return prepareTaskTreeAt(context.Background(), place, workspace, session, id, title, "", "")
 }
 
 // prepareTaskTreeAt applies the placement contract before it touches git. An
 // explicit place is worked in exactly as named; only an empty where takes the
 // default road of cutting a worktree from the conversation's repository.
-func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
+func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (taskTree, error) {
 	where = strings.TrimSpace(where)
 	if strings.EqualFold(where, "in place") {
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeInPlace}, nil
@@ -5625,7 +5662,7 @@ func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session stri
 		// pretending to isolate is worse than not isolating.
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeFolder}, nil
 	}
-	return cutTaskWorktree(ctx, place, root, session, id, title)
+	return cutTaskWorktree(ctx, place, root, session, id, title, frozen)
 }
 
 // hasCommit reports whether a repository has a HEAD to branch from. A fresh
@@ -5665,7 +5702,7 @@ func taskOwnFolder(place Place, workspace, session string, id uint64) (string, o
 // WHAT THE BRANCH CARRIES IS HEAD AND NOTHING ELSE: the person's uncommitted
 // changes stay in their checkout, unread and untouched, and the record says so
 // so that nobody has to find out by looking.
-func cutTaskWorktree(ctx context.Context, place Place, root, session string, id uint64, title string) (taskTree, error) {
+func cutTaskWorktree(ctx context.Context, place Place, root, session string, id uint64, title, frozen string) (taskTree, error) {
 	// THE LEGACY LAYOUT HANGS OFF THE REPOSITORY, not off the workspace: a
 	// conversation standing in a subdirectory of a project still puts its
 	// worktrees in one place, which is what keeps a sweep able to find them.
@@ -5683,6 +5720,7 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 		branch:  "task/" + slugify(title) + "-" + shortID(),
 		title:   title,
 		promise: TaskModeWorktree,
+		frozen:  frozen,
 	})
 }
 
@@ -5758,7 +5796,10 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
 	if ground == "" {
-		return prepareTaskTreeAt(ctx, place, workspace, session, id, title, "")
+		// A part often arrives here before setTree has written Ground — its
+		// workspace IS the parent's tree. The freeze still has to travel, or
+		// this fall-through reseals whatever the parent wrote after the split.
+		return prepareTaskTreeAt(ctx, place, workspace, session, id, title, "", stand.frozen)
 	}
 	switch stand.mode {
 	case TaskModeInPlace, TaskModeFolder:
@@ -5798,7 +5839,7 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		// that was never cut.
 		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: TaskModeInPlace, rung: GroundRungHere}, nil
 	}
-	return cutTaskWorktree(ctx, place, root, session, id, title)
+	return cutTaskWorktree(ctx, place, root, session, id, title, stand.frozen)
 }
 
 // mirrorGround copies a plain folder into the node's own directory so that work

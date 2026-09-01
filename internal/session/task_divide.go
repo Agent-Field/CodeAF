@@ -880,6 +880,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	}
 	if sha := sealDivisionWorld(parentWorldDir(a, node), title); sha != "" {
 		line.Seal = sha
+		node.freezeFamily(sha)
 	}
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
 }

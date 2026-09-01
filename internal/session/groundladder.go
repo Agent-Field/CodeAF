@@ -230,6 +230,10 @@ type groundOrder struct {
 	// ladder changes WHICH WORLD a task starts in; it does not get to change
 	// what was promised about how the work comes home.
 	promise TaskMode
+	// frozen is a divide-time seal already made ([TaskNode.frozen]). When it
+	// is set the snapshot rung cuts from it and does not seal again — that
+	// second seal would be a second answer to when the family's world froze.
+	frozen string
 }
 
 // groundRung is one way of handing a child the world its parent stands in.
@@ -527,7 +531,14 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, boo
 	// other way — cut at HEAD, then bring the parent's work across — is the
 	// shape that leaves a window where the child is standing in the wrong world,
 	// and it is also two answers to "what is this branch based on".
-	base := sealGroundWork(order.root, order.title)
+	//
+	// A FAMILY FREEZE IS THAT COMMIT ALREADY. [divideOnce] sealed the parent
+	// once so every part starts from the same world; sealing again here would
+	// pick up whatever the parent wrote between the split and this cut.
+	base := strings.TrimSpace(order.frozen)
+	if base == "" {
+		base = sealGroundWork(order.root, order.title)
+	}
 	from := base
 	if from == "" {
 		// The parent has nothing uncommitted, so HEAD already IS its world and
