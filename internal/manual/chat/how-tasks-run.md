@@ -1737,11 +1737,21 @@ A task that did not finish keeps its branch, and the row under its name on the r
 
 **Being quiet is not going in circles**, and a task that was working cannot land here for
 it. A worker committing, pushing and writing files says very little, and the `[silent]`
-notes that ask it to write its plan down never stop it — they spend none of the loop
-guard's limit. Neither does a shell command that changed the working folder: that is
-counted as work, the same as an `edit` or a `write`. If a row says `went in circles`, the
-worker had genuinely stopped making progress, and its transcript shows what it kept
-repeating.
+notes that ask it to write its plan down spend none of the loop guard's limit, so no number
+of them can make a row say `went in circles`. Neither does a shell command that changed the
+working folder: that is counted as work, the same as an `edit` or a `write`.
+
+A worker that ignores those notes twice over is a different story, and it is not this row.
+After the second `[silent]` note its tool calls are **held** until it writes something
+visible — every call in the reply is answered `[held] Nothing was run this step…` and none
+of them runs — and if it sends only tool calls three more times its turn ends with
+`stopped here · would not write its notes down, so what this turn worked out is not on the record`.
+That is not circling and is never written up as it; the run settles on whatever it had
+actually done, and the branch is kept like any other. The keys page has the whole ladder
+under "Why did aforge stop running tool calls, and what is a [held] answer?".
+
+If a row says `went in circles`, the worker had genuinely stopped making progress, and its
+transcript shows what it kept repeating.
 
 The first cause wins: a check that refuses a run which had already given up is written as
 `went in circles`, because that is what happened first. A task that lands as `!` is not

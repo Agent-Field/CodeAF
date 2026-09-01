@@ -22,10 +22,13 @@ package session
 //     takes: the model varies the call, the failure does not move.
 //   - SILENT TOOL BATCHES IN A ROW. A reasoning model can keep re-deriving a
 //     plan that vanishes at every step boundary while every individual call
-//     remains distinct. The notes arrive after six, twelve and twenty-four
-//     batches, each stronger than the last, and progress resets the ladder.
+//     remains distinct. The notes arrive after six batches and after twelve, the
+//     second stronger than the first, and progress resets the ladder.
 //     SILENCE IS HYGIENE AND NOT STUCKNESS, so its notes are the only ones that
-//     cannot end a turn — the hand-off section at the foot of this comment.
+//     cannot end a turn through the hand-off below. THE SECOND RUNG IS WHERE THE
+//     ADVICE STOPS BEING ADVICE: from there the loop withholds a submission that
+//     carries only tool calls until a note lands, and ends the turn on its own
+//     honest line if the model will not write one (processrule.go).
 //   - ROUNDS THAT READ NOTHING NEW. Distinct command strings can ask the same
 //     question with slightly different words, so the ledger rather than the
 //     signature decides whether the answers added anything. Five consecutive
@@ -107,8 +110,8 @@ package session
 // the minute before. Two early silence notes plus one late one added up to a
 // hand-off, and the row it left said the turn "went in circles" when the turn
 // had been working the whole time. So a silent note keeps its rung and its
-// wording and books nothing, and its third rung no longer promises a hand-off
-// it cannot make.
+// wording and books nothing, and no rung of it promises a hand-off it cannot
+// make.
 //
 // AND MATERIAL PROGRESS GIVES THE COUNT BACK, ONE RUNG AT A TIME. The two
 // ledgers this file keeps take different evidence, on purpose:
@@ -185,12 +188,19 @@ const (
 	// two ladders answer different questions and only one of them may stop work.
 	loopNudgeCeiling = 2
 
-	// silentRungs is how many notes ONE silent stretch earns before the harness
-	// stops mentioning it: three, at six batches, twelve and twenty-four. The
-	// third is the last because silence cannot end a turn, and a fourth note
-	// about it would be the harness nagging a worker that is working. A stretch
-	// broken by progress and begun again starts at the first rung.
-	silentRungs = 3
+	// silentRungs is how many notes ONE silent stretch earns: two, at six batches
+	// and at twelve. A stretch broken by progress and begun again starts at the
+	// first rung.
+	//
+	// IT WAS THREE, AND THE THIRD RUNG IS GONE BECAUSE NOTHING CAN REACH IT ANY
+	// MORE. The second rung is where the write-your-notes rule stops being advice
+	// (processrule.go's [silentEnforceRung]): from there the loop answers a
+	// tool-calls-only submission with the rule's demand instead of running it,
+	// and a submission the harness itself refused is not one this watch counts —
+	// so the streak freezes at twelve and a rung at twenty-four is a rung no run
+	// can climb to. Its words were also the opposite of what now happens: it said
+	// "Nothing is being stopped — keep working", and by then something is.
+	silentRungs = 2
 
 	// loopHysteresis is how many MORE repetitions of an already-named signature
 	// count as evidence before the ladder advances again.
@@ -511,6 +521,24 @@ func silentThreshold(rung int) int {
 	return silentStreakLimit << rung
 }
 
+// silentLadderRung is how many rungs of the silent ladder this turn's CURRENT
+// stretch of silence has spoken, 1-based and zero for a turn that has written
+// something.
+//
+// It is the one thing this watch says about itself to anybody outside it, and
+// the predicate the write-your-notes rule is enforced on (processrule.go). It is
+// read under the watch's own lock, and a nil watch — an episode assembled by a
+// test that has no detector — answers zero, which is "there is nothing to
+// enforce" and not "enforce everything".
+func (w *loopWatch) silentLadderRung() int {
+	if w == nil {
+		return 0
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.silentRung
+}
+
 // materialProgress reports the STRONG kind of forward evidence: this batch put
 // something in the world. It is what breaks a silent streak and what gives a
 // spent note back, and it has two halves.
@@ -729,11 +757,12 @@ func nudgeNote(n nudge) string {
 			"Before your next tool call, write a short visible note: what you've learned so far, "+
 			"what you're checking next, and why. Your reasoning between steps is not saved — "+
 			"if it isn't in your visible reply, it's gone.", n.count)
-		switch n.silentRung {
-		case 2:
-			note += " This is the second warning; stop calling tools until you have written that note."
-		case 3:
-			note += " This is the third and last note about this run. Nothing is being stopped — keep working — but nothing you have worked out since the first note is on the record either."
+		// AND THE SECOND RUNG SAYS WHAT IS ABOUT TO HAPPEN, because from here it
+		// is true: the loop holds the next tool-calls-only submission rather than
+		// running it (processrule.go). This sentence used to promise exactly that
+		// with nothing behind it, thirteen times in one measured conversation.
+		if n.silentRung >= silentEnforceRung {
+			note += " This is the second and last note about it: from here your tool calls are held. The next reply that carries only tool calls will not be run."
 		}
 		return note
 	}
@@ -813,6 +842,13 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 		Count: looping.count,
 		Hint:  loopRule(looping),
 	})
+
+	// AND THE PROCESS RULE THIS NOTE BELONGS TO COUNTS IT (processrule.go). The
+	// advisory rungs above are one rule's first step, and how often that step has
+	// had to be taken in this CONVERSATION is the number the enforced rung is
+	// measured against — thirty-two of them in the run that ordered the
+	// enforcement, and no turn-shaped counter could ever have said so.
+	a.countProcessRuleAdvice(looping)
 
 	// Past the ceiling no fourth message is useful. The hook cannot end a turn,
 	// so it leaves the decision on the episode for loop.go to spend immediately.

@@ -225,6 +225,11 @@ type sessionEntry struct {
 	// because a person decides these things in their own head.
 	Principal *journalPrincipal `json:"principal,omitempty"`
 
+	// Rule is ONE MOMENT OF ONE PROCESS RULE the turn loop enforces (see
+	// [journalRule]). Absent from every line that is not one, and from every file
+	// written before it existed.
+	Rule *journalRule `json:"rule,omitempty"`
+
 	// Created is ONE FILE THIS SESSION MADE THAT WAS NOT THERE BEFORE (see
 	// [journalCreated]). It is a line of its own rather than a field on the
 	// message that wrote it because the fact it carries — DID THIS EXIST BEFORE
@@ -267,6 +272,31 @@ type journalPrincipal struct {
 	Kept       []string `json:"kept,omitempty"`
 	WallMS     int64    `json:"wallMs,omitempty"`
 	CostUSD    float64  `json:"costUsd,omitempty"`
+}
+
+// journalRule is ONE MOMENT OF ONE PROCESS RULE the turn loop can hold a model
+// to (processrule.go).
+//
+// IT EXISTS BECAUSE THE COUNT IS THE MEASUREMENT. The write-your-notes advisory
+// fired thirty-two times in one measured conversation and was obeyed
+// approximately never, and that fact had to be reconstructed by grepping a
+// transcript for a bracketed word. A conversation that has just held a model's
+// tools and one that never had to are otherwise identical in this file, so
+// nothing could say whether enforcing the rule changed anything.
+//
+// Rule is the rule's own slug. Event is what the moment was: `advised` for one
+// advisory note, `held` for one submission answered with the demand instead of
+// run, and `stopped` for a turn that ended because the rule was never met. Count
+// is how many ADVISORIES this rule has spent in this conversation so far — the
+// same number on every line, so the ratio a reader wants is one subtraction and
+// not a sum of two kinds.
+//
+// IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: what the turn cost
+// is already on its seal.
+type journalRule struct {
+	Rule  string `json:"rule,omitempty"`
+	Event string `json:"event,omitempty"`
+	Count int    `json:"count,omitempty"`
 }
 
 // journalCreated is ONE FILE THIS SESSION MADE.
@@ -2087,6 +2117,17 @@ func (s *sessionFile) appendPrincipal(moment journalPrincipal) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "principal", Principal: &moment, Timestamp: stamp()})
+}
+
+// appendRule writes down one moment of one process rule (see [journalRule]). A
+// line with no rule or no event on it writes nothing, for
+// [sessionFile.appendMark]'s reason: the whole value of the line is WHICH rule
+// did WHAT, and a line that can say neither says a rule exists.
+func (s *sessionFile) appendRule(moment journalRule) {
+	if s == nil || strings.TrimSpace(moment.Rule) == "" || strings.TrimSpace(moment.Event) == "" {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "rule", Rule: &moment, Timestamp: stamp()})
 }
 
 // appendCreated writes down one file the session made (see [journalCreated]). A

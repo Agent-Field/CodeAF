@@ -2261,24 +2261,52 @@ answers, not the thinking.
 
 The chat loop watches for a model that keeps calling tools without putting any visible
 words between the calls. After **6 consecutive tool-using replies with no visible assistant
-text**, it adds a note beginning `[silent]`. If the silence continues, stronger notes arrive
-at **12** and **24** replies, and the third is the last — one silent run is mentioned three
-times and no more. Each note asks the model to write what it has learned, what it will
-check next, and why before making another call.
+text**, it adds a note beginning `[silent]`. If the silence continues, a stronger note
+arrives at **12**, and that one is the last — one silent run is mentioned twice and no more.
+Each note asks the model to write what it has learned, what it will check next, and why
+before making another call.
 
-**A `[silent]` note never stops anything, and it is not an accusation of being stuck.** It
-is about the record rather than the work: it says the reasoning between steps is being
-lost. The work goes on either way, and no number of them will end a turn.
+**A `[silent]` note is not an accusation of being stuck.** It is about the record rather
+than the work: it says the reasoning between steps is being lost. It spends none of the
+loop guard's warning limit, and no number of `[silent]` notes will end a turn.
+
+**The first note is advice; the second says the tools are about to be held**, and the
+section below says what that means.
 
 That request matters for reasoning models because their streamed thinking is shown on the
 screen but is not put into the next request. Of the model's prose, only visible assistant
 text becomes part of the conversation the following step can read.
 
-Three things reset the count: a visible note, a successful `edit` or `write`, and a
-successful shell command that left the working folder different from how it found it. That
-last one is why a commit-and-push run is not scolded for being quiet — landing work is
-work, whatever verb it is spelled with. Each rung is issued once in one silent stretch;
-after a reset, a later silent stretch begins again at 6.
+Three things reset the count — and with it the hold, if one was on: a visible note, a
+successful `edit` or `write`, and a successful shell command that left the working folder
+different from how it found it. That last one is why a commit-and-push run is not scolded
+for being quiet — landing work is work, whatever verb it is spelled with. Each rung is
+issued once in one silent stretch; after a reset, a later silent stretch begins again at 6.
+
+## Why did aforge stop running tool calls, and what is a [held] answer?
+
+Because the note it asked for twice was never written. The `[silent]` note at 6 replies is
+advice. The one at 12 is the last, and it says outright `from here your tool calls are
+held`. From that point the loop stops running a reply that carries **only** tool calls: each
+call is answered with `[held] Nothing was run this step…` in place of its result, nothing
+reaches your files or your shell, and the answer says what to write and that the next call
+runs as soon as it is there.
+
+**A rule the loop can enforce is not a suggestion.** The reasoning between steps is not
+saved anywhere — a task's room, its checker, its parent and you all read what was written
+down — so past a certain amount of silence aforge stops asking and starts holding.
+
+**Writing anything visible clears it immediately** and the loop is back to normal, at the
+first rung again. A reply that carries both a note and tool calls was never held in the
+first place, so a model that writes as it works never sees any of this.
+
+**After 3 held replies the turn stops.** If it keeps sending only tool calls, the turn ends
+with this line rather than arguing forever:
+
+`stopped here · would not write its notes down, so what this turn worked out is not on the record`
+
+Nothing is handed to a task — the same model under the same rule would be as quiet — and
+whatever the turn had already saved is on disk where it left it.
 
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
@@ -2299,7 +2327,9 @@ for example inside a task or without a consent surface — it ends the turn with
 `this turn is going in circles · stopping here with anything remaining left undone`.
 
 Two things soften that limit. **`[silent]` notes spend none of it**, so a quiet turn cannot
-be ended for being quiet. And **getting something done gives one spent note back**: a batch
+be ended for being quiet; being held for not writing its notes down is a separate road with
+its own ending, described in the section above. And **getting something done gives one
+spent note back**: a batch
 that wrote a file, or ran a shell command that changed the working folder, steps the count
 down by one — unless it was the very call the turn has already been warned about, because
 writing the same file seven times is the loop and not the way out of it. It is a step down

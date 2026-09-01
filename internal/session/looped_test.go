@@ -298,7 +298,7 @@ func TestFileWritingProgressResetsTheSilentStreak(t *testing.T) {
 	}
 }
 
-func TestThirtySilentBatchesClimbAtSixTwelveAndTwentyFour(t *testing.T) {
+func TestThirtySilentBatchesClimbAtSixAndTwelveAndNoFurther(t *testing.T) {
 	watch := newLoopWatch()
 	var rounds []int
 	var notes []string
@@ -311,19 +311,16 @@ func TestThirtySilentBatchesClimbAtSixTwelveAndTwentyFour(t *testing.T) {
 			notes = append(notes, nudgeNote(looping))
 		}
 	}
-	want := []int{silentThreshold(0), silentThreshold(1), silentThreshold(2)}
+	want := []int{silentThreshold(0), silentThreshold(1)}
 	if !slices.Equal(rounds, want) {
 		t.Fatalf("silent nudge rounds = %v, want %v", rounds, want)
 	}
-	if !strings.Contains(notes[1], "second warning") {
-		t.Fatalf("second note did not escalate: %q", notes[1])
-	}
-	// AND THE THIRD RUNG PROMISES NOTHING IT CANNOT DO. Silence books no nudge,
-	// so the harness will not hand this turn over however long the run goes on,
-	// and the note has to say the true thing instead.
-	if !strings.Contains(notes[2], "third and last note") ||
-		!strings.Contains(notes[2], "Nothing is being stopped") {
-		t.Fatalf("last note did not say the run continues: %q", notes[2])
+	// AND THE SECOND RUNG PROMISES WHAT NOW HAPPENS. It is the rung where advice
+	// becomes enforcement (processrule.go): the turn loop holds the next
+	// tool-calls-only submission rather than running it, so the sentence saying so
+	// is the one thing this note may claim.
+	if !strings.Contains(notes[1], "your tool calls are held") {
+		t.Fatalf("second note did not say the tools are held: %q", notes[1])
 	}
 	if strings.Contains(strings.Join(notes, " "), "hand the turn over") {
 		t.Fatalf("a silent note still promises a hand-off: %v", notes)
