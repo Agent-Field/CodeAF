@@ -22,6 +22,9 @@
 //     lands on the person's branch in one move.
 //   - a division whose two parts claim the same file (#231): refused at
 //     admission, before any part exists, and the worker carries on alone.
+//   - an edit made in the person's folder while the work ran (#270): the landing
+//     stands back rather than laying its ledger over it, names the file, and
+//     leaves both versions on disk.
 //
 // WHAT IT COSTS AND HOW IT IS PINNED. Every call in the run — the conversation,
 // the shaper, the sizing judge, the namer, each worker, the division's reviewer
@@ -240,7 +243,7 @@ type familyRun struct {
 // dropped on the window — and it answers the ground ladder at its `said` rung
 // (taskstands.go), which is how the work comes to be about the person's material
 // rather than about the directory this conversation happens to stand in.
-func runFamily(t *testing.T, w *world, ground, ask string, attempt int) *familyRun {
+func runFamily(t *testing.T, w *world, ground, ask string, attempt int, during func(*familyRun)) *familyRun {
 	t.Helper()
 	desk := filepath.Join(t.TempDir(), "desk")
 	if err := os.MkdirAll(desk, 0o755); err != nil {
@@ -273,6 +276,15 @@ func runFamily(t *testing.T, w *world, ground, ask string, attempt int) *familyR
 	run.root = id
 	t.Logf("TASK %d started: %q  (ground %s)", id, title, ground)
 
+	// AND WHATEVER THE SCENARIO DOES WHILE THE WORK RUNS. It is called once the
+	// family's tree is on disk and the folder's baseline is recorded beside it,
+	// which is the moment after which an edit in the person's own folder is an
+	// edit the landing has to notice — and it runs on THIS goroutine, before the
+	// wait, so nothing touches the test after it has ended.
+	if during != nil {
+		run.awaitFamilyTree(ctx)
+		during(run)
+	}
 	run.timedOut = !run.waitForRest(ctx)
 	run.wall = time.Since(started)
 	run.rows = readTaskRows(t, place.Tasks())
@@ -303,6 +315,38 @@ func (r *familyRun) waitForRest(ctx context.Context) bool {
 		}
 	}
 }
+
+// awaitFamilyTree waits until the family has a working copy AND has written down
+// what the person's folder held when it took its copy (internal/session's
+// rememberGroundBaseline). The second half is the one that matters: an edit made
+// before that record exists is an edit the family was GIVEN, and a landing that
+// laid over it would be right to.
+func (r *familyRun) awaitFamilyTree(ctx context.Context) {
+	for {
+		if root, found := r.node(r.root); found && root.Worktree != "" {
+			if _, err := os.Stat(filepath.Join(root.Worktree, aforgeDroppings, groundBaselineRecord)); err == nil {
+				r.t.Logf("  the family's tree is at %s, with the folder's baseline recorded beside it", root.Worktree)
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			r.t.Fatalf("the family never took a copy of the person's folder with a baseline recorded beside it")
+		case <-time.After(time.Second):
+		}
+		r.rows = readTaskRows(r.t, r.place.Tasks())
+	}
+}
+
+// The family tree's private corner, and the record in it that says what the
+// person's folder held when the copy was taken. Both are internal/session's own
+// (task_run.go's aforgeDroppings, task_mirror_manners.go's
+// groundBaselineRecord), spelled again here because they are unexported there
+// and this lane reads the disk rather than the engine.
+const (
+	aforgeDroppings      = ".aforge-v3"
+	groundBaselineRecord = "ground-baseline.json"
+)
 
 func allSettled(rows []taskRow) bool {
 	for _, row := range rows {
@@ -487,6 +531,9 @@ func TestFamilies(t *testing.T) {
 	t.Run("two parts that claim one file", func(t *testing.T) {
 		oneFileClaimedTwice(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
 	})
+	t.Run("an edit made in the folder while it ran", func(t *testing.T) {
+		anEditMadeWhileItRan(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
+	})
 }
 
 // threeSectionsOnAFolder is #230 and #229 together: a family on a plain folder
@@ -504,7 +551,7 @@ part writes that one file and nothing else. Name no other file anywhere in that
 brief — not a sibling's file, not something to read, not a path in the folder —
 because a file named in two briefs is two parts claiming one file.`
 
-	run := familyWithParts(t, w, newFolderGround, ask, func(run *familyRun) bool {
+	run := familyWithParts(t, w, newFolderGround, ask, nil, func(run *familyRun) bool {
 		root, found := run.node(run.root)
 		return found && root.Mode == string(session.TaskModeMirror) && len(run.parts()) >= 2
 	}, "no mirrored family with parts beside each other came of this ask")
@@ -567,7 +614,7 @@ not a path in the project — because a file named in two briefs is two parts
 claiming one file. Say in each brief that the part writes that one file and
 nothing else.`, token)
 
-	run := familyWithParts(t, w, newRepositoryGround, ask, func(run *familyRun) bool {
+	run := familyWithParts(t, w, newRepositoryGround, ask, nil, func(run *familyRun) bool {
 		root, found := run.node(run.root)
 		return found && root.Mode == string(session.TaskModeWorktree) && len(run.parts()) >= 2
 	}, "no repository family with parts beside each other came of this ask")
@@ -584,15 +631,31 @@ nothing else.`, token)
 	brought := whatCameBack(t, run, run.ground)
 	theLedgerShips(t, run, brought)
 
-	// ONE LANDING. The family's whole history arrives on the person's branch in a
-	// single move. A merge that was a fast-forward writes no commit and is that
-	// same one move, which is why the reading is a bound rather than an equality:
-	// what would be wrong is the family arriving in several.
-	merges := lines(gitAt(t, run.ground, "log", "--merges", "--format=%h %s"))
-	t.Logf("  the person's branch carries %d merge commit(s): %v", len(merges), merges)
-	if len(merges) > 1 {
-		t.Errorf("the person's branch took %d merges; one landing is one move onto their branch", len(merges))
+	// ONE LANDING, AND IT IS THE BRANCH'S OWN REFLOG THAT SAYS SO.
+	//
+	// COUNTING MERGE COMMITS WAS THE WRONG READING and it took a three-part family
+	// to show it: the parts merge into the FAMILY's branch, and the moment that
+	// branch lands those merges become reachable from the person's HEAD — so a
+	// family with more parts reads as a person's branch that took more merges,
+	// which is a fact about the family's shape and not about their branch. And the
+	// reading fails the other way round too: a landing that fast-forwards writes no
+	// merge commit at all and is still a landing.
+	//
+	// What the claim actually is — the family arrives in ONE move — is a question
+	// about how many times the person's ref moved, which is what a reflog is. Their
+	// branch was made by one commit and must have moved exactly once since.
+	branch := gitAt(t, run.ground, "rev-parse", "--abbrev-ref", "HEAD")
+	moved := lines(gitTry(run.ground, "reflog", "show", "--format=%gs", branch))
+	t.Logf("  the person's branch %s moved %d time(s): %v", branch, len(moved), moved)
+	switch {
+	case len(moved) == 0:
+		t.Errorf("the person's branch %s has no reflog, so nothing here can say how it moved", branch)
+	case len(moved) != 2:
+		t.Errorf("the person's branch %s moved %d time(s) — its own commit and then %d more; one landing is one move onto their branch: %v",
+			branch, len(moved), len(moved)-1, moved)
 	}
+	t.Logf("  the merges reachable from their HEAD are the family's own: %v",
+		lines(gitAt(t, run.ground, "log", "--merges", "--format=%h %s")))
 
 	// #232: DID EACH PART START IN A WORLD THAT HELD THE PARENT'S NOTES?
 	//
@@ -604,13 +667,16 @@ nothing else.`, token)
 	// quote the plan would be answering with words instead, which is the one kind
 	// of evidence this file does not take.
 	//
-	// The finding is reported two ways. Where the family history holds a `wip:`
-	// checkpoint the token is required, because that commit is the mechanism; where
-	// it does not, the absence is printed as a pending finding rather than as this
-	// lane's own red, since a test failing for work that has not landed says
-	// nothing about the work that has.
+	// BOTH HALVES ARE REQUIRED. The checkpoint is the mechanism — the harness
+	// stages the parent's ledger and commits it onto the family branch before the
+	// first part is admitted — and NOTES.md standing in the tree of the part's own
+	// commit is the consequence. Asserting only the commit would pass on a
+	// checkpoint that carried nothing; asserting only the consequence would pass
+	// on a part that happened to write the plan itself.
 	checkpoint := checkpointCommit(t, run.ground)
-	if checkpoint != "" {
+	if checkpoint == "" {
+		t.Errorf("the family history holds no divide-time checkpoint saying %q; the parent handed parts out off a world that did not hold its own work (#232)", checkpointSaysWhy)
+	} else {
 		t.Logf("  the family history holds the divide-time checkpoint %q (#232)", checkpoint)
 	}
 	for name, commit := range brought {
@@ -620,16 +686,11 @@ nothing else.`, token)
 			// commit the part did NOT make the plan on.
 			continue
 		}
-		if strings.Contains(gitTry(run.ground, "show", commit+":NOTES.md"), token) {
-			t.Logf("  the commit %s arrived on carries the parent's NOTES.md with its plan token, so that part opened on the parent's own work (#232)", name)
+		if !strings.Contains(gitTry(run.ground, "show", commit+":NOTES.md"), token) {
+			t.Errorf("the commit %s arrived on holds no NOTES.md carrying %q — that part was cut off a world without the parent's own work in it (#232)", name, token)
 			continue
 		}
-		if checkpoint != "" {
-			t.Errorf("the commit %s arrived on holds no NOTES.md carrying %q, though the family history holds the checkpoint %q — a part cut off that commit had it on disk (#232)",
-				name, token, checkpoint)
-			continue
-		}
-		t.Logf("  PENDING #232 — the commit %s arrived on holds no NOTES.md with the plan token, and there is no wip: checkpoint in the family history; that part did not open on the parent's uncommitted work", name)
+		t.Logf("  the commit %s arrived on carries the parent's NOTES.md with its plan token, so that part opened on the parent's own work (#232)", name)
 	}
 }
 
@@ -756,7 +817,7 @@ boundary.
 Then, whatever answer comes back, write report.md yourself with both sections in
 it and say in your report what you were told about the split.`
 
-	run := familyWithParts(t, w, newFolderGround, ask, func(run *familyRun) bool {
+	run := familyWithParts(t, w, newFolderGround, ask, nil, func(run *familyRun) bool {
 		return len(run.divisionsDeciding("refused:scope")) > 0
 	}, "no division was ever refused for scope")
 
@@ -807,6 +868,85 @@ it and say in your report what you were told about the split.`
 	}
 }
 
+// anEditMadeWhileItRan is #270: a folder family lays its ledger over the person's
+// folder at the end, and a file THEY changed in the meantime is not the family's
+// to overwrite. It is the folder ground's half of what git has always done for a
+// repository ground, where a person's own edit to a file the branch touches is
+// exactly what makes the merge refuse.
+//
+// THE EDIT IS MADE AT THE ONE MOMENT THAT MEANS ANYTHING. Before the copy is
+// taken it is material the family was given and laying over it is what was asked
+// for; after the baseline is recorded it is the person working in their own
+// folder while somebody else's work runs. [familyRun.awaitFamilyTree] waits for
+// exactly that line and the edit is made across it.
+func anEditMadeWhileItRan(t *testing.T, w *world) {
+	const ask = `Write a three-section report into the folder this conversation is already about.
+It covers nine topics and lands as three separate files: a.md, b.md and c.md —
+a.md holds the first three topics, b.md the next three, c.md the last three, about
+eighty words each. The three sections do not depend on each other, so split this
+with divide_work into THREE parts, one file each.
+
+In each part's brief name ONLY the one file that part writes, and say that the
+part writes that one file and nothing else. Name no other file anywhere in that
+brief — not a sibling's file, not something to read, not a path in the folder —
+because a file named in two briefs is two parts claiming one file.`
+
+	mine := "the person wrote this in their own folder while the work ran, and it is theirs\n"
+	run := familyWithParts(t, w, newFolderGround, ask, func(run *familyRun) {
+		if err := os.WriteFile(filepath.Join(run.ground, "a.md"), []byte(mine), 0o644); err != nil {
+			run.t.Fatalf("write the person's own edit: %v", err)
+		}
+		run.t.Logf("  the person saved a.md in their own folder while the work ran")
+	}, func(run *familyRun) bool {
+		root, found := run.node(run.root)
+		return found && root.Mode == string(session.TaskModeMirror) && contains(root.Changed, "a.md")
+	}, "no mirrored family meaning to lay a.md came of this ask")
+
+	root := run.rootRow()
+
+	// NOTHING IS LAID, AND THE PERSON IS TOLD. The landing wears the same mark a
+	// merge that would not go already wears, which is what routes it to a
+	// needs-your-look settlement rather than to a card saying done.
+	if root.Merge != "conflicted" {
+		t.Errorf("the family landed as %q over a folder that had moved under it; a lay that would overwrite somebody's own edit must stand back (#270)", root.Merge)
+	}
+	if body := readGroundFile(t, run.ground, "a.md"); body != mine {
+		t.Errorf("a.md in the person's folder is no longer what they wrote — the family laid its own version over it (#270).\nthey wrote %q\nit holds  %q", mine, body)
+	}
+	for _, name := range []string{"b.md", "c.md"} {
+		if body := readGroundFile(t, run.ground, name); body != "" {
+			t.Errorf("%s was laid over the person's folder though the landing stood back; the ledger is laid whole or not at all", name)
+		}
+	}
+
+	// AND BOTH VERSIONS SURVIVE IT: theirs in their folder, the family's in the
+	// directory the refusal names.
+	kept := readGroundFile(t, root.Worktree, "a.md")
+	if strings.TrimSpace(kept) == "" {
+		t.Errorf("the family's own a.md is not in %s either; standing back cost the work instead of keeping it", root.Worktree)
+	}
+	if kept == mine {
+		t.Errorf("the family tree holds the person's own text, so nothing was ever going to collide and this scenario proved nothing")
+	}
+
+	// AND THE REFUSAL NAMES THE FILE. A landing that stood back without saying
+	// which file moved leaves somebody comparing two directories by hand.
+	said := root.Report + "\n" + run.journals()
+	if !strings.Contains(said, "changed there while this ran") || !strings.Contains(said, "a.md") {
+		t.Errorf("nothing this family said names a.md as the file that changed while it ran; its report is %q", root.Report)
+	}
+	t.Logf("  the landing stood back and said: %s", firstSentence(root.Report))
+}
+
+// firstSentence is enough of a report to read in a log line.
+func firstSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) > 240 {
+		text = text[:240] + "…"
+	}
+	return strings.ReplaceAll(text, "\n", " ")
+}
+
 // ── the ask, and the one retry ──────────────────────────────────────────────
 
 // familyWithParts runs one scenario until the road did what the scenario is
@@ -818,11 +958,11 @@ it and say in your report what you were told about the split.`
 // fails with every division record the run wrote, so an autopsy can tell a model
 // that never asked from a road that said no and from which gate said it.
 func familyWithParts(t *testing.T, w *world, ground func(*testing.T) string, ask string,
-	enough func(*familyRun) bool, missing string) *familyRun {
+	during func(*familyRun), enough func(*familyRun) bool, missing string) *familyRun {
 	t.Helper()
 	var last *familyRun
 	for attempt := 1; attempt <= familyAttempts; attempt++ {
-		run := runFamily(t, w, ground(t), ask, attempt)
+		run := runFamily(t, w, ground(t), ask, attempt, during)
 		if enough(run) {
 			return run
 		}
@@ -997,15 +1137,24 @@ func ledgerSince(t *testing.T, since time.Time) (float64, []string) {
 
 // checkpointCommit answers the divide-time checkpoint's subject where the family
 // history holds one, and the empty string where it does not (#232).
+//
+// IT MATCHES ON THE WHY AND NOT ON A PREFIX. The harness writes the reason into
+// the subject in a person's words — internal/session's [wipCheckpointMessage] —
+// and the tail of that sentence is the half that does not move when a task is
+// named or renamed.
 func checkpointCommit(t *testing.T, repo string) string {
 	t.Helper()
 	for _, subject := range lines(gitAt(t, repo, "log", "--all", "--format=%s")) {
-		if strings.HasPrefix(strings.ToLower(subject), "wip:") {
+		if strings.Contains(subject, checkpointSaysWhy) {
 			return subject
 		}
 	}
 	return ""
 }
+
+// checkpointSaysWhy is the invariant half of the divide-time checkpoint's
+// subject: whatever the work was called, the commit says what it is for.
+const checkpointSaysWhy = "before its parts were handed out"
 
 // readGroundFile is one file of the person's material, read raw off the disk so
 // that an assertion about their folder is about their folder.
