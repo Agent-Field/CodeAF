@@ -3,6 +3,7 @@ package furrow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +85,19 @@ merge)
     exit 1
   fi
   echo '{"fork":"risky","base_snapshot":"b","ours_snapshot":"o","theirs_snapshot":"t","ours_tree":"ot","theirs_tree":"tt","result_snapshot":"aaaabbbbcccc00ff","changes":4,"conflicts":[],"check":"go test ./...","check_output":"ok ./... 0.4s","preview_digest":"d"}'
+  ;;
+fork)
+  if [ "$mode" = "badfork" ]; then
+    echo '{"plan":{"name":"ground"}}'
+    exit 0
+  fi
+  echo '{"plan":{"name":"ground","destination":"/w/ground","files":28,"logical_bytes":26889},"result":{"name":"ground","destination":"/w/ground","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc000f","tier":"native-cow","files":28,"unknown_field_from_a_newer_furrow":true}}'
+  ;;
+fork-rm)
+  echo '{"removed":"ground"}'
+  ;;
+watch)
+  echo '{"snapshot":"aaaabbbbcccc0000","store":"/s","workspace":"/w"}'
   ;;
 forks)
   echo '[{"fork_id":"f1","name":"risky","destination":"/w.furrow-forks/risky","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009","tier":"clone","files":1,"directories":1,"symlinks":0,"fifos":0,"skipped_special":0,"logical_bytes":1,"cloned_bytes":1,"copied_bytes":0,"hardlinked_files":0,"elapsed_ms":9,"created_at":1700000300}]'
@@ -730,4 +744,88 @@ func call(t *testing.T, tools []bare.Tool, name, args string) (string, bool, err
 	}
 	t.Fatalf("%s is not on this belt", name)
 	return "", false, nil
+}
+
+// A UNIVERSE TO WORK IN, rather than a command run inside one. The harness
+// grounds a task in a fork and everything the task does happens afterwards, so
+// the door has to hand the universe back rather than run something in it
+// (internal/session's groundladder.go is the caller).
+func TestForkHandsBackAUniverseToWorkIn(t *testing.T) {
+	installFake(t, "")
+	ctx := context.Background()
+	workspace := Open(ctx, t.TempDir())
+	if workspace == nil {
+		t.Fatal("the fake furrow says this folder is attached; Open returned nil")
+	}
+
+	fork, err := workspace.Fork(ctx, "ground", "/w/ground")
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+	if fork.Name != "ground" || fork.Path != "/w/ground" {
+		t.Fatalf("fork = %+v; want the name and destination furrow reported", fork)
+	}
+	// THE RESULT IS READ AND THE PLAN IS NOT. A plan is what the copy was
+	// projected to be before it happened, and a caller told that instead would
+	// be told something that may not have happened.
+	if fork.Head != "aaaabbbbcccc000f" || fork.Base != "aaaabbbbcccc0001" {
+		t.Fatalf("fork = %+v; want the sealed snapshots off the result", fork)
+	}
+}
+
+// A FORK WITH NO NAME IS REFUSED BEFORE FURROW IS ASKED, because the name is
+// the only handle a merge or a removal takes afterwards.
+func TestForkRefusesAUniverseWithNoName(t *testing.T) {
+	installFake(t, "")
+	ctx := context.Background()
+	workspace := Open(ctx, t.TempDir())
+	if workspace == nil {
+		t.Fatal("Open returned nil")
+	}
+	if _, err := workspace.Fork(ctx, "  ", "/w/ground"); err == nil {
+		t.Fatal("a nameless fork was accepted")
+	}
+}
+
+// A FURROW THAT REPORTED NO UNIVERSE IS NOT A UNIVERSE. It prints a plan and
+// then, on this road, nothing — and a caller handed an empty Fork would ground
+// a task in a directory nothing made.
+func TestForkRefusesAnAnswerWithNoUniverseInIt(t *testing.T) {
+	installFake(t, "badfork")
+	ctx := context.Background()
+	workspace := Open(ctx, t.TempDir())
+	if workspace == nil {
+		t.Fatal("Open returned nil")
+	}
+	if _, err := workspace.Fork(ctx, "ground", "/w/ground"); !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("Fork error = %v, want it unreadable", err)
+	}
+}
+
+// ATTACHING IS AFORGE'S OWN MOVE NOW. A folder nobody ran `furrow watch` in is
+// attached by the caller that is about to work in it, on the same consent as
+// the write — and a machine with no furrow at all still answers nil, which is
+// the whole of the absent-not-broken law in a return type.
+func TestAttachOpensAFolderNobodyWatched(t *testing.T) {
+	installFake(t, "unattached")
+	ctx := context.Background()
+	root := t.TempDir()
+	if workspace := Open(ctx, root); workspace != nil {
+		t.Fatal("an unwatched folder opened; the fake says it is not attached")
+	}
+	// The fake's status answer is chosen by FURROW_FAKE, so the attach itself is
+	// what this can prove: after it, the folder answers the way an attached one
+	// does.
+	t.Setenv("FURROW_FAKE", "")
+	Forget()
+	if workspace := Attach(ctx, root); workspace == nil {
+		t.Fatal("Attach did not open the folder it attached")
+	}
+}
+
+func TestAttachIsNilWithNoFurrowAtAll(t *testing.T) {
+	removeFake(t)
+	if workspace := Attach(context.Background(), t.TempDir()); workspace != nil {
+		t.Fatal("Attach opened a workspace on a machine with no furrow")
+	}
 }

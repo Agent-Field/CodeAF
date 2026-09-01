@@ -288,6 +288,49 @@ func Open(ctx context.Context, root string) *Workspace {
 	return &Workspace{root: absoluteRoot(root), binary: presence.Path}
 }
 
+// attachTimeout bounds the one call that can be slow. Attaching a workspace
+// reads every file in it once to seal the first snapshot, so it is the only
+// thing in this package whose cost is the person's project rather than
+// furrow's; a minute is generous for the repositories aforge works in and short
+// enough that a task waiting on it is never waiting on a hang.
+const attachTimeout = 60 * time.Second
+
+// Attach is [Open] for a caller that is willing to ATTACH THE FOLDER ITSELF.
+//
+// THE RULING BEHIND IT: every aforge carries furrow, so a capability that only
+// engages when somebody remembered to type `furrow watch` is a capability the
+// binary has and never uses — which is this codebase's absent-not-broken law
+// running in the bad direction. A folder aforge is about to write in is a folder
+// aforge may attach, on the same consent as the write; nothing here reaches a
+// folder that was not already going to be worked in.
+//
+// It attaches WITHOUT LEAVING A WATCHER RUNNING (`--no-daemon`). What the
+// caller needs is the ability to fork the live workspace, which does not depend
+// on a background sealer, and a program that quietly started a daemon in
+// somebody's project would be doing more than the write it was consenting to.
+//
+// Every failure answers nil, exactly as [Open] does, and the caller falls to
+// whatever it would have done on a machine without furrow.
+func Attach(ctx context.Context, root string) *Workspace {
+	if workspace := Open(ctx, root); workspace != nil {
+		return workspace
+	}
+	binary, err := lookBinary()
+	if err != nil {
+		return nil
+	}
+	attachCtx, cancel := context.WithTimeout(ctx, attachTimeout)
+	defer cancel()
+	if _, _, err := runBinary(attachCtx, binary, absoluteRoot(root), "--json", "watch", "--no-daemon"); err != nil {
+		return nil
+	}
+	// The cached answer was taken before the attach and now says the opposite of
+	// what is true. Dropping it is the whole reason this cannot simply call
+	// Detect again.
+	Forget()
+	return Open(ctx, root)
+}
+
 // ── the process seam ─────────────────────────────────────────────────────────
 
 // ErrUnreadable says furrow answered in a shape this package could not decode.

@@ -182,7 +182,8 @@ var divideSchemaJSON = `{"type":"object","properties":{` +
 	`"summary":{"type":"string","description":"One or two lines: what this part does, and to what"},` +
 	`"brief":{"type":"string","description":"THIS PART'S WHOLE WORLD. It never sees your conversation and cannot ask you anything: name the files and symbols, the conventions, what you have learned about this material, and what NOT to touch because another part owns it"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking this part's word for it"},` +
-	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"HOW THIS PART CAN GO WRONG, which decides how much thinking it is done with. \"` + gradeMechanical + `\", the default and most parts: the failure mode is NOT BEING DONE YET, visible to anybody looking at the result. \"` + gradeCareful + `\": the failure mode is SUBTLE WRONGNESS — a design decision, tricky debugging, a judgement about somebody else's code — where the work can look finished and be quietly wrong. Grade for the failure mode, never size or importance: a long dull part is ` + gradeMechanical + `, a short part that must be RIGHT is ` + gradeCareful + `"}},` +
+	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"HOW THIS PART CAN GO WRONG, which decides how much thinking it is done with. \"` + gradeMechanical + `\", the default and most parts: the failure mode is NOT BEING DONE YET, visible to anybody looking at the result. \"` + gradeCareful + `\": the failure mode is SUBTLE WRONGNESS — a design decision, tricky debugging, a judgement about somebody else's code — where the work can look finished and be quietly wrong. Grade for the failure mode, never size or importance: a long dull part is ` + gradeMechanical + `, a short part that must be RIGHT is ` + gradeCareful + `"},` +
+	expectsSchemaJSON + `},` +
 	`"required":["title","summary","brief","acceptance"],"additionalProperties":false}}` +
 	`},"required":["evidence","parts"],"additionalProperties":false}`
 
@@ -197,10 +198,16 @@ type dividePart struct {
 	Summary    string `json:"summary"`
 	Brief      string `json:"brief"`
 	Acceptance string `json:"acceptance"`
-	// Grade is how this part can go wrong, and it is the ONE field a part may
-	// leave out. See the file header: a grade is a kind of work, never a model,
-	// and an absent one is [gradeMechanical].
+	// Grade is how this part can go wrong, and it is one of the two fields a
+	// part may leave out. See the file header: a grade is a kind of work, never
+	// a model, and an absent one is [gradeMechanical].
 	Grade string `json:"grade,omitempty"`
+	// Expects is what THIS PART'S brief assumes is already true of the folder
+	// its worker will get, checked before that worker spends anything
+	// (handoffcontract.go). It is the other optional field, and it is the one
+	// the run this road was measured on needed most: the briefs named files and
+	// symbols of a world their workers were never given.
+	Expects []Expectation `json:"expects,omitempty"`
 }
 
 // The two grades. They are spelled once, here, because four readers need them:
@@ -822,6 +829,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 			request:    request,
 			brief:      part.Brief,
 			acceptance: part.Acceptance,
+			expects:    part.Expects,
 			model:      partModel,
 			parent:     parent,
 			depth:      a.config.taskDepth + 1,
@@ -877,6 +885,14 @@ func parseDivideArguments(args json.RawMessage) (divideArguments, string) {
 				return parsed, fmt.Sprintf("Invalid arguments: part %d has no %s, and every part needs one", i+1, missing.field)
 			}
 		}
+		// AND THE MANIFEST IS READ THE SAME WAY EVERY OTHER FIELD IS: cleaned,
+		// bounded, and refused with a sentence rather than quietly dropped
+		// (handoffcontract.go). A part that wrote none is the ordinary part.
+		expects, problem := parseExpectations(part.Expects)
+		if problem != "" {
+			return parsed, fmt.Sprintf("%s (part %d)", problem, i+1)
+		}
+		parsed.Parts[i].Expects = expects
 	}
 	return parsed, ""
 }

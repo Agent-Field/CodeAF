@@ -194,6 +194,13 @@ const (
 	// TaskEndingRefused says the run finished and the check did not accept what
 	// it made — gaps were named, or a person refuted it.
 	TaskEndingRefused TaskEnding = "refused"
+	// TaskEndingStale says the work never started: what its brief assumes about
+	// its world did not hold when the world was made, and the report names every
+	// assumption that failed (handoffcontract.go). It is its own ending rather
+	// than an error because nothing broke — a brief and a folder disagreed — and
+	// because it is the one ending a person can fix by re-grounding,
+	// re-dividing or re-briefing rather than by reading a stack of steps.
+	TaskEndingStale TaskEnding = "stale"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"

@@ -240,7 +240,12 @@ type taskSpec struct {
 	ground     string
 	mode       TaskMode
 	acceptance string
-	dependsOn  []uint64
+	// expects is the checkable half of the handoff contract: what this brief
+	// assumes is already true of the folder the worker will get
+	// (handoffcontract.go). It is written by whoever wrote the brief, never by
+	// the harness, and an empty one is the ordinary case.
+	expects   []Expectation
+	dependsOn []uint64
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run
@@ -644,6 +649,15 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
 	}
+	// THIS DOOR CARRIES NO MANIFEST, and the reason is a bill rather than a
+	// principle (handoffcontract.go). propose_task's schema rides in front of
+	// every request of every turn of every conversation and is already the
+	// heaviest tool on that belt; the fixed-prefix budget
+	// (prefixbudget_test.go) had no room for a second contract there. The
+	// divider's own handoff carries one, which is where the failure this was
+	// built from happened and where a brief is written by a model that cannot
+	// see the world its reader will get. Nothing else here would have to
+	// change: [taskSpec.expects] is read by the preflight whoever filled it.
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary
 	// case, but a model that asked for -1 steps meant something it did not say,

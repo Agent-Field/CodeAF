@@ -19,7 +19,7 @@ func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
 		"make the pricing page match the new tiers, and don't touch the tests",
 		"edit docs/pricing.md against internal/billing/tiers.go",
 		"docs/pricing.md, one table, four rows",
-		"go test ./internal/billing/ passes and the page names all four tiers")
+		"go test ./internal/billing/ passes and the page names all four tiers", "")
 
 	for _, want := range []string{
 		briefAskHeading, briefAskRule,
@@ -51,7 +51,7 @@ func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
 // applied to a document. A node restored from a checkpoint written before
 // requests were carried has no request, and reads as it always did.
 func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
-	opening := composeBrief("", "sweep the deprecated calls", "", "the build passes")
+	opening := composeBrief("", "sweep the deprecated calls", "", "the build passes", "")
 	for _, unwanted := range []string{briefAskHeading, briefMakeHeading} {
 		if strings.Contains(opening, unwanted) {
 			t.Fatalf("an empty part got a heading anyway:\n%s", opening)
@@ -67,7 +67,7 @@ func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
 // printing them twice would read as two instructions that happen to agree.
 func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 	words := "rewrite the importer so it streams"
-	opening := composeBrief(words, words, "", "it streams")
+	opening := composeBrief(words, words, "", "it streams", "")
 	if got := strings.Count(opening, words); got != 1 {
 		t.Fatalf("the person's words appear %d times:\n%s", got, opening)
 	}
@@ -80,7 +80,7 @@ func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 // person who pasted a log must not be paid for once per node. The cut is marked
 // so a worker can see it was cut.
 func TestTheVerbatimAskIsBoundedAndSaysSo(t *testing.T) {
-	opening := composeBrief(strings.Repeat("x", briefAskLimit*2), "work", "", "done")
+	opening := composeBrief(strings.Repeat("x", briefAskLimit*2), "work", "", "done", "")
 	if len(opening) > briefAskLimit+2000 {
 		t.Fatalf("an unbounded ask reached the worker: %d bytes", len(opening))
 	}

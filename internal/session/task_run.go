@@ -297,7 +297,25 @@ type TaskNode struct {
 	// guarded by the graph's lock and written once.
 	Ground string
 	Mode   TaskMode
-	brief  string
+	// Rung is which rung of the ground ladder made this node's world and Seal is
+	// the one string that names that world — furrow's sealed snapshot, or the
+	// machine commit's sha (groundladder.go). They are written beside Ground and
+	// Mode by [TaskNode.setTree], from the tree that was actually made, and they
+	// are what lets a report say what world the work was done in.
+	Rung GroundRung
+	Seal string
+	// Expects is THE CHECKABLE HALF OF THE HANDOFF this node was given: what its
+	// brief assumes is already true of the world it gets (handoffcontract.go).
+	// It sits beside Ground for the same reason Rung does — the ground says
+	// which world, and this says what the world was promised to contain — and it
+	// is written once, at admission, from the spec.
+	//
+	// It is deliberately NOT on the checkpoint. The contract is answered before
+	// the node's first step, so a node that comes back from a checkpoint has
+	// already been through it, and carrying the manifest forward would only
+	// invite a second reading of a question that has been settled.
+	Expects []Expectation
+	brief   string
 	// adjudicated says this node has already spent its one tiebreak: a division
 	// the evidence gate refused on the floor has been put to the mastermind once
 	// on the strength of a judge's wide reading, and the answer — whatever it was
@@ -804,6 +822,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// in from the repository it is cut from ([TaskNode.setTree]).
 		Ground: spec.ground,
 		Mode:   spec.mode,
+		// AND WHAT ITS BRIEF ASSUMES, carried from whoever wrote the brief
+		// (handoffcontract.go). Every door admits with nothing here except the
+		// two that ask a model for a handoff, which is the point: the harness
+		// never writes an expectation on anybody's behalf.
+		Expects: spec.expects,
 	}
 	g.mu.Lock()
 	if g.nodes == nil {
@@ -1412,7 +1435,8 @@ func (n *TaskNode) title() string {
 func (n *TaskNode) instruction() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance)
+	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
+		expectsSection(n.spec.expects))
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -1940,8 +1964,28 @@ func (n *TaskNode) setTree(tree taskTree) {
 	if tree.ground != "" {
 		n.Ground, n.Mode = tree.ground, tree.mode
 	}
+	// AND WHICH RUNG OF THE GROUND LADDER MADE THE WORLD (groundladder.go). It
+	// travels with the ground because it is the other half of the same fact: the
+	// ground says which folder the work is about, and this says which copy of it
+	// the work actually happened in.
+	n.Rung, n.Seal = tree.rung, tree.seal
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
+}
+
+// expectations is the handoff's checkable manifest, read under the graph's lock
+// like every other field beside it. A node nobody wrote one for answers nothing,
+// and the preflight then has nothing to do — which is the ordinary task.
+func (n *TaskNode) expectations() []Expectation {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if len(n.Expects) == 0 {
+		return nil
+	}
+	return append([]Expectation{}, n.Expects...)
 }
 
 // groundNow is the node's ground and mode, read under the graph's lock like
@@ -2884,7 +2928,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTreeOn(place, a.config.Workspace, a.journalID(), node.id, node.title(), node.stand())
+		tree, err = prepareTaskTreeOn(ctx, place, a.config.Workspace, a.journalID(), node.id, node.title(), node.stand())
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -2901,6 +2945,35 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// task standing in the directory it is already working in.
 	if tree.ground != "" && tree.ground != tree.dir {
 		fmt.Fprintf(log, "standing on %s · %s\n", tree.ground, tree.mode)
+	}
+	// AND WHICH WORLD THAT COPY IS, which is the ground law's own record
+	// (groundladder.go): a report that cannot name the world the work was done in
+	// is a report nobody can check. The emptiness law keeps it off the log of a
+	// task standing in the folder it was already about.
+	if world := tree.world(); world != "" {
+		fmt.Fprintf(log, "its world is %s\n", world)
+	}
+
+	// ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE MONEY ──
+	//
+	// The brief says what this work assumes about its world; the world has just
+	// been made. This is the one moment the two can be held up against each
+	// other for nothing, and it is BEFORE the first worker is built rather than
+	// inside its first turn, so a contract that does not hold costs a directory
+	// walk instead of a model call (handoffcontract.go).
+	//
+	// It is journaled either way. A contract that held is one line and the run
+	// goes on; a contract that did not is the node's whole report, and it names
+	// every expectation that failed rather than the first, because a brief
+	// written against a world one commit behind fails several at once.
+	if expects := node.expectations(); len(expects) > 0 {
+		if unmet := preflightExpectations(tree.dir, expects); len(unmet) > 0 {
+			fmt.Fprintf(log, "its brief does not match its world:\n%s\n", strings.Join(unmet, "\n"))
+			node.end(TaskEndingStale)
+			node.finish(staleGroundReport(tree.world(), unmet), nil, tree.branch, abortedMerge(tree))
+			return TaskFailed
+		}
+		fmt.Fprintf(log, "its brief matches its world · %d checked\n", len(expects))
 	}
 
 	// THE NODE'S SPEND IS THE PERSON'S, so it is folded into the session's
@@ -3137,7 +3210,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if !a.config.TaskAudit {
 		// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE, and with the check off
 		// this is one of the places it would. A person who turned verification off
-		// has not asked to be merged over the top of another window (taskground.go).
+		// has not asked to be merged over the top of another window (groundladder.go).
 		if shift := a.groundShift(node, changed); shift != "" {
 			return a.landShifted(node, tree, changed,
 				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
@@ -3286,7 +3359,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
 			// The same last question the ordinary finishing line asks, for the same
-			// reason: this branch is about to merge (taskground.go). The threshold's
+			// reason: this branch is about to merge (groundladder.go). The threshold's
 			// own sentence is left out of what follows exactly as it is left out of
 			// the merge below — the run was interrupted, the deliverable was not, and
 			// the news here is the file somebody else is in.
@@ -3315,7 +3388,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 
 // landShifted settles a node whose work holds and whose GROUND MOVED while it
 // held — somebody else landed in, or is still writing, a file this node wrote
-// (taskground.go).
+// (groundladder.go).
 //
 // IT IS NOT A NEW ENDING. It is [TaskUnverified]'s ending, reached by a third
 // road: the branch is committed and kept ([keptWork]) exactly as it is for the
@@ -3457,6 +3530,11 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 		return abortedMerge(tree), changed
 	}
 	changed = alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
+	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
+	// at a merge (groundladder.go): what the sentence offers the person is the
+	// node's work, and a branch whose first commit is somebody else's unfinished
+	// edits is a branch nobody can read.
+	tree.replayOwnWork()
 	tree.releaseKept()
 	return mergeAborted, changed
 }
@@ -3478,6 +3556,14 @@ func (t taskTree) releaseKept() {
 func (t taskTree) releaseKeptLocked() {
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
+	if t.rung == GroundRungUniverse {
+		// A universe was never registered as a worktree of anybody, so there is
+		// no registration to unpick and `git worktree remove` would be asking
+		// the person's repository about a directory it has never heard of. Its
+		// leavings are already written down, and its record is furrow's to drop.
+		t.dropUniverse()
+		return
+	}
 	// Keep the task folder's uncommitted leavings without keeping a git
 	// registration. Moving it aside lets git remove its administrative record;
 	// removing the pointer file then turns the restored directory into ordinary
@@ -5224,6 +5310,21 @@ type taskTree struct {
 	// repository to cut a clean copy from.
 	ground string
 	mode   TaskMode
+	// rung is WHICH RUNG OF THE GROUND LADDER made this world and seal is the
+	// one string that names it — furrow's sealed snapshot, or the machine
+	// commit's sha (groundladder.go). They are carried so that a report can say
+	// what world the work was done in, which is the question nobody could answer
+	// about the run the ground law was written from.
+	rung GroundRung
+	seal string
+	// base is the machine commit the parent's world was sealed into, when a rung
+	// made one. It is the replay point the landing takes the inheritance back out
+	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
+	// uncommitted, which is the ordinary case.
+	base string
+	// universe is the furrow fork's name, when a fork made this world, and it is
+	// the only handle furrow takes for dropping the record afterwards.
+	universe string
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -5262,13 +5363,13 @@ var gitRoot sync.Mutex
 // one session's folder, so the forced remove below can only ever be reclaiming
 // after ourselves.
 func prepareTaskTree(place Place, workspace, session string, id uint64, title string) (taskTree, error) {
-	return prepareTaskTreeAt(place, workspace, session, id, title, "")
+	return prepareTaskTreeAt(context.Background(), place, workspace, session, id, title, "")
 }
 
 // prepareTaskTreeAt applies the placement contract before it touches git. An
 // explicit place is worked in exactly as named; only an empty where takes the
 // default road of cutting a worktree from the conversation's repository.
-func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
+func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where string) (taskTree, error) {
 	where = strings.TrimSpace(where)
 	if strings.EqualFold(where, "in place") {
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeInPlace}, nil
@@ -5308,7 +5409,7 @@ func prepareTaskTreeAt(place Place, workspace, session string, id uint64, title,
 		// pretending to isolate is worse than not isolating.
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeFolder}, nil
 	}
-	return cutTaskWorktree(place, root, session, id, title)
+	return cutTaskWorktree(ctx, place, root, session, id, title)
 }
 
 // hasCommit reports whether a repository has a HEAD to branch from. A fresh
@@ -5348,12 +5449,25 @@ func taskOwnFolder(place Place, workspace, session string, id uint64) (string, o
 // WHAT THE BRANCH CARRIES IS HEAD AND NOTHING ELSE: the person's uncommitted
 // changes stay in their checkout, unread and untouched, and the record says so
 // so that nobody has to find out by looking.
-func cutTaskWorktree(place Place, root, session string, id uint64, title string) (taskTree, error) {
+func cutTaskWorktree(ctx context.Context, place Place, root, session string, id uint64, title string) (taskTree, error) {
 	// THE LEGACY LAYOUT HANGS OFF THE REPOSITORY, not off the workspace: a
 	// conversation standing in a subdirectory of a project still puts its
 	// worktrees in one place, which is what keeps a sweep able to find them.
 	dir, mode := taskOwnFolder(place, root, session, id)
-	return cutWorktreeAt(place, root, dir, "task/"+slugify(title)+"-"+shortID(), mode)
+	// AND THE LADDER CHOOSES HOW THE WORLD IS MADE (groundladder.go). Every road
+	// that grounds a node in a repository arrives here, so this one call is what
+	// makes the ground law true for all of them rather than for the one road
+	// somebody remembered to change.
+	return carveGround(ctx, groundOrder{
+		place:   place,
+		ground:  root,
+		root:    root,
+		dir:     dir,
+		mode:    mode,
+		branch:  "task/" + slugify(title) + "-" + shortID(),
+		title:   title,
+		promise: TaskModeWorktree,
+	})
 }
 
 // cutWorktreeAt is the git of it, with the two names handed in: a directory to
@@ -5368,6 +5482,16 @@ func cutTaskWorktree(place Place, root, session string, id uint64, title string)
 // would be clearing out a live working copy. Everything else about a worktree
 // is identical for both, so everything else is here.
 func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (taskTree, error) {
+	return cutWorktreeFrom(place, root, dir, branch, mode, "HEAD")
+}
+
+// cutWorktreeFrom is [cutWorktreeAt] with the START POINT handed in, which is
+// the whole of what the ground law changed about cutting a worktree: a task's
+// branch is carved from a commit that HOLDS THE PARENT'S WORLD (groundladder.go's
+// [sealGroundWork]) rather than from HEAD, which holds only what somebody last
+// committed. The conversation's own working copy on a referred folder still
+// asks for HEAD and gets exactly what it always got.
+func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, from string) (taskTree, error) {
 	defer lockGitRoot(place, root)()
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err
@@ -5390,7 +5514,7 @@ func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (tas
 		_, _ = git(root, "worktree", "prune")
 		_ = os.RemoveAll(dir)
 	}
-	if out, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
+	if out, err := git(root, "worktree", "add", "-b", branch, dir, from); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
 	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: root, mode: TaskModeWorktree}, nil
@@ -5415,28 +5539,40 @@ func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (tas
 // that admits a node does not resolve one — a subharness run, a design, a graph
 // scripted by a test — and the tree they get is the tree they always got, with
 // its ground filled in from the repository it was actually cut from.
-func prepareTaskTreeOn(place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
+func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session string, id uint64, title string, stand taskStand) (taskTree, error) {
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
 	if ground == "" {
-		return prepareTaskTreeAt(place, workspace, session, id, title, "")
+		return prepareTaskTreeAt(ctx, place, workspace, session, id, title, "")
 	}
 	switch stand.mode {
 	case TaskModeInPlace, TaskModeFolder:
 		if err := os.MkdirAll(ground, 0o755); err != nil {
 			return taskTree{}, fmt.Errorf("task workspace: %w", err)
 		}
-		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
-	case TaskModeReference, TaskModeMirror:
+		// A task standing IN its ground inherits the world by standing in it,
+		// which is the ground law's easiest case and the one rung nobody has to
+		// climb (groundladder.go's [GroundRungHere]).
+		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: stand.mode, rung: GroundRungHere}, nil
+	case TaskModeReference:
 		dir, mode := taskOwnFolder(place, workspace, session, id)
 		if err := os.MkdirAll(dir, mode); err != nil {
 			return taskTree{}, fmt.Errorf("task workspace: %w", err)
 		}
-		if stand.mode == TaskModeMirror {
-			if problem := mirrorGround(ground, dir); problem != "" {
-				return taskTree{}, errors.New(problem)
-			}
-		}
+		// A REFERENCE IS THE ONE MODE THE LADDER DOES NOT CLIMB, and that is the
+		// promise rather than an omission: the node was given a folder of its
+		// own precisely so that it does NOT hold the ground, which it may only
+		// read. Copying the world in would be the opposite of what was asked.
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
+	case TaskModeMirror:
+		dir, mode := taskOwnFolder(place, workspace, session, id)
+		return carveGround(ctx, groundOrder{
+			place:   place,
+			ground:  ground,
+			dir:     dir,
+			mode:    mode,
+			title:   title,
+			promise: TaskModeMirror,
+		})
 	}
 	root, ok := repositoryRoot(ground)
 	if !ok || !hasCommit(root) {
@@ -5444,9 +5580,9 @@ func prepareTaskTreeOn(place Place, workspace, session string, id uint64, title 
 		// proposal and this moment, or never had one. The honest answer is the one
 		// the old road gives: work in it and say so, rather than claim a branch
 		// that was never cut.
-		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: TaskModeInPlace}, nil
+		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: TaskModeInPlace, rung: GroundRungHere}, nil
 	}
-	return cutTaskWorktree(place, root, session, id, title)
+	return cutTaskWorktree(ctx, place, root, session, id, title)
 }
 
 // mirrorGround copies a plain folder into the node's own directory so that work
@@ -5627,6 +5763,13 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 		return mergeInPlace, ""
 	}
 	_ = commitTaskWork(t.dir, title, wrote)
+	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
+	// off the ground ladder's machine commit holds the parent's uncommitted
+	// world underneath the node's own commits, and merging that would hand
+	// somebody a merge of their own unfinished edits — which git refuses
+	// outright (groundladder.go's [taskTree.replayOwnWork]). It is nothing at all
+	// for a tree whose parent had nothing uncommitted, which is most of them.
+	t.replayOwnWork()
 	// Read AFTER the commit and BEFORE the worktree is removed: what is still
 	// sitting there once the node's own work is committed is by definition what
 	// the node did not write, and this is the only moment it can be named.
@@ -5668,6 +5811,8 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	// remove empties trees/ when the last node comes home, which costs nothing
 	// and leaves the folder listing honest.
 	_ = os.Remove(filepath.Dir(t.dir))
+	// The work is in, so the universe that carried it is furrow's to forget.
+	t.dropUniverse()
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
@@ -6037,11 +6182,22 @@ func repositoryRoot(dir string) (string, bool) {
 // immediately or is a broken repository, and a node's own deadline already
 // bounds the run it belongs to.
 func git(dir string, args ...string) (string, error) {
+	return gitWith(dir, nil, args...)
+}
+
+// gitWith is [git] with something extra in its environment, and it exists for
+// exactly one caller: the ground ladder stages a parent's tree into AN INDEX OF
+// ITS OWN so that handing out a child never moves the parent's index
+// ([sealGroundWork]). GIT_INDEX_FILE is the only way to say that to git, and a
+// second copy of the pager and editor settings beside it would be the drift the
+// one-source-of-truth law forbids.
+func gitWith(dir string, environment []string, args ...string) (string, error) {
 	command := exec.Command("git", args...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.
 	command.Env = append(os.Environ(), "GIT_PAGER=cat", "GIT_EDITOR=true", "GIT_TERMINAL_PROMPT=0")
+	command.Env = append(command.Env, environment...)
 	out, err := command.CombinedOutput()
 	return string(out), err
 }
