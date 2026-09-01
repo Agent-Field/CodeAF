@@ -479,9 +479,15 @@ type SubjectSpend struct {
 	// the name off the task index, the standing store or the session it is
 	// already holding.
 	ID string
-	// Session is the conversation a task's work was journaled under, so a page
-	// with an ID and a Session can find the task index row that names it. It is
-	// the same value as ID on a conversation row.
+	// Session is the journal the calls were made under — which for a piece of
+	// work is THE NODE'S OWN transcript and not the conversation that asked for
+	// it, exactly as [UsageLine.Session] is. It is the same value as ID on a
+	// conversation row.
+	//
+	// It said "the conversation a task's work was journaled under" until issue
+	// #168, which was never true of a node and misled nobody only because
+	// nothing joins on it: a page holding an ID finds the task index row by that
+	// ID alone. The conversation a piece of work belongs to is [UsageLine.Root].
 	Session string
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
@@ -590,9 +596,12 @@ type TreeSpend struct {
 	// the auxiliary calls made on its behalf.
 	ConversationUSD float64
 	// TasksUSD is every call made inside work this conversation started, at any
-	// depth, including the checks and the repair rounds. It is what the
-	// conversation's own books will eventually hold as each node closes, and it
-	// is here now.
+	// depth, including the checks and the repair rounds — and the hands a turn
+	// forked, which are the conversation's own answer being worked on in parallel
+	// rather than a task, and are counted here because they are money the
+	// conversation's books do not hold until they come home. It is what those
+	// books will eventually hold as each piece of work closes, and it is here
+	// now.
 	TasksUSD float64
 	// Calls is the whole tree's requests, on [TreeSpend.TotalUSD]'s terms: the
 	// denominator the total is the sum over.
