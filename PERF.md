@@ -1100,8 +1100,33 @@ to be handed zero outright, and so folded against the 128,000-token default
 whatever its own model claimed. It is handed that model's card figure now
 (`Agent.childWindow`, and `Config.ContextWindowFor` inherited by every child).
 
-Pinned by `internal/session/window_policy_test.go` and
-`internal/session/window_guard_test.go`.
+**And a person's own line outranks the derivation.** The fill percentage
+(`ctxbudget.DefaultFillPercent`, **60**) reaches the process from three places
+that are one setting — the `context fill` row, `AFORGE_CONTEXT_FILL_PCT`, and
+`--context-fill N`, which sets that variable for one run. It governs the
+conversation's fold line **only when somebody set it**: `ctxbudget.Limits`
+carries zero for a row nobody has written down, `ctxbudget.PinnedFillPercent`
+reports that as unpinned, and `compactThresholdOf` then draws the derived line
+above. Honouring an untouched sixty would have folded every conversation at
+sixty percent of its window — on the 1,310,720-token card, 786,432 instead of
+1,114,112, which is the regression the derivation exists to prevent.
+
+Pinned, the line is `fill × window` held between two bounds and nothing else is
+free to move:
+
+| bound | value | why |
+| --- | --- | --- |
+| the fill itself | **10–90** (`ctxbudget.clampFill`) | a typo may neither starve nor overrun a window |
+| ceiling | `max(window − ctxbudget.CompletionReserve(), derivedThreshold(window))` | the room every call keeps for its answer (**65,536**, `--completion-reserve`) is still kept — and on a window under ~437,000 tokens that reserve is larger than the derived one, so the derived line is the ceiling instead. Without the second half, a pin of ninety on a 128,000-token window would land BELOW what an unpinned session gets. |
+| floor | `2 × keepRecent(window)` | the verbatim tail is never folded, so a line at or under it fires every step and finds nothing to take. Twice it leaves a pass something to fold and somewhere to fold to. |
+
+The chain `threshold > compactTarget > keepRecent` holds under both laws, because
+`compactTarget` derives from whichever threshold governs rather than from the
+derivation alone.
+
+Pinned by `internal/session/window_policy_test.go`,
+`internal/session/window_guard_test.go` and
+`internal/session/context_fill_test.go`.
 
 ## The allocation laws
 
