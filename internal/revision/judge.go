@@ -2103,20 +2103,31 @@ func outOfWall(ctx context.Context, node store.Node) string {
 	return "there is not enough time left on the run to finish it"
 }
 
-// remainderPrompt asks the one question the overrun path used to assume
-// an answer to. Running out of budget while landing a finished result is
-// common — the executor grants a landing reserve for exactly that — so
-// exhaustion is treated as a fact about resources, never as evidence of
-// unfinished work. The judgment is against the leaf's own brief, not the
-// job's intent: a mid-graph leaf that inventoried a folder is done when the
-// inventory is done, even though the job it serves is not.
-const remainderPrompt = `A worker ran out of resources while working on one assignment and stopped. You decide whether anything is actually left to do.
+// remainderPrompt SIZES the remainder. It does not settle the node, and the
+// prompt no longer talks as though it might.
+//
+// It used to be shown the brief and the worker's last paragraph and nothing
+// else, and it was told in as many words that "exhaustion is not evidence of
+// incompleteness" — so a leaf cut off mid-edit with a red build was judged done
+// on its own closing sentence, "All 722 tests pass. Let me verify the dry-run
+// tests specifically:". It is now shown what it is judging: that the worker was
+// cut off, how far it got, the turns it took, the change it actually made, and
+// what the project's own checks said. Exhaustion is still not proof of an
+// unfinished result — a leaf often lands inside its reserve — but it is a fact
+// about the run, and a judge that is not told it is guessing.
+//
+// The judgment is against the leaf's own brief, not the job's intent: a
+// mid-graph leaf that inventoried a folder is done when the inventory is done,
+// even though the job it serves is not.
+const remainderPrompt = `A worker was stopped mid-assignment because it ran out of the room it was given. You size what is left, so the next worker can be aimed at it.
 
-You receive the assignment and what the worker had produced when it stopped. Judge exactly one question: does the produced result already fulfill the assignment? Running out of budget while landing a finished result is common — exhaustion is not evidence of incompleteness. Judge only the substance against the assignment.
+You receive the assignment, what the worker had produced when it stopped, how it was stopped, the change it actually made, and what the project's own checks said. Judge one question: what, if anything, of the ASSIGNMENT is not yet in the produced result?
+
+The worker's own account of itself is not evidence. "All tests pass" is a sentence, written by the worker that was cut off, about checks it wrote itself; the reading of the project's checks and the change itself are the evidence. Where the two disagree, the reading wins.
 
 Return exactly one JSON object, nothing else:
-{"done": true} when the assignment is fulfilled and a consumer could use this result as-is.
-{"done": false, "remaining": "<the unfinished work>"} only when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Work the assignment never asked for is never remaining work: do not prescribe verification, re-verification, or review of what already exists.`
+{"done": true} when every element of the assignment is present in the result and the evidence agrees.
+{"done": false, "remaining": "<the unfinished work>"} when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Do not invent work the assignment never asked for.`
 
 var remainderSchema = json.RawMessage(`{
   "type": "object",
@@ -2134,6 +2145,19 @@ type Remainder struct {
 	Checked   bool
 }
 
+// RemainderVerify is what a continuation is aimed at when the judge found
+// nothing left to write.
+//
+// A CUT LEAF STILL GETS THE TURN ITS EXHAUSTION BOUGHT AWAY. The turn a leaf is
+// stopped on is the one where it would have run what it wrote and read the
+// result, and that is exactly where a run's fatal defect surfaces: the leaf that
+// prompted this was cut off one turn before running the binary, over a blocker
+// that was discarded at construction. So a "done" on a cut leaf buys one cheap
+// leaf that checks, rather than a tick. Where the judge was right it costs a
+// verification; where it was wrong it is the missing turn.
+const RemainderVerify = "The previous worker was stopped before it could check its own work. " +
+	"Run what it wrote, read the result, and fix only what that reveals. Do not start anything new."
+
 // judgeRemainder decides whether an exhausted leaf actually left work behind.
 // Failures fail toward "not done" with Checked false: the continuation still
 // runs, now bounded by the overrun governors, rather than a judge outage
@@ -2142,8 +2166,11 @@ type Remainder struct {
 // window-derived bound for one to move. What it does share with the other two is
 // the completion cap and the empty-reply retry, both of which are facts about
 // the reply rather than about the window.
-func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, produced, workerModel string) Remainder {
-	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
+func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store,
+	node store.Node, produced string, evidence Evidence, workerModel string,
+) Remainder {
+	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced +
+		remainderSubject(graph, node, evidence)
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	// "gate", not the routing class's own "audit": the class pools this call
@@ -2187,6 +2214,44 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true}
+}
+
+// remainderSubject is what the remainder judgement is SHOWN besides the brief
+// and the words the worker left behind.
+//
+// Four facts, and none of them is the worker's account of itself: that it was
+// cut off and by what, the turns it actually took, the change it made, and what
+// the project's own checks said. Every one of them was already in the record and
+// none of them reached this call — which is how a leaf stopped mid-edit with
+// `undefined: logf` in its build was judged done on the sentence "All 722 tests
+// pass. Let me verify the dry-run tests specifically:".
+//
+// A fact that cannot be read renders NOTHING rather than an empty heading: a
+// judge told "the change:" followed by nothing reads it as a run that changed
+// nothing, which is the direction that acquits.
+func remainderSubject(graph *store.Store, node store.Node, evidence Evidence) string {
+	var body strings.Builder
+	if graph != nil {
+		if record, ok, err := graph.LeafExhaustedFor(node.ID); err == nil && ok {
+			body.WriteString("\nHOW IT STOPPED. It did not choose to stop: " +
+				strings.TrimSpace(record.Reason) + ".\n")
+			if record.Turns > 0 {
+				fmt.Fprintf(&body, "It had taken %d turns when it was stopped.\n", record.Turns)
+			}
+		}
+		// The run's own turns, oldest first, which is the only account of what
+		// the attempt did that the attempt did not write about itself.
+		if banked, turns := resident.BankedRun(graph, node.ID); turns > 0 && strings.TrimSpace(banked) != "" {
+			body.WriteString("\n" + banked + "\n")
+		}
+	}
+	if patch := evidence.patchBlock(ctxbudget.Budget{}); patch != "" {
+		body.WriteString("\n" + patch)
+	}
+	if reading := evidence.readingBlock(); reading != "" {
+		body.WriteString("\n" + reading)
+	}
+	return body.String()
 }
 
 // deliveryPartialBytes is what the partial handed to a judgement is bounded to

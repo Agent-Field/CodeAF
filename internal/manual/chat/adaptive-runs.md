@@ -573,6 +573,47 @@ The wording you see on the work's own record when nothing in the review can buy 
 `everything still missing here has already had two rounds of work aimed straight at it, so
 this is handed over with it named rather than repaired`.
 
+## When a worker runs out of its tokens mid-work — ⏳ and what happens next
+
+A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
+the budget is spent and given a few final calls to make what it was changing consistent
+again, run the quickest check that would catch breakage, and fix only what that reveals.
+Then it stops. Watching a headless run, that reads:
+
+```
+  ⏳ runner.go edits          — it was still working when it ran out of its tokens — 9 turns in (cost: 199131 of 176834 tokens of billed work)
+```
+
+**A worker that ran out is never marked done.** It was still working, so what it left is
+where it got to, not a result — and the sentence it happened to stop on ("All 722 tests
+pass. Let me verify the dry-run tests specifically:") is not an account of anything. So a
+⏳ is always followed by the work carrying on, and you see the ↻ that says so:
+
+```
+  ↻ runner.go edits          — resumed from 9 recorded turns, already holding runner.go
+  ↻ runner.go edits          — picked up again from 9 recorded turns
+```
+
+The first is a continuation planned for what is left; the second is the same node claimed
+again, carrying on from the turns it had already banked. **A ⏳ followed by a ✓ with
+neither of those between them is a bug**, and it was one: a cut worker was ticked two
+seconds after its own ⏳ line, its siblings were briefed on truncated work, and the turn
+its exhaustion had bought away — actually running what it had written — was where the run's
+real defect was waiting.
+
+**What is left is sized, not assumed.** One cheap reading asks what of the assignment is
+not yet in the result, and it is shown the change itself and what the project's own checks
+said, never only the worker's own words. Where it finds a named gap, that gap is what the
+continuation is aimed at. Where it finds nothing left, the continuation is the one turn the
+exhaustion took away: *run what it wrote, read the result, and fix only what that reveals*.
+
+**The figures are what the worker actually reached**, read when it stopped rather than when
+its landing calls were granted — so `cost: 199131 of 176834` counts the landing too.
+
+**It is bounded.** Continuations are capped like every other kind of growth, and a node
+that ran out on every attempt it was given is handed over saying so — `it ran out of room on
+every attempt and was never able to finish` — rather than passed round for ever or ticked.
+
 ## When the wall gets close — the work is checked before the clock stops
 
 A job that has not finished when its wall arrives is a job nothing ever judged: the review
