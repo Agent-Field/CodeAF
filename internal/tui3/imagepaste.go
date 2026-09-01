@@ -169,6 +169,49 @@ func (a *app) pasteFiles(text string) bool {
 	return a.pasteFilesInto(&a.input, &a.chips, text)
 }
 
+// keyboardBox is the box a character typed right now would land in, with the
+// tray that box's next message carries.
+//
+// IT IS ONE ANSWER BECAUSE THERE IS ONE KEYBOARD. Three boxes on this surface
+// can start a message and every door that acts on "the box in front of the
+// person" has to agree about which one that is — the paste below, and the
+// keystroke fold's check that the run it is holding is still somewhere anybody
+// can see it (dropkeys.go's [app.spendDrop]). Two spellings of this routing is
+// two answers, and the day they disagree is the day a dropped picture becomes a
+// token in a line that is off the screen.
+func (a *app) keyboardBox() (*editor, *[]chip) {
+	if a.at(pageHome) {
+		if ex := a.paneExchange(); ex != nil && ex.focused {
+			// THE ERRAND'S TRAY IS ITS OWN, because an errand is its own
+			// conversation with its own next message (homeexchange.go).
+			return &ex.box, &ex.chips
+		}
+		// HOME'S TRAY IS THE CONVERSATION'S TRAY, because what home's box starts
+		// IS a conversation: [app.renew] hands the chips to the one it opens, on
+		// the law that the draft goes with the person (detach.go).
+		return &a.home.box, &a.chips
+	}
+	return &a.input, &a.chips
+}
+
+// dropLanded is what the surface owes after files went through the door into
+// one box, whichever road brought them — a bracketed paste, or the keystroke
+// fold settling (dropkeys.go).
+//
+// ONLY HOME OWES ANYTHING BEYOND THE TOUCH THE DOOR ALREADY MADE, and it owes it
+// because its box is a live query over every project on the machine as well as
+// the first line of a conversation: the action row counts a held file as
+// something typed ([homeView.searching]) and the list under it is drawn from the
+// words with the tokens taken out. Neither is right again until the view is
+// rebuilt.
+func (a *app) dropLanded(box *editor) {
+	if box != &a.home.box {
+		return
+	}
+	a.home.carrying = len(a.chips) > 0
+	a.home.build()
+}
+
 // notOnThisMachine is what a drop that named nothing here says. ONE SENTENCE
 // FOR ANY NUMBER OF FILES: a person who dragged four screenshots off a Mac onto
 // a session running on a Linux box has one thing wrong, not four.

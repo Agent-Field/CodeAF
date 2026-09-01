@@ -6851,23 +6851,14 @@ func (a *app) paste(text string) tea.Cmd {
 	// [app.pasteFilesInto]); when it says the text was not files, the text goes
 	// in exactly as it always did.
 	if a.at(pageHome) {
-		if ex := a.paneExchange(); ex != nil && ex.focused {
-			// THE ERRAND'S TRAY IS ITS OWN, because an errand is its own
-			// conversation with its own next message (homeexchange.go).
-			if !a.pasteFilesInto(&ex.box, &ex.chips, text) {
-				ex.box.insert(text)
-			}
-			a.touch()
-			return nil
+		// WHICH OF THE TWO BOXES THAT IS, IS ASKED ONCE AND IN ONE PLACE
+		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
+		// ask the same question of the same keyboard and get the same answer.
+		box, chips := a.keyboardBox()
+		if !a.pasteFilesInto(box, chips, text) {
+			box.insert(text)
 		}
-		// HOME'S TRAY IS THE CONVERSATION'S TRAY, because what home's box starts
-		// IS a conversation: [app.renew] hands the chips to the one it opens, on
-		// the law that the draft goes with the person (detach.go).
-		if !a.pasteFilesInto(&a.home.box, &a.chips, text) {
-			a.home.box.insert(text)
-		}
-		a.home.carrying = len(a.chips) > 0
-		a.home.build()
+		a.dropLanded(box)
 		a.touch()
 		return nil
 	}
