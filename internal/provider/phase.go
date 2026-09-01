@@ -479,7 +479,7 @@ func (p *phaseClock) switching(alt, stalled string) {
 //
 // IT IS RAISED ONCE PER REQUEST and the caller is what holds that; a second
 // offer for one answer would be nagging.
-func (p *phaseClock) asking(lane, alt, ask string) {
+func (p *phaseClock) asking(lane, ask string) {
 	if p == nil || ask == "" {
 		return
 	}
@@ -487,9 +487,21 @@ func (p *phaseClock) asking(lane, alt, ask string) {
 	defer p.mu.Unlock()
 	now := p.now()
 	p.phase, p.since, p.tokens = PhaseAsking, now, 0
-	p.deadline, p.then, p.ask = time.Time{}, alt, ask
+	p.deadline, p.then, p.ask = time.Time{}, autoRouting, ask
 	p.say(lane+" is slow", now)
 }
+
+// autoRouting is what a `y` switches TO, in the word this build already uses for
+// it: `auto` is routing left alone, which is what the picker's own row and the
+// manual page both call it.
+//
+// IT IS NOT THE LANE THE RESCUE GOES TO, and the difference is what the person
+// is being asked. They are not choosing a machine — the frontier chose one
+// before the question was raised, because the moment a rescue is wanted is the
+// worst possible moment to start choosing — they are being asked whether to let
+// go of the pin for this one answer. `switch to parasail?` would be offering
+// them a decision they are not making, on evidence they do not have.
+const autoRouting = "auto"
 
 // withdrew takes the offer back down: the pin came good, or it was answered, or
 // the request ended. It is a POST and never an absence, for the reason

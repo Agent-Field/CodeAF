@@ -557,7 +557,7 @@ func (r *hedgeRace) ask(from int, act control.Act) {
 			report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
 		}
 	})
-	r.phase.asking(pinned, strings.ToLower(alt), token)
+	r.phase.asking(pinned, token)
 }
 
 // withdraw takes the offer down. The pin came good — or the request ended — and

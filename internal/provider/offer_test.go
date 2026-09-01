@@ -87,10 +87,13 @@ func TestAPinnedLaneRaisesAnOfferAndYesFiresTheRescueAtOnce(t *testing.T) {
 	}()
 
 	ask := waitForOffer(t, told)
-	// WHAT THE PERSON READS IS ONE SENTENCE ABOUT ONE MACHINE.
+	// WHAT THE PERSON READS IS ONE SENTENCE ABOUT ONE MACHINE, and what it
+	// offers is routing left alone rather than a machine of their choosing. The
+	// frontier picked where a yes goes before the question was raised; naming it
+	// here would be offering somebody a decision they are not making.
 	asking, _ := told.find(PhaseAsking)
-	if !strings.Contains(asking.Detail, "A") || !strings.EqualFold(asking.Then, "B") {
-		t.Fatalf("the offer read %q · switch to %q; want the pinned machine and the lane a yes would go to",
+	if !strings.Contains(asking.Detail, "A") || asking.Then != "auto" {
+		t.Fatalf("the offer read %q · switch to %q; want the pinned machine and `auto`",
 			asking.Detail, asking.Then)
 	}
 	// AND NOTHING WENT OUT WHILE IT WAS OPEN. A pin is asked, never overridden.
