@@ -4240,7 +4240,9 @@ func (a *app) settle() tea.Cmd {
 	if !wasFollowing && oldOffset >= 0 && oldOffset < len(oldRows) {
 		anchor = oldRows[oldOffset]
 	}
-	a.closeLive()
+	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
+	// into ([app.settleTurn]).
+	a.settleTurn()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()
@@ -4447,6 +4449,48 @@ func (a *app) closeLive() {
 		e.settled, e.stale = true, true
 	}
 	a.live = -1
+}
+
+// settleTurn is THE SETTLE A TURN BOUNDARY OWES: every assistant block of the
+// turn that just ended is a finished document, whichever ending got here first.
+//
+// IT IS A PROPERTY OF THE BOUNDARY AND NOT OF THE EVENT THAT REACHED IT. A turn
+// ends TWICE on this surface — the session's own EventTurnDone, and then the
+// stream closing behind it ([app.sampleContext] states the law and counts by it)
+// — and both endings come through [app.settle], so the settle has to be
+// idempotent and has to cover the turn rather than the last thing touched. A
+// second pass finds every block already settled and writes nothing, which is
+// what makes taking both endings free.
+//
+// [app.closeLive] settles the block the stream was GROWING, and that is enough
+// only while "an assistant block stops being live exactly when something settles
+// it" holds — an invariant kept by a dozen scattered call sites (a tool row
+// opening, a note, a person's line) and stated nowhere. It is stated here. A
+// block that misses its settle draws its markdown raw for the rest of the
+// session ([app.assistantRows] renders through [app.settledMarkdown] on
+// [entry.settled] alone, and the promotion that moves [entry.mdCut] stops with
+// the stream), so the cost of the invariant being wrong once is permanent and
+// the cost of stating it is one walk per turn.
+//
+// IT WALKS THE ENDING TURN'S OWN BLOCKS AND NOTHING MORE. Entries are appended
+// in order and a turn number never goes backwards, so that turn is the tail of
+// the list: the walk runs from the end and stops at the first entry belonging to
+// an older one. Once per turn, never on a frame (PERF.md).
+func (a *app) settleTurn() {
+	a.closeLive()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.turn != a.turn {
+			return
+		}
+		if e.kind != entryAssistant || e.settled {
+			continue
+		}
+		// THE STALE FLAG IS THE WHOLE OF THE SETTLE, in [app.closeLive]'s words:
+		// the rows a block was drawn with mid-stream are handed back by
+		// [app.entryRows] until something says they are wrong.
+		e.settled, e.stale = true, true
+	}
 }
 
 // dropLive throws away the assistant block the CURRENT attempt was streaming
