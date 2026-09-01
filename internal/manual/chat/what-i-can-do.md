@@ -741,8 +741,8 @@ Yes, and **no key or configuration is required** for it to work.
 `web_search` takes a `query` (required) and a `count` — **5 by default, 8 at
 most**, silently clamped rather than refused. Results come back as
 `1. Title — URL` with the publication date and a snippet of up to 300
-characters under each, and a footer like `5 of 12 results`. Nothing found reads
-`no results`. A failed search names the back end it used:
+characters under each, and a footer like `5 of 12 results · firecrawl`. Nothing found reads
+`no results · firecrawl`. A failed search names the back end it used:
 `Search failed (firecrawl): <err>`.
 
 `web_fetch` takes one absolute `url` with a scheme and returns the page's text
@@ -761,6 +761,38 @@ answers or raise its ceiling, never *whether* the web is reachable.
 This matters more generally: aforge leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a
 capability is missing, it is missing — you will not get a tool that pretends.
+
+## Which search engine answered?
+
+The last line of every successful `web_search` names it. A complete answer reads
+`5 results · firecrawl`, a shortened answer reads `3 of 8 results · exa`, and an
+empty one reads `no results · firecrawl`. The finished tool line carries that
+same footer, so the compact receipt and the result sent to the model cannot
+disagree.
+
+`/status` has a `search` line for the next call, such as `firecrawl · keyless`,
+`firecrawl · with your key`, or `exa · with your key`. If an explicit keyed pin
+has no key, it says `exa · key not set — searches fail`. A session with no
+`web_search` tool has no `search` line either; an empty status row would claim a
+capability that is not there.
+
+## I set a search key and nothing changed
+
+Search settings are live: a provider or key written in `/settings` applies to
+the **next search in this conversation**. You do not need `/new`, a restart, or
+a new session. Work handed out from this conversation follows the same live
+settings rather than keeping a launch-time copy.
+
+With `search.provider` on `auto`, an Exa key raises the next search to `exa`; a
+Firecrawl key keeps the provider named `firecrawl` and raises that provider's
+ceiling, so the visible change is `firecrawl · with your key`. The selected
+**searching** row in `/settings` → Context states the current answer. With no
+keys it says `now firecrawl, keyless — set search.exaKey or
+search.firecrawlKey to raise it`.
+
+An explicit pin still wins. Pinning Exa without `search.exaKey` makes every call
+answer `Search failed (exa): no API key`; the searching row says that before a
+call is spent. Choose `auto` to return to the ladder, or set the named key.
 
 ## Can you remember what we worked out earlier in this conversation — do you remember me between conversations?
 
