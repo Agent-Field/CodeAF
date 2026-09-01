@@ -1843,16 +1843,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
+						// A GOVERNOR REFUSING A ROUND NEVER TOUCHES Overturned.
+						// The extension can only report what it bought, and a
+						// round nobody bought says nothing about whether the
+						// finding was right — so the gap stays Unclosed and the
+						// run ends short, which is what the person can act on.
+						// The only refusals that acquit are the two doors above
+						// (`closed`), which read the disk and the delivered
+						// text. See revision.coverageRefused.
 						evidence.Unclosed = extension.Unclosed
-						// AND A FINDING THE JOB'S OWN COVERAGE READING CONTRADICTED
-						// IS A FINDING THAT LOST. The gate said the delivery was
-						// short; the reading of what this job is judged on, taken
-						// over everything that landed, said nothing is left
-						// uncovered. Two readings of one world, and the broader
-						// measurement settles it — so the verdict is taken again
-						// from the settled fields (store.DeliveryGate.Whole) rather
-						// than handed over as a partial nobody can act on.
-						evidence.Overturned = extension.Overturned
 						if extension.Spliced > 0 {
 							extended = true
 							// The receipt on the summary is what tells every reader

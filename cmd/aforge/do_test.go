@@ -1205,6 +1205,14 @@ type scriptedBrain struct {
 	// than any single bound on the path can be followed from the worker's
 	// mouth to the person's screen.
 	longAnswer string
+	// acceptancePoints, when set, is what the acceptance pass reads out of the
+	// request: the JSON body of one {"points": [...]} answer. It is how a
+	// checklist reaches the gate in a scripted run — nothing else derives one.
+	acceptancePoints string
+	// jobCovered answers the growth governor's satisfaction question with
+	// "nothing is left", which is the reading that refused a repair round over
+	// a finding the world had raised.
+	jobCovered bool
 	// revisionCloses runs the ordinary repair to its ordinary end: the gate
 	// fails the first draft on the person's own words, the one revision it buys
 	// comes back with the answer, and the second reading passes. It is the
@@ -1321,6 +1329,20 @@ func (s *scriptedBrain) reply(body string) string {
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
 			`"title":"Release note and migration",` +
 			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
+
+	case strings.Contains(body, "You read one request and list the behaviours it states"):
+		s.tally("acceptance")
+		if s.acceptancePoints == "" {
+			return s.say(`{"points":[]}`)
+		}
+		return s.say(s.acceptancePoints)
+
+	case strings.Contains(body, "You decide whether a job still needs work added to it"):
+		s.tally("satisfied")
+		if s.jobCovered {
+			return s.say(`{"complete":true,"uncovered":[]}`)
+		}
+		return s.say(`{"complete":false,"uncovered":[]}`)
 
 	case strings.Contains(body, "You write the working method for one agent"):
 		s.tally("contract")
