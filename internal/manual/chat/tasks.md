@@ -3049,6 +3049,17 @@ its row reads `finished — look it over`.
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
+**A nested task asks the same way — a sub-task needs my look, a piece of a bigger task
+nobody checked.** Depth changes nothing about whether you are asked: the card, the roster
+row and the sub-task's own room all offer the four answers from the moment it lands. What
+depth changes is how LOUD it is. While the task above it is still running, the sub-task
+**folds** under its family head, because that task's own agent is the one being asked and
+has the diff to read; when the head settles, one line says the question changed hands
+(`task 4 has finished, and the piece of work it handed out that nobody could check — task
+6, Port the parser — is now waiting on you rather than on it.`). It is never filed under
+`done`. A sub-task like that used to draw no answers row anywhere at all, so a nested
+question could sit through a whole run with nobody able to see it.
+
 **It also stands on home**, in the `needs you` strip, named after the task and saying
 `landed` and how long it has been waiting — from any project, in any conversation, whether
 or not that conversation is open. Pressing that row opens the conversation that ran the

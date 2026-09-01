@@ -357,12 +357,17 @@ func child(id, parent uint64, state session.TaskState) session.Event {
 	return update(id, "Port the parser", state, session.TaskNotice{Parent: parent, Elapsed: time.Second})
 }
 
-// ATTENTION SURFACES AT THE ROOT ONLY.
+// A PARENT'S RUNNING IS A FOLD, NOT A MUTE (session's pending.go, issue #268).
 //
-// A sub-task's landing note goes to its parent's own agent, which has the tool
-// and the diff and is already the decider. So while the parent is working, the
-// column must not put "needs you" over the family — and the moment the parent
-// lands, the same child is the person's.
+// While the parent works, its own agent is the one being asked about the child —
+// so the child's demand FOLDS: the family head is the loud row. What it may
+// never do is disappear. Before this the child was filed under `done` while its
+// parent ran, so the footer counted a node nobody had decided as finished, and
+// the card that carries the answers row was never written at all — a nested
+// gate could expire without anybody ever being able to see it.
+//
+// The "and then for you" half used to assert nothing, which is how the hole
+// stayed open. It asserts the card now, on all three surfaces.
 func TestAChildThatNeedsALookWaitsForItsParentAndThenForYou(t *testing.T) {
 	a, _ := settleApp(t)
 	drive(t, a,
@@ -370,11 +375,20 @@ func TestAChildThatNeedsALookWaitsForItsParentAndThenForYou(t *testing.T) {
 		streamEventMsg{gen: a.gen, ev: child(2, 1, session.TaskUnverified)},
 	)
 	kid := a.tasks[2]
-	if group := a.railGroupOf(kid); group == railAttention {
-		t.Fatalf("a child under a working parent is filed under %q", railGroupWords[group])
+	// NEVER DONE. A node nobody has decided about is not finished, whoever is
+	// being asked about it.
+	if group := a.railGroupOf(kid); group == railDone {
+		t.Fatalf("a child nobody has decided about is filed under %q", railGroupWords[group])
 	}
+	// THE FOLD IS THE LOUDNESS AND NOT THE PRESENCE.
 	if rank := a.railGlyphRank(kid); rank == 0 {
 		t.Fatal("a folded family wore a demand its own head is already holding")
+	}
+	// AND THE CARD EXISTS ALREADY, which is the whole defect: the answers row
+	// lives on the card and nowhere else, so a decision with no card is a gate
+	// nobody can answer.
+	if card := a.doneCardFor(2); card == nil || !card.unverified {
+		t.Fatalf("a nested landing that needs a look wrote no card: %+v", card)
 	}
 
 	// The parent lands. Nobody is reading that child's news any more, so it is
@@ -387,6 +401,55 @@ func TestAChildThatNeedsALookWaitsForItsParentAndThenForYou(t *testing.T) {
 	}
 	if rank := a.railGlyphRank(kid); rank != 0 {
 		t.Fatalf("the orphaned child ranks %d, want the loudest", rank)
+	}
+
+	// AND THEN FOR YOU, IN AS MANY WORDS. The conversation draws the answers row
+	// for the nested node exactly as it does for a root.
+	text := taskText(a)
+	for _, want := range []string{settleAskWord, settleTakeKey + settleTakeWord} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the nested card is missing %q:\n%s", want, text)
+		}
+	}
+	// THE ROSTER'S ROW ASKS IT TOO, with the cursor on the child.
+	drive(t, a, ctrlT())
+	for range 4 {
+		if a.railWhere.id == 2 {
+			break
+		}
+		drive(t, a, key("down"))
+	}
+	if a.railWhere.id != 2 {
+		t.Fatalf("the roster cursor stands on %+v, want the child that needs a look", a.railWhere)
+	}
+	if card := a.railSettleCard(); card == nil || card.id != 2 {
+		t.Fatalf("the roster row for a nested decision offers nothing: %+v", card)
+	}
+	drive(t, a, key("esc"))
+	// The third surface — the node's own room — is asserted in
+	// [TestTheRoomOfANestedDecisionAsks], which needs the room's doors under it.
+}
+
+// AND PRESSING `a` ON A NESTED DECISION RESOLVES THAT NODE. The engine's door
+// takes an id and knows nothing about depth; what was missing was any way to
+// reach it.
+func TestANestedDecisionCanBeAcceptedFromTheCard(t *testing.T) {
+	a, agent := settleApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Rebuild the index", session.TaskDone,
+			session.TaskNotice{Elapsed: time.Second, Merge: mergeWordMerged})},
+		streamEventMsg{gen: a.gen, ev: child(2, 1, session.TaskUnverified)},
+	)
+	if a.doneCardFor(2) == nil {
+		t.Fatal("no card for the nested decision")
+	}
+	a.sel = a.doneEntryFor(2)
+	_ = taskText(a)
+	drive(t, a, key("a"))
+
+	if len(agent.resolved) != 1 || agent.resolved[0].id != 2 ||
+		agent.resolved[0].answer != session.TaskAccept {
+		t.Fatalf("the accept reached the engine as %+v", agent.resolved)
 	}
 }
 
