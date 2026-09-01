@@ -26,7 +26,12 @@ package session
 //     conversation that spawned it (task_run.go's [Agent.foldTaskUsage]), which
 //     is right for a session's own books and would be double counting here. The
 //     fold has its own door ([Agent.addFoldedUsage]) that writes no ledger line,
-//     and this file's totals are therefore each call once.
+//     and this file's totals are therefore each call once. EVERY CHILD AGENT IS
+//     UNDER THIS RULE, not only a task node: a fork's hand (fork.go's
+//     [Agent.foldHandUsage]) and an adaptive run's worker (orchestrate.go's
+//     [orchestrateExec.spend]) each journal their own calls here and each fold
+//     home silently. Both folded through the auxiliary door until issue #168,
+//     and the day this file's rail reads was double on every one of them.
 //   - IT NEVER BLOCKS A TURN, AND THE TURN'S OWN GOROUTINE NEVER TOUCHES THE
 //     DISK. [RecordUsage] serializes the row and hands it to a bounded queue
 //     that one background writer per ledger drains ([usageWriter]); a full
@@ -152,8 +157,10 @@ type UsageLine struct {
 	// could not be asked of this file at all — it could only be waited for,
 	// until each node closed and its tally was folded into the conversation's
 	// own books ([Agent.foldTaskUsage]). It is written on every agent inside a
-	// family, at every depth and on the check and repair rounds as well, so a
-	// reader that sums it gets the whole subtree.
+	// family, at every depth and on the check and repair rounds as well — and on
+	// the hands a turn forked (fork.go), which keep no journal of their own and
+	// whose lines therefore named nothing joinable at all before it — so a reader
+	// that sums it gets the whole subtree.
 	//
 	// A FOLD STILL WRITES NO LINE, so a closed node's calls are counted here
 	// exactly once — under the node that made them — and never again under the

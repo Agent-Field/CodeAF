@@ -835,6 +835,16 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	// chain and the nearest-model rescue are facts about the CONNECTION, and
 	// there is one connection.
 	client := unwrapCompleter(a.client)
+	// AND THE CONVERSATION EVERY DOLLAR THIS HAND SPENDS BELONGS TO, resolved
+	// here because here is the only place that can — the same question a node's
+	// worker answers where it is built (task_run.go's [Agent.newTaskAgent]).
+	// Either this agent already carries a root, because it is itself work inside
+	// a family and the root travelled down when it was built, or it IS the root
+	// and its own journal names it.
+	root := strings.TrimSpace(parent.rootSession)
+	if root == "" {
+		root = a.sessionID()
+	}
 	a.mu.Unlock()
 
 	// THE HANDS ARE THE CALLER'S OWN, so they run on the caller's model. They are
@@ -903,6 +913,24 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// ([forkBelt]) — so this carries identity and no new power.
 		tasker: parent.tasker,
 		taskID: parent.taskID,
+		// AND WHOSE MONEY A HAND IS SPENDING, which is the pair a task node
+		// carries for the same two reasons (task_run.go's [Agent.newTaskAgent]).
+		//
+		// THE FAMILY SPENDS INTO ONE LEDGER, and it is the ledger the conversation
+		// was pointed at. Empty is the machine's own file, which is every door in
+		// the product; what this line settles is the case where it is not — a
+		// test, or a second brain on one laptop — where a hand wrote to the
+		// machine's ledger while its caller wrote somewhere else, and now that the
+		// fold writes no line at all ([Agent.foldHandUsage]) that money would be
+		// missing from the redirected file rather than merely misfiled.
+		usageLedger: parent.usageLedger,
+		// AND THE CONVERSATION THE WORK IS ROOTED IN, so a hand's own lines add
+		// up with the rest of the family's while the hand is still out. Without
+		// it a hand's spend named nothing anybody outside the fork could join on
+		// — a hand keeps no journal, so its line said `unfiled` — and the tree
+		// rollup a status line reads ([UsageTree]) could not see a running hand
+		// at all.
+		rootSession: root,
 		// And the budget, as a citizen of the same plane (hooks.go).
 		handLeash:      leash,
 		SupportsImages: parent.SupportsImages,
@@ -1001,6 +1029,14 @@ func forkBelt(belt []bare.Tool, dir string) []bare.Tool {
 // line is journaled with the role that made the call so a bad answer can be
 // traced to the model that gave it" (loop.go) — and until this there was no way
 // to read a turn's journal and say which of its tokens the hands spent.
+//
+// AND IT GOES THROUGH THE FOLD DOOR, WHICH WRITES NO LEDGER LINE. A hand
+// journals every call it makes into the machine's ledger as it makes it, exactly
+// as a task node does, so a fold that wrote a line of its own would put the same
+// money on that file twice — and the file's whole purpose is "what did this
+// machine spend", which the per-day rail reads. The fold is a settlement into
+// this session's own books and nothing more (usage_ledger.go's first rule; issue
+// #168 is the day total reading double).
 func (a *Agent) foldHandUsage(hand *Agent) {
 	used := hand.Usage()
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
@@ -1010,7 +1046,7 @@ func (a *Agent) foldHandUsage(hand *Agent) {
 	// The HAND's model and the hand's OWN call count: a hand that ran twelve
 	// rounds is twelve requests, and folding it in as one call on the
 	// conversation's model would put a number in the books that never happened.
-	a.addAuxiliaryUsageAs(&ai.Response{Usage: &ai.Usage{
+	a.addFoldedUsageAs(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
