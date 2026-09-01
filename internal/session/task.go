@@ -105,7 +105,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation. Use it when the work would flood the conversation or wants a clean context; not for a quick read, a question you can answer here, or work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
+var taskDescription = "Hand self-contained work to a task outside this conversation. Use it for work that would flood the conversation or wants a clean context, never for work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -252,8 +252,13 @@ type taskSpec struct {
 	// WHERE AND GROUND ARE TWO QUESTIONS. `where` is the directory the worker
 	// types in; this is the project that directory is a copy of. A task that
 	// names neither gets both resolved for it.
-	ground     string
-	mode       TaskMode
+	ground string
+	mode   TaskMode
+	// frozen is THE WORLD THIS PART IS TO START FROM, set only by the division
+	// that admits it (task_divide_wip.go): the commit its parent put the family
+	// tree at before any part of it existed. Every other door leaves it empty,
+	// which is what "this task is nobody's part" means to the ground ladder.
+	frozen     string
 	acceptance string
 	// expects is the checkable half of the handoff contract: what this brief
 	// assumes is already true of the folder the worker will get

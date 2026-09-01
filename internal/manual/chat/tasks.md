@@ -2409,9 +2409,11 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of its **parent's** own working copy, and its branch merges
-back into the parent's — so a family's work comes home as the parent's work, in one merge,
-not as three branches racing for yours. That is true whether the family is working on a
+Each piece works in a copy of its **parent's** own working copy **as that copy stood at the
+moment the pieces were handed out**, and its branch merges back into the parent's — so a
+family's work comes home as the parent's work, in one merge, not as three branches racing
+for yours. Work the parent had not committed yet goes with them; work it does *after*
+handing out does not. *What the parts start with* below says how that is written down. That is true whether the family is working on a
 repository or on a plain folder: a family on a folder gets a private copy of it to work in,
 and the pieces branch off that copy and merge back into it, so two pieces writing different
 files never touch each other's directory. The person's own folder is written once, at the
@@ -2436,13 +2438,45 @@ that from the sentence you typed.
 
 So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
 what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
-own copy of the parent's working copy, with its own branch coming home into the parent's.
+own copy of the parent's working copy as it stood at the moment of the split — the parent's
+unfinished work included, so a part can run the failing test rather than be told about it
+(*What the parts start with*, above) — with its own branch coming home into the parent's.
 Your transcript says it in plain words — `split into 3 parts:` and then each part by number and
 name.
 
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
 report reaches it as that part lands, and the one thing it owes you at the end is a single
 deliverable made out of all of it. A task never finishes while a part of it is still running.
+
+## What the parts start with — do the parts see the parent's unfinished work, when is the parent's work frozen for its parts, the wip commit before a split
+
+**They start with the parent's files already on disk.** A task that has opened the material
+has usually *written* something by the time it decides the work is too wide — a repro, a
+failing test, scraped material, a half-drafted section. All of it is there for every part,
+without the parent having to describe it in a brief.
+
+That is not automatic; it is a commit. Before the first part is handed out, aforge stages
+what the task has written so far and commits it to **the family's own branch**, worded
+`the work so far on <the task's title>, before its parts were handed out`. The parts branch
+from that commit. So does the second part, and the fifth: **the world is frozen once**, at
+the split, and every part gets the same one. Anything the parent writes *after* the split
+reaches none of them — which is why a brief that needs a file has to be written before the
+call, not after it.
+
+Three things follow, and they are the ones worth knowing:
+
+- **You never see that commit as a commit.** It lives on the family's branch, which is
+  internal to the task. When the whole family lands, it comes home inside **one merge**
+  along with everything else the family did.
+- **It is aforge committing, never the worker.** Tasks are told they never run `git add`,
+  and that is still true.
+- **Nothing is committed in your own folder.** A task working *in place* — in the directory
+  you are sitting in — has no branch of its own, so there is nothing to commit to and
+  aforge does not make one. Its parts share the directory, which is what "here" means.
+
+If the family's branch cannot take that commit at all — a disk gone read-only, a repository
+somebody broke — **the split is refused** rather than taken on a world the parts do not
+have. The worker is told in one line and carries on with the work in its own hands.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
@@ -2822,8 +2856,10 @@ a chip on the row can win. Chips are spelled with the part after the vendor unle
 vendors share a tail, in which case all of them keep their full id; a chip that does not fit
 is dropped rather than cut, and a row that would show one chip is not drawn at all.
 
-Name nothing and the task runs on `task.model` if you have set it, and otherwise on the
-model the conversation was on **when the task was admitted**. The id is settled at that
+Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
+**worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped
+`balanced` crew), and only when that row is blank on the model the conversation was on
+**when the task was admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the
 conversation's model afterwards does not move work that was already handed over. This
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
@@ -2853,8 +2889,9 @@ What that does, exactly:
 - **A note is written in the conversation**, reading `task 7 · model · <the model you
   chose>`, so the change is on the record where every other model change is.
 - **New tasks are unaffected.** Work admitted after this still follows the ordinary
-  ladder: `task.model` from settings if you have set one, otherwise the model the
-  conversation is on. A pick made inside one room is not a preference the session learns.
+  ladder: `task.model` from settings if you have set one, otherwise the crew's worker
+  class, otherwise the model the conversation is on. A pick made inside one room is not a
+  preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
   and the change survives a restart.
 
@@ -2986,6 +3023,12 @@ model: `<title> is parked — [r] revive and send · [m] send to main · [esc] c
 the engine's own reason on a dim second row. `r` leaves the room and asks the model to start
 the work again with your instruction; `m` leaves the room and sends your words to the model
 unwrapped; `esc` cancels and leaves your words exactly where they are in the box.
+
+The same question also rises on a task that is **still running** but momentarily has
+nobody inside to read a line — while it says `checking what it left`, or in the seconds
+its work is landing. That guard reads `<title> cannot read this right now — [m] send to
+main · [esc] cancel`: no revive, because the work is not over and starting it again would
+make a duplicate. Wait for the check to land, or send the thought to main.
 
 Whenever a task stops for any reason it wears `stopped — branch kept` and its branch name.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,

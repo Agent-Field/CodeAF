@@ -12,6 +12,7 @@ package session
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -403,4 +404,75 @@ func watchedTool(events []Event, kind EventKind, tool string) bool {
 		}
 	}
 	return false
+}
+
+// THE CHECK HAS NO READER, AND THE DOOR SAYS SO. A node under check is still
+// TaskRunning and its worker agent is still open — the exact window in which a
+// steered line used to be taken with a receipt and then closed over unread
+// (#273). The refusal must name the check, because "no worker to talk to yet"
+// points the person at the wrong end of the run — and nothing may land on the
+// worker's queue, because a queued line is the swallow, not a lesser form of it.
+func TestASteerDuringTheCheckIsRefusedWithTheReason(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		// The rig stands the node exactly where the live run stands it during
+		// auditNode: the node's own word saying "checking" (the same word
+		// enterPhase records), worker still in the room, state still
+		// TaskRunning.
+		node.openRoom().speaking(worker)
+		node.living(TaskPhaseChecking)
+		close(started)
+		<-release
+		node.living(TaskPhaseWorking)
+		node.finish("it landed", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "a node", brief: "b", acceptance: "a"})
+	<-started
+
+	_, err := agent.SteerTask(id, "hows the test doing?")
+	if err == nil {
+		t.Fatal("a node under check accepted a line nobody would read")
+	}
+	if !strings.Contains(err.Error(), "being checked") {
+		t.Fatalf("the refusal does not name the check: %v", err)
+	}
+	if worker.steeringHeld() {
+		t.Fatal("the refused line still landed on the worker's queue")
+	}
+
+	close(release)
+	waitDoneNode(t, graph.node(id))
+}
+
+// THE ROOM'S DOOR SHUTS WHEN THE WORKER'S READING IS OVER, not when the node
+// lands. Between the two sits the whole check, and a speaker left standing
+// through it is an agent that would take a person's line and be closed on top
+// of it (#273). runTaskChild withdraws the speaker on its way out, so the door
+// refuses from that moment — the same clearing the room does at close, moved to
+// when it becomes true.
+func TestTheRoomsDoorShutsWhenTheWorkersReadingIsOver(t *testing.T) {
+	nest := newNest(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the whole job is done"), nil
+		},
+	}}, nil)
+	room := nest.parent.openRoom()
+	if room.speaker() == nil {
+		t.Fatal("the rig never put the worker in the room")
+	}
+
+	_, stopped, err := runTaskChild(context.Background(), nest.node, nest.parent,
+		"do the whole job", nest.node.config.Workspace, taskLimits{}, room, io.Discard)
+	if err != nil {
+		t.Fatalf("runTaskChild: %v (stopped %q)", err, stopped)
+	}
+	if room.speaker() != nil {
+		t.Fatal("the worker's reading is over and the room still points a person's line at it")
+	}
 }

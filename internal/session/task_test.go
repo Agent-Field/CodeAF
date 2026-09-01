@@ -2129,7 +2129,7 @@ func TestTaskThresholdsDefaultAndOverride(t *testing.T) {
 func TestTaskSpawnSwapsANoToolsModelBeforeItsFirstCall(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Model = "no-tools"
-		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierLow): "worker-with-tools"})
+		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierWorker): "worker-with-tools"})
 		config.SupportsParameter = func(model, parameter string) (bool, bool) {
 			if parameter != "tools" {
 				return false, false

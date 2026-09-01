@@ -106,8 +106,11 @@ const cardNeverWord = "never taken"
 // cardToolWords is the ONE presentation table on this card: a tool's registered
 // name beside what it DOES, in the words of somebody who has never read this
 // repository. The names are the harness belt's own (session's harness_belt.go —
-// the seven wire tools plus the media family), because that is the entire set a
-// whitelist may legally hold.
+// the seven wire tools, the media family, and the cutting verb), because that is
+// the entire set a whitelist may legally hold. A verb that joins that belt and
+// not this table prints its own identifier on a page a person is being asked to
+// approve, which is why internal/session holds a test that reads the whole belt
+// back against this table (harness_card_words_test.go).
 //
 // It is presentation and nothing else. No behaviour reads it, no whitelist is
 // checked against it, and a name it has never heard of falls through to itself
@@ -131,6 +134,12 @@ var cardToolWords = map[string]struct{ once, can string }{
 	"generate_video": {"makes a video", "makes videos"},
 	"generate_music": {"makes music", "makes music"},
 	"speak":          {"says something aloud", "speaks aloud"},
+	// edit_video is four operations behind one name — measuring a clip, saving a
+	// frame out of one, laying clips end to end and putting music under them —
+	// and the person reading this card does not want the four. What they are
+	// approving is a recipe that gets to work on their video files, so that is
+	// what it says.
+	"edit_video": {"cuts a video together", "cuts video together"},
 }
 
 // toolOnce is what calling this tool once does.

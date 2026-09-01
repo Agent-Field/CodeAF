@@ -571,6 +571,19 @@ type journalDivision struct {
 	// it is the one place an autopsy can tell a part that was CALLED careful from
 	// one that EARNED it.
 	Lifted []string `json:"lifted,omitempty"`
+	// Frozen is the commit the family tree stood at when this division was
+	// admitted — the one world every part of it starts from — and Checkpoint is
+	// the commit this division WROTE to get there, when the parent had work on
+	// disk that nobody had committed yet (task_divide_wip.go).
+	//
+	// THEY ARE TWO FIELDS BECAUSE THEY ARE TWO FACTS. Every family with a tree of
+	// its own has a Frozen; only a family whose parent had written something has
+	// a Checkpoint. One field would leave an autopsy unable to tell a parent that
+	// had written nothing from a family that was never frozen at all — which are
+	// the ordinary case and the degradation, and telling them apart is most of
+	// what this line is for.
+	Frozen     string `json:"frozen,omitempty"`
+	Checkpoint string `json:"checkpoint,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.
