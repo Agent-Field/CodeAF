@@ -660,9 +660,26 @@ type Hierarchy interface {
     Rate(id ID, now time.Time) Chain
     Think(model, rung string, now time.Time) Chain
     Shifted(id ID) bool
+    NoteThinking(model, rung string, took time.Duration, at time.Time)
 }
 
-func SetController(control.Factory)   // installed once, in one file
+// The plan is built in one place, from a routing answer and what is believed
+// about the machine it names. A Pace is the pair of distributions a wait is
+// judged against; PaceOf scripts one from a flat belief and PaceFor reads the
+// hierarchy where there is one, so the transport never asserts on the door.
+type Pace struct{ First, Gap control.Survival }
+func PlanFor(Choice, Pace, Role, time.Time) control.Plan
+func PaceOf(Belief) Pace
+func PaceFor(ID, time.Time) Pace
+func HeadOf(Choice) string
+func Spending(*Budget) control.Purse   // asks Affordable; the race counts at send
+func Thinks(model, rung string, now time.Time) control.Survival
+func NoteThought(model, rung string, took time.Duration, at time.Time)
+
+// Installed once, in one file, and it hands back what was there: a caller that
+// swaps it has to be able to put back what it found, and one that put back nil
+// would leave the process with no waiting policy at all.
+func SetController(control.Factory) (previous control.Factory)
 func Controller() control.Factory
 
 const VisiblePatience = 10 * time.Second
