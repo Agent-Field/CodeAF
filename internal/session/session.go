@@ -1324,8 +1324,9 @@ type Config struct {
 	// without a Google account and without a network.
 	connectHub connectHub
 
-	// writeScope bounds which repo paths this agent's edit and write calls may
-	// touch (orchestrate.go's writeGuard). It is unexported for connectHub's
+	// writeScope bounds which repo paths this agent's file-writing calls may
+	// touch (orchestrate.go's writeGuard, which reads recovery.go's
+	// [mutatedPath] for which calls those are). It is unexported for connectHub's
 	// reason — it is not a caller's choice but a bound the machinery puts on an
 	// agent it built — and it is set in exactly one place: the executor that
 	// runs one node of an adaptive run, from that node's own declared scope.

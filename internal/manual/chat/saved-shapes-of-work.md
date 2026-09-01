@@ -160,13 +160,19 @@ A harness reaches the seven working tools — `bash`, `read`, `write`, `edit`, `
 recipe is exactly what a saved procedure is for, so a design may whitelist those verbs and
 a step may call them.
 
+**`edit_video` is there too, and on a different condition: ffmpeg on this machine, and
+nothing else.** It buys nothing, so no media model is needed for it — a harness that joins
+clips into one film, saves a closing frame to carry into the next render, or lays a score
+under a finished cut may whitelist it wherever ffmpeg is installed.
+
 It is **not** the whole belt the conversation carries. Notes, jobs, connected accounts,
 watches, settings and the task verbs are left out on purpose: those are things a
 conversation reaches for, and a recipe run months later should not be able to rewrite your
 settings or start a task tree.
 
 The media verbs follow the same rule they follow everywhere — **no model for that kind of
-media, no verb** — and the list the designer is shown when it writes a harness is the same
+media, no verb**, and for `edit_video`, no ffmpeg, no verb — and the list the designer is
+shown when it writes a harness is the same
 list the run resolves against, so a design can never whitelist a verb this machine cannot
 run.
 

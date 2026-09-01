@@ -543,8 +543,12 @@ func (w *loopWatch) silentLadderRung() int {
 // something in the world. It is what breaks a silent streak and what gives a
 // spent note back, and it has two halves.
 //
-// THE CHEAP HALF is a successful call through a belt hand whose effect on the
-// disk is a known path ([mutatingTools]). [loopWatch.sawProgress] stays
+// THE CHEAP HALF is a successful call whose effect on the disk is a known path
+// ([mutatedPath], recovery.go). It is asked of the CALL and not of the hand's
+// name, because a name is not enough any more: edit_video's `measure` is a
+// reading taken with a hand three of whose four actions write, and counting one
+// here would hand the strongest signal this watch has to the shape it exists to
+// catch — the same clip measured over and over. [loopWatch.sawProgress] stays
 // deliberately broader for signature hysteresis, but using it here would let a
 // run of distinct successful greps reset the ladder forever — precisely the
 // silent loop these rules exist to catch.
@@ -577,7 +581,7 @@ func (w *loopWatch) materialProgress(calls []ai.ToolCall, results []toolResult) 
 		if w.named[callSignature(call)] {
 			continue
 		}
-		if mutatingTools[call.Function.Name] {
+		if _, writes := mutatedPath(call); writes {
 			return true
 		}
 		if call.Function.Name == "bash" {
@@ -621,11 +625,14 @@ func (w *loopWatch) treeMoved() bool {
 // count folds one call and its result into the turn's clock: a step taken, what
 // the result brought back, and whether the work itself moved.
 //
-// THE WORK MOVING IS A SUCCESSFUL CALL TO A HAND THAT SAVES A FILE
-// ([savingTools], task_run.go) — the same rule the landing stages a node's
+// THE WORK MOVING IS A SUCCESSFUL CALL THAT ACTUALLY SAVED A FILE
+// ([producedAFile], task_run.go) — the same rule the landing stages a node's
 // deliverable by ([stageTaskWork]), so the two cannot disagree about what the
 // work is. A failed edit changed nothing; a command that dirtied the directory
-// wrote droppings the landing would not take either.
+// wrote droppings the landing would not take either. AND THE QUESTION IS ASKED
+// OF THE CALL RATHER THAN OF THE HAND, because edit_video is on the saving belt
+// and its `measure` saves nothing: reading the name reset this clock on every
+// re-measurement of a clip that had not changed since the last one.
 //
 // AND A HAND THAT SAVED SOMETHING IS INFORMATION BY CONSTRUCTION, whatever its
 // confirmation said. `wrote 12 lines` is boilerplate the second time, so its
@@ -649,7 +656,7 @@ func (w *loopWatch) count(call ai.ToolCall, results []toolResult, index int) boo
 		w.clock.read(fresh, lines)
 		freshResult = fresh > 0
 	}
-	if savingTools[call.Function.Name] && !failed {
+	if producedAFile(call.Function.Name, call.Function.Arguments) && !failed {
 		w.clock.wrote()
 		w.ledger.wrote()
 		return true

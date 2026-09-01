@@ -66,7 +66,7 @@ uncommitted edits and untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
 folder, and the files the task wrote — its parts' files included — are laid back over it by
-name when it lands. And "work
+name when it lands, all of them or none of them. And "work
 here" is you saying so: the task works in that folder itself, with nothing isolating it.
 
 **Two refusals and one correction.** A task whose contract names an absolute path outside
@@ -213,6 +213,11 @@ of its own: *Does my task see my .env* below says when it happens and how to tel
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
 
+**And the same is true one level down.** When a task splits itself into parts, each part
+starts from the *parent task's* folder as it stood at the split — the parent's unfinished
+work included, written to the family's own branch first. The tasks page, *What the parts
+start with*, is where that is spelled out.
+
 ## Does my task see my .env — does a task get node_modules, an installed dependency tree, the dev database, the files git ignores
 
 **Usually yes.** A task's world is a copy of your whole folder, made by furrow, which every
@@ -356,7 +361,8 @@ instead and its card says where.
 look is settled later — you press accept, or a fresh check comes back holding — and what
 goes home then is the list it settled with. On a plain folder that means the accept lays the
 whole family's files back over your folder, exactly as a task that finished cleanly would
-have; on a repository it merges the branch the ordinary way.
+have — unless you changed one of those files yourself in the meantime, which has its own
+section below; on a repository it merges the branch the ordinary way.
 
 That is why a task's branch is a change you can read. Its checkout is its own to make a
 mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
@@ -399,6 +405,34 @@ decide, exactly as with any other task that needs a look.
 Pressing **accept** on the card does not change this. Accepting says the work is good, and
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
+
+## My task could not save what it wrote — nothing merged, the file is still there
+
+A landing that cannot put the work away **does not merge, does not tidy anything up, and
+does not say done**. The work stays on disk in the task's own folder, which is then the only
+copy of it, and the task lands as **needs your look** with the report naming that folder and
+quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
+changed:
+
+`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
+
+Nothing of the task's working copy is given back: the branch is kept, the copy is left
+registered where it is, and your own branch is untouched — no empty merge, no commit that
+holds none of the work. The landing note says no more than the report does, because there is
+no branch to offer you: the folder in that sentence is where the files are.
+
+**On a plain folder it is the same answer.** The files the task wrote go back over your
+folder **whole or not at all**: they are staged beside where they are going first, and only
+when every one of them can be placed does anything move. A lay that cannot happen leaves
+your folder **exactly as it was** — not one file of the half that would have fitted — and
+says so:
+
+`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
+
+The task's copy is kept, so everything the family made is still in the folder that sentence
+names. Pressing **accept** later does not change any of this: an accept over a folder that
+still cannot take the work leaves the task needing your look with the same sentence, exactly
+as a conflicting merge does.
 
 ## What a task can do while it runs
 
@@ -673,7 +707,10 @@ When a task's work does come home, the paths it wrote are staged by name — nev
 `aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
 merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
-the branch is kept, the working copy is given back, and the task needs your look. Two tasks finishing at
+the branch is kept, the working copy is given back, and the task needs your look. A commit
+that could not be made at all stops the landing before the merge — nothing is merged,
+nothing is given back, and the task needs your look (*My task could not save what it wrote*
+above). Two tasks finishing at
 once are serialized, so a merge is never lost.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
@@ -753,9 +790,11 @@ land now — one final turn to write the deliverable from what it already has �
 then is it stopped, with the threshold and the evidence in the report.
 
 **What the landing turn may still do.** It keeps only the tools that SAVE something
-before the call returns: `write`, `edit`, and — when the task had them — `generate_image`
+before the call returns: `write`, `edit`, `edit_video` where this machine has ffmpeg,
+and — when the task had them — `generate_image`
 and `speak`. Everything else comes off, and the instruction names exactly the hands it
-kept, so a task whose deliverable is a picture or a voiceover can still produce it.
+kept, so a task whose deliverable is a picture, a voiceover or a joined cut can still
+produce it.
 `generate_video` and `generate_music` are **not** kept, even by a task that had them: they
 answer with a background job and land minutes later, and the task is closed the moment
 its landing turn ends — a render started there would be stopped before the file existed.
@@ -836,10 +875,12 @@ only that nothing looked at them.
 The `no_progress` counter resets on any one of three things, and only fires when a step is
 none of them:
 
-**It saved a file.** A successful `edit`, `write`, `generate_image`, `generate_video` or
+**It saved a file.** A successful `edit`, `write`, `edit_video`, `generate_image`,
+`generate_music`, `generate_video` or
 `speak` — every hand that puts a file on disk at a path the call names. Making a picture is
 working; a task asked for two marketing images that generates them, looks at them and
-generates them again has never called `edit` in its life, and is not stuck.
+generates them again has never called `edit` in its life, and is not stuck. The same goes
+for a task cutting a film: joining clips, saving a frame and scoring the cut are all work.
 
 **It changed its working copy.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under
@@ -1223,7 +1264,7 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
-## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line, I sent a message to a task and nothing happened, steered a task and got no reply
 
 A task has several lives and one state. Its worker writes the work; a reading decides
 whether the work is handed out in parts; a second look reads what the worker left; a round
@@ -1258,6 +1299,15 @@ not done — go test ./... reports no test files
 
 That line is the reason the work is being done again. It takes the row the clock and the
 spend would have had, because the clock is true every second and this is not.
+
+**You cannot steer into the check.** The worker has finished reading, so a line typed into
+the task's room while it says `checking what it left` is refused with the reason —
+`task 3 is being checked — nobody is in there to read your line until the check lands` —
+and the steer guard opens over your words instead of pretending they were delivered.
+Because the task is still running, the guard offers only two keys: `m` sends your words to
+the main conversation, `esc` keeps them in the box (there is no `r` revive here — the work
+is not over, and restarting it would make a duplicate). If the check finds gaps, a round
+opens with a fresh worker and `enter` steers that worker as usual.
 
 **How long it can take.** Both are full model runs on your work, so minutes each is
 normal — a check on a large change has been four minutes, and a round is a second worker
@@ -1343,7 +1393,9 @@ stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below — or the work held and its branch would not merge cleanly — or what
+its own section below — or the work held and its branch would not merge cleanly, or the
+folder it was going to lay its work back over holds an edit of your own in one of those
+files — or what
 was left of the work turned out to be something no worker can do at all, which lands this
 way before a worker is ever started (*A task that landed needing your look without doing
 anything*). The task is neither done nor failed: nothing merges, the branch is kept, and nothing
@@ -1461,6 +1513,34 @@ If nothing overlaps, nothing changes: the task merges and lands `done` exactly a
 did. There is no setting for this and no way to see it before the run — the earlier warning
 before a task starts is a separate thing, and it cannot see this case at all.
 
+## A task working on a folder wrote over my own edit — I changed a file while the task ran, my changes disappeared
+
+It does not, and this is the folder's half of what a repository ground gets from git.
+
+A task whose ground is a **plain folder** works in a private copy of it and lays the files
+it wrote back over your folder by name when it lands. **A file you changed there yourself
+while it worked is never written over.** Nothing at all is laid, the task keeps its whole
+copy where it is, and it lands `needs your look`:
+
+`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/tasks/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+
+Both versions survive that: yours in your folder exactly as you left it, the task's in the
+directory the sentence names, so you can read the two and take what you want. The first few
+names are given and the rest counted, as everywhere else.
+
+**What is compared** is your folder as it stood when the task took its copy, against your
+folder now, for the files the task actually wrote — and nothing else. A file the task never
+touched is yours to edit all day. **Deleting one counts as changing it**: throwing a file
+away is something you did on purpose, so the task's version is named rather than put back.
+
+**It does not fire** when your edit left the file holding exactly what the task was going to
+write anyway — there is nothing to lose — nor for a task started by a build older than this
+one, which lands the way it always did.
+
+**Pressing accept does not change it.** An accept says the work is good, and it is; it
+cannot decide which of two versions of your file you meant, so an accept over a folder that
+moved leaves the task needing your look with the same sentence.
+
 ## Nothing is thrown away
 
 On every ending except a clean merge, the branch is **kept and named**. This is true
@@ -1479,6 +1559,9 @@ without exception:
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+- a task on a plain folder that would have written over an edit of your own lays **nothing**,
+  keeps its whole copy of the folder, lands as **needs your look** and names the files that
+  changed there while it ran;
 - a task that left files it did not write keeps them too — in its task folder, named in the
   report, never on your branch, after its working copy is given back;
 - a session that ended mid-run keeps the branch, and says where it is.

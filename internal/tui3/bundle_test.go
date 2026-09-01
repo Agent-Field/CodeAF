@@ -4111,6 +4111,47 @@ func TestASteerTheEngineRefusedRaisesTheGuardWithItsReason(t *testing.T) {
 	}
 }
 
+// AND A REFUSAL THAT MEANS THE NODE IS STILL RUNNING WITHHOLDS REVIVE (#273).
+// Only the engine can tell the two apart — this page's own `done` is its record
+// of a close it may not have been told about yet — so it says so with
+// [session.ErrNobodyToRead], and the guard drops the key rather than offering
+// to start work again that is minutes from finishing.
+func TestASteerRefusedWithNobodyToReadOffersNoRevive(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerErr = noReaderRefusal{errors.New(
+		"task 7 is being checked — nobody is in there to read your line until the check lands")}
+	clickRail(t, a, 0)
+	a.input.setText("stop and re-read the brief")
+	drive(t, a, key("enter"))
+
+	if !a.guarding() {
+		t.Fatal("a refused steer was not guarded")
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "is being checked") {
+		t.Fatalf("the engine's own sentence was dropped:\n%s", got)
+	}
+	if strings.Contains(got, "[r] revive and send") {
+		t.Fatalf("a node that is still running offered revive:\n%s", got)
+	}
+	if !strings.Contains(got, "[m] send to main") || !strings.Contains(got, "[esc] cancel") {
+		t.Fatalf("the guard did not offer the keys it does have:\n%s", got)
+	}
+	// AND THE KEY IT DOES NOT OFFER DOES NOTHING. A row that withheld revive
+	// while r still revived would be the surface lying about its own keys.
+	drive(t, a, key("r"))
+	if !a.guarding() {
+		t.Fatal("r on a guard that offers no revive left the question")
+	}
+}
+
+// noReaderRefusal is what the engine hands back for the two refusals that mean
+// the node is still running with nobody inside it to read a line — the test's
+// stand-in for internal/session's own unexported nobodyToRead.
+type noReaderRefusal struct{ error }
+
+func (noReaderRefusal) Unwrap() error { return session.ErrNobodyToRead }
+
 // VIEWER PARITY: a node's page is drawn by the conversation's own renderers, so
 // everything the conversation shows about a message it shows about a node's
 // message — the pictures that came with it included (attach.go's chipMarkers,

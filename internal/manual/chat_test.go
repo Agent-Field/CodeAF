@@ -220,6 +220,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody reading either phrase for the first time asks this.
 		{"where does my task work", "how-tasks-run"},
 		{"what does its own copy of the folder mean on the task card", "how-tasks-run"},
+		// AND WHAT HAPPENS WHEN THE TWO OF YOU WRITE THE SAME FILE. Somebody who
+		// edited a note while a folder task was running asks this in the words of
+		// the thing they are afraid of, not in the harness's (#258).
+		{"the task wrote over my own edit", "how-tasks-run"},
+		{"I changed a file while the task was running", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.
@@ -339,6 +344,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},
 		{"my task worked on an old version of the file", "how-tasks-run"},
+		// A task that split itself while holding unfinished work: its parts start
+		// from that world, frozen once at the split. Asked the three ways a
+		// person meets it — the artefacts, the freeze, and the commit they find
+		// in the history.
+		{"do the parts see the parent's unfinished work", "tasks"},
+		{"when is the parent's work frozen for its parts", "tasks"},
+		{"what is the wip commit before a split", "tasks"},
 		// The owned workspace, asked the two ways it actually gets discovered:
 		// before, wondering where the work will land, and after, when the folder
 		// went and took the work with it.
@@ -682,6 +694,22 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The complaint survived the first fix: the render swapped palette and
 		// metaphor and kept the genre's deepest habit anyway.
 		{"why is everything you make glowing on a dark background", "making-pictures-audio-and-video"},
+		// The cutting verb, asked the way people reach for it. The first three
+		// are the same intention in three vocabularies — join, stitch,
+		// concatenate — because which one somebody types is a coin toss and the
+		// answer is one page either way.
+		{"can you join two videos together", "making-pictures-audio-and-video"},
+		{"stitch these clips into one video", "making-pictures-audio-and-video"},
+		{"how do I concatenate the mp4 files", "making-pictures-audio-and-video"},
+		{"add a soundtrack to this video", "making-pictures-audio-and-video"},
+		{"put music under the video", "making-pictures-audio-and-video"},
+		{"how long is this video and does it have sound", "making-pictures-audio-and-video"},
+		{"get a still out of the video", "making-pictures-audio-and-video"},
+		{"save the last frame of the clip", "making-pictures-audio-and-video"},
+		// And the two limits people meet: the machine without the binaries, and
+		// the edit this verb deliberately does not do.
+		{"do you need ffmpeg installed", "making-pictures-audio-and-video"},
+		{"can you edit video without a video model", "making-pictures-audio-and-video"},
 
 		// The eighth wave, written from the complaint that produced the
 		// feature: file paths in a reply looked like text, cmd-click caught

@@ -694,6 +694,41 @@ image rung, and the `view_image` tool below all use that one model. Change it
 once and all three change. Leave it alone and aforge picks the best model that
 publishes vision, so looking works on a machine that has never opened settings.
 
+## Can you join videos, cut a longer video together, or add music to a video?
+
+Yes, with `edit_video`, and it is the media verb that costs nothing: it is
+ffmpeg on this machine, so it needs no model, no key and no money. It works on
+video files that already exist — ones aforge rendered, and equally a screen
+recording or a camera clip you dropped in the folder.
+
+Four actions:
+
+- **`measure`** — how long a video runs, whether it has sound, its frame size
+  and rate, its size on disk. All read from the file, in about a tenth of a
+  second. This is the arithmetic question; `read` on a video is the expensive one
+  that answers what *happens* in it.
+- **`frame`** — save one frame as a png. It takes the **closing** frame by
+  default, which is the frame that makes two independent renders connect: hand it
+  to `generate_video` as its opening `frame_paths` entry and the next shot
+  continues out of this one.
+- **`join`** — lay clips end to end into one longer video. **Every clip's audio
+  is carried** (a silent clip gets silence of its own length), so a joined cut
+  cannot go quiet part-way through, and every clip is letterboxed into the first
+  clip's frame rather than stretched.
+- **`score`** — lay an audio file under a video, **looped or trimmed to the
+  video's own length** automatically, mixed underneath any sound the video
+  already has rather than over it.
+
+It is on the belt only when **ffmpeg and ffprobe are on this machine**; they are
+not downloaded on demand, and without them the verb is absent rather than
+present and refusing. There is deliberately no trim, crop, speed change or
+transition — those are `bash` and ffmpeg directly. What lives here are the four
+operations a generated film is assembled from, where a hand-written command goes
+wrong silently.
+
+The page "making pictures, audio and video" has every argument, the exact
+wording of the answers and the refusals, and where the files land.
+
 ## Can you open an image file yourself, or do I have to attach it?
 
 Both work. `view_image` opens a picture on disk on its own — a screenshot
@@ -985,7 +1020,13 @@ Plainly, so you do not have to find out the hard way.
   verb. The same rule applies inside a task, an adaptive run and a saved harness.
 - **`generate_music` cannot be asked for a length.** The endpoint takes no
   duration, so the model writes a piece of its own choosing and the call costs
-  the same however long it turns out.
+  the same however long it turns out. Its length stops mattering once the piece
+  goes under a video: `edit_video`'s `score` loops or trims it to fit.
+- **It cannot work on video files without ffmpeg** on the machine, and ffmpeg is
+  not downloaded on demand. `edit_video` is absent rather than present and
+  refusing, so measuring, framing, joining and scoring are all unavailable
+  together. What it does **not** need is a video model or any money: with ffmpeg
+  installed the verb is there on a machine that cannot render a single frame.
 - **`read` cannot list a directory.** It errors. `ls` lists directories.
 - **`read` cannot look at an image, listen to audio or watch a video when no
   model is set for that sense.** It says which one is missing rather than

@@ -53,7 +53,8 @@ obvious route is blocked. Decide it and say so.
 named as `where`; do not replace it with the current directory and do not guess a path
 from a project name. Use `in place` for work that is deliberately not code work and
 belongs in this conversation's workspace. Otherwise leave `where` empty: the task runner
-will cut its own worktree from the conversation's repository into the task folder.
+will give the work a copy of its own, cut from the conversation's project into the task
+folder.
 
 **What does done look like, and how would somebody else confirm it?** Not "the page is
 written" but the thing a second party could check without taking the worker's word for it.

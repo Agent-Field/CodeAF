@@ -227,6 +227,11 @@ var settingReaders = map[string]string{
 	KeyTaskModel:     "TaskModelAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
+	// The worker row names its tier for the mastermind row's reason: a third
+	// TierKey would let the low row prove this one. cmd/aforge's crew source,
+	// internal/session's task ladder and internal/tui3's settings skin all
+	// reach it by this name.
+	KeyTierWorkerModel: "TierWorker",
 	// The mastermind row names the TIER rather than the shared spelling, for the
 	// reason the reflex row below does: naming TierKey a third time would let the
 	// low row prove this one. cmd/aforge's crew source and internal/tui3's

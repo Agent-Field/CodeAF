@@ -736,15 +736,18 @@ type app struct {
 	// megapixel png ten times a second is the one thing this surface must not do.
 	previews map[string]imagePreview
 
-	entries []entry
+	// feed is this conversation's transcript and the reducer that grows it
+	// (feed.go). It is EMBEDDED and not a field with a name, so that `a.entries`,
+	// `a.live`, `a.think` and `a.turn` still mean what they have always meant to
+	// the several hundred readers of them in this package — the reducer moved
+	// house, and the surface did not have to be respelled to follow it.
+	feed
 	// transcript is the surface's local mirror of the engine transcript. The
 	// opening read may cross ssh; every page walked afterwards is cut from this
 	// slice on the local side.
 	transcript []session.DisplayEntry
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
-	// live is the assistant entry currently being streamed into, or -1.
-	live int
 	// settledTurn is the last turn whose BOUNDARY HAS PASSED — the turn
 	// [app.settleTurn] has walked — and it is what makes a delta arriving after
 	// that boundary land settled rather than opening a block nothing owns.
@@ -766,9 +769,6 @@ type app struct {
 	// "settles nothing" (echo.go).
 	echoAt  int
 	echoTok uint64
-	// turn counts the person's messages. It groups tool calls into clusters
-	// and is what ctrl+o folds and unfolds.
-	turn int
 	// replayFrom is where the DRAWN conversation starts in the session's own
 	// transcript, and replayFloor the turn number the first drawn block carries.
 	// Together they are everything [app.backfill] needs to hand up the helping
@@ -1525,8 +1525,6 @@ type app struct {
 	// kinds are what say one exists at all. It is what → opens and what a pause
 	// raises its gate on.
 	orchLive string
-	// think is the reasoning block currently streaming, or -1 (thinking.go).
-	think int
 
 	// chips are the pictures attached to the message being written, drawn as a
 	// tray above the box (attach.go). sent holds the ones a message in flight
@@ -2101,10 +2099,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		farRecord:           opts.TaskRecord,
 		farRoomRecord:       opts.TaskRoom,
 		farTasks:            opts.TaskIndex,
-		live:                -1,
+		feed:                feed{live: -1, think: -1},
 		echoAt:              -1,
 		sel:                 -1,
-		think:               -1,
 		unfolded:            map[int]bool{},
 		stick:               true,
 		width:               80,
@@ -2125,6 +2122,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		focused: true,
 	}
 	a.copy.mark = -1
+	// AND THE REDUCER IS TOLD WHAT THIS PAGE IS, which is the whole of the
+	// difference between a chat's transcript and any other (feed.go states the
+	// law the hooks exist to keep).
+	a.feed.hooks = a.feedHooks()
 	a.gitProbe = gitHead
 	if a.hosted() {
 		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
@@ -3879,6 +3880,49 @@ func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 	return tea.Batch(waitEvent(ch, a.gen), a.wake())
 }
 
+// feedHooks is the conversation's whole declaration of what it is, as far as the
+// reducer that grows its transcript is concerned (feed.go).
+//
+// FOUR OF THESE ARE THE PAGE AND TWO ARE THE CHAT. The clock, the follow and the
+// touch are what any surface with a screen owes the reducer; the spawn card and
+// the ambient counts are things THIS page has and the task room does not, and
+// they are installed here — rather than known in there — so that the room can
+// adopt the same reducer without inheriting a card it has nowhere to draw.
+//
+// It is read once, at construction, and the closures dispatch through the
+// methods rather than capturing what they answer: a test that pins the clock
+// after the app is built still gets its clock ([app.now]).
+func (a *app) feedHooks() feedHooks {
+	return feedHooks{
+		now:    a.now,
+		follow: a.follow,
+		touch:  a.touch,
+		// A PROPOSAL FORMS AS A BLOCK, not as a row (task.go). Only propose_task
+		// earns one, which is a fact about this page's vocabulary rather than
+		// about the event, so the test for it lives on this side of the seam.
+		forming: func(ev session.Event) {
+			if ev.Tool == taskTool {
+				a.formTask(ev)
+			}
+		},
+		// AND ITS RESULT ARRIVING WITH THE CARD STILL FORMING IS A REFUSAL, for
+		// the reason [feed.closeTool] states: a proposal that landed has already
+		// replaced the block with its question.
+		closing: func(ev session.Event) {
+			if ev.Tool == taskTool {
+				a.refuseFormingCard()
+			}
+		},
+		closed: func(e *entry, ev session.Event) {
+			a.learnBackground(e, ev.Output)
+			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
+			// OR THE SESSION DELTA: both are sums over finished calls, so this is
+			// the one place their cache has to be dropped (see [app.hudStats]).
+			a.hudStale = true
+		},
+	}
+}
+
 // event folds one session event into the conversation and waits on the stream
 // for the next one.
 //
@@ -3935,8 +3979,8 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 	// the marker that OPENED the run — collapsing on it would close the block
 	// before its first word arrived. A TEXT DELTA SETTLES, IT DOES NOT SEAL:
 	// providers that interleave reasoning with the answer keep growing the same
-	// block through [app.settleThought], and only a real boundary — a tool
-	// call, the turn ending — lets go of it ([app.collapseThought]).
+	// block through [feed.settleThought], and only a real boundary — a tool
+	// call, the turn ending — lets go of it ([feed.collapseThought]).
 	switch ev.Kind {
 	case session.EventReasoning, session.EventThinking:
 	case session.EventTextDelta:
@@ -4150,21 +4194,15 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
 
-	case session.EventToolForming:
-		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
-		// model writing the instruction, drawn while it writes it.
-		a.formTool(ev)
+	case session.EventToolForming, session.EventToolAnnounced, session.EventToolBegin,
+		session.EventToolFinished, session.EventToolFailed, session.EventCompacting:
+		// THE REDUCER OWNS THESE WHOLE. What each of them does to the transcript
+		// is in feed.go and is the same wherever a transcript is kept; nothing on
+		// this page has anything to add to them.
+		a.ingest(ev)
 
-	case session.EventToolAnnounced:
-		a.announceTool(ev)
-
-	case session.EventToolBegin:
-		a.beginTool(ev)
-
-	case session.EventToolFinished:
-		a.finishTool(ev)
 	case session.EventToolEnd:
-		a.closeTool(ev, toolOK, "")
+		a.ingest(ev)
 		// AND A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
 		// speculatively, silently, before anybody has clicked anything. It is the
 		// wave's whole answer to movement: no push was added to the wire, the
@@ -4173,32 +4211,8 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// Nil on every local session.
 		after = tea.Batch(after, a.prefetchWritten(ev))
 
-	case session.EventToolFailed:
-		a.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
-
-	case session.EventCompacting:
-		// THE PASS IS NOW VISIBLE WHILE IT RUNS. The session sends this the
-		// moment the cut is made and before the summarizer is called, and that
-		// call is the slowest thing on this surface that draws nothing: a turn
-		// that stops for eight seconds with no spinner, no text and no tool row
-		// is indistinguishable from a hang.
-		a.closeLive()
-		a.entries = append(a.entries, entry{
-			kind:  entryCompact,
-			text:  firstNonEmpty(ev.Hint, "compacting"),
-			turn:  a.turn,
-			began: a.now(),
-		})
-		a.follow()
-		a.touch()
-
 	case session.EventCompacted:
-		// ALWAYS the other half of the pair, success or failure — a failed pass
-		// says so in its hint and settles the same row, because a row left
-		// spinning over a turn that moved on is the defect the pair exists to
-		// close.
-		a.closeLive()
-		a.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+		a.ingest(ev)
 		// AND THE SCROLLBACK'S BOOKKEEPING MOVES WITH THE PASS. Everything above
 		// this moment is now history the session keeps outside the transcript, and
 		// the mark this surface holds into the transcript was taken against a list
@@ -4307,7 +4321,7 @@ func (a *app) streamOn(after tea.Cmd) tea.Cmd {
 // here would DRAW, and after the key nothing new is drawn ([app.event]).
 //
 // The three tool closes are kept because they close a row THAT IS ALREADY ON THE
-// SCREEN and can open nothing — [app.closeTool] walks the drawn rows and writes
+// SCREEN and can open nothing — [feed.closeTool] walks the drawn rows and writes
 // the result into the one that is still live, so a `go test` that finished in
 // the instant before the cancel reached it reports what it actually did instead
 // of standing forever as a call nobody knows the end of. The end stamp
@@ -4374,7 +4388,7 @@ func (a *app) settle() tea.Cmd {
 	// one: the row says so and stops pulsing (toolview.go).
 	a.dropForming()
 	// And a call that STARTED and never came back stops here too, or it starts
-	// spinning again the moment the next turn does ([app.resolveUnfinished]).
+	// spinning again the moment the next turn does ([feed.resolveUnfinished]).
 	a.resolveUnfinished()
 	// AND A CORRECTION THAT NEVER REACHED THE MODEL LEAVES THE QUESTION. A turn
 	// that is over gave the model everything it was ever going to; an elbow still
@@ -4501,42 +4515,6 @@ func (a *app) dropRetryingFormingTools() {
 	a.touch()
 }
 
-// resolveUnfinished stops the clock on every call that was still in the air when
-// the turn ended. It is [app.dropForming] widened by two states, and it is the
-// conversation's copy of the law room.go already keeps at a node's lane close
-// ([app.roomResolveUnfinished]).
-//
-// THE DEFECT IT CLOSES IS A ROW THAT COMES BACK TO LIFE. A row that never got
-// its end — an interrupt between the begin and the result, a retry that threw
-// away the attempt those announcements belonged to, a stream that died — kept
-// `toolRunning` with no end stamped on it. That looked settled for as long as
-// the surface was idle, because both the spinner and the age are drawn only
-// while the session is working (toolview.go's [app.mark] and [app.countClock]).
-// Then the NEXT turn started, the session was working again, and the abandoned
-// row began spinning a second time — with an age measured from a beginning
-// minutes or hours earlier. "view_image always seems to be running" is that row.
-//
-// The end stamp is what makes it permanent: both of those renderers stop at a
-// row that has an end on it, whatever the session is doing afterwards.
-//
-// Every row is RESOLVED, never removed, and the STATUS IS LEFT ALONE, for
-// [app.roomResolveUnfinished]'s reasons exactly: the call was asked for, which
-// is a fact about what happened, and "failed" would be a claim about something
-// nobody watched.
-func (a *app) resolveUnfinished() {
-	now := a.now()
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || !e.ended.IsZero() {
-			continue
-		}
-		if e.forming() || e.status.live() {
-			e.ended = now
-			e.stale = true
-		}
-	}
-}
-
 // fadeTicks are the two catch-up wakeups a settled turn schedules: one where
 // the fresh tier ends and one where the warm tier does. They are tea.Ticks and
 // not a ticker on purpose — see [hudFadeMsg].
@@ -4566,24 +4544,6 @@ func (a *app) sampleContext() {
 	}
 }
 
-// closeLive ends the assistant block being streamed into. A block nobody is
-// writing any more is a finished document, so it renders as one.
-//
-// THE STALE FLAG IS THE WHOLE OF THE SETTLE, and it is load-bearing rather than
-// tidy. [app.entryRows] hands back the rows it built last time unless something
-// says otherwise, and a settled entry is not one of the shapes that bypass the
-// cache — so without marking it here the block would keep the rows it was drawn
-// with mid-stream: unrendered markdown, and the live ink of render.go's growing
-// edge left bright on an answer that finished minutes ago. Setting both in one
-// statement is deliberate: the two facts are one event.
-func (a *app) closeLive() {
-	if a.live >= 0 && a.live < len(a.entries) {
-		e := &a.entries[a.live]
-		e.settled, e.stale = true, true
-	}
-	a.live = -1
-}
-
 // settleTurn is THE SETTLE A TURN BOUNDARY OWES: every assistant block of the
 // turn that just ended is a finished document, whichever ending got here first.
 //
@@ -4595,7 +4555,7 @@ func (a *app) closeLive() {
 // second pass finds every block already settled and writes nothing, which is
 // what makes taking both endings free.
 //
-// [app.closeLive] settles the block the stream was GROWING, and that is enough
+// [feed.closeLive] settles the block the stream was GROWING, and that is enough
 // only while "an assistant block stops being live exactly when something settles
 // it" holds — an invariant kept by a dozen scattered call sites (a tool row
 // opening, a note, a person's line) and stated nowhere. It is stated here. A
@@ -4624,7 +4584,7 @@ func (a *app) settleTurn() {
 		if e.kind != entryAssistant || e.settled {
 			continue
 		}
-		// THE STALE FLAG IS THE WHOLE OF THE SETTLE, in [app.closeLive]'s words:
+		// THE STALE FLAG IS THE WHOLE OF THE SETTLE, in [feed.closeLive]'s words:
 		// the rows a block was drawn with mid-stream are handed back by
 		// [app.entryRows] until something says they are wrong.
 		e.settled, e.stale = true, true
@@ -4799,7 +4759,7 @@ func (a *app) appendText(text string) {
 // next boundary has nothing to find and the next question settles nothing that
 // was not already settled. The block is marked stale because its text changed
 // and [app.entryRows] hands back what it drew last time until something says
-// otherwise ([app.closeLive] states that law).
+// otherwise ([feed.closeLive] states that law).
 //
 // WHICH BLOCK IT IS, IS THE CLASSIFIER'S OWN QUESTION ASKED BACKWARDS. The walk
 // steps over exactly what [workEntry] steps over — a note, a divider, a
@@ -4841,96 +4801,10 @@ func (a *app) growSettledAnswer(text string) {
 	a.touch()
 }
 
-// formTool draws — and then keeps redrawing — the row for a call that is STILL
-// ARRIVING (session.EventToolForming).
-//
-// THE GAP THIS CLOSES: a `write` whose body is the file and a `propose_task`
-// whose brief is three paragraphs take seconds to stream, and until this
-// existed the surface said nothing at all for those seconds. The announcement
-// fires when the call is WHOLE; the row now exists from the first fragment, and
-// says what it honestly can — how much has arrived, then the tool, then what it
-// is about — gaining detail rather than appearing finished.
-//
-// NOTHING HERE IS UNMARSHALED. ev.ArgsText is half a JSON object, and half a
-// JSON object is not a payload: the row holds the SIZE of what has arrived, the
-// gloss session built from the fields that have closed, and — for the one tool
-// whose whole substance is one string — the tail of that string as it streams
-// ([formingPreviewField]). A surface that unmarshaled a prefix would be drawing
-// a call the model has not finished asking for; [session.PartialString] is the
-// other thing, a tolerant scan of one field that answers with what has arrived
-// and never invents the rest.
-func (a *app) formTool(ev session.Event) {
-	// The spawn card forms from the same event, because a proposal is a BLOCK
-	// rather than a row and a block that popped into existence whole is the
-	// defect this wave is about (task.go).
-	if ev.Tool == taskTool {
-		a.formTask(ev)
-	}
-	at := claimForming(a.entries, ev)
-	if at < 0 {
-		a.closeLive()
-		a.entries = append(a.entries, entry{
-			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
-			formed: formingPreview(ev.Tool, ev.ArgsText),
-		})
-		a.follow()
-		a.touch()
-		return
-	}
-	e := &a.entries[at]
-	// Every field is taken FORWARD only. The id, the name and the gloss each
-	// land once and then repeat on every fragment after them, and a later event
-	// that happened to carry less than the one before it must not un-say what
-	// the row already knows.
-	e.callID = firstNonEmpty(ev.CallID, e.callID)
-	e.tool = firstNonEmpty(ev.Tool, e.tool)
-	e.text = firstNonEmpty(ev.Hint, e.text)
-	if ev.Bytes > e.bytes {
-		e.bytes = ev.Bytes
-	}
-	// The live text is taken forward the same way, and for the same reason: the
-	// name arrives on one fragment and the body on the ones after it, so the
-	// FIRST fragment of a write is a text this cannot read yet — and an empty
-	// answer must not wipe what the row was already showing.
-	e.formed = firstNonEmpty(formingPreview(firstNonEmpty(ev.Tool, e.tool), ev.ArgsText), e.formed)
-	a.touch()
-}
-
-// formingPreviewField names the argument a call that is still ARRIVING is shown
-// the contents of, per tool. It has one entry, and the shortness of the table is
-// the decision rather than an omission.
-//
-// `write` qualifies because its content is APPENDED TO and never revised: what
-// has arrived is the beginning of the file and will still be the beginning of
-// the file when the call is whole, so a person reading it is reading something
-// true. Nothing else on the belt is like that.
-//
-// `edit` is the near miss and it is deliberately absent. Its block is a DIFF,
-// and a diff needs both sides whole — half an old_string against a new_string
-// nobody has started sending is not a change, it is a claim about one — so a
-// live edit block would redraw itself into a different diff as the second half
-// arrived, which is the exact "read the same diff twice" defect [app.previewHead]
-// is written to avoid. And mechanically it could not be had cheaply anyway: bare
-// spells an edit as {path, edits:[{oldText, newText}]}, and the streamed strings
-// are therefore NESTED, where session's forming scanner deliberately does not
-// look (its toolhint.go). The whole diff still lands the instant the call is
-// announced, which is the moment it becomes true.
-var formingPreviewField = map[string]string{"write": "content"}
-
-// formingPreview is the streamed text a forming row draws, or "" for a call this
-// surface previews nothing of.
-func formingPreview(tool, argsText string) string {
-	field, previewed := formingPreviewField[tool]
-	if !previewed {
-		return ""
-	}
-	text, _ := session.PartialString(argsText, field)
-	return text
-}
-
 // shapingPreviewField names the argument the BRIEF BEING SHAPED is previewed
-// by, and it is the sibling of the table above rather than a second idea.
+// by, and it is the sibling of [formingPreviewField] (feed.go) rather than a
+// second idea. It stayed on this side of the extraction because the shaper is a
+// stream the CHAT watches and not an event the reducer takes.
 //
 // The shaper answers with one JSON object — {"title","brief","acceptance",
 // "where"} (internal/session's task_shape.go) — and `brief` is the field for the
@@ -4951,314 +4825,6 @@ const shapingPreviewField = "brief"
 func shapingPreview(text string) string {
 	preview, _ := session.PartialString(text, shapingPreviewField)
 	return preview
-}
-
-// claimForming finds the row this forming event belongs to, or -1 for a call
-// nothing has been drawn for yet.
-//
-// It walks NEWEST FIRST, which is what makes an id landing late harmless: the
-// wire sends the id on the first fragment in practice and is not required to,
-// so a row can exist with no id at all, and the row that identity belongs to is
-// the most recent one still waiting for one.
-//
-// Once two rows have ids they cannot be confused, which is the whole reason the
-// id is kept: a batch of three parallel writes forms three rows that interleave
-// fragment by fragment, and matching on the tool name alone would fold all
-// three into whichever was drawn first.
-//
-// IT TAKES THE LIST rather than reading [app.entries], because the task room
-// runs the same lane over a list of its own (room.go) and a second copy of this
-// walk is a second answer to "which call is this" waiting to drift from the
-// first.
-func claimForming(es []entry, ev session.Event) int {
-	for i := len(es) - 1; i >= 0; i-- {
-		e := &es[i]
-		if !e.forming() {
-			continue
-		}
-		if e.callID != "" {
-			if e.callID == ev.CallID {
-				return i
-			}
-			continue
-		}
-		// A row with no id yet: this event is that row's if it does not name a
-		// different call, which — with no ids on either side — is as far as
-		// "same call" can honestly be decided.
-		if ev.Tool == "" || e.tool == "" || e.tool == ev.Tool {
-			return i
-		}
-	}
-	return -1
-}
-
-// claimFormed finds the forming row an ANNOUNCEMENT (or a begin) completes, or
-// -1. It is [claimForming]'s mirror and walks the other way: the oldest
-// unfinished row of that tool is the one the batch announces first, which is
-// the order the ordering law promises them in.
-//
-// THE ID IS THE ANSWER WHEREVER THERE IS ONE. session's announcement carries the
-// call's id (its loop.go), so a batch of three parallel writes pairs exactly;
-// the walk by name below is what is left for a provider that streams no ids at
-// all, and it is a convention rather than a fact — which is why it is second.
-//
-// It takes the list for [claimForming]'s reason: the room runs it too.
-func claimFormed(es []entry, ev session.Event) int {
-	loose := -1
-	for i := range es {
-		e := &es[i]
-		if !e.forming() {
-			continue
-		}
-		if ev.CallID != "" && e.callID != "" {
-			if e.callID == ev.CallID {
-				return i
-			}
-			continue
-		}
-		if e.tool == ev.Tool {
-			return i
-		}
-		// A row whose name never landed can only be matched by position, and it
-		// is the LAST resort: a named row for this tool outranks it wherever
-		// one exists.
-		if e.tool == "" && loose < 0 {
-			loose = i
-		}
-	}
-	return loose
-}
-
-// announceTool draws the row for a call the model has finished asking for
-// (session.EventToolAnnounced). Nothing has started, so the row is queued: a
-// dim ◌, no spinner, and — for an edit or a write — the change it is ABOUT to
-// make, previewed underneath from the arguments (toolview.go).
-//
-// IT ADOPTS THE FORMING ROW rather than drawing a second one: the row the
-// person has been watching fill in is this call, and the announcement is that
-// row's next state — the pulse stops, the arguments arrive, the ink comes up.
-// One call, one line, from the first fragment to the last.
-//
-// A row is only ever announced once, but a surface that attached mid-batch may
-// see a begin with no announcement and must not draw a second line for it, so
-// the pairing rule lives in [app.claimAnnounced] and both events use it.
-func (a *app) announceTool(ev session.Event) {
-	if at := claimFormed(a.entries, ev); at >= 0 {
-		e := &a.entries[at]
-		e.status = toolQueued
-		e.tool = firstNonEmpty(ev.Tool, e.tool)
-		e.text = firstNonEmpty(ev.Hint, e.text)
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		// The streamed tail is let go here: the whole payload has landed, so the
-		// preview under this row is now drawn from the arguments, and holding the
-		// last eight kilobytes of every file the session ever wrote would be the
-		// transcript keeping a copy nothing reads.
-		e.formed = ""
-		a.follow()
-		a.touch()
-		return
-	}
-	a.closeLive()
-	a.entries = append(a.entries, entry{
-		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-		status: toolQueued, detail: toolDetail{Args: ev.Args},
-	})
-	a.follow()
-	a.touch()
-}
-
-// beginTool is EXECUTION STARTED. It adopts the row the announcement drew —
-// the same call, one line, which is the whole point of announcing it — and
-// starts that row's clock. A begin nobody announced draws its own row, which is
-// every provider that does not stream tool calls and every surface that
-// attached late.
-func (a *app) beginTool(ev session.Event) {
-	at := a.claimAnnounced(ev)
-	if at < 0 {
-		// A call that formed and then began with no announcement between them.
-		// The ordering law says that cannot happen, and a row left pulsing at a
-		// call that is already running would be the surface believing the law
-		// over the event in its hand.
-		at = claimFormed(a.entries, ev)
-	}
-	if at >= 0 {
-		e := &a.entries[at]
-		e.status = toolRunning
-		e.began = a.now()
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		e.text = firstNonEmpty(ev.Hint, e.text)
-		// Let the streamed tail go, for [app.announceTool]'s reason — this is the
-		// other door a forming row leaves by.
-		e.formed = ""
-		a.follow()
-		a.touch()
-		return
-	}
-	a.closeLive()
-	a.entries = append(a.entries, entry{
-		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-		status: toolRunning, began: a.now(), detail: toolDetail{Args: ev.Args},
-	})
-	a.follow()
-	a.touch()
-}
-
-// claimAnnounced finds the queued row this begin belongs to, or -1.
-//
-// The payload is matched FIRST and the tool name only after: a batch of three
-// edits to three files announces three rows, and pairing by name alone would
-// start the clock on whichever of them was drawn first. Identical arguments are
-// the one case where the two rules disagree and it does not matter — two calls
-// with the same name and the same payload are the same work, in either order.
-func (a *app) claimAnnounced(ev session.Event) int {
-	fallback := -1
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || e.status != toolQueued || e.tool != ev.Tool {
-			continue
-		}
-		if ev.Args != "" && e.detail.Args == ev.Args {
-			return i
-		}
-		if fallback < 0 {
-			fallback = i
-		}
-	}
-	return fallback
-}
-
-// closeTool marks the oldest still-running line for that tool. Oldest rather
-// than newest because tools run in parallel and finish in any order, and the
-// first one begun is the first one a person watching the column expects to
-// resolve.
-//
-// The end event carries the call's Args as well as its Output — session sends
-// a self-contained end — so both are taken from it here rather than kept from
-// the begin: a row rebuilt from one event is a row that cannot disagree with
-// itself. The failure text is a fallback for the Output, because a tool that
-// failed before it ran has a reason and no result.
-func (a *app) closeTool(ev session.Event, status toolState, why string) {
-	// A PROPOSE_TASK RESULT WITH A FORMING CARD IS A REFUSAL. A proposal that
-	// landed has already replaced this block with its question, so the presence
-	// of the forming card is the one fact that distinguishes the two outcomes.
-	if ev.Tool == taskTool {
-		a.refuseFormingCard()
-	}
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
-			continue
-		}
-		e.status = status
-		e.ended = a.now()
-		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
-		e.detail.Output = firstNonEmpty(ev.Output, why)
-		a.learnBackground(e, ev.Output)
-		if why != "" && status == toolFailed {
-			e.text = strings.TrimSpace(e.text + " — " + why)
-		}
-		// A FAILURE OPENS ITSELF. Everything else on this surface waits to be
-		// asked, because a quiet line is a success and success has nothing to
-		// read; a call that failed is the one row whose detail is the reason the
-		// person is looking at the screen, and making them click for it is
-		// making them click for the only thing that happened.
-		if status == toolFailed {
-			e.open = true
-		}
-		// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS OR
-		// THE SESSION DELTA: both are sums over finished calls, so this is the
-		// one place their cache has to be dropped (see [app.hudStats]).
-		a.hudStale = true
-		a.follow()
-		a.touch()
-		return
-	}
-	// A close with no open line still deserves to be seen rather than
-	// silently dropped: the session said something happened.
-	if status == toolFailed {
-		a.entries = append(a.entries, entry{
-			kind: entryTool, tool: ev.Tool, text: why, turn: a.turn, status: toolFailed,
-			open:   true,
-			detail: toolDetail{Args: ev.Args, Output: firstNonEmpty(ev.Output, why)},
-		})
-		a.follow()
-		a.touch()
-	}
-}
-
-// finishTool stops one row's clock at ITS OWN finish and writes what the call
-// took (session.EventToolFinished).
-//
-// It closes nothing. The row keeps its spinner and its live status until the
-// result arrives with the batch, because until then the surface genuinely does
-// not know whether the call succeeded — what it knows, and what this writes, is
-// that this call is no longer the reason anybody is waiting.
-//
-// The pairing is [app.claimAnnounced]'s rule, one state later: the payload
-// first and the tool name only after, because a batch of three bash calls
-// finishing in any order pairs by name alone onto whichever row was drawn
-// first, and the two identical calls where the rules disagree are the same work
-// either way. A row that already has its figure is never taken twice.
-func (a *app) finishTool(ev session.Event) {
-	fallback := -1
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || !e.status.live() || e.ran > 0 || e.tool != ev.Tool {
-			continue
-		}
-		if ev.CallID != "" && e.callID != "" {
-			if e.callID == ev.CallID {
-				fallback = i
-				break
-			}
-			continue
-		}
-		if ev.Args != "" && e.detail.Args == ev.Args {
-			fallback = i
-			break
-		}
-		if fallback < 0 {
-			fallback = i
-		}
-	}
-	if fallback < 0 {
-		return
-	}
-	e := &a.entries[fallback]
-	if ev.Took > 0 && e.ran == 0 {
-		e.ran = ev.Took
-	}
-	a.touch()
-}
-
-// settleCompaction stops the compaction row's clock: the LAST one still running
-// takes the finished hint and the end time, and turns into the rule.
-//
-// Last rather than first, which is what [app.closeTool] does and for the
-// opposite reason: tool calls overlap and resolve in any order, while a session
-// compacts one pass at a time (session holds a compacting flag across it), so
-// the only unfinished row there can be is the newest one — and walking backwards
-// finds it without reading the whole conversation.
-//
-// A settle with NO row to settle is not an error and is not dropped: a resumed
-// session replays a transcript that already contains passes nobody watched, and
-// an older session predates the start event entirely. Those get a row born
-// finished — the divider they always drew, with no duration claimed, because a
-// pass this surface did not see the start of has no honest elapsed time.
-func (a *app) settleCompaction(text string) {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
-		if e.kind != entryCompact || !e.ended.IsZero() {
-			continue
-		}
-		e.text, e.ended = text, a.now()
-		e.stale = true
-		return
-	}
-	now := a.now()
-	a.entries = append(a.entries, entry{
-		kind: entryCompact, text: text, turn: a.turn, began: now, ended: now,
-	})
 }
 
 // note appends a surface-side line — a slash command's answer, an error, the

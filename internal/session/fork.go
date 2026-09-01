@@ -32,8 +32,10 @@ package session
 //
 //   - Every hand declares the paths it may write, and [writeGuard] — the
 //     pre-action citizen the adaptive run already uses (orchestrate.go) —
-//     refuses `edit` and `write` outside them. Disjoint scopes make a conflict
-//     impossible by construction rather than unlikely by instruction.
+//     refuses any call aimed outside them whose target is a path it can read:
+//     `edit`, `write`, and the `edit_video` actions that save a file. Disjoint
+//     scopes make a conflict impossible by construction rather than unlikely by
+//     instruction.
 //   - OVERLAPPING SCOPES ARE REFUSED AT THE CALL, before a single hand starts.
 //     Two hands sharing a path is the one shape the guard cannot save, so it
 //     never gets to exist.
@@ -228,7 +230,7 @@ var forkDescription = "Copy yourself into " + strconv.Itoa(forkHandFloor) + "–
 var forkSchemaJSON = `{"type":"object","properties":{` +
 	`"parts":{"type":"array","minItems":` + strconv.Itoa(forkHandFloor) + `,"maxItems":` + strconv.Itoa(forkFanLimit) +
 	`,"description":"The hands, in order.","items":{"type":"object","properties":{` +
-	`"role":{"type":"string","description":"ONE line saying what THIS hand does, written as the DIFFERENCE from its siblings. It has read everything you have read, so never restate the work or the context — say only what is this hand's."},` +
+	`"role":{"type":"string","description":"ONE line saying what THIS hand does, written as the DIFFERENCE from its siblings — never the work or the context, which it has already read."},` +
 	`"scope":{"type":"array","minItems":1,"items":{"type":"string"},"description":"The files and directories this hand may write, workspace-relative. A directory covers everything under it. No two hands may share a path."},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"Leave out for ordinary work. Set to ` + gradeCareful + ` for a hand whose work could look finished and be quietly wrong, which lifts it to the careful tier."}` +
 	`},"required":["role","scope"],"additionalProperties":false}},` +
@@ -458,7 +460,7 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 	}
 	if len(parsed.Parts) > forkFanLimit {
 		return parsed, fmt.Sprintf("not forked: %d hands is over the limit of %d. If the work really has that many "+
-			"separate slices it is wide enough to be a task, which gets each part its own copy of the repository.",
+			"separate slices it is wide enough to be a task, which gets each part a copy of its own.",
 			len(parsed.Parts), forkFanLimit)
 	}
 	for index, part := range parsed.Parts {
