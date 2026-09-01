@@ -733,6 +733,21 @@ type app struct {
 	pendingReplyTags []session.TaskReplyTag
 	// live is the assistant entry currently being streamed into, or -1.
 	live int
+	// settledTurn is the last turn whose BOUNDARY HAS PASSED — the turn
+	// [app.settleTurn] has walked — and it is what makes a delta arriving after
+	// that boundary land settled rather than opening a block nothing owns.
+	//
+	// THE DEFECT IT CLOSES (#225). A turn ends twice on this surface and, in
+	// between, a stream can still speak: the tail of a reply the provider had
+	// already buffered, a straggler behind a stop. That delta found no live
+	// block, opened a second one under the answer, and the two costs landed
+	// together — the new block was live with no boundary left to settle it, and
+	// its mere presence demoted the answer above it into narration, which is
+	// drawn PLAIN (hierarchy.go). What the person read was their markdown reply
+	// come back as the characters it was typed as, until they asked something
+	// else. It is zero until the first turn ends, and turn numbers count from
+	// one, so nothing is settled by accident.
+	settledTurn int
 	// echoAt is the person's own line drawn before the engine agreed to it, or
 	// -1 when there is none — which is always, on a surface that is not hosted.
 	// echoTok is the token that names it, counting from one so that zero means
@@ -4522,6 +4537,11 @@ func (a *app) closeLive() {
 // an older one. Once per turn, never on a frame (PERF.md).
 func (a *app) settleTurn() {
 	a.closeLive()
+	// AND THE BOUNDARY IS REMEMBERED, so that a delta arriving after it knows it
+	// is late ([app.settledTurn], [app.appendText]). Stating the boundary is
+	// what makes "nothing streamed outlives the settle" a property of this
+	// function rather than a hope about the order events happen to arrive in.
+	a.settledTurn = a.turn
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		if e.turn != a.turn {
@@ -4664,8 +4684,25 @@ func (a *app) take(u session.Usage) {
 
 // appendText grows the live assistant block, opening one if the last thing on
 // screen was a tool line or a user message.
+//
+// A DELTA THAT ARRIVES AFTER ITS TURN HAS SETTLED GOES ON THE ANSWER IT BELONGS
+// TO, AND LANDS SETTLED (#225, [app.settledTurn]). Between a turn's two endings
+// a stream can still speak — the tail of a reply the provider had already
+// buffered, a straggler behind a stop — and the obvious thing to do with those
+// words opened a SECOND block under the answer. That was two defects in one
+// line: the new block was live with no boundary left to settle it, so it drew
+// its markdown raw until the next question closed it; and its presence demoted
+// the answer above it into narration, which is drawn plain (hierarchy.go). The
+// words belonged to the paragraph above them the whole time, which is [app.said]'s
+// law read from the other end — a page is the only record anybody reads back.
 func (a *app) appendText(text string) {
 	if text == "" {
+		return
+	}
+	// Turn numbers count from one, so the zero this field holds before the
+	// first turn ends cannot match the turn a delta belongs to.
+	if late := a.settledTurn > 0 && a.turn == a.settledTurn; late {
+		a.growSettledAnswer(text)
 		return
 	}
 	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
@@ -4679,6 +4716,55 @@ func (a *app) appendText(text string) {
 	e.text += text
 	e.stale = true
 	a.follow()
+}
+
+// growSettledAnswer is where a late delta goes: onto the LAST assistant block of
+// the turn that has already ended, still settled.
+//
+// NOTHING IS LEFT LIVE, which is the whole point — [app.live] stays -1, so the
+// next boundary has nothing to find and the next question settles nothing that
+// was not already settled. The block is marked stale because its text changed
+// and [app.entryRows] hands back what it drew last time until something says
+// otherwise ([app.closeLive] states that law).
+//
+// WHICH BLOCK IT IS, IS THE CLASSIFIER'S OWN QUESTION ASKED BACKWARDS. The walk
+// steps over exactly what [workEntry] steps over — a note, a divider, a
+// withdrawn correction — because those are the lines the SURFACE wrote at the
+// boundary and not work the model did: the two lines a turn ends with (what it
+// changed, what it cost) sit under the reply on purpose, and a walk that stopped
+// on them would append a second block under the answer and demote it, which is
+// the defect this exists to close. Anything else — a tool row, a card — stops
+// the walk: words after a call belong after the call, and gluing them onto the
+// narration in front of it would put them in the wrong place on the page.
+//
+// A turn whose tail is not an answer — a call that failed, a stopped turn that
+// never spoke — gets a block of its own, settled on arrival: the words did
+// happen, and the alternative is a surface quietly dropping something a person
+// watched arrive.
+func (a *app) growSettledAnswer(text string) {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.turn != a.turn {
+			break
+		}
+		if e.kind == entryNote || e.kind == entryDivider || entryWithdrawn(e) {
+			continue
+		}
+		if e.kind != entryAssistant {
+			break
+		}
+		e.text += text
+		e.settled, e.stale = true, true
+		a.follow()
+		a.touch()
+		return
+	}
+	a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn, text: text,
+		settled: true, stale: true,
+		replyTags: append([]session.TaskReplyTag(nil), a.pendingReplyTags...)})
+	a.pendingReplyTags = nil
+	a.follow()
+	a.touch()
 }
 
 // formTool draws — and then keeps redrawing — the row for a call that is STILL
@@ -5133,8 +5219,15 @@ func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
 
 // noteWritten is the one body behind both, so the repeat rule, the fact list and
 // the block flag cannot disagree about what a note is.
+// A NOTE DOES NOT CUT THE REPLY IN TWO (#225). It used to close the live block,
+// so a line the surface wrote in the middle of a streaming answer — a notice
+// about a reshaped request, a nudge — sent the very next delta into a SECOND
+// assistant block. The reader then got a reply in two halves with the first one
+// demoted into narration and drawn plain, because something followed it in its
+// own turn (hierarchy.go, workfold.go's [workEntry]). It is exactly the shape
+// [app.said] already closes for the person's own line, and it takes the same
+// door: the note lands after the block and the block goes on growing.
 func (a *app) noteWritten(text string, block bool, facts []string) {
-	a.closeLive()
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote && a.entries[n-1].text == text {
 		// The repeat is brought back into view rather than written again (above),
 		// and its data are refreshed with it: the same sentence built a second time
@@ -5145,7 +5238,7 @@ func (a *app) noteWritten(text string, block bool, facts []string) {
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryNote, text: text, turn: a.turn, facts: facts, block: block})
+	a.said(entry{kind: entryNote, text: text, turn: a.turn, facts: facts, block: block})
 	a.follow()
 	a.touch()
 }
