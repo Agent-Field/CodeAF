@@ -382,12 +382,20 @@ name, project tag, note and age with none of them giving way, the gutter is 4, a
 that can still say a whole sentence is 36 — so the card tier begins at **160**, and the
 card is never paid for out of the list.
 
-**At 160 and wider the card stands on the right and it ACTS.** It is the title, the place
-line, and five bands, each drawn only if it has something to say:
+**Past 160 the list and the card split every extra cell down the middle**, and the card
+stops growing at **56**. So the card is 36 wide on a 160-column frame, 48 at 184, 56 at 200
+and 56 on anything wider, and the list is never below the 120 it asks for at any width —
+that is arithmetic rather than a promise. The card stops at 56 because its clauses have the
+room they need there and the cells after that do more good in the list you read twenty rows
+of.
+
+**At 160 and wider the card stands on the right and it ACTS.** It is the title with the
+place line under it, and five bands, each drawn only if it has something to say:
 
 ```
 Swarm Task Splitting Ideation
 ~/aforge-v2 · master, 1 file dirty · here
+
 
 it is stopped on you
 Add a --report-only mode so the report can be
@@ -401,12 +409,18 @@ work
 made for you
 · swarm-decomposition.md                               2h
 
+
 spent $1.63 · 3.6M tokens · thinking high
+
 
 → verbs: put it away, new chat here, open folder, copy path
 ```
 
-- **the place line** under the title carries the repository — the branch and the dirty count
+The two blank rows are not an accident — they are where one **group** of the card ends and
+the next begins (*How much air is on the card*).
+
+- **the place line**, drawn directly under the title with no blank row between them because
+  the address is the title's second line rather than a fact of its own, carries the repository — the branch and the dirty count
   as one clause, `master, 1 file dirty`, and `that folder is gone` in its place where the
   directory is not there any more — then the door word: `here` for the conversation this
   window is holding, `open in another window` for one somebody else has;
@@ -665,11 +679,14 @@ by default, open `/settings` and walk to the `thinking` row.
 **There is a right-hand pane only at 160 columns and wider** (*Why is there no preview on
 the right*). Where there is one, it is about **the row under your mouse pointer while the
 pointer is on one, and the row the cursor is on otherwise** (its own section, below). It is
-read top to bottom as bands separated by blank lines — no rules and no borders anywhere:
+read top to bottom as bands separated by blank lines — no rules and no borders anywhere,
+the separation made of nothing but space, and the size of that space saying which bands
+belong together (*How much air is on the card*):
 
 1. the conversation's **name**, the brightest text on the screen and the same treatment the
    banded row on the left wears, so the eye travels between them;
-2. one dim line of **where it is**, which carries the repository and whether a window is
+2. **directly under it, with no blank row between**, one dim line of **where it is**, which
+   carries the repository and whether a window is
    holding it — `~/aforge-v2 · master, 1 file dirty · here`. The branch and the dirty count
    are one clause about one repository, so they are joined by a comma; the ` · ` separates
    the address, the repository and the door word. The whole line is a **link**: cmd+click it
@@ -685,7 +702,15 @@ read top to bottom as bands separated by blank lines — no rules and no borders
 5. `made for you` — the **files it made**;
 6. a dim line of **facts**: `spent $1.63 · 3.6M tokens · thinking high`;
 7. one dim line naming the strip: `→ verbs: put it away, new chat here, open folder, copy
-   path`.
+   path`. It **wraps** on a card too narrow for the whole list rather than ending in an
+   ellipsis, and the second row hangs under the first word, so the offer is never cut off
+   halfway through the thing it was about to offer.
+
+The three section words — `it is stopped on you`, `work`, `made for you` — are **one shade
+brighter than the facts under them**. They are labels on a group and not facts in their own
+right, so the eye can find them without them competing with the title, which stays the
+brightest thing on the screen. There is no bold under the title and no underline anywhere:
+weight here is made of colour.
 
 **It never moves.** When the list becomes a drop-up under your typing the card stays exactly
 where it is, because a card is assembled downward from its title and lifting it would take
@@ -1783,7 +1808,8 @@ shows the same kind of card it shows for a conversation, about the other kind of
 downward:
 
 1. **your own words**, the brightest text on the screen;
-2. one dim line of **where it is** — project · path, and that line is a link;
+2. **directly under them, with no blank row between**, one dim line of **where it is** —
+   project · path, and that line is a link;
 3. **when it goes off**, and — if it is stopped on something — that line, in the
    one hue on the card that is not dim;
 4. **what it has done**: `checked 6m ago · nothing`, `last went off Mon · <what
@@ -2140,6 +2166,49 @@ live session, and agree with this line about the talking.
 
 A whole **project's** figures are on the spend place — home has no project card any more.
 
+## How much air is on the card — the four groups and the one gap law
+
+**The blank rows on the card mean something.** It used to put exactly one between every
+band, which is a rhythm with no information in it: the address under the title, the bill
+under the work and the verbs under the bill all stood the same distance apart, so a card of
+seven bands read as seven facts in a heap. It is four **groups** now, and the gap says which
+is which:
+
+| group | what is in it |
+| --- | --- |
+| identity | what this is called, and where it lives |
+| activity | what it is stopped on, what it ran, what it made |
+| economics | what it cost |
+| verbs | what can be done with it |
+
+**One gap law, everywhere on the card: one blank row inside a group, two between groups.**
+There is no third gap and in particular no tighter one — two lines that want to be closer
+than a blank row are **one band**, which is exactly what the title and the place line are.
+
+**Air is the first thing the card gives up.** On a frame too short to hold the card at that
+rhythm it is redrawn at the flat one-blank-row rhythm, and only a frame too short for
+*that* starts dropping whole bands from the bottom. Whitespace is the cheapest thing on the
+card and a fact is the dearest, so they go in that order — and the title never goes at all.
+
+The same four groups and the same law hold on **a standing item's card** and on the card
+for a **project heading**; the phone sheet, which is one column and not a card, keeps the
+flat rhythm.
+
+## Why does the preview on the right look cramped — spacing, hierarchy and width
+
+It should not any more. If it does, it is one of three things and they have separate
+answers:
+
+- **the gaps** — the card is four groups with two blank rows between them and one inside
+  them (*How much air is on the card*). A card showing one blank row everywhere is a card
+  on a frame too short for the wide rhythm; make the window taller;
+- **the width** — the card is 36 cells at 160 columns and grows to 56 by 200, taking half of
+  every extra cell and leaving the other half to the list (*Why is there no preview on the
+  right*). Under 160 there is no card at all and the row's own note carries the fact;
+- **the shades** — the title is the brightest text on the screen, the section words are one
+  shade under it, and the facts, fold lines, place line and verbs are dim. That is the whole
+  ladder: three roles, no fourth hue, no bold under the title and no underlines.
+
 ## What a narrow home card does with a long row
 
 A card too narrow for a line breaks it between its clauses rather than cutting the end
@@ -2147,6 +2216,11 @@ off. Whole facts move onto following rows: the final key, branch fact, file age,
 time, news text, task file count or cost, and answer chip remain visible. A single clause
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
+
+**The verbs line breaks the same way** — `→ verbs: put it away, new chat here, open
+folder,` / `         copy path` — keeping the comma on the row it ends and hanging the
+second row under the first word, so a list of four verbs on a narrow card is still a list
+of four verbs.
 
 ## Home on a phone — waiting on you, running, since you left
 
