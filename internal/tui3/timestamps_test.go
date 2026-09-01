@@ -131,6 +131,44 @@ func TestAReceiptCarriesTheTurnsOwnSpendAndNotTheSessions(t *testing.T) {
 	}
 }
 
+// AND THAT HOLDS ON A RESUMED CONVERSATION, which is where it did NOT before
+// #135: the receipt is the session's total minus what the turn opened at, the
+// total opened at zero on a resume, and so the first turn back charged itself
+// every dollar the conversation had ever spent. The seeding is what fixes it —
+// a.cost carries the restored bill on the first frame, so the subtraction has
+// something true on both ends — and this pins the claim rather than leaving it
+// to follow structurally (#210).
+func TestTheFirstTurnAfterAResumeDrawsOnlyItsOwnSpend(t *testing.T) {
+	// AN AGENT ALREADY HOLDING MONEY IS A RESUMED CONVERSATION as far as this
+	// surface can tell: the engine sums the journal's usage lines into
+	// Agent.Usage at construction, and what reaches here is that one figure
+	// ([openTurn] says the same thing from the other side). The real journal is
+	// opened by costresume_test.go; a receipt needs a turn delivered by hand, so
+	// it is this fixture that can carry one.
+	agent := openTurn()
+	agent.usage = session.Usage{CostUSD: 12.30}
+	a, advance := clockApp(t, agent, config.TimestampsFooters)
+
+	if !near(a.cost, 12.30) {
+		t.Fatalf("the resumed conversation opened at $%v, want the journal's 12.30", a.cost)
+	}
+
+	typeLine(t, a, "carry on where we left off")
+	advance(time.Minute)
+	// Five cents of new work, on top of everything the conversation had already
+	// spent before anybody opened it again.
+	turnSpent(agent, 12.35)
+	finishTurn(t, a, agent, text(session.EventTextDelta, "done."))
+
+	row := findRow(t, a, "· 14:01 ·")
+	if !strings.Contains(row, "$0.05") {
+		t.Fatalf("the first turn after a resume does not carry its own five cents:\n%s", row)
+	}
+	if strings.Contains(row, "$12.3") {
+		t.Fatalf("the first turn after a resume charged itself the whole restored bill:\n%s", row)
+	}
+}
+
 // ctrl+o is "show me the rest of this turn", and the rest of a turn includes
 // exactly when it happened.
 func TestUnfoldingATurnDatesItsReceipt(t *testing.T) {
