@@ -199,8 +199,8 @@ func (writeNotesRule) ignored(w *loopWatch) bool {
 // note was written.
 func (writeNotesRule) met(sub submission) bool { return sub.visibleText }
 
-// demand states the two thresholds from the constants that enforce them, so the
-// sentence the model reads and the number the loop applies cannot drift.
+// demand spells its two thresholds out of the constants the loop applies, so the
+// numbers a model reasons from and the numbers the loop enforces cannot drift.
 func (writeNotesRule) demand() string {
 	return fmt.Sprintf("[held] Nothing was run this step. You were asked at %d tool-using replies "+
 		"with no visible text, and again at %d, to write down what you are doing, and you called tools "+
