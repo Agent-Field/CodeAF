@@ -65,7 +65,8 @@ stands** —
 uncommitted edits and untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
-folder, and the files the task wrote are laid back over it by name when it lands. And "work
+folder, and the files the task wrote — its parts' files included — are laid back over it by
+name when it lands. And "work
 here" is you saying so: the task works in that folder itself, with nothing isolating it.
 
 **Two refusals and one correction.** A task whose contract names an absolute path outside
@@ -342,6 +343,14 @@ second gets the directory.
 A task lands **the files it wrote** — every path it handed to its `write` or `edit` hand,
 plus anything its own report names on a `files:` line. Nothing else is committed and
 nothing else merges.
+
+**A task that handed parts out lands what the whole family wrote.** The parts work in the
+same copy the task does, and as each one finishes its files join the task's own list. That
+one list is what lands — onto your branch where the ground is a repository, laid back over
+your folder by name where it is a plain folder. You never have to name a part's file again
+to keep it, and a part that wrote nothing adds nothing. A part that did not finish is not on
+the list, because its work never came home into the task's copy; its own branch is kept
+instead and its card says where.
 
 That is why a task's branch is a change you can read. Its checkout is its own to make a
 mess in: it installs what your tests need, it builds, it caches. A `.venv`, a

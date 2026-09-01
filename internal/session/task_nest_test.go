@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -658,5 +659,247 @@ func TestALineSteeredAtAClosedWorkerIsRefusedRatherThanSwallowed(t *testing.T) {
 	}
 	if steeringContains(nest.node, "one more thing") {
 		t.Fatal("the line was queued on the closed worker anyway")
+	}
+}
+
+// ── THE FAMILY'S LEDGER ─────────────────────────────────────────────────────
+//
+// A family's product is its LEDGER — the paths it wrote — because the ledger is
+// what a landing carries: [stageTaskWork] stages it on a repository ground and
+// [taskTree.landMirror] lays it back over a folder one, and nothing anywhere
+// walks the directory (task_ledger.go, and task_landing_test.go's header for
+// what walking it cost).
+//
+// So a parent that hands work out has a ledger with a hole in it. The parts
+// wrote into ITS tree and their paths are on THEIR lists; on a repository ground
+// git closes the hole underneath, because a part's work arrives as commits on
+// the very tree the parent merges. On a folder ground nothing closes it: the
+// mirror held every file the family made, the parent's ledger named its own, and
+// the person's folder got that one. The task said done and the check passed.
+//
+// The two tests below are that, run rather than described — a real graph, real
+// workers, a real mirror, and a real folder to land into.
+
+// familyCompleter is ONE provider standing behind a whole family, which is what
+// a family really has: every worker in a tree is built with the conversation's
+// own client ([Agent.newTaskAgentOn]). Each node is told apart by a mark its own
+// brief carries, read off the FIRST user message and nowhere else — a parent's
+// later turns quote its parts' briefs back at it, in the division it made and in
+// the reports it is handed, so a router reading the whole transcript would
+// answer as a part on the parent's own turn.
+type familyCompleter struct {
+	mu sync.Mutex
+	// marks are tried in order, so a part is matched before the parent whose
+	// words its own brief may carry.
+	marks []string
+	steps map[string][]step
+	seen  map[string]int
+}
+
+func (c *familyCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	// THE DIVISION'S REVIEWER IS NOT A WORKER, and it is asked with the whole
+	// plan under its own brief — every mark at once. An answer it cannot parse is
+	// the fail-open path, which admits the parts exactly as the worker wrote them
+	// (task_divide.go's [Agent.reviewDivision]).
+	if len(messages) > 0 && messageText(messages[0]) == divideReviewBrief {
+		return textResponse("(no reviewer here)"), nil
+	}
+	var brief string
+	for _, message := range messages {
+		if message.Role == "user" {
+			brief = messageText(message)
+			break
+		}
+	}
+	c.mu.Lock()
+	var next step
+	for _, mark := range c.marks {
+		if !strings.Contains(brief, mark) {
+			continue
+		}
+		if index := c.seen[mark]; index < len(c.steps[mark]) {
+			next = c.steps[mark][index]
+		}
+		c.seen[mark]++
+		break
+	}
+	c.mu.Unlock()
+	if next == nil {
+		// A worker with nothing left to say ends its turn. A parent woken twice
+		// by two parts landing at two instants takes this on the second pass.
+		return textResponse("nothing further"), nil
+	}
+	return next(ctx, messages)
+}
+
+// dividesInto is one well-formed divide_work call whose parts carry the briefs
+// named, which is how each part's worker is told apart from its siblings.
+func dividesInto(evidence string, briefs ...string) step {
+	parts := make([]string, 0, len(briefs))
+	for i, brief := range briefs {
+		parts = append(parts, fmt.Sprintf(
+			`{"title":"part %d","summary":"s","brief":%q,"acceptance":"a"}`, i+1, brief))
+	}
+	arguments := fmt.Sprintf(`{"evidence":%q,"parts":[%s]}`, evidence, strings.Join(parts, ","))
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse("call-divide", "divide_work", arguments), nil
+	}
+}
+
+// THE DEFECT, PINNED: a folder family lands what the FAMILY made.
+//
+// The parent stands on a plain folder, so it works in a mirror of it and lands
+// by laying its ledger back over the original by name. It writes one file, hands
+// two parts out, and each part writes one of its own into the same tree. All
+// three are the deliverable; before the ledger absorbed its parts, one of them
+// came home.
+func TestAFolderFamilyLandsWhatEveryPartWrote(t *testing.T) {
+	ground := t.TempDir()
+	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
+	t.Setenv("HOME", t.TempDir())
+
+	const (
+		wholeMark  = "MARK-THE-WHOLE-JOB"
+		firstMark  = "MARK-THE-FIRST-PART"
+		secondMark = "MARK-THE-SECOND-PART"
+	)
+	completer := &familyCompleter{
+		marks: []string{firstMark, secondMark, wholeMark},
+		seen:  map[string]int{},
+		steps: map[string][]step{
+			wholeMark: {
+				writeCall("call-notes", "notes.md", "the line the parent wrote\n"),
+				dividesInto(wideEvidence, firstMark, secondMark),
+				finalText("the parts are out"),
+				finalText("both parts are in, and the three notes are written"),
+			},
+			firstMark: {
+				writeCall("call-first", "first.md", "the first part\n"),
+				finalText("wrote first.md"),
+			},
+			secondMark: {
+				writeCall("call-second", "second.md", "the second part\n"),
+				finalText("wrote second.md"),
+			},
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.Divide = true
+	})
+	graph := agent.graph()
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "write the three notes", named: true, wide: true,
+		brief: wholeMark, deliverable: "three notes in the folder", acceptance: "a",
+		ground: ground, mode: TaskModeMirror, depth: 1,
+	})
+	node := graph.node(id)
+	waitDoneNode(t, node)
+
+	notice := node.notice()
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
+	}
+	if notice.Mode != TaskModeMirror {
+		t.Fatalf("mode = %q, want the family on a folder to be mirrored", notice.Mode)
+	}
+	if kids := graph.children(node.id); len(kids) != 2 {
+		t.Fatalf("the parent handed out %d parts, want the two it divided into", len(kids))
+	} else {
+		for _, kid := range kids {
+			if kid.stateNow() != TaskDone {
+				t.Fatalf("part %d landed %q: %s", kid.id, kid.stateNow(), kid.notice().Report)
+			}
+		}
+	}
+
+	// THE WHOLE OF IT. The person's own folder holds the parent's file and both
+	// parts' files, with no `files:` re-declaration anywhere.
+	for path, want := range map[string]string{
+		"notes.md":  "the line the parent wrote\n",
+		"first.md":  "the first part\n",
+		"second.md": "the second part\n",
+	} {
+		if got := readFile(t, filepath.Join(ground, path)); got != want {
+			t.Fatalf("%s in the person's folder is %q, want %q", path, got, want)
+		}
+	}
+	// AND THE LEDGER IT SETTLED WITH SAYS SO, which is the half the level above
+	// reads: a parent absorbs what its parts settled holding, so a ledger that is
+	// whole here is a ledger that is whole one level up (task_ledger.go).
+	_, changed, _, _ := node.leavings()
+	for _, want := range []string{"notes.md", "first.md", "second.md"} {
+		if !containsString(changed, want) {
+			t.Fatalf("the family settled with %v, want %s on it", changed, want)
+		}
+	}
+}
+
+// AND THE FOLD IS ON THE LEDGER, SO IT COMPOSES DOWNWARD.
+//
+// A part settles holding what IT absorbed — the test above asserts that half on
+// a real landing — so a parent reading its parts' leavings is reading whole
+// subtrees rather than single workers. The third generation is put into the
+// graph here rather than run, because the runner bounds a family at two levels
+// ([taskDepthLimit]) and a test may not pretend otherwise; what it pins is that
+// nothing in the absorption knows or cares how deep the list it is folding came
+// from.
+func TestAFamilyLedgerFoldsAPartsWholeSubtree(t *testing.T) {
+	ground := t.TempDir()
+	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
+
+	tree, err := prepareTaskTreeOn(context.Background(), Place{}, t.TempDir(), "cccc3333cccc3333", 7,
+		"write the three notes", taskStand{dir: ground, mode: TaskModeMirror})
+	if err != nil {
+		t.Fatalf("prepareTaskTreeOn: %v", err)
+	}
+	// The family's whole product, sitting in the one tree it was assembled in.
+	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the line the parent wrote\n")
+	writeFile(t, filepath.Join(tree.dir, "part.md"), "the part's own\n")
+	writeFile(t, filepath.Join(tree.dir, "under", "deeper.md"), "the part's part\n")
+
+	parent := loneTestNode(t, "write the three notes")
+	parent.graph.mu.Lock()
+	part := &TaskNode{graph: parent.graph, id: 2, parent: parent.id, state: TaskDone,
+		spec: taskSpec{title: "one of the notes"}, changed: []string{"part.md", "under/deeper.md"}}
+	parent.graph.nodes[part.id] = part
+	parent.graph.order = append(parent.graph.order, part.id)
+	parent.graph.mu.Unlock()
+
+	changed := absorbedLedger(parent, []string{"notes.md"})
+	if merge, detail := tree.comeHome("write the three notes", changed); merge != mergeInPlace || detail != "" {
+		t.Fatalf("the mirror landed as %q: %s", merge, detail)
+	}
+	for path, want := range map[string]string{
+		"notes.md":        "the line the parent wrote\n",
+		"part.md":         "the part's own\n",
+		"under/deeper.md": "the part's part\n",
+	} {
+		if got := readFile(t, filepath.Join(ground, filepath.FromSlash(path))); got != want {
+			t.Fatalf("%s in the person's folder is %q, want %q", path, got, want)
+		}
+	}
+}
+
+// AND A PART THAT WROTE NOTHING ABSORBS NOTHING. The emptiness law, at the one
+// seam where a stray empty entry would become a path a landing tried to stage.
+func TestAPartThatWroteNothingAddsNothingToTheLedger(t *testing.T) {
+	parent := loneTestNode(t, "write the notes")
+	parent.graph.mu.Lock()
+	part := &TaskNode{graph: parent.graph, id: 2, parent: parent.id, state: TaskDone,
+		spec: taskSpec{title: "the note nobody had to write"}}
+	parent.graph.nodes[part.id] = part
+	parent.graph.order = append(parent.graph.order, part.id)
+	parent.graph.mu.Unlock()
+
+	if got := absorbedLedger(parent, []string{"notes.md"}); len(got) != 1 || got[0] != "notes.md" {
+		t.Fatalf("the ledger absorbed %v from a part that wrote nothing", got)
+	}
+	if got := absorbedLedger(parent, nil); len(got) != 0 {
+		t.Fatalf("a family that wrote nothing settled with %v", got)
 	}
 }

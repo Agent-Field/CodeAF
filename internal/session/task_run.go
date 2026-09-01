@@ -3366,6 +3366,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
 	if !a.config.TaskAudit {
+		// WHAT SHIPS IS THE FAMILY'S, NOT THIS WORKER'S SLICE OF IT, and it is
+		// folded here for the same reason it is folded on the checked road below:
+		// everything past this line — the ground question, the landing, the report
+		// — reads one complete ledger (task_ledger.go).
+		changed = absorbedLedger(node, changed)
 		// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE, and with the check off
 		// this is one of the places it would. A person who turned verification off
 		// has not asked to be merged over the top of another window (groundladder.go).
@@ -3443,6 +3448,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// verified says nothing at all about a file another window has landed in
 	// since. That is the one question left before a merge, and taskground.go is
 	// where it is asked.
+	// AND THE PARTS' WORK IS THIS LANDING'S WORK. The check above stood on the
+	// assembled tree ([landingFilesFor]); what ships is named the same way from
+	// here on, so a folder family lands its whole product rather than the slice
+	// its own worker happened to write, and the paths this node settles with are
+	// the ones its OWN parent will absorb one level up (task_ledger.go).
+	changed = absorbedLedger(node, changed)
+
 	if shift := a.groundShift(node, changed); shift != "" {
 		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 	}
@@ -3516,6 +3528,11 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 	if a.config.TaskAudit && ctx.Err() == nil && strings.TrimSpace(node.acceptance()) != "" {
 		verdict := a.auditNode(ctx, node, tree, changed, report, log)
 		if verdict.verified && ctx.Err() == nil {
+			// AND THE SAME LEDGER IT LANDS ON. A threshold is a statement about the
+			// trajectory and never about the parts, which finished and came home
+			// before it fired — so work that holds ships whole here exactly as it
+			// does on the ordinary finishing line (task_ledger.go).
+			changed = absorbedLedger(node, changed)
 			// The same last question the ordinary finishing line asks, for the same
 			// reason: this branch is about to merge (groundladder.go). The threshold's
 			// own sentence is left out of what follows exactly as it is left out of
