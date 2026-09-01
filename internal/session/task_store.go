@@ -173,6 +173,24 @@ type taskRecord struct {
 	Ground string   `json:"ground,omitempty"`
 	Mode   TaskMode `json:"groundMode,omitempty"`
 
+	// Rung, Seal, Base and Universe are WHICH COPY OF THE GROUND the work
+	// actually happened in (session/groundladder.go): which rung of the ground
+	// ladder made the world, the one string that names it, the machine commit the
+	// parent's uncommitted world was sealed into, and furrow's name for the fork.
+	//
+	// THEY ARE ON THE RECORD BECAUSE A LANDING OUTLIVES THE RUN THAT MADE THE
+	// WORLD. A node whose work is accepted an hour later, or whose session is
+	// resumed after a crash, is landed from a tree rebuilt out of these fields —
+	// and a landing that had forgotten them would take the parent's own
+	// unfinished edits back into their history, and look for a branch that lives
+	// in a fork in the repository next door. They are additive: a checkpoint
+	// written before they existed decodes with none of them and lands exactly as
+	// it always did, which is the branch-in-a-worktree road.
+	Rung     GroundRung `json:"groundRung,omitempty"`
+	Seal     string     `json:"groundSeal,omitempty"`
+	Base     string     `json:"groundBase,omitempty"`
+	Universe string     `json:"groundUniverse,omitempty"`
+
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
 	// work). They are absent in every checkpoint written before a task could
@@ -467,7 +485,6 @@ func (s *taskStore) save(graph *TaskGraph) {
 	}
 }
 
-
 // close makes every later save a no-op. It is the session close's to call, and
 // it sits under the same lock as save so a write already on its way to the
 // rename finishes whole before the door shuts behind it.
@@ -643,6 +660,10 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Where:       n.spec.where,
 		Ground:      n.Ground,
 		Mode:        n.Mode,
+		Rung:        n.Rung,
+		Seal:        n.Seal,
+		Base:        n.Base,
+		Universe:    n.Universe,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -1124,6 +1145,10 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		Ground:      record.Ground,
 		Mode:        record.Mode,
+		Rung:        record.Rung,
+		Seal:        record.Seal,
+		Base:        record.Base,
+		Universe:    record.Universe,
 		state:       record.State,
 		report:      record.Report,
 		ending:      record.Ending,

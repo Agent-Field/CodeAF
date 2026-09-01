@@ -304,6 +304,17 @@ type TaskNode struct {
 	// are what lets a report say what world the work was done in.
 	Rung GroundRung
 	Seal string
+	// Base is the machine commit the parent's world was sealed into and Universe
+	// is furrow's name for the fork, when a rung made either. They are here for
+	// the SAME REASON Rung and Seal are — the landing needs them and the landing
+	// does not always happen in the run that made the world. A person who accepts
+	// a task hours later, or a session resumed after a crash, rebuilds the
+	// working copy from these four fields ([TaskNode.workingCopy],
+	// [TaskNode.resumeTree]); without them the inheritance would be merged back
+	// over the person's own edits and a branch in a fork would be looked for in
+	// the wrong repository.
+	Base     string
+	Universe string
 	// Expects is THE CHECKABLE HALF OF THE HANDOFF this node was given: what its
 	// brief assumes is already true of the world it gets (handoffcontract.go).
 	// It sits beside Ground for the same reason Rung does — the ground says
@@ -1691,11 +1702,37 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to look at — its branch %s is still there", dir, branch)
 	}
-	root, ok := repositoryRoot(workspace)
+	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is
+	// the ground's and not whatever this process happens to be standing in — the
+	// same argument [TaskNode.resumeTree] makes, and issue #76's. The workspace
+	// answers only for a node admitted before a ground was ever recorded.
+	ground, mode := n.groundNow()
+	root, ok := repositoryRoot(ground)
 	if !ok {
-		return taskTree{}, fmt.Errorf("%s is no longer a repository, so its branch %s cannot come home", workspace, branch)
+		if root, ok = repositoryRoot(workspace); !ok {
+			return taskTree{}, fmt.Errorf("%s is no longer a repository, so its branch %s cannot come home", workspace, branch)
+		}
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
+	return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), nil
+}
+
+// ladderRecord puts back what the ground ladder wrote down about a node's world
+// (groundladder.go), on a tree that was rebuilt from the record rather than
+// carved in this run.
+//
+// IT IS WHAT MAKES A LANDING THE SAME LANDING WHENEVER IT HAPPENS. A person who
+// accepts a task an hour later, and a session resumed after a crash, both reach
+// [taskTree.comeHome] through a tree assembled here; a tree that had forgotten
+// which rung made it would look for a branch in the wrong repository and merge
+// the parent's own unfinished edits back over them.
+func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
+	if n == nil || n.graph == nil {
+		return tree
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
+	return tree
 }
 
 // mending sets — or clears — the gap this node is closing, and TELLS THE WORLD
@@ -2016,6 +2053,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	// ground says which folder the work is about, and this says which copy of it
 	// the work actually happened in.
 	n.Rung, n.Seal = tree.rung, tree.seal
+	n.Base, n.Universe = tree.base, tree.universe
 	n.graph.mu.Unlock()
 	n.graph.checkpoint()
 }
@@ -3522,7 +3560,7 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 			return taskTree{}, false
 		}
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}, true
+	return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), true
 }
 
 // withReport joins the runner's own sentence and the child's words, dropping
@@ -3586,6 +3624,11 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	// node's work, and a branch whose first commit is somebody else's unfinished
 	// edits is a branch nobody can read.
 	tree.replayOwnWork()
+	// AND THE KEPT BRANCH IS PUT WHERE THE PERSON CAN REACH IT. The sentence
+	// offers them a branch in their own repository, so a node that worked in a
+	// repository of its own owes the same fetch a merge would have owed
+	// (groundladder.go's [taskTree.carryBranchHome]).
+	tree.carryBranchHome()
 	tree.releaseKept()
 	return mergeAborted, changed
 }
@@ -3607,7 +3650,7 @@ func (t taskTree) releaseKept() {
 func (t taskTree) releaseKeptLocked() {
 	left := leftBehind(t.dir)
 	rememberLeftBehind(t.dir, left)
-	if t.rung == GroundRungUniverse {
+	if t.ownRepository() {
 		// A universe was never registered as a worktree of anybody, so there is
 		// no registration to unpick and `git worktree remove` would be asking
 		// the person's repository about a directory it has never heard of. Its
@@ -5872,6 +5915,16 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	left := leftBehind(t.dir)
 
 	defer lockGitRoot(t.place, t.root)()
+	// AND THE NODE'S COMMITS ARE PUT WHERE THE GROUND CAN REACH THEM. A branch
+	// cut in a worktree has been in this repository all along and this does
+	// nothing; a branch cut inside a universe is in a repository of its own, and
+	// one fetch of one branch is the whole difference between the two landing
+	// roads (groundladder.go's [taskTree.carryBranchHomeLocked]).
+	if out, err := t.carryBranchHomeLocked(); err != nil {
+		t.releaseKeptLocked()
+		return mergeConflicted, withReport(unreachedSentence(t.branch, t.dir, out),
+			leftBehindSentence(left, true))
+	}
 	// THE MERGE COMMIT CARRIES THE SAME NAME THE NODE'S OWN COMMIT DID
 	// ([commitTaskWork]). A merge that is not a fast-forward writes a commit,
 	// and git refuses to write one for a checkout with no user.name — which is
@@ -5893,22 +5946,9 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 		return mergeConflicted, withReport(conflictSentence(t.branch, clashing, out),
 			leftBehindSentence(left, true))
 	}
-	// The branch is gone only once its work is in: removing the worktree first
-	// keeps `git branch -d` from refusing on a checked-out branch.
-	if _, err := git(t.root, "worktree", "remove", t.dir); err != nil {
-		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
-	}
-	_, _ = git(t.root, "branch", "-d", t.branch)
-	// And the session's own directory once its last worktree has gone home. The
-	// remove is deliberately not recursive: it succeeds on an empty directory and
-	// fails on one that still holds a node, which is precisely the question being
-	// asked. Without it every conversation that ever ran a task would leave an
-	// empty directory in the repository forever. Under a session folder the same
-	// remove empties trees/ when the last node comes home, which costs nothing
-	// and leaves the folder listing honest.
-	_ = os.Remove(filepath.Dir(t.dir))
-	// The work is in, so the universe that carried it is furrow's to forget.
-	t.dropUniverse()
+	// The working copy is given back only once its work is in, and which road
+	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).
+	t.releaseLanded()
 	// The working copy has just gone, and the sentence says where its leavings
 	// went with it rather than sending anybody to look in a directory that is no
 	// longer there.
@@ -5950,6 +5990,15 @@ func conflictSentence(branch string, clashing []string, out string) string {
 		return line + firstLine(out)
 	}
 	return line + namedFew(clashing, conflictNamesShown) + " changed on both sides"
+}
+
+// unreachedSentence is what a person reads when a node worked in a copy of their
+// repository and that copy would not give the branch up — a directory removed
+// under a running task, a disk that filled. It NAMES THE DIRECTORY, because
+// unlike a conflict there is nothing in their own repository to look at yet and
+// the work is all in that one place.
+func unreachedSentence(branch, dir, out string) string {
+	return "its work is on " + branch + " in " + dir + " and was kept: " + firstLine(out)
 }
 
 // conflictNamesShown and leftBehindNamesShown are how many paths a sentence

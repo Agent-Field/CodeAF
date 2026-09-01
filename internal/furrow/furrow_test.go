@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -820,6 +821,63 @@ func TestAttachOpensAFolderNobodyWatched(t *testing.T) {
 	Forget()
 	if workspace := Attach(ctx, root); workspace == nil {
 		t.Fatal("Attach did not open the folder it attached")
+	}
+}
+
+// ONE FOLDER, FIVE CALLERS, ONE ATTACH. Five `furrow watch` runs started on one
+// folder in the same instant were measured against the real program: one
+// succeeds and the other four fail outright with "No such file or directory".
+// The caller that does this is a task handing five parts out at once, each
+// grounding a child in the same project, and four of the five falling back to a
+// lesser world would be one division done in two kinds of world for no reason
+// anybody could see from the outside.
+//
+// The fake below is the real program's behaviour in three lines: watch refuses a
+// folder it has already attached, and status answers only for one it has.
+func TestFiveCallersAttachingOneFolderAllGetIt(t *testing.T) {
+	dir := t.TempDir()
+	carryNothing(t)
+	script := filepath.Join(dir, Binary)
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+if [ "$1" = "--version" ]; then echo "furrow 0.1.0"; exit 0; fi
+root="$2"
+shift 3
+case "$1" in
+status)
+  if [ ! -f "$root/.attached" ]; then echo "run furrow watch here" >&2; exit 1; fi
+  echo '{"workspace":"'"$root"'","head":"aaaabbbbcccc0001","watcher_running":true}'
+  ;;
+watch)
+  if [ -f "$root/.attached" ]; then echo "Error: No such file or directory (os error 2)" >&2; exit 1; fi
+  echo attached > "$root/.attached"
+  echo '{"snapshot":"aaaabbbbcccc0001"}'
+  ;;
+*) exit 2 ;;
+esac
+`), 0o755); err != nil {
+		t.Fatalf("write the fake furrow: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
+	t.Setenv(BinaryEnvVar, "")
+	Forget()
+	t.Cleanup(Forget)
+
+	root := t.TempDir()
+	ctx := context.Background()
+	opened := make([]*Workspace, 5)
+	var waiting sync.WaitGroup
+	for i := range opened {
+		waiting.Add(1)
+		go func(at int) {
+			defer waiting.Done()
+			opened[at] = Attach(ctx, root)
+		}(i)
+	}
+	waiting.Wait()
+	for at, workspace := range opened {
+		if workspace == nil {
+			t.Fatalf("caller %d was refused the folder the other four got", at)
+		}
 	}
 }
 
