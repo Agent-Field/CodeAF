@@ -75,8 +75,7 @@ IT CARRIES THE SUBSTANCE, NOT THE EVIDENCE TRAIL. A model reads this report and
 relays it to the person who asked for the work, and it is often all they get — so
 say what the work FOUND or MADE. The key findings, the answer, the numbers, the
 decisions you took and why: enough that somebody who never opens the files knows
-what you learned. Every file you name gets its full absolute path, as the house
-rules above require.
+what you learned.
 
 What does NOT belong: "`git diff` shows a staged new file", test output, staging
 and branch status, step counts, an assessment of your own work's quality. That
