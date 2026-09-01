@@ -91,11 +91,13 @@ func (a *app) statusDeck(width int) []string {
 	if width < 1 {
 		return []string{"", ""}
 	}
-	// The change clocks are stamped from the FULL segment set rather than from
-	// the two the deck draws, for the reason [app.statusLayout] stamps them
-	// before applying width pressure: a number that moved has moved whether or
-	// not this frame had room to say so — and here the room it has is the sheet,
-	// where the same clocks paint the same segments.
+	// The change clocks are stamped from the FULL segment set here, and the wide
+	// row stamps only what it draws ([app.statusLayout]). The difference is not
+	// an oversight: this tier's give-way is not a width ladder but a MOVE — a
+	// fact the deck's two rows cannot hold is on the sheet a tap away, drawn
+	// from these same clocks, so every segment on this tier is a segment
+	// something draws. Up there a demoted segment is drawn by nothing on the
+	// frame, and a clock kept for a number nobody prints is bookkeeping.
 	a.freshen(a.telemetry(hudWide))
 	rows := []string{a.deckTopRow(width), a.deckModelRow(width)}
 	// THE ROW UNDER THE POINTER LIGHTS WHOLE, which is this deck's own bargain read
