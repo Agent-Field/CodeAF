@@ -12,6 +12,17 @@ is what the answer is decided on, so state the items and how many there are.
 "There is a lot here" names nothing and is refused; "the adapters directory holds
 11 files, each with its own interface to move" is evidence.
 
+EACH PART'S `brief` IS ITS SCOPE, NOT ITS WHOLE WORLD. Write what that one part
+owns and what it needs to own it: the files and symbols it works on, the
+conventions it has to keep, what you have already learned about this material
+that it would otherwise find out again, and what its done-condition rests on.
+The rest is composed around it before it is handed over — the work being divided,
+word for word as you were given it, and a map of what each of the other parts
+owns — so every part opens on the family whether or not you say so. Do not copy
+your own brief into theirs, and do not spend a paragraph per part restating what
+the others are doing: a scope that says it twice is a scope that says half as
+much.
+
 GRADE EACH PART FOR THE WAY IT CAN GO WRONG. Leave `grade` out for ordinary
 work: a part whose failure mode is simply NOT BEING DONE YET — eleven files
 moved onto a new interface, nine sections written from material already
