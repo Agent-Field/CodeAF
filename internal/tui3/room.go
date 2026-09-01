@@ -414,28 +414,20 @@ const (
 	// rather than "main" because the crumb beside it already names where back
 	// goes, and the word's own job is the gesture, not the destination.
 	roomBackWord = "esc/← back"
-	// roomCrumbRoot is where every breadcrumb starts, and it is the ONE name on
-	// this surface for the conversation itself.
+	// roomCrumbRoot is where a RUN PAGE's breadcrumb starts, and it is the ONE
+	// name that surface has for the conversation itself (roomorch.go's
+	// [app.orchHeadWord]). A task room's crumb names the project and the chat
+	// instead — the top bar's own trail (topbar.go's [app.crumbSegments]) — and
+	// the two share a ladder rather than a root.
 	roomCrumbRoot = "main"
-	// roomCrumbSep separates one step of the trail from the next.
+	// roomCrumbSep separates one step of a run's trail from the next. It is not
+	// the top bar's ` › `: the run page's steps are the ENGINE's names for its
+	// own nodes, and the two trails are told apart at a glance by their mark.
 	roomCrumbSep = " ▸ "
-	// The two sentences the kin block says, in the alphabet the rail already
-	// spells a family relation in — "waits: <title>", so "part of: <title>" and
-	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
-	// roster's rows has already learned this punctuation.
-	roomKinUnderWord   = "part of: "
-	roomKinSpawnedWord = "spawned: "
-	// roomKinStateSep joins a child to its state word on the spawned line. It is
-	// the em dash the surface already uses to hang a condition off a name
-	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
-	// of the list read apart: children are separated by [railSep], and a child
-	// from its own state by this.
+	// roomKinStateSep joins a child to its state word. It is the em dash the
+	// surface already uses to hang a condition off a name (task.go's
+	// [taskStoppedKept], "stopped — branch kept").
 	roomKinStateSep = " — "
-	// roomKinIndent hangs the kin rows under the trail rather than under the
-	// state glyph, which is the whole of their layout: they are about the node
-	// the line above names, and a block flush with the header would read as a
-	// second header.
-	roomKinIndent = "  "
 )
 
 // roomTail is how much of a journal a room opens showing. A node's transcript is
@@ -2495,7 +2487,18 @@ func (a *app) roomMark(node *taskNode) string {
 
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
+//
+// A NODE THIS SURFACE HAS NEVER HAD AN UPDATE FOR SAYS NOTHING, which is
+// [app.roomNode]'s own honest nil answered here rather than dereferenced: a room
+// can be opened on a node from a checkpoint whose updates have not arrived yet,
+// and the bar draws that page with its trail and no trimmings at all. The three
+// facts of the task form each answer this the same way ([app.roomClock],
+// [app.roomSpend]), because the bar asks all three on every frame and one of
+// them crashing is the whole surface gone.
 func (a *app) roomStateWord(node *taskNode) string {
+	if node == nil {
+		return ""
+	}
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
@@ -2616,6 +2619,11 @@ const (
 // roomClock is the node's age: counting up while it runs, frozen at what the
 // update that ended it reported.
 func (a *app) roomClock(node *taskNode) string {
+	if node == nil {
+		// Nobody has said when it started, which is not the same claim as "no
+		// time has passed" ([app.roomStateWord] states the law for all three).
+		return ""
+	}
 	if node.state == session.TaskRunning && !node.began.IsZero() {
 		return countUpWord(a.now().Sub(node.began))
 	}
@@ -2625,7 +2633,7 @@ func (a *app) roomClock(node *taskNode) string {
 // roomSpend is what this node has cost, or "" when nobody has published a price
 // (session's TaskNotice.CostUSD says why zero is not an answer).
 func (a *app) roomSpend(node *taskNode) string {
-	if node.cost <= 0 {
+	if node == nil || node.cost <= 0 {
 		return ""
 	}
 	return dollars(node.cost)

@@ -1886,27 +1886,43 @@ func (a *app) telemetry(width int) []hudPart {
 // is the first part that sorts after [segCtx] — and a set with nothing after it
 // takes the meter on its end.
 func (a *app) telemetrySheet() []hudPart {
-	full, _ := a.contextSegment()
-	if full == "" {
-		return a.telemetry(hudWide)
-	}
-	if spark := a.ctxSpark(); spark != "" {
-		full += " " + spark
-	}
 	parts := a.telemetry(hudWide)
+	if full, _ := a.contextSegment(); full != "" {
+		if spark := a.ctxSpark(); spark != "" {
+			full += " " + spark
+		}
+		parts = putSheetPart(parts, hudPart{kind: segCtx, text: full})
+	}
+	// AND THE IDLE WORD COMES BACK HERE TOO. The row deleted it because it was
+	// an answer to nobody — a word that said only that nothing was happening,
+	// which the row's own emptiness says better ([app.stateWord]). A page is the
+	// other case: somebody typed /status or tapped the sheet open, and "what is
+	// this session doing" is exactly what they asked. So the word is gone from
+	// the row and kept where it was asked for.
+	if a.state == stateIdle {
+		parts = putSheetPart(parts, hudPart{kind: segState, text: a.state.String()})
+	}
+	return parts
+}
+
+// putSheetPart writes one segment into an assembled set, replacing the row's own
+// spelling of it or inserting it where the row dropped it entirely.
+//
+// The seam is the first part that sorts AFTER this one, because [app.telemetry]
+// emits in segment order; a set with nothing after it takes the part on its end.
+func putSheetPart(parts []hudPart, part hudPart) []hudPart {
 	for i := range parts {
-		if parts[i].kind == segCtx {
-			parts[i].text = full
+		if parts[i].kind == part.kind {
+			parts[i].text = part.text
 			return parts
 		}
 	}
-	meter := hudPart{kind: segCtx, text: full}
-	for i, part := range parts {
-		if part.kind > segCtx {
-			return append(parts[:i:i], append([]hudPart{meter}, parts[i:]...)...)
+	for i, at := range parts {
+		if at.kind > part.kind {
+			return append(parts[:i:i], append([]hudPart{part}, parts[i:]...)...)
 		}
 	}
-	return append(parts, meter)
+	return append(parts, part)
 }
 
 // costSegment is the bill on the ambient row, and it is NOTHING AT ZERO. This
@@ -2417,10 +2433,16 @@ func (a *app) yoloSegment() string {
 // stateSegment is the last segment: what this surface is DOING, plain and
 // painted.
 //
-//	idle                      dim       nothing is happening
+//	(nothing)                 —         nothing is happening
 //	⠹ working · 1m 4s         accent    the model has the turn, and for how long
 //	waiting · your call       violet    IT HAS THE TURN AND IT IS YOURS
 //	interrupted               soft red  the last turn was stopped by hand
+//
+// THE FIRST ROW USED TO SAY `idle`, and deleting the word was this issue's
+// plainest emptiness case: it told a person only that nothing was happening,
+// which the row's own silence says better ([app.stateWord] states it in full).
+// The word survives where somebody ASKED — /status and the status sheet, which
+// [app.telemetrySheet] puts it back into.
 //
 // THE CLOCK IS THE ALIVENESS. A spinner says "something is happening" and says
 // exactly as much at second one as at second ninety; the count-up is the only

@@ -210,9 +210,10 @@ func deckJoin(paint func(string) string, left, right, plainRight string, width i
 }
 
 // deckTitle is row 1's left: THE CRUMB, which is the whole of the top bar a
-// phone tier draws (ISSUE-126). The bar itself is not drawn below [hudTight] —
-// there is not a crumb and a way out's worth of line down there — so this row
-// takes it, and THE TWO GEOMETRIES CONVERGE instead of forking: the same trail
+// phone tier draws (ISSUE-126). The bar itself is not drawn at [tierPhone] —
+// there is not a crumb and a way out's worth of line down there, which is the
+// same judgement that made this deck — so this row takes the crumb, and THE TWO
+// GEOMETRIES CONVERGE instead of forking: the same trail
 // off the same [app.crumbSegments], walked down the same give-way ladder
 // (topbar.go's [fitTrail]) until it fits the columns the numbers left.
 //

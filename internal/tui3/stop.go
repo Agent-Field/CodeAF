@@ -522,14 +522,21 @@ func (a *app) stopCardPress(x, y int) bool {
 
 // stopMarkPress answers a press on the ✕ in a room's header.
 //
-// THE TOUCH TARGET IS THREE ROWS TALL AT THE PHONE TIER and one row everywhere
-// else. A finger covers about three rows of a terminal, and this is the one
-// control on the surface whose miss is expensive in both directions — hitting
-// it by accident raises a card the person did not want, missing it leaves them
-// with no way to stop the work at all. The top bar is the first row of the
-// frame, so the box can only grow downward; it is claimed here, ahead of the bar
-// and the body, and it rides the far right end of the bar where the transcript's
-// own rows are ragged and rarely reach.
+// THE MARK IS THE BAR'S, AND THE BAR IS NOT DRAWN AT THE PHONE TIER. That is
+// this issue's one real loss and it is stated here rather than left to be found:
+// below sixty columns the frame is a deck (statusdeck.go), the bar it would ride
+// is not on the screen, and the pointer has no way to stop work down there at
+// all. `x` over an empty box is the way, and it is the way at every width.
+//
+// SO THE THREE-ROW BOX BELOW IS HELD RATHER THAN USED. A finger covers about
+// three rows of a terminal, and this is the one control on the surface whose
+// miss is expensive in both directions — hitting it by accident raises a card
+// the person did not want, missing it leaves them with no way to stop the work
+// at all. The bar is the frame's first row, so the box can only grow downward;
+// it is claimed ahead of the bar and the body, and it rides the far right end
+// where the transcript's own rows are ragged and rarely reach. The moment a
+// phone-width surface draws the mark again, the target it needs is already
+// written down.
 func (a *app) stopMarkPress(x, y int) bool {
 	if !a.stopMarkAt(x, y) {
 		return false

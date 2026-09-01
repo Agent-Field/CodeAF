@@ -566,10 +566,6 @@ func (a *app) crumbSegments() []crumbSeg {
 	if !a.roomOpen() {
 		return segs
 	}
-	node := a.roomNode()
-	if node == nil {
-		return segs
-	}
 	// AND THE ROOM'S OWN STEP IS ADDED WHATEVER IS ABOVE IT. An unnamed
 	// conversation used to collapse the whole trail to the project's one step and
 	// take the task's title down with it — the bar in a room said `lab` and
@@ -584,25 +580,33 @@ func (a *app) crumbSegments() []crumbSeg {
 	// THE PARENTS, outermost first, walked up the engine's own parent seam
 	// (taskchip.go's [taskNode.ParentID], indexed once by [app.nodesByKey]).
 	//
+	// A ROOM THIS SURFACE HOLDS NO NODE FOR HAS NO PARENTS TO WALK, and that is a
+	// real page rather than a broken one: a landed card names work the roster no
+	// longer holds, and opening it gives a room with a title, a handle and no
+	// facts. The trail is what it is owed; the trimmings say nothing rather than
+	// guess (room.go's [app.roomStateWord] and its two neighbours).
+	//
 	// The walk is guarded twice over, because a crumb is drawn on every frame and
 	// neither failure would be survivable there. A key nobody admitted stops the
 	// climb rather than dereferencing nothing; a key already seen stops it rather
 	// than walking a cycle for ever — and a roster that could name its own
 	// ancestor is a roster the rail could not draw either.
-	byKey := a.nodesByKey()
-	var parents []string
-	seen := map[string]bool{}
-	for key := node.ParentID(); key != "" && !seen[key]; {
-		seen[key] = true
-		parent := byKey[key]
-		if parent == nil {
-			break
+	if node := a.roomNode(); node != nil {
+		byKey := a.nodesByKey()
+		var parents []string
+		seen := map[string]bool{}
+		for key := node.ParentID(); key != "" && !seen[key]; {
+			seen[key] = true
+			parent := byKey[key]
+			if parent == nil {
+				break
+			}
+			parents = append([]string{parent.title}, parents...)
+			key = parent.ParentID()
 		}
-		parents = append([]string{parent.title}, parents...)
-		key = parent.ParentID()
-	}
-	for _, title := range parents {
-		segs = append(segs, crumbSeg{text: title})
+		for _, title := range parents {
+			segs = append(segs, crumbSeg{text: title})
+		}
 	}
 	segs = append(segs, crumbSeg{
 		text:   a.room.title,
