@@ -1099,6 +1099,22 @@ Two things follow that are worth knowing:
 
 To see the halves, ask `/cost`. To see one task's own bill, open its card.
 
+## Why does the row show the wrong cost after I switch conversations — it should not, and no longer does
+
+**Switching hands the row over completely.** `/resume`, a row of the welcome list, taking
+over a conversation another window was holding — every one of those doors zeroes the
+money, the tokens, the cache and the context meter, because each of those is a fact about
+one conversation, and then reads the arriving conversation's own bill out of its
+transcript and its work's bill out of the spending ledger. Both readings are taken before
+the first frame is drawn, so the row is right immediately rather than once the task column
+has come up.
+
+There was a spell where the tree's half did not do this: the conversation you left kept
+its figure on the row of the conversation you arrived in, until something happened to
+recompute it — typing `/cost` was usually what did, which is why the note and the row
+could disagree for a moment. They cannot: the row and `/cost` read one figure through one
+function, and if you ever see them differ, that is a bug worth reporting.
+
 ## Why the same conversation can suddenly cost more — one turn can make several model calls
 
 `model calls` is the line people misread. One thing you type can become several requests to
