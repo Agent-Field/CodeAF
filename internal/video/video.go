@@ -69,8 +69,10 @@ const (
 // machine and a handful of ten-second clips is well under a minute; five minutes
 // is a join of many minutes of footage, which is past the point where a person
 // should be watching a tool call spin. What happens at the ceiling matters more
-// than where it is: the half-written file is REMOVED, so a timeout leaves
-// nothing that could be mistaken for a finished cut.
+// than where it is: the half-written file never reaches the destination at all
+// ([produce] encodes elsewhere and renames), so a timeout leaves nothing that
+// could be mistaken for a finished cut and nothing missing that was there
+// before.
 const Ceiling = 5 * time.Minute
 
 // ErrMissing is the one answer every entry point gives on a machine that has no
@@ -139,13 +141,26 @@ type probeAnswer struct {
 	Format struct {
 		Duration string `json:"duration"`
 	} `json:"format"`
-	Streams []struct {
-		CodecType string `json:"codec_type"`
-		Width     int    `json:"width"`
-		Height    int    `json:"height"`
-		Duration  string `json:"duration"`
-		FrameRate string `json:"r_frame_rate"`
-	} `json:"streams"`
+	Streams []probeStream `json:"streams"`
+}
+
+// probeStream is one stream out of that answer. It is a named type rather than
+// an anonymous one so that a test can fabricate the awkward shapes — the ones a
+// real file states and a fixture cannot easily be made to — and drive them
+// through [probeAnswer.facts] with no encoder anywhere near it.
+type probeStream struct {
+	CodecType string `json:"codec_type"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Duration  string `json:"duration"`
+
+	// The TWO rates ffprobe states, which disagree on exactly the files that
+	// matter. FrameRate is r_frame_rate, the smallest tick the container can
+	// express a timestamp in; AverageRate is avg_frame_rate, the frames it
+	// actually holds divided by how long it runs. [believableRate] says which
+	// one is believed and why.
+	FrameRate   string `json:"r_frame_rate"`
+	AverageRate string `json:"avg_frame_rate"`
 }
 
 // facts folds the json into [Facts]. The container's duration is preferred over
@@ -163,7 +178,7 @@ func (a probeAnswer) facts() Facts {
 			// one that plays; a file with two is a file with a thumbnail in it.
 			if facts.Width == 0 {
 				facts.Width, facts.Height = stream.Width, stream.Height
-				facts.Rate = readRate(stream.FrameRate)
+				facts.Rate = believableRate(stream.AverageRate, stream.FrameRate)
 				if facts.Length == 0 {
 					facts.Length = readSeconds(stream.Duration)
 				}
@@ -182,6 +197,36 @@ func readSeconds(text string) time.Duration {
 		return 0
 	}
 	return time.Duration(seconds * float64(time.Second))
+}
+
+// The band a stated frame rate has to fall inside to be believed as one.
+//
+// A NUMBER OUTSIDE IT IS NOT A FRAME RATE, IT IS A TIMEBASE. A variable-rate
+// recording — a webm out of a browser's MediaRecorder is the everyday one —
+// states r_frame_rate as 1000/1, because a millisecond is the finest timestamp
+// its container can spell, while stating avg_frame_rate as 0/0 because it holds
+// no constant rate at all. Believed, that 1000 becomes the rate every clip in a
+// join is resampled to: thirty-three times the frames, an encode that takes
+// minutes instead of seconds, and a file no player is happy with. The floor is
+// the other end of the same argument — under a frame a second is a slideshow's
+// timebase rather than a rate anything was shot at. Outside the band the answer
+// is 0, "no rate stated", which [joinPlan] already turns into [joinDefaultRate].
+const (
+	slowestRate = 1.0
+	fastestRate = 120.0
+)
+
+// believableRate is the frame rate a join should run at, out of the two ffprobe
+// states. The average is preferred because it is measured from the frames that
+// are actually in the file; r_frame_rate is the fallback for a stream that
+// states no average, which constant-rate material routinely does not.
+func believableRate(average, stated string) float64 {
+	for _, spoken := range []string{average, stated} {
+		if rate := readRate(spoken); rate >= slowestRate && rate <= fastestRate {
+			return rate
+		}
+	}
+	return 0
 }
 
 // readRate turns ffprobe's "30000/1001" into 29.97. A zero denominator is what
@@ -275,10 +320,50 @@ func prepare(destination string, sources ...string) error {
 	return os.MkdirAll(filepath.Dir(full), 0o755)
 }
 
-// abandon removes a half-written output. Every operation here calls it on
-// failure, because a truncated mp4 is the worst possible artefact: it exists, it
-// has a plausible size, some players open it, and nothing about it says it is
-// the wreck of a command that failed.
-func abandon(destination string) {
-	_ = os.Remove(destination)
+// produce runs one operation's plan and puts the result at destination ONLY if
+// ffmpeg both succeeded and wrote something. It is the one place all three
+// operations encode, so the two laws below are stated once rather than three
+// times with two of the copies eventually wrong.
+//
+// A FAILED RUN MAY NOT TOUCH A FILE THE OPERATION DID NOT CREATE. ffmpeg opens
+// its output long before it has read enough of its input to know whether the
+// job is possible, so the obvious shape — encode straight to the destination,
+// remove it when the command fails — deletes whatever the person already had at
+// that path on every failure that happens early: an unreadable input, an
+// unknown muxer, a filter graph that will not initialise. None of those wrote a
+// byte, and all of them used to take the file with them. Here the encode
+// happens somewhere else entirely and the destination is written by nothing but
+// the rename at the end.
+//
+// The temporary sits IN THE DESTINATION'S OWN DIRECTORY, so the two are on one
+// filesystem and the rename is atomic: a destination that exists is a finished
+// file and never a half-copied one. It also keeps the destination's own name,
+// and with it the extension WITHOUT WHICH FFMPEG CANNOT INFER THE MUXER — a
+// temporary called something ending in nothing is refused before it encodes.
+func produce(ctx context.Context, destination string, plan func(working string) []string) error {
+	room, err := os.MkdirTemp(filepath.Dir(destination), ".video-*")
+	if err != nil {
+		return fmt.Errorf("could not make room to write %s: %w", short(destination), err)
+	}
+	// The whole directory goes on the way out, on success and on failure alike,
+	// so a wrecked encode leaves nothing anywhere rather than nothing at the
+	// destination and a mess beside it.
+	defer func() { _ = os.RemoveAll(room) }()
+
+	working := filepath.Join(room, filepath.Base(destination))
+	if _, err := run(ctx, ffmpegBinary, plan(working)...); err != nil {
+		return err
+	}
+	// BELT AND BRACES ON A RUN THAT CLAIMED IT WORKED. ffmpeg exits 0 having
+	// encoded nothing more readily than it ought to — a frame seeked past the
+	// end of a clip is the case this was found on — and an empty file reported
+	// as a saved one is worse than any refusal, because the model hands it
+	// straight to the next tool as though it were a picture.
+	if written, err := os.Stat(working); err != nil || written.Size() == 0 {
+		return fmt.Errorf("%s finished without writing anything into %s", ffmpegBinary, short(destination))
+	}
+	if err := os.Rename(working, destination); err != nil {
+		return fmt.Errorf("could not put the finished %s in place: %w", short(destination), err)
+	}
+	return nil
 }

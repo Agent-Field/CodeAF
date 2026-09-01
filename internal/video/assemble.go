@@ -99,14 +99,28 @@ func SaveFrame(ctx context.Context, source string, at time.Duration, destination
 	if !Available() {
 		return ErrMissing
 	}
+	// A MOMENT PAST THE END IS REFUSED HERE, WITH THE CLIP'S REAL LENGTH IN THE
+	// SENTENCE, because ffmpeg does not refuse it: a seek beyond the last frame
+	// decodes nothing, writes nothing and exits 0, so without this the caller
+	// reports a frame it has saved and the model hands that empty file to the
+	// next render as the shot it is continuing from. One probe costs
+	// milliseconds against an encode.
+	//
+	// A clip whose length cannot be measured is encoded anyway rather than
+	// guessed at (the emptiness law), and [produce]'s size check is the backstop
+	// for it. [Closing] is a seek from the end and cannot be past one.
+	if at >= 0 {
+		if facts, err := Probe(ctx, source); err == nil && facts.Length > 0 && at >= facts.Length {
+			return fmt.Errorf("%s runs %ss and has no frame at %ss — ask for a moment inside it, or for the closing frame",
+				short(source), seconds(facts.Length), seconds(at))
+		}
+	}
 	if err := prepare(destination, source); err != nil {
 		return err
 	}
-	if _, err := run(ctx, ffmpegBinary, framePlan(source, at, destination)...); err != nil {
-		abandon(destination)
-		return err
-	}
-	return nil
+	return produce(ctx, destination, func(working string) []string {
+		return framePlan(source, at, working)
+	})
 }
 
 // framePlan is the argument list for one frame.
@@ -173,8 +187,9 @@ func Join(ctx context.Context, paths []string, destination string) (Facts, error
 	if err := prepare(destination, paths...); err != nil {
 		return Facts{}, err
 	}
-	if _, err := run(ctx, ffmpegBinary, joinPlan(clips, destination)...); err != nil {
-		abandon(destination)
+	if err := produce(ctx, destination, func(working string) []string {
+		return joinPlan(clips, working)
+	}); err != nil {
 		return Facts{}, err
 	}
 	return Probe(ctx, destination)
@@ -281,8 +296,9 @@ func Score(ctx context.Context, clip, audio, destination string, scoring Scoring
 	if err := prepare(destination, clip, audio); err != nil {
 		return Facts{}, err
 	}
-	if _, err := run(ctx, ffmpegBinary, scorePlan(clip, audio, destination, picture, scoring)...); err != nil {
-		abandon(destination)
+	if err := produce(ctx, destination, func(working string) []string {
+		return scorePlan(clip, audio, working, picture, scoring)
+	}); err != nil {
 		return Facts{}, err
 	}
 	return Probe(ctx, destination)
@@ -307,9 +323,18 @@ func scorePlan(clip, audio, destination string, picture Facts, scoring Scoring) 
 	if scoring.Replace || !picture.Sound {
 		graph = score + "[a]"
 	} else {
+		// duration=longest, and NOT duration=first, which keys the mix on the
+		// clip's own audio and ends the score the moment that track does. A
+		// clip whose audio stops before its picture is ordinary — a recording
+		// muxed under a longer shot, a render whose sound was trimmed — and
+		// under `first` its score dies at that point with nothing said about
+		// it. `longest` is safe here precisely because the score is the
+		// infinite input: what stops this command is the -t on the output,
+		// which is the picture's own length, exactly as it is in the branch
+		// above where the score plays alone.
 		graph = score + "[score];" +
 			fmt.Sprintf("[0:a]%s[own];", audioShape) +
-			"[own][score]amix=inputs=2:duration=first:normalize=0[a]"
+			"[own][score]amix=inputs=2:duration=longest:normalize=0[a]"
 	}
 
 	plan := []string{"-y", "-hide_banner", "-nostdin",

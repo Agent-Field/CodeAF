@@ -68,13 +68,7 @@ func TestAFrameRateIsAFractionUntilItCannotBe(t *testing.T) {
 func TestTheContainersLengthWinsAndTheStreamsIsTheFallback(t *testing.T) {
 	both := probeAnswer{}
 	both.Format.Duration = "4.0"
-	both.Streams = []struct {
-		CodecType string `json:"codec_type"`
-		Width     int    `json:"width"`
-		Height    int    `json:"height"`
-		Duration  string `json:"duration"`
-		FrameRate string `json:"r_frame_rate"`
-	}{
+	both.Streams = []probeStream{
 		{CodecType: "video", Width: 640, Height: 360, Duration: "9.0", FrameRate: "25/1"},
 		{CodecType: "audio"},
 	}
@@ -93,6 +87,49 @@ func TestTheContainersLengthWinsAndTheStreamsIsTheFallback(t *testing.T) {
 	both.Format.Duration = "N/A"
 	if facts := both.facts(); facts.Length != 9*time.Second {
 		t.Errorf("length = %v, want the video stream's 9s when the container states none", facts.Length)
+	}
+}
+
+func TestATimebaseIsNotAFrameRateAndIsNotBelievedAsOne(t *testing.T) {
+	// The file this is written against is a webm out of a browser's
+	// MediaRecorder, which is what a screen recording arrives as: it states
+	// r_frame_rate 1000/1, because a millisecond is the finest timestamp its
+	// container can spell, and avg_frame_rate 0/0, because it holds no constant
+	// rate at all. Believed, that 1000 becomes the rate EVERY clip in a join is
+	// resampled to.
+	for _, spoken := range []struct {
+		what    string
+		average string
+		stated  string
+		want    float64
+	}{
+		{"a variable-rate webm out of a browser", "0/0", "1000/1", 0},
+		{"ordinary NTSC material", "30000/1001", "30000/1001", 29.97},
+		{"a believable average against a timebase", "25/1", "1000/1", 25},
+		{"a stream that states only r_frame_rate", "0/0", "30/1", 30},
+		{"a stream that states neither", "", "N/A", 0},
+		{"a rate slower than one frame a second", "1/4", "1/4", 0},
+		{"the fast end of the band, which real material reaches", "120/1", "120/1", fastestRate},
+	} {
+		var answer probeAnswer
+		answer.Format.Duration = "5.0"
+		answer.Streams = []probeStream{{
+			CodecType: "video", Width: 640, Height: 360,
+			AverageRate: spoken.average, FrameRate: spoken.stated,
+		}}
+		if got := answer.facts().Rate; got < spoken.want-0.01 || got > spoken.want+0.01 {
+			t.Errorf("%s: rate = %v, want %v", spoken.what, got, spoken.want)
+		}
+	}
+
+	// And the whole point of answering nothing: the join runs at its default
+	// rather than at the timebase, which is the encode that never finishes.
+	var webm probeAnswer
+	webm.Format.Duration = "5.0"
+	webm.Streams = []probeStream{{CodecType: "video", Width: 640, Height: 360, AverageRate: "0/0", FrameRate: "1000/1"}}
+	clips := []Clip{{Path: "one.webm", Facts: webm.facts()}, {Path: "two.webm", Facts: webm.facts()}}
+	if plan := strings.Join(joinPlan(clips, "cut.mp4"), " "); !contains(plan, fmt.Sprintf("fps=%g", joinDefaultRate)) {
+		t.Errorf("a join of variable-rate clips must run at the %g fps default:\n%s", joinDefaultRate, plan)
 	}
 }
 
@@ -330,6 +367,90 @@ func TestAFailedRunLeavesNoHalfWrittenFileBehind(t *testing.T) {
 	}
 }
 
+func TestAFailedRunCannotDeleteAFileItNeverWrote(t *testing.T) {
+	// THE OTHER HALF OF THE TEST ABOVE, AND THE MORE EXPENSIVE ONE. ffmpeg
+	// opens its output before it knows whether the job is possible, so an
+	// operation that removes its destination on failure destroys whatever was
+	// already at that path on every failure that happens early — an unreadable
+	// input, an unknown muxer, a graph that will not initialise. None of them
+	// wrote a byte, and the file they took with them may be one a provider was
+	// paid for.
+	home := requireEncoder(t)
+	broken := filepath.Join(home, "broken.mp4")
+	if err := os.WriteFile(broken, []byte("this is not an mp4 at all"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	standing := filepath.Join(home, "standing.png")
+	was := []byte("a picture the person already had, worth more than this run")
+	if err := os.WriteFile(standing, was, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveFrame(context.Background(), broken, 0, standing); err == nil {
+		t.Fatal("a frame out of a file that is not a video must fail")
+	}
+	now, err := os.ReadFile(standing)
+	if err != nil {
+		t.Fatalf("the failed run deleted a file it never wrote: %v", err)
+	}
+	if string(now) != string(was) {
+		t.Errorf("the file at the destination is %q, want the %q it was before the run", now, was)
+	}
+	// And nothing of the wreck is left beside it either.
+	if entries, err := os.ReadDir(home); err == nil && len(entries) != 2 {
+		t.Errorf("%d files in the directory, want only the two that were there: %v", len(entries), entries)
+	}
+}
+
+func TestAFrameAskedForPastTheEndIsRefusedWithTheClipsOwnLength(t *testing.T) {
+	// ffmpeg does not refuse this: a seek past the last frame decodes nothing,
+	// writes nothing and exits 0, so the caller used to answer "saved the frame"
+	// over an empty png — which the model then hands to the next render as the
+	// shot it is continuing from.
+	home := requireEncoder(t)
+	clip := madeClip(t, home, "clip.mp4", 2, false)
+	out := filepath.Join(home, "past.png")
+
+	err := SaveFrame(context.Background(), clip, 9*time.Second, out)
+	if err == nil {
+		t.Fatal("a frame nine seconds into a two-second clip must be refused")
+	}
+	if got := err.Error(); !contains(got, "clip.mp4") || !contains(got, "runs 2") {
+		t.Errorf("refusal = %q, want it to name the clip and how long it actually runs", got)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("the refused frame left a file behind")
+	}
+	// The closing frame of the same clip is a seek from the END and is not
+	// touched by any of this.
+	if err := SaveFrame(context.Background(), clip, Closing, filepath.Join(home, "closing.png")); err != nil {
+		t.Errorf("the closing frame must still be saved: %v", err)
+	}
+}
+
+func TestAScoreRunsTheWholePictureWhenTheClipsOwnSoundStopsFirst(t *testing.T) {
+	// A clip whose audio ends before its picture does is ordinary — a recording
+	// muxed under a longer shot, a render whose sound was trimmed — and mixing
+	// keyed on that track ends the score where it ends, leaving a cut that goes
+	// quiet part way through with nothing said about it. It is the join's
+	// silence bug wearing the score's clothes, and the ear is the only place it
+	// shows.
+	home := requireEncoder(t)
+	clip := madeShortSoundClip(t, home, "brief.mp4", 3, 1)
+	music := madeMusic(t, home, "score.mp3", 1)
+	scored := filepath.Join(home, "scored.mp4")
+
+	facts, err := Score(context.Background(), clip, music, scored, Scoring{Level: 0.3})
+	if err != nil {
+		t.Fatalf("score: %v", err)
+	}
+	if !about(facts.Length, 3*time.Second, 400*time.Millisecond) {
+		t.Errorf("scored cut runs %v, want the picture's 3s", facts.Length)
+	}
+	if audio := audioLength(t, scored); !about(audio, 3*time.Second, 400*time.Millisecond) {
+		t.Errorf("the sound runs %v under a 3s picture — it stopped with the clip's own second of audio", audio)
+	}
+}
+
 // ── fixtures ────────────────────────────────────────────────────────────────
 
 // requireEncoder skips rather than fails on a machine with no ffmpeg, which is
@@ -378,6 +499,24 @@ func madeMusic(t *testing.T, home, name string, length float64) string {
 	path := filepath.Join(home, name)
 	out, err := exec.Command(ffmpegBinary, "-v", "error", "-y",
 		"-f", "lavfi", "-i", tone(length), path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("could not make the fixture %s: %v\n%s", name, err, out)
+	}
+	return path
+}
+
+// madeShortSoundClip is the one shape madeSizedSound cannot make: a picture
+// whose own audio track stops before the picture does. Every other fixture here
+// passes -shortest so that the two come out the same length, and this one
+// leaves it off on purpose — the tone runs out and the pattern carries on,
+// which is what a recording muxed under a longer shot looks like.
+func madeShortSoundClip(t *testing.T, home, name string, picture, sound float64) string {
+	t.Helper()
+	path := filepath.Join(home, name)
+	out, err := exec.Command(ffmpegBinary, "-v", "error", "-y",
+		"-f", "lavfi", "-i", pattern(320, 240, picture),
+		"-f", "lavfi", "-i", tone(sound),
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path).CombinedOutput()
 	if err != nil {
 		t.Fatalf("could not make the fixture %s: %v\n%s", name, err, out)
 	}

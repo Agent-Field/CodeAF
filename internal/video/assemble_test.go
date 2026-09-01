@@ -141,6 +141,28 @@ func TestAScoreUnderExistingSoundMixesWithoutHalvingIt(t *testing.T) {
 	}
 }
 
+func TestTheMixOutlastsTheClipsOwnAudioAndStopsWithThePicture(t *testing.T) {
+	// amix's duration=first keys the whole mix on the FIRST input, which is the
+	// clip's own audio — so a three-second shot carrying one second of sound
+	// gets one second of score and then silence, and nothing anywhere says so.
+	// A clip whose audio ends before its picture is ordinary, not a broken file.
+	// What bounds this command is the -t on the output, which is the picture's
+	// own length, so the score being an infinite input is safe.
+	picture := Facts{Length: 3 * time.Second, Width: 640, Height: 360, Rate: 25, Sound: true}
+	plan := scorePlan("cut.mp4", "score.mp3", "scored.mp4", picture, Scoring{Level: 0.3})
+	graph := graphOf(t, plan)
+
+	if strings.Contains(graph, "duration=first") {
+		t.Errorf("the mix ends with the clip's own audio, which is the cut that goes quiet part way through:\n%s", graph)
+	}
+	if !strings.Contains(graph, "amix=inputs=2:duration=longest") {
+		t.Errorf("the mix must run as long as the longer of the two:\n%s", graph)
+	}
+	if !strings.Contains(strings.Join(plan, " "), "-t 3 ") {
+		t.Errorf("nothing bounds the infinite score but the picture's 3s:\n%s", strings.Join(plan, " "))
+	}
+}
+
 func TestAScoreOverASilentClipOrAReplacedOneDoesNotMixAtAll(t *testing.T) {
 	silent := Facts{Length: 4 * time.Second, Width: 640, Height: 360, Rate: 25}
 	if graph := graphOf(t, scorePlan("cut.mp4", "s.mp3", "out.mp4", silent, Scoring{Level: 1})); strings.Contains(graph, "amix") {
