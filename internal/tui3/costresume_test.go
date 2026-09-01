@@ -147,7 +147,7 @@ func TestSwitchingToAResumedConversationTakesUpItsSpend(t *testing.T) {
 	// whole tree's ([app.spendShown]), and the tree was the one meter this reset
 	// walked past. Fifty dollars of a family still running, against the $1.11
 	// the tmux replication used and the $0.44 the arriving journal holds here.
-	a.tree = session.TreeSpend{ConversationUSD: 9.99, TasksUSD: 40.01, Calls: 7}
+	a.tree = session.Receipt{Direct: 9.99, Children: 40.01, Calls: 7}
 
 	second := t.TempDir()
 	agent := resumedAgent(t, second, resumedJournal(t, second))
@@ -185,7 +185,7 @@ func TestSwitchingToAConversationWithWorkOutReadsItsTreeOnTheFirstFrame(t *testi
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: first, UsageLedger: ledger})
 	a.width, a.height = 200, 40
 	a.dismissWelcome()
-	a.tree = session.TreeSpend{ConversationUSD: 9.99, TasksUSD: 40.01, Calls: 7}
+	a.tree = session.Receipt{Direct: 9.99, Children: 40.01, Calls: 7}
 
 	// The arriving conversation, in the shape the surface reads an id off: the
 	// journal sits in a folder named for the conversation (place.go), which is

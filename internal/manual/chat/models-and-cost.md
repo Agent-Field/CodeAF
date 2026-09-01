@@ -1219,26 +1219,38 @@ other place, and it draws that file: which days, which models, and what the mone
 
 Every cost line written into a conversation's transcript is also appended to one file for the
 whole machine, `~/.aforge/v3/usage.jsonl`, moved by `AFORGE_HOME` like everything else aforge
-keeps. **One line per turn — the turn as a whole, however many requests it took — and one per
-call made beside a turn**, such as naming a session or judging a route. Each line carries a
-`calls` figure saying how many provider requests it covers, so a turn that used three tools is
-one line reading `calls: 4` rather than four lines. A turn that failed or that you interrupted
-writes its line too, for whatever it spent before it stopped.
+keeps. **One line per model call, written the moment that call's bill comes back** — the
+requests of a turn, and the calls made beside a turn such as naming a session or judging a
+route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
+one.
+
+**That is why the figure moves while a reply is still being written.** The line is written as
+each call is paid for rather than when the turn finishes, so a turn you interrupt, stop, or are
+simply still watching has every call it has made so far on the file already. It used to be
+written once at the end of a turn, which meant an interrupted turn's money reached the status
+line and never reached this file, and the two disagreed about the turn in front of you.
+Older lines, written before that changed, may carry a whole turn's worth on one row with a
+larger `calls` figure; they add up the same.
 
 Every line records: when it happened and which local calendar day that was, which model answered,
 how many requests and how many tokens in and out, what it cost, the conversation it was made
 in, the piece of work or the standing promise it was made for, and the project directory it
 ran against.
 
-Three things are worth knowing about it:
+Four things are worth knowing about it:
 
 - **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
   me this month" could only be answered by opening every transcript on the machine, and "what
   did I spend on Tuesday" could not be answered at all — a conversation's own total has no day
   in it.
-- **A turn or a call that cost nothing writes no line.** So a day with no lines is a day
+- **A call that cost nothing writes no line.** So a day with no lines is a day
   nothing was spent, rather than a day of zeroes. The place obeys the same law and draws
   nothing for an unpriced call rather than calling it free.
+- **A record that could not be written is counted and said.** Writing this file never makes a
+  reply wait: if the disk stops answering, the row is dropped rather than the turn. When that
+  happens the spend place's top line and the Spending tab both grow a reading — `3 spending
+  records could not be written` — so a figure that is short says so instead of quietly reading
+  as a cheaper day. Nothing is drawn when nothing was lost, which is nearly always.
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
@@ -1247,9 +1259,10 @@ Three things are worth knowing about it:
   both were on this file twice, so a day that included a fork or a run read high, and the
   daily limit was reached before that much had actually been spent.
 
-`/cost` and the status line are unchanged and are still rebuilt from **this conversation's**
-own transcript. The spend place is the whole machine; `/cost` is this conversation. They
-answer two different questions and neither is a correction of the other.
+`/cost` and the status line are **this conversation's** own running total, kept by the same
+step that writes the line above — so the two cannot drift apart. The spend place is the whole
+machine; `/cost` is this conversation. They answer two different questions and neither is a
+correction of the other.
 
 ## The spend place — what days and models cost, and what the money was for
 
@@ -1609,6 +1622,17 @@ Above those six the tab leads with **`today`**, which is a reading and not a set
 limit. Before the first model call of the day it is **not on the tab at all** — a machine
 that has not spent anything has not spent zero.
 
+Under `today` a second reading appears **only when something went wrong writing spending
+down** — `unwritten · 3 spending records could not be written`. Writing the ledger never
+makes a reply wait, so a disk that stops answering costs a record rather than a turn; the
+row is there so a figure that is short says so. It is absent on any ordinary day.
+
+The `per conversation` row carries a receipt of its own, `this one $53.58`, and it is the
+**same figure the money segment on the status line draws** — this conversation and every
+piece of work it started, whether or not that work has finished. It used to say only what
+the conversation itself had spent, so the tab and the row a person pressed to get here
+disagreed while a task was running.
+
 **Four of the six are rows you can edit** — `per day`, `per conversation`, `per plan`,
 `practice`. `per task` and `per standing run` are **readings**: they are real rails, and
 neither is a number a settings row could hold. The sections below say why.
@@ -1639,7 +1663,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`/spend`, `alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` |
+| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its third screen, `what may aforge spend?` |

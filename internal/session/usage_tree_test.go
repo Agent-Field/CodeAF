@@ -47,9 +47,10 @@ func TestATasksSpendIsOnTheConversationsTotalBeforeTheTaskCloses(t *testing.T) {
 		config.usageLedger = ledger
 	})
 
-	// The conversation's own bill: one sealed turn, which is the door every
-	// other test in this package journals a cost through.
-	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 2.53, Calls: 1}, time.Now(), "test/model")
+	// The conversation's own bill: one call, which is the door every ledger row
+	// in this package comes through since issue #269.
+	var own Usage
+	bankCall(agent, &own, "test/model", 100, 20, 2.53, laneFacts{})
 
 	graph := agent.graph()
 	graph.mu.Lock()
@@ -92,14 +93,14 @@ func TestATasksSpendIsOnTheConversationsTotalBeforeTheTaskCloses(t *testing.T) {
 	}
 
 	tree := UsageTree(lines, conversation)
-	if !treeNear(tree.TasksUSD, 51.05) {
-		t.Fatalf("the work's spend reads %v, want 51.05: %+v", tree.TasksUSD, lines)
+	if !treeNear(tree.Children, 51.05) {
+		t.Fatalf("the work's spend reads %v, want 51.05: %+v", tree.Children, lines)
 	}
-	if !treeNear(tree.ConversationUSD, 2.53) {
-		t.Fatalf("the conversation's own spend reads %v, want 2.53", tree.ConversationUSD)
+	if !treeNear(tree.Direct, 2.53) {
+		t.Fatalf("the conversation's own spend reads %v, want 2.53", tree.Direct)
 	}
-	if !treeNear(tree.TotalUSD(), 53.58) {
-		t.Fatalf("the tree totals %v, want 53.58", tree.TotalUSD())
+	if !treeNear(tree.Folded(), 53.58) {
+		t.Fatalf("the tree totals %v, want 53.58", tree.Folded())
 	}
 
 	// AND THE NODE HAS NOT CLOSED, so its money is nowhere in the conversation's
@@ -136,14 +137,14 @@ func TestTheTreeRollupNamesBothHalvesAndCountsEachCallOnce(t *testing.T) {
 	}
 
 	tree := UsageTree(lines, mine)
-	if !treeNear(tree.ConversationUSD, 2.53) {
-		t.Fatalf("the conversation's own half reads %v, want 2.53", tree.ConversationUSD)
+	if !treeNear(tree.Direct, 2.53) {
+		t.Fatalf("the conversation's own half reads %v, want 2.53", tree.Direct)
 	}
-	if !treeNear(tree.TasksUSD, 51.05) {
-		t.Fatalf("the work's half reads %v, want 51.05", tree.TasksUSD)
+	if !treeNear(tree.Children, 51.05) {
+		t.Fatalf("the work's half reads %v, want 51.05", tree.Children)
 	}
-	if !treeNear(tree.TotalUSD(), 53.58) {
-		t.Fatalf("the tree totals %v, want 53.58", tree.TotalUSD())
+	if !treeNear(tree.Folded(), 53.58) {
+		t.Fatalf("the tree totals %v, want 53.58", tree.Folded())
 	}
 	if tree.Calls != 8 {
 		t.Fatalf("the tree counted %d calls, want 8", tree.Calls)
@@ -152,8 +153,8 @@ func TestTheTreeRollupNamesBothHalvesAndCountsEachCallOnce(t *testing.T) {
 	// A SURFACE THAT DOES NOT KNOW WHICH CONVERSATION IT IS IN GETS NOTHING, not
 	// everything: an empty id matching every row would put the whole machine's
 	// spending on one status line.
-	if empty := UsageTree(lines, ""); empty.TotalUSD() != 0 {
-		t.Fatalf("an unnamed conversation was given %v", empty.TotalUSD())
+	if empty := UsageTree(lines, ""); empty.Folded() != 0 {
+		t.Fatalf("an unnamed conversation was given %v", empty.Folded())
 	}
 }
 
@@ -162,11 +163,9 @@ func TestTheTreeRollupNamesBothHalvesAndCountsEachCallOnce(t *testing.T) {
 // it is cheapest to break.
 func TestAConversationsOwnLedgerLineNamesNoRoot(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
-	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.01, Calls: 1}, time.Now(), "test/model")
+	agent, _ := ledgerAgent(t, ledger)
+	var own Usage
+	bankCall(agent, &own, "test/model", 100, 20, 0.01, laneFacts{})
 	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
@@ -284,9 +283,10 @@ func TestALiveHandsSpendIsOnTheConversationsTreeBeforeItComesHome(t *testing.T) 
 		config.usageLedger = ledger
 	})
 
-	// The conversation's own bill, through the door every other test in this
-	// package journals a cost through.
-	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 2.53, Calls: 1}, time.Now(), "test/model")
+	// The conversation's own bill, through the door every ledger row comes
+	// through since issue #269: the call itself.
+	var own Usage
+	bankCall(agent, &own, "test/model", 100, 20, 2.53, laneFacts{})
 
 	// The hand is minted and driven here rather than through the verb, because
 	// what is being pinned is the state DURING a fork: nothing folds this hand
@@ -331,14 +331,14 @@ func TestALiveHandsSpendIsOnTheConversationsTreeBeforeItComesHome(t *testing.T) 
 	}
 
 	tree := UsageTree(lines, conversation)
-	if !treeNear(tree.TasksUSD, 51.05) {
-		t.Fatalf("the hand's spend reads %v on the tree, want 51.05: %+v", tree.TasksUSD, lines)
+	if !treeNear(tree.Children, 51.05) {
+		t.Fatalf("the hand's spend reads %v on the tree, want 51.05: %+v", tree.Children, lines)
 	}
-	if !treeNear(tree.ConversationUSD, 2.53) {
-		t.Fatalf("the conversation's own spend reads %v, want 2.53", tree.ConversationUSD)
+	if !treeNear(tree.Direct, 2.53) {
+		t.Fatalf("the conversation's own spend reads %v, want 2.53", tree.Direct)
 	}
-	if !treeNear(tree.TotalUSD(), 53.58) {
-		t.Fatalf("the tree totals %v, want 53.58", tree.TotalUSD())
+	if !treeNear(tree.Folded(), 53.58) {
+		t.Fatalf("the tree totals %v, want 53.58", tree.Folded())
 	}
 
 	// AND THE HAND HAS NOT COME HOME, so its money is nowhere in the
@@ -426,8 +426,8 @@ func TestAnAdaptiveRunsNodeSpendRaisesTheDayTotalOnce(t *testing.T) {
 		t.Fatal("the conversation has no journal id to be the root of anything")
 	}
 	tree := UsageTree(lines, conversation)
-	if !treeNear(tree.TasksUSD, 1.00) {
-		t.Fatalf("the run's spend reads %v on the tree, want 1.00: %+v", tree.TasksUSD, lines)
+	if !treeNear(tree.Children, 1.00) {
+		t.Fatalf("the run's spend reads %v on the tree, want 1.00: %+v", tree.Children, lines)
 	}
 }
 

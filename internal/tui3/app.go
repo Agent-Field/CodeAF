@@ -865,7 +865,7 @@ type app struct {
 	// and treeCache is the tail-reading cache that makes re-reading it cheap
 	// (treespend.go). Both belong to this surface's own goroutine, which is
 	// [session.UsageCache]'s own condition for being used at all.
-	tree      session.TreeSpend
+	tree      session.Receipt
 	treeCache session.UsageCache
 	// spendRail is this conversation's own ceiling as the profile last read it,
 	// and railRead whether it has been read at all. The pair is held rather than
@@ -6918,7 +6918,7 @@ func (a *app) resetMeters() {
 	// the true figure while the row beside it printed the other one, which is
 	// the surface disagreeing with itself about the only number on it a person
 	// acts on.
-	a.tree = session.TreeSpend{}
+	a.tree = session.Receipt{}
 	// THE CACHE UNDER IT IS DELIBERATELY KEPT. It is not a figure about a
 	// conversation but a parse of a file — [session.UsageCache] holds the lines
 	// it has already read off the machine's one ledger and re-derives the tree

@@ -598,39 +598,46 @@ func UsageSubjectWord(kind string) string {
 	return ""
 }
 
-// ── one conversation and everything it started ──────────────────────────────
+// ── one node and everything under it ────────────────────────────────────────
 
-// TreeSpend is what a conversation has cost WITH the work it started, split
-// into the two halves so that a surface can say which is which.
+// Receipt is what one node cost, in the three readings every spend surface in
+// this program wants — and it is ONE OBJECT, computed in ONE PLACE
+// ([UsageTree]), because the alternative is what issue #269 measured: the card,
+// the roster and the spend place quoting three different costs for the same
+// piece of work, each summing the same rows a slightly different way.
 //
-// THE SPLIT IS THE POINT AND THE TOTAL IS THE HEADLINE. The defect this answers
-// (issue #145) is a conversation whose ambient figure read $2.53 while the tasks
-// it had started were spending $51.05 — the smaller number, alone, for two
-// hours, because a node's money only reaches the conversation's own books when
-// the node closes. The total here is the honest one; the halves are what makes
-// it auditable rather than a figure that jumped.
-type TreeSpend struct {
-	// ConversationUSD is what the conversation's OWN calls cost — its turns and
-	// the auxiliary calls made on its behalf.
-	ConversationUSD float64
-	// TasksUSD is every call made inside work this conversation started, at any
-	// depth, including the checks and the repair rounds — and the hands a turn
-	// forked, which are the conversation's own answer being worked on in parallel
-	// rather than a task, and are counted here because they are money the
-	// conversation's books do not hold until they come home. It is what those
-	// books will eventually hold as each piece of work closes, and it is here
-	// now.
-	TasksUSD float64
-	// Calls is the whole tree's requests, on [TreeSpend.TotalUSD]'s terms: the
+// A SURFACE CHOOSES WHAT TO SHOW AND NEVER WHAT TO SUM. The status line's money
+// segment and Settings→Spending's `this one` show [Receipt.Folded]; /cost prints
+// Direct beside Children under it — readings of one arithmetic, rather than one
+// arithmetic per surface.
+//
+// THE SPLIT IS THE POINT AND THE FOLDED FIGURE IS THE HEADLINE. The defect the
+// split answers (issue #145) is a conversation whose ambient figure read $2.53
+// while the tasks it had started were spending $51.05 — the smaller number,
+// alone, for two hours, because a node's money only reaches the node's own books
+// when the child closes. Folded is the honest one; the halves are what makes it
+// auditable rather than a figure that jumped.
+type Receipt struct {
+	// Direct is what the node's OWN calls cost — its turns and the auxiliary
+	// calls made on its behalf.
+	Direct float64
+	// Children is every call made inside work this node started, at any depth,
+	// including the checks and the repair rounds — and the hands a turn forked,
+	// which are the node's own answer being worked on in parallel rather than a
+	// task, and are counted here because they are money the node's books do not
+	// hold until they come home. It is what those books will eventually hold as
+	// each piece of work closes, and it is here now.
+	Children float64
+	// Calls is the whole subtree's requests, on [Receipt.Folded]'s terms: the
 	// denominator the total is the sum over.
 	Calls int
 }
 
-// TotalUSD is the tree: the conversation and its work.
-func (s TreeSpend) TotalUSD() float64 { return s.ConversationUSD + s.TasksUSD }
+// Folded is the whole subtree: the node and the work it started.
+func (r Receipt) Folded() float64 { return r.Direct + r.Children }
 
-// UsageTree sums the ledger around one conversation: what it spent itself, and
-// what the work it started spent.
+// UsageTree is the one place a receipt is computed: what a conversation spent
+// itself, and what the work it started spent.
 //
 // IT IS EACH CALL ONCE, which is the whole reason it reads the ledger rather
 // than adding a running total of its own. A fold writes no ledger line
@@ -648,22 +655,22 @@ func (s TreeSpend) TotalUSD() float64 { return s.ConversationUSD + s.TasksUSD }
 // An empty conversation id matches nothing at all rather than everything, which
 // is the honest answer for a surface that does not know which conversation it
 // is in.
-func UsageTree(lines []UsageLine, conversation string) TreeSpend {
-	var tree TreeSpend
+func UsageTree(lines []UsageLine, conversation string) Receipt {
+	var receipt Receipt
 	conversation = strings.TrimSpace(conversation)
 	if conversation == "" {
-		return tree
+		return receipt
 	}
 	for _, line := range lines {
 		switch {
 		case strings.TrimSpace(line.Root) == conversation:
-			tree.TasksUSD += line.USD
+			receipt.Children += line.USD
 		case strings.TrimSpace(line.Session) == conversation:
-			tree.ConversationUSD += line.USD
+			receipt.Direct += line.USD
 		default:
 			continue
 		}
-		tree.Calls += line.Calls
+		receipt.Calls += line.Calls
 	}
-	return tree
+	return receipt
 }

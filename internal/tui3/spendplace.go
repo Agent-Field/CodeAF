@@ -10,6 +10,7 @@ package tui3
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +54,19 @@ type spendReading struct {
 	// rail is the machine's daily limit, for the pointer line at the top of the
 	// page ([spendReading.railed]). Zero is no limit.
 	rail float64
+	// unwritten is how many spending records the machine failed to write down
+	// ([session.UsageDrops]), handed in on the read like everything else here so
+	// that DRAWING stays arithmetic over what was already gathered. Zero is the
+	// ordinary case and the line says nothing about it.
+	unwritten int64
+}
+
+// lost hands the reading the count of rows that never reached the file. It
+// answers a copy, for [spendReading.naming]'s reason: a reading is an immutable
+// answer.
+func (r spendReading) lost(dropped int64) spendReading {
+	r.unwritten = dropped
+	return r
 }
 
 // spendCrew is what SCREEN 2c's model table needs and the ledger does not hold:
@@ -355,7 +369,15 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 func (r spendReading) railsRow(width int, pal palette) string {
 	fields := []rowField{}
 	if today := r.todaySpend(); today > 0 {
-		figure := spendMoneyWord(today)
+		// THE POINTER LINE USES [dollars] AND NOT THIS PAGE'S OWN SLIVER WORD.
+		// It is the same reading Settings→Spending's `today` row draws and a door
+		// onto that row, and issue #269's whole law is that one number reads the
+		// same wherever it is met — a line saying `under a cent` beside a tab
+		// saying `$0.0003` is the four-numbers defect in miniature. The sliver
+		// word stays where it belongs, on this page's own model and subject rows
+		// ([spendMoneyWord]), which are a table of many figures rather than one
+		// total quoted in two places.
+		figure := dollars(today)
 		switch {
 		case r.rail > 0:
 			fields = append(fields, rowSay("today "+figure+" of "+railFigure(r.rail),
@@ -364,6 +386,15 @@ func (r spendReading) railsRow(width int, pal palette) string {
 			fields = append(fields, rowSay("today "+figure+" · "+config.NoLimitWord,
 				"today "+figure, figure))
 		}
+	}
+	// AND WHAT THE MACHINE COULD NOT WRITE DOWN, ahead of the door, because it
+	// is a fact ABOUT the figure to its left: a ledger short of rows reads as a
+	// cheaper day than the one that happened (settingspend.go's
+	// [unwrittenReading] states the whole rule). Nothing is said when nothing
+	// was lost.
+	if r.unwritten > 0 {
+		figure := strconv.FormatInt(r.unwritten, 10)
+		fields = append(fields, rowSay(figure+" "+spendUnwrittenSaid, figure+" unwritten", figure))
 	}
 	fields = append(fields, rowSay(spendRailsWord, "/budget"))
 	return pal.dim(fit(rowTail(fields, width), width))
@@ -599,7 +630,13 @@ func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal p
 }
 
 // spendMoneyWord keeps tui3's one dollar formatter while applying the page's
-// extra rule for a measured sliver: rounding it to zero would read as free.
+// extra rule for a measured sliver: a table of many rows reads better with a
+// word than with a column of four-decimal fractions
+// (docs/design/home-rethink/SCREENS.txt states the rule).
+//
+// IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL ANOTHER SURFACE ALSO QUOTES. The
+// pointer line quotes the same day figure the Spending tab does, so it uses
+// [dollars] like every other surface that quotes it ([spendReading.railsRow]).
 func spendMoneyWord(usd float64) string {
 	if usd > 0 && usd < 0.005 {
 		return "under a cent"

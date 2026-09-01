@@ -23,6 +23,36 @@ func recordUsage(t *testing.T, path string, line UsageLine) {
 	FlushUsage()
 }
 
+// billedCall is one provider answer with an accounting block on it — the shape
+// the ledger's per-call row is written from.
+func billedCall(model string, in, out int, usd float64) *ai.Response {
+	return &ai.Response{Model: model, Usage: &ai.Usage{
+		PromptTokens: in, CompletionTokens: out, Cost: &usd,
+	}}
+}
+
+// bankCall drives the door a real turn drives: the per-call site that folds one
+// answer into the turn and the session's meter and writes the machine's ledger
+// row in the same breath ([Agent.addUsage]). Since issue #269 that is the ONLY
+// place a ledger row for a turn's own call comes from, so a test that wants a
+// row makes a call rather than sealing a turn.
+func bankCall(agent *Agent, turn *Usage, model string, in, out int, usd float64, lane laneFacts) {
+	agent.addUsage(turn, billedCall(model, in, out, usd), model, "", lane)
+}
+
+// ledgerAgent is an agent writing to a ledger of its own, which is what every
+// test in this file needs and nothing else.
+func ledgerAgent(t *testing.T, ledger string, more ...func(*Config)) (*Agent, string) {
+	t.Helper()
+	return newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.usageLedger = ledger
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+		for _, apply := range more {
+			apply(config)
+		}
+	})
+}
+
 func usageAt(t *testing.T, day string) time.Time {
 	t.Helper()
 	at, err := time.ParseInLocation("2006-01-02 15:04", day, time.Local)
@@ -318,39 +348,61 @@ func TestTheCachesFloorAsksEveryRowAndNotJustTheFirst(t *testing.T) {
 	}
 }
 
-// THE LEDGER AND THE TRANSCRIPT HOLD THE SAME MONEY. A turn that seals writes
-// both, and the line the machine keeps has to be able to say whose the money was.
-func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {
+// ONE ROW PER CALL, WRITTEN AS THE CALL IS MADE — the restatement issue #269
+// asks for of what used to be "a sealed turn lands in the machine ledger".
+//
+// The old shape wrote ONE row at the turn's seal carrying the whole turn's
+// tally, so `calls` on a row was a turn's worth (an observed 41) and a turn that
+// never sealed wrote nothing at all. Now each call writes its own row as it is
+// decoded, every row says `calls: 1`, and the row still has to be able to say
+// whose the money was.
+func TestEveryCallLandsInTheMachineLedgerAsItIsMade(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
-	agent.sealTurn(Usage{Input: 900, Output: 120, CostUSD: 0.31, Calls: 2}, time.Now().Add(-time.Second), "opus-4.1")
+	agent, workspace := ledgerAgent(t, ledger)
+
+	var turn Usage
+	bankCall(agent, &turn, "opus-4.1", 900, 120, 0.31, laneFacts{})
+	bankCall(agent, &turn, "opus-4.1", 400, 60, 0.09, laneFacts{})
 	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if len(lines) != 1 {
-		t.Fatalf("the seal wrote %d ledger lines, want 1", len(lines))
+	if len(lines) != 2 {
+		t.Fatalf("two calls wrote %d ledger lines, want one each", len(lines))
+	}
+	for _, line := range lines {
+		if line.Calls != 1 {
+			t.Fatalf("a row covers %d calls, want exactly 1: %+v", line.Calls, line)
+		}
+		if line.Model != "opus-4.1" {
+			t.Fatalf("the row names model %q: %+v", line.Model, line)
+		}
+		if line.Session == "" {
+			t.Fatal("the ledger line names no conversation")
+		}
+		if line.Task != "" {
+			t.Fatalf("a conversation's line claims task %q", line.Task)
+		}
+		if line.Workspace != workspace {
+			t.Fatalf("the workspace is %q, want %q", line.Workspace, workspace)
+		}
 	}
 	line := lines[0]
-	if line.Model != "opus-4.1" || line.Calls != 2 || line.USD != 0.31 {
-		t.Fatalf("the ledger line is %+v", line)
+	if line.USD != 0.31 || line.Input != 900 || line.Output != 120 {
+		t.Fatalf("the first call's row is %+v, want its own figures and not the turn's sum", line)
 	}
-	if line.Input != 900 || line.Output != 120 {
-		t.Fatalf("the tokens are %+v", line)
+	// AND THE SEAL WRITES NOTHING HERE ANY MORE. A turn's shape is the
+	// transcript's business; the ledger's grain is the call.
+	agent.sealTurn(turn, time.Now().Add(-time.Second), "opus-4.1")
+	FlushUsage()
+	after, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	if line.Session == "" {
-		t.Fatal("the ledger line names no conversation")
-	}
-	if line.Task != "" {
-		t.Fatalf("a conversation's line claims task %q", line.Task)
-	}
-	if line.Workspace != workspace {
-		t.Fatalf("the workspace is %q, want %q", line.Workspace, workspace)
+	if len(after) != 2 {
+		t.Fatalf("the seal added %d rows on top of the calls, want none", len(after)-2)
 	}
 }
 
@@ -359,10 +411,7 @@ func TestASealedTurnLandsInTheMachineLedger(t *testing.T) {
 // bill for every task it ever ran.
 func TestFoldingAChildsTallyWritesNoSecondLedgerLine(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 	cost := 0.44
 	agent.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens: 800, CompletionTokens: 200, Cost: &cost,
@@ -387,13 +436,12 @@ func TestFoldingAChildsTallyWritesNoSecondLedgerLine(t *testing.T) {
 // the firing happened in.
 func TestAStandingFiringsLineNamesTheItem(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := ledgerAgent(t, ledger, func(config *Config) {
 		config.standingItemID = "item-6am"
 		config.taskID = 4
 	})
-	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.004, Calls: 1}, time.Now(), "haiku-4.5")
+	var turn Usage
+	bankCall(agent, &turn, "haiku-4.5", 100, 20, 0.004, laneFacts{})
 	FlushUsage()
 
 	lines, err := ReadUsage(ledger, time.Time{})
@@ -704,19 +752,17 @@ func wantRowSilentAbout(t *testing.T, row map[string]any, fields ...string) {
 // A sealed turn's row names the machine that answered it and the wait it made,
 // which is the whole question a person asks after a slow afternoon: was it the
 // model, or was it the machine we happened to be routed to.
-func TestASealedTurnsRowNamesTheMachineAndTheWaitItMade(t *testing.T) {
+func TestACallsRowNamesTheMachineAndTheWaitItMade(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 
 	began := time.Now()
 	agent.turnLane.sent(began)
 	agent.turnLane.token(began.Add(768 * time.Millisecond))
 	agent.turnLane.token(began.Add(4768 * time.Millisecond))
-	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
-	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "deepseek/deepseek-v4-flash")
+	facts := agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+	var turn Usage
+	bankCall(agent, &turn, "deepseek/deepseek-v4-flash", 900, 232, 0.31, facts)
 
 	row := sealRow(t, ledger)
 	wantRowFields(t, row, map[string]any{
@@ -731,19 +777,17 @@ func TestASealedTurnsRowNamesTheMachineAndTheWaitItMade(t *testing.T) {
 // A hedge is the one thing in this build that can spend money twice, so a bill
 // that cannot be told apart from an ordinary one is a mechanism nobody can
 // audit. The winner of the race is the machine the row names.
-func TestAHedgedTurnsRowCarriesTheRescueAndWhatItWasted(t *testing.T) {
+func TestAHedgedCallsRowCarriesTheRescueAndWhatItWasted(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 
 	began := time.Now()
 	agent.turnLane.sent(began)
 	agent.turnLane.token(began.Add(400 * time.Millisecond))
 	agent.turnLane.token(began.Add(2400 * time.Millisecond))
-	agent.turnLane.answered(hedgeSeen{lane: "Baidu", hedged: true, waste: 0.004}, 150)
-	agent.sealTurn(Usage{Input: 900, Output: 150, CostUSD: 0.12, Calls: 2}, began, "deepseek/deepseek-v4-flash")
+	facts := agent.turnLane.answered(hedgeSeen{lane: "Baidu", hedged: true, waste: 0.004}, 150)
+	var turn Usage
+	bankCall(agent, &turn, "deepseek/deepseek-v4-flash", 900, 150, 0.12, facts)
 
 	wantRowFields(t, sealRow(t, ledger), map[string]any{
 		"lane":            "Baidu",
@@ -757,13 +801,11 @@ func TestAHedgedTurnsRowCarriesTheRescueAndWhatItWasted(t *testing.T) {
 // THE EMPTINESS LAW. A turn nobody measured writes a row with none of the five
 // keys on it — not a lane of "", not a wait of zero — because a figure a reader
 // finds on a row must be one somebody measured.
-func TestATurnNobodyMeasuredWritesNoneOfTheLaneKeys(t *testing.T) {
+func TestACallNobodyMeasuredWritesNoneOfTheLaneKeys(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
-	agent.sealTurn(Usage{Input: 900, Output: 120, CostUSD: 0.31, Calls: 2}, time.Now(), "opus-4.1")
+	agent, _ := ledgerAgent(t, ledger)
+	var turn Usage
+	bankCall(agent, &turn, "opus-4.1", 900, 120, 0.31, laneFacts{})
 
 	row := sealRow(t, ledger)
 	wantRowSilentAbout(t, row, "lane", "ttft_ms", "tps", "hedged", "hedge_waste_usd")
@@ -778,17 +820,15 @@ func TestATurnNobodyMeasuredWritesNoneOfTheLaneKeys(t *testing.T) {
 // rescue cost is still true and stays.
 func TestAPathFaultIsNotBlamedOnTheLane(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 
 	began := time.Now()
 	agent.turnLane.sent(began)
 	agent.turnLane.token(began.Add(9 * time.Second))
 	agent.turnLane.token(began.Add(11 * time.Second))
-	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare", hedged: true, waste: 0.002, fault: true}, 232)
-	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 2}, began, "deepseek/deepseek-v4-flash")
+	facts := agent.turnLane.answered(hedgeSeen{lane: "Cloudflare", hedged: true, waste: 0.002, fault: true}, 232)
+	var turn Usage
+	bankCall(agent, &turn, "deepseek/deepseek-v4-flash", 900, 232, 0.31, facts)
 
 	row := sealRow(t, ledger)
 	wantRowSilentAbout(t, row, "ttft_ms", "tps")
@@ -804,26 +844,24 @@ func TestAPathFaultIsNotBlamedOnTheLane(t *testing.T) {
 // row that borrowed them would file one measurement against another request.
 func TestAnErrandsRowCarriesNoLaneTheTurnMeasured(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 
 	began := time.Now()
 	agent.turnLane.sent(began)
 	agent.turnLane.token(began.Add(768 * time.Millisecond))
 	agent.turnLane.token(began.Add(4768 * time.Millisecond))
-	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+	facts := agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
 
 	cost := 0.002
 	agent.addAuxiliaryUsageAs(&ai.Response{Usage: &ai.Usage{
 		PromptTokens: 300, CompletionTokens: 12, Cost: &cost,
 	}}, "haiku-4.5", 1, auxRoleTitle)
-	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "deepseek/deepseek-v4-flash")
+	var turn Usage
+	bankCall(agent, &turn, "deepseek/deepseek-v4-flash", 900, 232, 0.31, facts)
 
 	rows := rawUsageRows(t, ledger)
 	if len(rows) != 2 {
-		t.Fatalf("wrote %d rows, want the errand and the seal: %v", len(rows), rows)
+		t.Fatalf("wrote %d rows, want the errand and the turn's own call: %v", len(rows), rows)
 	}
 	for _, row := range rows {
 		if row["role"] == auxRoleTitle {
@@ -834,26 +872,26 @@ func TestAnErrandsRowCarriesNoLaneTheTurnMeasured(t *testing.T) {
 	wantRowFields(t, sealRow(t, ledger), map[string]any{"lane": "Cloudflare", "ttft_ms": float64(768)})
 }
 
-// A measurement belongs to exactly one row. A second seal that found the
-// first one's figures still sitting in the witness would write a lane and a
-// wait that nobody measured for it.
-func TestASecondSealDoesNotInheritTheFirstsLane(t *testing.T) {
+// A measurement belongs to exactly one row. A second call that found the first
+// one's figures still sitting in the witness would write a lane and a wait that
+// nobody measured for it.
+func TestASecondCallDoesNotInheritTheFirstsLane(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.usageLedger = ledger
-		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
-	})
+	agent, _ := ledgerAgent(t, ledger)
 
 	began := time.Now()
 	agent.turnLane.sent(began)
 	agent.turnLane.token(began.Add(768 * time.Millisecond))
-	agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
-	agent.sealTurn(Usage{Input: 900, Output: 232, CostUSD: 0.31, Calls: 1}, began, "m")
-	agent.sealTurn(Usage{Input: 100, Output: 20, CostUSD: 0.01, Calls: 1}, began, "m")
+	facts := agent.turnLane.answered(hedgeSeen{lane: "Cloudflare"}, 232)
+	var turn Usage
+	bankCall(agent, &turn, "m", 900, 232, 0.31, facts)
+	// The witness was emptied by the answer above, so the second call's own
+	// reading is the empty one it actually has.
+	bankCall(agent, &turn, "m", 100, 20, 0.01, agent.turnLane.answered(hedgeSeen{}, 20))
 
 	rows := rawUsageRows(t, ledger)
 	if len(rows) != 2 {
-		t.Fatalf("wrote %d rows, want two seals: %v", len(rows), rows)
+		t.Fatalf("wrote %d rows, want two calls: %v", len(rows), rows)
 	}
 	wantRowFields(t, rows[0], map[string]any{"lane": "Cloudflare"})
 	wantRowSilentAbout(t, rows[1], "lane", "ttft_ms", "tps")
@@ -876,9 +914,9 @@ func TestReadHedgeNamesTheMachineWithoutInventingOne(t *testing.T) {
 }
 
 // AND THE WIRING, end to end: a real turn stamps a hedge report on the context
-// its request rides, times its own stream across the send seam, and seals a row
-// carrying what it measured — while naming no lane, because nothing on a
-// scripted completer's answer ever names one.
+// its request rides, times its own stream across the send seam, and writes a row
+// on the call itself carrying what it measured — while naming no lane, because
+// nothing on a scripted completer's answer ever names one.
 func TestATurnStampsAHedgeReportAndTimesItsOwnStream(t *testing.T) {
 	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
 	completer := &scriptedCompleter{steps: []step{
