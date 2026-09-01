@@ -367,9 +367,11 @@ If you type `/copy` and the screen does not change, one of those two is why.
 ## /select — drag to select with your mouse
 
 You usually do not need this any more: **dragging over the conversation already
-selects and copies** — sweep with the left button down, the rows highlight, and on
-release their text is on your clipboard, with `copied · N lines` on the status line
-(see the keys page's *Selecting text with your mouse*).
+selects and copies, to the character** — sweep with the left button down from one
+character to another, the cells between them highlight, and on release their text is
+on your clipboard, with `copied · 14 chars` or `copied · 3 lines` on the status line.
+Double-click takes a word, triple-click a line (see the keys page's *Selecting text
+with your mouse*).
 
 `/select` is for when you want your **terminal's own** selection instead: it hands the
 pointer back so a drag selects text natively. It is the same thing ctrl+s does.

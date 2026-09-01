@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
 
@@ -425,8 +426,14 @@ func (a *app) frame() (string, int, int) {
 	for i, r := range body {
 		text := r.text
 		if selOn {
+			// THE SELECTION IS CELLS, not rows: the span this row carries is
+			// painted and the rest of the row keeps its own paint, so what is
+			// lit is exactly what a release copies (dragselect.go's
+			// [app.dragCells], which snaps the span to whole glyphs).
 			if at := scroll + i; at >= selFrom && at <= selTo {
-				text = a.pal.mark(text, a.bodyWidth())
+				if from, to, ok := a.dragCells(at, ansi.Strip(text)); ok {
+					text = a.markCells(text, from, to)
+				}
 			}
 		}
 		rows = append(rows, a.railJoin(text, a.hopFadeRail(railAt(i))))

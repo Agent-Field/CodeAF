@@ -647,7 +647,7 @@ func TestDraggingOverAnElbowCopiesTheCorrection(t *testing.T) {
 		t.Fatalf("no elbow row to sweep:\n%s", strings.Join(plainRows(a), "\n"))
 	}
 	var yanked string
-	for _, msg := range runCmd(a.dragYank(dragSelect{on: true, anchorRow: at, row: at})) {
+	for _, msg := range runCmd(a.dragYank(dragSelect{on: true, anchorRow: at, row: at, unit: rowUnit})) {
 		if raw, ok := msg.(tea.RawMsg); ok {
 			yanked = clipboardOf(t, raw.Msg.(string))
 		}
