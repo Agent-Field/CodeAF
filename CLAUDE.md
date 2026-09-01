@@ -197,6 +197,17 @@ Several Claude sessions often work this repo at once, in the same working tree.
   ~/af-<name> -b <branch> origin/dev`), land through a pull request, then the
   worktrees and branches are removed. GitHub deletes the remote branch on merge.
 
+## Filing an issue
+
+`.github/ISSUE_TEMPLATE/defect.md` is the shape, and two of its lines are the law.
+**The replication is something a stranger can run** — a stub, a fixture, a `-tags e2e`
+run — never a path on your machine: #185's evidence lived in a private store on a
+benchmark box nobody else can reach, which left a real bug unactionable. **The
+acceptance is end-to-end first**, naming the real door and the exact string or receipt
+field asserted — the TUI e2e suite was unit-green and e2e-broken for a week (#184).
+#185 and #207 are the worked examples. Blank issues stay enabled: most of what is filed
+here is a proposal, and the template is for defects.
+
 ## Tests
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
