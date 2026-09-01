@@ -76,3 +76,26 @@ up and does not pretend. A vision model looks at the file and reports back, and
 the answer is prefixed with **`seen by <model>:`** so the attribution is never
 lost. If no vision-capable model is available at all, it says so plainly rather
 than inventing a description.
+
+## Which models a run from the shell uses
+
+`aforge do`, `exec`, `plan`, `run`, `revise` and `run subharness` seat two models — one
+that works, one that plans — and both resolve the same way. First answer wins:
+
+1. `--model` / `--plan-model` on the command line
+2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment
+3. the crew in this profile — the mastermind class plans, the small-work class works
+4. the model this build ships with
+
+The crew is the same one `/crew` sets in the chat, so a machine told `frugal` there runs
+frugal here. It answers only where a crew has actually been set; an untouched profile takes
+the build's default. `AFORGE_HOME` and `AFORGE_PROFILE_DIR` decide which profile is asked.
+
+Every one of those runs opens with a line on stderr naming both seats and what chose each:
+
+```
+models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+```
+
+`aforge do --json` carries the same four facts as `model`, `plan_model`, `model_source`
+and `plan_model_source`.

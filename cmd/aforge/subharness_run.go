@@ -56,7 +56,7 @@ func runSubharnessCommand(args []string) error {
 	input := flags.String("input", "",
 		`the typed input, as a JSON file — "-" reads it from what is piped in`)
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
@@ -79,7 +79,12 @@ func runSubharnessCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	applyModelFlags(&settings, *model, "")
+	// One seat here — a saved program executes and never plans — climbed on the
+	// same ladder every other headless door climbs, so a profile's crew reaches
+	// this one too (config.ResolveSeats).
+	seats := config.ResolveSeats(settings.ProfileDir, *model, "")
+	applySeats(&settings, seats)
+	fmt.Fprintln(os.Stderr, seats.Work.Line())
 	// The measured ruler is seated for the same reason `run` seats it: this is a
 	// surface that will record what a worker cost, and a history keyed on
 	// anything but the model is two histories for one executor.

@@ -353,6 +353,38 @@ its planner takes the **mastermind** class and every node under it takes **small
 Those ids are settled once, when the run starts, so changing the crew — or `/model` — half
 way through does not move a run already going.
 
+## Does my crew reach aforge do, or only this conversation
+
+**It reaches both.** A crew you set here is the crew a run started from a script or a
+terminal uses — `aforge do`, `aforge exec`, `aforge plan`, `aforge run`, `aforge revise`
+and `aforge run subharness`. Set it once with `/crew frugal` and the same policy holds
+whether the work is asked for here or run with nobody watching.
+
+Those runs seat two models, and each one is resolved the same way. The first of these that
+answers wins:
+
+1. a model named on the command line — `--model` for the work, `--plan-model` for the
+   planning;
+2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
+3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
+   the **small work** class;
+4. what the build ships with.
+
+So `--model` is one voice of four rather than the only one. This was not always true: until
+recently a run outside the chat read only the flag and the environment, and a crew set here
+was silently lost the moment the same brain ran from a script.
+
+Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
+
+```
+models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+```
+
+Two details worth knowing. A crew answers only once you have actually set one — a profile
+nobody has touched takes the build's default rather than reading its own shipped values back
+as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
+the run plans on that model at that level, the same as it does here.
+
 ## What are the five models — the one you talk to and the four crew seats
 
 aforge runs **five model seats**. **Seat one is the model you talk to**: it answers every

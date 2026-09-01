@@ -44,8 +44,8 @@ func runExecute(args []string) error {
 	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
 	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
-	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model (default AFORGE_PLAN_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
+	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model ("+planLadderHelp+")")
 	subharness := flags.String("subharness", "", "force every leaf of this run onto one worker, for measuring workers against each other (default: what the graph chose)")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
@@ -77,7 +77,8 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
-	applyModelFlags(&settings, *model, *planModel)
+	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	applySeats(&settings, seats)
 	// A graph may be loaded from disk and expanded again after an overrun, so
 	// run installs the measured ruler before any planning-capable work starts.
 	// The ruler stays keyed to the work model even when a different model
@@ -153,9 +154,10 @@ func runExecute(args []string) error {
 	// The scratch home is printed because it is now the only place the flight
 	// recorders are, and a debugger who cannot find them has no run to read.
 	fmt.Printf("goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
-	if settings.PlanSplit() {
-		fmt.Printf("models:    %s plans, %s works\n", settings.PlanModelResolved(), settings.Model)
-	}
+	// Both seats, on every run rather than only on a split one, and each with
+	// the rung that chose it: a run whose models came from the profile's crew
+	// used to print nothing at all about them.
+	fmt.Printf("models:    %s\n", seats.Sentence())
 	if len(settings.Panel.Models) > 0 {
 		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
 	}

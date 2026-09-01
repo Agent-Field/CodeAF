@@ -194,6 +194,9 @@ aforge run subharness <name> --input -          # read the input from a pipe
 Optional: `-w <dir>` for the directory to work in, `--model <slug>` for the work model,
 `--journal <path>` to append every call the run makes to a file, one JSON object per line.
 
+With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
+and it opens by saying which model it took and what chose it.
+
 There is no task surface and no card here. What comes back:
 
 | what happened | where it is said | exit code |

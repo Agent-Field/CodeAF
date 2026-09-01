@@ -18,16 +18,22 @@ import (
 // one; nothing names one today, so they take the work model, which is the
 // honest floor: steering nowhere must not cost more than not steering.
 //
-// AFORGE_PLAN_MODEL and --plan-model become the initializer of the global plan
-// binding. They initialize and never override: the store writes only when the
+// Whatever named the plan model becomes the initializer of the global plan
+// binding. It initializes and never overrides: the store writes only when the
 // role is unbound or when a previous initializer said something else, so a boot
 // with an unchanged environment journals nothing and an environment variable
 // never quietly undoes what somebody chose in the palette.
 //
+// planOrigin is who named it, in the words a person would recognize —
+// `AFORGE_PLAN_MODEL`, `--plan-model`, `crew frugal` — and it is passed in
+// rather than guessed at here, because since #166 the answer may have come from
+// the profile's crew and a seed that named a variable nobody set would be a
+// false record in the journal.
+//
 // Nothing reads the bindings at dispatch yet. With no plan knob set, this
 // function installs a floor and writes not one event, which is why existing
 // behaviour is identical to the byte.
-func installRoleLadder(graph *store.Store, talkModel, planModel, workModel, planKnob, planFlag string) {
+func installRoleLadder(graph *store.Store, talkModel, planModel, workModel, planKnob, planOrigin string) {
 	if graph == nil {
 		return
 	}
@@ -38,10 +44,7 @@ func installRoleLadder(graph *store.Store, talkModel, planModel, workModel, plan
 	if value == "" {
 		return
 	}
-	origin := store.RoleSeedOriginPrefix + "AFORGE_PLAN_MODEL"
-	if strings.TrimSpace(planFlag) != "" {
-		origin = store.RoleSeedOriginPrefix + "--plan-model"
-	}
+	origin := store.RoleSeedOriginPrefix + strings.TrimSpace(planOrigin)
 	// A journal write that fails is not a reason to fail the launch it is
 	// describing — the plan client is already built from the same value — so
 	// this is best-effort, and loud enough in the log to be findable.

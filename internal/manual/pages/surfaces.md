@@ -153,7 +153,9 @@ locally.
   stdout instead, with the files under `artifacts`. Both lists are the files the
   run actually produced, not every path it mentioned. It is a one-shot and
   schedules nothing for later: an errand never practices, whatever store it is
-  pointed at with `--db`.
+  pointed at with `--db`. It runs on this profile's crew unless `--model`,
+  `--plan-model` or the matching variables name something else, and it opens by
+  saying which of those chose its two models.
 - `aforge wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
 - `aforge doctor` — the brain's path and size, whether a resident is alive, the
