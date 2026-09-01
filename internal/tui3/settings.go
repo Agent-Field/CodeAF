@@ -353,7 +353,11 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
-		about: "cheap · does the bulk work — run nodes, digests",
+		about: "cheap · the small calls — names, digests, the safety gate",
+	},
+	config.KeyTierWorkerModel: {
+		tab: tabProviders, label: "worker", widget: widgetSelect,
+		about: "does the work · every task, its parts, every run node — most of the bill",
 	},
 	config.KeyTierHighModel: {
 		tab: tabProviders, label: "careful work", widget: widgetSelect,
@@ -370,7 +374,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyModelRoles: {
 		tab: tabProviders, label: "pinned roles", widget: widgetText,
-		about: "exceptions to the four rows above, one per role: title:openai/gpt-5-mini.",
+		about: "exceptions to the five rows above, one per role: title:openai/gpt-5-mini.",
 	},
 	// It is a TEXT box and not a select, unlike the three class rows on Providers,
 	// because the answer is an ORDER rather than a choice: a picker that returns
@@ -689,7 +693,7 @@ func init() {
 	settingUI[config.ModelSettingKey(talkSlot)] = talk
 }
 
-// crewAbout is the crew row's one line: the four rows it writes, then each preset
+// crewAbout is the crew row's one line: the five rows it writes, then each preset
 // with its own sentence, then what makes the row read custom. The sentences are
 // [config.CrewLine]'s, so the panel and /crew say the same words about the same
 // thing (internal/config's crew.go holds the table).
@@ -701,18 +705,18 @@ func crewAbout() string {
 	// The three options lead, because they are what the keypress chooses between
 	// and the panel gives a row's line the width it has: what gets cut on a narrow
 	// terminal should be the footnote, not the choice.
-	return "the four below, chosen as one word: " + strings.Join(said, "; ") +
+	return "the five below, chosen as one word: " + strings.Join(said, "; ") +
 		". Answer one yourself and this reads custom."
 }
 
 // modelsSection is the order the Models rows LEAD the Providers tab in: your
-// model, the crew word, the four classes in [roles.Tiers] order, and then the
+// model, the crew word, the five classes in [roles.Tiers] order, and then the
 // pins with the roles list hanging off them.
 //
 // It exists because registry order is not reading order. internal/config builds
 // the model slot rows first and the tier rows a hundred lines later, which is the
 // order they were written rather than the order a person meets them — and the
-// crew only makes sense read directly above the four rows it writes. Every other
+// crew only makes sense read directly above the five rows it writes. Every other
 // row on the tab follows in registry order, so a row nobody placed here is still
 // reachable rather than dropped ([sheet.build] states that).
 //
@@ -754,6 +758,8 @@ func tierSettingKey(tier roles.Tier) string {
 	switch tier {
 	case roles.TierHigh:
 		return config.KeyTierHighModel
+	case roles.TierWorker:
+		return config.KeyTierWorkerModel
 	case roles.TierReflex:
 		return config.KeyTierReflexModel
 	case roles.TierMastermind:

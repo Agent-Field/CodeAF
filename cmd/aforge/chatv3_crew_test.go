@@ -32,7 +32,7 @@ func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before != "moonshotai/kimi-k3" {
+	if before != "z-ai/glm-5.3" {
 		t.Fatalf("the planner started on %q", before)
 	}
 
@@ -43,8 +43,10 @@ func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after != config.DefaultHighModel {
-		t.Fatalf("after /crew frugal the planner resolves to %q, want %q", after, config.DefaultHighModel)
+	frugal, _ := config.CrewModels(config.CrewFrugal)
+	want, _ := roles.SplitEffort(frugal[config.ModelTierMastermind])
+	if after != want {
+		t.Fatalf("after /crew frugal the planner resolves to %q, want %q", after, want)
 	}
 
 	// A single class answered by hand is seen the same way, and so is a pin —

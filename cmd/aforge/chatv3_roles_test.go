@@ -67,11 +67,12 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		want string
 	}{
 		{roles.RoleTitle, config.DefaultLowModel},
+		{roles.RoleWorker, config.DefaultWorkerModel},
 		{roles.RoleCompaction, config.DefaultHighModel},
 		// The mastermind's value carries a level, and Resolve hands back the id
 		// alone — a colon in a model field is a request for a model nobody serves.
-		{roles.RolePlanner, "moonshotai/kimi-k3"},
-		{roles.RoleDesigner, "moonshotai/kimi-k3"},
+		{roles.RolePlanner, "z-ai/glm-5.3"},
+		{roles.RoleDesigner, "z-ai/glm-5.3"},
 	} {
 		model, err := roles.Resolve(roles.Source(source), c.role, "vendor/conversation")
 		if err != nil || model != c.want {
@@ -80,8 +81,8 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	}
 	// And the level reaches the caller as its own half.
 	call, err := roles.ResolveCall(roles.Source(source), roles.RolePlanner, "vendor/conversation")
-	if err != nil || call.Effort != "low" {
-		t.Fatalf("the planner resolved to %+v (%v), want the shipped level", call, err)
+	if _, level := roles.SplitEffort(config.DefaultMastermindModel); err != nil || call.Effort != level {
+		t.Fatalf("the planner resolved to %+v (%v), want the shipped level %q", call, err, level)
 	}
 }
 

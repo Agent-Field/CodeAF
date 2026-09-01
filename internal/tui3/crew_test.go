@@ -130,7 +130,7 @@ func TestCrewChooserEscChangesNothing(t *testing.T) {
 	}
 }
 
-// A preset writes all four classes and confirms in one line.
+// A preset writes all five classes and confirms in one line.
 func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.slash("/crew max")
@@ -145,7 +145,7 @@ func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	if strings.Count(text, "\n") != 0 {
 		t.Fatalf("the confirmation is more than one line:\n%s", text)
 	}
-	for _, part := range []string{"crew → max", "brain kimi-k3:high", "hands deepseek-v4-pro", "checks kimi-k3"} {
+	for _, part := range []string{"crew → max", "brain kimi-k3:high", "hands glm-5.3", "checks kimi-k3"} {
 		if !strings.Contains(text, part) {
 			t.Errorf("the confirmation is missing %q: %q", part, text)
 		}
@@ -189,7 +189,7 @@ func TestCrewReadsCustomOverAHandSetClass(t *testing.T) {
 	if !strings.Contains(text, "none of the three") {
 		t.Fatalf("the chooser does not say the crew is nobody's preset:\n%s", text)
 	}
-	if !strings.Contains(text, "picking one puts all four back") {
+	if !strings.Contains(text, "picking one puts all five back") {
 		t.Fatalf("the chooser does not say how to put it back:\n%s", text)
 	}
 	if strings.Contains(text, "· "+config.CrewBalanced) {
@@ -318,7 +318,7 @@ func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
 	// The preset word first, then the same three class names the confirmation
 	// prints — base names, in [config.CrewClasses]'s own order.
 	for _, want := range []string{
-		config.CrewMax, "brain kimi-k3:high", "hands deepseek-v4-pro", "checks kimi-k3",
+		config.CrewMax, "brain kimi-k3:high", "hands glm-5.3", "checks kimi-k3",
 	} {
 		if !strings.Contains(lines[at], want) {
 			t.Errorf("the crew line lost %q: %q", want, lines[at])
