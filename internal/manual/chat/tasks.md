@@ -674,22 +674,20 @@ rounds of its own work, which is exactly the reply that point was written for.
 | `esc` | always | outright **no** — declines |
 | `ctrl+e` | box empty | opens or closes the brief |
 | `←` `→` | box empty, picker closed | move the focus between the three options |
-| `r` | box empty, redirect not asked for | ask for the redirect lane |
 | `1`–`4` | same | pick that model from the models row |
 
 The card opens with `yes` focused, because that is what the block is proposing and what the
 clock will do. `←`/`→` clamp at the ends and never wrap. You can also click any chip.
 
-The `r` shortcut and digits are given straight back the moment there is a sentence in the
-box, or the moment the redirect lane has been asked for. `n` and `y` are always ordinary
-answer text: type the whole answer, then press `enter`. This is why `no`, `nope`, `yes`,
-and "yes, but keep the tests" can all begin in an empty proposal box without answering on
-their first letter. `←`/`→` still work in the redirect lane, because there is no caret to
-move in an empty box.
+The digits are given straight back the moment there is a sentence in the box, or the moment
+the redirect lane has been asked for. Every bare letter is ordinary answer text: type the
+whole answer, then press `enter`. This is why `no`, `run tests first`, `yes`, and "yes, but
+keep the tests" can all begin in an empty proposal box without losing or acting on their
+first letter. `←`/`→` still work in the redirect lane, because there is no caret to move in
+an empty box.
 
-While the card is up, the legend hint reads `enter answer · r redirect · esc no`. A
-question the session is blocked on outranks the roster, any open room, every overlay and
-the draft.
+While the card is up, the legend hint reads `enter answer · esc no`. A question the
+session is blocked on outranks the roster, any open room, every overlay and the draft.
 
 Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a card you selected with
 `↑`/`↓`. It shows the whole summary, then the whole brief, then `done when: <acceptance>`

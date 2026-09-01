@@ -140,12 +140,12 @@ func TestAPasteDismissesTheWelcomeBox(t *testing.T) {
 
 // A QUESTION NOBODY CAN SEE IS A QUESTION NOBODY CAN ANSWER.
 //
-// Three rungs of the router sit above home and each of them takes bare letters:
-// the connect offer and the harness offer swallow every key while they are up,
-// and the proposal takes y, r, n and the digits whenever the CONVERSATION's box
-// is empty — which says nothing about home's box, the one a person on that
-// screen is actually typing into. So a `y` meant for a search on home answered a
-// question that was off screen, and every other letter did nothing at all.
+// Three rungs of the router sit above home: the connect offer and the harness
+// offer swallow every key while they are up, and the proposal takes answer and
+// model keys whenever the CONVERSATION's box is empty — which says nothing about
+// home's box, the one a person on that screen is actually typing into. So a key
+// meant for a search on home could answer a question that was off screen, and
+// every other letter did nothing at all.
 //
 // The rule is one rule and it is stated in both directions: a question that
 // ARRIVES takes home down, exactly as the approval question always has

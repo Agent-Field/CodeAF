@@ -1110,10 +1110,10 @@ second press within 1.5 seconds quits. On the second beat of
 **A task proposal** is not modal — the message box stays live as a redirect lane.
 Always available: `enter` submits a typed answer or takes the focused option over
 an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
-an **empty box only**: `left`/`right` move the focus, `r` asks for the redirect
-lane, and `1`–`4` pick the model. `n` and `y` are ordinary answer text, not
-immediate shortcuts. Typing the first character stops the countdown and changes
-the meter to `waiting on you`; deleting the draft does not restart it. On
+an **empty box only**: `left`/`right` move the focus, and `1`–`4` pick the model.
+Bare letters are ordinary answer text, not immediate shortcuts. Typing the first
+character stops the countdown and changes the meter to `waiting on you`; deleting
+the draft does not restart it. On
 `enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
 while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
 redirect. Clicking `no` or pressing `esc` always declines, whatever is in the

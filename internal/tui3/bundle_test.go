@@ -2881,6 +2881,29 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 	}
 }
 
+// A REDIRECT MAY BEGIN WITH ANY LETTER. This drives the same key router the
+// terminal does, from the empty proposal box through ResolveTask, so a future
+// bare chord cannot silently eat the first rune again.
+func TestARedirectStartingWithRReachesResolveTaskVerbatim(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)})
+
+	const redirect = "run tests first"
+	for _, typed := range redirect {
+		drive(t, a, key(string(typed)))
+	}
+	drive(t, a, key("enter"))
+
+	if len(agent.answered) != 1 {
+		t.Fatalf("typed redirect resolved %d proposals, want 1", len(agent.answered))
+	}
+	got := agent.answered[0]
+	if got.id != 7 || !got.answer.Approved || got.answer.Redirect != redirect {
+		t.Fatalf("typed redirect reached ResolveTask as %+v, want %q verbatim", got, redirect)
+	}
+}
+
 // THE ANSWERS ARE ON SCREEN AND THEY ARE REACHABLE BY POINTER OR BY ARROWS WITH
 // enter. Settled, the block collapses to its head and keeps both halves of what
 // happened — the option that was chosen and what it came to.
@@ -2889,14 +2912,14 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	agent.pending = []uint64{7}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
 
-	// r is the redirect: it takes the focus to the box and answers NOTHING, which
-	// is the whole difference between it and the other two.
-	drive(t, a, key("r"))
+	// Arrow and enter take the redirect option to the box and answer NOTHING,
+	// which is the whole difference between it and the other two.
+	drive(t, a, key("right"), key("enter"))
 	if len(agent.answered) != 0 {
 		t.Fatalf("redirect resolved the proposal by itself: %+v", agent.answered)
 	}
 	if !a.task.typing || a.task.choice != choiceRedirect {
-		t.Fatalf("r did not focus the redirect lane: typing=%v choice=%d", a.task.typing, a.task.choice)
+		t.Fatalf("the redirect option did not focus the lane: typing=%v choice=%d", a.task.typing, a.task.choice)
 	}
 	// And with the lane focused the letters are letters again — "no, keep the
 	// tests" must not decline the very thing it is correcting.

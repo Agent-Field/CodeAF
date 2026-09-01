@@ -1075,7 +1075,7 @@ const (
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
 	taskRedirectLane = "redirect this task… (enter sends it, esc declines)"
-	taskProposalHint = "enter answer · r redirect · esc no"
+	taskProposalHint = "enter answer · esc no"
 	taskExpandHint   = "ctrl+e for the brief"
 	// taskModelTag labels the one fact a proposal carries that nobody can find
 	// out afterwards: whose hands the work is going into.
@@ -1123,13 +1123,9 @@ const (
 // in the legend, forty rows away from the question. A decision moment with
 // nothing to point at is a decision moment a person answers by guessing — so the
 // options are drawn where the question is, in the consent block's own bracket
-// idiom, and every one of them is reachable three ways: the pointer, ←/→ and
-// enter, and the letter each option starts with.
-//
-// The letters are the option's own initials — y, r, n — which is what makes them
-// learnable without a legend. They are taken only while the box is EMPTY and the
-// redirect lane has not been asked for (see [app.taskKey]): the moment a person
-// is writing a correction, a letter is a letter.
+// idiom, and every one of them is reachable by pointer or by ←/→ and enter.
+// A bare letter cannot name one: the empty box is also the start of the redirect
+// lane, so its first letter has to remain a letter.
 const (
 	choiceYes = iota
 	choiceRedirect
@@ -1153,15 +1149,14 @@ func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 // box:
 //
 //	always      enter answers the focused option · esc declines · ctrl+e the brief
-//	empty box   ←/→ move the focus · y, r, n pick an option outright
+//	empty box   ←/→ move the focus · 1–4 pick a model when offered
 //
 // The second tier is given back the moment there is a sentence in the box, and
-// the moment the redirect lane has been asked for. That is the whole guard
-// against the obvious defect: "yes, but keep the tests" begins with a y, and a
-// surface that read that as approval would have approved something the person
-// was in the middle of correcting. ←/→ survive the redirect lane because there
-// is no caret to move in an empty box, and because a focus a person can enter
-// and not leave is a trap.
+// the moment the redirect lane has been asked for. Bare letters are never in
+// that tier: "run tests first" begins with an r, and a surface that read it as
+// the redirect-focus shortcut would silently drop the first letter. ←/→ survive
+// the redirect lane because there is no caret to move in an empty box, and
+// because a focus a person can enter and not leave is a trap.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.awaitingTask() {
 		return nil, false
@@ -1197,15 +1192,11 @@ func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.moveChoice(1)
 		return nil, true
 	}
-	if card.typing || !a.input.empty() {
+	if card.typing {
 		return nil, false
 	}
-	switch msg.String() {
-	case "r":
-		return a.takeChoice(choiceRedirect), true
-	}
 	// THE DIGITS BELONG TO THE MODELS ROW, on the one card that has one, and they
-	// are taken in the same tier as the three letters and under the same guard:
+	// are taken in the empty-box tier and under its guard:
 	// a person writing "3 files should change" is writing, not choosing.
 	if at, ok := taskModelKey(msg.String()); ok && at < len(card.options) {
 		a.takeModel(at)

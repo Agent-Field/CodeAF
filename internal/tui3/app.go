@@ -4072,9 +4072,9 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// the proposal takes the keyboard's answer lane, and a lane behind a
 		// fullscreen sheet is a turn blocked on keys nobody can reach.
 		a.closeSettings()
-		// AND HOME WITH IT: the answer lane is y, r, n and the digits, and home
-		// owns every letter while it is up (task.go), so a proposal left behind
-		// it would be a decision with no key that reaches it.
+		// AND HOME WITH IT: the answer lane and its model digits belong to the
+		// conversation, while home owns every letter while it is up (task.go), so
+		// a proposal left behind it would be a decision with no key that reaches it.
 		a.closeHome()
 		a.proposeTask(ev)
 
