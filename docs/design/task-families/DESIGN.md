@@ -386,6 +386,22 @@ its belt rather than refusing. The composition law is pinned by folding a nested
 into a part's own ledger and landing that, not by running a third generation.
 *(#261 asks the owner to rule on whether that stays; see Still open.)*
 
+**Merging the two versions of a changed folder file, or handing the parent the
+resolution.** There is nothing to merge with: the ground is a plain folder and neither
+side is a commit, so a three-way merge has no base and a model asked to reconcile them
+would be inventing one. Naming the file and standing back is the honest answer and the
+one a person can act on — and it is what git already does for a repository ground, where
+a person's own edit to a file the branch touches is exactly what makes the merge refuse.
+With ownership enforced at admission there is no sibling conflict for a parent to
+resolve either; what is left is the person's own edit, which is theirs.
+
+**Standing the universe rung down for every part of a frozen family.** That was the
+first answer to the freeze, and it was the wrong trade: a part of a family whose parent
+had a `node_modules`, a `.env` or a dev database would have lost all three to gain a
+guarantee about files it was never going to ship — this rung's own defect written
+backwards. The fork honours the freeze instead (`openForkAt`), which costs one checkout
+because the freeze is an object the byte-exact copy already holds.
+
 **Initialising a `.git` in the person's own folder.** `in place` and `folder` mode are
 the person saying `here`. The family tree is that directory. A test pins that it never
 gains a `.git`. Isolation there is a different promise and is not this family.
@@ -481,6 +497,15 @@ where #281 was found. It is still in flight; see *Still open*.
   told to read one plan file are currently refused. Measured while building the
   real-model e2e suite (#280). Ownership is a claim about *writing*; the decision is
   which of the two conservative shapes takes it.
+
+- **`restoreFromFolder` re-mirrors at check time, and nobody has ruled on it.** A
+  mirrored node is judged against a fresh copy of the person's folder taken WHEN THE
+  CHECK RUNS (`mirrorGround(tree.ground, dir)`, `task_audit.go`), with the ledger laid
+  over it — not against the folder as it stood when the family was given it. So an
+  edit the person makes mid-run reaches the checker's world and is read as part of the
+  family's result, while the landing that follows refuses over the same file. That is a
+  different window from the landing's, and it is not the one `ground-baseline.json`
+  closes.
 
 ## Outside this family
 
