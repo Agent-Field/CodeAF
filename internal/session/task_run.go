@@ -2707,10 +2707,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// were told nothing about threw the work away ([keptWork]). The shorter
 		// sentence is for a node that left nothing: offering to merge an empty
 		// branch would send them after work that does not exist.
-		if len(notice.Changed) > 0 {
+		//
+		// AND A LANDING THAT SAVED NOTHING SAYS NEITHER. It wears this same mark
+		// and there is nothing on its branch to merge; where its work is sitting
+		// is the first sentence of its own report, and a line under that offering
+		// a branch would send the person past it (task_land_unsaved.go).
+		switch {
+		case unsavedLanding(notice.Report):
+		case len(notice.Changed) > 0:
 			note.WriteString("\nit was stopped; what it made is committed on its branch " +
 				notice.Branch + ", which was kept — merge that branch to take the work")
-		} else {
+		default:
 			note.WriteString("\nit was stopped; its branch " + notice.Branch + " was kept")
 		}
 	case mergeInPlace:
@@ -3477,9 +3484,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		}
 		changed, merge, detail := landHome(node, tree, changed)
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
-		if merge == mergeConflicted {
+		if !cameHome(merge) {
 			return a.landConflicted(node, tree, changed,
-				withReport("nothing checked this work: the task.audit setting is off", report), detail, log)
+				withReport("nothing checked this work: the task.audit setting is off", report), merge, detail, log)
 		}
 		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
 		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
@@ -3551,8 +3558,8 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 
 	changed, merge, detail := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
-	if merge == mergeConflicted {
-		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+	if !cameHome(merge) {
+		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), merge, detail, log)
 	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes
@@ -3628,8 +3635,8 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 			}
 			changed, merge, detail := landHome(node, tree, changed)
 			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
-			if merge == mergeConflicted {
-				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
+			if !cameHome(merge) {
+				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), merge, detail, log)
 			}
 			// THE SAME REPORT A NODE THAT FINISHED ON ITS OWN GETS. Its own account
 			// leads, what it was checked on stands under it, and nothing anywhere in
@@ -3696,12 +3703,17 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 // note has always said a kept branch means.
 //
 // IT DOES NOT COMMIT AGAIN. comeHome committed before it tried the merge, so
-// the branch already holds the work; the mark stays [mergeConflicted] rather
-// than becoming aborted because the two are different news — one says nobody
-// took it, the other says it would not go.
-func (a *Agent) landConflicted(node *TaskNode, tree taskTree, changed []string, report, detail string, log io.Writer) TaskState {
+// the branch already holds the work.
+//
+// AND IT CARRIES THE MARK IT IS HANDED rather than making one. A branch that
+// would not go and work that could not be committed at all are different news —
+// one says it would not merge, the other says nobody saved it — and the mark is
+// what the completion note and the row read to tell them apart
+// (task_land_unsaved.go). Hardcoding the conflict here is what made a landing
+// that saved nothing indistinguishable from one that saved everything.
+func (a *Agent) landConflicted(node *TaskNode, tree taskTree, changed []string, report, merge, detail string, log io.Writer) TaskState {
 	fmt.Fprintf(log, "not merged: %s\n", detail)
-	node.finish(withReport(needsLookLead+detail, report), changed, tree.branch, mergeConflicted)
+	node.finish(withReport(needsLookLead+detail, report), changed, tree.branch, merge)
 	return TaskUnverified
 }
 
@@ -3797,7 +3809,8 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	changed = alsoChanged(changed, commitTaskWork(tree.dir, title, changed))
+	saved, _ := commitTaskWork(tree.dir, title, changed)
+	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
 	// node's work, and a branch whose first commit is somebody else's unfinished
@@ -6169,7 +6182,14 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string) {
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, ""
 	}
-	_ = commitTaskWork(t.dir, title, wrote)
+	// A LANDING THAT COULD NOT SAVE THE WORK STOPS HERE. Nothing merges, nothing
+	// is released, and the branch and the working copy both stay exactly where
+	// they are — what is on that disk is the only copy of the work there is
+	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
+	// then remove the directory the work was in.
+	if _, problem := commitTaskWork(t.dir, title, wrote); problem != "" {
+		return mergeAborted, unsavedSentence(t.dir, problem)
+	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
 	// off the ground ladder's machine commit holds the parent's uncommitted
 	// world underneath the node's own commits, and merging that would hand
@@ -6252,8 +6272,12 @@ func (t taskTree) landMirror(wrote []string) (string, string) {
 	if changed := groundChanged(t.dir, t.ground, wrote); len(changed) > 0 {
 		return mergeConflicted, groundChangedSentence(t.dir, t.ground, changed)
 	}
+	// A LAY THAT COULD NOT HAPPEN IS NOT A LANDING EITHER, and it says so with
+	// the mark every road refuses ([cameHome]): the ledger goes into the folder
+	// whole or not at all (task_lay.go), and the copy it came from is untouched,
+	// so everything the family made is still in the directory this names.
 	if problem := layWork(t.dir, t.ground, wrote); problem != "" {
-		return mergeInPlace, "its work is in " + t.dir + " and could not be copied back into " + t.ground + ": " + problem
+		return mergeAborted, unlaidSentence(t.dir, t.ground, problem)
 	}
 	return mergeInPlace, ""
 }
@@ -6453,15 +6477,19 @@ func nonEmptyLines(out string) []string {
 // a path the node wrote and then deleted, a path .gitignore refuses, a path the
 // node saved outside its own worktree. A node whose branch never comes home is
 // told about its work out of this list.
-func commitTaskWork(dir, title string, wrote []string) []string {
-	// THE LANDING STILL READS ONLY THE PATHS, and that is deliberately unchanged
-	// here: [taskTree.comeHome] has to decide what to do about a commit that
-	// would not go — a merge attempted anyway, a worktree removed with the only
-	// copy of the work still in it — and that is issue #255's seam, not this one.
-	// What this signature costs is one thing and it is written down: a caller of
-	// THIS function cannot tell a commit that failed from a node that only read.
-	saved, _, _ := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
-	return saved
+//
+// AND IT ANSWERS WHAT WENT WRONG, in git's own words, because the caller cannot
+// see it any other way and the caller is about to merge. Its silent endings all
+// looked like the empty branch a node that only read leaves: the tree could not
+// be staged into, the index could not be read, or git refused the commit. A
+// landing read them as nothing to do, merged a branch holding nothing and
+// removed the working copy the work was sitting in (task_land_unsaved.go, #255).
+func commitTaskWork(dir, title string, wrote []string) ([]string, string) {
+	saved, _, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote)
+	if err != nil {
+		return nil, firstLine(err.Error())
+	}
+	return saved, ""
 }
 
 // commitTaskWorkAs is [commitTaskWork] with the sentence the commit carries
@@ -6487,8 +6515,8 @@ func commitTaskWork(dir, title string, wrote []string) []string {
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
 func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, error) {
-	if !stageTaskWork(dir, wrote) {
-		return nil, "", nil
+	if problem := stageTaskWork(dir, wrote); problem != "" {
+		return nil, "", errors.New(problem)
 	}
 	saved := stagedPaths(dir)
 	if len(saved) == 0 {
@@ -6514,9 +6542,10 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, er
 // last commit.
 //
 // IT IS THE QUESTION A CHECKPOINT HAS TO ASK ABOUT ITSELF. [stageTaskWork]
-// answers only whether it could reach git at all, and it deliberately steps over
-// a path git refuses one at a time — which is right for a landing, where one
-// unstageable name must not cost the node everything else it wrote, and wrong
+// answers what git said when the index would not take the work, and a path the
+// repository IGNORES is deliberately not that (task_land_unsaved.go's
+// [unstagedWork]) — which is right for a landing, where a name no commit was ever
+// going to hold must not cost the node everything else it wrote, and not enough
 // for a family's checkpoint, where a path left behind is a part starting without
 // a file its brief tells it to open.
 //
@@ -6598,31 +6627,39 @@ func stagedDiffStat(dir string) string {
 // directory that could disagree with it.
 //
 // The batch is one call because the ordinary node writes a handful of files. It
-// falls back to one call per path because a single path git refuses — one that
-// .gitignore covers, one the node deleted from outside its own worktree — fails
-// the whole batch, and one unstageable name must not cost the node everything
-// else it wrote. IGNORED PATHS STAY IGNORED either way, exactly as they did
-// under `add -A`: git refuses them and the loop moves on.
+// falls back to one call per path ([unstagedWork]) because a single path git
+// refuses — one that .gitignore covers, one the node deleted from outside its
+// own worktree — fails the whole batch, and one unstageable name must not cost
+// the node everything else it wrote. IGNORED PATHS STAY IGNORED either way,
+// exactly as they did under `add -A`: git refuses them and the retry moves on.
 //
 // The harness's own droppings are not the node's work either: a background job
 // the node started wrote its log under the workspace (jobs.go), and a build log
 // in the diff — or merged into the person's branch — is noise they did not ask
 // for.
-func stageTaskWork(dir string, wrote []string) bool {
-	if _, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
-		return false
+//
+// IT ANSWERS WHAT GIT SAID when the index would not take the work, and empty
+// when there is nothing to report. A directory that is not a worktree, an add
+// nothing survived and a refused reset were all silent, and a landing that
+// cannot see them merges an empty branch over the work (task_land_unsaved.go).
+func stageTaskWork(dir string, wrote []string) string {
+	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return firstLine(out)
 	}
 	paths := stageableWork(dir, wrote)
 	if len(paths) == 0 {
-		return true
+		return ""
 	}
-	if _, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
-		for _, path := range paths {
-			_, _ = git(dir, "add", "--all", "--", path)
+	problem := ""
+	if out, err := git(dir, append([]string{"add", "--all", "--"}, paths...)...); err != nil {
+		if unstagedWork(dir, paths) {
+			problem = firstLine(out)
 		}
 	}
-	_, _ = git(dir, "reset", "--quiet", "--", aforgeDroppings)
-	return true
+	if out, err := git(dir, "reset", "--quiet", "--", aforgeDroppings); err != nil && problem == "" {
+		problem = firstLine(out)
+	}
+	return problem
 }
 
 // stageableWork turns the run's record of what it wrote into pathspecs git can
@@ -6658,7 +6695,7 @@ func stageableWork(dir string, wrote []string) []string {
 			continue
 		}
 		seen[clean] = true
-		paths = append(paths, ":(literal)"+clean)
+		paths = append(paths, literalPathspec+clean)
 	}
 	return paths
 }
