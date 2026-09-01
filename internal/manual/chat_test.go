@@ -342,6 +342,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},
 		{"my task worked on an old version of the file", "how-tasks-run"},
+		// A task that split itself while holding unfinished work: its parts start
+		// from that world, frozen once at the split. Asked the three ways a
+		// person meets it — the artefacts, the freeze, and the commit they find
+		// in the history.
+		{"do the parts see the parent's unfinished work", "tasks"},
+		{"when is the parent's work frozen for its parts", "tasks"},
+		{"what is the wip commit before a split", "tasks"},
 		// The owned workspace, asked the two ways it actually gets discovered:
 		// before, wondering where the work will land, and after, when the folder
 		// went and took the work with it.

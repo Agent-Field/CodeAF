@@ -85,6 +85,13 @@ type taskStand struct {
 	ask string
 	// refusal is an honest sentence about work that cannot be placed at all.
 	refusal string
+	// frozen is THE FAMILY'S OWN WORLD, when this stand belongs to a part of one:
+	// the commit the parent froze the family tree at when it handed the work out
+	// (task_divide_wip.go). The ground ladder cuts from it and does not seal the
+	// parent's tree again, so every sibling starts from one world however far
+	// apart their working copies were prepared. Empty for every stand that is not
+	// a part's, and for a part whose family never froze anything.
+	frozen string
 	// kept marks a ground that answered at SAID because the CONVERSATION
 	// remembered it rather than because anybody said it out loud — a place this
 	// conversation resolved once and wrote down (places.go's [PlaceKept]).

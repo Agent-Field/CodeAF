@@ -213,6 +213,11 @@ of its own: *Does my task see my .env* below says when it happens and how to tel
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
 
+**And the same is true one level down.** When a task splits itself into parts, each part
+starts from the *parent task's* folder as it stood at the split — the parent's unfinished
+work included, written to the family's own branch first. The tasks page, *What the parts
+start with*, is where that is spelled out.
+
 ## Does my task see my .env — does a task get node_modules, an installed dependency tree, the dev database, the files git ignores
 
 **Usually yes.** A task's world is a copy of your whole folder, made by furrow, which every

@@ -70,8 +70,14 @@ There is nothing here to do anything about and nothing to ask again.
 
 WHERE THE PARTS ACTUALLY WORK is a copy of the tree you are standing in, one
 apiece — whether that tree is a worktree of a repository or a copy of a folder,
-which is the same arrangement either way. They cannot see each other while they
-run, and each part's work comes back into your tree as it lands. That is the
+which is the same arrangement either way. THEY START WITH YOUR FILES ON DISK:
+everything you have written by the time you call is already there, so a repro
+you built, a failing test you wrote or material you gathered is something a part
+can open rather than something you have to describe. Every part gets the same
+copy, taken once at the moment you call — so what you write AFTERWARDS reaches
+none of them, and anything a part needs must be written before you call or said
+in its brief. They cannot see each other while they run, and each part's work
+comes back into your tree as it lands. That is the
 whole reason the parts have to be independent: two parts writing one file are
 two parts fighting over one line of your own deliverable.
 

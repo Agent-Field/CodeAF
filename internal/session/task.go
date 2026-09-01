@@ -251,8 +251,13 @@ type taskSpec struct {
 	// WHERE AND GROUND ARE TWO QUESTIONS. `where` is the directory the worker
 	// types in; this is the project that directory is a copy of. A task that
 	// names neither gets both resolved for it.
-	ground     string
-	mode       TaskMode
+	ground string
+	mode   TaskMode
+	// frozen is THE WORLD THIS PART IS TO START FROM, set only by the division
+	// that admits it (task_divide_wip.go): the commit its parent put the family
+	// tree at before any part of it existed. Every other door leaves it empty,
+	// which is what "this task is nobody's part" means to the ground ladder.
+	frozen     string
 	acceptance string
 	// expects is the checkable half of the handoff contract: what this brief
 	// assumes is already true of the folder the worker will get
