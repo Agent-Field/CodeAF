@@ -225,11 +225,18 @@ func TestNarrationKeepsItsPlainVoiceUnderTheFix(t *testing.T) {
 	}
 }
 
-// A CARRIED-ON TURN'S FINAL BLOCK SETTLES. The session answers, ends the turn,
-// and then carries on into a second block on the SAME stream — so the block the
-// person is left reading arrives after the ending that would have settled it,
-// and only the stream's own close is left to cover it.
-func TestACarriedOnTurnsFinalBlockSettles(t *testing.T) {
+// A CARRIED-ON TURN LEAVES ONE ANSWER, SETTLED. The session answers, ends the
+// turn, and then carries on on the SAME stream — so the words the person is left
+// reading arrive after the ending that would have settled them.
+//
+// THIS TEST USED TO WANT TWO BLOCKS, and wanting two was the defect (#225). The
+// second one was live with no boundary left to settle it, so it drew its
+// markdown raw until the next question closed it — and its presence demoted the
+// answer above it into narration, which is drawn plain. The carry-on now grows
+// the block it belongs to, already settled, and the tier is asserted here
+// because the settle alone was never the whole story
+// ([app.growSettledAnswer]; the law's own file is finalanswer_test.go).
+func TestACarriedOnTurnLeavesOneSettledAnswer(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "Stopping here for now.\n"),
 		{Kind: session.EventTurnDone},
@@ -240,12 +247,17 @@ func TestACarriedOnTurnsFinalBlockSettles(t *testing.T) {
 	runTurn(t, a, agent, "carry on")
 
 	blocks := answerBlocks(a)
-	if len(blocks) != 2 {
-		t.Fatalf("the carried-on turn drew %d assistant blocks, want 2", len(blocks))
+	if len(blocks) != 1 {
+		t.Fatalf("the carried-on turn drew %d assistant blocks, want 1", len(blocks))
 	}
-	last := blocks[len(blocks)-1]
-	if !last.settled {
+	if !blocks[0].settled {
 		t.Fatal("the block the carry-on ended on never settled")
+	}
+	if blocks[0].demoted {
+		t.Fatal("the carry-on demoted the answer it was carrying on from")
+	}
+	if !strings.HasSuffix(blocks[0].text, boundaryAnswer) {
+		t.Fatalf("the carried-on words went somewhere else: %q", blocks[0].text)
 	}
 	for _, row := range plainRows(a) {
 		if rawMarkdown(row) {
