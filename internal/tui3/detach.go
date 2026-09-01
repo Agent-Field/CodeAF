@@ -443,6 +443,16 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	}
 	a.noteStandingHere()
 	a.measureContext()
+	// AND THE MONEY IS ASKED FOR AGAIN, immediately after [app.resetMeters] above
+	// zeroed the figures for the conversation being left. The meters are reset
+	// because every one of them is a fact about ONE conversation, and this is the
+	// same statement's other half: the conversation being taken up has a bill of
+	// its own, restored from its journal by the engine, and a switch that only
+	// ever zeroed would put `$0.00` on the status line of a conversation that has
+	// spent real money (newApp says the rest of why, #128). Synchronous for the
+	// reason everything else on this switch is — the screen is rebuilt from the
+	// agent's own record here, and the bill is part of that record.
+	a.refreshUsage()
 	// The rail is rebuilt from the engine's own record rather than carried: the
 	// task lane opens on a replay of the graph's roster (session's
 	// [Agent.WatchTaskUpdates]), so watchTasks re-grows the column row by row

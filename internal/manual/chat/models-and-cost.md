@@ -1136,6 +1136,10 @@ back and added up before anything else happens, and that sum *is* the session's 
 `/cost`, `/status` and the status line the day after show yesterday's money and tokens with
 today's added on top, in one figure.
 
+**The status line has it on the first frame** — you do not have to type `/cost` or send a
+turn to make it appear, and the same is true of the phone status deck and the full status
+sheet. It is the same figure on all of them, because they all read the one total.
+
 Two things follow from that:
 
 - A conversation whose transcript has no such lines yet — one written by an older build, or
