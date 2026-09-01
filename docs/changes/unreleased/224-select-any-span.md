@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: dragging over text selects characters, not rows — and a double-click takes the word
+pr: 224
 issue: 222
 surface: [chat]
 invalidates:
