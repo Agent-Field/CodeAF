@@ -31,11 +31,9 @@ import (
 
 // ladderChoice is a frontier of three lanes in a stated order, which is what
 // the chooser hands a request it has an opinion about.
-func ladderChoice(model string, deadline time.Duration) lanes.Choice {
+func ladderChoice(model string, _ time.Duration) lanes.Choice {
 	return lanes.Choice{
-		Order:    []string{"A", "B", "C"},
-		Alt:      "B",
-		Deadline: deadline,
+		Order: []string{"A", "B", "C"},
 		Frontier: []lanes.Scored{
 			{ID: lanes.ID{Model: model, Lane: "A"}, TTFT: 2, Rate: 2000, Price: 0.01},
 			{ID: lanes.ID{Model: model, Lane: "B"}, TTFT: 5, Rate: 2000, Price: 0.01},

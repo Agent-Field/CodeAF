@@ -73,7 +73,7 @@ func TestAStallInsideTheThinkingIsRescued(t *testing.T) {
 // had arrived and NONE of them were on the screen.
 func TestTheThinkingIsNotSaidOutLoudSoItBuysNoCommitment(t *testing.T) {
 	watch := lanes.NewWatch(
-		lanes.Choice{Order: []string{"A"}, Alt: "B", Deadline: time.Second},
+		lanes.Choice{Order: []string{"A", "B"}},
 		believedAt(2, 250),
 		time.Unix(0, 0),
 	)
@@ -85,7 +85,9 @@ func TestTheThinkingIsNotSaidOutLoudSoItBuysNoCommitment(t *testing.T) {
 			t.Fatalf("hedged at thought %d on an ordinary gap", token)
 		}
 	}
-	// And then the stall. Sixty seconds is past [lumpGap] on its own.
+	// And then the stall. Sixty seconds of silence inside a run of thought is
+	// judged by the liveness clock — the gap between two deltas, at the lane's
+	// own believed rate — and no absolute anywhere.
 	if verdict := watch.Silence(now.Add(60 * time.Second)); !verdict.Hedge {
 		t.Fatalf("a sixty-second silence inside the thinking was not acted on")
 	}

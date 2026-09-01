@@ -394,11 +394,17 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	// and with no Choice on the context nothing downstream hedges either
 	// ([Client.raceFor] reads the same absence).
 	//
-	// A STRICT PIN DOES NOT ASK EITHER, and that is the difference between a
-	// pin and a preference: a chooser that answered would name an alternative,
-	// and an alternative is a lane the person said not to use. So the pin is
-	// the whole choice, it carries no Alt, and the watch has nowhere to rescue
-	// to — which is what "and nowhere else" means when the pinned lane is slow.
+	// A STRICT PIN SENDS ONLY THE MACHINE IT NAMES, and that is the difference
+	// between a pin and a preference: the order comes off, fallbacks come off,
+	// and nothing may quietly route around what a person asked for — which is
+	// what "and nowhere else" means when the pinned lane is slow.
+	//
+	// IT STILL CARRIES THE FRONTIER, and that is not a contradiction. A pin is
+	// ASKED rather than overridden: when the machine goes quiet the surface says
+	// `coreweave is slow · switch to auto? (y)`, and a question that cannot name
+	// where a `y` would go is a question nobody can answer. So the candidate set
+	// is computed exactly as it is for any other call and sent to nobody: it is
+	// what [control.Plan] points an offer at, and the wire still asks for `Only`.
 	pin := CurrentLanePin()
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
@@ -407,13 +413,14 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	if strategy == RoutingOff {
 		return lanes.Choice{}, false
 	}
-	if named := pin.pinned(); named != "" && !pin.Borrow {
-		return lanes.Choice{Only: []string{named}}, true
-	}
 	lambda := c.laneValueOfTime(knobs)
 	ask := c.laneRequest(model, knobs, request, lambda)
 	c.rememberAsk(ask)
 	choice := lanes.Default().Chooser().Choose(ask)
+	if named := pin.pinned(); named != "" && !pin.Borrow {
+		// The candidate set survives and the ranking does not: see above.
+		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
+	}
 	// AND A PIN THAT MAY BE BORROWED IS A PREFERENCE, so it goes in front of
 	// the belief's own ranking rather than replacing it: the named machine is
 	// asked first, fallbacks stay on, and the Alt the chooser named is left

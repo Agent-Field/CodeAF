@@ -804,8 +804,13 @@ type e2eAnswer struct {
 }
 
 // race sends the choice, watches the stream, and spends at most one hedge on
-// it. The deadline comes from the choice, which computed it from the belief
-// about the lane it expects to serve rather than from any constant here.
+// it.
+//
+// THE CLOCK COMES FROM THE PLAN AND NOT FROM THE CHOICE. Routing and waiting
+// are two questions: the choice says which lane, and the watch built over it
+// says when to act — out of the same frontier, against what is believed about
+// the lane expected to serve, and with the role's ceiling under it whether or
+// not anything is believed at all.
 func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e2eAnswer, error) {
 	// The moment the person asked. Every wait below is measured from here and
 	// not from whichever stream happened to answer, because a hedge starts a
@@ -814,8 +819,11 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 	primary := r.start(ctx, choice.Order, choice.Only, choice.Ignore, request)
 	var alternate *e2eStream
 	var hedgeTimer *time.Timer
-	if choice.Deadline > 0 && choice.Alt != "" {
-		hedgeTimer = time.NewTimer(e2eScaled(choice.Deadline))
+	head, _ := r.ledger.Belief(ID{Model: request.Model, Lane: headOf(choice)})
+	watch := Watching(PlanFor(choice, head, RoleTalk, r.at))
+	rescue := watch.Alt()
+	if deadline := watch.Deadline(); deadline > 0 && rescue != "" {
+		hedgeTimer = time.NewTimer(e2eScaled(deadline))
 		defer hedgeTimer.Stop()
 	}
 
@@ -839,7 +847,7 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 			hedgeChannel = nil
 			// The estimate a hedge is judged against: what a second whole
 			// answer on the alternative would cost.
-			estimate := e2eEstimate(choice.Alt, request)
+			estimate := e2eEstimate(rescue, request)
 			if !r.budget.Allow(r.at, estimate) {
 				continue
 			}
@@ -850,7 +858,7 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 			// would let the mechanism spend without limit as long as it kept
 			// being right.
 			r.budget.NoteHedge(estimate, r.at)
-			alternate = r.start(ctx, nil, []string{choice.Alt}, nil, request)
+			alternate = r.start(ctx, nil, []string{rescue}, nil, request)
 
 		case result := <-primary.done:
 			if result.err != nil && alternate != nil {
@@ -1259,13 +1267,12 @@ func e2eSortedNames(set map[string]bool) []string {
 // where four other lanes changed at once, a broken assertion here would read as
 // a broken chooser there. This double takes the skip away from one test.
 type e2ePinChooser struct {
-	order    []string
-	deadline time.Duration
-	alt      string
+	order []string
+	only  []string
 }
 
 func (c *e2ePinChooser) Choose(Request) Choice {
-	return Choice{Order: c.order, Deadline: c.deadline, Alt: c.alt}
+	return Choice{Order: c.order, Only: c.only}
 }
 
 // e2eRecordingLedger keeps what it was told and nothing else. It is the empty
@@ -1286,6 +1293,10 @@ func (l *e2eRecordingLedger) Note(sighting Sighting) { l.sightings = append(l.si
 // the sighting folded back, and the sheet decoded over HTTP — is known to work
 // on the day it was written rather than in the wave it is first needed.
 func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
+	// A HOME OF ITS OWN. This drives the DEFAULT registry, whose ledger saves to
+	// `~/.aforge/v3/lanes.json`, and a test that folded its invented lanes into
+	// that file would cost somebody their belief. See [TestNoTestWritesTheRealHome].
+	t.Setenv(home.EnvVar, t.TempDir())
 	t.Cleanup(Default().Reset)
 	Default().Reset()
 	ledger := &e2eRecordingLedger{Ledger: Default().Ledger()}
@@ -1297,6 +1308,13 @@ func TestTheInstrumentInThisFileWorksBeforeAnySeamDoes(t *testing.T) {
 	Default().SetSheet(e2eServeSheet(stub))
 
 	router := newE2ERouter(stub, ledger)
+	// AND NO ALLOWANCE, so that eight requests are eight asks. Every call is
+	// watched now — a plan with a ceiling is built whether or not the chooser
+	// had an opinion — and this test is about the instrument rather than about
+	// the rescue: a budget of nothing is how the second request is switched off
+	// (hedge.go), and it keeps the count below an assertion about plumbing.
+	router.budget = NewBudget(0, 0)
+
 	router.run(t, 8, "Cloudflare", false)
 
 	// The preference really did travel, and the stub really did honour it.
@@ -1494,13 +1512,14 @@ func TestS6TwoProcessesOneFileAndARequestThatCarriesTools(t *testing.T) {
 	if len(choice.Frontier) == 0 || choice.Frontier[0].ID.Lane != choice.Order[0] {
 		t.Fatalf("the frontier the choice explains itself with does not lead with the lane it asked for: %+v", choice.Frontier)
 	}
-	// AND THE WATCH HAS A MOMENT TO WAKE AT. The deadline is computed from the
-	// belief of the lane we expect to serve, which is looked up by
+	// AND THE WATCH HAS A MOMENT TO WAKE AT. The plan built over this choice
+	// reads the belief of the lane expected to serve, which is looked up by
 	// [Request.Model] directly — so a request still wearing its tier suffix
-	// gets a choice that is never hedged, which is the half of the incident a
-	// non-empty Order alone would not have caught.
-	if choice.Deadline <= 0 {
-		t.Fatalf("the choice carries no hedge deadline, so nothing would rescue this turn: %+v", choice)
+	// would get a plan with nothing but its ceiling, which is the half of the
+	// incident a non-empty Order alone would not have caught.
+	plan := PlanFor(choice, head, RoleTalk, noon)
+	if !plan.First.Known() || len(plan.Alts) == 0 {
+		t.Fatalf("the plan over this choice believes nothing and would rescue nowhere: %+v", plan)
 	}
 	// The stranger is behind the machines we know about, and it is still there:
 	// ranked last is not the same as refused.

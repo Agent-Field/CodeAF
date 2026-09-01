@@ -161,6 +161,21 @@ func TestAStallInsideTheThinkingShowsTheCountdownAndThenTheSwitch(t *testing.T) 
 	}
 }
 
+// alone strips a choice down to the one lane it leads with: no ranking behind
+// it and no candidate set beside it, which is what `routing off`, a ledger that
+// has heard of one machine and an endpoint that is not a router all look like
+// from here. There is then nothing for a rescue to go to, and the clock may
+// promise nothing.
+func alone(choice lanes.Choice) lanes.Choice {
+	if len(choice.Order) > 1 {
+		choice.Order = choice.Order[:1]
+	}
+	if len(choice.Frontier) > 1 {
+		choice.Frontier = choice.Frontier[:1]
+	}
+	return choice
+}
+
 func TestWithNowhereToGoTheClockPromisesNothing(t *testing.T) {
 	told := listen(t)
 	rig := newLaneRig(t, "phase/alone",
@@ -170,8 +185,7 @@ func TestWithNowhereToGoTheClockPromisesNothing(t *testing.T) {
 
 	// A choice with no alternative is what `routing off`, a strict pin and a
 	// ledger that has heard of one lane all look like from here.
-	choice := choiceFor(rig.model, 12*time.Millisecond)
-	choice.Alt = ""
+	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
 	ctx := WithLaneChoice(context.Background(), choice)
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
@@ -196,8 +210,7 @@ func TestTheGuardStillProtectsWhenNoRescueIsPossible(t *testing.T) {
 	)
 	rig.believes("A", 2, 2000)
 
-	choice := choiceFor(rig.model, 12*time.Millisecond)
-	choice.Alt = ""
+	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
 	ctx := WithLaneChoice(context.Background(), choice)
 	_, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if _, cut := CutFrom(err); !cut {

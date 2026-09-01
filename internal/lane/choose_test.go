@@ -3,6 +3,7 @@ package lane
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -413,7 +414,7 @@ func TestTheChoiceIsReproducible(t *testing.T) {
 			t.Fatalf("the same request chose %v and then %v", first.Order, second.Order)
 		}
 	}
-	if first.Deadline != second.Deadline || first.Why != second.Why {
+	if first.Why != second.Why {
 		t.Fatal("the same request explained itself two ways")
 	}
 }
@@ -479,56 +480,32 @@ func TestTheLaneHoldingThePrefixIsCheaperByExactlyTheDiscount(t *testing.T) {
 	}
 }
 
-// ── THE HEDGE TIME ──────────────────────────────────────────────────────────
+// ── WHAT A CHOICE DOES NOT CARRY ────────────────────────────────────────────
 
-// TestTheHedgeTimeComesFromTheBeliefAndNotFromAConstant is the arithmetic of
-// Part I §4: for a log-normal the longer you have waited the longer you should
-// expect to go on waiting, so the moment to ask somebody else is a property of
-// this lane's belief and of what the alternative would take.
-func TestTheHedgeTimeComesFromTheBeliefAndNotFromAConstant(t *testing.T) {
-	quick := Belief{TTFT: Posterior{X: math.Log(400), P: 1}}
-	alt := Belief{TTFT: Posterior{X: math.Log(800), P: 0.09}}
-	deadline := hedgeTime(quick, alt)
-	if deadline < 700*time.Millisecond || deadline > 2*time.Second {
-		t.Fatalf("a lane whose normal is 0.4s with a 0.8s alternative hedges at %s", deadline)
-	}
-	slower := hedgeTime(quick, Belief{TTFT: Posterior{X: math.Log(2500), P: 0.09}})
-	if slower <= deadline {
-		t.Fatalf("hedging to a slower alternative got no later: %s then %s", deadline, slower)
-	}
-	// And the whole scale moves with the lane's own belief rather than with a
-	// constant: a lane whose normal is 2s, beside an alternative whose normal is
-	// 4s, waits far longer before anybody asks somebody else.
-	patient := hedgeTime(
-		Belief{TTFT: Posterior{X: math.Log(2000), P: 1}},
-		Belief{TTFT: Posterior{X: math.Log(4000), P: 0.09}})
-	if patient <= deadline {
-		t.Fatalf("a lane whose normal is 2s hedged at %s, no later than a lane whose normal is 0.4s (%s)",
-			patient, deadline)
-	}
-	if none := hedgeTime(Belief{}, alt); none != 0 {
-		t.Fatalf("a lane nothing is believed about was given a deadline of %s", none)
-	}
-	lonely := hedgeTime(quick, Belief{})
-	if lonely < hedgeFloor || lonely > hedgeCeiling {
-		t.Fatalf("with nobody to hedge to the deadline was %s", lonely)
-	}
-}
-
-// TestAChoiceCarriesItsDeadlineAndItsAlternative keeps the two halves of a
-// rescue together: the moment a hedge is wanted is the worst moment to start
-// choosing where to send it.
-func TestAChoiceCarriesItsDeadlineAndItsAlternative(t *testing.T) {
+// TestAChoiceCarriesTheFrontierAndNothingAboutTime is the law that this whole
+// wave turns on, read from the chooser's own answer.
+//
+// A choice answers WHICH LANE. Where a rescue would go and when it would go
+// there are [PlanFor]'s, and they are built for every call — including the ones
+// this chooser has no opinion about at all. What the choice owes the plan is
+// the frontier: the candidate set, already gated and already scored, so that
+// the moment a rescue is wanted is not the moment somebody starts choosing one.
+func TestAChoiceCarriesTheFrontierAndNothingAboutTime(t *testing.T) {
 	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
 	choice := chooser.Choose(talk())
-	if choice.Alt == "" || choice.Alt == choice.Order[0] {
-		t.Fatalf("the alternative was %q beside an order of %v", choice.Alt, choice.Order)
-	}
-	if choice.Deadline < hedgeFloor || choice.Deadline > hedgeCeiling {
-		t.Fatalf("the deadline was %s, outside the band a hedge is worth having in", choice.Deadline)
+	if len(choice.Frontier) < 2 {
+		t.Fatalf("the frontier named %d lanes, so a rescue has nowhere to be chosen from", len(choice.Frontier))
 	}
 	if choice.Why == "" {
 		t.Fatal("a choice with an opinion said nothing about it")
+	}
+	// AND THE PLAN IS WHAT CARRIES THE CLOCK, out of that same frontier.
+	plan := PlanFor(choice, Belief{}, RoleTalk, noon)
+	if plan.Ceiling != RoleTalk.Ceiling() {
+		t.Fatalf("the plan's ceiling is %s, want the role's %s", plan.Ceiling, RoleTalk.Ceiling())
+	}
+	if len(plan.Alts) == 0 || strings.EqualFold(plan.Alts[0].Lane, choice.Order[0]) {
+		t.Fatalf("a rescue would go to %+v beside an order of %v", plan.Alts, choice.Order)
 	}
 }
 
@@ -540,7 +517,7 @@ func TestAChoiceCarriesItsDeadlineAndItsAlternative(t *testing.T) {
 func TestAnEmptyLedgerIsAnEmptyChoice(t *testing.T) {
 	chooser := &chooser{ledger: &fakeLedger{}}
 	choice := chooser.Choose(talk())
-	if !choice.Empty() || choice.Why != "" || len(choice.Frontier) != 0 || choice.Deadline != 0 {
+	if !choice.Empty() || choice.Why != "" || len(choice.Frontier) != 0 {
 		t.Fatalf("an empty ledger produced an opinion: %+v", choice)
 	}
 }

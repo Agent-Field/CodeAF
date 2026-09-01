@@ -85,18 +85,6 @@ const (
 	ignoreTTFTMultiple = 3.0
 	ignoreSureVariance = 0.25
 
-	// hedgeOverhead is what a second request costs before it can answer: a
-	// connection, a router hop, the far side reading the prompt again. It is
-	// added to the alternative's expected wait so that hedging is only ever
-	// asked for when it would genuinely arrive sooner.
-	hedgeOverhead = 300 * time.Millisecond
-
-	// hedgeFloor and hedgeCeiling clamp the computed hedge time. Below the floor
-	// a hedge fires on the ordinary spread of a healthy lane; above the ceiling
-	// nobody is being rescued by it.
-	hedgeFloor   = 700 * time.Millisecond
-	hedgeCeiling = 8 * time.Second
-
 	// sheetObservations is how many requests a published percentile row stands
 	// for WHEN THE QUESTION IS HOW SURE OF THE LANE'S MEDIAN IT MAKES US.
 	//
@@ -136,18 +124,6 @@ const (
 	// four times cheaper than Cloudflare, and the chooser sent a quarter of
 	// those requests to Cloudflare anyway.
 	sheetObservations = SheetWeight * SheetWeight
-
-	// predictiveSpreadFloor is the smallest spread the hedge arithmetic will use
-	// for a first-token belief, in the log domain.
-	//
-	// WHY THERE IS A FLOOR AT ALL. [Posterior.P] is the variance of the MEAN,
-	// and after a few dozen sightings it is nearly zero — a lane whose median is
-	// known to the millisecond. The hedge asks a different question: how long
-	// the NEXT wait might be, which is the predictive spread, and that never
-	// shrinks below the lane's own variability. One in the log domain is a p90
-	// about three and a half times the median, which is the shape the sheet
-	// actually published for the seventeen lanes this design was measured on.
-	predictiveSpreadFloor = 1.0
 )
 
 // ── THE PREFIX MEMORY ───────────────────────────────────────────────────────
@@ -567,14 +543,10 @@ func (c *chooser) Choose(req Request) Choice {
 	if len(choice.Order) == 0 {
 		return Choice{}
 	}
-	if len(choice.Order) > 1 {
-		choice.Alt = choice.Order[1]
-	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
-	choice.Deadline = hedgeTime(
-		aged[ID{Model: req.Model, Lane: choice.Order[0]}],
-		aged[ID{Model: req.Model, Lane: choice.Alt}],
-	)
+	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
+	// there are [PlanFor]'s, built for every call out of the same frontier this
+	// carries — see the note on [Choice].
 	choice.Why = whyOf(scored[0], perceived[scored[0].ID])
 	return choice
 }
@@ -693,112 +665,14 @@ func seedFor(req Request) int64 {
 	return req.Now.UnixNano() ^ int64(digest.Sum64())
 }
 
-// ── THE HEDGE TIME ──────────────────────────────────────────────────────────
-
-// hedgeTime is when a request should start thinking about asking somebody else.
-//
-// FOR A LOG-NORMAL, THE LONGER YOU HAVE WAITED, THE LONGER YOU SHOULD EXPECT TO
-// GO ON WAITING. A stream four seconds late is not four seconds from finishing;
-// it is a draw from the tail. So the hedge time is the smallest wait t at which
-// the expected REMAINING wait exceeds what the alternative would take from
-// cold, plus what a second request costs to start:
-//
-//	P(T > t)          = 1 − Φ((ln t − μ) / s)
-//	E[T·1{T>t}]       = exp(μ + s²/2) · Φ((μ + s² − ln t) / s)
-//	E[T − t | T > t]  = E[T·1{T>t}] / P(T > t) − t
-//	t*                = min t where E[T − t | T > t] > E_alt[T] + hedgeOverhead
-//
-// The remaining wait grows with t for a log-normal, so t* is found by halving
-// the interval rather than by walking it. It is clamped to [hedgeFloor,
-// hedgeCeiling] and it is per lane and per belief: a lane whose normal is four
-// hundred milliseconds hedges at about a second, and a lane whose normal is two
-// seconds does not hedge there at all.
-//
-// WITH NO ALTERNATIVE THERE IS NOTHING TO HEDGE TO, and the deadline is then
-// only the p90 of the lane's own belief — a wait that surprising is worth
-// telling the watch about even when the answer is to keep waiting.
-func hedgeTime(top, alt Belief) time.Duration {
-	mu, spread, ok := predictive(top.TTFT)
-	if !ok {
-		return 0
-	}
-	if !alt.TTFT.Known() {
-		return clampHedge(time.Duration(math.Exp(mu+1.2816*spread) * float64(time.Second)))
-	}
-	// WHAT THE ALTERNATIVE WOULD TAKE IS AN EXPECTATION OVER ITS BELIEF, and it
-	// is taken with that belief's own spread rather than with the floored one
-	// above. The floor is a statement about how variable a single wait is, which
-	// is the question the tail asks of the lane already running; applying it here
-	// too would inflate every alternative by two thirds and make every hedge
-	// systematically later than the arithmetic it is derived from.
-	altMu := alt.TTFT.X - math.Log(1000)
-	threshold := math.Exp(altMu+alt.TTFT.P/2) + hedgeOverhead.Seconds()
-	low, high := 0.01, 60.0
-	if remaining(mu, spread, high) <= threshold {
-		return clampHedge(hedgeCeiling)
-	}
-	if remaining(mu, spread, low) > threshold {
-		return clampHedge(time.Duration(low * float64(time.Second)))
-	}
-	for range 40 {
-		mid := (low + high) / 2
-		if remaining(mu, spread, mid) > threshold {
-			high = mid
-			continue
-		}
-		low = mid
-	}
-	return clampHedge(time.Duration(high * float64(time.Second)))
-}
-
-// predictive is a first-token belief as a log-normal over SECONDS, with the
-// spread floored at what a lane's own variability never goes below
-// ([predictiveSpreadFloor]). It reports false for a belief that knows nothing,
-// which is a request that gets no hedge rather than one that gets a guessed
-// deadline.
-func predictive(posterior Posterior) (mu, spread float64, ok bool) {
-	if !posterior.Known() {
-		return 0, 0, false
-	}
-	spread = math.Sqrt(posterior.P)
-	if spread < predictiveSpreadFloor {
-		spread = predictiveSpreadFloor
-	}
-	// The belief is about milliseconds and the arithmetic above is in seconds.
-	return posterior.X - math.Log(1000), spread, true
-}
-
-// remaining is E[T − t | T > t] in seconds for a log-normal (mu, spread).
-func remaining(mu, spread, t float64) float64 {
-	if t <= 0 {
-		return math.Exp(mu+spread*spread/2) - t
-	}
-	survival := 1 - phi((math.Log(t)-mu)/spread)
-	if survival < 1e-12 {
-		// So far into the tail that the ratio below is two vanishing numbers
-		// divided by each other. Anything still running there should have been
-		// hedged long ago, and saying so is more honest than a quotient of
-		// rounding errors.
-		return math.Inf(1)
-	}
-	weighted := math.Exp(mu+spread*spread/2) * phi((mu+spread*spread-math.Log(t))/spread)
-	return weighted/survival - t
-}
-
-// phi is the standard normal distribution function, from the error function the
-// standard library already has.
-func phi(x float64) float64 { return 0.5 * (1 + math.Erf(x/math.Sqrt2)) }
-
-// clampHedge holds a deadline inside the band a hedge is worth having in.
-func clampHedge(deadline time.Duration) time.Duration {
-	if deadline < hedgeFloor {
-		return hedgeFloor
-	}
-	if deadline > hedgeCeiling {
-		return hedgeCeiling
-	}
-	return deadline
-}
+// THE HEDGE TIME USED TO BE COMPUTED HERE and it is not computed anywhere in
+// this file any more. When to act on a wait is `internal/lane/control`'s one
+// question, asked of every call from [PlanFor]'s plan rather than of the calls
+// that happened to produce a routing opinion — see the note on [Choice]. What
+// went with it: an eight-second clamp that only existed when a belief did, a
+// three-hundred-millisecond overhead figure the alternative's own survival now
+// carries, and a second copy of the log-normal arithmetic that
+// [control.Survival.Remaining] states once.
 
 // ── SAYING WHY ──────────────────────────────────────────────────────────────
 
