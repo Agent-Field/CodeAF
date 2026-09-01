@@ -649,7 +649,7 @@ is what makes the first failure in a brand new checkout cheap. `AFORGE_HOME`
 moves both, with everything else aforge keeps.
 
 **Tasks write into the same project file.** A worker hammering a build in its own
-worktree is where most of this comes from, and a private file nobody ever read
+working copy is where most of this comes from, and a private file nobody ever read
 would waste it.
 
 The counts are a confidence rather than a tally: they are **halved every week**,

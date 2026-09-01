@@ -130,6 +130,80 @@ const (
 	GroundRungHere GroundRung = "here"
 )
 
+// ── THE WORDS A PERSON READS ────────────────────────────────────────────────
+//
+// groundWords is THE TABLE: the plain words for the copy of the ground one task
+// worked in, one line per rung, and the only place any surface may get them.
+//
+// IT EXISTS BECAUSE A RUNG IS A RECORD AND NOT A SCREEN WORD, which is the law
+// [TaskMode] states about itself one file over. `universe` and `snapshot` are
+// how this package writes down what it did; a surface printing either of them
+// would be handing somebody the machinery's own vocabulary, which this codebase
+// bans in anything a person reads.
+//
+// THE DEFECT IT CLOSES was a surface doing exactly that from the other end. The
+// settled card labelled every task's directory `worktree` — the machinery's word
+// for the rung below, printed with no idea which rung had run — so once the
+// universe rung reached a repository (#183) a person reading the card was told
+// the mechanism that was NOT in use: the work had happened in a fork.
+//
+// ONE TABLE AND MORE THAN ONE READER. The settled card in the project's record
+// and the landing note a task writes when it comes home both name where the work
+// was left, and they are read minutes apart about the same node (internal/tui3's
+// taskrecord.go and taskdone.go). Two surfaces wording one fact separately is two
+// wordings that drift, and a person told "worktree" by one and "its own copy" by
+// the other has been given two places when there was only ever one.
+//
+// THEY NAME NO MACHINERY AND THEY NAME NO PATH. What a person needs from this
+// line is whether the work happened somewhere of its own or in the folder they
+// are standing in, and — where it was a repository — that a branch of theirs is
+// what came back. The seal, the fork id and the machine commit are the record's
+// business ([taskTree.world] writes the long form into the node's own log).
+var groundWords = map[GroundRung]string{
+	// A fork is a copy of the whole folder, `.git` and all, so the words are the
+	// copy's words below and not a second spelling of one fact. A person cannot
+	// act on the difference between a furrow fork and a file-by-file copy, and a
+	// line that made them learn it would be the machinery leaking again.
+	GroundRungUniverse: "its own copy of the folder",
+	// The snapshot rung's directory IS a branch of the person's repository,
+	// checked out somewhere else — which is the one thing about it they can act
+	// on, because the branch is what comes home.
+	GroundRungSnapshot: "a branch of your repository",
+	GroundRungCopy:     "its own copy of the folder",
+	// Standing in the ground is not a copy at all, and saying it was one would be
+	// the exact wrong thing to tell somebody whose own files the work is editing.
+	GroundRungHere: "your own folder",
+}
+
+// GroundWord is the plain words for where one task's work happened: its rung's
+// line in [groundWords], or "" when nothing here can honestly say.
+//
+// THE PROMISE IS THE FALLBACK AND NOT A SECOND TABLE. A record row written
+// before the ladder existed carries no rung and still carries how the task stood
+// on its ground, and before the ladder a repository got a worktree and a folder
+// got a copy — so the promise answers for exactly the rows the rung cannot, in
+// the words the rung would have used.
+//
+// A REFERENCE GETS NOTHING, DELIBERATELY. That promise hands the node an EMPTY
+// folder of its own and leaves the ground read-only ([prepareTaskTreeOn]), so
+// both lines of the table would be false about it: it is nobody's copy and it is
+// not the person's folder. A surface handed "" says where the work was without
+// claiming what made it, which is the emptiness law doing its job.
+func GroundWord(rung GroundRung, promise TaskMode) string {
+	if word, ok := groundWords[rung]; ok {
+		return word
+	}
+	switch promise {
+	case TaskModeWorktree:
+		return groundWords[GroundRungSnapshot]
+	case TaskModeMirror:
+		return groundWords[GroundRungCopy]
+	case TaskModeInPlace, TaskModeFolder:
+		return groundWords[GroundRungHere]
+	}
+	return ""
+}
+
 // groundOrder is everything a rung needs to make one child's world: the ground
 // to inherit, the directory to make it in, and the names the landing will use.
 type groundOrder struct {
@@ -765,6 +839,12 @@ func universeInRecord(record taskRecord) (taskTree, bool) {
 // world is the one line that says what a task worked in, for the node's log and
 // for a report. THE EMPTINESS LAW: a task standing in the folder it was already
 // about has no copy to describe and this says nothing at all.
+//
+// IT IS THE LONG FORM AND [GroundWord] IS THE SHORT ONE, and they are two
+// sentences about one fact rather than two facts: this names the ground and
+// seals the world with an id so that two reports about two worlds can be told
+// apart, because it is read in a log by somebody reconstructing a run. A row on
+// a card has no room for either and its reader wants neither.
 func (t taskTree) world() string {
 	switch t.rung {
 	case GroundRungUniverse:

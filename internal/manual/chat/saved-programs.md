@@ -77,7 +77,8 @@ Inside its room you see the program's own progress lines and every call it makes
 model call, each tool call, each question. Its row on the roster carries whatever it last
 said about itself, so you can tell what it is doing without going in.
 
-A run does **not** have a branch or a worktree. It works where the conversation works, so
+A run does **not** have a branch or a working copy of its own. It works where the
+conversation works, so
 there is nothing to merge and nothing to check out afterwards.
 
 ## Stopping a run, and what is kept
