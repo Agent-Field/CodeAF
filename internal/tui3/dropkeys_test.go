@@ -449,3 +449,56 @@ func TestWhatALineHasToLookLikeBeforeTheDiskIsAsked(t *testing.T) {
 func escapeSpaces(path string) string { return strings.ReplaceAll(path, " ", `\ `) }
 
 var _ tea.Msg = dropMsg{}
+
+// AND THE SAME TWO LAWS ON HOME'S OWN BOX, which is where every keystroke goes
+// while the fullscreen list is up. Typing there is already a query over every
+// project on the machine; it must not also be a timer and a syscall.
+func TestTypingProseOnHomeArmsNothingAndAsksTheDiskNothing(t *testing.T) {
+	a, _, _ := homeDropKeys(t)
+	typeBurst(a, "fix the roof before it rains for a fortnight")
+	if a.drop.armed != 0 {
+		t.Fatalf("a sentence typed on home armed %d wakeups, want none", a.drop.armed)
+	}
+	if a.drop.looked != 0 {
+		t.Fatalf("a sentence typed on home asked the disk %d times, want none", a.drop.looked)
+	}
+	if got := a.home.box.String(); got != "fix the roof before it rains for a fortnight" {
+		t.Fatalf("home's box holds %q", got)
+	}
+}
+
+// AND A SLASH COMMAND TYPED ON HOME COSTS WHAT IT COST BEFORE THE FOLD EXISTED.
+// A dropped path is told from a command by a SEPARATOR INSIDE IT, which is
+// string work on runes already in memory.
+func TestTypingASlashCommandOnHomeArmsNothing(t *testing.T) {
+	for _, line := range []string{"/help", "/model", "/quit"} {
+		a, _, _ := homeDropKeys(t)
+		typeBurst(a, line)
+		if a.drop.armed != 0 {
+			t.Fatalf("typing %q on home armed %d wakeups, want none", line, a.drop.armed)
+		}
+		if a.drop.looked != 0 {
+			t.Fatalf("typing %q on home asked the disk %d times, want none", line, a.drop.looked)
+		}
+	}
+}
+
+// AND A TYPED DROP ON HOME PAYS EXACTLY WHAT ONE IN THE DRAFT PAYS: one timer
+// for the whole burst, one syscall per word, one drop taken.
+func TestATypedDropOnHomeArmsOneWakeupAndOneLook(t *testing.T) {
+	a, drop, tick := homeDropKeys(t, "server.log")
+	typeBurst(a, filepath.Join(drop, "server.log"))
+	if a.drop.armed != 1 {
+		t.Fatalf("a burst on home armed %d wakeups, want one", a.drop.armed)
+	}
+	if a.drop.looked != 0 {
+		t.Fatalf("a burst still arriving asked the disk %d times, want none", a.drop.looked)
+	}
+	settleDrop(t, a, tick)
+	if a.drop.looked != 1 {
+		t.Fatalf("a settled burst on home asked the disk %d times, want one", a.drop.looked)
+	}
+	if a.drop.took != 1 {
+		t.Fatalf("a settled burst on home took %d drops, want one", a.drop.took)
+	}
+}

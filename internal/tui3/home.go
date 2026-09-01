@@ -2676,8 +2676,19 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// on the machine. Nothing had to be opened, and nothing has to be
 		// chosen between (see [homeView.box]).
 		if text := msg.Key().Text; text != "" {
+			at := h.box.cursor
 			h.box.insert(text)
 			h.build()
+			// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE,
+			// which is the same line the conversation's draft watches on
+			// (input.go). Some terminals deliver a dragged file as KEYSTROKES
+			// rather than as the bracketed paste [app.paste] understands, and
+			// they deliver them into whichever box has the keyboard — this one,
+			// while home is up. The fold is told which box it is watching, so a
+			// run left standing here is never spent into the draft behind this
+			// screen (dropkeys.go). Ordinary typing pays two integer comparisons
+			// for it: no clock, no syscall, no extra frame.
+			return a.dropWatch(&h.box, &a.chips, at, text)
 		}
 		return nil
 	}
@@ -2811,6 +2822,13 @@ func (h *homeView) buildFor() {
 // one depending on what is in the box.
 func (a *app) homeEnter() tea.Cmd {
 	h := &a.home
+	// A DROP THE FOLD IS STILL HOLDING IS SPENT BEFORE THE LINE IS READ, which
+	// is input.go's law about enter said at this surface's other send door: a
+	// gesture nothing has finished answering must not be read as the text it
+	// happens to have left in the box, and somebody who dropped a file and
+	// pressed enter inside two frames meant the drop (dropkeys.go). The net
+	// under the row below catches whatever this did not.
+	a.spendDrop()
 	// phone lane: enter opens the row's card as a sheet (homesheet.go).
 	if cmd, took := a.homePhoneEnter(); took {
 		return cmd
@@ -3171,12 +3189,33 @@ func (a *app) homeStart(text string) tea.Cmd {
 	// of a conversation in this project. The row says which before enter is
 	// pressed ([homeView.startLabel]).
 	if place := a.home.typedPlace(text); place != "" {
+		// THE TRAY GOES WITH THE PERSON HERE TOO, and carrying it means taking
+		// it OUT of the conversation being stepped aside from before the aside
+		// is stowed. [app.detachConversation] hands the draft and the chips to
+		// the aside together, which is right for a switch — both belong to the
+		// conversation being left — and wrong for this one: these files were
+		// dropped on HOME, for the conversation home is about to open, and
+		// leaving them behind is the surface losing something somebody dropped.
+		// It is the law [app.renew] already applies on the other branch of this
+		// same door (`a.chips = side.chips`).
+		//
+		// THE DRAFT IS A DIFFERENT MATTER AND IS LEFT ALONE. The stepped-aside
+		// conversation's own unsent sentence is its own and comes back with it;
+		// home's box is not that sentence, and what was typed in it was a PLACE,
+		// which this branch has just spent.
+		carried := a.chips
+		a.chips = nil
 		cmd, refusal := a.startBeside(place)
+		a.chips = carried
 		if refusal != "" {
 			a.home.say(refusal, "")
 			return nil
 		}
 		a.closeHome()
+		// AND THE FIRST MESSAGE IS NOT SENT FOR THEM. What was typed named a
+		// place and not a sentence, so there is nothing to send — the pictures
+		// and the files are on the new conversation's tray, in front of the
+		// person, waiting for the words they were dropped to go with.
 		return cmd
 	}
 	a.closeHome()

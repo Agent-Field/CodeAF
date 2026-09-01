@@ -1057,7 +1057,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// nothing above this line is looking at keys. Ordinary typing pays two
 		// integer comparisons for it and nothing else — no clock, no syscall, no
 		// frame — and a run that could not be a path closes the fold at once.
-		if wake := a.dropWatch(at, text); wake != nil {
+		if wake := a.dropWatch(&a.input, &a.chips, at, text); wake != nil {
 			return tea.Batch(cmd, wake)
 		}
 		return cmd
