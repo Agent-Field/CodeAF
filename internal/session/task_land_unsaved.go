@@ -39,13 +39,20 @@ func cameHome(merge string) bool {
 // when there is nothing on it.
 const unsavedTail = " and could not be saved"
 
+// unsavedLead opens both of those sentences, and reading the two together is what
+// keeps the note honest in the other direction: a worker quoting an error about
+// something that could not be saved must not silence the branch a kept landing is
+// offering, so the sentence is recognised by its shape rather than by one phrase
+// that could turn up in anybody's prose.
+const unsavedLead = "its work is in "
+
 // unsavedSentence is what a person reads when a node's work could not be put on
 // its own branch — a full disk, a read-only mount, a permission somebody
 // changed. It NAMES THE DIRECTORY, because that directory now holds the only
 // copy of the work there is: nothing merged, nothing was released, and the
 // worktree is still standing exactly where the node left it.
 func unsavedSentence(dir, problem string) string {
-	return "its work is in " + dir + unsavedTail + " to its branch: " + firstLine(problem)
+	return unsavedLead + dir + unsavedTail + " to its branch: " + firstLine(problem)
 }
 
 // unlaidSentence is the same sentence for a folder ground, where the work is
@@ -53,7 +60,7 @@ func unsavedSentence(dir, problem string) string {
 // names is untouched by the refusal, so everything the family made is still in
 // it.
 func unlaidSentence(dir, ground, problem string) string {
-	return "its work is in " + dir + unsavedTail + " into " + ground + ": " + problem
+	return unsavedLead + dir + unsavedTail + " into " + ground + ": " + problem
 }
 
 // unsavedLanding says whether a settled node is one whose work was saved
@@ -64,7 +71,9 @@ func unlaidSentence(dir, ground, problem string) string {
 // [incompleteLead] one arm above). What a person is told about where their work
 // is has to come from one sentence, and a flag beside it would be the second
 // copy that drifts.
-func unsavedLanding(report string) bool { return strings.Contains(report, unsavedTail) }
+func unsavedLanding(report string) bool {
+	return strings.Contains(report, unsavedLead) && strings.Contains(report, unsavedTail)
+}
 
 // literalPathspec is how a filename gets to mean itself to git: a node that
 // wrote `report[1].md` named a file, and to git's pathspec parser that is a glob.
@@ -95,6 +104,12 @@ func unstagedWork(dir string, paths []string) bool {
 	unstaged := false
 	for _, path := range paths {
 		if _, err := git(dir, "add", "--all", "--", path); err == nil {
+			continue
+		}
+		if unstaged {
+			// The landing is refusing already. What is left is to let every other path
+			// have its retry, so nothing is lost for want of being asked, and to stop
+			// spending git on a question that is answered.
 			continue
 		}
 		relative := strings.TrimPrefix(path, literalPathspec)

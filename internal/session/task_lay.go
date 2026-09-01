@@ -48,6 +48,11 @@ type laidWork struct {
 // rather than as their work.
 const layingSuffix = ".aforge-laying-"
 
+// heldSuffix opens the name the person's own file waits under while the ledger
+// goes in, and it is a different word from [layingSuffix] on purpose: one of
+// them is the work arriving and the other is what was already there.
+const heldSuffix = ".aforge-held-"
+
 // stageLay copies the whole ledger beside where it is going and reports the
 // first path that could not get there.
 //
@@ -92,41 +97,158 @@ func stageLay(from, to string, wrote []string) (laidWork, string) {
 	return lay, ""
 }
 
-// commit puts every staged path in place, and it is the half that is left with
-// almost nothing to go wrong: each rename is within a directory this lay has
-// already written a whole file into, so the questions of room, permission and
-// parentage are all answered by the time it runs.
+// commit puts the whole ledger in place, or puts the folder back as it was.
 //
-// WHAT IS LEFT IT REPORTS RATHER THAN HIDES. A rename that fails here is the one
-// case a person can be handed a folder with part of the ledger in it, and the
-// answer is the same as for every other refusal: the outcome says the work could
-// not be saved and the node asks for their look, with the copy it came from still
-// holding everything ([taskTree.landMirror]). Undoing the renames that already
-// happened would mean holding a second copy of the person's own files, which is
-// the cost of covering a window one rename wide.
+// WHAT WAS THERE IS HELD, NOT DESTROYED. Each target the ledger writes over is
+// kept beside itself for the length of the commit — a hard link where the
+// filesystem gives one, so nothing of the person's is copied — and only when
+// every path has arrived are those held copies let go. A path that will not go
+// undoes every one before it, and the folder is as it was found.
+//
+// A REGULAR FILE IS STILL REPLACED IN ONE STEP. The hold is a second name for
+// what is already there, so the rename that puts the new file in is the same
+// atomic replace it was: a kill mid-commit leaves the person's own file or the
+// finished new one, never half of either, and the folder can still be rolled
+// back afterwards by whoever finds the leavings.
 func (l laidWork) commit() string {
+	var done []layStep
 	for _, pair := range l.staged {
-		staged, target := pair[0], pair[1]
-		// A RENAME REPLACES A FILE AND REFUSES A DIRECTORY, so the one shape it
-		// cannot do on its own is cleared first. Everything else — the ordinary
-		// file over an ordinary file — is one atomic step. A clearing that fails
-		// needs no answer of its own: the rename under it is then the one that
-		// cannot happen, and it is already reported.
-		if directoryAt(target) || directoryAt(staged) {
-			_ = os.RemoveAll(target)
-		}
-		if err := os.Rename(staged, target); err != nil {
-			return "the work could not be laid into a clean copy: " + err.Error()
+		step, err := l.place(pair[0], pair[1])
+		done = append(done, step)
+		if err != nil {
+			undoLay(done)
+			return layProblem(err)
 		}
 	}
 	for _, target := range l.gone {
 		// A path the node wrote and then deleted is part of the ledger too, so one
 		// that will not go is the same news as one that will not arrive.
-		if err := os.RemoveAll(target); err != nil {
-			return "the work could not be laid into a clean copy: " + err.Error()
+		step, err := l.take(target)
+		done = append(done, step)
+		if err != nil {
+			undoLay(done)
+			return layProblem(err)
 		}
 	}
+	for _, step := range done {
+		step.settle()
+	}
 	return ""
+}
+
+// layStep is one target this commit has touched and everything needed to put it
+// back: what was there (aside), and what this lay put over it (staged, empty for
+// a path the ledger takes away).
+type layStep struct {
+	target string
+	aside  string
+	staged string
+	// placed says the staged path actually reached the target. Without it an undo
+	// could not tell what this lay put there from what was there all along, and it
+	// would take the person's own file away under the name of a copy.
+	placed bool
+}
+
+// settle lets go of what was held once the whole ledger is in.
+func (s layStep) settle() {
+	if s.aside != "" {
+		_ = os.RemoveAll(s.aside)
+	}
+}
+
+// place puts one staged path where it goes, holding whatever was there first.
+func (l laidWork) place(staged, target string) (layStep, error) {
+	step := layStep{target: target, staged: staged}
+	aside, err := l.hold(target)
+	step.aside = aside
+	if err != nil {
+		return step, err
+	}
+	// The hold is a second NAME for a regular file and a MOVE for anything else,
+	// so a directory standing where a file goes is out of the way by now and the
+	// rename has nothing left to refuse.
+	if err := os.Rename(staged, target); err != nil {
+		return step, err
+	}
+	step.placed = true
+	return step, nil
+}
+
+// take moves aside a path the ledger says is gone, so that a later refusal can
+// still put it back.
+func (l laidWork) take(target string) (layStep, error) {
+	step := layStep{target: target}
+	if _, err := os.Lstat(target); err != nil {
+		if os.IsNotExist(err) {
+			return step, nil
+		}
+		return step, err
+	}
+	aside := target + heldSuffix + l.token
+	if err := os.Rename(target, aside); err != nil {
+		return step, err
+	}
+	step.aside = aside
+	return step, nil
+}
+
+// hold keeps what is standing at a target for the length of the commit, and
+// answers where it is being kept.
+//
+// A HARD LINK COSTS NOTHING AND A MOVE COSTS THE REPLACE. Linking leaves the
+// person's file exactly where it is, so the rename over it is still one atomic
+// step; a directory, a symlink and a filesystem with no links to give fall back
+// to moving it aside, which is the same guarantee one syscall further apart.
+func (l laidWork) hold(target string) (string, error) {
+	info, err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	aside := target + heldSuffix + l.token
+	if info.Mode().IsRegular() {
+		if err := os.Link(target, aside); err == nil {
+			return aside, nil
+		}
+	}
+	if err := os.Rename(target, aside); err != nil {
+		return "", err
+	}
+	return aside, nil
+}
+
+// undoLay puts back everything a refused commit had already moved, newest first.
+func undoLay(done []layStep) {
+	for at := len(done) - 1; at >= 0; at-- {
+		step := done[at]
+		if step.placed {
+			// What this lay put there goes back to waiting under its own name, and
+			// only that: a target it never reached still holds the person's own file.
+			if err := os.Rename(step.target, step.staged); err != nil {
+				_ = os.RemoveAll(step.target)
+			}
+		}
+		if step.aside == "" {
+			continue
+		}
+		if _, err := os.Lstat(step.target); err == nil {
+			// THE HOLD WAS A SECOND NAME AND THE FILE NEVER LEFT, which is what a
+			// hard link buys ([laidWork.hold]) — and renaming one name of a file over
+			// another name of the same file does nothing at all, so the link has to
+			// be dropped rather than moved back.
+			_ = os.RemoveAll(step.aside)
+			continue
+		}
+		_ = os.Rename(step.aside, step.target)
+	}
+}
+
+// layProblem is the one sentence this file answers with, so that a refusal reads
+// the same wherever it came from.
+func layProblem(err error) string {
+	return "the work could not be laid into a clean copy: " + err.Error()
 }
 
 // abandon takes back everything a refused lay put down, so the folder it was
@@ -162,11 +284,4 @@ func makeParents(dir string) ([]string, error) {
 		return missing, err
 	}
 	return missing, nil
-}
-
-// directoryAt says whether something is sitting at a path and is a directory. A
-// symlink is not followed: the link is what would be replaced.
-func directoryAt(path string) bool {
-	info, err := os.Lstat(path)
-	return err == nil && info.IsDir()
 }

@@ -1598,11 +1598,14 @@ func restoreByCopy(node *TaskNode, tree taskTree, wrote []string) (auditGround, 
 // is renamed into place (task_lay.go says why in full).
 func layWork(from, to string, wrote []string) string {
 	lay, problem := stageLay(from, to, wrote)
+	if problem == "" {
+		problem = lay.commit()
+	}
 	if problem != "" {
 		lay.abandon()
 		return problem
 	}
-	return lay.commit()
+	return ""
 }
 
 // copyOriginal copies out the tree AS IT WAS WHEN THE WORK BEGAN.

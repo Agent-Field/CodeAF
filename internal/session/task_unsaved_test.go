@@ -550,9 +550,8 @@ func TestReadingTheIndexSaysWhenItCouldNotBeRead(t *testing.T) {
 	}
 }
 
-// A LAY THAT FAILS WHILE PUTTING FILES IN PLACE SAYS SO. It is the one window
-// this road cannot close — the person can be left holding part of the ledger —
-// so what it must never do is report the landing as ordinary.
+// A LAY THAT FAILS WHILE PUTTING FILES IN PLACE SAYS SO, and the file it was
+// about to write over is still the person's own.
 func TestALayThatFailsWhilePuttingFilesInPlaceReportsIt(t *testing.T) {
 	to := t.TempDir()
 	target := filepath.Join(to, "keep.md")
@@ -564,5 +563,74 @@ func TestALayThatFailsWhilePuttingFilesInPlaceReportsIt(t *testing.T) {
 	}
 	if got := readFile(t, target); got != "what the person had\n" {
 		t.Fatalf("keep.md is %q, want the person's own file", got)
+	}
+}
+
+// AND A LAY THAT FAILS HALFWAY THROUGH PUTTING THE LEDGER IN PUTS IT ALL BACK.
+// The staging succeeded and the first file is already in place when the second
+// will not go — the one window in which a person could be handed half a
+// deliverable — and what they are left holding is their own two files.
+func TestALayThatFailsWhilePlacingPutsTheFolderBack(t *testing.T) {
+	from, to := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(from, "a.md"), "the new first half\n")
+	writeFile(t, filepath.Join(from, "b.md"), "the new second half\n")
+	writeFile(t, filepath.Join(to, "a.md"), "what the person had first\n")
+	writeFile(t, filepath.Join(to, "b.md"), "what the person had second\n")
+
+	lay, problem := stageLay(from, to, []string{"a.md", "b.md"})
+	if problem != "" {
+		t.Fatalf("staging a ledger that fits: %s", problem)
+	}
+	// The second path cannot be placed: what was staged for it is no longer there
+	// to rename, which is what a full disk or somebody's cleaner does to it.
+	if err := os.Remove(lay.staged[1][0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if problem := lay.commit(); problem == "" {
+		t.Fatal("a commit that could not place the whole ledger reported no problem")
+	}
+	lay.abandon()
+
+	if got := readFile(t, filepath.Join(to, "a.md")); got != "what the person had first\n" {
+		t.Fatalf("a.md is %q, want the person's own file back", got)
+	}
+	if got := readFile(t, filepath.Join(to, "b.md")); got != "what the person had second\n" {
+		t.Fatalf("b.md is %q, want the person's own file untouched", got)
+	}
+	left, err := os.ReadDir(to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range left {
+		if strings.Contains(entry.Name(), layingSuffix) || strings.Contains(entry.Name(), heldSuffix) {
+			t.Fatalf("a rolled-back lay left %s behind", entry.Name())
+		}
+	}
+}
+
+// A DELETION THE NODE MADE IS WORK TOO. A path the repository tracks that the
+// node wrote and then removed, and that the index would not take, stops the
+// landing exactly as a file that could not be added does — otherwise the branch
+// merges without the removal and the deletion is lost in silence.
+func TestALandingRefusesWhenATrackedDeletionCouldNotBeStaged(t *testing.T) {
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "ffff6666ffffbbbb", 22, "take the file out")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	// shared.txt is on the branch already; the node's work is removing it.
+	if err := os.Remove(filepath.Join(tree.dir, "shared.txt")); err != nil {
+		t.Fatal(err)
+	}
+	readOnlyGitDir(t, tree)
+
+	merge, detail := tree.comeHome("take the file out", []string{"shared.txt"})
+
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q (%s), want the landing to refuse over a deletion it could not stage", merge, detail)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "shared.txt")); err != nil {
+		t.Fatalf("the person's own file went away under a landing that refused: %v", err)
 	}
 }
