@@ -191,6 +191,16 @@ type taskRecord struct {
 	Base     string     `json:"groundBase,omitempty"`
 	Universe string     `json:"groundUniverse,omitempty"`
 
+	// Frozen is the world every part of THIS node starts from, written when it
+	// divided ([TaskNode.Frozen]). It is here for the reason the four above are —
+	// a landing outlives the run that made the world — and for one more: a part
+	// resumed after a restart prepares its working copy on this road and nowhere
+	// else, so a checkpoint that had forgotten the freeze would hand it the
+	// parent's tree as it stands now and put that one part in a world none of its
+	// siblings ever saw. Additive: a checkpoint written before it existed decodes
+	// without it and seals exactly as it always did.
+	Frozen string `json:"groundFrozen,omitempty"`
+
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
 	// work). They are absent in every checkpoint written before a task could
@@ -664,6 +674,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Seal:        n.Seal,
 		Base:        n.Base,
 		Universe:    n.Universe,
+		Frozen:      n.Frozen,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -1149,6 +1160,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		Seal:        record.Seal,
 		Base:        record.Base,
 		Universe:    record.Universe,
+		Frozen:      record.Frozen,
 		state:       record.State,
 		report:      record.Report,
 		ending:      record.Ending,

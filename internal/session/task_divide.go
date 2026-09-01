@@ -162,7 +162,7 @@ func init() {
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them name, which is refused outright — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own taken as this work stands right now — everything you have already written is on their disk, and nothing you write afterwards reaches them — and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them name, which is refused outright — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -570,6 +570,13 @@ const (
 	// work as one job from a road that would have handed it out happily if the
 	// briefs had drawn the line anywhere.
 	divisionRefusedScope = "refused:scope"
+	// divisionRefusedFreeze is a family whose own tree would not take the commit
+	// its parts have to start from (task_divide_wip.go). It is its own word
+	// because it is the only refusal here that is about THE MACHINE rather than
+	// about the work: the division was right, the boundaries were right, and the
+	// disk said no — and an autopsy counting it beside `review` or `scope` would
+	// be reading a broken repository as a model's bad judgement.
+	divisionRefusedFreeze = "refused:freeze"
 	// divisionRefusedNobody is the reviewer saying the remainder is not work for
 	// any worker — the approving review only a person may give, the credential
 	// nobody here holds, the decision that is the person's to make. It is a
@@ -832,89 +839,29 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		taken++
 	}
 
-	// WHOSE WORK THIS IS, and what the person actually asked for. Both are the
-	// nesting seam's own answers (task.go's proposeTask takes exactly these
-	// three lines): the parts are registered under this node, one level deeper,
-	// owned by this agent — so their worktrees branch off this one's and come
-	// home into it — and each of them opens on the sentence the person typed,
-	// inherited through [Agent.taskRequest] because there is nobody in a
-	// worktree to type a new one.
+	// AND THE PARTS COME INTO EXISTENCE, which is one operation and not a loop
+	// with a preamble (task_divide_wip.go's [Agent.startTheParts]). The family's
+	// world is frozen onto its own branch and every part is admitted carrying
+	// that commit — in that order, because [TaskGraph.admit] puts a node on the
+	// frontier and the frontier STARTS it, so a world frozen after the first
+	// admission is a world the first part may already have raced past.
 	//
-	// THE MODEL, AND THE OTHER MODEL. A part inherits the parent task's model,
-	// which is what every child on this road has always done — same worker, same
-	// job, somewhere quieter. What is new is that a part GRADED CAREFUL is minted
-	// on the high tier instead ([roles.RoleCareful]), because the parts of one
-	// division are not one kind of work: see the file header.
-	//
-	// BOTH ARE RESOLVED ONCE, ABOVE THE LOOP. The ladder reads settings and the
-	// live conversation model, and a division whose third part resolved
-	// differently from its first because something moved underneath it would be
-	// a family nobody could account for afterwards.
-	model := a.resolveTaskModel("").model
-	careful := a.carefulModel(model)
-	// AND THE STORE IS ASKED BEFORE THE GRADE IS BELIEVED. A worker's `grade` is
-	// a reading made from inside the material and it is the only reading there
-	// was; what it cannot know is what has already HAPPENED to work of this shape
-	// on this model here. The ratings store knows, because every settled node
-	// writes its check's answer into it (taskgrade.go) — so a kind whose cheap
-	// attempts keep being turned down earns the careful tier on evidence, and
-	// "mechanical" stops being a guess a prompt taught and becomes a fact
-	// somebody measured. It is READ ONCE for the whole division, beside the two
-	// models, for the reason they are: a division whose third part was decided
-	// against a store that moved under it is a family nobody can account for
-	// afterwards.
-	grades := graph.grades.reader(model)
-	request := a.taskRequest()
-	// AND WHAT EVERY PART IS TOLD ABOUT THE FAMILY IS COMPOSED ONCE, HERE, FOR
-	// THE WHOLE DIVISION. A part's brief is two halves with two authors — the
-	// work being divided and the map of who owns what, which the harness holds,
-	// and the scope, which only the worker in the material could write — and this
-	// is where the first half is written for both roads, so a part drawn out of a
-	// sketch and a part a worker wrote open on the same world
-	// (task_divide_compose.go says why that had to stop depending on the road).
-	// It is composed above the loop for the reason the two models are: the parts
-	// of one division must read one document, not five fittings of it.
-	family := familyOf(request, node.inheritedBrief(), parsed.Parts)
-	ids := make([]uint64, 0, len(parsed.Parts))
-	titles := make([]string, 0, len(parsed.Parts))
-	for index, part := range parsed.Parts {
-		partModel := model
-		switch {
-		case part.careful():
-			partModel = careful
-		case careful != model && grades.saysCareful(taskKindOf(part.Title)):
-			// THE EVIDENCE OVERRULES THE WORD, and only in this direction. A part
-			// the worker called careful is never demoted by a store — the worker
-			// read the material and this did not — while a part it called ordinary
-			// is lifted where the record says ordinary is not what happens to work
-			// of this shape. The lift is skipped entirely where the careful tier
-			// resolves to the model the task is already on, because then there is
-			// nothing to lift it to and the record would claim a decision nobody
-			// made.
-			partModel = careful
-			line.Lifted = append(line.Lifted, part.Title)
-		}
-		spec := taskSpec{
-			title: part.Title,
-			// A MODEL WROTE THIS TITLE as a name, so the namer leaves it alone
-			// (taskname.go).
-			named:      true,
-			summary:    part.Summary,
-			request:    request,
-			brief:      family.partBrief(index, part.Brief),
-			acceptance: part.Acceptance,
-			expects:    part.Expects,
-			model:      partModel,
-			parent:     parent,
-			depth:      a.config.taskDepth + 1,
-			owner:      a,
-		}
-		id := graph.reserve()
-		graph.admit(id, spec)
-		taken--
-		ids = append(ids, id)
-		titles = append(titles, part.Title)
+	// WHOSE WORK IT IS is settled there too: the parts are registered under this
+	// node, one level deeper, owned by this agent — so their worktrees branch off
+	// this one's and come home into it — and each of them opens on the sentence
+	// the person typed, inherited through [Agent.taskRequest] because there is
+	// nobody in a worktree to type a new one.
+	ids, titles, notFrozen := a.startTheParts(node, parsed.Parts, &line)
+	if notFrozen != "" {
+		// A FAMILY WHOSE WORLD COULD NOT BE FROZEN HANDS NOTHING OUT. Admitting
+		// the parts anyway would start every one of them on material the parent
+		// does not have, which is the defect the freeze exists to close arriving
+		// through the door meant to close it. The claims taken above go back on
+		// the deferred release, exactly as they do for every other refusal here.
+		line.Decision = divisionRefusedFreeze
+		return notFrozen, "", false
 	}
+	taken -= len(ids)
 	line.Decision, line.Admitted = divisionAdmitted, len(ids)
 	return divisionDone(ids, titles, graph.machineBusy()), "", false
 }
