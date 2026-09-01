@@ -245,7 +245,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
-	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is."}` +
+	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one at or before the item's OWN first firing, which would retire it before it ever ran: an end for a one-off has to be later than when.at to the SECOND, and a one-off needs none at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
 	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; aforge quotes the shared allowance."},` +
@@ -353,6 +353,32 @@ func standingPassed(field string, moment, now time.Time, tail string) string {
 	return "Invalid arguments: " + field + " " + standingClock(moment) +
 		" has already passed — it is now " + standingClock(now) +
 		" (" + now.Format("Monday 2006-01-02") + "). " + tail
+}
+
+// standingClockExact is [standingClock] TO THE SECOND, and it exists for one
+// refusal only.
+//
+// The minute is the right grain everywhere else, because a person names minutes
+// and a model writes them back. It is the wrong grain for [standingRetires],
+// where the whole mistake can live inside one minute: a model that wrote
+// `in 1 minute — 23:11` for the words and `23:11` for the end, against a moment
+// the engine resolved to 23:11:11, would otherwise be told that 23:11 is not
+// after 23:11 and have nothing to work with.
+func standingClockExact(moment time.Time) string { return moment.Format("15:04:05 -07:00") }
+
+// standingRetires is the refusal an expiry earns for standing BEFORE the thing
+// it is supposed to outlive — the same law [standingPassed] states, applied to
+// the item's own moment rather than to the clock.
+//
+// It is one sentence in that refusal's grammar: the field, what is wrong with
+// it, and the way out. `firing` is what the item's first waking would be and
+// `named` is how to say that in the model's own vocabulary, since `when.at` is
+// a field it can go and edit while a rhythm's first firing is only a
+// consequence of one.
+func standingRetires(moment, firing time.Time, named, tail string) string {
+	return "Invalid arguments: rails.expires " + standingClockExact(moment) +
+		" is not after " + named + " " + standingClockExact(firing) +
+		", so it would retire before it ever fired. " + tail
 }
 
 // standDispatch dispatches the six ops. Everything it can answer badly is an
@@ -508,7 +534,7 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if problem != "" {
 		return standing.Item{}, problem
 	}
-	rails, problem := standingRails(parsed, when.Kind, now)
+	rails, problem := standingRails(parsed, when, now)
 	if problem != "" {
 		return standing.Item{}, problem
 	}
@@ -678,9 +704,13 @@ func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Acti
 // nothing ever reads and every surface would still have to decide not to print.
 // An END is different and is kept: "never touch the public API until the release
 // lands" is a rule with a last day, and the pass retires it on that day.
-func standingRails(parsed standArguments, wakes standing.WhenKind, now time.Time) (standing.Rails, string) {
+//
+// IT TAKES THE WHOLE `when` AND NOT ONLY ITS KIND, because an end is a claim
+// about the item's own life and cannot be judged without the moment that life
+// starts at — see the second refusal below.
+func standingRails(parsed standArguments, when standing.When, now time.Time) (standing.Rails, string) {
 	rails := standing.Rails{}
-	if wakes != standing.WhenHold {
+	if when.Kind != standing.WhenHold {
 		if parsed.Rails.PerRunUSD == nil {
 			rails.PerRunUSD = standDefaultPerRunUSD
 		} else {
@@ -705,9 +735,67 @@ func standingRails(parsed standArguments, wakes standing.WhenKind, now time.Time
 			return rails, standingPassed("rails.expires", moment, now,
 				"Work it out from that time, or leave it out for something that never expires.")
 		}
+		// AND AN EXPIRY STILL IN THE FUTURE DOES THE SAME DAMAGE WHEN IT STANDS
+		// BEFORE THE ITEM'S OWN FIRST FIRING, which is the half of this law that
+		// was missing (issue #188). The pass asks about the end FIRST, as rail
+		// one of internal/standing/tick.go's [Ticker.one], before anything can
+		// be due — so an end at or before the moment retires the item by every
+		// road there is and no clock could ever have delivered it. A person who
+		// answered yes to a card for a one-off reminder then waits for something
+		// that was already dead when they said so, and the only trace is a line
+		// in a log nobody reads: the worst of both endings again, and refused
+		// for the same reason.
+		//
+		// The defect this pins is exact arithmetic and not a slip: the model
+		// wrote `in 1 minute — 23:11` for the words and took `23:11` for the end
+		// from the same words, while the engine resolved the moment to
+		// 23:11:11 — eleven seconds later. So the refusal is spelled to the
+		// SECOND, or it would read as a moment that is not after itself.
+		if firing, named, has := standingFirstFiring(when, now); has && !moment.After(firing) {
+			tail := "Put it after that moment, or leave it out for something that never expires."
+			if when.Kind == standing.WhenAt {
+				tail = "Put it after that moment, or leave it out — a one-off retires as it fires and needs no end at all."
+			}
+			return rails, standingRetires(moment, firing, named, tail)
+		}
 		rails.Expires = moment
 	}
 	return rails, ""
+}
+
+// standingFirstFiring is the earliest moment an item could ever wake, for the
+// two shapes whose first waking is arithmetic rather than a fact about the
+// world, together with the name the refusal should call it by.
+//
+// THE OTHER SHAPES HAVE NO ANSWER HERE AND ARE NOT GUESSED AT. A file watch, an
+// idle watch and a probe wake when the world does something, which may be in a
+// second or never, so there is no moment an end could be measured against and
+// the only honest check on those is the one against the clock. A hold never
+// wakes at all, and an end on one is the whole point of keeping it: "never
+// touch the public API until the release lands" retires on the release day.
+//
+// A rhythm whose spec this cannot read answers nothing rather than a refusal of
+// its own, because [standing.Item.Validate] is what rejects an unreadable
+// rhythm and two refusals for one mistake would send the model to fix the wrong
+// field.
+func standingFirstFiring(when standing.When, now time.Time) (moment time.Time, named string, has bool) {
+	switch when.Kind {
+	case standing.WhenAt:
+		if when.At.IsZero() {
+			return time.Time{}, "", false
+		}
+		return when.At, "when.at", true
+	case standing.WhenEvery:
+		next, err := standing.ParseEvery(when.Every)
+		if err != nil {
+			return time.Time{}, "", false
+		}
+		// The pass reads a rhythm's first due the same way, from the clock at
+		// the moment it first sees the item (tick.go's WhenEvery arm), so this
+		// is that item's own first firing and not a second opinion about it.
+		return next(now), "its first firing", true
+	}
+	return time.Time{}, "", false
 }
 
 // standingCostWords keeps person-named money word for word and otherwise says
