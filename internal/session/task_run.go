@@ -32,10 +32,14 @@ package session
 //
 // ── A NODE STOPS BY A NAMED THRESHOLD, NEVER BY WANDERING ──
 //
-// Three things end a node's work, and every one of them has a name the person
-// can read: its deadline, its step budget, and its no-progress count
+// Four things end a node's work, and every one of them has a name the person
+// can read: its deadline, its step budget, its no-progress count, and a run of
+// actions that produced nothing that was not already there
 // (harness-research-notes.md §1 — Argus terminates on named thresholds rather
-// than on a reviewer's judgement, arXiv:2608.05144). A node that has taken
+// than on a reviewer's judgement, arXiv:2608.05144). The fourth is the only one
+// that does not end anything on its own: reaching it is what makes the harness
+// ASK, with the count and the working copy in front of whoever is asked
+// (effects.go). A node that has taken
 // forty steps or has taken six in a row without changing a file is not working,
 // it is circling, and the difference between a harness that says "stopped: 6
 // steps without progress" and one that lets the thirty-minute deadline collect
@@ -3556,11 +3560,29 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		extensions int
 		deadline   = time.Now().Add(limits.deadline)
 		evidence   []string
+		// effects is what this node has PRODUCED, as opposed to what it has done
+		// (effects.go). The evidence above is a narrative of calls and a
+		// narrative of successful calls reads as work whatever the calls left
+		// behind; this is the one fact under it — whether anything is different
+		// now — and it is what the checkpoint is handed alongside the story.
+		effects = newEffectLedger()
 		// reportedParts is monotone for this worker's division. A landing is
 		// progress even when its note races the event drain below.
 		reportedParts = child.reportedChildren()
 	)
-	checkpoint := func(threshold string) bool {
+	// checkpoint puts the WORKING or CIRCLING question and answers whether the
+	// work carries on.
+	//
+	// `renew` is whether an answer of WORKING buys the node MORE — the next equal
+	// slice of the deadline and, with it, the next slice of the step budget
+	// ([taskMaxExtensions]). It is true for the two thresholds that are BOUNDS
+	// being met: the node has spent its steps or its hour, and carrying on means
+	// being granted another allowance. It is false for the threshold that is a
+	// FINDING about the work — a run of actions that produced nothing new — where
+	// carrying on means only "keep going on what you already have". A finding
+	// that handed out another two hundred steps would be a spin buying itself
+	// room, which is the opposite of what noticing it is for.
+	checkpoint := func(threshold string, renew bool) bool {
 		if node == nil {
 			stopped = "stopped at " + threshold
 			stop()
@@ -3575,7 +3597,24 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 			stop()
 			return false
 		}
-		working, reason := owner.taskProgress(ctx, node, dir, evidence, log)
+		// THE FACT GOES IN FRONT OF THE STORY. A reader handed twenty lines of
+		// successful calls has to infer repetition from them and will not; handed
+		// one sentence saying how many of them changed nothing, it has the finding
+		// outright and can spend its reading on the working copy instead.
+		asked := evidence
+		if line := effects.sameEffectLine(); line != "" {
+			asked = append([]string{line}, evidence...)
+		}
+		working, reason := owner.taskProgress(ctx, node, dir, asked, log)
+		if working && !renew {
+			// THE READER LOOKED AT THIS RUN AND SAID CARRY ON, so the run starts
+			// again from here. Without the reset the next action would meet the
+			// same count and ask the same question of the same reader, which is a
+			// model call per step for as long as the node keeps going.
+			effects.pardon()
+			fmt.Fprintf(log, "checkpoint: working — carrying on\n")
+			return true
+		}
 		if working && extensions < taskMaxExtensions {
 			extensions++
 			deadline = deadline.Add(limits.deadline)
@@ -3597,10 +3636,6 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				fmt.Fprintf(log, "· %s\n", event.Hint)
 			case EventToolEnd, EventToolFailed:
 				steps++
-				evidence = append(evidence, event.Tool+" "+strings.TrimSpace(event.Args))
-				if len(evidence) > 24 {
-					evidence = evidence[len(evidence)-24:]
-				}
 				// AND WHETHER THIS NODE WAS RUNNING ITS WORK, which is not a
 				// question about progress at all — it is what makes the landing's
 				// "unverified" sentence below a fact rather than a guess
@@ -3627,7 +3662,32 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				moved := worktreeMoved(dir, &lastDirt)
 				path, wrote := changedPath(event, dir)
 				saved := wrote && event.Kind == EventToolEnd
+				// ── AND THE JOURNAL RECORDS WHAT THE STEP PRODUCED ──
+				//
+				// The line the checkpoint will read used to be the hand and its
+				// arguments and nothing else, which is a story about what the node
+				// SET OUT to do. A story of successful calls reads as work whatever
+				// the calls left behind, and that is the whole of the defect this
+				// answers: a worker rewriting one file with the same bytes writes a
+				// perfect narrative of editing. So every line now carries the one
+				// fact a reader cannot get from an exit code — whether anything is
+				// different because of the call (effects.go).
+				//
+				// IT IS RECORDED HERE, after the saving call's file is known,
+				// because the effect of a call that saves something is the file and
+				// not the sentence it answered with.
+				effect, produced := effectPrintOf(event, dir, path, saved, moved, lastDirt)
+				repeat := effects.saw(event.Tool, effect, produced)
+				evidence = append(evidence, effectEvidence(event, repeat))
+				if len(evidence) > 24 {
+					evidence = evidence[len(evidence)-24:]
+				}
 				added := addedSomething(event, saved, moved, ledger)
+				// AND THE RUN IS FOLDED IN BESIDE THE COUNTER, off the same
+				// reading of the same step. It grows only where the counter was
+				// reset by a step that changed nothing, which is the one shape
+				// the counter cannot see ([effectLedger.counted]).
+				effects.counted(event.Tool, added, repeat)
 				reports := child.reportedChildren()
 				partLanded := reports > reportedParts
 				if partLanded {
@@ -3724,12 +3784,41 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				}
 				switch {
 				case steps >= limits.maxSteps*(extensions+1):
-					checkpoint(fmt.Sprintf("%d-step checkpoint", limits.maxSteps*(extensions+1)))
+					checkpoint(fmt.Sprintf("%d-step checkpoint", limits.maxSteps*(extensions+1)), true)
 				case !time.Now().Before(deadline):
-					checkpoint("deadline checkpoint")
+					checkpoint("deadline checkpoint", true)
 				case idle >= limits.noProgress:
 					stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
 					stop()
+				// ── AND THE STEPS THAT LOOK LIKE PROGRESS AND ARE NOT ──
+				//
+				// It comes LAST, under the counter, and that placement is the whole
+				// of its scope. Everything the counter already catches — the same
+				// question asked again, the same directory listed again — reaches
+				// its threshold on the same step and is stopped there, exactly as
+				// it always was. What is left underneath is the one shape the
+				// counter is blind to by construction: a SUCCESSFUL SAVE, which
+				// resets it ([addedSomething]) without anybody ever asking what
+				// landed. Measured on 2026-08-31: one file rewritten twenty times
+				// in twenty-two minutes for $7.99, every call clean, the counter at
+				// zero throughout, and the step cap the only thing that ended it.
+				//
+				// NOTHING IS DECIDED HERE. The run length says WHEN TO ASK and
+				// never what the answer is: the reader is handed the sentence
+				// counting the run and the working copy it is standing in, and it
+				// rules. A number in this file saying how many identical writes are
+				// too many would be a number wrong for the next kind of work — the
+				// reason the leash was fed a narrative in the first place is that
+				// nobody could write that number down honestly.
+				//
+				// AND IT IS THE NODE'S OWN THRESHOLD IT BORROWS, not one of its
+				// own. `no_progress` is already this harness's single answer to
+				// "how many in a row is worth stopping over", it is on the wire so
+				// a brief can raise it for work that is legitimately repetitive,
+				// and a second number beside it would be the drift the
+				// one-source-of-truth law forbids (CLAUDE.md's design laws).
+				case effects.sameEffectRun() >= limits.noProgress:
+					checkpoint("repeat checkpoint", false)
 				}
 			case EventError:
 				failure = event.Err
@@ -3957,20 +4046,56 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 		return false, "the progress check could not start: " + err.Error()
 	}
 	defer func() { _ = auditor.Close(); a.foldTaskUsage(node, auditor) }()
+	// ── THE READER STANDS IN THE WORKER'S OWN GROUND, AND HAS TO LOOK AT IT ──
+	//
+	// `dir` is the tree the work is running in, and it is the tree this reader is
+	// put in ([Agent.newAuditAgent]'s Workspace and the door's ground). What was
+	// missing was the OBLIGATION: the question said "read the working copy if
+	// useful", and a reader that does not open it is answering "is this work
+	// moving toward the brief" from a list of attempted calls alone — which is a
+	// question about the world answered from a story about intentions. The
+	// benefit of the doubt then goes to WORKING every time, because a story of
+	// clean calls has nothing in it that looks like failure.
+	ground := strings.TrimSpace(dir)
 	auditor.mu.Lock()
-	auditor.system = `You are checking the progress of running work, read-only. Decide only whether the recent evidence and working copy show movement toward the brief or repeated motion without new information. Answer in at most four lines. The first word must be WORKING or CIRCLING, followed by concrete evidence. WORKING means the leash should be renewed; CIRCLING means it should land now.`
+	auditor.system = `You are checking the progress of running work, read-only. Decide only whether the recent evidence and the working copy show movement toward the brief or repeated motion without new information. Read the working copy before you answer: the evidence lists what was attempted, and only the working copy says what is there. Answer in at most four lines. The first word must be WORKING or CIRCLING, followed by concrete evidence. WORKING means the leash should be renewed; CIRCLING means it should land now.`
 	auditor.mu.Unlock()
-	question := "Decide whether this running task is still WORKING TOWARD THE BRIEF or CIRCLING. Read the working copy if useful. Recent evidence:\n" + strings.Join(evidence, "\n") + "\n\nBrief:\n" + node.instruction() + "\n\nAnswer WORKING or CIRCLING first, then concise evidence."
-	events, err := auditor.Submit(ctx, question)
+	question := "Decide whether this running task is still WORKING TOWARD THE BRIEF or CIRCLING."
+	if ground != "" {
+		question += " You are standing in the working copy the work is running in, at " + ground + ". Read it before you answer."
+	}
+	question += " Recent evidence:\n" + strings.Join(evidence, "\n") + "\n\nBrief:\n" + node.instruction() + "\n\nAnswer WORKING or CIRCLING first, then concise evidence."
+	// ask puts one question and answers with what was said and how many times the
+	// reader reached for the tree while saying it.
+	ask := func(text string) (string, int, error) {
+		events, err := auditor.Submit(ctx, text)
+		if err != nil {
+			return "", 0, err
+		}
+		looked := 0
+		for event := range events {
+			if event.Kind == EventToolBegin {
+				looked++
+				fmt.Fprintf(log, "checkpoint · %s\n", event.Hint)
+			}
+		}
+		return strings.TrimSpace(lastSaid(auditor)), looked, nil
+	}
+	said, looked, err := ask(question)
 	if err != nil {
 		return false, "the progress check could not be asked: " + err.Error()
 	}
-	for event := range events {
-		if event.Kind == EventToolBegin {
-			fmt.Fprintf(log, "checkpoint · %s\n", event.Hint)
+	// REQUIRED IS A THING THAT HAPPENS, NOT A WORD IN A PROMPT. A reader that
+	// answered without opening anything is asked once more, told what it did, and
+	// its second answer stands. Once and not until it complies: a reader that
+	// will not look twice is a reader whose answer is the best available, and a
+	// loop here would spend the node's money arguing with it.
+	if looked == 0 && ground != "" {
+		again, _, err := ask("You answered without reading the working copy. Open it now — list what is there and look at the files the evidence names — and answer again. WORKING or CIRCLING first, then concise evidence.")
+		if err == nil && again != "" {
+			said = again
 		}
 	}
-	said := strings.TrimSpace(lastSaid(auditor))
 	upper := strings.ToUpper(firstLine(said))
 	if strings.HasPrefix(upper, "WORKING") {
 		return true, said
