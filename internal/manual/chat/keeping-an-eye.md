@@ -661,7 +661,10 @@ folder never said what it came to; and not a folder something still holds open.
 **Conversations are swept in exactly one case**, and it is the same week and the
 same judgement: one you started **in a temp directory**, seven days after you
 last said anything to it. Everything it holds goes with it — the transcript, and
-the `work/` workspace if it owned one. Every other conversation under
+the `work/` workspace if it owned one. If a task of that conversation was still
+running when you last closed it, furrow is told to forget the copy of your
+folder that task was working in as well, so `furrow forks` is never left naming
+a directory that has gone. Every other conversation under
 `~/.aforge/v3/projects/` stays whatever its age. If you work in a temp directory
 and want to keep what a conversation makes, anchor it with `/workspace <path>`
 or copy the files out; the starting-aforge page has both under *I deleted my chat

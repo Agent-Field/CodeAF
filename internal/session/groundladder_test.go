@@ -507,6 +507,12 @@ func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
 // has been pointed at, and writes a `.furrow/` directory into that folder when
 // it is — which is the whole reason [hideFurrowMarker] exists, so a fake that
 // skipped it would leave the one thing nobody could test.
+//
+// AND IT REALLY KEEPS THE FORK RECORDS, one file per universe under the marker
+// directory, which `forks` lists and `fork-rm` removes. A fake that printed a
+// drop without forgetting anything would let issue #195's test assert that a
+// drop was ASKED FOR and never that the record went, and the record going is the
+// entire claim.
 func installFakeFurrow(t *testing.T) {
 	t.Helper()
 	script := filepath.Join(t.TempDir(), "furrow")
@@ -525,7 +531,19 @@ watch)
   echo '{"snapshot":"aaaabbbbcccc0001","workspace":"'"$repo"'"}'
   ;;
 fork-rm)
+  rm -f "$repo/.furrow/forks/$2"
   echo '{"dropped":"'"$2"'"}'
+  ;;
+forks)
+  printf '['
+  separator=""
+  for record in "$repo"/.furrow/forks/*; do
+    [ -f "$record" ] || continue
+    printf '%s' "$separator"
+    cat "$record"
+    separator=","
+  done
+  printf ']\n'
   ;;
 fork)
   name="$2"
@@ -536,6 +554,8 @@ fork)
   done
   mkdir -p "$destination"
   cp -a "$repo"/. "$destination"/
+  mkdir -p "$repo/.furrow/forks"
+  echo '{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}' > "$repo/.furrow/forks/$name"
   echo '{"plan":{},"result":{"name":"'"$name"'","destination":"'"$destination"'","base_snapshot":"aaaabbbbcccc0001","head_snapshot":"aaaabbbbcccc0009"}}'
   ;;
 *)
@@ -550,4 +570,24 @@ esac
 	t.Setenv(furrow.BinaryEnvVar, script)
 	furrow.Forget()
 	t.Cleanup(furrow.Forget)
+}
+
+// forkNames is what furrow says it is keeping a record of, in the ground's own
+// workspace. It reads through the package every caller reads through, so a test
+// asserting that a record went is asserting it the way the harness would see it.
+func forkNames(t *testing.T, ground string) []string {
+	t.Helper()
+	workspace := furrow.Open(context.Background(), ground)
+	if workspace == nil {
+		t.Fatalf("furrow is not here for %s, so nothing can be asked about its forks", ground)
+	}
+	forks, err := workspace.Forks(context.Background())
+	if err != nil {
+		t.Fatalf("furrow forks: %v", err)
+	}
+	names := make([]string, 0, len(forks))
+	for _, fork := range forks {
+		names = append(names, fork.Name)
+	}
+	return names
 }

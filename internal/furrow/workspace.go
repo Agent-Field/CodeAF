@@ -680,14 +680,23 @@ func (w *Workspace) Fork(ctx context.Context, name, destination string) (Fork, e
 // record and the timeline, so that `furrow forks` does not fill up with the
 // universes of every task this machine has ever run.
 //
-// A failure is not returned. Nothing a caller could do about it is worth the
-// branch: the work has already landed, and a leftover fork record costs a line
-// in a listing.
-func (w *Workspace) DropFork(ctx context.Context, name string) {
+// A FAILURE IS REPORTED AND NEVER DECIDED ABOUT HERE, because what one is worth
+// depends entirely on who asked. A landing has already put the work in, so a
+// record furrow would not drop costs it one line in a listing and it says
+// nothing about it. The sweep that reaps a session nobody landed is the last
+// thing on the machine that will ever know this fork's name, and the directory
+// the record points at is about to go — so it writes the miss down
+// (internal/session/sweep.go). One door, two readings, and neither of them is
+// this package's to make.
+func (w *Workspace) DropFork(ctx context.Context, name string) error {
 	if name = strings.TrimSpace(name); name == "" {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
-	_, _, _ = w.run(ctx, "--json", "fork-rm", name, "--keep-files")
+	stdout, stderr, err := w.run(ctx, "--json", "fork-rm", name, "--keep-files")
+	if err != nil && len(documents(stdout)) == 0 {
+		return failure(stderr, err)
+	}
+	return nil
 }
