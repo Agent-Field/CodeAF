@@ -356,7 +356,8 @@ instead and its card says where.
 look is settled later — you press accept, or a fresh check comes back holding — and what
 goes home then is the list it settled with. On a plain folder that means the accept lays the
 whole family's files back over your folder, exactly as a task that finished cleanly would
-have; on a repository it merges the branch the ordinary way.
+have — unless you changed one of those files yourself in the meantime, which has its own
+section below; on a repository it merges the branch the ordinary way.
 
 That is why a task's branch is a change you can read. Its checkout is its own to make a
 mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
@@ -1343,7 +1344,9 @@ stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below — or the work held and its branch would not merge cleanly — or what
+its own section below — or the work held and its branch would not merge cleanly, or the
+folder it was going to lay its work back over holds an edit of your own in one of those
+files — or what
 was left of the work turned out to be something no worker can do at all, which lands this
 way before a worker is ever started (*A task that landed needing your look without doing
 anything*). The task is neither done nor failed: nothing merges, the branch is kept, and nothing
@@ -1461,6 +1464,34 @@ If nothing overlaps, nothing changes: the task merges and lands `done` exactly a
 did. There is no setting for this and no way to see it before the run — the earlier warning
 before a task starts is a separate thing, and it cannot see this case at all.
 
+## A task working on a folder wrote over my own edit — I changed a file while the task ran, my changes disappeared
+
+It does not, and this is the folder's half of what a repository ground gets from git.
+
+A task whose ground is a **plain folder** works in a private copy of it and lays the files
+it wrote back over your folder by name when it lands. **A file you changed there yourself
+while it worked is never written over.** Nothing at all is laid, the task keeps its whole
+copy where it is, and it lands `needs your look`:
+
+`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/tasks/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+
+Both versions survive that: yours in your folder exactly as you left it, the task's in the
+directory the sentence names, so you can read the two and take what you want. The first few
+names are given and the rest counted, as everywhere else.
+
+**What is compared** is your folder as it stood when the task took its copy, against your
+folder now, for the files the task actually wrote — and nothing else. A file the task never
+touched is yours to edit all day. **Deleting one counts as changing it**: throwing a file
+away is something you did on purpose, so the task's version is named rather than put back.
+
+**It does not fire** when your edit left the file holding exactly what the task was going to
+write anyway — there is nothing to lose — nor for a task started by a build older than this
+one, which lands the way it always did.
+
+**Pressing accept does not change it.** An accept says the work is good, and it is; it
+cannot decide which of two versions of your file you meant, so an accept over a folder that
+moved leaves the task needing your look with the same sentence.
+
 ## Nothing is thrown away
 
 On every ending except a clean merge, the branch is **kept and named**. This is true
@@ -1479,6 +1510,9 @@ without exception:
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
+- a task on a plain folder that would have written over an edit of your own lays **nothing**,
+  keeps its whole copy of the folder, lands as **needs your look** and names the files that
+  changed there while it ran;
 - a task that left files it did not write keeps them too — in its task folder, named in the
   report, never on your branch, after its working copy is given back;
 - a session that ended mid-run keeps the branch, and says where it is.
