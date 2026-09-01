@@ -112,8 +112,17 @@ func (t taskTree) carryGroundWork(blocked []string) (bool, string) {
 		return false, t.refuseMerge(blocked, stood)
 	}
 	stood = strings.TrimSpace(stood)
+	// THE STASH IS PROVED TO HAVE HAPPENED, and this is not belt-and-braces. `git
+	// stash push` with nothing to save prints "No local changes to save" AND EXITS
+	// ZERO — so a road that trusted the exit code would go on to `stash pop` an
+	// entry that belongs to the person, from some other day, over a tree it just
+	// reset. The ref before and after is the only honest test.
+	held := stashTop(t.root)
 	if out, err := git(t.root, "stash", "push", "-m", groundStashMessage(t.branch)); err != nil {
 		return false, t.refuseMerge(blocked, out)
+	}
+	if stashTop(t.root) == held {
+		return false, t.refuseMerge(blocked, "")
 	}
 	if out, err := mergeTaskBranch(t.root, t.branch); err != nil {
 		// The names are read while the conflicted index still holds them, exactly
@@ -148,6 +157,18 @@ func (t taskTree) putGroundWorkBack(stood string) {
 		_, _ = git(t.root, "reset", "--hard", stood)
 	}
 	_, _ = git(t.root, "stash", "pop")
+}
+
+// stashTop is the commit `refs/stash` points at, or the empty string when the
+// repository holds no stash at all. It is the before-and-after reading that says
+// whether a `git stash push` actually put anything away ([taskTree.carryGroundWork]
+// says what happens to somebody's older stash if nothing does).
+func stashTop(root string) string {
+	out, err := git(root, "rev-parse", "--verify", "--quiet", "refs/stash")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // mergeTaskBranch is the one spelling of the merge, and it carries the identity

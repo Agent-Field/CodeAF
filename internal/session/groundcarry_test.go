@@ -254,3 +254,29 @@ func TestNoRefusalEverEndsInABareColon(t *testing.T) {
 		t.Fatalf("a conflicted index stopped naming its files:\n%s", said)
 	}
 }
+
+// AND THE CARRY NEVER POPS SOMEBODY ELSE'S STASH. `git stash push` with nothing
+// to save prints "No local changes to save" and EXITS ZERO, so a road that
+// trusted its exit code would go on to pop whatever entry the person happened to
+// have from some other day. The ref before and after is the test that says
+// whether anything was actually put away.
+func TestTheCarryCanTellWhetherItActuallyStashedAnything(t *testing.T) {
+	repo := newTestRepo(t)
+	if top := stashTop(repo); top != "" {
+		t.Fatalf("a fresh repository answered %q for its stash", top)
+	}
+	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own line\n")
+	mustGit(t, repo, "stash", "push", "-m", "the person's own")
+	first := stashTop(repo)
+	if first == "" {
+		t.Fatal("a repository holding a stash answered that it holds none")
+	}
+	// A push with nothing to save writes no entry AND DOES NOT FAIL, which is the
+	// whole reason this reading exists.
+	if _, err := git(repo, "stash", "push", "-m", groundStashMessage("task/nothing")); err != nil {
+		t.Fatalf("an empty stash push failed, which is not what git does: %v", err)
+	}
+	if top := stashTop(repo); top != first {
+		t.Fatalf("the top of the stash moved to %q on a push that saved nothing", top)
+	}
+}
