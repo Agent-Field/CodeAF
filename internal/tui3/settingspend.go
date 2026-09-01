@@ -96,6 +96,11 @@ func (s *sheet) spendingItems() []sheetItem {
 	if s.today != nil {
 		items = append(items, sheetItem{read: s.today})
 	}
+	// AND WHAT THE MACHINE COULD NOT WRITE DOWN, directly under the day it makes
+	// short. Absent whenever nothing was lost, which is nearly always.
+	if unwritten := unwrittenReading(); unwritten != nil {
+		items = append(items, sheetItem{read: unwritten})
+	}
 	add(config.KeyDailyBudget)
 	add(config.KeySpendRail)
 	add(config.KeyPlanConsent)
@@ -362,4 +367,43 @@ func (a *app) readDayCost() {
 
 // spentThisSessionUSD is what the conversation in front of the person has spent,
 // for the receipt beside its own ceiling. Nothing spent is nothing said.
-func (a *app) spentThisSessionUSD() (float64, bool) { return a.cost, a.cost > 0 }
+//
+// IT IS [app.spendShown] AND NOT `a.cost`, which is the tab's half of issue
+// #269. The status line's money segment draws the conversation's whole tree
+// (treespend.go); this row used to draw the conversation's own books alone, so
+// `$53.58` on the row and `this one $2.53` on the tab were the same money said
+// two ways with a running family between them. One function answers both, so a
+// person who presses the figure to come here reads the figure they pressed.
+func (a *app) spentThisSessionUSD() (float64, bool) {
+	shown := a.spendShown()
+	return shown, shown > 0
+}
+
+// unwrittenReading is the row that appears only when the machine failed to write
+// spending down ([session.UsageDrops]).
+//
+// IT IS HERE BECAUSE A SHORT LEDGER READS AS A CHEAP DAY. The writer drops a row
+// rather than making a turn wait on a disk that has stopped answering, which is
+// the right bargain and the wrong silence: every figure on this tab is then
+// smaller than the truth by however many calls went missing, and nothing on the
+// screen said so. Zero drops draws nothing at all, by the emptiness law — this
+// is the same sentence issue #161's unbilled-call marker makes about the other
+// gap, and it belongs on the same surface.
+func unwrittenReading() *railReading {
+	dropped := session.UsageDrops()
+	if dropped <= 0 {
+		return nil
+	}
+	figure := strconv.FormatInt(dropped, 10)
+	return &railReading{name: spendUnwrittenWord,
+		value:   rowSay(figure+" "+spendUnwrittenSaid, figure+" unwritten", figure),
+		receipt: rowSay("every figure here is short by that much", "the figures are short")}
+}
+
+// spendUnwrittenWord names that row, and spendUnwrittenSaid is what it says.
+// They are constants because the /spend place says the same thing in its own
+// pointer line (spendplace.go) and two spellings of one fact are two facts.
+const (
+	spendUnwrittenWord = "unwritten"
+	spendUnwrittenSaid = "spending records could not be written"
+)
