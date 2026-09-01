@@ -565,6 +565,15 @@ type homeView struct {
 	// mode and nothing to switch: a person's fingers should not have to choose
 	// what a word is for before they have finished typing it.
 	box editor
+	// carrying says the tray this box's next message would take with it is
+	// holding something ([app.chips], attach.go). It is a COPY of a fact that
+	// lives on the app, kept the way [homeView.exchanges] is and for the same
+	// reason: every question this screen asks about "is anything typed" is asked
+	// from a method on the view, and a file dropped on home leaves NOTHING in the
+	// box — an ordinary file rides the tray and writes no token — so a screen
+	// that read the box alone would answer "nothing typed" to somebody looking at
+	// their own log file on the row above it.
+	carrying bool
 	// picked says the person walked off the action row onto a match. It is what
 	// keeps the two readings of the box from fighting: while it is false the
 	// cursor sits on "start a new conversation" through every keystroke, so
@@ -821,6 +830,12 @@ func (a *app) raiseHome() tea.Cmd {
 		// with its row, its tail and its pane exactly as they were left
 		// (homeexchange.go).
 		exchanges: a.exchanges,
+		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
+		// person rather than to the screen (attach.go), so a picture attached in
+		// the conversation is a picture home's box is holding the moment it opens
+		// — and it is the reason this screen can be "typed into" with nothing
+		// typed at all ([homeView.carrying]).
+		carrying: len(a.chips) > 0,
 	}
 	a.readStandBands()
 	// AND WHAT MEMORY HAS TO SAY FOR ITSELF, on the same reading of the same
@@ -1558,52 +1573,56 @@ func (h *homeView) buildWorld() {
 		for i, j := 0, len(found)-1; i < j; i, j = i+1, j-1 {
 			found[i], found[j] = found[j], found[i]
 		}
-		// A SEARCH HAS NO TIERS AT ALL. Every project that holds a match is drawn
-		// open, wherever it lives, because a filter that folded away half of what
-		// it found would be a filter lying about the machine — the same law the
-		// quiet tail already keeps ([homeView.split]).
-		//
-		// AND THE ERRAND ROWS ARE DRAWN UNDER A QUERY TOO, unlike the standing
-		// bands. A band is a description of something at rest that the query
-		// never considered; an exchange is a conversation happening right now
-		// with the person's own question in it, and a filter that hid one would
-		// be this screen losing an errand because somebody typed three letters.
-		h.placeExchanges(found)
-		for _, hit := range found {
-			h.blank()
-			h.lines = append(h.lines, homeLine{
-				kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
-			})
-			h.projectBlock(hit, query)
-		}
-		// THE ACTION ROW CLOSES THE LIST, directly above the box the words were
-		// typed into ([homeAction] says why it is not at the top any more). It is
-		// separated from the matches by the same blank line that separates two
-		// projects, because it is not one of them: everything above it exists, and
-		// it is the one row that is a thing that does not.
-		h.blank()
-		// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
-		// because the two rows are one cluster: they are the two things enter can
-		// do with the same characters, and a gap would read as two unrelated
-		// offers. The cursor still RESTS on `start a new conversation` — typing and
-		// pressing enter means today what it meant yesterday — and this row is the
-		// one ↑ that asks the sentence instead of opening a conversation for it
-		// (homeexchange.go).
-		// AND THE PLACES THE WORDS MATCH SIT DIRECTLY OVER THAT CLUSTER, which
-		// in a drop-up is the top of the results: a place ranks first when the
-		// words match it, so it is the row nearest what somebody is reading
-		// upward from (homeplaces.go).
-		h.lines = append(h.lines, h.placeLines(query)...)
-		// THE COMMAND OFFERS SIT BETWEEN THE PLACES AND THE ERRAND ROWS, best match
-		// last of all (homeslash.go's [homeView.commandLines]). A slash query leaves
-		// the places empty (homeplaces.go's [placeMatches]), so the two never compete
-		// for the column; and a command is what the fingers are reaching for when a
-		// "/" was typed, so it is the first thing read out of the box.
-		h.lines = append(h.lines, h.commandLines()...)
-		h.lines = append(h.lines, homeLine{kind: homeAskHere})
-		h.lines = append(h.lines, homeLine{kind: homeAction})
-		return
 	}
+	// AND THE ROWS ARE DRAWN WHETHER OR NOT ANY WORDS WERE TYPED. The box is not
+	// the only thing that can be holding something: a file dropped on home rides
+	// the tray and leaves no word behind it ([homeView.carrying]), and the drop-up
+	// still owes that person the action row their enter is about.
+	//
+	// A SEARCH HAS NO TIERS AT ALL. Every project that holds a match is drawn
+	// open, wherever it lives, because a filter that folded away half of what
+	// it found would be a filter lying about the machine — the same law the
+	// quiet tail already keeps ([homeView.split]).
+	//
+	// AND THE ERRAND ROWS ARE DRAWN UNDER A QUERY TOO, unlike the standing
+	// bands. A band is a description of something at rest that the query
+	// never considered; an exchange is a conversation happening right now
+	// with the person's own question in it, and a filter that hid one would
+	// be this screen losing an errand because somebody typed three letters.
+	h.placeExchanges(found)
+	for _, hit := range found {
+		h.blank()
+		h.lines = append(h.lines, homeLine{
+			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
+		})
+		h.projectBlock(hit, query)
+	}
+	// THE ACTION ROW CLOSES THE LIST, directly above the box the words were
+	// typed into ([homeAction] says why it is not at the top any more). It is
+	// separated from the matches by the same blank line that separates two
+	// projects, because it is not one of them: everything above it exists, and
+	// it is the one row that is a thing that does not.
+	h.blank()
+	// AND `ask here` SITS DIRECTLY ON TOP OF IT, with no blank between them,
+	// because the two rows are one cluster: they are the two things enter can
+	// do with the same characters, and a gap would read as two unrelated
+	// offers. The cursor still RESTS on `start a new conversation` — typing and
+	// pressing enter means today what it meant yesterday — and this row is the
+	// one ↑ that asks the sentence instead of opening a conversation for it
+	// (homeexchange.go).
+	// AND THE PLACES THE WORDS MATCH SIT DIRECTLY OVER THAT CLUSTER, which
+	// in a drop-up is the top of the results: a place ranks first when the
+	// words match it, so it is the row nearest what somebody is reading
+	// upward from (homeplaces.go).
+	h.lines = append(h.lines, h.placeLines(query)...)
+	// THE COMMAND OFFERS SIT BETWEEN THE PLACES AND THE ERRAND ROWS, best match
+	// last of all (homeslash.go's [homeView.commandLines]). A slash query leaves
+	// the places empty (homeplaces.go's [placeMatches]), so the two never compete
+	// for the column; and a command is what the fingers are reaching for when a
+	// "/" was typed, so it is the first thing read out of the box.
+	h.lines = append(h.lines, h.commandLines()...)
+	h.lines = append(h.lines, homeLine{kind: homeAskHere})
+	h.lines = append(h.lines, homeLine{kind: homeAction})
 }
 
 // homeEmptyLines is [homeEmptyWord] as the rows of the places column: the
@@ -1808,15 +1827,23 @@ func (h *homeView) split(project session.Project, rows []session.SessionRow, que
 	return shown, quiet, since
 }
 
-// query is what is in the box, folded for matching. It is the SAME text the
-// action row would send as a new conversation: one box, read two ways, and
-// never a mode (see this file's header).
+// query is what is in the box, folded for matching — the words, and never the
+// cargo. It is very nearly the same text the action row would send as a new
+// conversation: one box, read two ways, and never a mode (see this file's
+// header).
+//
+// THE PICTURE TOKENS COME OUT OF IT AND OUT OF NOTHING ELSE. A dropped
+// screenshot leaves `[image #1]` where the person put it, which is what they
+// read, edit around and send (imagepaste.go) — and which matches no conversation
+// on the machine, so a list filtered by it emptied the instant a picture landed.
+// The token is cargo; the query is the words around it.
 func (h *homeView) query() string {
-	return strings.ToLower(strings.TrimSpace(h.box.String()))
+	return strings.ToLower(strings.TrimSpace(withoutImageTokens(h.box.String())))
 }
 
-// searching reports whether anything is typed at all.
-func (h *homeView) searching() bool { return h.query() != "" }
+// searching reports whether anything is typed at all — or held on the tray,
+// which is the same claim about the same message ([homeView.carrying]).
+func (h *homeView) searching() bool { return !h.box.empty() || h.carrying }
 
 // sameRow reports whether two lines stand for THE SAME THING. Not the same line
 // number — the list is rebuilt and re-sorted under the cursor constantly — and
@@ -2820,10 +2847,27 @@ func (a *app) homeEnter() tea.Cmd {
 		// the two a leading slash means is [homeView.runLabel]'s one question,
 		// asked here and by the row itself, so the screen cannot promise one
 		// meaning while the key takes the other.
-		if line := strings.TrimSpace(h.box.String()); h.runLabel(line) != "" {
-			return a.homeSlash(line)
+		typed := strings.TrimSpace(h.box.String())
+		if h.runLabel(typed) != "" {
+			return a.homeSlash(typed)
 		}
-		return a.homeStart(strings.TrimSpace(h.box.String()))
+		// AND A DROP THAT GOT ALL THE WAY TO ENTER IS STILL A DROP. Some
+		// terminals type a dragged file in character by character rather than
+		// bracketing it (dropkeys.go), and what lands here is a line of path with
+		// a leading slash — which this row read as a command and the dispatcher
+		// then answered `unknown command: /var/folders/…`, the screen telling
+		// somebody their screenshot does not exist. It is the same net chat's
+		// dispatcher falls into ([app.droppedLineInto]), over home's own box.
+		//
+		// IT IS ASKED AFTER THE ROW'S OTHER TWO READINGS AND NOT BEFORE THEM. A
+		// command is a command whatever the disk says (`/home` is a directory on
+		// every Linux box there is), and a path that names a FOLDER is a place to
+		// start a conversation in and never cargo — which is the same call
+		// [app.attachFilePath] makes about a directory handed to /attach.
+		if h.typedPlace(typed) == "" && a.homeDroppedLine(typed) {
+			return nil
+		}
+		return a.homeStart(typed)
 	case homePlace:
 		// ENTER GOES THERE, AND GOING TO A PLACE LEAVES YOU THERE (SCREEN 1g).
 		// The box is not cleared on the way — the sentence is the person's, and
@@ -3136,6 +3180,9 @@ func (a *app) homeStart(text string) tea.Cmd {
 		return cmd
 	}
 	a.closeHome()
+	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
+	// the conversation being left hands its chips to the aside and the renew hands
+	// them back, on the law that the draft goes with the PERSON (detach.go).
 	renewed, started := a.renew()
 	// THE SENTENCE IS ONLY SENT INTO A CONVERSATION THE RENEW ACTUALLY OPENED,
 	// which is what remains of this door's repair now that the keeper refuses
@@ -3153,7 +3200,41 @@ func (a *app) homeStart(text string) tea.Cmd {
 		a.input.setText(text)
 		return nil
 	}
+	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said at the
+	// other door onto the same send: an empty sentence with a picture on the tray
+	// is not an empty message, and the door that carries the pictures is the
+	// tray's own (attach.go's [app.submitImages]).
+	if len(a.chips) > 0 {
+		return tea.Batch(renewed, a.submitImages(text))
+	}
 	return tea.Batch(renewed, a.submit(text))
+}
+
+// homeDroppedLine is the enter net over home's own box, and it reports whether
+// the line was a drop. The tokens and the chips land in home's box and on the
+// conversation's tray — the same two places the paste door puts them — so a
+// keystroke-shaped drop and a bracketed one end in the same state.
+func (a *app) homeDroppedLine(line string) bool {
+	h := &a.home
+	// THE LINE COMES OUT OF THE BOX BEFORE THE DOOR IS ASKED, which is
+	// [app.spendDrop]'s move made here for [app.spendDrop]'s reason: the door
+	// reads the box to decide, it refuses a box that starts with `/` on purpose —
+	// `/image ` followed by a dropped file is somebody using the command exactly
+	// as documented — and a dropped path puts its own `/` at the front of this
+	// box. Taking it out first is what tells the two apart.
+	held := len(a.chips)
+	h.box.reset()
+	took := a.droppedLineInto(&h.box, &a.chips, line)
+	if len(a.chips) == held {
+		// Nothing was taken — a folder, a file over the ceiling, a name that is
+		// not on this machine — and every one of those has already said so. The
+		// words go back exactly where they were typed.
+		h.box.setText(line)
+	}
+	h.carrying = len(a.chips) > 0
+	h.build()
+	a.touch()
+	return took
 }
 
 // typedPlace is the directory what was typed resolves to, or "" for anything
@@ -3247,6 +3328,16 @@ func (h *homeView) startLabel() string {
 // as a quoting that a command line does not do.
 func (h *homeView) runLabel(text string) string {
 	if !strings.HasPrefix(text, "/") {
+		return ""
+	}
+	// AND A LINE WHOSE EVERY WORD IS A PATH IS A DROP AND NEVER A COMMAND
+	// (dropkeys.go's [droppedPathShape]). It is string work on runes already in
+	// memory and it asks the disk nothing, so a command pays what it always paid:
+	// no command this surface answers has a separator inside its own word, which
+	// is exactly the test. Without it a dropped screenshot stood on this row
+	// wearing `run /Users/…/Screenshot\ 2026-08-31\ at\ 5.png`, a promise enter
+	// could only break.
+	if droppedPathShape(text) {
 		return ""
 	}
 	word := strings.TrimPrefix(text, "/")
@@ -3732,6 +3823,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// is a fact about the code that a stopwatch could only guess at
 	// ([TestAPointerMotionOnHomeBuildsOneFrame]). It is an int and an increment.
 	a.homeFrames++
+	// THE TRAY IS READ WHERE THE FRAME IS BUILT, so what this screen believes it
+	// is holding and what the row above the box draws can never disagree
+	// ([homeView.carrying]). It is a length and a comparison.
+	a.home.carrying = len(a.chips) > 0
 	// HOME IS A PLACE, SO IT PAINTS FROM THE PLACE LADDER (styles.go's
 	// [palette.onPlaces] — the conversation's inks, with the three roles THE
 	// ONE-ACCENT LAW retires re-pointed). The swap is made here as well as in
