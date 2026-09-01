@@ -3774,3 +3774,75 @@ func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
 		t.Fatal("two spellings of one far transcript keyed differently")
 	}
 }
+
+// ── THE ADVERTISING SURVIVES THE FIRST ANSWER ────────────────────────────────
+//
+// The slot's rest state is the one line a newcomer reads, and until this test
+// there was a tip that took it away from them for good: `menu-after-first-turn`
+// armed the moment the first answer landed and was retired only when somebody
+// pressed `/`. It sat in slotHint, which outranks the rest state, so from a
+// person's first answer until they happened to open the menu the slot said
+// `/ shows every command` and the doors it names — home, the flick back, the
+// switcher — were advertised nowhere at all. On a fresh home that is every frame.
+//
+// THE LAW IS DECAY, NOT REMOVAL, and decay is per gesture: the slot goes quiet
+// when the earned-tips machinery has nothing left to say, never before. And the
+// owner's standing law is why it matters: a key that only acts once you have
+// learned what it is for is invisible, so it has to be named on a home that has
+// not learned anything yet.
+func TestTheKeyAdvertisingSurvivesTheFirstTurn(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	want := homeDoorWord + " · " + microcopy
+	if got := a.legendRight(a.width); got != want {
+		t.Fatalf("a fresh conversation's slot reads %q, want %q", got, want)
+	}
+
+	// THE FIRST ANSWER LANDS. Nothing about it teaches a key, so nothing about
+	// it may take the advertising down.
+	a.turn = 1
+	a.noticeEvent(eventTurnEnded)
+	if got := a.legendRight(a.width); got != want {
+		t.Fatalf("after the first answer the slot reads %q, want %q", got, want)
+	}
+	frame, _, _ := a.frame()
+	if !strings.Contains(ansi.Strip(frame), homeDoorWord) {
+		t.Fatalf("the first answer took the door off the frame:\n%s", ansi.Strip(frame))
+	}
+
+	// AND A TIP THAT TEACHES SOMETHING THE SLOT IS NOT SAYING STILL OUTRANKS IT.
+	// The rest state is the floor, not a competitor: the machinery is the whole
+	// reason the slot is worth having.
+	a.notices.current[slotHint] = "rewind-after-long-answer"
+	a.entries = append(a.entries, entry{kind: entryAssistant, settled: true,
+		text: strings.Repeat("a long answer. ", longAnswerRunes)})
+	if got := a.legendRight(a.width); got == want {
+		t.Fatalf("an armed tip did not reach the slot: %q", got)
+	}
+}
+
+// AND WHEN EVERY GESTURE WOULD ACT, EVERY GESTURE IS NAMED — in the order a
+// person meets them, and each under its own condition rather than under another's.
+func TestTheIdleSlotNamesEveryDoorThatWouldAct(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", now)
+	lab.session("-tmp-alpha", "aaaa000000000002", "somewhere else", "/tmp/alpha", now.Add(-time.Hour))
+
+	a := lab.door(mine)
+	// A conversation behind this one is what `tab last` goes to, and a second on
+	// the machine is what the switcher's card lists (keeper.go, hop.go).
+	key := "/tmp/alpha/aaaa000000000002/transcript.jsonl"
+	a.behind = map[string]*kept{key: {conv: Conversation{SessionFile: key}, side: &aside{}}}
+	a.prev = append(a.prev, key)
+	a.hopKnown = 2
+
+	want := strings.Join([]string{homeDoorWord, lastDoorWord, hopDoorWord, microcopy}, " · ")
+	if got := a.legendRight(a.width); got != want {
+		t.Fatalf("the idle slot reads\n  %q\nwant\n  %q", got, want)
+	}
+}

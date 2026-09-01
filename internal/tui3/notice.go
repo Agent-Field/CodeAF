@@ -218,12 +218,20 @@ var notices = []notice{
 		text:   "/files finds everything made for you",
 		retire: eventFilesOpened,
 	},
-	{
-		id: "menu-after-first-turn", slot: slotHint, priority: 50,
-		armed:  func(a *app) bool { return a.turn >= 1 },
-		text:   "/ shows every command",
-		retire: eventMenuOpened,
-	},
+	// A TIP MAY NOT TEACH A KEY THE REST STATE ALREADY NAMES (ISSUE-126). There
+	// was a `menu-after-first-turn` tip here reading `/ shows every command`,
+	// armed from the end of the first turn and retired only when somebody pressed
+	// `/`. It occupied slotHint, which outranks the rest state below it — so from
+	// a person's very first answer until they happened to open the menu, the slot
+	// said one key, and the three the rest state names (`space space home`,
+	// `tab last`, `ctrl+k switch`) were never advertised at all. On a fresh home
+	// that is every frame there is.
+	//
+	// It was also a downgrade on its own terms: the rest state ends in
+	// `/ commands` (render.go's [microcopy]), so the tip displaced a line naming
+	// four doors with a longer sentence about one of them. The owner's standing
+	// law is that a key which only acts once you have learned what it is for is
+	// invisible — a tip has to teach something the frame is NOT already saying.
 	{
 		// The welcome box already walked this directory for its recent column
 		// (welcome.go), so the fact is at hand for nothing; a fresh directory
