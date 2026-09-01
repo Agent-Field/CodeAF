@@ -952,9 +952,9 @@ still ask aforge to look at the file where it lies. Pressing `enter` on that ret
 absolute path repeats the attachment refusal; it is not treated as an unknown slash
 command and the path remains in the box.
 
-A picture that is dragged in but **does not exist on this machine** is not refused at
-all — the paste was never a picture, so the text goes into the message box unchanged
-and nothing is said about it.
+A picture that is dragged in but **does not exist on this machine** stays in the message
+box unchanged and says `<basename> is not on this machine`. The path is still there to
+edit or retry; no chip means no picture will be sent.
 
 **A refusal keeps your pictures.** The tray is emptied while the message is in
 flight; if sending fails, the chips are put back, in front of anything attached in
