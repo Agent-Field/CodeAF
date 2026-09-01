@@ -634,7 +634,7 @@ func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal p
 // word than with a column of four-decimal fractions
 // (docs/design/home-rethink/SCREENS.txt states the rule).
 //
-// IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL SOMEWHERE ELSE SAYS TOO. The
+// IT IS FOR THIS PAGE'S ROWS AND NOT FOR A TOTAL ANOTHER SURFACE ALSO QUOTES. The
 // pointer line quotes the same day figure the Spending tab does, so it uses
 // [dollars] like every other surface that quotes it ([spendReading.railsRow]).
 func spendMoneyWord(usd float64) string {

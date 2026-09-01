@@ -606,9 +606,10 @@ func UsageSubjectWord(kind string) string {
 // the roster and the spend place quoting three different costs for the same
 // piece of work, each summing the same rows a slightly different way.
 //
-// A SURFACE CHOOSES WHAT TO SHOW AND NEVER WHAT TO SUM. The status line shows
-// [Receipt.Folded], /cost shows Direct beside Children, a node's own row shows
-// Direct — three readings of one arithmetic rather than three arithmetics.
+// A SURFACE CHOOSES WHAT TO SHOW AND NEVER WHAT TO SUM. The status line's money
+// segment and Settings→Spending's `this one` show [Receipt.Folded]; /cost prints
+// Direct beside Children under it — readings of one arithmetic, rather than one
+// arithmetic per surface.
 //
 // THE SPLIT IS THE POINT AND THE FOLDED FIGURE IS THE HEADLINE. The defect the
 // split answers (issue #145) is a conversation whose ambient figure read $2.53
