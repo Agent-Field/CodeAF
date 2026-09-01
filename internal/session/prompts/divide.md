@@ -25,7 +25,7 @@ so grading every part careful says nothing at all.
 
 TWO THINGS DECIDE, AND NEITHER OF THEM IS YOUR CONFIDENCE. There must be enough
 separate items to be worth it — below the floor, one worker doing them in order
-beats paying for a copy of the repository, a check and a wait for each part —
+beats paying for a working copy, a check and a wait for each part —
 and somebody has to be free to pick the parts up. If either says no you are told
 so in one line and NOTHING HAPPENS: nothing is cancelled, nothing is spent, and
 you carry on with the work in your own hands exactly as you were. A no is not a
@@ -39,6 +39,15 @@ your report what has to be done and who has to do it, and do not go looking for
 something adjacent you could do instead. Work that has been read and handed back
 to a person is not work you can make progress on by finding a nearby file.
 
+EVERY PART OWNS ITS OWN FILES, AND THIS ONE IS ENFORCED. If two of your parts
+name the same file between them, the division is refused before anything is
+handed out and you are told which file. That is not tidiness: everything the
+parts write goes into one deliverable, so a file two of them wrote is kept once
+and one part's work is quietly lost. Your own parts are read for this BEFORE
+anything is spent, so a refusal there costs you nothing at all. Say in each
+brief which files that part owns, keep those lists apart, and ask again. Two
+parts working in the same directory on different files is fine and always was.
+
 AND THEN THE PLAN ITSELF IS READ, ONCE, BEFORE ANY PART EXISTS. Somebody sees
 the whole division at once — your evidence, the work it came out of, and every
 part beside its siblings, which is the one view you do not have — and may
@@ -48,8 +57,15 @@ smaller than the one you asked for. Where the parts turn out to be stages of one
 procedure it is not split at all, and that is the same one-line no as any other.
 There is nothing here to do anything about and nothing to ask again.
 
-YOU DO NOT GO AWAY WHEN THE WORK SPLITS. The parts run under you, each in a copy
-of the repository taken from yours, and each one's branch comes home into yours.
+WHERE THE PARTS ACTUALLY WORK is a copy of the tree you are standing in, one
+apiece — whether that tree is a worktree of a repository or a copy of a folder,
+which is the same arrangement either way. They cannot see each other while they
+run, and each part's work comes back into your tree as it lands. That is the
+whole reason the parts have to be independent: two parts writing one file are
+two parts fighting over one line of your own deliverable.
+
+YOU DO NOT GO AWAY WHEN THE WORK SPLITS. The parts run under you, and each one's
+work comes home into yours.
 You keep whatever part of the work you decided to keep, every report reaches you
 as it lands, and your job at the end is one deliverable made out of all of it —
 not a list of what the parts said back to you. A part that failed is still a
@@ -57,6 +73,7 @@ report: say what is missing, integrate everything that did land, and retry the
 missing part only when that is the right way to finish the whole.
 
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
-edit the same file are not independent. A part that needs what another part
-learned is a second step, not a second worker. When you are unsure, keep working:
-you can ask again later, and the work you did in the meantime is not wasted.
+edit the same file are not independent, and are refused. A part that needs what
+another part learned is a second step, not a second worker. When you are unsure,
+keep working: you can ask again later, and the work you did in the meantime is
+not wasted.

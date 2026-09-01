@@ -35,7 +35,7 @@ whatever you ask for, work that leaves this conversation leaves it as a **task**
 Work that is simply wide — a sweep across many files, research across many sources, the same
 change over many separate items — starts as **one task**, and the worker hands the parts out
 itself once it has opened the material and can see how many there are. Each part becomes a
-worker in its own copy of the repository, and the first worker stays and folds their reports
+worker in a working copy of its own, and the first worker stays and folds their reports
 into one deliverable. That is *When a task turns out to be too wide for one worker*, in *work
 that runs on its own*.
 
