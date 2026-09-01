@@ -35,11 +35,16 @@ same program.
 | `aforge chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** opens on a short setup
-instead — your openrouter key, the crew, a daily ceiling; `enter` accepts, `esc` skips —
-and then on the empty conversation. It is shown once, ever; the getting-started page has
-the whole of it. Without a key in your shell or your profile, `aforge` still opens; a
-`--once` or piped run with no key still stops at the door with
-`aforge chat needs a model to talk with.`
+instead — connect OpenRouter in your browser, choose the crew, set the spending rails —
+and then on the empty conversation. The preference questions are shown once. The
+OpenRouter step returns on any later local interactive launch while no key exists,
+including a named or resumed conversation, and `enter` on an unsent message brings it back
+without clearing the draft. The getting-started page has the whole flow.
+
+A `--once` or piped run cannot open a browser and still stops at the door with
+`aforge chat needs a model to talk with.` Its next line says to run bare `aforge` in a
+terminal to connect OpenRouter, or to export `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A
+custom `AFORGE_BASE_URL` is never offered the OpenRouter connection.
 
 **The first frame is home** — every project on this machine and every conversation
 in them — with the conversation this directory would have opened loaded and ready
