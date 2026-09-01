@@ -3616,7 +3616,15 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	}
 	ground, mode := n.groundNow()
 	if merge == mergeInPlace {
-		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}, true
+		// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
+		// MAKES IT (task_tree_mirror.go). A mirror opened by the run that died is
+		// found already open and is left exactly as it is; one that was never
+		// opened gets the second chance a restart is — the disk may be writable
+		// now — and, failing that, recomputes the sentence its parts' sharing of
+		// this directory has to be said out loud in. Recomputing beats persisting
+		// it: the checkpoint would carry an answer about a machine that has since
+		// been rebooted, and there would be two accounts of one fact.
+		return openFamilyTree(taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}), true
 	}
 	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is the
 	// ground and not whatever this process happens to be standing in. A node

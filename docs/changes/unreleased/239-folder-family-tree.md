@@ -24,6 +24,10 @@ merge path was written.
 
 A tree that cannot be opened — no git, a read-only disk — still runs the work,
 and says so in the job log and in the parent's own brief rather than letting the
-parts find out by writing over each other. `in place` and `folder` families stay
+parts find out by writing over each other. A family resumed after an
+interruption revalidates its tree through that same one call, so a restart is a
+second chance at a disk that may since have become writable and never a silent
+degradation: the sentence is recomputed rather than persisted, because a
+remembered one would be an answer about a machine that has since rebooted. `in place` and `folder` families stay
 out of scope by ruling: the person said "here", so the family tree is their own
 directory and nothing initialises a repository in it.
