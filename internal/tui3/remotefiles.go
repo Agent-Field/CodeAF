@@ -133,11 +133,10 @@ const (
 	// frames and the fetches somebody is actually waiting on. Three at a time
 	// keeps the pipe busy without owning it.
 	//
-	// AND WHAT DOES NOT FIT IS DROPPED RATHER THAN QUEUED. A queue of
-	// speculative work outlives the reason for it: the fortieth file's turn
-	// would come round long after the turn that wrote it, and the cost of not
-	// having prefetched is one round trip on a click that will probably never
-	// happen.
+	// LIVE SPECULATIVE WRITES THAT DO NOT FIT ARE DROPPED RATHER THAN QUEUED. A
+	// resumed conversation is different: its picture rows already exist and
+	// need their bytes to draw, so replay owns a bounded continuation queue that
+	// feeds the same three slots ([remoteFiles.replay]).
 	prefetchAtOnce = 3
 
 	// remoteAbsentFor is how long this surface believes a NO.
@@ -300,7 +299,13 @@ type remoteFiles struct {
 	// file six times is one fetch and a turn writing forty is three at a time
 	// ([prefetchAtOnce]).
 	prefetching map[string]bool
-	door        doorLinker
+	// replay is the visible picture work left after the first three transfers.
+	// Unlike write speculation, these paths back rows already on screen and are
+	// continued as each in-flight fetch lands. replaySeen keeps a room poll from
+	// adding the same journal picture four times a second.
+	replay     []replayPrefetch
+	replaySeen map[string]bool
+	door       doorLinker
 	// doorFailed is remembered so that a door which could not open is not
 	// retried on every frame. The sentence was said once; the second attempt
 	// would say it again.
@@ -383,6 +388,7 @@ func newRemoteFilesOver(host string, wire remoteWire) *remoteFiles {
 		wanted:      make(map[string]bool, 128),
 		opening:     map[string]bool{},
 		prefetching: map[string]bool{},
+		replaySeen:  map[string]bool{},
 		refs:        map[string]remoteBlob{},
 		now:         time.Now,
 	}
@@ -632,6 +638,12 @@ func (a *app) restyleEntries() {
 	for i := range a.entries {
 		a.entries[i].stale = true
 	}
+	if a.room != nil {
+		for i := range a.room.entries {
+			a.room.entries[i].stale = true
+		}
+		a.room.dirty = true
+	}
 }
 
 // ── the door ────────────────────────────────────────────────────────────────
@@ -717,6 +729,15 @@ type remotePrefetchedMsg struct {
 	err      error
 }
 
+// replayPrefetch is one picture already named by a resumed conversation.
+// ceiling is the attachment limit for a person's picture and zero for a tool
+// result the surface has promised to paint.
+type replayPrefetch struct {
+	name     string
+	required bool
+	ceiling  int64
+}
+
 // prefetchWritten is the surface getting eager, and it is the whole of what the
 // wave changed about MOVEMENT: the wire did not grow a push, the engine does not
 // know this is happening, and the only difference is that the click which used
@@ -741,8 +762,7 @@ type remotePrefetchedMsg struct {
 // and modification time have not moved is answered out of the cache after one
 // small stat.
 func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
-	r := a.rfiles
-	if r == nil || ev.Kind != session.EventToolEnd {
+	if a.rfiles == nil || ev.Kind != session.EventToolEnd {
 		return nil
 	}
 	name := ""
@@ -757,6 +777,28 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 		}
 	}
 	if name == "" {
+		return nil
+	}
+	return a.prefetchPath(name, required)
+}
+
+// prefetchPath starts one best-effort mirror fill. required is reserved for a
+// finished picture tool whose result has promised a picture; replayed user
+// attachments are optional, stay inside the ordinary size heuristic, and say
+// nothing when their old bytes can no longer cross.
+func (a *app) prefetchPath(name string, required bool) tea.Cmd {
+	ceiling := int64(prefetchMax)
+	if required {
+		ceiling = 0
+	}
+	return a.prefetchPathWithin(name, required, ceiling)
+}
+
+// prefetchPathWithin starts one best-effort mirror fill under the caller's
+// size law. A zero ceiling means the wire's own hard limit is the only limit.
+func (a *app) prefetchPathWithin(name string, required bool, ceiling int64) tea.Cmd {
+	r := a.rfiles
+	if r == nil {
 		return nil
 	}
 	target := a.remoteTarget(name)
@@ -780,7 +822,7 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 		// answer carries the freshness numbers the cache is about to be judged
 		// on, so the stat is one round trip doing two jobs.
 		now, told := farStat(wire, target)
-		if !required && (!told || !now.exists || now.dir || now.size > prefetchMax) {
+		if !required && (!told || !now.exists || now.dir || (ceiling > 0 && now.size > ceiling)) {
 			return remotePrefetchedMsg{target: target, size: now.size}
 		}
 		blob, _, err := r.fetchAsOf(target, now, told)
@@ -794,23 +836,80 @@ func (a *app) prefetchWritten(ev session.Event) tea.Cmd {
 // prefetchReplayedPictures gives a resumed hosted conversation the same image
 // surface as a live one. Replay builds rows without replaying old events, so
 // Init must explicitly start the fetches for picture rows already on screen.
+// The walk starts at the live edge so the shared three-slot budget goes first
+// to the rows nearest the place a resumed conversation opens; the rest remain
+// queued and take each slot as its predecessor lands.
 func (a *app) prefetchReplayedPictures() tea.Cmd {
 	if a.rfiles == nil {
 		return nil
 	}
+	a.queueReplayedPictures(a.entries)
+	if a.room != nil {
+		a.queueReplayedPictures(a.room.entries)
+	}
+	return a.startReplayedPictureFetches()
+}
+
+// prefetchRoomPictures adds the journal that became visible after Init. Hosted
+// rooms load asynchronously and local room doors read their journal only when
+// the person opens the page, so neither can rely on the conversation's Init.
+func (a *app) prefetchRoomPictures() tea.Cmd {
+	if a.rfiles == nil || a.room == nil {
+		return nil
+	}
+	a.queueReplayedPictures(a.room.entries)
+	return a.startReplayedPictureFetches()
+}
+
+func (a *app) queueReplayedPictures(entries []entry) {
+	r := a.rfiles
+	if r == nil {
+		return
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := &entries[i]
+		if e.kind == entryUser && len(e.pictures) > 0 && !e.picturesHere {
+			for _, picture := range e.pictures {
+				a.queueReplayedPicture(replayPrefetch{
+					name: picture, ceiling: int64(maxAttachBytes),
+				})
+			}
+		}
+		if e.kind == entryTool && picturesAFile(e.tool) && !e.status.live() {
+			if picture, ok := a.picturePath(e); ok {
+				a.queueReplayedPicture(replayPrefetch{name: picture, required: true})
+			}
+		}
+	}
+}
+
+func (a *app) queueReplayedPicture(item replayPrefetch) {
+	r := a.rfiles
+	if r == nil {
+		return
+	}
+	target := a.remoteTarget(item.name)
+	if target == "" || r.replaySeen[target] {
+		return
+	}
+	r.replaySeen[target] = true
+	r.replay = append(r.replay, item)
+}
+
+// startReplayedPictureFetches fills only the free slots. Every result calls it
+// again from [app.remotePrefetched], which is the continuation that prevents a
+// fourth or older replay picture from remaining blank forever.
+func (a *app) startReplayedPictureFetches() tea.Cmd {
+	r := a.rfiles
+	if r == nil {
+		return nil
+	}
 	commands := make([]tea.Cmd, 0, prefetchAtOnce)
-	for i := range a.entries {
-		e := &a.entries[i]
-		if e.kind != entryTool || !picturesAFile(e.tool) || e.status.live() {
-			continue
-		}
-		cmd := a.prefetchWritten(session.Event{Kind: session.EventToolEnd, Tool: e.tool,
-			Args: e.detail.Args, Output: e.detail.Output})
-		if cmd != nil {
+	for len(r.replay) > 0 && len(r.prefetching) < prefetchAtOnce {
+		item := r.replay[0]
+		r.replay = r.replay[1:]
+		if cmd := a.prefetchPathWithin(item.name, item.required, item.ceiling); cmd != nil {
 			commands = append(commands, cmd)
-		}
-		if len(commands) == prefetchAtOnce {
-			break
 		}
 	}
 	return tea.Batch(commands...)
@@ -836,13 +935,13 @@ func (a *app) remotePrefetched(msg remotePrefetchedMsg) tea.Cmd {
 			a.note(strings.TrimSpace(msg.err.Error()) + " · the picture remains on " + a.host)
 			a.touch()
 		}
-		return nil
+		return a.startReplayedPictureFetches()
 	}
 	r.setRef(msg.target, msg.blob)
 	r.learn(msg.target, remoteFact{file: true, size: msg.size, uri: a.mintRemoteURL(msg.target)})
 	a.restyleEntries()
 	a.touch()
-	return a.wake()
+	return tea.Batch(a.wake(), a.startReplayedPictureFetches())
 }
 
 // remoteTarget turns a path a tool wrote — relative to the engine's workspace,

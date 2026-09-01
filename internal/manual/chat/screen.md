@@ -1087,7 +1087,7 @@ nothing is worse than no link.
 A reference inside a fenced code block, inside an inline code span, or inside a URL
 field gets no link.
 
-## Click a file path to open it — open a file from the chat
+## Click a file path to open it — open a file from the chat, why is this file path not clickable?
 
 **Every file path on this screen that names a file that really exists is a real
 hyperlink.** Click it and the file opens the way your desktop would open it. In most
@@ -1661,8 +1661,10 @@ mid-string, which nothing could read, so opening one drew a dim `—` and nothin
 ## Seeing the image itself in the terminal, in colour
 
 **You do not have to do anything.** The moment a `generate_image` or `view_image` call
-finishes, the picture is drawn under its row, in colour — no click, no key, no flag. It
-is there in the conversation as you read it, and it is there in a task's room too.
+finishes, the picture is drawn under its row, in colour — no click, no key, no flag. A
+picture you attach is drawn the same way under your own line after you send it, while its
+numbered `[#1 shot.png]` marker stays above it. Both forms are there in the conversation
+as you read it and in a task's room too.
 
 It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
 top colour and its bottom one, which is how a terminal shows a photograph with nothing
@@ -1670,7 +1672,7 @@ but colour codes. No image protocol is involved and nothing is written outside t
 frame, so the picture survives every repaint, scrolls with the conversation, and works
 over ssh and inside tmux the same as anywhere else.
 
-The picture under a row is a **thumbnail**: at most **12 rows** tall, or **4** at phone
+The picture under a row or your own message is a **thumbnail**: at most **12 rows** tall, or **4** at phone
 width — the same ceiling the live preview takes, because a block nobody asked for should
 not take the screen from the conversation it appeared in. It carries no heading, no
 border and no caption. Nothing is held back behind a `… N more lines` foot either: the
@@ -1691,16 +1693,22 @@ blur claiming to be detail.
 **png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
 
 A picture is **decoded once and kept**, so a row you scroll past, a row you leave open
-and a row that repaints ten times a second all cost the same after the first frame.
-Resize the terminal, switch your theme, or overwrite the file on disk and it is drawn
-again — those are the only three things that make it re-read anything.
+and a row that repaints ten times a second all cost the same after the first frame. Tool
+picture rows check the file's modification time when they repaint. Your own settled
+message keeps its ordinary transcript-row cache and refreshes its thumbnail on a resize,
+a theme repaint, or when a mirrored file lands; until one of those, replacing the file at
+the same path may leave the earlier thumbnail on screen.
 
 ## When the image preview is not drawn — you only gave me text, it only gave me text, why don't I see the image, and where did my generated picture go?
 
-If a row shows only text — something like
+If a tool row shows only text — something like
 `/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
 picture could be drawn, and **that line is the answer instead**: it names the file
 **whole and absolute**, so you can open it yourself from anywhere.
+
+For a picture you attached, the fallback is the message's existing `[#1 shot.png]`
+marker. No error or empty picture block is added, and an ordinary file marker beside it
+is unchanged.
 
 The reasons, in the order they are worth checking:
 
@@ -1712,16 +1720,18 @@ The reasons, in the order they are worth checking:
 - **The row is under 8 columns wide.**
 - **The call has not finished.** A picture is drawn when the file exists, and
   `generate_image` writes the file last.
-- **The session is over `--host`.** The generated file is on the other machine, so this
-  terminal keeps the full result path instead of reading the same path on this machine.
-  Open the linked path to fetch it and use your desktop viewer.
+- **The session is over `--host` and the mirror does not hold the bytes yet.** Generated
+  pictures are fetched from the other machine into the local mirror. A picture you have
+  just attached is already read from this machine; after a restart its journal path is on
+  the far machine and the thumbnail appears once an optional mirror fetch lands.
 - **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
   four types** — a `svg`, a `tiff`, a `pdf`.
 
-In every one of those the row is **exactly what it would have been** — its result line,
-or what the looking model said — and never an error. Opening the row in those cases
-gives you the file's whole absolute path on its own rows, wrapped rather than cut,
-because a path with an ellipsis in it cannot be clicked, copied or pasted.
+In every one of those the tool row is **exactly what it would have been** — its result
+line, or what the looking model said — and never an error. Your own message keeps its
+marker exactly. Opening a tool row in those cases gives you the file's whole absolute
+path on its own rows, wrapped rather than cut, because a path with an ellipsis in it
+cannot be clicked, copied or pasted.
 
 Where the files themselves land is on the "making pictures, audio and video" page.
 

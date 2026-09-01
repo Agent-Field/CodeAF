@@ -1377,10 +1377,10 @@ described.
 
 | Law | Where it is pinned |
 | --- | --- |
-| **Ordinary typing arms no timer and asks the disk nothing.** A sentence of prose costs two integer comparisons a character and nothing else. | `internal/tui3/dropkeys_test.go` |
+| **Prose whose first token is not path-shaped arms no timer and asks the disk nothing.** A sentence of ordinary prose costs two integer comparisons a character and nothing else; a sentence that begins with a real path pays the bounded per-reading cost the next row states. | `internal/tui3/dropkeys_test.go` |
 | **Typing a slash command costs the same.** A dropped path is told from a command by a SEPARATOR INSIDE IT — `/var/folders` has one, `/help` does not — which is string work on runes already in memory. | `internal/tui3/dropkeys_test.go` |
 | **A burst arms ONE wakeup**, however many characters it holds, and the one in flight re-arms itself while characters are still arriving rather than a second one being asked for. It is `pointerFold.settling`'s shape exactly. | `internal/tui3/dropkeys_test.go` |
-| **A settled burst asks the disk at most once per word it holds**, and only after the string gate above has passed. | `internal/tui3/dropkeys_test.go` |
+| **A settled burst asks the disk at most once per candidate in at most four readings of the run**, and only after the string gate above has passed. | `internal/tui3/dropkeys_test.go` |
 | **A burst that names nothing builds no frame.** It provably mutated nothing `app.View` reads — the characters were already in the draft, put there by the keys that carried them — so it declares the frame before it, exactly as a folded motion does. | `internal/tui3/dropkeys_test.go` |
 
 `dropQuiet` is two `frameInterval`s and it is a QUIET WINDOW rather than a
