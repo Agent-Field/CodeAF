@@ -209,10 +209,16 @@ tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuarded
 `TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
 TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
 green with `TMPDIR=/tmp/eh`) — all verified failing at what is now `origin/dev`
-on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
-alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
-`TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
-believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
+on 2026-08-26. Confirm anything else with a stash-and-rerun before chasing it.
+
+There is no longer a "flakes under load" list here. The three that were on it —
+`TestOnlyADesignsOwnThreadCarriesTheReviseVerb`,
+`TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` and
+`TestAChangeWithdrawsTheCardRewritesThePageAndAsksAgain` — shared one cause with
+two more that were never written down, and it was fixed rather than described
+(#176). A `internal/session` test that fails only when other suites are running
+beside it is now a bug report, not a known shape: **reproduce it, do not rerun it
+in isolation and move on.**
 
 **This list is also `.github/known-red.txt`, which CI reads and skips**, so that red
 in the full run means the change caused it. The two are the same debt written twice;

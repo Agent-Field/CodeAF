@@ -5225,13 +5225,58 @@ func (a *Agent) journalID() string {
 // The audit gets a file of its own rather than a section of the node's, because
 // it is a different agent with a different context: two transcripts written into
 // one journal would be the exact context mixing the audit exists to avoid, and a
-// person asking "what did the auditor actually run" wants a file to open. The
-// SUFFIX IS THE CALLER'S TO MAKE UNIQUE — the stamp here is only good to the
-// second, and [newAgent] resumes a file that is already there, so two agents
-// handed one path would be one agent with two names (task_audit.go).
+// person asking "what did the auditor actually run" wants a file to open.
+//
+// THE STAMP CARRIES MICROSECONDS BECAUSE A NAME THAT REPEATS IS A JOURNAL TWO
+// AGENTS BOTH OWN. It used to be good only to the second, and the burden of
+// making the name unique was pushed onto the caller's suffix — which the audit
+// does with a nonce and a node's own journal cannot, because the node has
+// nothing to add. Two nodes carrying the same id under one session name, minted
+// inside the same second, were therefore handed ONE path: the second agent
+// either resumed the first one's transcript or, while the first still held it,
+// was refused outright with a [SessionLockedError] and the work it was starting
+// never began. That is not a rare shape — a session with no journal file of its
+// own is named by the constant "unfiled" for every window on the machine, and
+// node ids start again at one in every graph — and it is the whole of the flake
+// this stamp was widened to close. Microseconds are fixed width, so the
+// lexicographic "newest name" [findTaskJournal] reads is still the newest file.
 func taskJournalPath(place Place, session string, id uint64, suffix string) string {
-	name := fmt.Sprintf("%s_%d%s.jsonl", time.Now().Format("20060102-150405"), id, suffix)
+	name := fmt.Sprintf("%s_%d%s.jsonl", journalMoment().Format("20060102-150405.000000"), id, suffix)
 	return filepath.Join(taskJournalDir(place, session), name)
+}
+
+// journalMoment is the clock [taskJournalPath] names files by, and it NEVER
+// ANSWERS THE SAME MICROSECOND TWICE in one process.
+//
+// A stamp is only unique if the clock behind it moved, and two nodes minted
+// close enough together read one instant on any machine whose clock is coarser
+// than the code asking it. Rather than pick a resolution and hope, the second
+// caller inside one tick is handed the tick after it: the names stay in minting
+// order, they stay fixed width, and "unique" stops being a probability.
+//
+// It is deliberately not a counter appended to the name. [findTaskJournal] finds
+// a node's transcript by the `_<id>` its stem ENDS with and picks the newest by
+// name, so everything that distinguishes two files has to live in the stamp at
+// the front of it.
+var journalClock struct {
+	mu   sync.Mutex
+	last time.Time
+}
+
+func journalMoment() time.Time {
+	journalClock.mu.Lock()
+	defer journalClock.mu.Unlock()
+	// Truncated to the resolution the NAME carries, because that is the only
+	// resolution the answer means anything at: two instants a hundred nanoseconds
+	// apart are one file name, so comparing anything finer would call a collision
+	// a move forward. Truncate also drops the monotonic reading, which is what
+	// makes the comparison a wall-clock one to match.
+	now := time.Now().Truncate(time.Microsecond)
+	if !now.After(journalClock.last) {
+		now = journalClock.last.Add(time.Microsecond)
+	}
+	journalClock.last = now
+	return now
 }
 
 // taskJournalDir is the directory every one of a session's node transcripts is
