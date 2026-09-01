@@ -7,13 +7,13 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// THE CREW: four classes of model, answered as one word.
+// THE CREW: five classes of model, answered as one word.
 //
-// The four tier rows are the honest shape of the decision — a class of call has
+// The five tier rows are the honest shape of the decision — a class of call has
 // a class of model, and a new call joins a class instead of growing a knob — and
-// they are still four model ids somebody has to know. Nobody arrives at a
-// settings sheet wanting to name four model ids. They arrive wanting to spend
-// pennies, or wanting to spend what it takes. So there is one row above the four
+// they are still five model ids somebody has to know. Nobody arrives at a
+// settings sheet wanting to name five model ids. They arrive wanting to spend
+// pennies, or wanting to spend what it takes. So there is one row above the five
 // that takes that sentence and writes all of them.
 //
 // THREE PRESETS AND NO MORE. A fourth would be a fourth thing to explain, and
@@ -23,9 +23,9 @@ import (
 // property that makes a shipped default defensible — nobody's default crew
 // should be a bet on one vendor's pricing.
 //
-// THE PRESET IS DERIVED AND NEVER STORED. [CrewAt] reads the four live tier
+// THE PRESET IS DERIVED AND NEVER STORED. [CrewAt] reads the five live tier
 // values and answers which preset they are, or "custom". A stored word would be
-// a claim about four other rows that any one of them could falsify, and a sheet
+// a claim about five other rows that any one of them could falsify, and a sheet
 // that said "balanced" over a hand-pinned mastermind would be lying in exactly
 // the place somebody went to check. This is the one-source-of-truth law applied
 // to a summary: a summary that can drift from what it summarizes is not a
@@ -39,7 +39,7 @@ const (
 	CrewBalanced = "balanced"
 	CrewMax      = "max"
 	// CrewCustom is a READING and never a write. It is what the row says when
-	// the four tier values are somebody's own arrangement rather than one of the
+	// the five tier values are somebody's own arrangement rather than one of the
 	// three, which is what happens the moment a person answers one tier row
 	// directly. It is deliberately absent from [CrewPresets]: "set the crew to
 	// custom" is not a sentence with a meaning — custom is what you get, not
@@ -52,33 +52,46 @@ const (
 var CrewPresets = []string{CrewFrugal, CrewBalanced, CrewMax}
 
 // DefaultCrew is what a profile nobody has touched reads. It is balanced because
-// the four shipped tier defaults ARE the balanced row — see [crewModels] — and
+// the five shipped tier defaults ARE the balanced row — see [crewModels] — and
 // that identity is asserted by a test rather than trusted.
 const DefaultCrew = CrewBalanced
 
 // crewModels is the whole table: one row per preset, one model per class.
 //
-// The mastermind column is the only one carrying a level, and it is the column
-// the presets actually differ in — frugal never reaches for the thinking model
-// at all, balanced asks it to think a little, max asks it to think hard. The
-// other three columns move by one step each, which is what makes the three
-// presets read as one dial rather than three unrelated opinions.
+// THE WORKER COLUMN IS THE DIAL. It climbs the open-weight pareto front one step
+// per preset — deepseek-v4-flash, glm-5.3-flash, glm-5.3 — because it is the
+// seat that pays most of a task's bill, and a preset that moved every other seat
+// while leaving it alone would change everything about a task except its cost.
+// The mastermind column carries the level and buys the rung rather than a bigger
+// model: its calls are few, so `:high` costs little there. The careful column is
+// always a DIFFERENT VENDOR from the worker and always sees images (the vision
+// role rides it). The reflex and low columns never vary: they are the same
+// near-free models in all three presets, and a column that never varies is not
+// a dial.
+//
+// Every id is an open-weight model, picked off the catalog's own published
+// scores against blended price on 2026-09-01 (settings.go's DefaultWorkerModel
+// says how); the closed models that are cheaper on their own vendor's platform
+// than through the router are deliberately not here.
 var crewModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-flash",
-		ModelTierHigh:       "qwen/qwen3.8-27b",
-		ModelTierMastermind: "qwen/qwen3.8-27b",
+		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+		ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
+		ModelTierHigh:       "z-ai/glm-5.3-flash",
+		ModelTierMastermind: "z-ai/glm-5.3-flash:high",
 	},
 	CrewBalanced: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-flash",
+		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "qwen/qwen3.8-27b",
-		ModelTierMastermind: "moonshotai/kimi-k3:low",
+		ModelTierMastermind: "z-ai/glm-5.3:high",
 	},
 	CrewMax: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-pro",
+		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+		ModelTierWorker:     "z-ai/glm-5.3",
 		ModelTierHigh:       "moonshotai/kimi-k3",
 		ModelTierMastermind: "moonshotai/kimi-k3:high",
 	},
@@ -88,9 +101,9 @@ var crewModels = map[string]map[string]string{
 // prints beside each option and what the settings chooser shows under it — the
 // same words in both places, because they are one sentence about one thing.
 var crewLines = map[string]string{
-	CrewFrugal:   "qwen handles careful work · pennies a day",
-	CrewBalanced: "kimi-k3 thinks, qwen checks",
-	CrewMax:      "kimi-k3 everywhere, thinks longer",
+	CrewFrugal:   "deepseek works, glm-flash thinks · pennies a day",
+	CrewBalanced: "glm-flash works, glm-5.3 thinks, qwen checks",
+	CrewMax:      "glm-5.3 works, kimi-k3 thinks and checks",
 }
 
 // CrewLine is one preset's own line, empty for a word that is not a preset.
@@ -98,7 +111,7 @@ func CrewLine(preset string) string {
 	return crewLines[strings.ToLower(strings.TrimSpace(preset))]
 }
 
-// CrewModels is the four models one preset would set, by tier word. It returns
+// CrewModels is the five models one preset would set, by tier word. It returns
 // a copy, because a caller printing the table must not be able to edit it.
 func CrewModels(preset string) (map[string]string, bool) {
 	row, ok := crewModels[strings.ToLower(strings.TrimSpace(preset))]
@@ -112,11 +125,11 @@ func CrewModels(preset string) (map[string]string, bool) {
 	return out, true
 }
 
-// CrewAt is the crew as the four live tier values make it: the preset they are,
+// CrewAt is the crew as the five live tier values make it: the preset they are,
 // or [CrewCustom].
 //
 // It reads through [TierModelAt], so a profile that has never been touched reads
-// the shipped defaults and therefore reads [DefaultCrew] — the four defaults are
+// the shipped defaults and therefore reads [DefaultCrew] — the five defaults are
 // the balanced row and nothing here needs to know that separately. A tier a
 // person cleared on purpose reads empty, matches no preset, and turns the answer
 // to custom, which is the truth: "one of these follows the conversation" is not
@@ -145,9 +158,9 @@ func sameCrew(live, preset map[string]string) bool {
 	return true
 }
 
-// ApplyCrew writes all four tier rows from one preset, IN ONE FILE WRITE.
+// ApplyCrew writes all five tier rows from one preset, IN ONE FILE WRITE.
 //
-// The four keys land together or not at all. Four separate writes would leave a
+// The five keys land together or not at all. Five separate writes would leave a
 // window — one process crash, one full disk — in which two classes belong to the
 // old crew and two to the new, and the crew row would read "custom" about a
 // state nobody chose. It is also the only shape in which a reader that happens
@@ -173,20 +186,22 @@ func writeCrew(profileDir, raw string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
+//	crew → balanced · brain glm-5.3:high · hands glm-5.3-flash · checks qwen3.8-27b
 //
 // The three names are the classes a person actually asked about — what thinks,
-// what works, what checks — and the reflex model is deliberately absent: it is
-// the same near-free model in all three presets, so naming it would be a fourth
-// fact that never varies. The ids are shortened to their base names because the
-// vendor prefix is the half nobody reads twice.
+// what works, what checks — and HANDS IS THE WORKER: the seat that does the
+// task, which is what everybody reading the word took it to mean back when it
+// named the small-work tier. The reflex and small-work models are deliberately
+// absent: they are the same near-free models in all three presets, so naming
+// them would be facts that never vary. The ids are shortened to their base names
+// because the vendor prefix is the half nobody reads twice.
 func CrewSummary(profileDir string) string {
 	return "crew → " + CrewAt(profileDir) + " · " + CrewClasses(profileDir)
 }
 
 // CrewClasses is the three class names alone:
 //
-//	brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
+//	brain glm-5.3:high · hands glm-5.3-flash · checks qwen3.8-27b
 //
 // It is the tail of [CrewSummary] lifted out because a second surface prints the
 // crew now — /status, where the word already has a label of its own and "crew →"
@@ -202,7 +217,7 @@ func CrewClasses(profileDir string) string {
 // CrewClassModels is the three ids [CrewClasses] names, in that order and
 // without the role words in front of them:
 //
-//	kimi-k3:low, deepseek-v4-flash, qwen3.8-27b
+//	glm-5.3:high, glm-5.3-flash, qwen3.8-27b
 //
 // It exists because a surface drawing the crew line has to be able to say which
 // runs of it are the ANSWER — the ids a person typed /crew to change — and which
@@ -213,7 +228,7 @@ func CrewClasses(profileDir string) string {
 func CrewClassModels(profileDir string) []string {
 	return []string{
 		shortModel(TierModelAt(profileDir, ModelTierMastermind)),
-		shortModel(TierModelAt(profileDir, ModelTierLow)),
+		shortModel(TierModelAt(profileDir, ModelTierWorker)),
 		shortModel(TierModelAt(profileDir, ModelTierHigh)),
 	}
 }
@@ -234,8 +249,8 @@ func shortModel(value string) string {
 
 // ── the gate on a tier value ────────────────────────────────────────────────
 
-// writeTierModel is the writer all four tier rows share: validate the notation,
-// then persist. It is one function rather than four closures so a fifth tier
+// writeTierModel is the writer all five tier rows share: validate the notation,
+// then persist. It is one function rather than five closures so a sixth tier
 // cannot arrive with a gate somebody forgot to put on it.
 func writeTierModel(profileDir, tier, raw string) error {
 	raw = strings.TrimSpace(raw)

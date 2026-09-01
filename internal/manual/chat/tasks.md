@@ -2784,8 +2784,10 @@ a chip on the row can win. Chips are spelled with the part after the vendor unle
 vendors share a tail, in which case all of them keep their full id; a chip that does not fit
 is dropped rather than cut, and a row that would show one chip is not drawn at all.
 
-Name nothing and the task runs on `task.model` if you have set it, and otherwise on the
-model the conversation was on **when the task was admitted**. The id is settled at that
+Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
+**worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped
+`balanced` crew), and only when that row is blank on the model the conversation was on
+**when the task was admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the
 conversation's model afterwards does not move work that was already handed over. This
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
@@ -2815,8 +2817,9 @@ What that does, exactly:
 - **A note is written in the conversation**, reading `task 7 · model · <the model you
   chose>`, so the change is on the record where every other model change is.
 - **New tasks are unaffected.** Work admitted after this still follows the ordinary
-  ladder: `task.model` from settings if you have set one, otherwise the model the
-  conversation is on. A pick made inside one room is not a preference the session learns.
+  ladder: `task.model` from settings if you have set one, otherwise the crew's worker
+  class, otherwise the model the conversation is on. A pick made inside one room is not a
+  preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
   and the change survives a restart.
 

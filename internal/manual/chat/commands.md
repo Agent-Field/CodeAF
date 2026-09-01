@@ -1245,29 +1245,30 @@ a mention to point at. They are how you find out that the directory is busy some
 On a project that has never run a task the page opens on its own teaching prose, ending
 `no tasks yet — /task <brief> starts one`. The tasks pages describe the page in full.
 
-## /crew — the four models aforge uses on its own behalf, read beside the one you talk to
+## /crew — the five models aforge uses on its own behalf, read beside the one you talk to
 
-aforge runs **five model seats**. Seat one is the model you talk to, and `/model` is what
-moves it. The other four — reflex, small work, careful work, mastermind — are the models
-aforge uses on its own behalf, for the calls you did not type. `/crew` reads all five and
-sets the four in one word. **It never moves seat one.**
+aforge runs **six model seats**. Seat one is the model you talk to, and `/model` is what
+moves it. The other five — reflex, small work, worker, careful work, mastermind — are the
+models aforge uses on its own behalf, for the calls you did not type and for the work
+inside every task. `/crew` reads all six and sets the five in one word. **It never moves
+seat one.**
 
 ```
 /crew
 ```
 
-opens the five-seat reading, bottom-anchored like the model picker. From the top:
+opens the six-seat reading, bottom-anchored like the model picker. From the top:
 
 ```
-the four models aforge uses on its own behalf — not the one you chat with
+the five models aforge uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
-  frugal — qwen handles careful work · pennies a day
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
-› balanced — kimi-k3 thinks, qwen checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
-  max — kimi-k3 everywhere, thinks longer
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
-each of the four can be pinned on its own in /settings → Providers
+  frugal — deepseek works, glm-flash thinks · pennies a day
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash:high
+› balanced — glm-flash works, glm-5.3 thinks, qwen checks
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-27b · mastermind   z-ai/glm-5.3:high
+  max — glm-5.3 works, kimi-k3 thinks and checks
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+each of the five can be pinned on its own in /settings → Providers
 ```
 
 The first line says what the presets change and what they do not. The second is **seat
@@ -1489,13 +1490,14 @@ order:
    well.
 4. **routing** — what every request prefers among the endpoints: `latency`, `price`, `off`.
    With `off` nothing is measured, so the two rows above it have no machine to name.
-5. **crew** — the four below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
-   row: enter or space walks it. Answer any of the four yourself and it reads `custom`.
+5. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
+   row: enter or space walks it. Answer any of the five yourself and it reads `custom`.
 6. **reflex** — `near-free · reads every turn — memory, titles, safety`
-7. **small work** — `cheap · does the bulk work — run nodes, digests`
-8. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
-9. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-10. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+7. **small work** — `cheap · the small calls — names, digests, the safety gate`
+8. **worker** — `does the work · every task, its parts, every run node — most of the bill`
+9. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+10. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
+11. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     aforge makes for itself, grouped under its class. Those rows come from the running binary
     rather than the settings registry.
 
@@ -1553,8 +1555,8 @@ one call aforge makes outside a turn — `title`, `compaction`, `guardian`, `aud
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
-The rows are **grouped under their class**, in the same order the four class rows are drawn
-above them: `roles · reflex`, `roles · small work`, `roles · careful work`,
+The rows are **grouped under their class**, in the same order the five class rows are drawn
+above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · careful work`,
 `roles · mastermind`. The class is the heading, so it is not repeated on every row — which
 leaves the widest part of the row for the model id it is there to show.
 
