@@ -585,7 +585,18 @@ func TestAQuietStreamDeliversItsOneEventAtOnce(t *testing.T) {
 	}
 }
 
-const scrollAllocationCeiling = 220
+// scrollAllocationCeiling is what composing one frame is allowed to cost, and
+// it is a ceiling on the FRAME, not on the history: the law the test beneath it
+// enforces is that scrolling four thousand lines re-wraps none of them.
+//
+// IT ROSE FROM 220 TO 260 WITH THE TOP BAR (ISSUE-126). The bar is a row that
+// did not exist before — a crumb walked from the task tree, two cell clusters
+// with their paint, and the spans that make its words pressable — and it is
+// assembled fresh every frame, on purpose, because every fact on it is live.
+// Measured at 239 with the bar in; the headroom above that is for the room's
+// deeper crumb, which is the widest the walk gets. PERF.md carries the same
+// number and the two move together.
+const scrollAllocationCeiling = 260
 
 // THE CACHE KEY INCLUDES THE INK THAT PAINTED IT. Width and content can stay
 // unchanged while a terminal reports a different ground; a row keyed only by

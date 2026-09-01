@@ -1074,7 +1074,7 @@ the line and the unseen-result horizon.
 | The babble guard builds **one** zlib writer per stream and Resets it per window; a window costs at most 4 allocations. A writer per window is a hundred kilobytes of deflate state per five hundred bytes of reply. | `internal/provider/alloclaws_test.go` |
 | The hub's backlog fold is **amortized constant per delta**: ten times the deltas for less than twice the allocations. `Text += delta` is quadratic — 1.6 GB of copying over one long reply, under the hub's lock. | `internal/session/alloclaws_test.go` |
 | A frame with a four-thousand-line draft costs what a frame with a twelve-line draft costs. | `internal/tui3/inputsmooth_test.go` |
-| Scrolling a **4,000-line transcript** by one screen allocates at most **220** times and re-renders **zero unchanged entries**. The residual is composing the visible frame, not wrapping history. | `internal/tui3/inputsmooth_test.go` |
+| Scrolling a **4,000-line transcript** by one screen allocates at most **260** times and re-renders **zero unchanged entries**. The residual is composing the visible frame, not wrapping history. The ceiling was 220 and rose with the top bar, which is a whole extra row — a crumb walked from the task tree, its cells, and its spans — composed fresh every frame because every fact on it is live. | `internal/tui3/inputsmooth_test.go` |
 | Message-part reads and the v2 token formatters allocate nothing. | `internal/store/message_parts_test.go`, `internal/tui2/tokens/format_test.go` |
 
 Correctness is pinned separately and deliberately so: `memo_test.go` proves the
