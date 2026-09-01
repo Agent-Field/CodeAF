@@ -309,6 +309,60 @@ func TestALongThinkIsNotAStallAndAStalledThinkIs(t *testing.T) {
 	})
 }
 
+// TestReasoningAfterAWordIsWritingAndNotDrift is the other half of
+// [TestAThinkingDeltaMovesThePhaseAndNotTheSilence], and the two together are
+// the whole of the two silences.
+//
+// WHAT A PERSON WAITS THROUGH AND WHAT THE WIRE IS DOING ARE DIFFERENT
+// QUANTITIES. The silence is the person's and it is what the floor and the
+// ceiling ask about — a thought is not progress, and the clock a person is
+// watching does not reset for one. The stall clocks ask the wire: an endpoint
+// that has written three words and is now reasoning has NOT stopped, and a
+// second request bought for it would be bought for a lane that never stalled.
+func TestReasoningAfterAWordIsWritingAndNotDrift(t *testing.T) {
+	base := plan()
+	base.Think = logNormal(30, 0.6)
+	base.Gap = logNormal(0.05, 0.7) // twenty deltas a second, believed tightly
+
+	t.Run("a lane that keeps writing where nobody can read is left alone", func(t *testing.T) {
+		watch := New(base)
+		watch.Note(Reading{At: at(200), Visible: 1})
+		for step := 250; step <= 8_000; step += 50 {
+			if act := watch.Note(Reading{At: at(step), Hidden: 1}); act.Kind != None {
+				t.Fatalf("a lane still writing was acted on at %dms: %+v", step, act)
+			}
+		}
+	})
+
+	t.Run("and the silence it is waiting through is still the person's", func(t *testing.T) {
+		watch := New(base)
+		watch.Note(Reading{At: at(200), Visible: 1})
+		watch.Note(Reading{At: at(400), Hidden: 1})
+		if got := watch.Quiet(at(1_400)).Silence; got != 1_200*time.Millisecond {
+			t.Fatalf("silence = %s, want the 1.2s since the last word a person could read", got)
+		}
+	})
+
+	t.Run("a lane that stops writing altogether is still acted on", func(t *testing.T) {
+		watch := New(base)
+		watch.Note(Reading{At: at(200), Visible: 1})
+		watch.Note(Reading{At: at(400), Hidden: 1})
+		acted := 0
+		for step := 450; step <= 30_000; step += 50 {
+			if watch.Quiet(at(step)).Kind != None {
+				acted = step
+				break
+			}
+		}
+		if acted == 0 {
+			t.Fatal("a stream that went quiet after one thought was never acted on")
+		}
+		if acted > 200+int(base.Ceiling/time.Millisecond) {
+			t.Fatalf("the stall was acted on at %dms, past the ceiling of the silence", acted)
+		}
+	})
+}
+
 // ── WHICH ACT ───────────────────────────────────────────────────────────────
 
 // TestAtTheCeilingAnAffordableAlternativeIsTakenAndNotReported is the one

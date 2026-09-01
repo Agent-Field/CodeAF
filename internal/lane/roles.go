@@ -141,17 +141,29 @@ const VisiblePatience = 10 * time.Second
 // say anything, and the measured floor for that is a few hundred milliseconds.
 const ActionFloor = 700 * time.Millisecond
 
-// SpreadFloor is the smallest per-draw variability the waiting arithmetic will
-// use, in nats of log-spread.
+// SpreadFloor is how variable ONE ANSWER from a pair is taken to be when
+// nothing has been published about it, in nats of log-spread.
 //
-// IT IS THE DIFFERENCE BETWEEN TWO SPREADS AND THE WHOLE OF WHY IT EXISTS. A
-// posterior's variance is the variance of the ESTIMATE — how well the median is
-// known — and it shrinks toward nothing after a few dozen observations. What a
-// wait is judged against is how variable ONE DRAW is, which never shrinks below
-// the lane's own variability. One nat is the shape the measured sheet published:
-// a p90 about three and a half times the p50 on the worst lanes. A controller
-// handed the estimate's spread instead would believe a tail impossible and would
-// never hedge the lane that has one.
+// IT IS THE DIFFERENCE BETWEEN TWO SPREADS AND THE WHOLE OF WHY THERE IS A
+// FLOOR AT ALL. A posterior's variance is the variance of the ESTIMATE — how
+// well the median is known — and it shrinks toward nothing after a few dozen
+// observations. What a wait is judged against is how variable ONE DRAW is,
+// which never shrinks below the lane's own variability, and a controller handed
+// the estimate's spread would believe a tail impossible and would never hedge
+// the lane that has one.
+//
+// AND IT IS A PRIOR ABOUT ONE DRAW RATHER THAN A FLOOR UNDER EVERY LANE, which
+// is the rule and not the figure. One nat is the shape the measured sheet
+// published on its WORST lanes — a p90 about three and a half times the p50 —
+// and the sheet publishes each lane's own: the one §K's rows were proved
+// against says 430 ms and 900 ms, which is 0.577. Held under every lane, one
+// nat asserted that every lane's tail is the worst tail on the sheet, and
+// `bench/lanelab` measured what that cost — a healthy talk turn crossed the
+// inequality at the action floor, on every request that had not started by
+// then. So a lane's own published dispersion is the floor wherever there is one
+// ([Hierarchy.Draw]) and this is the prior for where there is not, which is the
+// law the rest of this package keeps everywhere: a measured thing outranks a
+// prior, and a prior is what an unmeasured thing gets instead of a certainty.
 const SpreadFloor = 1.0
 
 // Hysteresis is how much better acting has to look before it is done.

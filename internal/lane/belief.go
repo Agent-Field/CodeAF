@@ -882,6 +882,36 @@ func (l *ledger) Wait(id ID, now time.Time) Chain { return l.chainFor(&l.wait, i
 // Rate is the chain over ln tokens-a-second for one pair.
 func (l *ledger) Rate(id ID, now time.Time) Chain { return l.chainFor(&l.rate, id, now) }
 
+// Draw is how much ONE ANSWER from this pair moves around what is believed
+// about it: the sheet's own published dispersion, and [SpreadFloor] where
+// nothing has been published.
+//
+// IT IS THE SAME NUMBER A SIGHTING IS WEIGHED AGAINST, said for a different
+// purpose. [ledger.priors] holds the distance between a lane's published p50
+// and its p90 because that is the observation noise one measurement of it
+// carries; it is also, and for the same reason, how variable one answer from it
+// is — and a wait is judged against exactly that. Nothing here ages: a machine
+// does not become steadier because nobody has looked at it lately.
+func (l *ledger) Draw(id ID) (first, gap float64) {
+	if id.Zero() {
+		return SpreadFloor, SpreadFloor
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	prior := l.priors[id.bare()]
+	return drawSpread(prior.TTFT), drawSpread(prior.Rate)
+}
+
+// drawSpread is one published variance as a spread, and the prior where there
+// is none.
+func drawSpread(variance float64) float64 {
+	if variance <= 0 {
+		return SpreadFloor
+	}
+	return math.Sqrt(variance)
+}
+
 // chainFor is one timing chain, aged to now. A zero id is no chain at all
 // rather than the world's own pace filed under nothing.
 func (l *ledger) chainFor(of *chains, id ID, now time.Time) Chain {

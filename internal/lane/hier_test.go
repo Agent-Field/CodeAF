@@ -107,9 +107,9 @@ func TestAPairNobodyHasMeasuredStillHasASpreadToWaitAgainst(t *testing.T) {
 	if !chain.Known() {
 		t.Fatal("a pair nobody has measured had nothing to wait against")
 	}
-	life := chain.Survival(PredictiveFloor, 1000)
-	if !life.Known() || life.Sigma < PredictiveFloor {
-		t.Fatalf("the predictive spread came out at %.4f, under the floor of %.4f", life.Sigma, PredictiveFloor)
+	life := chain.Survival(SpreadFloor, 1000)
+	if !life.Known() || life.Sigma < SpreadFloor {
+		t.Fatalf("the predictive spread came out at %.4f, under the prior of %.4f", life.Sigma, SpreadFloor)
 	}
 	if median := math.Exp(life.Mu); median < 0.3 || median > 5 {
 		t.Fatalf("with nothing measured the first token was expected in %.2fs", median)

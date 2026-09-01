@@ -140,10 +140,16 @@ func PaceFor(id ID, now time.Time) Pace {
 		return Pace{}
 	}
 	ledger := Default().Ledger()
+	// WHAT ONE ANSWER'S OWN VARIABILITY IS, ASKED ONCE, FOR BOTH DOORS. It is
+	// not the chain's and it is not the flat belief's — it is a property of the
+	// machine, published as the distance between a p50 and a p90 — so it is
+	// asked of the ledger once and added to whichever belief answers.
+	first, gap := SpreadFloor, SpreadFloor
 	if chains, ok := ledger.(Hierarchy); ok {
+		first, gap = chains.Draw(id)
 		pace := Pace{
-			First: chains.Wait(id, now).Survival(SpreadFloor, millisecondsInASecond),
-			Gap:   reciprocal(chains.Rate(id, now).Survival(SpreadFloor, 1)),
+			First: chains.Wait(id, now).Survival(first, millisecondsInASecond),
+			Gap:   reciprocal(chains.Rate(id, now).Survival(gap, 1)),
 		}
 		if pace.First.Known() || pace.Gap.Known() {
 			return pace
@@ -153,7 +159,7 @@ func PaceFor(id ID, now time.Time) Pace {
 	if !ok {
 		return Pace{}
 	}
-	return PaceOf(belief)
+	return paceWith(belief, first, gap)
 }
 
 // millisecondsInASecond is how many of the first-token chain's own units make
@@ -187,32 +193,37 @@ func HeadOf(choice Choice) string {
 	return ""
 }
 
-// PaceOf is one lane's FLAT belief as a [Pace].
+// PaceOf is one lane's FLAT belief as a [Pace], with nothing known about how
+// variable one answer from it is.
 //
-// THE SPREAD HAS A FLOOR AND IT IS NOT OPTIONAL. A posterior's variance is the
-// variance of the ESTIMATE, which shrinks toward nothing as evidence
-// accumulates. What a wait is judged against is how variable ONE DRAW is, and a
-// controller handed the estimate's spread would believe a tail impossible and
-// would never hedge the lane that has one.
-func PaceOf(belief Belief) Pace {
+// It is the door for a caller holding a belief and no ledger, so what one draw
+// moves by is [SpreadFloor], the prior. [PaceFor] asks the ledger for the
+// lane's own published figure and is what the transport waits against.
+func PaceOf(belief Belief) Pace { return paceWith(belief, SpreadFloor, SpreadFloor) }
+
+// paceWith is one flat belief as the two distributions a wait is judged
+// against, given how much one answer from this lane moves.
+func paceWith(belief Belief, first, gap float64) Pace {
 	var pace Pace
 	if belief.TTFT.Known() {
 		pace.First = control.Survival{
 			Mu:    belief.TTFT.X - math.Log(millisecondsInASecond),
-			Sigma: predictiveSpread(belief.TTFT.P),
+			Sigma: predictiveSpread(belief.TTFT.P, first),
 		}
 	}
 	if belief.Rate.Known() {
 		// A gap is one over a rate, so its log is the rate's negated and its
 		// spread is the same.
-		pace.Gap = control.Survival{Mu: -belief.Rate.X, Sigma: predictiveSpread(belief.Rate.P)}
+		pace.Gap = control.Survival{Mu: -belief.Rate.X, Sigma: predictiveSpread(belief.Rate.P, gap)}
 	}
 	return pace
 }
 
-// predictiveSpread is a predictive standard deviation in nats, floored.
-func predictiveSpread(variance float64) float64 {
-	return math.Max(math.Sqrt(variance), SpreadFloor)
+// predictiveSpread is a predictive standard deviation in nats, floored at how
+// variable one answer from this lane really is. See [Chain.Survival], which is
+// the same rule on the four-level belief.
+func predictiveSpread(variance, draw float64) float64 {
+	return math.Max(math.Sqrt(variance), draw)
 }
 
 // expected is a point estimate of an interval, in seconds, as the distribution

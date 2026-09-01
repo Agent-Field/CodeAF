@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 )
 
@@ -120,20 +121,95 @@ func TestEveryPlanHasACeilingEvenWithNoChoiceAtAll(t *testing.T) {
 	}
 }
 
-// TestThePredictiveSpreadIsFloored: a posterior's variance is the variance of
-// the ESTIMATE, and a controller handed it would believe a tail impossible.
-func TestThePredictiveSpreadIsFloored(t *testing.T) {
-	certain := Belief{TTFT: Posterior{X: math.Log(400), P: 1e-6}, Rate: Posterior{X: math.Log(50), P: 1e-6}}
+// TestTheSpreadIsFlooredAtTheLanesOwnVariability: a posterior's variance is the
+// variance of the ESTIMATE and a controller handed it would believe a tail
+// impossible — and the floor under it is how variable ONE ANSWER from THIS lane
+// is, not how variable the worst lane on the sheet is.
+func TestTheSpreadIsFlooredAtTheLanesOwnVariability(t *testing.T) {
+	certain := Belief{TTFT: Posterior{X: math.Log(400), P: 1e-12}, Rate: Posterior{X: math.Log(50), P: 1e-12}}
+	// Nothing published about this lane, so what a sure belief is floored at is
+	// the prior about one draw.
 	certainly := PaceOf(certain)
-	if certainly.First.Sigma != SpreadFloor || certainly.Gap.Sigma != SpreadFloor {
-		t.Fatalf("spreads = %g and %g, want the floor of %g", certainly.First.Sigma, certainly.Gap.Sigma, SpreadFloor)
+	if !near(certainly.First.Sigma, SpreadFloor) || !near(certainly.Gap.Sigma, SpreadFloor) {
+		t.Fatalf("spreads = %g and %g, want the prior of %g", certainly.First.Sigma, certainly.Gap.Sigma, SpreadFloor)
 	}
+	// A belief genuinely wider than either figure is believed.
 	wide := Belief{TTFT: Posterior{X: math.Log(400), P: 4}, Rate: Posterior{X: math.Log(50), P: 4}}
-	if got := PaceOf(wide).First; got.Sigma != 2 {
+	if got := PaceOf(wide).First; !near(got.Sigma, 2) {
 		t.Fatalf("a genuinely wide belief was narrowed to %g", got.Sigma)
+	}
+	// And a lane whose own dispersion is published is waited against THAT: a
+	// lane measured tighter than the prior really is tighter.
+	if got := paceWith(certain, 0.577, 0.577).First; !near(got.Sigma, 0.577) {
+		t.Fatalf("a published lane was waited against %g, want its own 0.577", got.Sigma)
+	}
+	if got := paceWith(wide, 0.577, 0.577).First; !near(got.Sigma, 2) {
+		t.Fatalf("a published lane's floor narrowed a wider belief to %g", got.Sigma)
 	}
 	if blank := PaceOf(Belief{}); blank.First.Known() || blank.Gap.Known() {
 		t.Fatal("an empty belief invented a distribution")
+	}
+}
+
+// near is equality to a millinat, which is as close as any of these spreads is
+// ever asked to be.
+func near(got, want float64) bool { return math.Abs(got-want) < 1e-3 }
+
+// TestAMeasuredLaneIsWaitedAgainstItsOwnSpreadAndAnUnpublishedOneAgainstThePrior
+// is the rule the false-hedge rate turns on, said about the door the transport
+// asks.
+//
+// A lane the sheet published a p50 and a p90 for HAS a measured variability and
+// it is the sheet's, not this package's guess; a lane nobody published anything
+// about has none, and what it gets instead is the prior. Watching either of
+// them a hundred times sharpens the MEDIAN and says nothing about how much one
+// answer moves, so the second half of the spread must not shrink with evidence
+// and the first half must.
+func TestAMeasuredLaneIsWaitedAgainstItsOwnSpreadAndAnUnpublishedOneAgainstThePrior(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Cleanup(Default().Reset)
+	Default().Reset()
+
+	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	measured := ID{Model: "vendor/model", Lane: "published"}
+	unheard := ID{Model: "vendor/model", Lane: "nobody-published-this"}
+	held := Default().Ledger()
+	// The sheet's own figures for the lane these rows were proved against:
+	// 430 ms and 900 ms to the first token, which is a spread of 0.577 nats.
+	held.Prime(Row{ID: measured, At: at, TTFTp50: 430, TTFTp90: 900, Ratep50: 60, Ratep90: 90}, SheetWeight)
+	own := math.Log(900.0/430.0) / z90
+
+	// Forty answers each, all of them exactly where the sheet said they would
+	// be: enough that the estimate is sharp and nothing has been learned about
+	// the tail.
+	for range 40 {
+		at = at.Add(time.Second)
+		for _, id := range []ID{measured, unheard} {
+			held.Note(Sighting{ID: id, TTFT: 430 * time.Millisecond, Gen: time.Second,
+				Gap: 20 * time.Millisecond, Tokens: 60, PromptTokens: 1000, At: at})
+		}
+	}
+
+	sharp := PaceFor(measured, at)
+	if !sharp.First.Known() {
+		t.Fatal("a lane answered forty times had nothing to wait against")
+	}
+	if math.Abs(sharp.First.Sigma-own) > 0.1 {
+		t.Errorf("a measured lane is waited against %.3f nats, want about its own %.3f", sharp.First.Sigma, own)
+	}
+	if sharp.First.Sigma < own {
+		t.Errorf("the spread came out at %.3f, under the lane's own variability of %.3f — a tail believed impossible",
+			sharp.First.Sigma, own)
+	}
+
+	blind := PaceFor(unheard, at)
+	if blind.First.Sigma < SpreadFloor {
+		t.Errorf("a lane nobody published anything about is waited against %.3f, under the prior of %g",
+			blind.First.Sigma, SpreadFloor)
+	}
+	if blind.First.Sigma > SpreadFloor+0.1 {
+		t.Errorf("a lane answered forty times is still waited against %.3f, and the prior is %g: the estimate never sharpened",
+			blind.First.Sigma, SpreadFloor)
 	}
 }
 

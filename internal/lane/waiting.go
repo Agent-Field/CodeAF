@@ -114,27 +114,31 @@ func (c Chain) Predict() (mu, variance float64) {
 }
 
 // Survival is this chain as the distribution the controller waits against, in
-// SECONDS, with the predictive spread floored.
+// SECONDS, floored at how variable one answer from this pair really is.
 //
-// THE FLOOR IS THE CORRECTION AND IT IS NOT OPTIONAL. [Chain.Predict] returns
-// the variance of the ESTIMATE, which shrinks toward nothing as evidence
-// accumulates — a lane whose median is known to the millisecond. What a wait is
-// judged against is how variable ONE DRAW is, which never shrinks below the
-// lane's own variability. A controller handed the estimate's spread would
-// believe a tail impossible and would never hedge the lane that has one.
+// THE FLOOR IS THE CORRECTION AND WHOSE VARIABILITY IT IS, IS THE RULE.
+// [Chain.Predict] returns the variance of the ESTIMATE — how well the median is
+// known — which shrinks toward nothing as evidence accumulates. What a wait is
+// judged against is how variable ONE DRAW is, which no amount of watching a
+// lane shrinks. A controller handed the estimate's spread alone would believe a
+// tail impossible and would never hedge the lane that has one.
+//
+// So draw is a floor and NOT A CONSTANT. [Hierarchy.Draw] answers it from the
+// dispersion the sheet published for this pair — the distance between its own
+// p50 and p90, which is that lane's measured variability — and [SpreadFloor] is
+// the prior for a pair nothing has been published about. One figure under every
+// lane said instead that every lane's tail is the worst tail on the sheet: the
+// lane `bench/lanelab` proves this against publishes 0.577 nats, and was waited
+// against one.
 //
 // unit is how many of the chain's own units make a second: the first-token
 // chain is in milliseconds and passes 1000, a chain already in seconds passes 1.
-func (c Chain) Survival(floor, unit float64) control.Survival {
+func (c Chain) Survival(draw, unit float64) control.Survival {
 	if !c.Known() || unit <= 0 {
 		return control.Survival{}
 	}
 	mu, variance := c.Predict()
-	spread := math.Sqrt(variance)
-	if spread < floor {
-		spread = floor
-	}
-	return control.Survival{Mu: mu - math.Log(unit), Sigma: spread}
+	return control.Survival{Mu: mu - math.Log(unit), Sigma: math.Max(math.Sqrt(variance), draw)}
 }
 
 // Hierarchy is the belief store's door for everything the controller needs.
@@ -156,6 +160,17 @@ type Hierarchy interface {
 	// can only make the same thought arrive faster, which the rate chain already
 	// says.
 	Think(model string, rung string, now time.Time) Chain
+	// Draw is how much ONE ANSWER from this pair varies around what is
+	// believed about it, in nats of log-spread: the first token and the gap
+	// between two tokens.
+	//
+	// IT IS THE OTHER HALF OF [Chain.Survival] AND IT IS NOT THE CHAIN'S. A
+	// chain holds how well a median is known and that is a belief this process
+	// sharpens by watching; how variable one answer is around it is a property
+	// of the machine, and the sheet publishes it as the distance between a p50
+	// and a p90. A pair nothing has been published about answers [SpreadFloor],
+	// which is the prior for the same quantity.
+	Draw(id ID) (first, gap float64)
 	// Shifted reports whether a change point has just reset this pair's own
 	// component toward its parents, and clears the flag. It is what the call log
 	// records and what the HUD may explain a sudden re-route with.
@@ -193,6 +208,9 @@ func Thinks(model, rung string, now time.Time) control.Survival {
 	if !ok || model == "" {
 		return control.Survival{}
 	}
+	// A THINKING PHASE HAS NO PUBLISHED DISPERSION. No sheet says how much one
+	// run of thought varies around this model's usual one, so the prior stands
+	// here where a lane's own figure stands in [PaceFor].
 	return chains.Think(model, rung, now).Survival(SpreadFloor, 1)
 }
 

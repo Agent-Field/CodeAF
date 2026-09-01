@@ -97,6 +97,17 @@ a stream four seconds late is not four seconds from finishing; it is a draw from
 the tail, and the cheapest thing to do with a draw from the tail is to ask
 somebody else. `control.Survival.Remaining` is the closed form.
 
+**And `s` is two quantities, not one.** The clock that guards the ANSWER reads
+the silence a person is waiting through — the time since the last visible word —
+and it is what the action floor and the role's ceiling ask about, because a run
+of thought is not progress and nobody is asked to watch an empty line for
+longer on the grounds that the endpoint is busy. The clock that guards the WIRE
+reads the time since the endpoint last wrote anything at all, readable or not,
+and it is what the stall clocks ask about: a lane that has written three words
+and is now reasoning has not stopped, and buying it a second request would be
+buying one for a lane that never stalled. A heartbeat is not writing and moves
+neither.
+
 ### What acting costs
 
 For the best alternative lane `a`:
@@ -299,10 +310,9 @@ not about machines, and nothing learns them:
 | `lane.VisiblePatience` | 10 s | how long a person watching an empty line is asked to wait. |
 | `lane.ActionFloor` | 700 ms | below this a second request is racing the network, not the lane: it has its own handshake and prefill to pay. |
 | `lane.ReadRate` | 18 tok/s | how fast a person reads; the ceiling on how much delivery speed is worth buying. |
-| predictive spread floor | 1.0 nat | the smallest per-draw variability the arithmetic will use, which is the shape the measured sheet published (p90 ≈ 3.5 × p50 on the worst lanes). |
 | role `Patience` | ×0.5 … ×6 | §F. |
 
-### The sheet is a prior with an honest floor
+### The sheet is a prior, and it is also the only measurement of a tail
 
 The endpoints sheet enters as a pseudo-observation at `R = k·σ₀²` with
 `k = SheetWeight = 4`, into `b[model]` and `e[model, lane]` — never into `μ` or
@@ -312,8 +322,29 @@ world's pace would let one refresh move every belief this process holds.
 **Its spread is floored and it is never a certainty.** Today `derivedDeadline`
 reads `TTFT.Quantile(1.2816)` raw, which is the variance of the *estimate* — it
 shrinks to nothing with evidence, and a controller reading it believes a tail
-impossible. `Chain.Survival(floor, unit)` is the one door that converts a chain
+impossible. `Chain.Survival(draw, unit)` is the one door that converts a chain
 into a distribution to wait against, and the floor is not optional.
+
+**The floor is the lane's own variability, and one figure for every lane is not
+it.** A sheet row carries a p50 and a p90, and the distance between them *is*
+that lane's measured dispersion — `ln(p90/p50) / 1.2816`, between about 0.15 and
+1.0 nat across the seventeen measured. This build already keeps it per pair,
+because it is the same number a sighting is weighed against as observation
+noise; `Hierarchy.Draw` reads it back. Only a pair nobody has published anything
+about falls back to the prior:
+
+| constant | value | what it is |
+| --- | --- | --- |
+| `lane.SpreadFloor` | 1.0 nat | how variable one answer is taken to be where nothing has been published: the shape the measured sheet published on its **worst** lanes (p90 ≈ 3.5 × p50). |
+
+**Held under every lane instead, it was measurably wrong**, and §K is where it
+showed. A lane publishing 430 ms and 900 ms has σ = 0.577; floored at 1.0 its
+`W(0.7 s)` is 0.876 s where its own spread gives 0.305 s, and acting costs about
+0.71 s — so a perfectly healthy request wanted a second one at the first instant
+an act was legal. `bench/lanelab/REPORT.md` measures both sides of it: the
+per-lane floor halves the false-hedge rate and the spend overhead, and neither
+reaches §K's threshold on the proof rows, which is a finding about the
+inequality rather than about the floor.
 
 ### Change points
 
@@ -653,12 +684,13 @@ type Factory func(Plan) Controller
 type Component struct{ X, P float64 }
 type Chain [Levels]Component
 func (Chain) Predict() (mu, variance float64)
-func (Chain) Survival(floor, unit float64) control.Survival
+func (Chain) Survival(draw, unit float64) control.Survival
 
 type Hierarchy interface {
     Wait(id ID, now time.Time) Chain
     Rate(id ID, now time.Time) Chain
     Think(model, rung string, now time.Time) Chain
+    Draw(id ID) (first, gap float64)
     Shifted(id ID) bool
     NoteThinking(model, rung string, took time.Duration, at time.Time)
 }
@@ -701,7 +733,7 @@ func (Role) Ceiling() time.Duration
 | `commitTokens = 64` | replaced by the same inequality with `V` set to what was written |
 | `lumpGap = 15s` | replaced by the gap distribution, which says the same thing about a slow lane and a different thing about a fast one |
 | `deadlineCeiling = 8s` | replaced by the role ceiling, which exists whether or not a belief does |
-| `derivedDeadline` reading a raw quantile | replaced by `Chain.Survival` with the predictive floor |
+| `derivedDeadline` reading a raw quantile | replaced by `Chain.Survival`, floored at the lane's own published dispersion |
 | `internal/lane/watch.go` as a policy | it becomes a thin adapter, or it goes |
 
 ---

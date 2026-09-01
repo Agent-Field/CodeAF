@@ -71,18 +71,6 @@ var levelHalfLife = [Levels]time.Duration{
 	LevelPair:  10 * time.Minute,
 }
 
-// PredictiveFloor is the smallest per-draw spread the arithmetic will use, in
-// nats.
-//
-// IT IS THE ONE THING THAT KEEPS A CONFIDENT BELIEF FROM DENYING ITS OWN TAIL.
-// [Chain.Predict] returns the variance of the ESTIMATE, which shrinks toward
-// nothing as evidence accumulates; what a wait is judged against is how
-// variable ONE DRAW is, which never shrinks below the lane's own variability.
-// One nat is the shape the measured sheet published — a p90 about three and a
-// half times the p50 on the worst lanes — and it is a floor rather than a
-// figure, so a lane that really is more variable than that is believed.
-const PredictiveFloor = 1.0
-
 // cusumSlack and cusumAlarm are the standard slack and alarm of a one-sided
 // CUSUM: enough to detect a one-σ step in about eight observations without
 // firing on ordinary noise. Both are priors to be fitted in the simulator.

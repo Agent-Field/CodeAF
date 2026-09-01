@@ -210,8 +210,16 @@ func (h *hazard) notPast(moment time.Time) time.Time {
 	return moment
 }
 
-// silence is s: how long this request has gone without visible progress.
+// silence is s: how long this request has gone without visible progress. It is
+// what a person is waiting through, so it is what the floor and the ceiling ask
+// about.
 func (h *hazard) silence(now time.Time) time.Duration { return now.Sub(h.progress) }
+
+// quiet is how long the WIRE has been still: the time since the endpoint last
+// wrote anything at all, readable or not. It is what the stall clocks ask
+// about, because a lane still writing is a lane that has not stopped — and a
+// heartbeat is not writing, which is why [hazard.delta] never moves on one.
+func (h *hazard) quiet(now time.Time) time.Duration { return now.Sub(h.delta) }
 
 // firesAt reports whether the answer at that moment is to act. It is the whole
 // decision with the choice of act taken out of it, so that the deadline search
@@ -264,7 +272,7 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string) {
 	case PhaseThinking:
 		// The liveness clock first: an endpoint that has stopped writing
 		// altogether is a stall whatever it was writing.
-		if gap := h.plan.Gap.Remaining(now.Sub(h.delta).Seconds()); gap > cost+h.plan.Margin {
+		if gap := h.plan.Gap.Remaining(h.quiet(now).Seconds()); gap > cost+h.plan.Margin {
 			return gap, cost, "drift"
 		}
 		// And the duration clock, which prices the alternative's own thought:
@@ -272,7 +280,15 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string) {
 		// a pathological one is worth paying that for.
 		return h.plan.Think.Remaining(now.Sub(h.think).Seconds()), cost + h.plan.Think.Mean(), "long think"
 	case PhaseWriting:
-		return h.plan.Gap.Remaining(h.silence(now).Seconds()), cost, "drift"
+		// AND THE DRIFT CLOCK READS THE WIRE, NOT THE PAGE. A model that writes
+		// three words and then thinks for a second has not stalled: the
+		// endpoint is writing where nobody can read, which is what
+		// [hazard.delta] holds and what the same clock reads in the thinking
+		// phase above. Measuring this one from the last VISIBLE word instead
+		// would call an interleaved run of thought a stall and buy a second
+		// request for a lane that never stopped. What the SILENCE bounds is the
+		// person's wait, and that is the ceiling's question and the floor's.
+		return h.plan.Gap.Remaining(h.quiet(now).Seconds()), cost, "drift"
 	default:
 		return h.plan.First.Remaining(h.silence(now).Seconds()), cost, "first token late"
 	}

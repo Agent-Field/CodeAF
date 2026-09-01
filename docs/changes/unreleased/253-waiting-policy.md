@@ -11,6 +11,7 @@ invalidates:
   - "A wait that reached the ceiling with an affordable alternative was turned from a report into a hedge by `hedge.go`, downstream of the verdict. That ruling is the controller's now, so a row that says `report` never put a request on the wire — and an unattended role, whose λ is zero by construction, is still rescued at its own ceiling rather than merely told about."
   - "A strict lane pin sent `Only` and carried no candidate set, so the offer a stalled pin raises had nowhere to point and the wait was reported instead. A strict pin now carries the frontier — computed exactly as for any other call, sent to nobody — which is what makes `coreweave is slow · switch to auto? (y)` answerable."
   - "The transport's stall bounds were flat: 90s to the first delta, 45s mid-stream, 150s buffered. They pre-empted the 30s and 60s ceilings of `leaf.unattended`, `memory`, `auxiliary`, `standing`, `judge` and `design`, so for most of this build's calls the first thing to act on a stall was the one act that throws the whole attempt away. They are scaled by the role's `Patience` now and floored at twice its ceiling; `docs/ARCHITECTURE.md` Decision 10 rows 10–12 say so, and a law walks every role at every rate."
+  - "`lane.Chain.Survival` took the flat `lane.SpreadFloor` as its floor and every caller passed it, so one figure stood under every lane. It takes that lane's OWN published dispersion — `lane.Hierarchy.Draw(id)`, the distance between the sheet's p50 and p90 for the pair — and `lane.SpreadFloor` is now only the prior for a pair nothing has been published about. A ledger that answers `lane.Hierarchy` has one more method to answer."
   - "`lane.SetController` returned nothing, so a caller that swapped it put back nil and left the process with no waiting policy. It returns the previous factory, the way `provider.OnPhase` does."
   - "The store was one file merged last-writer-wins. It is `lanes.json` plus an append-only `lanes.log`: `Store.Load` is the compacted half and the journal is replayed over it, so two processes sharing a ledger no longer discard each other's afternoon."
   - "`internal/session` spelled `PhaseAsking` and `PhaseAllSlow` as its own string constants. They are `provider.PhaseAsking` and `provider.PhaseAllSlow` — one closed vocabulary — and `session.SetOfferAnswerer` is wired to `provider.AnswerOffer` at agent construction, so the `y` key reaches the request that asked."
@@ -35,15 +36,34 @@ rescues this answer and writes no `lane.<slot>.borrow` row, so a person who
 wants a borrowable pin still sets it themselves in the picker.
 
 **And the design's own acceptance, §K, is measured and two of its four criteria
-fail.** `bench/lanelab/REPORT.md` has the run — five rows, three seeds, 4,500
-trials against the shipped chooser, ledger and controller. The invariant the
-work was ordered for holds: every one of 225 staged silences on a cold store was
-acted on at the ceiling to the centisecond, and 99% of legitimate thinking
-phases were left alone. What fails is cost: 4.9% of healthy requests raise an
-arm against a threshold of 2%, and 5.8% of the bill against 3%. The cause is
-one number. `lane.SpreadFloor` is 1.0 nat and the lane measured there publishes
-σ = 0.576, so `W(0.7 s)` is 0.876 s where the lane's own spread would give
-0.305 s — over the cost of acting at the very first instant an act is legal.
-Flooring the predictive spread at a lane's own published dispersion, and at 1.0
-only where there is none, is the repair; it moves a number the design fixes as
-a prior, so it is the owner's call and not the integration lane's.
+still fail.** `bench/lanelab/REPORT.md` has the runs — five rows, three seeds,
+4,500 trials against the shipped chooser, ledger and controller. The invariant
+the work was ordered for holds: every one of 225 staged silences on a cold store
+was acted on at the ceiling to the centisecond, and 98% of legitimate thinking
+phases were left alone. What fails is cost, and this PR halves it.
+
+**The floor under the predictive spread is a lane's own variability, and one
+figure for every lane was not it.** `lane.SpreadFloor` is 1.0 nat; the lane §K's
+rows are proved against publishes a p50 of 430 ms and a p90 of 900 ms, which is
+σ = 0.577. Floored at one nat its `W(0.7 s)` is 0.876 s where its own spread
+gives 0.305 s, and acting costs about 0.71 s — so a perfectly healthy request
+wanted a second one at the first instant an act was legal, on every request that
+had not started by then. The sheet publishes each lane's dispersion and this
+build already keeps it per pair, because it is the same number a sighting is
+weighed against as observation noise. So THAT is the floor wherever there is
+one, and the constant is the prior for where there is not: a measured thing
+outranks a prior, which is the law the rest of the package keeps everywhere.
+
+**And the two silences are two quantities.** The clock that guards the answer
+reads the silence a person is waiting through and the clock that guards the wire
+reads the time since the endpoint last wrote anything at all — so a lane that
+has written three words and is now reasoning is no longer read as a stall.
+
+Measured, on the shipped door: false hedges fall from 5.3% to 2.3% of healthy
+requests and the spend overhead from 5.5% to 4.5% of the bill, against
+thresholds of 2% and 3%. `REPORT.md` carries the frontier — every candidate
+against all four gates — and the residue: it is concentrated in one row, and its
+cause is not the floor but a chain that predicts mostly the world's own pace for
+a pair whose only evidence is one sheet row at a quarter of a sighting's weight.
+That is a number the design fixes as a prior and the ruling on it is the
+owner's.

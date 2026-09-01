@@ -620,6 +620,11 @@ func (h fakeHierarchy) Think(string, string, time.Time) Chain {
 }
 func (h fakeHierarchy) Shifted(ID) bool { return false }
 
+// Nothing is published about this world's lanes, so one answer's own
+// variability is the prior — which is what a pair the sheet does not carry gets
+// from the real ledger too.
+func (h fakeHierarchy) Draw(ID) (float64, float64) { return SpreadFloor, SpreadFloor }
+
 // It learns nothing: this double is a WORLD, scripted, and a fold here would be
 // the test rewriting the fixture it is asserting against.
 func (h fakeHierarchy) NoteThinking(string, string, time.Duration, time.Time) {}
