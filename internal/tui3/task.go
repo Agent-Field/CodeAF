@@ -1000,15 +1000,16 @@ const (
 	// taskBranchPointWord names WHERE THE WORK STARTS FROM, on a proposal whose
 	// node is going to get a worktree of its own.
 	//
-	// It is on the card because of the one surprise the worktree costs
-	// (docs/CHAT-V3.md, Decision 26): the node branches off HEAD, so the edits a
-	// person has open and has not committed are not in the copy it works on, and
-	// nothing they do to their own checkout while it runs reaches it either. That
-	// is cheap to know beforehand and expensive to discover from a merge that
-	// landed on top of work the node never saw. HEAD and branch are git's words
-	// and belong to whoever is running tasks over a repository; there is no
-	// machinery in the sentence a person has to be taught.
-	taskBranchPointWord = "from HEAD — unsaved edits not included"
+	// It is on the card because of the one surprise the copy costs, and that
+	// surprise turned around when the ground law landed (internal/session's
+	// groundladder.go): the node's world is now the person's folder AS IT
+	// STANDS, so work they have not committed is what the task starts from.
+	// That is cheap to know beforehand and expensive to discover afterwards,
+	// whichever way round it is. What has NOT changed is the other half — the
+	// copy is a copy, and nothing they do to their own checkout while it runs
+	// reaches it. There is no machinery in the sentence a person has to be
+	// taught.
+	taskBranchPointWord = "from your folder as it stands — unsaved edits included"
 	// taskWaitingWord is what stands where the meter would be on a proposal the
 	// engine is holding open indefinitely. A bar with no end to drain toward
 	// would be an animation inventing a deadline nobody set.

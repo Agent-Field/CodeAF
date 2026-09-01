@@ -1080,7 +1080,7 @@ func (e *orchestrateExec) root() string {
 // cmd/harness-design. Everything else about the layout is decided in
 // [composeBrief] and not here.
 func orchestrateRootBrief(request, goal string) string {
-	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "")
+	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "")
 }
 
 // orchestrateBrief is a node's whole world: what the run as a whole was asked

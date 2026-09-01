@@ -157,12 +157,13 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea
 			a.note(line)
 		}
 	}
-	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO NOT SEND. The task works in
-	// a copy cut from the last commit, so unsaved edits stay in front of the
-	// person who made them — and "the task sees what I see" is what everybody
-	// assumes until a worker reports the file as it was this morning. Said in the
-	// same breath as the line above and for the same reason: this is the last
-	// moment before the spend when knowing it can still change what somebody does.
+	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
+	// copy of the folder AS IT STANDS (internal/session's groundladder.go), so
+	// half-finished edits go with the work — which is what almost everybody
+	// wants and is worth one line for the person who was in the middle of
+	// something experimental. Said in the same breath as the line above and for
+	// the same reason: this is the last moment before the spend when knowing it
+	// can still change what somebody does.
 	//
 	// It costs one `git status` per start and nothing at all per frame, and it is
 	// silent on a clean tree (internal/session's taskpreflight.go).
