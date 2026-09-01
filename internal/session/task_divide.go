@@ -771,36 +771,11 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	parts, refusal := a.reviewDivision(ctx, node, parsed, thin)
 	settle()
 	if refusal.refused() {
-		// A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
-		// THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
-		// ([divisionUnadjudicated]) — and the adjudication it never used is
-		// given back ([TaskNode.refundTiebreak]). Both halves were learned
-		// from the same live cell: the worker was twice told "0 separate
-		// items" when the truth was "nobody could ask the reviewer", believed
-		// the words, invented a reason they might be true, and routed around
-		// the whole road — while the timeout had already spent the one
-		// adjudication its honest retry would have needed. A worker acts on
-		// what the refusal SAYS, so the refusal must say what happened.
-		//
-		// An answered refusal is the other case and is final: the reviewer's
-		// own reason reaches the worker, and the tiebreak stays spent —
-		// `why` carries the "refused: " prefix that tells the two apart.
-		line.Decision = divisionRefusedReview
-		line.Error = refusal.why
-		if thin && !strings.HasPrefix(refusal.why, "refused") {
-			line.Decision = divisionRefusedUnreviewed
-			node.refundTiebreak()
-		}
-		// AND THE ONE REFUSAL THAT IS NOT ABOUT THE DIVISION AT ALL. Everything
-		// above is a finding about whether these parts are worth handing out; this
-		// is a finding about the WORK — that what is left of it is not work for any
-		// worker — and it is the only answer on this road that its caller may act
-		// on by not starting one.
-		if refusal.nobody {
-			line.Decision = divisionRefusedNobody
-			return refusal.said, personsOwnJob(refusal.why), false
-		}
-		return refusal.said, "", false
+		// THE REVIEWER SAID NO, and what that costs the task is a decision of its
+		// own ([settleDivisionRefusal]) — the record, the tiebreak, and whether the
+		// answer is about the division or about the work.
+		said, person := settleDivisionRefusal(node, refusal, thin, &line)
+		return said, person, false
 	}
 	parsed.Parts = parts
 
@@ -848,6 +823,49 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 // reading their task's report wants the sentence and not the bookkeeping.
 func personsOwnJob(why string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(why), "refused:"))
+}
+
+// settleDivisionRefusal turns the reviewer's no into the three things it decides:
+// what the record says, whether the adjudication is given back, and what the
+// worker is told — which is the sentence to answer with and, on exactly one
+// road, the person's own job.
+//
+// IT WRITES ITS DECISION ONTO THE CALLER'S RECORD AND JOURNALS NOTHING ITSELF.
+// A division is ONE line in the journal, appended once by [Agent.divideOnce]'s
+// own deferred write, and a refusal that appended a second would turn the
+// one-write law that function states in its own comment quietly into five.
+//
+// A REVIEWER THAT NEVER ANSWERED ON THE ADJUDICATING PATH IS TOLD TO
+// THE WORKER AS EXACTLY THAT — nothing was decided, ask once more
+// ([divisionUnadjudicated]) — and the adjudication it never used is
+// given back ([TaskNode.refundTiebreak]). Both halves were learned
+// from the same live cell: the worker was twice told "0 separate
+// items" when the truth was "nobody could ask the reviewer", believed
+// the words, invented a reason they might be true, and routed around
+// the whole road — while the timeout had already spent the one
+// adjudication its honest retry would have needed. A worker acts on
+// what the refusal SAYS, so the refusal must say what happened.
+//
+// An answered refusal is the other case and is final: the reviewer's
+// own reason reaches the worker, and the tiebreak stays spent —
+// `why` carries the "refused: " prefix that tells the two apart.
+func settleDivisionRefusal(node *TaskNode, refusal divisionRefusal, thin bool, line *journalDivision) (said, person string) {
+	line.Decision = divisionRefusedReview
+	line.Error = refusal.why
+	if thin && !strings.HasPrefix(refusal.why, "refused") {
+		line.Decision = divisionRefusedUnreviewed
+		node.refundTiebreak()
+	}
+	// AND THE ONE REFUSAL THAT IS NOT ABOUT THE DIVISION AT ALL. Everything
+	// above is a finding about whether these parts are worth handing out; this
+	// is a finding about the WORK — that what is left of it is not work for any
+	// worker — and it is the only answer on this road that its caller may act
+	// on by not starting one.
+	if refusal.nobody {
+		line.Decision = divisionRefusedNobody
+		return refusal.said, personsOwnJob(refusal.why)
+	}
+	return refusal.said, ""
 }
 
 // parseDivideArguments reads one call and says, in plain words, what is wrong
