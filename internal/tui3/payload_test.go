@@ -249,8 +249,10 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
 		{"y yes · r redirect · n no", []string{"y", "r", "n"}},
 		// `0 or esc, no` names two keys for one answer, and the comma after the
-		// second is punctuation rather than part of it.
-		{standProposalHint, []string{"1", "2", "3", "0", "esc"}},
+		// second is punctuation rather than part of it. The line is built from
+		// the chips a card drew rather than written down (standing.go's
+		// [standHintFields]), so this asks for the full row's spelling of it.
+		{standAskHint(nil), []string{"1", "2", "3", "0", "esc"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",

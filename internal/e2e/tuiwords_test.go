@@ -194,8 +194,12 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes · 2 change when or where · 3 just once · 0 no",
-		why:    "the four answers a standing card offers, spelled in full under the box at every width",
+		screen: "1 yes · 2 change when or where · 0 no",
+		source: "change when or where",
+		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
+			"There are three of them and not four: a reminder has no `3 just once` to give, and since #189 " +
+			"the line is built from the chips the card drew rather than typed out, so it cannot name one. " +
+			"The source is the middle answer's own constant, because the sentence is no longer a literal anywhere",
 	},
 	"exchangeFollowUp": {
 		screen: "enter sends a follow-up",
