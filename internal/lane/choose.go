@@ -401,10 +401,10 @@ func (c *chooser) borrowedAll(candidates []Belief, now time.Time) []Belief {
 	for _, belief := range candidates {
 		if hier != nil {
 			if !belief.TTFT.Known() {
-				belief.TTFT = borrow(hier.Wait(belief.ID, now))
+				belief.TTFT = flatten(hier.Wait(belief.ID, now))
 			}
 			if !belief.Rate.Known() {
-				belief.Rate = borrow(hier.Rate(belief.ID, now))
+				belief.Rate = flatten(hier.Rate(belief.ID, now))
 			}
 		}
 		if !belief.Known() {
@@ -415,10 +415,10 @@ func (c *chooser) borrowedAll(candidates []Belief, now time.Time) []Belief {
 	return kept
 }
 
-// borrow is one chain read as the flat belief the gate and the score are made
+// flatten is one chain read as the flat belief the gate and the score are made
 // of: the sum of the four means, with the sum of the four variances. An unknown
 // chain borrows nothing, which the caller reads as a candidate to drop.
-func borrow(chain Chain) Posterior {
+func flatten(chain Chain) Posterior {
 	if !chain.Known() {
 		return Posterior{}
 	}
