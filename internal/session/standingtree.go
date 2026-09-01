@@ -153,13 +153,14 @@ type FolderLanding struct {
 	Note string
 }
 
-// Kept reports that the work did NOT go into the folder and is still on its own
-// branch, which is what git does with a merge it cannot settle.
+// Kept reports that the work did NOT go into the folder and is still where the
+// landing found it — on its own branch after a merge git could not settle, or in
+// the copy after a landing that could not save it at all ([cameHome]).
 //
 // It is a method rather than a comparison a surface makes for itself, because
 // the strings [taskTree.comeHome] answers with are this package's and a surface
 // reading one of them by hand is the second copy of a fact that will drift.
-func (l FolderLanding) Kept() bool { return l.Merged == mergeConflicted }
+func (l FolderLanding) Kept() bool { return l.Merged != "" && !cameHome(l.Merged) }
 
 // Places whose folder the conversation may not stage into, answered once.
 //
@@ -551,6 +552,14 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	}
 	merged, note := work.comeHome("changes from this conversation", tree.Wrote)
 	landing.Merged, landing.Note = merged, note
+	if unsavedLanding(note) {
+		// A LANDING THAT SAVED NOTHING KEEPS THE COPY AND THE RECORD. The work is
+		// in that copy and nowhere else — no branch took it and the folder was left
+		// as it was ([taskTree.landMirror]) — so removing the directory below would
+		// be this road destroying what it just refused to move, and dropping the
+		// record would take the chip that leads a person back to it.
+		return landing, nil
+	}
 	if tree.Mode == TaskModeMirror {
 		// The copy is not removed by the landing that laid it back, so it is
 		// removed here — the record has gone and a directory nothing points at

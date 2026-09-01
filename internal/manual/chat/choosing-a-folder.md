@@ -138,7 +138,9 @@ For a repository the work is committed on a branch of its own and merged into yo
 checkout — your uncommitted changes are left alone, and if the merge cannot settle you get
 `could not put it all into agentfield ·` and the sentence naming the files that clashed,
 with the branch kept so nothing is lost. For a plain folder the files are copied back over
-it by name.
+it by name, **whole or not at all**: if any one of them cannot be placed, your folder is
+left exactly as it was and you get `could not put it all into agentfield ·` with the reason.
+The changes stay waiting, so `/land` is still there to try again once the way is clear.
 
 With more than one folder waiting, `/land` asks which: `changes are waiting for agentfield
 and notes · say which one · /land agentfield`. Then `/land agentfield now`.

@@ -1472,7 +1472,16 @@ func restoreFromGround(root string, tree taskTree, wrote []string) (auditGround,
 		remove()
 		return auditGround{}, problem
 	}
-	stageTaskWork(dir, wrote)
+	// A CHECKOUT THE WORK CANNOT BE STAGED INTO IS NOT A RESTORE. The sentence the
+	// checker is handed says its changes are staged, and an unstaged tree makes a
+	// change of new files read as an empty diff — which is a refusal of good work
+	// for a reason that has nothing to do with the work (task_run.go's
+	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
+	// job log instead.
+	if problem := stageTaskWork(dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, "the work could not be staged in a clean copy: " + problem
+	}
 	return auditGround{dir: dir, restored: true, drop: remove}, ""
 }
 
@@ -1536,7 +1545,16 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 		remove()
 		return auditGround{}, problem
 	}
-	stageTaskWork(dir, wrote)
+	// A CHECKOUT THE WORK CANNOT BE STAGED INTO IS NOT A RESTORE. The sentence the
+	// checker is handed says its changes are staged, and an unstaged tree makes a
+	// change of new files read as an empty diff — which is a refusal of good work
+	// for a reason that has nothing to do with the work (task_run.go's
+	// [stageTaskWork]). Falling back to the tree the node worked in says so in the
+	// job log instead.
+	if problem := stageTaskWork(dir, wrote); problem != "" {
+		remove()
+		return auditGround{}, "the work could not be staged in a clean copy: " + problem
+	}
 	return auditGround{dir: dir, restored: true, drop: remove}, ""
 }
 
@@ -1574,32 +1592,18 @@ func restoreByCopy(node *TaskNode, tree taskTree, wrote []string) (auditGround, 
 // wrote, copied from the node's working copy, and every path it wrote and then
 // DELETED taken away again.
 //
-// The paths are read with [normalizeScopePath] — the same one reading of a path
-// against a tree that the write scope's door and guard use (fork.go) — so a
-// record that names a file absolutely and one that names it relatively land in
-// the same place.
+// IT IS ALL OF THE LEDGER OR NONE OF IT, and every file arrives whole. What is
+// being written over on a folder ground is the person's own folder, so the whole
+// ledger is staged beside its targets before anything moves and each staged path
+// is renamed into place (task_lay.go says why in full).
 func layWork(from, to string, wrote []string) string {
-	for _, raw := range wrote {
-		relative, err := normalizeScopePath(from, raw)
-		if err != nil {
-			// A path outside the working copy is not part of what ships, exactly as
-			// it is not part of what is staged ([stageableWork] drops the same ones).
-			continue
-		}
-		source := filepath.Join(from, filepath.FromSlash(relative))
-		target := filepath.Join(to, filepath.FromSlash(relative))
-		if _, err := os.Lstat(source); err != nil {
-			// Written and then removed: the restore must not carry it either.
-			_ = os.RemoveAll(target)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return "the work could not be laid into a clean copy: " + err.Error()
-		}
-		_ = os.RemoveAll(target)
-		if err := copyPath(source, target); err != nil {
-			return "the work could not be laid into a clean copy: " + err.Error()
-		}
+	lay, problem := stageLay(from, to, wrote)
+	if problem == "" {
+		problem = lay.commit()
+	}
+	if problem != "" {
+		lay.abandon()
+		return problem
 	}
 	return ""
 }
@@ -2040,7 +2044,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// needing a look — with the conflicting files named, because what is being
 	// asked of them has changed: they said the work was good, and it is; what is
 	// left is two versions of the same file (task_run.go's [Agent.landConflicted]).
-	if merge == mergeConflicted {
+	if !cameHome(merge) {
 		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
@@ -2183,7 +2187,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// to look — with the work committed on its branch and the clashing files
 		// named (task_run.go's [Agent.landConflicted] makes the same call on the
 		// gate's own road).
-		if merged == mergeConflicted {
+		if !cameHome(merged) {
 			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
