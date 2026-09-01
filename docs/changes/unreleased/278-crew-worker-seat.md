@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: the crew has a worker seat, and its presets are open-weight models picked off the catalog's own scores
+title: the crew has a worker seat, and its presets are open-weight models picked off the catalog's scores
 pr: 278
 surface: [chat, engine, docs]
 invalidates:
