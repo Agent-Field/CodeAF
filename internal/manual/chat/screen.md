@@ -930,6 +930,24 @@ An `ask here` answer on home keeps the same law with one step instead of two: it
 while it arrives and formats when the turn ends. There is no 1500ms promotion there, because
 the pane's answers are short enough that the settle is the catch-up.
 
+## The answer stayed raw until I asked the next question
+
+It cannot any more. **The end of a turn is the only thing that settles it**, and it settles
+the whole turn: every block of it is a finished document from that moment, and nothing that
+arrives afterwards can leave a paragraph half-drawn for the next question to tidy up.
+
+What used to happen: a turn ends twice — the session finishing it, and the connection
+closing behind it — and in the gap a provider could still deliver the tail of a reply it had
+already buffered, or a straggler behind an `esc`. Those words opened a **second** block that
+nothing was left to settle, so it drew as the characters you typed rather than as markdown,
+and its mere presence pushed the real answer above it into the grey working column. Both
+went away the moment you asked something else, which is why it looked like the next question
+was fixing the last one.
+
+Late words now join the answer they belong to, already settled. If the turn's last block was
+a tool call rather than a reply, they land in a block of their own — also settled — because
+words that came after a call belong after it.
+
 ## The reply dims when it finishes — brighter while streaming, calmer when done
 
 That is deliberate, and it is the only thing that says the turn is over. There is no
@@ -970,6 +988,12 @@ and the loudest thing on screen would be the part you did not ask for.
 Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
 what came after what — so it is the same on a conversation you resume as it was live, and
 the same on a task's own page.
+
+One thing that is **not** work, and so never greys the paragraph above it: a line aforge
+writes about the turn itself. What the turn changed, what it cost, a notice that a request
+had to be reshaped — those land under the reply they are about, and a reply that had one
+written through the middle of it stays one answer rather than breaking into a grey half and
+a flush half.
 
 Below 60 columns the gutter is dropped and the shading alone carries the difference. With
 no colour at all, the gutter alone does.
@@ -2836,3 +2860,34 @@ turn — because that is a genuinely new stretch of thinking.
 Thinking is never saved into the conversation's record. A reopened session shows the
 answers, not the working behind them — so a `thought for` row you can see now will not be
 there after a restart, and that is deliberate.
+
+## A reply that shows up as thinking, or a turn that seems not to have answered
+
+It should not happen any more, and if you saw it before, this is what it was.
+
+Some endpoints put the whole reply on the **working** channel and send no answer at all.
+aforge used to draw that as a model that thought for a while and said nothing: a dim
+`thought for 9s` row, no answer under it, and — because a reply with no words in it looks
+exactly like a call that failed — the same question asked again at your expense.
+
+Now the decision about which words are the answer is made once, where the wire is: **a
+turn that asked for nothing and said nothing put its reply in its working, and the working
+is the reply.** It arrives as the answer, it is rendered as markdown like any other answer,
+and it is what a resumed conversation shows you later. A turn that called a tool and said
+nothing is untouched — that is a model behaving, not a lost reply.
+
+## `<think>` showed up in my answer
+
+It does not any more. Some endpoints — anything reached through `AFORGE_BASE_URL`, and any
+gateway in front of a raw open model — do not separate the model's working from its reply
+and instead fence it inside the answer as `<think>…</think>`. aforge used to type the tag
+and everything in it straight into your answer, and keep it in the conversation's record
+as words the model had said out loud.
+
+That working now goes where working goes: the dim `thought for` row above the reply. The
+tag never reaches the answer and never reaches the record. `<thinking>` is read the same way.
+
+Two limits worth knowing. The fence is only read as one when it **opens the reply** — a
+`<think>` written in the middle of a paragraph is a model talking about the tag, and your
+answer keeps its own words. And a fence that is opened and never closed leaves a reply with
+no words outside it, which is the case above: the working is the reply.

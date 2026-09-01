@@ -118,6 +118,14 @@ type StreamEvent struct {
 	ReasoningField   string
 	ReasoningDetails json.RawMessage
 
+	// FromAnswer marks working that was carved out of the ANSWER channel rather
+	// than delivered on a reasoning field — a `<think>` region the endpoint did
+	// not strip (answer.go). It is DISPLAY ONLY: there is no field it arrived
+	// under, so there is no field to replay it under, and a continuation that
+	// invented one would hand the endpoint back a message it never sent
+	// (internal/session's [reasoningBuffer.write] is where the line is drawn).
+	FromAnswer bool
+
 	// Index, ID and Tool name the tool call a StreamToolCallForming event is
 	// about, and are zero on every other kind. They are fields rather than a
 	// JSON payload in Delta — the shape StreamToolCallReady uses — because a

@@ -43,6 +43,14 @@ func (b *reasoningBuffer) write(event provider.StreamEvent) {
 	if b == nil || event.Kind != provider.StreamReasoning {
 		return
 	}
+	// WORKING THAT CAME OUT OF THE ANSWER CHANNEL IS NOT A CONTINUATION. It was
+	// fenced inside `content` and the endpoint never gave it a reasoning field
+	// (internal/provider's answer.go), so there is nothing to replay it under —
+	// and the encoder refuses an unnamed field outright rather than guess
+	// ([provider.MessageReasoning]). It is shown and never sent back.
+	if event.FromAnswer {
+		return
+	}
 	if b.reasoning.Field == "" && event.ReasoningField != "" {
 		b.reasoning.Field = event.ReasoningField
 	}

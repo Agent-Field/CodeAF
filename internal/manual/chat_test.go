@@ -929,6 +929,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// last two. They are the screen's, because every word of the question is
 		// about what is on it.
 		{"why is part of the reply grey", "screen"},
+		// #225: the surface being unsure what the final answer is, in the three
+		// shapes it was reported in — an answer filed as thinking, a `<think>`
+		// tag typed into the reply, and a reply that stayed raw until the next
+		// question was asked.
+		{"why did my answer show up as thinking", "screen"},
+		{"the model thought and never answered", "screen"},
+		{"why is there a <think> tag in my answer", "screen"},
+		{"the reply stayed raw until I asked something else", "screen"},
 		{"why is some of the answer dimmer than the rest", "screen"},
 		{"where is the actual answer in all this", "screen"},
 		{"I stopped it and the text stayed grey", "screen"},
