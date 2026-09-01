@@ -184,20 +184,20 @@ const (
 	// would be the card offering to change the reach and then refusing to hear
 	// about it.
 	standChangeLane = "say the time or the place instead… (enter sends it, esc leaves it alone)"
-	// standProposalHint is the hint slot's line while the card is up, and
-	// standTwoHint is the same line for a card with no `once` on it — a one-off
-	// reminder's ([standAnswerWords]). THE HINT NAMES THE KEYS THE CARD DREW and
-	// never one more: a hint offering a digit the chips do not is the same
-	// defect as a chip that does nothing.
+	// standNoEscWord is how the way out is named in the hint slot IN A
+	// CONVERSATION, where `0` and `esc` do exactly the same thing and each is
+	// the only one of the two that exists somewhere: `esc` is the dismiss key
+	// everywhere in a conversation, and `0` is the decline that also works from
+	// home and from the errand pane, where esc is spent on something else
+	// ([session.StandingNoKey]). The card itself draws the `0` as a chip, so
+	// naming it here is a reminder rather than the only place it is said — and
+	// the errand pane names the decline as `0` alone, because esc there hands
+	// the keyboard back to the list (homeexchange.go's [exchangeHint]).
 	//
-	// `0` is named beside `esc` because both do exactly the same thing here and
-	// each is the only one of the two that exists somewhere: `esc` is the
-	// dismiss key everywhere in a conversation, and `0` is the decline that also
-	// works from home and from the errand pane, where esc is spent on something
-	// else ([session.StandingNoKey]). The card itself now draws the `0` as a
-	// chip, so this line is a reminder rather than the only place it is said.
-	standProposalHint = "1 yes · 2 change when or where · 3 just once · 0 or esc, no"
-	standTwoHint      = "1 yes · 2 change when or where · 0 or esc, no"
+	// IT IS BUILT FROM [standNoWordChip] rather than respelling `no`, which is
+	// the same one-source-of-truth law the hint line itself is now built under
+	// ([standHintFields]).
+	standNoEscWord = "or esc, " + standNoWordChip
 	// The verdicts a settled card keeps. They are sentences and not states,
 	// because the row is read once, later, by somebody reconstructing what
 	// happened.
@@ -1130,17 +1130,93 @@ func (a *app) standMeter(card *standingCard, width int) string {
 	return a.progress(frac, cells) + "  " + a.pal.dim(word)
 }
 
+// ── THE HINT SLOT, READ OFF THE CHIPS ───────────────────────────────────────
+
+// standHintFields is the hint slot's line as ranked facts: ONE FIELD PER CHIP
+// THE CARD ACTUALLY DREW, in the order it drew them, under the digit that takes
+// it.
+//
+// THE LINE IS DERIVED AND IS NEVER WRITTEN DOWN. It used to be written down —
+// twice here and a third time in the errand pane — and the third copy named `3
+// just once` under a one-off reminder's card, which draws no such chip
+// ([standAnswerWords] says why it does not). A sentence somebody typed cannot
+// know what was drawn; a sentence built from [standingCard.row] cannot name an
+// answer that is absent, because an absent answer is not in the list it walks.
+// That is the one-source-of-truth law applied to a sentence rather than to a
+// number, and it is the same law the chips themselves are drawn under: the row
+// this reads is the row [app.standChips] paints (#189).
+//
+// AND EVERY FIELD CARRIES ITS BRIEF SPELLING, which is the chip's own — so a
+// narrow frame gives up a whole word rather than half of one, through the
+// shared fitter (rowfit.go): `2 change when or where` becomes `2 change`, and
+// no verb is ever left cut. rowfit's law 2 is the constrained-space rule and
+// this line obeys it like every other row on the surface.
+//
+// decline is how the way out is named, and it belongs to the caller because it
+// differs by pane: a conversation says `0 or esc, no` ([standNoEscWord]) and the
+// errand pane says `0 no`, since esc there hands the keyboard back to the list
+// rather than declining anything ([app.answerCard]).
+func standHintFields(card *standingCard, decline string) []rowField {
+	row := card.row()
+	fields := make([]rowField, 0, len(row))
+	for _, choice := range row {
+		word, short := standHintWord(choice.word), choice.short
+		if choice.key == session.StandingNoKey {
+			// The way out is named in the caller's words rather than the chip's,
+			// and its brief spelling is the chip's own — `no` is as short as a
+			// decline gets.
+			word, short = decline, standNoWordChip
+		}
+		field := rowField{full: choice.key + " " + word}
+		if short != "" && short != word {
+			field.short = choice.key + " " + short
+		}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
+// standHintWord is how one drawn chip is NAMED in the hint slot: its word up to
+// the first comma.
+//
+// A CHIP'S WORD IS AN ANSWER AND THE HINT IS A LIST OF ANSWERS, joined with `·`
+// and read left to right. `yes, set it up` dropped into that list reads as two
+// entries, because the comma inside it is the same break the separator is — and
+// the half before the comma is the whole answer anyway. What follows it is the
+// chip telling a person what pressing `1` DOES, which is the chip's work and
+// the answer line's under it, not this reminder's. Every other answer a standing
+// card draws has no comma in it and is named whole.
+func standHintWord(word string) string {
+	if at := strings.IndexByte(word, ','); at >= 0 {
+		return strings.TrimSpace(word[:at])
+	}
+	return word
+}
+
 // standAskHint is the hint slot's line for the question a card is asking right
-// now: the proposal's own row of digits, minus the third where there is no
-// third chip.
+// now in a conversation: the digits the card drew, and never one more.
 func standAskHint(card *standingCard) string {
+	return rowAll(standHintFields(standHintCard(card), standNoEscWord))
+}
+
+// standAskHintShort is that same line with every answer in its brief spelling —
+// the rung the legend offers when the frame cannot hold the long one
+// (steer.go's [app.hintShorter], render.go's [app.legend]). The slot is all or
+// nothing there, so the choice on a narrow frame is between every answer said
+// briefly and no answer named at all.
+func standAskHintShort(card *standingCard) string {
+	return rowShort(standHintFields(standHintCard(card), standNoEscWord))
+}
+
+// standHintCard is the card the hint is read off, and a nil one is the full
+// row — the kind's whole set of answers, which is what a surface asking for the
+// line with no card up is asking about ([standingCard.chips] takes the same
+// reading of a card whose notice narrowed nothing).
+func standHintCard(card *standingCard) *standingCard {
 	if card == nil {
-		return standProposalHint
+		return &standingCard{}
 	}
-	if len(card.chips()) <= standOnce {
-		return standTwoHint
-	}
-	return standProposalHint
+	return card
 }
 
 // standingAnimating reports whether the frame clock has to keep turning for the

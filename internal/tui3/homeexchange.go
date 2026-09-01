@@ -1983,10 +1983,18 @@ func exchangeHint(ex *homeExchange) string {
 	}
 	var parts []string
 	if ex.asking() {
-		// The decline is named because in this pane it is the ONLY way to say
-		// no — esc here goes back to the list rather than answering
-		// ([app.answerCard]).
-		parts = append(parts, "1 yes · 2 change when or where · 3 just once · 0 no")
+		// THE ANSWERS THE CARD DREW, off the very row that drew them
+		// (standing.go's [standHintFields]). This clause used to be a third
+		// hardcoded copy of a line standing.go already kept two correct
+		// spellings of, and it named `3 just once` over a one-off reminder's
+		// card, which offers no such chip — a hint naming a digit the chips do
+		// not is the same defect as a chip that does nothing (#189).
+		//
+		// The decline is named as `0` and nothing else because in this pane it
+		// is the ONLY way to say no: esc here goes back to the list rather than
+		// answering ([app.answerCard]), where a conversation's own line says `0
+		// or esc, no`.
+		parts = append(parts, rowAll(standHintFields(ex.view, standNoWordChip)))
 	}
 	parts = append(parts, "enter sends a follow-up")
 	if ex.offering() {

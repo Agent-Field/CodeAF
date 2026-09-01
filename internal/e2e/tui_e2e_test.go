@@ -342,11 +342,12 @@ func testAskHere(t *testing.T) {
 	// answer in full at every width (internal/tui3's exchangeHint). So the foot
 	// is where this suite reads what a person is being offered.
 	//
-	// AND THAT FOOT IS ITSELF A KNOWN DEFECT (issue #189): it names `3 just
-	// once` on a one-off reminder whose card drew no such chip. This waits for
-	// what the surface says TODAY; the day somebody fixes it, the untagged word
-	// gate goes red naming this exact string, which is the reminder to respell
-	// the needle with it.
+	// AND THE FOOT NAMES WHAT THE CARD DREW AND NOTHING MORE (#189, fixed). It
+	// used to say `3 just once` over a one-off reminder whose card offers no
+	// such chip, because the line was a third hardcoded copy of a sentence
+	// internal/tui3 already kept two correct spellings of. It is built from the
+	// chips now, so the reminder this subtest asks for is offered three answers
+	// and the needle spells three.
 	if !strings.Contains(waiting, say(t, "exchangeAnswerHint")) {
 		t.Errorf("the foot does not offer the card's answers:\n%s", waiting)
 	}
@@ -661,10 +662,11 @@ func standReminder(t *testing.T, r *rig, words string) {
 	r.ctrlEnter()
 	r.waitFor(modelPatience, say(t, "notifyAskWord"))
 	// ctrl+enter HANDS THE KEYBOARD STRAIGHT TO THE PANE, so the digit reaches
-	// the card with nothing walked onto — and the foot naming the card's four
-	// answers is how this helper knows the pane has it. (Subtest 3 takes the
-	// other road on purpose: it closes home first, which puts the keyboard back
-	// on the list, and walks onto the row.)
+	// the card with nothing walked onto — and the foot naming the card's own
+	// answers is how this helper knows the pane has it. A reminder's card draws
+	// three of them and the foot names three (#189). (Subtest 3 takes the other
+	// road on purpose: it closes home first, which puts the keyboard back on the
+	// list, and walks onto the row.)
 	r.waitFor(20*time.Second, say(t, "exchangeAnswerHint"))
 	r.lit("1")
 	r.waitFor(30*time.Second, say(t, "homeAskStoodTail"))

@@ -162,8 +162,14 @@ cursor. **The pane follows the cursor** — walk off the exchange and the row yo
 draws its own card again, where the frame is wide enough to have one.
 
 While the pane has the keyboard the hint reads `enter sends a follow-up · tab or esc back to
-the list`, with `1 yes · 2 change · 3 once · 0 no` in front of it when a card is up and
+the list`, with the card's own answers in front of it when a card is up and
 `↓ continue as a conversation` after it when that row is on screen.
+
+**The answers in that line are the chips the card actually drew, and never one more.** A
+card that offers all three reads `1 yes · 2 change when or where · 3 just once · 0 no`; a
+one-off reminder's card, which has no `just once` to give, reads
+`1 yes · 2 change when or where · 0 no`. The line is built from the row of chips rather
+than written out, so it cannot name a digit that would do nothing.
 
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
 `tab` or `esc`. It also lights up under the pointer and takes one click.
@@ -226,7 +232,7 @@ no project at all. A reminder belongs to no repository; a watch on CI belongs to
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, 2 change, 3 once, 0 no
+## How do I answer the card, or say no to it — 1 yes, 2 change when or where, 3 just once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
@@ -236,14 +242,18 @@ created until you answer it:
 - `2` — change it. The pane says `type the change and press enter`; write the correction in
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
   created by a change.
-- `3` — once. The action runs now and nothing standing is created.
+- `3` — once. The action runs now and nothing standing is created. **Not every card offers
+  it**: a one-off reminder draws no `3 just once` chip, because doing "remind me at six"
+  now says the wrong thing hours early. The hint under the box names the digit only where
+  the chip is on the card.
 - `0` — no. Nothing is created and nothing is run, the card settles as `not set up`, and the
   keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
   hands the keyboard back to the list without answering anything, and a card left standing on
   the column is not an answer. It is the same key on home's answer row and in a conversation,
   where `esc` also declines.
 
-Those four answers are the only four. There is no default: a card nobody answers creates
+Those four answers are the only four, and a card draws three of them where `3` is not one
+it can offer. There is no default: a card nobody answers creates
 nothing — and nothing answers it for you. **There is no clock on it.** It waits, and its row
 on home says `? waiting on you` for as long as it does.
 

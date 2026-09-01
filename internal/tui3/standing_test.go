@@ -1,6 +1,10 @@
 package tui3
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -455,8 +459,9 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 		t.Fatalf("`3` settled the card as %q", a.stand.verdict)
 	}
 	// The hint names the keys the card drew and not one more.
-	if got := standAskHint(a.stand); got != standTwoHint {
-		t.Fatalf("the hint is %q, want %q", got, standTwoHint)
+	const twoHint = "1 yes · 2 change when or where · 0 or esc, no"
+	if got := standAskHint(a.stand); got != twoHint {
+		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}
 	// And the two it did draw still work.
 	drive(t, a, key2("1"))
@@ -482,8 +487,9 @@ func TestAWatchCardStillDrawsThreeChips(t *testing.T) {
 	if !strings.Contains(text, "[ 3 "+standOnceWord+" ]") {
 		t.Fatalf("a watch lost its `%s` chip:\n%s", standOnceWord, text)
 	}
-	if got := standAskHint(a.stand); got != standProposalHint {
-		t.Fatalf("the hint is %q, want %q", got, standProposalHint)
+	const threeHint = "1 yes · 2 change when or where · 3 just once · 0 or esc, no"
+	if got := standAskHint(a.stand); got != threeHint {
+		t.Fatalf("the hint is %q, want %q", got, threeHint)
 	}
 	drive(t, a, key2("3"))
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Once {
@@ -556,7 +562,11 @@ func TestZeroSaysNoToAStandingCardWhereverItIsDrawn(t *testing.T) {
 	// THE HINT NAMES IT, on both shapes of card — the decline is the one key
 	// that is on every standing card there is, so a person who only ever meets
 	// one in a conversation still learns the key that works everywhere.
-	for _, hint := range []string{standProposalHint, standTwoHint} {
+	for _, chips := range [][]string{
+		{standYesWord, standChangeWord, standOnceWord},
+		{standYesWord, standChangeWord},
+	} {
+		hint := standAskHint(&standingCard{answers: chips})
 		if !strings.Contains(hint, session.StandingNoKey) {
 			t.Fatalf("the hint %q does not name the decline", hint)
 		}
@@ -895,5 +905,67 @@ func TestTheStandingAnswersShortenBeforeTheyAreDropped(t *testing.T) {
 	}
 	if !strings.Contains(plain(row), decline) {
 		t.Fatalf("the narrowest row is %q, want %q", plain(row), decline)
+	}
+}
+
+// EACH ANSWER A STANDING CARD OFFERS IS SPELLED IN EXACTLY ONE PLACE.
+//
+// This is the one-source-of-truth law made into a build failure, and it is here
+// because the drift it forbids had already happened. The hint under the box was
+// a whole SENTENCE typed out three times — `standProposalHint`, `standTwoHint`,
+// and a third copy in the errand pane — and the third named `3 just once` over
+// a one-off reminder's card, which correctly draws no such chip. Nothing
+// answered to that `3` (#189). Two of those copies were right and the third was
+// wrong, which is exactly what a second copy is for.
+//
+// So the sentence is gone: the hint is built from the chips the card drew
+// ([standHintFields]), and what remains written down is one constant per answer.
+// This counts the STRING LITERALS, so a comment quoting the row — pickrow.go's
+// header draws it — is not a spelling of it, and the sources are parsed rather
+// than grepped ([TestEachVerbWordIsSpelledOnce] makes the same call for the same
+// reason).
+func TestEachStandingAnswerWordIsSpelledOnce(t *testing.T) {
+	// The three numbered answers, in their long spellings. The decline is not on
+	// this list: `no` is two letters that fall inside half the sentences on this
+	// surface, so it is guarded by the constants that BUILD on it instead —
+	// [standNoEscWord] is `"or esc, " + standNoWordChip` and not a second `no`.
+	words := []string{standYesWord, standChangeWord, standOnceWord}
+	seen := map[string]int{}
+	fset := token.NewFileSet()
+	for _, name := range placeSourceFiles(t) {
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatalf("could not parse %s: %v", name, err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			text, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				return true
+			}
+			for _, word := range words {
+				// CONTAINS AND NOT EQUALS, because the copy that was here did not
+				// spell the answer on its own — it was a whole sentence with the
+				// answer buried in it, which is how it drifted unnoticed. A test
+				// asking for equality would have watched it go past.
+				if !strings.Contains(text, word) {
+					continue
+				}
+				seen[word]++
+				if text != word || name != "standing.go" {
+					t.Errorf("%q is spelled again inside %q at %s — a standing card's answers live in standing.go and nowhere else",
+						word, text, fset.Position(lit.Pos()))
+				}
+			}
+			return true
+		})
+	}
+	for _, word := range words {
+		if seen[word] != 1 {
+			t.Errorf("%q is spelled %d times, want exactly one — its own constant", word, seen[word])
+		}
 	}
 }

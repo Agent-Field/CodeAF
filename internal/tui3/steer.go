@@ -453,6 +453,18 @@ func (a *app) typingHint() string {
 // that works — and render.go's [app.legend] measures it with the same
 // arithmetic it measures everything else with.
 func (a *app) hintShorter(slot string) string {
+	// AND THE STANDING CARD HAS ONE TOO, for the same reason and by a different
+	// road. Its line is not written down at all — it is built from the chips the
+	// card drew, each carrying the brief spelling the chip itself uses on a
+	// narrow row (standing.go's [standHintFields]) — so the shorter form here is
+	// the SAME answers said in fewer cells rather than a second sentence, and
+	// the slot keeps naming every key the card offers instead of naming none.
+	if a.awaitingStanding() && slot == standAskHint(a.stand) {
+		if short := standAskHintShort(a.stand); short != slot {
+			return short
+		}
+		return ""
+	}
 	if slot == "" || slot != a.typingHint() || slot == steerShortHint || slot == bargeHint {
 		return ""
 	}
