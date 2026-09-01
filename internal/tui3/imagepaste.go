@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -53,31 +54,75 @@ const imageTokenHead = "[image #"
 // imageToken is what the draft holds in place of the nth attached picture.
 func imageToken(n int) string { return imageTokenHead + strconv.Itoa(n) + "]" }
 
-// pasteFiles recognizes the file form of a terminal drop. A desktop drop
-// arrives only as pasted local paths, so putting those files on the existing
-// tray is what lets hosted sends carry their bytes instead of handing the
-// engine names from the wrong disk.
-func (a *app) pasteFiles(text string) bool {
-	if strings.HasPrefix(strings.TrimSpace(a.input.String()), "/") {
+// imageTokenPattern is the token as a shape rather than as a number, and it is
+// spelled from [imageTokenHead] so the two can never drift apart.
+var imageTokenPattern = regexp.MustCompile(regexp.QuoteMeta(imageTokenHead) + `\d+\]`)
+
+// withoutImageTokens is a sentence with its picture tokens taken out, for the
+// one reader that wants the WORDS and not the cargo: home's box is a live query
+// over every project on the machine as well as the first line of a conversation
+// (home.go), and a dropped screenshot filled it with `[image #1]` — a query no
+// conversation on earth matches, so the list under it emptied.
+//
+// The cheap reject is first because every keystroke on home asks this.
+func withoutImageTokens(text string) string {
+	if !strings.Contains(text, imageTokenHead) {
+		return text
+	}
+	return imageTokenPattern.ReplaceAllString(text, " ")
+}
+
+// pasteFilesInto is THE ONE DOOR every box on this surface drops a file
+// through, and it is parametrized by the box because there is more than one box
+// a person can drop on: the conversation's draft, home's own line at the foot,
+// and the errand pane's ([app.paste] routes them). It used to be bound to
+// [app.input] alone, so a screenshot dropped on home became the raw escaped path
+// it arrived as — the model was handed a string and the person was handed a mess
+// to clean up.
+//
+// box is the line the text was aimed at and chips is the tray THAT box's next
+// message carries. Every one of them carries a picture as content and an
+// ordinary file as a path (attach.go), so there is one rule and not three.
+//
+// It reports whether the text was files. When it was, they are on that tray and
+// the tokens are in that box; when it was not, nothing has happened and the
+// caller inserts the text as the text it plainly is.
+func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
+	// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE. `/image ` followed
+	// by a dropped file is somebody using the command exactly as documented, and
+	// turning its argument into `[image #1]` would break the one line on this
+	// surface whose whole job is to take a path. The same is true of `/export `.
+	// It is THIS box that is asked, because the command is in the box the drop
+	// landed in and nowhere else.
+	if strings.HasPrefix(strings.TrimSpace(box.String()), "/") {
 		return false
 	}
 	hits, _ := a.pasteResolve(text, false)
 	if hits == nil {
+		// A DROP FROM ANOTHER MACHINE IS SAID OUT LOUD. The richer resolver above
+		// admits raw spaces and terminal escapes; the literal reading is retained
+		// here only to name a missing drop in the same voice the current surface
+		// uses for home, a conversation, and an errand pane.
+		words := pastedWords(text)
+		if len(words) > 0 && droppedPathShape(text) {
+			first := filepath.Base(a.resolvePath(pastedPath(words[0])))
+			a.trayNote(notOnThisMachine(first, len(words)))
+		}
 		return false
 	}
 	for _, hit := range hits {
 		candidate, info := hit.path, hit.info
 		if info.IsDir() {
-			a.note(filepath.Base(candidate) + " is a folder · attach a file")
+			a.trayNote(filepath.Base(candidate) + " is a folder · attach a file")
 			return true
 		}
 		if isImagePath(candidate) {
 			if info.Size() > maxAttachBytes {
-				a.note(oversizeAttachment(chip{path: candidate}).Error())
+				a.trayNote(oversizeAttachment(chip{path: candidate}).Error())
 				return false
 			}
 		} else if a.hosted() && info.Size() > maxAttachedFileBytes {
-			a.note(oversizeFile(filepath.Base(candidate), info.Size()))
+			a.trayNote(oversizeFile(filepath.Base(candidate), info.Size()))
 			return false
 		}
 	}
@@ -85,36 +130,118 @@ func (a *app) pasteFiles(text string) bool {
 	for _, hit := range hits {
 		candidate := hit.path
 		if isImagePath(candidate) {
-			a.attach(candidate)
-			marks = append(marks, imageToken(a.chipNumber(candidate)))
+			attachChipTo(chips, chip{path: candidate})
+			marks = append(marks, imageToken(chipNumberIn(*chips, candidate)))
 			continue
 		}
-		a.attachFile(candidate)
+		attachChipTo(chips, chip{path: candidate, file: true})
 	}
 	if len(marks) > 0 {
-		inserted := a.spacedTokens(marks)
-		at := a.input.cursor
-		a.input.insert(inserted)
-		a.editTags(at, at, len([]rune(inserted)))
+		inserted := box.spacedTokens(marks)
+		at := box.cursor
+		box.insert(inserted)
+		box.editTags(at, at, len([]rune(inserted)))
 	}
 	a.touch()
 	return true
 }
 
-// spacedTokens is the run of tokens as it is inserted: separated from the word
-// the caret was standing after, and followed by a space so the next thing typed
-// is a new word rather than a longer token.
-func (a *app) spacedTokens(marks []string) string {
+// pasteFiles is the conversation's own draft going through that door — the
+// caller this file was written for, and now one of three.
+func (a *app) pasteFiles(text string) bool {
+	return a.pasteFilesInto(&a.input, &a.chips, text)
+}
+
+// keyboardBox is the box a character typed right now would land in, with the
+// tray that box's next message carries.
+//
+// IT IS ONE ANSWER BECAUSE THERE IS ONE KEYBOARD. Three boxes on this surface
+// can start a message and every door that acts on "the box in front of the
+// person" has to agree about which one that is — the paste below, and the
+// keystroke fold's check that the run it is holding is still somewhere anybody
+// can see it (dropkeys.go's [app.spendDrop]). Two spellings of this routing is
+// two answers, and the day they disagree is the day a dropped picture becomes a
+// token in a line that is off the screen.
+func (a *app) keyboardBox() (*editor, *[]chip) {
+	if a.at(pageHome) {
+		if ex := a.paneExchange(); ex != nil && ex.focused {
+			// THE ERRAND'S TRAY IS ITS OWN, because an errand is its own
+			// conversation with its own next message (homeexchange.go).
+			return &ex.box, &ex.chips
+		}
+		// HOME'S TRAY IS THE CONVERSATION'S TRAY, because what home's box starts
+		// IS a conversation: [app.renew] hands the chips to the one it opens, on
+		// the law that the draft goes with the person (detach.go).
+		return &a.home.box, &a.chips
+	}
+	return &a.input, &a.chips
+}
+
+// dropLanded is what the surface owes after files went through the door into
+// one box, whichever road brought them — a bracketed paste, or the keystroke
+// fold settling (dropkeys.go).
+//
+// ONLY HOME OWES ANYTHING BEYOND THE TOUCH THE DOOR ALREADY MADE, and it owes it
+// because its box is a live query over every project on the machine as well as
+// the first line of a conversation: the action row counts a held file as
+// something typed ([homeView.searching]) and the list under it is drawn from the
+// words with the tokens taken out. Neither is right again until the view is
+// rebuilt.
+func (a *app) dropLanded(box *editor) {
+	if box != &a.home.box {
+		return
+	}
+	a.home.carrying = len(a.chips) > 0
+	a.home.build()
+}
+
+// notOnThisMachine is what a drop that named nothing here says. ONE SENTENCE
+// FOR ANY NUMBER OF FILES: a person who dragged four screenshots off a Mac onto
+// a session running on a Linux box has one thing wrong, not four.
+func notOnThisMachine(name string, missing int) string {
+	if missing == 1 {
+		return name + " is not on this machine"
+	}
+	return strconv.Itoa(missing) + " files are not on this machine"
+}
+
+// trayNote is where this door's refusals are said, and it picks the voice by
+// WHERE THE PERSON IS STANDING. A note is a line in the conversation
+// ([app.note]), and while home has the frame the conversation is not on the
+// screen at all — so a folder refused there would be a sentence written
+// somewhere nobody can read it. Home has a line of its own under the rule
+// ([homeView.say], drawn by pages.go's [app.placeMsgLine]).
+func (a *app) trayNote(msg string) {
+	if a.at(pageHome) {
+		a.home.say(msg, "")
+		return
+	}
+	a.note(msg)
+}
+
+// spacedTokens is the run of tokens as it is inserted into one box: separated
+// from the word the caret was standing after, and followed by a space so the
+// next thing typed is a new word rather than a longer token.
+func (e *editor) spacedTokens(marks []string) string {
 	text := strings.Join(marks, " ") + " "
-	if a.input.cursor > 0 && !unicode.IsSpace(a.input.value[a.input.cursor-1]) {
+	if e.cursor > 0 && !unicode.IsSpace(e.value[e.cursor-1]) {
 		text = " " + text
 	}
 	return text
 }
 
-// chipNumber is the PICTURE's number, one-based, and 0 when that path is not on
-// the tray. It is the number the token, the chip and the message's content parts
-// all share.
+// spacedTokens is the main draft's, for the callers that only ever mean it
+// (pastechip.go).
+func (a *app) spacedTokens(marks []string) string { return a.input.spacedTokens(marks) }
+
+// chipNumber is the PICTURE's number on the conversation's own tray, one-based,
+// and 0 when that path is not on it.
+func (a *app) chipNumber(path string) int { return chipNumberIn(a.chips, path) }
+
+// chipNumberIn is that question asked of ANY tray, which is what lets home's box
+// and the errand pane's number their own pictures without a second idea of what
+// a number means. It is the number the token, the chip and the message's content
+// parts all share.
 //
 // IT COUNTS PICTURES AND NOT CHIPS, which is the whole of the fix: the tray
 // holds attached files as well now, and a position on the tray stopped being a
@@ -122,10 +249,10 @@ func (a *app) spacedTokens(marks []string) string {
 // meant a screenshot pasted while a log file sat in front of it was announced as
 // `[image #2]` when it was the first — and the token, the chip and the content
 // part would then disagree about which picture the person meant.
-func (a *app) chipNumber(path string) int {
-	for i, held := range a.chips {
+func chipNumberIn(chips []chip, path string) int {
+	for i, held := range chips {
 		if held.path == path {
-			return pictureOrdinal(a.chips, i)
+			return pictureOrdinal(chips, i)
 		}
 	}
 	return 0

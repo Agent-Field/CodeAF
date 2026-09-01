@@ -138,6 +138,33 @@ type cachedPresence struct {
 	asked    time.Time
 }
 
+// attachLocks holds one lock per workspace root, because attaching is the one
+// operation in this package that two callers may not do to one folder at once
+// ([Attach] says what was measured). It is package-level for the reason the
+// presence cache is: the folder is the thing being contended, not the Workspace
+// value somebody happens to be holding.
+//
+// The locks are never removed. A process attaches the handful of folders it
+// works in, so the map is small by construction, and a lock deleted while
+// somebody is waiting on it is a lock that stopped excluding anything.
+var (
+	attachMu    sync.Mutex
+	attachLocks = map[string]*sync.Mutex{}
+)
+
+// lockAttach takes the lock for one root and answers the release.
+func lockAttach(root string) func() {
+	attachMu.Lock()
+	lock, ok := attachLocks[root]
+	if !ok {
+		lock = &sync.Mutex{}
+		attachLocks[root] = lock
+	}
+	attachMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
+
 // Forget drops the cached answer for every workspace. It exists for tests,
 // which change what is on PATH between cases and would otherwise read a
 // neighbour's answer, and for a caller that has just watched the person attach
@@ -286,6 +313,60 @@ func Open(ctx context.Context, root string) *Workspace {
 		return nil
 	}
 	return &Workspace{root: absoluteRoot(root), binary: presence.Path}
+}
+
+// attachTimeout bounds the one call that can be slow. Attaching a workspace
+// reads every file in it once to seal the first snapshot, so it is the only
+// thing in this package whose cost is the person's project rather than
+// furrow's; a minute is generous for the repositories aforge works in and short
+// enough that a task waiting on it is never waiting on a hang.
+const attachTimeout = 60 * time.Second
+
+// Attach is [Open] for a caller that is willing to ATTACH THE FOLDER ITSELF.
+//
+// THE RULING BEHIND IT: every aforge carries furrow, so a capability that only
+// engages when somebody remembered to type `furrow watch` is a capability the
+// binary has and never uses — which is this codebase's absent-not-broken law
+// running in the bad direction. A folder aforge is about to write in is a folder
+// aforge may attach, on the same consent as the write; nothing here reaches a
+// folder that was not already going to be worked in.
+//
+// It attaches WITHOUT LEAVING A WATCHER RUNNING (`--no-daemon`). What the
+// caller needs is the ability to fork the live workspace, which does not depend
+// on a background sealer, and a program that quietly started a daemon in
+// somebody's project would be doing more than the write it was consenting to.
+//
+// Every failure answers nil, exactly as [Open] does, and the caller falls to
+// whatever it would have done on a machine without furrow.
+func Attach(ctx context.Context, root string) *Workspace {
+	// ONE ATTACH AT A TIME PER FOLDER, and this is not a nicety. Five `furrow
+	// watch` runs started on one folder in the same instant were measured: one
+	// succeeds and the other four fail outright. The callers that do that are
+	// exactly the interesting ones — a task handing five parts out at once, each
+	// grounding a child in the same project — and without this the first child
+	// gets a universe and its four siblings quietly get the rung below, which is
+	// four different worlds for one division and nothing anybody could debug from
+	// the outside. Whoever holds the lock does the attach; everybody behind it
+	// finds the folder attached and takes the [Open] road above.
+	unlock := lockAttach(absoluteRoot(root))
+	defer unlock()
+	if workspace := Open(ctx, root); workspace != nil {
+		return workspace
+	}
+	binary, err := lookBinary()
+	if err != nil {
+		return nil
+	}
+	attachCtx, cancel := context.WithTimeout(ctx, attachTimeout)
+	defer cancel()
+	if _, _, err := runBinary(attachCtx, binary, absoluteRoot(root), "--json", "watch", "--no-daemon"); err != nil {
+		return nil
+	}
+	// The cached answer was taken before the attach and now says the opposite of
+	// what is true. Dropping it is the whole reason this cannot simply call
+	// Detect again.
+	Forget()
+	return Open(ctx, root)
 }
 
 // ── the process seam ─────────────────────────────────────────────────────────

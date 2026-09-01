@@ -89,11 +89,24 @@ const (
 	// The card keeps every fact the ROW carried — they came over on the walk and
 	// are still true — and says only that this one thing could not be had.
 	taskCardTailUnread = "it could not be read on "
-	// The labels on the two places a piece of work left something behind. They
-	// are words and not glyphs because they are the only lines on the card whose
+	// The labels on the places a piece of work left something behind. They are
+	// words and not glyphs because they are the only lines on the card whose
 	// meaning is not obvious from what follows them.
-	taskCardTreeWord       = "worktree"
-	taskCardBranchWord     = "branch"
+	//
+	// THE WORKING COPY HAS NO CONSTANT HERE ANY MORE, and that is the point. It
+	// had one — `worktree` — and the word was wrong twice over: it is the
+	// machinery's own vocabulary, which this house bans in anything a person
+	// reads, and it named a mechanism this surface had not checked was in use. A
+	// repository task is grounded in a fork whenever furrow can make one
+	// (internal/session's groundladder.go), and that card told the person their
+	// work had been in a git worktree it never went near. What the directory was
+	// is the LADDER's to say, one line per rung, and this card asks
+	// ([app.taskCardGroundWord]).
+	taskCardBranchWord = "branch"
+	// taskCardPlaceWord labels a place this card can say nothing else about: a
+	// task folder, or a directory whose rung nobody wrote down. It claims no
+	// mechanism at all, which is why it is also what the ground word falls back
+	// to when the record has none.
 	taskCardPlaceWord      = "where"
 	taskCardTranscriptWord = "transcript"
 	// taskCardFilesWord is the count of what the work wrote, singular and plural.
@@ -479,7 +492,7 @@ func (a *app) taskCardTitle(width int, entry session.TaskIndexEntry) string {
 // THE EMPTINESS LAW REACHES EVERY LINE OF IT. A record row is written from
 // whatever the run could say, and half of them are silent about half of these:
 // a node that spent nothing has no money line, a node that wrote nothing has no
-// count, a node whose worktree was pruned has a branch instead of a path, and a
+// count, a node whose working copy is gone has a branch instead of a path, and a
 // node this conversation is still running has no age at all. Nothing here is
 // drawn as a zero, and a band with nothing in it takes no blank line either.
 func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
@@ -571,12 +584,12 @@ func taskCardSpendLine(entry session.TaskIndexEntry) string {
 	return strings.Join(segs, railSep)
 }
 
-// taskCardWhereRows is where the work and the story were left: the worktree or
-// the branch, and the journal.
+// taskCardWhereRows is where the work and the story were left: the working copy
+// or the branch, and the journal.
 //
 // BOTH ARE DOORS WHERE THEY ARE STILL THERE. The path linker stats before it
-// links, so a worktree that was merged and pruned is drawn as the plain text it
-// is and a journal still on the disk opens on a click — which is the honesty
+// links, so a working copy that was merged and swept is drawn as the plain text
+// it is and a journal still on the disk opens on a click — which is the honesty
 // rule that file is written under, arrived at from here (pathlink.go). A BRANCH
 // IS NEVER A DOOR: it is a name inside a repository and not a place on the
 // disk, so it is printed and nothing more.
@@ -617,7 +630,7 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 	if uri := strings.TrimSpace(entry.ArtifactURI); uri != "" {
 		if path := taskURIPath(uri); path != "" {
 			artifactPath = filepath.Clean(path)
-			where(taskCardTreeWord, path)
+			where(taskCardGroundWord(entry), path)
 		} else {
 			label(taskCardBranchWord, strings.TrimPrefix(uri, "git:"), "")
 		}
@@ -633,6 +646,28 @@ func (a *app) taskCardWhereRows(entry session.TaskIndexEntry, width int) []strin
 		where(taskCardTranscriptWord, path)
 	}
 	return out
+}
+
+// taskCardGroundWord labels the directory a piece of work was done in, in the
+// words the ground ladder keeps for the rung that made it (internal/session's
+// groundladder.go).
+//
+// THE WORDS ARE THE ENGINE'S AND NEVER THIS PACKAGE'S. The rung is the only
+// thing that knows whether the directory was a branch of the person's repository
+// or a copy of their folder, and a surface that spelled its own answer would be
+// a second source for one fact — which is exactly the drift this row was already
+// in, saying `worktree` about a task that had worked in a fork.
+//
+// A ROW WITH NO ANSWER FALLS BACK TO THE PLACE WORD. The record is append-only
+// and holds rows from before the rung was written down, and a node given a
+// folder of its own on the reference promise climbed no rung at all — so
+// [session.GroundWord] hands back "" and this says `where`, which names the
+// place and claims nothing about what made it.
+func taskCardGroundWord(entry session.TaskIndexEntry) string {
+	if word := session.GroundWord(entry.Rung, entry.Mode); word != "" {
+		return word
+	}
+	return taskCardPlaceWord
 }
 
 // taskCardGoneWord is "the journal this row names is not there any more", said

@@ -143,3 +143,46 @@ func TestJournalsAreMintedAndFoundInTheSameDirectory(t *testing.T) {
 		t.Fatalf("the legacy layout mints into %q, want %q", minted, legacy)
 	}
 }
+
+// TWO NODES NEVER GET ONE JOURNAL, and this is the flake it was: five
+// internal/session tests failed only when other suites were running beside
+// them, and the thing they shared was this path.
+//
+// Every test in this package runs under one HOME (hermetic_test.go) and every
+// agent in it has no session file of its own, so `session` is the constant
+// "unfiled" for all of them; node ids start again at one in every graph. The
+// stamp was the only thing left to tell two nodes' journals apart and it was
+// good only to the second — so two tests whose first node started inside one
+// second were handed the SAME path, and [newAgent] either resumed the other
+// one's transcript or, while the first still held the file's flock, refused the
+// second outright. A design refused that way never wrote its page, and the test
+// waiting for its card waited the full sixty seconds and failed.
+//
+// The claim is stated as an absolute rather than as a probability, which is why
+// [journalMoment] exists: minting is not allowed to answer one instant twice.
+func TestEveryNodeJournalPathIsMintedOnlyOnce(t *testing.T) {
+	seen := map[string]bool{}
+	for round := 0; round < 2000; round++ {
+		// The same arguments every time — one session name, one node id, no
+		// suffix — because that is exactly the case the collision came from.
+		path := taskJournalPath(Place{}, "unfiled", 1, "")
+		if seen[path] {
+			t.Fatalf("round %d minted %q a second time; two nodes would share one journal", round, path)
+		}
+		seen[path] = true
+	}
+}
+
+// AND THEY ARE MINTED IN ORDER, because [findTaskJournal] finds a node's newest
+// transcript by comparing names. A stamp handed out of order would make the
+// older file the one a resumed session reads.
+func TestNodeJournalNamesSortIntoMintingOrder(t *testing.T) {
+	var last string
+	for round := 0; round < 500; round++ {
+		name := filepath.Base(taskJournalPath(Place{}, "unfiled", 7, ""))
+		if last != "" && !(name > last) {
+			t.Fatalf("round %d minted %q after %q, which sorts no later", round, name, last)
+		}
+		last = name
+	}
+}

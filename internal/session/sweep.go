@@ -261,10 +261,17 @@ func underTempDir(path string) bool {
 	return false
 }
 
-// reapSession removes one litter session, GIT FIRST.
+// reapSession removes one litter session, EVERY REGISTRATION FIRST.
 //
-// A worktree is two things: a directory, and a registration in the repository
-// it was cut from. Removing the directory alone leaves the person's repository
+// A working copy is two things: a directory, and a record of it held somewhere
+// this sweep does not own — a worktree registered in the person's repository, a
+// universe furrow is keeping a line about. Removing the directory alone leaves
+// that record pointing at a path that is gone, which is the litter this function
+// exists to prevent, in somebody else's project instead of ours. So the
+// registrations go first and the folder goes last.
+//
+// A worktree is the first of the two: a directory, and a registration in the
+// repository it was cut from. Removing the directory alone leaves the person's repository
 // holding a registration for a path that is gone — `git worktree list` names it,
 // `git worktree add` refuses to reuse it, and the mess is in THEIR repository
 // rather than ours. So every entry under trees/ is unregistered against the
@@ -318,8 +325,60 @@ func reapSession(dir string, meta Meta, note func(string)) {
 		_, _ = git(root, "worktree", "prune")
 		release()
 	}
+	// AND THE FORKS FURROW IS STILL KEEPING A LINE ABOUT. A task that landed
+	// dropped its own; what reaches here is the world of a task whose session was
+	// killed mid-run, and its directory is one of the ones about to go.
+	dropSweptForks(dir, note)
 	if err := os.RemoveAll(dir); err != nil {
 		note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
+	}
+}
+
+// dropSweptForks tells furrow to forget every universe this session's checkpoint
+// names, through the door a landing uses.
+//
+// WHAT REACHES IT IS ONLY EVER A FORK NOBODY LANDED. A task whose work came home
+// dropped its own record on the way past ([taskTree.releaseLanded]); a session
+// killed mid-run never got the chance, so its fork sits in `furrow forks` in the
+// person's project describing a directory this sweep is about to remove. The
+// checkpoint is the only thing left that knows the name (task_store.go's
+// groundUniverse, written by [TaskNode.setTree]), and this is the last moment
+// anything reads it.
+//
+// IT GOES THROUGH [taskTree.dropUniverse] AND NEVER AROUND IT, because a second
+// road to furrow's fork records would be a second thing to keep true — the drop
+// a landing makes and the drop a sweep makes are the same act on the same
+// record, and they differ only in what they do about a miss.
+//
+// NOTHING HERE STOPS THE REMOVAL. furrow may be gone, the ground may have been
+// deleted or detached, the drop may simply fail, and none of those is a reason
+// to leave the litter standing — which is this file's own rule, stated in
+// [reapSession]. What each of them earns is a line in the log, because after
+// this pass nothing knows the fork's name at all.
+func dropSweptForks(dir string, note func(string)) {
+	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+	if !ok {
+		return
+	}
+	// A checkpoint is READ AND NOT TRUSTED, exactly as everything else this
+	// sweep opens is: two records naming one universe would otherwise be two
+	// drops and two log lines about one record.
+	asked := map[string]bool{}
+	for _, record := range document.Nodes {
+		tree, isUniverse := universeInRecord(record)
+		if !isUniverse {
+			continue
+		}
+		key := tree.ground + "\x00" + tree.universe
+		if asked[key] {
+			continue
+		}
+		asked[key] = true
+		if err := tree.dropUniverse(); err != nil {
+			note(fmt.Sprintf("sweep: could not tell furrow to forget the fork %s of %s: %v", tree.universe, tree.ground, err))
+			continue
+		}
+		note(fmt.Sprintf("sweep: told furrow to forget the fork %s of %s", tree.universe, tree.ground))
 	}
 }
 

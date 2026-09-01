@@ -177,7 +177,9 @@ func writeStanding(root string, projects map[string]*demoProject, now time.Time)
 		}
 		for _, firing := range order.spent {
 			if err := orders.Append(standing.Entry{
-				At:     now.AddDate(0, 0, -firing.daysAgo).Add(-time.Duration(written+1) * 17 * time.Minute),
+				// Inside the day it names, whatever hour the fixture is built
+				// at — see [demoMoment].
+				At:     demoMoment(now, firing.daysAgo, -time.Duration(written+1)*17*time.Minute),
 				ItemID: made.ID,
 				Kind:   firing.kind,
 				USD:    firing.usd,

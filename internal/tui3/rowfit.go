@@ -381,3 +381,28 @@ func servedFields(lane, phase, first, rate string) []rowField {
 	fields = append(fields, rowSay(phase), rowSay(first), rowSay(rate))
 	return fields
 }
+
+// rowShort is every known fact at its SHORTEST spelling, and it is [rowAll]'s
+// other end: the row as a frame with barely any edge would draw it.
+//
+// IT EXISTS FOR THE LADDER THAT MEASURES RATHER THAN THE ONE THAT IS TOLD A
+// WIDTH. The legend's hint slot is offered a line and either fits it whole or
+// drops the slot entirely (render.go's [app.legend]), so a caller there cannot
+// hand the fitter a room — it has no room to hand it until the line is built.
+// What it can do is offer a second, shorter rendering of the same facts, and
+// this is that rendering: still every fact, each in a spelling the row itself
+// owns, and never a word cut in half.
+func rowShort(fields []rowField) string {
+	brief := make([]rowField, 0, len(fields))
+	for _, field := range fields {
+		switch {
+		case field.tiny != "":
+			brief = append(brief, rowField{full: field.tiny})
+		case field.short != "":
+			brief = append(brief, rowField{full: field.short})
+		default:
+			brief = append(brief, rowField{full: field.full})
+		}
+	}
+	return rowAll(brief)
+}

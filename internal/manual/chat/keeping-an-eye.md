@@ -152,7 +152,9 @@ clock time compute it from now.
 
 A stamp up to **30 seconds** behind the clock is still taken: that is arithmetic
 that was right when it was done, and firing at once is what you asked for. Two
-hours behind is not. An `expires` in the past is refused the same way.
+hours behind is not. An `expires` in the past is refused the same way — and so
+is an `expires` that stands before the reminder's own moment, which the next
+section is about.
 
 This used to be possible. A session that had been open for hours carried the time
 it *opened* with in its instructions, so "remind me in 1 minute" was worked out
@@ -169,6 +171,40 @@ And "in 1 minute" no longer needs a stamp at all: aforge sends the **duration**
 and the engine resolves it against the real clock. A one-minute reminder is an
 ordinary standing one-off — if you are ever told aforge "cannot hold a
 1-minute timer", that is wrong, and this is the page that says so.
+
+## Can I give one an end date — expires, and why an end before the first firing is refused
+
+Yes. Anything that stands can carry an **end**, and the check that runs it
+retires it on that day: "watch the build until Friday", "never touch the public
+API until the release lands". Leave it out and it stands until you stop it.
+
+**The end has to be later than the first time the thing would fire**, and aforge
+refuses one that is not, before any card is drawn:
+
+```
+Invalid arguments: rails.expires 23:11:00 -04:00 is not after when.at 23:11:11
+-04:00, so it would retire before it ever fired. Put it after that moment, or
+leave it out — a one-off retires as it fires and needs no end at all.
+```
+
+For a routine the same sentence names `its first firing` instead of `when.at`,
+because a rhythm has no single moment to edit.
+
+This is not fussiness about a second. The check asks **"has it run out of
+time?" first**, before it asks whether anything is due, so an end at or before
+the moment kills the item by every road there is — the window's own pass, the
+background timer, `aforge tick`, all of them. It would have run **0 times** and
+been marked `expired`, and the only trace would be a line in its own log:
+`its time ran out — no longer watching`.
+
+The mistake it exists to catch is arithmetic, not carelessness: a reminder said
+as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same words
+lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
+both stamps out to the second.
+
+**A one-off reminder never needs an end.** It retires the moment it fires, and
+if nothing ever picks it up it stops being watched a day after its moment
+anyway.
 
 ## Tell me when something happens
 
@@ -661,7 +697,10 @@ folder never said what it came to; and not a folder something still holds open.
 **Conversations are swept in exactly one case**, and it is the same week and the
 same judgement: one you started **in a temp directory**, seven days after you
 last said anything to it. Everything it holds goes with it — the transcript, and
-the `work/` workspace if it owned one. Every other conversation under
+the `work/` workspace if it owned one. If a task of that conversation was still
+running when you last closed it, furrow is told to forget the copy of your
+folder that task was working in as well, so `furrow forks` is never left naming
+a directory that has gone. Every other conversation under
 `~/.aforge/v3/projects/` stays whatever its age. If you work in a temp directory
 and want to keep what a conversation makes, anchor it with `/workspace <path>`
 or copy the files out; the starting-aforge page has both under *I deleted my chat

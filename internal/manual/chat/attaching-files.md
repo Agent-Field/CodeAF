@@ -157,6 +157,28 @@ as it always did. That sentence belongs to the drop and the paste alone: `/attac
 gesture nobody typed, and reading a decision about your project out of a mouse would be
 inferring far too much.
 
+## Dropping a file on the home screen
+
+**The home screen takes a drop exactly as a conversation does.** Drag a screenshot onto
+the terminal while home is up — the box at the foot, or the `ask here` pane beside the
+list — and the picture goes on a tray drawn directly over that box, with `[image #1]`
+where the path would have been. An ordinary file goes on the same tray and writes no word
+at all.
+
+**The tray lights `start` even with nothing typed.** A file on the tray *is* a message, so
+`enter` starts a new conversation and sends it — and the pictures go with you into that
+conversation, because the tray belongs to you rather than to the screen. The same is true
+of `ctrl+enter`: an errand carries what was dropped into it.
+
+**The list underneath keeps working.** Home's box is a search over every project on the
+machine at the same time as it is the first line of a conversation, and `[image #1]` is
+cargo rather than words — so the list filters on what you typed around the token and never
+on the token itself.
+
+This used to be broken in exactly the way it looks: the drop landed in home's box as the
+raw escaped path, and `enter` handed it to the slash router, which answered `unknown
+command`. Both roads now end on the tray.
+
 ## Drag and drop shows the path as text
 
 If you can still see the escaped path sitting in the message box, one of three things is
@@ -165,10 +187,20 @@ true.
 - **It has not settled yet.** The path becomes a chip a fraction of a second after the
   last character arrives. Pressing `enter` does not lose it: the send door spends the drop
   first, so the chip is on the message either way.
-- **The file is not on this machine.** aforge attaches what it can `stat` on the computer
-  you are sitting at. Over `--host` that is still your laptop, which is the point — the
-  bytes travel. A path typed by hand for a file on the *other* machine is text, and text
-  is what it stays.
+- **The file is not on this machine, and aforge says so.** aforge attaches what it can
+  `stat` on the computer you are sitting at. Over `--host` that is still your laptop,
+  which is the point — the bytes travel. But a terminal on your Mac talking over `ssh` to
+  aforge on a Linux box delivers a *Mac* path, and there is nothing at that path here. A
+  drop that names nothing on this machine now answers
+
+  ```
+  Screenshot 2026-08-31 at 5.21.40 PM.png is not on this machine
+  ```
+
+  and leaves the text exactly where it landed, so nothing is lost. Several missing files
+  say `3 files are not on this machine`. The sentence is owed only to a paste that is
+  *plainly* a drop — every word an absolute path — so a sentence that merely mentions a
+  file is inserted in silence as it always was.
 - **The box already starts with a `/command`.** That is deliberate. `/attach ` followed by
   a dropped file is the command being used exactly as documented, so the path stays as its
   argument and `enter` runs the command. See below.

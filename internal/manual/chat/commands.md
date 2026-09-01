@@ -281,8 +281,9 @@ It ends with a note that says which of the two happened: `new conversation · <p
 when it added one, and `new session · <path>` — or just `new session` with no file — when
 it replaced a fresh empty one.
 
-At eight open it refuses with `8 open is as many as aforge holds — /quit closes this one`,
-and nothing is opened.
+**How many conversations are already open is never a reason to refuse.** There is no cap:
+the ninth and the fiftieth `/new` open exactly like the first, and the one you were in is
+left running. Nothing closes one for you — that is what `/quit` is for.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -605,14 +606,26 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 `/cost` (or `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and
 on what, into the conversation.
 
-It draws up to five aligned lines:
+It draws up to seven aligned lines:
 
-- `spend` — only when it is above zero.
+- `spend` — only when it is above zero. It is **this conversation and every task it
+  started**, which is the same figure the status line carries.
+- `conversation` and `tasks` — the two halves of that figure, in that order, and they add
+  up to it. Both lines are dropped unless the work has actually spent something: a
+  conversation that has started no tasks has no split to state.
 - `tokens` — like `48.1k in · 3.2k out`, or one half alone, or the combined figure.
 - `cache` — like `31.2k read · saved $0.0180`. The money half appears only when a price
   pair was published.
 - `model calls` — requests to the provider. Deliberately not called "turns".
 - `time`.
+
+So a conversation whose tasks are still running reads:
+
+```
+spend         $53.58
+conversation  $2.53
+tasks         $51.05
+```
 
 Every line is dropped when its figure is absent. A provider that publishes no cache
 accounting says nothing about caches, rather than teaching you that your cache never
@@ -885,7 +898,6 @@ nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
 that folder is gone · <path>
-8 open is as many as aforge holds — /quit closes this one
 ```
 
 The first is not a refusal: it is what an empty home says where its rows will be, with the
@@ -893,9 +905,9 @@ box and the keys at the foot still live — typing there offers
 `start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
 rows are the **far** machine's and that machine may simply not have been used yet. `/new is
 unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
-The last two are `enter` on a project whose folder has been deleted or moved since its last
-conversation, and `enter` when this terminal is already holding eight — in both cases home
-stays up and nothing is opened.
+The last is `enter` on a project whose folder has been deleted or moved since its last
+conversation: home stays up and nothing is opened. **How many conversations this terminal
+already holds is never a refusal** — there is no cap on that.
 
 `that folder is gone` is never said over `--host`: the folders are the far machine's and this
 one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
@@ -1248,11 +1260,11 @@ opens the five-seat reading, bottom-anchored like the model picker. From the top
 the four models aforge uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   frugal — qwen handles careful work · pennies a day
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
 › balanced — kimi-k3 thinks, qwen checks
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
 each of the four can be pinned on its own in /settings → Providers
 ```
 

@@ -434,12 +434,39 @@ func TestEachHandsReportArrivesWhenThatHandFinishes(t *testing.T) {
 		},
 	}
 	completer.callerTail = keepWorking(completer, "stitched")
+	// THE FINISHING ORDER IS A CHAIN OF SIGNALS, NEVER A LADDER OF SLEEPS. Each
+	// hand still takes a different number of steps, so the three of them are
+	// genuinely concurrent — but WHICH ONE COMES HOME FIRST is settled by hand 2
+	// holding its last word until hand 3's report is on the caller's lane, and
+	// hand 1 holding its own until hand 2's is. Forcing the premise is not
+	// weakening the claim: what is asserted below is the order of the reports in
+	// the caller's next REQUEST, which a join that gathered its hands and sorted
+	// them by declaration index would still get wrong.
+	//
+	// It used to be `time.Sleep(15 * time.Millisecond)` per step, so hand 1's
+	// forty-five milliseconds of sleeping were expected to outlast hand 3's none.
+	// On a machine carrying other work that is not a fact about the program: a
+	// sleep expires on a wall clock while the goroutine behind it waits for a
+	// processor, and there is a whole wind-down between a hand's last answer and
+	// [Agent.handIsHome] queueing its report — so hand 3, answering first, was
+	// measured coming home last.
 	steps := map[int]int{1: 3, 2: 2, 3: 0}
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
 		if turn <= steps[index] {
-			time.Sleep(15 * time.Millisecond)
 			return toolResponse(fmt.Sprintf("h%d-%d", index, turn), "ls",
 				fmt.Sprintf(`{"path":".","limit":%d}`, turn)), nil
+		}
+		if index < 3 {
+			// Bounded, and it gives up by answering rather than by hanging: a
+			// report that never lands is a claim this test should state as the
+			// wrong order it actually saw, not as a suite that stopped.
+			ahead := fmt.Sprintf("%s%d of 3", handReportLead, index+1)
+			for until := time.Now().Add(10 * time.Second); time.Now().Before(until); {
+				if agent := completer.driven(); agent != nil && notesContain(agent, ahead) {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
 		}
 		return textResponse(fmt.Sprintf("hand %d is finished", index)), nil
 	}

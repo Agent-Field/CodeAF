@@ -83,7 +83,6 @@ const (
 	// because every lane is a whole child agent with its own context.
 	orchestrateLanes = 4
 
-
 	// The planner's own budget. It writes an amendment, not a page, and the
 	// answer to most completions is `{}` — what the tokens are actually for is
 	// a reasoning model's thinking.
@@ -968,12 +967,10 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	model := e.model()
 	a.mu.Lock()
 	parent := a.config
-	window := parent.ContextWindow
-	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {
-		// A window measured for another model is not a fact about this one
-		// (newTaskAgent states the whole argument).
-		window = 0
-	}
+	// The card's window for the model this worker will actually run, which is
+	// this session's own when they match (loop.go's [Agent.childWindow] states
+	// the whole argument, and newTaskAgent asks for it the same way).
+	window := a.childWindow(model)
 	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	// The rung this session's own next turn would ask for, carried into the node
@@ -981,6 +978,14 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	// newTaskAgent). A node of an adaptive run is the person's work at one
 	// remove too, and it ran at whatever a fresh agent's zero value was.
 	inherited := a.effortLocked(a.model)
+	// AND THE CONVERSATION EVERY DOLLAR THIS NODE SPENDS BELONGS TO, resolved
+	// the way a task node's worker resolves it (task_run.go's
+	// [Agent.newTaskAgent]): this agent either already carries a root or it is
+	// the root and its own journal names it.
+	root := strings.TrimSpace(parent.rootSession)
+	if root == "" {
+		root = a.sessionID()
+	}
 	a.mu.Unlock()
 
 	child, err := newAgent(Config{
@@ -990,30 +995,43 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		// And its litter follows the run's own session rather than the directory
 		// the node works in, for a task node's reason exactly (task_run.go's
 		// newChild counterpart, landing.go).
-		droppings:      parent.droppingsPlace(),
-		Workspace:      dir,
-		Model:          model,
-		APIKey:         parent.APIKey,
-		BaseURL:        parent.BaseURL,
-		ContextWindow:  window,
-		CompactEnabled: parent.CompactEnabled,
-		SessionFile:    journal,
-		EffortRole:     effort.RoleWorker,
-		DefaultEffort:  inherited,
-		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
-		AskConsent:     false,
-		InTask:         true,
-		writeScope:     node.WriteScope,
-		SupportsImages: parent.SupportsImages,
-		RolesSource:    parent.RolesSource,
-		SearchProvider: parent.SearchProvider,
-		SearchFetcher:  parent.SearchFetcher,
-		Connect:        parent.Connect,
-		connectHub:     parent.connectHub,
-		Media:          parent.Media,
-		MediaModel:     parent.MediaModel,
-		MediaPick:      parent.MediaPick,
-		DocumentEngine: parent.DocumentEngine,
+		droppings: parent.droppingsPlace(),
+		// AND WHOSE MONEY IT IS, the pair a task node's worker carries for the
+		// same two reasons (task_run.go's [Agent.newTaskAgent]): the family spends
+		// into ONE ledger — the one the conversation was pointed at, which is the
+		// machine's own everywhere but a test or a second brain on one laptop —
+		// and every line this node writes names the conversation the run is rooted
+		// in, so the tree rollup a status line reads ([UsageTree]) sees a run
+		// while it is still running rather than when it folds.
+		usageLedger:   parent.usageLedger,
+		rootSession:   root,
+		Workspace:     dir,
+		Model:         model,
+		APIKey:        parent.APIKey,
+		BaseURL:       parent.BaseURL,
+		ContextWindow: window,
+		// And the catalog with it, for the reason newTaskAgent hands it down:
+		// a worker that switches its own model has to be able to learn that
+		// model's window.
+		ContextWindowFor: parent.ContextWindowFor,
+		CompactEnabled:   parent.CompactEnabled,
+		SessionFile:      journal,
+		EffortRole:       effort.RoleWorker,
+		DefaultEffort:    inherited,
+		ApprovalPolicy:   &approval.Policy{Default: approval.ActionAllow},
+		AskConsent:       false,
+		InTask:           true,
+		writeScope:       node.WriteScope,
+		SupportsImages:   parent.SupportsImages,
+		RolesSource:      parent.RolesSource,
+		SearchProvider:   parent.SearchProvider,
+		SearchFetcher:    parent.SearchFetcher,
+		Connect:          parent.Connect,
+		connectHub:       parent.connectHub,
+		Media:            parent.Media,
+		MediaModel:       parent.MediaModel,
+		MediaPick:        parent.MediaPick,
+		DocumentEngine:   parent.DocumentEngine,
 	}, client)
 	if err != nil {
 		return nil, err
@@ -1028,17 +1046,24 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 // session's own pocket on the way past — a node's calls are the person's
 // calls, exactly as a task node's are ([Agent.foldTaskUsage]).
 //
-// The fold goes through the auxiliary door rather than reaching into the totals
-// itself, which is the same accounting through ONE seam: the figures land where
-// they always did, and they are written down on the way past, so a resumed run's
+// The fold goes through a door rather than reaching into the totals itself,
+// which is the same accounting through ONE seam: the figures land where they
+// always did, and they are written down on the way past, so a resumed run's
 // spend is still in the conversation's books tomorrow.
+//
+// AND IT IS THE FOLD DOOR, WHICH WRITES NO LEDGER LINE. This node kept a journal
+// of its own and wrote its own line into the machine's ledger on every call it
+// made, so a fold that wrote one more would be the same money twice in the file
+// the per-day rail reads — a task node's fold has gone through this door for
+// exactly that reason all along (usage_ledger.go's first rule, and issue #168
+// for the two folds that did not).
 //
 // The returned figure is the TANK's and is unchanged: the provider's own cost
 // when there is one, and the price table only when there is not.
 func (e *orchestrateExec) spend(child *Agent) float64 {
 	used := child.Usage()
 	cost := used.CostUSD
-	e.agent.addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+	e.agent.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
@@ -1079,7 +1104,7 @@ func (e *orchestrateExec) root() string {
 // cmd/harness-design. Everything else about the layout is decided in
 // [composeBrief] and not here.
 func orchestrateRootBrief(request, goal string) string {
-	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "")
+	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "")
 }
 
 // orchestrateBrief is a node's whole world: what the run as a whole was asked

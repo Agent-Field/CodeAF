@@ -18,7 +18,15 @@ import (
 // the documented one for a surface with the mouse turned off — `/budget`, and
 // `ctrl+,` onto the tab — exactly as /model and /standing were left alone.
 //
-// AND IT WARMS AT FOUR FIFTHS OF THE RAIL. The figure rises out of the dim into
+// AND IT WARMS AT FOUR FIFTHS OF THE RAIL, MEASURED ON THE FIGURE THAT IS
+// DRAWN. The segment says what this conversation's whole tree has spent — its
+// own turns and the work it started (treespend.go) — and the ink has to be about
+// the number a person is reading, or a row saying `$53.58` would sit dim under a
+// $20 ceiling because the tasks had not closed yet. The engine's own refusal is
+// unchanged and still reads the conversation's books, which each node's tally is
+// folded into as it closes; this is the glance that arrives first.
+//
+// The figure rises out of the dim into
 // [hueWarn] when this conversation has spent four fifths of its own ceiling: a
 // bound about to be reached is not a failure and must not wear the failure hue,
 // and the honest moment to say something is while there is still enough left to
@@ -93,7 +101,7 @@ func (a *app) moneyNearRail() bool {
 	if !a.railRead {
 		a.readSpendRail()
 	}
-	return a.spendRail > 0 && a.cost >= a.spendRail*machineCeilingNear
+	return a.spendRail > 0 && a.spendShown() >= a.spendRail*machineCeilingNear
 }
 
 // readSpendRail takes that reading. It is called once, lazily, and again from

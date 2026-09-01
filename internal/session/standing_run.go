@@ -651,7 +651,11 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := agent.taskNewsWait()
-		owed, working := agent.taskNewsOwed(), agent.childrenOutstanding()
+		// THE TWO FACTS ARE READ AS ONE, for the reason [runTaskChild]'s own park
+		// gives and the one [Agent.deliverTaskNote] writes down: a part landing
+		// between two separate reads is a delivery seen half-done, and this loop
+		// would either buy a turn with nothing in it or leave a report unread.
+		owed, working := agent.taskNewsStanding()
 		if owed == 0 && !working {
 			break
 		}

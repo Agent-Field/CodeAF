@@ -118,20 +118,24 @@ func PreflightNote(root string, e Elsewhere, parts ...string) string {
 // IT IS THE SAME REGISTER AS THE LINE ABOVE IT — an observation, a middle dot,
 // the consequence — because both are facts said before the money and neither is
 // an instruction. It says `unsaved` rather than `uncommitted` since that is what
-// the edit IS to the person who made it, and `the last commit` because that is
-// the only part of the machinery they have to know: the task's copy is cut from
-// there (task_run.go's [prepareTaskTreeAt]) and their working tree never travels.
-const unsavedEditsWord = "your unsaved edits stay here · the task works from the last commit"
+// the edit IS to the person who made it.
+//
+// IT SAID THE OPPOSITE UNTIL THE GROUND LAW LANDED, and the sentence was true
+// then: the copy was cut from the last commit and the working tree never
+// travelled. It travels now (groundladder.go), so the surprise this line exists
+// to head off has turned around — the task is about to work on top of edits its
+// owner has not finished — and the second clause is the reassurance that goes
+// with it: the copy is still a copy, and nothing the task does arrives in the
+// person's own folder until it lands.
+const unsavedEditsWord = "your unsaved edits go with it · your own copy is untouched"
 
 // UnsavedEditsNote is the ONE LINE a task start carries about the person's own
 // uncommitted changes, or "" when there is nothing to say.
 //
-// THE EXPECTATION IT CORRECTS is "the task sees what I see". A task gets a
-// worktree branched from HEAD, so an edit sitting unsaved in the person's
-// checkout is invisible to it — and the way that failure presents is a worker
-// that reports the file as it was an hour ago, which reads as the worker being
-// wrong rather than as the placement being what it always was. Saying it costs
-// one line at the one moment it can still change what somebody does.
+// THE EXPECTATION IT CORRECTS is what somebody is about to hand out. A task's
+// world is the folder AS IT STANDS, half-finished edits and all, so a person
+// with something experimental open should know it is going with the work at the
+// one moment when committing, stashing or waiting is still cheap.
 //
 // IT IS A NOTE, NEVER A GATE. Nothing here blocks, waits or asks; the caller
 // hands the work over on the very next statement. And it is silent by default —
@@ -141,8 +145,8 @@ const unsavedEditsWord = "your unsaved edits stay here · the task works from th
 //
 // ONE FORK, AT THE START. This shells out, so it belongs at a task's start and
 // nowhere on a frame's road. Untracked files are deliberately NOT counted
-// (`--untracked-files=no`): a new file is invisible to the task for the same
-// reason, but build output and scratch files make nearly every repository
+// (`--untracked-files=no`): they travel with the task exactly as tracked edits
+// do, but build output and scratch files make nearly every repository
 // permanently untracked-dirty, and a line that fired on every start is a line
 // nobody reads by Tuesday — the same reason [hotFiles] exists.
 func UnsavedEditsNote(root string) string {
