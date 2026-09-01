@@ -211,10 +211,13 @@ because only they know which of their own sentences the work leans on; aforge ne
 reads a brief and guesses. A brief that assumes nothing is checked against nothing and
 costs nothing, which is most tasks.
 
-Today the assumptions come from **a task handing parts out under itself** — that is where
-a brief is written about a folder its reader has not been given yet, and where the
-twenty-two minutes went. A task you or the chat starts is proposed against a folder the
-conversation can already see, and carries none.
+**Both doors that write a brief carry them.** A task handing parts out under itself
+writes assumptions for each part — that is where a brief is written about a folder its
+reader has not been given yet, and where the twenty-two minutes went. A task proposed
+straight from a conversation carries them too: the conversation can usually see the
+folder it is proposing against, but not always, and work aimed at a project three
+directories away, or at a folder nothing in this window has opened, goes wrong the same
+way.
 
 **When one does not hold, the task lands at once** — before anything is spent — and its
 row reads `its world did not match`. The report names every assumption that failed, what

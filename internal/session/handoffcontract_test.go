@@ -9,6 +9,7 @@ package session
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,6 +52,80 @@ func TestABriefNamingAnAbsentFileLandsBeforeOneModelCall(t *testing.T) {
 	// it, so what this asks is whether a worker was ever handed this brief.
 	if askedAbout(completer, "the survivors live in taskchip.go") {
 		t.Fatal("a worker was handed the brief before the contract was answered")
+	}
+}
+
+// THE SAME CLAUSE AT THE OTHER DOOR (issue #173): a task PROPOSED by the
+// conversation, with an expectation naming a file that is not in the folder it
+// gets, lands stale before one model call.
+//
+// It goes in through parseTaskArguments rather than being admitted directly,
+// because what is under test is the door: that `expects` survives the schema,
+// the wire form and the parse, and reaches the same preflight the divider's
+// manifest reaches. Everything after that is shared, which is the point.
+func TestAProposedTaskNamingAnAbsentFileLandsStaleBeforeOneModelCall(t *testing.T) {
+	completer := &scriptedCompleter{}
+	agent, workspace := newTestAgent(t, completer, nil)
+	writeFile(t, filepath.Join(workspace, "taskchip.go"), "package tui3\n")
+	updates := agent.TaskUpdates()
+
+	spec, problem := parseTaskArguments([]byte(`{
+		"title":"port the strip tests",
+		"summary":"move what taskstrip.go covered onto taskchip.go",
+		"brief":"taskstrip.go is gone; the survivors live in taskchip.go",
+		"deliverable":"internal/tui3/taskchip_test.go, with the ported tests in it",
+		"acceptance":"the tests pass",
+		"expects":[{"path":"internal/tui3/topbar.go","fact":"the top bar these tests draw against is where I left it"}]}`))
+	if problem != "" {
+		t.Fatalf("the proposal door refused a manifest it now carries: %s", problem)
+	}
+	if len(spec.expects) != 1 {
+		t.Fatalf("the door read %d expectations off the call, want 1", len(spec.expects))
+	}
+
+	graph := agent.graph()
+	id := graph.reserve()
+	graph.admit(id, spec)
+
+	notice := awaitNotice(t, updates, id, func(n TaskNotice) bool { return n.State == TaskFailed })
+	if notice.Ending != TaskEndingStale {
+		t.Fatalf("ending = %q, want %q", notice.Ending, TaskEndingStale)
+	}
+	if !strings.Contains(notice.Report, "internal/tui3/topbar.go") {
+		t.Fatalf("the report does not name the file:\n%s", notice.Report)
+	}
+	// THE PROPOSER'S OWN WORDS ARE WHAT COMES BACK, exactly as the divider's do:
+	// the model that wrote the brief can say why the thing mattered.
+	if !strings.Contains(notice.Report, "the top bar these tests draw against is where I left it") {
+		t.Fatalf("the report drops the proposer's own account of the assumption:\n%s", notice.Report)
+	}
+	// BEFORE ONE MODEL CALL means no worker was ever handed this brief.
+	if askedAbout(completer, "the survivors live in taskchip.go") {
+		t.Fatal("a worker was handed the brief before the contract was answered")
+	}
+}
+
+// AN UNANSWERABLE EXPECTATION IS REFUSED AT BOTH DOORS, IN THE SAME WORDS.
+// Two doors reading one shape must not come to two opinions about it — a
+// manifest the divider is refused and the conversation is allowed would be the
+// field meaning different things depending on who filled it.
+func TestBothDoorsRefuseAnUnanswerableExpectationInTheSameWords(t *testing.T) {
+	_, refusal := parseExpectations([]Expectation{{Fact: "the staging endpoint answers"}})
+	if refusal == "" {
+		t.Fatal("an expectation with nowhere to look was accepted")
+	}
+	_, problem := parseTaskArguments([]byte(`{
+		"title":"a task","summary":"s","brief":"b","deliverable":"d","acceptance":"a",
+		"expects":[{"fact":"the staging endpoint answers"}]}`))
+	if problem != refusal {
+		t.Fatalf("propose_task refuses it with %q, divide_work with %q", problem, refusal)
+	}
+	// AND AN ABSENT MANIFEST IS NOT A MISTAKE at this door either: it is what
+	// almost every proposal carries.
+	spec, problem := parseTaskArguments([]byte(`{
+		"title":"a task","summary":"s","brief":"b","deliverable":"d","acceptance":"a"}`))
+	if problem != "" || len(spec.expects) != 0 {
+		t.Fatalf("a proposal that assumes nothing was answered with %d expectations and %q", len(spec.expects), problem)
 	}
 }
 
@@ -238,22 +313,70 @@ func askedAbout(completer *scriptedCompleter, phrase string) bool {
 	return false
 }
 
-// THE DIVIDER'S DOOR CARRIES THE MANIFEST AND THE CONVERSATION'S DOES NOT. The
-// schema is parsed here because a malformed one is not a wrong answer, it is a
-// belt that will not build — and it happened once on this very change.
-func TestTheDividersSchemaCarriesTheManifestAndParses(t *testing.T) {
-	var shape map[string]any
-	if err := json.Unmarshal([]byte(divideSchemaJSON), &shape); err != nil {
-		t.Fatalf("the divider's schema does not parse: %v", err)
+// BOTH DOORS CARRY THE MANIFEST, AND BOTH SCHEMAS PARSE. They are parsed here
+// because a malformed schema is not a wrong answer, it is a belt that will not
+// build — and it happened once already on this road.
+func TestBothDoorsCarryTheManifestAndBothSchemasParse(t *testing.T) {
+	for _, door := range []struct {
+		tool   string
+		schema string
+	}{
+		{"divide_work", divideSchemaJSON},
+		{"propose_task", taskSchemaJSON},
+	} {
+		var shape map[string]any
+		if err := json.Unmarshal([]byte(door.schema), &shape); err != nil {
+			t.Fatalf("%s's schema does not parse: %v", door.tool, err)
+		}
+		if !strings.Contains(door.schema, `"expects"`) {
+			t.Fatalf("%s's schema does not carry the handoff's manifest", door.tool)
+		}
+		// AND IT IS THE ONE TEXT, INTERPOLATED. A door that carried its own
+		// paraphrase would teach a second meaning of the same field to the
+		// same model, which is the drift the shared constant exists to stop.
+		if !strings.Contains(door.schema, expectsSchemaJSON) {
+			t.Fatalf("%s writes its own account of expects instead of interpolating the one constant", door.tool)
+		}
 	}
-	if !strings.Contains(divideSchemaJSON, `"expects"`) {
-		t.Fatalf("the divider's schema does not carry the handoff's manifest")
+}
+
+// ONE SOURCE OF TRUTH, PROVED STRUCTURALLY: the schema text is written down
+// exactly once in the engine, and every door that carries it interpolates that
+// one constant.
+//
+// This is asserted against the SOURCE rather than against the two strings
+// because the failure it guards is a lane copying the property into a third
+// door and editing it there — at which point both schemas still parse, both
+// still say "expects", and the two descriptions have quietly begun to disagree
+// about what an expectation is.
+func TestTheManifestSchemaIsWrittenDownOnlyOnce(t *testing.T) {
+	// A fragment of the description rather than the whole constant, so the
+	// assertion survives an honest edit to the wording and still catches a copy.
+	const fragment = "WHAT THIS BRIEF ASSUMES IS ALREADY TRUE"
+	if !strings.Contains(expectsSchemaJSON, fragment) {
+		t.Fatalf("the constant no longer says %q, so this test is measuring nothing", fragment)
 	}
-	// AND propose_task DOES NOT CARRY ONE, which is a bill and not a principle:
-	// its schema rides in front of every request of every conversation and the
-	// fixed prefix had no room (handoffcontract.go says so where it is decided,
-	// and prefixbudget_test.go is what would fail).
-	if strings.Contains(taskSchemaJSON, `"expects"`) {
-		t.Fatal("propose_task grew a manifest; the fixed-prefix budget is what pays for it")
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var carriers []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count := strings.Count(string(body), fragment); count > 0 {
+			for i := 0; i < count; i++ {
+				carriers = append(carriers, name)
+			}
+		}
+	}
+	if len(carriers) != 1 || carriers[0] != "handoffcontract.go" {
+		t.Fatalf("the manifest's schema text is written down in %v, want handoffcontract.go and nowhere else — every other door interpolates expectsSchemaJSON", carriers)
 	}
 }
