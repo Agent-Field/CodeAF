@@ -104,10 +104,46 @@ func partScope(part dividePart) string {
 	return own + "\n" + part.Acceptance
 }
 
+// scopeRefusal is the whole of the ownership check at one call site: the refusal
+// to hand the worker, or an empty string where the parts own separate work.
+//
+// IT IS ONE FUNCTION BECAUSE THE CHECK IS ASKED TWICE, on the two sets of parts
+// that can exist ([Agent.divideOnce] says where each stands). Two spellings of
+// "the parts may not share a path" would be two rules, and the day they
+// disagreed the honest one would be whichever set of parts the reader in front
+// of you was holding (design-law §ONE SOURCE OF TRUTH).
+//
+// WHAT DIFFERS BETWEEN THE TWO IS THE ENDING AND NOTHING ELSE, because what
+// differs is what has already been spent by the time the refusal is written.
+func (a *Agent) scopeRefusal(parts []dividePart, ending string) string {
+	shared := scopeCollisions(parts, a.config.Workspace)
+	if len(shared) == 0 {
+		return ""
+	}
+	return divisionScopesOverlap(shared, ending)
+}
+
+// The two endings a scope refusal can have, and they are two because THE
+// REFUSAL MUST NOT CLAIM A COST THAT WAS ALREADY PAID. A division refused
+// before the reviewer is read cost nothing, and saying so is the whole of what
+// makes a worker willing to redraw the boundary and come straight back. A
+// division refused after it was read has cost that reading, and the same
+// sentence there would be the harness telling a worker its money is still in
+// its pocket.
+//
+// THE SECOND ONE SAYS NOTHING ABOUT SPEND RATHER THAN NAMING A FIGURE, which is
+// the emptiness law: the worker cannot act on the number, a person reads the
+// spend in the ledger where it is actually true, and a sentence that argued
+// about it would be a paragraph in front of an answer already made.
+const (
+	scopeSpentNothing = "nothing is cancelled and nothing is spent."
+	scopeSpentTheRead = "nothing is cancelled."
+)
+
 // divisionScopesOverlap is the answer to a division whose parts claim the same
 // path, and it is [divisionNotAsWritten]'s ending with a sentence of its own:
-// an ordinary tool result, nothing admitted, nothing spent, and a worker that
-// can fix exactly what is wrong and ask again.
+// an ordinary tool result, nothing admitted, and a worker that can fix exactly
+// what is wrong and ask again.
 //
 // IT NAMES THE PATH, because that is the whole of what the worker can act on.
 // "the parts overlap" sends a model back to re-read four briefs looking for
@@ -120,9 +156,9 @@ func partScope(part dividePart) string {
 // refusals do. Those are findings that this work is not worth dividing; this is
 // a finding that these PARTICULAR BOUNDARIES are wrong, and the division may
 // well be right the moment they are redrawn.
-func divisionScopesOverlap(shared []string) string {
+func divisionScopesOverlap(shared []string, ending string) string {
 	return "not split: " + scopeClaimedTwice(shared) +
-		", and the parts of one division cannot share a file — everything they write goes into one deliverable, so whichever finished last would quietly replace the other's work. Give each part files of its own, say in its brief which ones it owns, and ask again; nothing is cancelled and nothing is spent."
+		", and the parts of one division cannot share a file — everything they write goes into one deliverable, so whichever finished last would quietly replace the other's work. Give each part files of its own, say in its brief which ones it owns, and ask again; " + ending
 }
 
 // scopeClaimedTwice spells the colliding paths as the head of that sentence. The

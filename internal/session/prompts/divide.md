@@ -43,10 +43,10 @@ EVERY PART OWNS ITS OWN FILES, AND THIS ONE IS ENFORCED. If two of your parts
 name the same file between them, the division is refused before anything is
 handed out and you are told which file. That is not tidiness: everything the
 parts write goes into one deliverable, so a file two of them wrote is kept once
-and one part's work is quietly lost. Say in each brief which files that part
-owns, keep those lists apart, and ask again — nothing is cancelled and nothing
-is spent by a refusal like that. Two parts working in the same directory on
-different files is fine and always was.
+and one part's work is quietly lost. Your own parts are read for this BEFORE
+anything is spent, so a refusal there costs you nothing at all. Say in each
+brief which files that part owns, keep those lists apart, and ask again. Two
+parts working in the same directory on different files is fine and always was.
 
 AND THEN THE PLAN ITSELF IS READ, ONCE, BEFORE ANY PART EXISTS. Somebody sees
 the whole division at once — your evidence, the work it came out of, and every

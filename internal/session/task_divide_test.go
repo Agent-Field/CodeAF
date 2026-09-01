@@ -1850,10 +1850,24 @@ func divideScopedArgs(evidence string, briefs ...string) json.RawMessage {
 // other — with no conflict for anybody to notice. It is refused where it is still
 // free: before a part exists.
 func TestTwoPartsClaimingOneFileAreRefusedBeforeAnyPartExists(t *testing.T) {
-	nest := newDivideNest(t, wideBrief, 0)
+	// AND IT IS REFUSED FOR NOTHING. The ownership check stands above the line
+	// that spends money, so a division that was never going to be allowed to
+	// stand does not buy a reading to find that out — and the sentence the
+	// worker gets may honestly say so.
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"one","summary":"s","brief":"b","acceptance":"a"},` +
+		`{"title":"two","summary":"s","brief":"b","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
 	answer := nest.divide(t, divideScopedArgs(wideEvidence,
 		"write the northern figures into report.md",
 		"write the southern figures into report.md"))
+
+	if reviewer.reads() != 0 {
+		t.Fatalf("the plan was read %d times, want a refusal that cost no model call", reviewer.reads())
+	}
+	if !strings.HasSuffix(answer, scopeSpentNothing) {
+		t.Fatalf("the free refusal ends %q, want it to say nothing was spent", answer)
+	}
 
 	if !strings.HasPrefix(answer, "not split:") {
 		t.Fatalf("the worker was told %q, want the division refused", answer)
@@ -1957,5 +1971,42 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// AND THE SAME RULE OVER THE PARTS THE REVIEWER SETTLED, because the settled
+// parts are the ones that would exist. A reviewer sharpening a brief onto a file
+// its sibling already owns writes the overlap the worker never wrote, and a rule
+// enforced only on the asked-for shape is a rule the settled shape walks around.
+func TestAReviewerThatSharpensTwoPartsOntoOneFileIsRefusedToo(t *testing.T) {
+	reviewer := &divideReviewer{answer: `{"parts":[` +
+		`{"title":"the northern figures","summary":"s","brief":"write the north into report.md","acceptance":"a"},` +
+		`{"title":"the southern figures","summary":"s","brief":"write the south into report.md","acceptance":"a"}]}`}
+	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
+
+	// The worker's own parts own separate files, so nothing above the reading
+	// refuses this: the overlap arrives with the reviewer's answer.
+	answer := nest.divide(t, divideScopedArgs(wideEvidence,
+		"write the northern figures into north.md",
+		"write the southern figures into south.md"))
+
+	if reviewer.reads() != 1 {
+		t.Fatalf("the plan was read %d times, want the once this test is about", reviewer.reads())
+	}
+	if !strings.HasPrefix(answer, "not split:") || !strings.Contains(answer, "report.md") {
+		t.Fatalf("the worker was told %q, want the overlap the reviewer wrote, named", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts exist after a refusal, want none admitted", len(kids))
+	}
+	// AND IT DOES NOT CLAIM A COST THAT WAS ALREADY PAID. The reading above it
+	// is spent by the time this refusal is written, so the sentence that says
+	// nothing was spent would be the harness telling a worker its money is still
+	// in its pocket.
+	if strings.Contains(answer, "nothing is spent") {
+		t.Fatalf("the refusal says nothing was spent after paying for the reading: %q", answer)
+	}
+	if !strings.HasSuffix(answer, scopeSpentTheRead) {
+		t.Fatalf("the refusal ends %q, want %q", answer, scopeSpentTheRead)
 	}
 }

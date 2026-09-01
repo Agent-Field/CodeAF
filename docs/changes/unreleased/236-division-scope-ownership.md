@@ -13,8 +13,13 @@ The ledger is the contract of what ships and `stageTaskWork` stages it once, so
 two parts of one division writing the same path put it in the parent's ledger
 twice and one version is quietly kept. Nothing conflicts, nothing is reported,
 and the other part's work is simply gone. That is not a merge to resolve; it is
-a scope bug, and it is now answered where it is still free — in `divideOnce`,
-after the reviewer's parts settle and before any hand is claimed.
+a scope bug, and it is now answered in `divideOnce` — twice, through one
+function. The parts the worker wrote are read ABOVE the line that spends
+anything, so the commonest overlap is refused for nothing at all and the
+sentence may honestly say so; the parts the reviewer settled are read again
+before any hand is claimed, because a sharpened brief can land on a file its
+sibling already owns, and that refusal says nothing about spend rather than
+claiming a reading that was already paid for.
 
 The check is deliberately dim (`internal/session/task_divide_scope.go`): only
 the exact same normalised path claimed by two parts collides, so parts sharing a

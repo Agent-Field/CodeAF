@@ -2463,16 +2463,22 @@ reach for; a mastermind that merely thinks the split unwise, or would rather one
 this, has refused a division and the worker carries on with the work exactly as above.
 
 **No two parts may own the same file, and that one is not a judgement — it is
-enforced.** Once the mastermind has settled the parts, the files each part's brief and
-done-condition name are checked against each other, and if the same file is claimed by
-more than one part the division is **refused before anything is handed out**: no part
-starts, no copy of the repository is made, nothing is spent. The worker is told which
-file — "`report.md` is claimed by more than one part" — and can redraw the boundary and
-ask again. The reason is that everything the parts write goes into **one deliverable**:
-a file two parts wrote is kept once, and the other part's version of it would simply be
-gone, with no conflict for anybody to notice. Only the **same file** counts. Two parts
-working in one directory on different files are independent and always were, and so is
-one part owning a folder while another owns a file inside it.
+enforced.** The files each part's brief and done-condition name are checked against each
+other, and if the same file is claimed by more than one part the division is **refused
+before anything is handed out**: no part starts and no copy of the repository is made.
+The worker is told which file — "`report.md` is claimed by more than one part" — and can
+redraw the boundary and ask again. The reason is that everything the parts write goes
+into **one deliverable**: a file two parts wrote is kept once, and the other part's
+version of it would simply be gone, with no conflict for anybody to notice.
+
+**It is checked twice, and the first one is free.** The parts as the worker wrote them are
+read before the mastermind is, so the commonest case — a worker that drew its own
+boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts
+the mastermind settled are read again afterwards, because it can sharpen a brief onto a
+file its sibling already owns; a refusal there has cost that one reading and nothing else,
+and its wording does not pretend otherwise. Only the **same file** counts either time. Two
+parts working in one directory on different files are independent and always were, and so
+is one part owning a folder while another owns a file inside it.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
