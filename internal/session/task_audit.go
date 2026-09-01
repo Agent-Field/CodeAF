@@ -283,6 +283,8 @@ You are READ-ONLY. You have read, grep, find and ls, and a bash that runs the re
 
 Judge the work against its ACCEPTANCE and nothing else: not what you would have written, not what else the code could use, not how the change was made. Run the verification yourself and read the diff. A claim you did not check is a claim you have not verified.
 
+AND WHAT THE WORK SAYS ABOUT THE WORLD IS PART OF WHAT YOU ARE CHECKING. Anything it asserts — a note it wrote listing what stopped being true, its own account of what it did — is a claim, and a claim is checked by going and looking: what something says is a search, what something now does is a thing to run, what was updated somewhere is a question about which files changed. An assertion that is not so is a finding even when the work itself holds. If you could not settle one, say so by name in your evidence rather than passing over it.
+
 A CHECK THAT PASSES ONLY BECAUSE OF SOMETHING THE WORK DID NOT WRITE HAS NOT PASSED. Installing, building and caching are expected — do them freely, they are what your time is for. What may not carry a verdict is state that does not ship: a file put somewhere by hand, a link made so a path would resolve, a directory created outside the change. If what makes the check pass is not in the files the work wrote, REFUTE and name what is missing.
 
 How deep you look follows the size of what the work CHANGED. Where it rewrote something load-bearing, take the whole ladder: run the verification, read the change through. Where the deliverable's answer is that NOTHING needed doing, do not re-derive the whole claim — go hunting for the one thing that WOULD have needed doing, because that is the only thing that can make the answer wrong, and coming back empty-handed is your evidence.
@@ -646,8 +648,14 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// judges exactly the change that would merge, so a virtualenv a test run left
 	// behind is neither in the diff it reads nor on the branch it approves
 	// (task_run.go's [stageTaskWork]).
+	//
+	// AND WHAT IS STAGED IS THE WHOLE LANDING, THE PARTS INCLUDED. A node that
+	// handed work out merges a tree its own worker never wrote most of, and until
+	// this line the check was pointed at one worker's files while the assembled
+	// tree went home behind them (task_claims.go's [landingFiles]).
+	files := landingFilesFor(node, changed)
 	if tree.root != "" {
-		stageTaskWork(tree.dir, changed)
+		stageTaskWork(tree.dir, files.all())
 	}
 
 	// AND THE VERDICT IS REACHED SOMEWHERE ELSE. The staged tree above is what the
@@ -656,8 +664,28 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the second half fails on its own (see the section on where a verdict is
 	// reached). It is built ONCE, out here, for the same reason the staging is:
 	// both attempts must judge one tree.
-	ground := auditGroundFor(node, tree, changed, log)
+	ground := auditGroundFor(node, tree, files.all(), log)
 	defer ground.drop()
+
+	// ── THE LANDING'S CLAIMS ARE ITS CHECKLIST ──
+	//
+	// Read before anybody is paid to think, because the two shapes settled here
+	// are settled by LOOKING and looking is free (task_claims.go). A landing that
+	// says a string is gone while the string is still in the tree it would merge
+	// has been answered already: the search is the whole of the evidence, the
+	// finding names the sentence that is not so, and there is nothing a model
+	// could add to it that the person would rather read.
+	//
+	// IT IS HUNTED IN THE GROUND AND NOT IN THE WORKING COPY, which is the same
+	// argument the restore itself rests on: what a claim is about is what would
+	// ship, never what the run happened to leave lying around it.
+	checklist := checklistFor(ground.dir, files.all(), claim)
+	if broken := checklist.broken(); len(broken) > 0 {
+		answer := brokenClaimAnswer(broken)
+		fmt.Fprintf(log, "check: the landing says something the work does not do — %s\n",
+			strings.Join(answer.evidence, " · "))
+		return answer
+	}
 
 	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
 	// may run is the checks the node's own document declares and the ones its
@@ -670,19 +698,23 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 			door.window())
 	}
 
-	verdict, again := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
+	// A CHECK THAT CAME BACK HOLDING STILL OWES THE CLAIMS NOBODY SETTLED. That is
+	// the other half of the law: a claim is a finding, or it holds, or it is said
+	// out loud — never silently passed ([withOpenClaims]).
+	open := checklist.open()
+	verdict, again := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
 	switch {
 	case verdict.answered, !again:
-		return verdict
+		return withOpenClaims(verdict, open)
 	case ctx.Err() != nil:
 		// The NODE was killed, not the audit. There is nobody to ask again and
 		// nothing to ask about; the caller reads ctx itself and tells that story.
 		return verdict
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
 	if retried.answered {
-		return retried
+		return withOpenClaims(retried, open)
 	}
 	return retried.twice()
 }
@@ -696,7 +728,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // burned its whole deadline is not: the auditor already had every minute it was
 // going to get, and a second window buys a second timeout while the node holds
 // its worktree.
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
@@ -723,7 +755,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, changed, claim))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, files, claim, open))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -1099,7 +1131,7 @@ func alsoChanged(changed, more []string) []string {
 // those are — or says plainly that there are none and that reading is the whole
 // of the job. A model that has not been told where the door is spends its
 // window looking for one, which is exactly what was measured.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string) string {
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -1109,9 +1141,22 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
 		out.WriteString(claim + "\n\n")
 	}
-	if len(changed) > 0 {
-		out.WriteString("Files it wrote: " + strings.Join(changed, ", ") + "\n\n")
+	if len(files.own) > 0 {
+		out.WriteString("Files it wrote: " + strings.Join(files.own, ", ") + "\n")
 	}
+	// AND A DIVIDER'S PARTS ARE NAMED AS PARTS. The assembled tree is what this
+	// node's landing is, so the parts' files are in front of the checker with the
+	// rest of it — said in a second sentence rather than folded into the first,
+	// because "it wrote" would be a claim about this node that is not true
+	// (task_claims.go's [landingFiles]).
+	if files.divided() {
+		out.WriteString("And the parts it handed out wrote, into the same tree: " +
+			strings.Join(files.parts, ", ") + "\n")
+	}
+	if len(files.own) > 0 || files.divided() {
+		out.WriteString("\n")
+	}
+	out.WriteString(claimsBlock(open))
 	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
 	// WHERE IT IS STANDING IS TOLD TRUTHFULLY, WHICHEVER GROUND IT GOT. The
