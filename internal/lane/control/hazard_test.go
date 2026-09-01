@@ -126,9 +126,36 @@ func TestNothingIsBelievedAboutAnEmptySurvival(t *testing.T) {
 
 // ── THE CROSSING ────────────────────────────────────────────────────────────
 
-// TestTheCrossingIsWhereTheClosedFormSaysItIs solves the inequality
-// independently, on a fine grid, and insists the controller acts at the same
-// moment to within the grid.
+// tail is the abnormality test written out from its own definition: the
+// probability that a healthy lane's own draw exceeds the wait we have already
+// had. It is spelled from the error function rather than from the package's
+// [Survival.Quantile] and [deviate] so that the tests of the gate do not check
+// the gate against itself.
+func tail(s Survival, waited float64) float64 {
+	if !s.Known() || waited <= 0 {
+		return 1
+	}
+	return 0.5 * math.Erfc(((math.Log(waited)-s.Mu)/s.Sigma)/math.Sqrt2)
+}
+
+// budgetFor is the per-opportunity tail mass §B derives: the per-request
+// false-act budget shared over the alarm opportunities the request's own shape
+// offers — one first token, one thought, and one per expected visible token.
+func budgetFor(p Plan) float64 {
+	k := 2
+	if p.Expected > 0 {
+		k += p.Expected
+	}
+	return falseActBudget / float64(k)
+}
+
+// TestTheCrossingIsWhereTheClosedFormSaysItIs solves BOTH tests independently,
+// on a fine grid, and insists the controller acts at the same moment to within
+// the grid.
+//
+// IT IS A CONJUNCTION NOW (§B): the payoff crossing is necessary and no longer
+// sufficient, and the moment to act is the first one at which the wait has both
+// become worth acting on AND become abnormal for this lane.
 func TestTheCrossingIsWhereTheClosedFormSaysItIs(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -149,8 +176,10 @@ func TestTheCrossingIsWhereTheClosedFormSaysItIs(t *testing.T) {
 			cost := logNormal(test.altTTFT, 0.6).Mean() + p.Lambda*test.extra
 			ceiling := int(p.Ceiling / time.Millisecond)
 			want := ceiling
+			allowed := budgetFor(p)
 			for ms := int(p.Floor / time.Millisecond); ms < ceiling; ms++ {
-				if remaining(test.first, float64(ms)/1000) > cost+p.Margin {
+				waited := float64(ms) / 1000
+				if tail(test.first, waited) < allowed && remaining(test.first, waited) > cost+p.Margin {
 					want = ms
 					break
 				}
@@ -754,5 +783,206 @@ func TestAStalledLaneIsAlwaysActedOnInsideTheCeiling(t *testing.T) {
 		if acted < 0 || acted > p.Ceiling {
 			t.Fatalf("belief %+v: acted after %s, the ceiling is %s", believed, acted, p.Ceiling)
 		}
+	}
+}
+
+// ── THE ABNORMALITY GATE (§B) ───────────────────────────────────────────────
+
+// TestTheThresholdIsSizedByTheRequestsOwnShape checks the derivation rather
+// than the number: k is counted from the request — one first token, one
+// thought, one per expected visible token — and the threshold is the deviate of
+// the budget shared over it. A longer answer offers more chances to be wrong
+// about it, so each one has to clear a higher bar.
+func TestTheThresholdIsSizedByTheRequestsOwnShape(t *testing.T) {
+	last := 0.0
+	for _, expected := range []int{0, 1, 40, 400, 4000} {
+		p := plan()
+		p.Expected = expected
+		got := New(p).(*hazard).z
+		// Independently: the z whose upper tail is the budget over the counted
+		// opportunities, found by scanning the error function.
+		want := 0.0
+		for z := 0.0; z < 40; z += 0.0001 {
+			if 0.5*math.Erfc(z/math.Sqrt2) <= budgetFor(p) {
+				want = z
+				break
+			}
+		}
+		if math.Abs(got-want) > 1e-3 {
+			t.Errorf("expected %d tokens: z = %.4f, the derivation says %.4f", expected, got, want)
+		}
+		if got < last {
+			t.Errorf("expected %d tokens: z fell from %.4f to %.4f — more opportunities must not "+
+				"mean a lower bar", expected, last, got)
+		}
+		last = got
+	}
+}
+
+// TestAHealthyStreamIsNeverActedOnBeforeTheCeiling is the gate's own acceptance,
+// and it is the failure the gate was built for: a lane doing exactly what it is
+// believed to do must not be answered with a second request.
+//
+// EVERY WAIT IN IT IS AN HONEST DRAW FROM THE VERY BELIEF THE CONTROLLER HOLDS —
+// first token from `First`, every gap from `Gap` — so nothing here is stalled,
+// slow, or unusual; it is the null hypothesis, scripted. The measured share of
+// streams carrying an act has to sit inside the per-request budget the
+// threshold was derived from, and the plan states its own length so that the
+// opportunities the gate counted are the opportunities the stream really gave.
+func TestAHealthyStreamIsNeverActedOnBeforeTheCeiling(t *testing.T) {
+	const gaps = 200
+	p := plan()
+	p.Expected = gaps
+	for _, test := range []struct {
+		name  string
+		clamp float64
+		worst float64
+	}{
+		// A lane inside its own p90 must never be acted on at all: those are
+		// the draws the design calls ordinary.
+		{"a lane drawing inside its own ninetieth percentile", 1.2816, 0},
+		// And drawing honestly, tails included, no more often than the budget.
+		{"a lane drawing honestly from its own belief", math.Inf(1), falseActBudget},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			random := rand.New(rand.NewSource(29))
+			const streams = 2000
+			draw := func(belief Survival) time.Duration {
+				z := random.NormFloat64()
+				if z > test.clamp {
+					z = test.clamp
+				}
+				return time.Duration(math.Exp(belief.Mu+belief.Sigma*z) * float64(time.Second))
+			}
+			acts := 0
+			for range streams {
+				watch, now, acted := New(p), epoch, false
+				arrive := func(wait time.Duration, visible int) {
+					until := now.Add(wait)
+					// The beat asks every fifty milliseconds all the way
+					// through, so the gate is challenged as often as it would
+					// really be rather than once per token.
+					for now.Add(50 * time.Millisecond).Before(until) {
+						now = now.Add(50 * time.Millisecond)
+						acted = acted || watch.Quiet(now).Kind != None
+					}
+					now = until
+					acted = acted || watch.Note(Reading{At: now, Visible: visible}).Kind != None
+				}
+				arrive(draw(p.First), 1)
+				for range gaps {
+					arrive(draw(p.Gap), 1)
+				}
+				if acted {
+					acts++
+				}
+			}
+			if share := float64(acts) / float64(streams); share > test.worst {
+				t.Fatalf("%d of %d healthy streams were acted on (%.2f%%), the budget is %.2f%%",
+					acts, streams, 100*share, 100*test.worst)
+			}
+		})
+	}
+}
+
+// TestALegitimateThinkIsLeftAloneAndAHungOneIsNot is the same test for the
+// duration clock, which is the one §K's long-think criterion reads. A run of
+// thought as long as this model's thinking usually lasts is not evidence of
+// anything; one far out in the tail of that same distribution is.
+func TestALegitimateThinkIsLeftAloneAndAHungOneIsNot(t *testing.T) {
+	p := plan()
+	p.Think = logNormal(20, 0.7)
+	// Deltas arrive steadily throughout, so the liveness clock has nothing to
+	// say and what is under test is the duration clock alone.
+	run := func(thought time.Duration) bool {
+		watch, now, acted := New(p), epoch, false
+		for now.Before(epoch.Add(thought)) {
+			now = now.Add(200 * time.Millisecond)
+			acted = acted || watch.Note(Reading{At: now, Hidden: 1}).Kind != None
+		}
+		return acted
+	}
+	// A thought at the median and one at the belief's own p90: both ordinary.
+	for _, ordinary := range []time.Duration{p.Ceiling / 2, 9 * time.Second} {
+		if run(ordinary) {
+			t.Errorf("a %s run of thought was acted on, and this model thinks for %.0fs at the median",
+				ordinary, p.Think.Quantile(0))
+		}
+	}
+	// The ceiling is what bounds a thought that goes past a person's patience,
+	// and it is untouched: a thought longer than it is acted on regardless.
+	if !run(2 * p.Ceiling) {
+		t.Error("a run of thought twice the ceiling was never acted on")
+	}
+}
+
+// TestAStallIsStillActedOnAsQuicklyAsItWas is the other side, and it is what
+// makes the gate safe to add: a lane that has genuinely stopped crosses any
+// quantile of its own distribution within seconds, because that is what a stall
+// is. Nothing here may regress against the ceiling.
+func TestAStallIsStillActedOnAsQuicklyAsItWas(t *testing.T) {
+	for _, believed := range []Survival{
+		{},                     // nothing believed at all: the ceiling is the whole answer
+		logNormal(0.4, 0.8),    // a quick lane, ordinarily believed
+		logNormal(0.43, 0.577), // the lane §K's rows are proved against
+		logNormal(3, 1.2),      // a slow lane with a wide belief
+		logNormal(600, 0.2),    // a lane believed to take ten minutes
+	} {
+		p := plan()
+		p.First = believed
+		p.Expected = 400
+		watch := New(p)
+		acted := time.Duration(-1)
+		for step := 0; step <= 60_000; step += 10 {
+			if watch.Quiet(at(step)).Kind != None {
+				acted = time.Duration(step) * time.Millisecond
+				break
+			}
+		}
+		if acted < 0 || acted > p.Ceiling {
+			t.Fatalf("belief %+v: acted after %s, the ceiling is %s", believed, acted, p.Ceiling)
+		}
+		// AND IT ACTED AT THE MOMENT BOTH TESTS SAY, solved here from their own
+		// definitions. This is what "no regression" means precisely: the gate
+		// may not postpone an act by one millisecond past the first moment the
+		// wait is BOTH worth acting on and abnormal for this lane.
+		cost := p.Alts[0].First.Mean() + p.Lambda*p.Alts[0].Extra
+		allowed, want := budgetFor(p), p.Ceiling
+		for ms := int(p.Floor / time.Millisecond); ms < int(p.Ceiling/time.Millisecond); ms++ {
+			waited := float64(ms) / 1000
+			if tail(believed, waited) < allowed && remaining(believed, waited) > cost+p.Margin {
+				want = time.Duration(ms) * time.Millisecond
+				break
+			}
+		}
+		if acted != want {
+			t.Errorf("belief %+v: acted after %s, both tests first hold at %s", believed, acted, want)
+		}
+	}
+}
+
+// TestOneStallIsCaughtByTheArithmeticAndNotByTheBound is the claim the test
+// above cannot make on its own: the gate has not quietly turned the controller
+// into a device that only ever fires at its ceiling.
+//
+// A lane believed to start in four hundred milliseconds that has said nothing
+// for seconds is out in its own tail AND worth leaving, and it is left — well
+// inside the ceiling, on the arithmetic.
+func TestOneStallIsCaughtByTheArithmeticAndNotByTheBound(t *testing.T) {
+	p := plan()
+	p.First = logNormal(0.4, 0.8)
+	watch := New(p)
+	acted := time.Duration(-1)
+	for step := 0; step <= 60_000; step += 10 {
+		if act := watch.Quiet(at(step)); act.Kind != None {
+			if act.Reason == CeilingReason {
+				t.Fatalf("the ceiling caught a stall the arithmetic should have: %+v", act)
+			}
+			acted = time.Duration(step) * time.Millisecond
+			break
+		}
+	}
+	if acted < 0 || acted >= p.Ceiling {
+		t.Fatalf("acted after %s, which is not inside the %s ceiling", acted, p.Ceiling)
 	}
 }

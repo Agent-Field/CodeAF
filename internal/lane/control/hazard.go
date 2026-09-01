@@ -41,6 +41,85 @@ import (
 // and about nothing else, and a silence clock a router could hold open by
 // saying nothing in a well-formed way is not a clock.
 
+// ── TWO QUESTIONS, NOT ONE ──────────────────────────────────────────────────
+//
+// The inequality above answers "DOES ACTING PAY". It does not answer "IS THIS
+// LANE MISBEHAVING", and for a while this package used it for both — which is a
+// defect and was measured as one. `bench/lanelab/REPORT.md` has the run: with a
+// warmed store, where the belief about each lane is TIGHT and correct, the
+// controller hedged healthy requests MORE often than it did from a cold one,
+// because a cheap alternative and a well-known median make "another arm would
+// probably be quicker" true on perfectly ordinary draws. Every one of those
+// arms was a rational answer to the payoff question and a wrong answer to the
+// question a person is actually asking, which is whether anything is wrong.
+//
+// So an act before the ceiling now requires BOTH:
+//
+//	(1) PAYOFF     W(s) > A + m, exactly as before, and
+//	(2) ABNORMALITY  s is in the tail of the very distribution that clock reads.
+//
+// ── WHERE THE TAIL MASS COMES FROM, AND WHY IT IS NOT A KNOB ────────────────
+//
+// This is a Neyman–Pearson test and it is sized the way one is sized: fix the
+// false-positive rate you are willing to pay, and let that fix the threshold.
+//
+// Under the null — the lane is fine — the silence on any one alarm opportunity
+// is a draw from that clock's own survival, so the chance of it exceeding that
+// clock's own (1 − p) quantile is exactly p. A request offers k such
+// opportunities. By the union bound the chance that ANY of them raises a false
+// act is at most k · p, so
+//
+//	k · p  ≤  the per-request false-act budget
+//	p      =  [falseActBudget] / k
+//	z      =  Φ⁻¹(1 − p)                       ([deviate])
+//
+// and the threshold is [Survival.Quantile](z) of whichever survival is
+// governing. The union bound is CONSERVATIVE — the true rate is at most k·p —
+// so the gate is at least as strict as the budget asks, never looser.
+//
+// **The budget is not a new number.** It is §K's own acceptance criterion:
+// no more than 2% of healthy requests may carry an arm
+// (`docs/design/waiting/DESIGN.md` §K, and Dean & Barroso's measured figure for
+// how much extra traffic removes most of a p99). The test is sized to the bound
+// it has to meet, which is the whole of the derivation.
+//
+// **k IS COUNTED FROM THE REQUEST'S OWN SHAPE, NEVER CHOSEN.** A request has
+// exactly one first token, and its run of thought is asked about once, as a
+// whole; the drift clock is asked once per gap between two visible tokens, and
+// how many of those there are is [Plan.Expected], which the transport already
+// says before the stream starts. So
+//
+//	k = 1 (first token) + 1 (the thought) + Expected (the gaps)
+//
+// and where nobody said how long the answer would be, k is the two
+// opportunities the request CERTAINLY has. Counting the unknown ones at a
+// guess would be inventing evidence; counting them at zero is the honest floor,
+// and the ceiling still bounds everything the looser gate lets through.
+//
+// ── WHAT THE GATE CANNOT DO ─────────────────────────────────────────────────
+//
+// IT CANNOT MOVE TIME-TO-ACTION. The ceiling is untouched and is still absolute:
+// at [Plan.Ceiling] the controller acts whatever both tests say, and what it
+// does there — hedge, ask, report — is unchanged. And a genuinely stalled lane
+// crosses any quantile of its own distribution within seconds by construction:
+// that is what a stall IS. The gate refuses acts on TYPICAL draws and on
+// nothing else.
+//
+// IT CANNOT REFUSE ON A NUMBER NOBODY MEASURED. An unknown survival has no
+// quantile — [Survival.Quantile] answers zero — so the gate is open, and the
+// payoff test cannot fire either because [Survival.Remaining] is zero as well.
+// A plan with no belief is bounded by its ceiling and by nothing else, which is
+// exactly what it was before.
+
+// falseActBudget is the share of HEALTHY requests that may carry an act raised
+// by the arithmetic rather than by the ceiling.
+//
+// IT IS §K's OWN ACCEPTANCE CRITERION AND NOT A SECOND NUMBER: "false hedges on
+// a healthy lane ≤ 2% of requests". The abnormality gate is sized to the bound
+// it has to meet — see the derivation above — so the two cannot drift apart,
+// and moving this figure means moving the design's acceptance.
+const falseActBudget = 0.02
+
 // fallbackCeiling bounds a plan that arrived with none.
 //
 // A plan with no ceiling is a defect — every role has one ([internal/lane].
@@ -82,6 +161,11 @@ type hazard struct {
 	// this request: polling it every beat would be asking the same question of
 	// the same numbers.
 	refused bool
+	// z is the abnormality gate's threshold, in standard deviations of the
+	// governing survival's own log-normal. It is derived once from the shape of
+	// this request — see the derivation at the top of this file — because k is
+	// [Plan.Expected] plus two and neither moves after the plan is built.
+	z float64
 }
 
 // New builds the controller this build waits with. It is the [Factory] the
@@ -99,7 +183,47 @@ func New(plan Plan) Controller {
 		progress: plan.Began,
 		delta:    plan.Began,
 		think:    plan.Began,
+		z:        deviate(falseActBudget / float64(opportunities(plan))),
 	}
+}
+
+// opportunities is k: how many chances this request gives the arithmetic to
+// raise a false act. It is COUNTED and never chosen — see the derivation at the
+// top of this file — from the two the request certainly has and the one per gap
+// between visible tokens that [Plan.Expected] says there will be.
+func opportunities(plan Plan) int {
+	k := 2
+	if plan.Expected > 0 {
+		k += plan.Expected
+	}
+	return k
+}
+
+// deviate is z with Φ(z) = 1 − tail: how many standard deviations out a draw
+// has to be before it is rarer than `tail`.
+//
+// IT IS FOUND BY BISECTION rather than by a table of fitted constants, in the
+// same spirit as [hazard.Deadline] and for a better reason: Φ is monotone, the
+// bracket is exact, sixty halvings put z inside a part in 10^17, and a rational
+// approximation would be six magic numbers in a file whose whole argument is
+// that it has none. It is computed once per request.
+func deviate(tail float64) float64 {
+	if tail <= 0 {
+		return math.Inf(1)
+	}
+	if tail >= 0.5 {
+		return 0
+	}
+	low, high := 0.0, 40.0
+	for range 60 {
+		middle := low + (high-low)/2
+		if 1-phi(middle) > tail {
+			low = middle
+		} else {
+			high = middle
+		}
+	}
+	return high
 }
 
 // Note folds in one moment of the stream and says what to do about it.
@@ -232,8 +356,12 @@ func (h *hazard) firesAt(now time.Time) bool {
 	if silence >= h.plan.Ceiling {
 		return true
 	}
-	wait, cost, _ := h.assess(now)
-	return wait > cost+h.plan.Margin
+	// BOTH TESTS, AND THE SEARCH ABOVE STILL WORKS BECAUSE BOTH ARE MONOTONE.
+	// W rises with s over the range a request lives in and "s past a fixed
+	// quantile" is monotone by inspection, so their conjunction is monotone and
+	// the bisection still finds the FIRST moment the answer flips.
+	wait, cost, _, odd := h.assess(now)
+	return odd && wait > cost+h.plan.Margin
 }
 
 // verdict is the one place an act is decided, so that the ladder and the
@@ -245,14 +373,14 @@ func (h *hazard) firesAt(now time.Time) bool {
 // would be a controller nobody could autopsy.
 func (h *hazard) verdict() Act {
 	silence := h.silence(h.now)
-	wait, cost, word := h.assess(h.now)
+	wait, cost, word, odd := h.assess(h.now)
 	out := Act{Silence: silence, Wait: wait, Cost: cost}
 	switch {
 	case silence < h.plan.Floor:
 		// Under the floor a second request is racing the network rather than
 		// the lane, so nothing is acted on — but the arm may still commit.
 		return h.hold(out)
-	case wait > cost+h.plan.Margin:
+	case odd && wait > cost+h.plan.Margin:
 		out.Reason = word
 		return h.act(out, false)
 	case silence >= h.plan.Ceiling:
@@ -266,19 +394,29 @@ func (h *hazard) verdict() Act {
 // assess is W and A right now, with the machine word for whichever clock is
 // governing. It is the arithmetic of §B and the only place either number is
 // computed.
-func (h *hazard) assess(now time.Time) (wait, cost float64, word string) {
+func (h *hazard) assess(now time.Time) (wait, cost float64, word string, odd bool) {
 	cost = h.cost()
 	switch h.phase {
 	case PhaseThinking:
 		// The liveness clock first: an endpoint that has stopped writing
-		// altogether is a stall whatever it was writing.
-		if gap := h.plan.Gap.Remaining(h.quiet(now).Seconds()); gap > cost+h.plan.Margin {
-			return gap, cost, "drift"
+		// altogether is a stall whatever it was writing. It governs only when
+		// it would really act — BOTH tests — because a gap that is a perfectly
+		// ordinary draw is not what is wrong with a thought that has gone on
+		// too long, and the clock below is the one that would say so.
+		quiet := h.quiet(now).Seconds()
+		gap, oddGap := h.plan.Gap.Remaining(quiet), h.abnormal(h.plan.Gap, quiet)
+		if oddGap && gap > cost+h.plan.Margin {
+			return gap, cost, "drift", true
 		}
 		// And the duration clock, which prices the alternative's own thought:
 		// leaving a long think costs a whole fresh one, so only what is left of
-		// a pathological one is worth paying that for.
-		return h.plan.Think.Remaining(now.Sub(h.think).Seconds()), cost + h.plan.Think.Mean(), "long think"
+		// a pathological one is worth paying that for. Its own abnormality is
+		// asked against the THINK survival: how long this model's whole run of
+		// thought usually lasts, which is the only distribution that can tell a
+		// model deliberating from a model hung.
+		thought := now.Sub(h.think).Seconds()
+		return h.plan.Think.Remaining(thought), cost + h.plan.Think.Mean(), "long think",
+			h.abnormal(h.plan.Think, thought)
 	case PhaseWriting:
 		// AND THE DRIFT CLOCK READS THE WIRE, NOT THE PAGE. A model that writes
 		// three words and then thinks for a second has not stalled: the
@@ -288,10 +426,24 @@ func (h *hazard) assess(now time.Time) (wait, cost float64, word string) {
 		// would call an interleaved run of thought a stall and buy a second
 		// request for a lane that never stopped. What the SILENCE bounds is the
 		// person's wait, and that is the ceiling's question and the floor's.
-		return h.plan.Gap.Remaining(h.quiet(now).Seconds()), cost, "drift"
+		quiet := h.quiet(now).Seconds()
+		return h.plan.Gap.Remaining(quiet), cost, "drift", h.abnormal(h.plan.Gap, quiet)
 	default:
-		return h.plan.First.Remaining(h.silence(now).Seconds()), cost, "first token late"
+		silence := h.silence(now).Seconds()
+		return h.plan.First.Remaining(silence), cost, "first token late",
+			h.abnormal(h.plan.First, silence)
 	}
+}
+
+// abnormal is the second test: has this wait gone past the point where a
+// healthy lane's own distribution says it should still be waiting?
+//
+// A SURVIVAL NOBODY MEASURED HAS NO QUANTILE and answers zero, so the gate is
+// open — which is right and costs nothing, because the payoff test is closed in
+// exactly that case: [Survival.Remaining] on an unknown belief is zero and
+// never crosses. A plan with no belief is bounded by its ceiling, as it was.
+func (h *hazard) abnormal(of Survival, waited float64) bool {
+	return waited > of.Quantile(h.z)
 }
 
 // cost is A: what acting would cost, in seconds.

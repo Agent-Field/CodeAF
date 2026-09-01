@@ -310,11 +310,15 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 	if tokens := answerTokens(response); tokens != 24 {
 		t.Fatalf("the answer is %d tokens, want B's whole answer of 24", tokens)
 	}
-	// THE WHOLE RESCUE LANDS BEFORE A WOULD HAVE SAID ITS FIRST WORD: about 1.5
-	// virtual seconds to decide, and the answer written by the alternative, all
-	// inside the ten seconds the first lane was going to spend thinking.
-	if took >= 200*time.Millisecond {
-		t.Fatalf("the answer took %s (×100 virtual), want it inside A's own first token", took)
+	// THE WHOLE RESCUE LANDS BEFORE A WOULD HAVE SAID ITS FIRST WORD, which is
+	// the claim, and the bound is A's own first token rather than a figure of
+	// its own. The moment it lands moved out when §B's abnormality gate landed:
+	// the controller now waits until A's silence is abnormal FOR A — a belief of
+	// 20 ms at one nat puts that at about 200 ms — before it will pay for a
+	// second arm, where before it acted as soon as the payoff crossed. It still
+	// lands with a third of A's first token to spare.
+	if took >= 300*time.Millisecond {
+		t.Fatalf("the answer took %s (×100 virtual), want it inside A's own 300ms first token", took)
 	}
 	// A never named a lane, so there is nothing honest to write about it.
 	if _, ok := rig.ledger.sightingFor("B"); !ok {
@@ -739,8 +743,12 @@ func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
 // already being done about it. The callback is the seam internal/session posts
 // `slow · trying …` from.
 func TestARescueTellsItsCallerTheMomentItGoesOut(t *testing.T) {
+	// A IS GENUINELY ABNORMAL FOR A, and it has to be: since §B's abnormality
+	// gate, a lane doing something its own belief calls ordinary is not rescued
+	// at all, so a hundred milliseconds against a believed twenty — well inside
+	// one nat — would raise nothing and this test would be about silence.
 	rig := newLaneRig(t, "rescue/announced",
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 100 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 900 * time.Millisecond, Rate: 2000, Tokens: 24}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 20, 2000)

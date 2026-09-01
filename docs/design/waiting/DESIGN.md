@@ -126,8 +126,73 @@ A = E[TTFT_a] + V / rate_a + λ · Δ$ + m
   m           hysteresis, so the controller does not flap at the crossing
 ```
 
-**Act when `W(s) > A`.** That is the whole rule, and it is the same rule in
-every phase; only the distribution behind `W` changes.
+**Act when `W(s) > A`.** That is the same rule in every phase; only the
+distribution behind `W` changes. **It is not, on its own, the whole rule** — the
+next section says what else has to be true, and why.
+
+### And what abnormality costs — the second test, and where its threshold comes from
+
+`W(s) > A` answers **does acting pay**. It does not answer **is this lane
+misbehaving**, and using it for both is a defect that was measured as one:
+`bench/lanelab/REPORT.md`'s warmed-store arm hedged healthy requests MORE often
+than a cold one, because a cheap alternative and a tight, correct belief make
+"another arm would probably be quicker" true on perfectly ordinary draws. Every
+one of those arms was a right answer to the payoff question and a wrong answer
+to the question the person is asking.
+
+So an act **before the ceiling** requires both:
+
+```
+(1) PAYOFF       W(s) > A
+(2) ABNORMALITY  s > Quantile(z) of the very survival that clock reads
+```
+
+— the first-token clock against the first-token survival, the drift clock
+against the gap survival, the duration clock against the think survival. **The
+ceiling is untouched and stays absolute**: at the role's ceiling the controller
+acts whatever both tests say, and what it does there — hedge, ask, or report —
+is unchanged, so time-to-action cannot regress.
+
+**`z` is derived from the acceptance criterion, not chosen.** This is a
+Neyman–Pearson test and it is sized the way one is sized: fix the false-positive
+rate you will pay, and that fixes the threshold.
+
+Under the null — the lane is fine — the wait at any one alarm opportunity is a
+draw from that clock's own survival, so the chance it exceeds that clock's own
+`1 − p` quantile is exactly `p`. A request offers `k` such opportunities, so by
+the union bound the chance that any of them raises a false act is at most
+`k · p`. §K already fixes that number at **2% of healthy requests**. Therefore
+
+```
+k · p ≤ 0.02        the per-request false-act budget, from §K
+p     = 0.02 / k    per-opportunity tail mass
+z     = Φ⁻¹(1 − p)
+```
+
+The union bound is conservative — the true rate is at most `k · p` — so the gate
+is at least as strict as the budget asks and never looser.
+
+**`k` is counted from the request's own shape.** A request has exactly one first
+token; its run of thought is asked about once, as a whole; and the drift clock
+is asked once per gap between two visible tokens, which is how long the answer
+is expected to be — a figure the transport already states before the stream
+starts.
+
+```
+k = 1 (the first token) + 1 (the thought) + E[visible tokens] (the gaps)
+```
+
+Where nobody said how long the answer would be, `k` is the two opportunities the
+request certainly has. Counting the unknown ones at a guess would be inventing
+evidence; counting them at zero is the honest floor, and the ceiling bounds what
+the looser gate lets through.
+
+**Two things this cannot do.** It cannot delay a genuinely stalled lane, because
+a stall crosses any quantile of its own distribution within seconds — that is
+what a stall is. And it cannot refuse on a number nobody measured: an unknown
+survival has no quantile, so the gate stands open, and the payoff test is closed
+in exactly that case because `W` on an unknown belief is zero. A plan with no
+belief is bounded by its ceiling and by nothing else, exactly as before.
 
 ### The three distributions
 

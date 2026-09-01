@@ -283,9 +283,19 @@ func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
 	plan := PlanFor(choice, PaceOf(belief), RoleTalk, start)
 	cost := plan.Alts[0].First.Mean() + plan.Lambda*plan.Alts[0].Extra + plan.Margin
 
+	// BOTH TESTS, because an act before the ceiling needs both (§B): the payoff
+	// crossing, and a silence abnormal for this lane. The tail mass is the
+	// per-request false-act budget over the alarm opportunities this request's
+	// own shape offers, written out here from the error function so that the
+	// scripted crossing does not read the controller's own arithmetic back.
+	odd := func(waited float64) bool {
+		z := (math.Log(waited) - plan.First.Mu) / plan.First.Sigma
+		return 0.5*math.Erfc(z/math.Sqrt2) < 0.02/2
+	}
 	crossing := 0
 	for ms := int(ActionFloor / time.Millisecond); ms <= 10_000; ms++ {
-		if plan.First.Remaining(float64(ms)/1000) > cost {
+		waited := float64(ms) / 1000
+		if odd(waited) && plan.First.Remaining(waited) > cost {
 			crossing = ms
 			break
 		}
@@ -294,10 +304,19 @@ func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
 		t.Fatal("the scripted belief never crosses, so this test proves nothing")
 	}
 
+	// THE PATH IS BEATEN ALL THE WAY THROUGH, so what is under test is the
+	// first-token clock and not the dead-path one. Past [DeadPathFloor] a
+	// stream with no sign of life at all is blamed on the path, correctly and
+	// by design, and a scripted silence that crosses after it would be a test
+	// of that rule wearing this one's name.
 	watch := NewWatch(choice, belief, start)
+	for ms := 50; ms < crossing; ms += 50 {
+		watch.Heartbeat(msIn(start, ms))
+	}
 	if verdict := watch.Silence(msIn(start, crossing-10)); verdict.Hedge {
 		t.Fatalf("hedged at %dms, before the crossing at %dms", crossing-10, crossing)
 	}
+	watch.Heartbeat(msIn(start, crossing))
 	verdict := watch.Silence(msIn(start, crossing))
 	if !verdict.Hedge || verdict.Reason != "first token late" {
 		t.Fatalf("verdict at the crossing = %+v, want a hedge for a late first token", verdict)
@@ -368,7 +387,11 @@ func TestAHeartbeatKeepsThePathAliveWhileTheLaneIsStillJudged(t *testing.T) {
 	for ms := 50; ms <= 20_000; ms += 50 {
 		beaten.Heartbeat(msIn(start, ms))
 		mine, theirs := beaten.Silence(msIn(start, ms)), bare.Silence(msIn(start, ms))
-		if mine != theirs {
+		// THE ANSWER, AND NOT THE WORD FOR IT. A heartbeat may not change WHEN
+		// the lane is acted on — that is the whole claim — but it is expected to
+		// change what the act is BLAMED on, and the rest of this test is about
+		// exactly that: the beaten path is not faulted and the bare one is.
+		if mine.Hedge != theirs.Hedge {
 			t.Fatalf("at %dms a heartbeat changed the answer: %+v against %+v", ms, mine, theirs)
 		}
 		if mine.Hedge {
