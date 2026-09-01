@@ -567,7 +567,13 @@ func (a *Agent) SetAPIKey(key string) error {
 	key = strings.TrimSpace(key)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if keyed, ok := a.client.(interface{ SetAPIKey(string) error }); ok {
+	// Every real session wraps its provider client in [sessionCompleter] before
+	// the surface can hand a key over. Asking the wrapper itself whether it can
+	// take a key quietly answered no, updated only the config copy below, and
+	// left the first model request on the empty bearer it opened with. Reach the
+	// same underlying client task children use, then update it before recording
+	// the key for workers spawned later.
+	if keyed, ok := unwrapCompleter(a.client).(interface{ SetAPIKey(string) error }); ok {
 		if err := keyed.SetAPIKey(key); err != nil {
 			return err
 		}

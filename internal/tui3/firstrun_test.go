@@ -1,8 +1,10 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -10,6 +12,19 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
+
+type setupOpenRouterFlow struct {
+	url       string
+	key       string
+	err       error
+	cancelled bool
+}
+
+func (f *setupOpenRouterFlow) URL() string { return f.url }
+func (f *setupOpenRouterFlow) Wait(context.Context) (string, error) {
+	return f.key, f.err
+}
+func (f *setupOpenRouterFlow) Cancel() { f.cancelled = true }
 
 // The first-run setup's own tests (firstrun.go). Every claim about what was
 // written is checked by READING THE PROFILE BACK through internal/config, never
@@ -93,6 +108,112 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 	}
 	if config.SetupSeenAt(dir).IsZero() {
 		t.Fatal("a launch with nothing to ask still records that the setup was met")
+	}
+}
+
+func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testing.T) {
+	a, dir, handed := setupApp(t, nil)
+	flow := &setupOpenRouterFlow{
+		url: "https://openrouter.example/auth?proof=one",
+		key: "sk-or-v1-from-the-browser-0123456789",
+	}
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return flow, nil }
+
+	opened := ""
+	was := processOpener
+	processOpener = func(target string) error { opened = target; return nil }
+	t.Cleanup(func() { processOpener = was })
+
+	screen := setupScreen(a)
+	for _, want := range []string{"connect openrouter", "sign in once in your browser", "enter connects in browser", "paste a key"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the browser connection must say %q; got:\n%s", want, screen)
+		}
+	}
+	begin := pressSetup(a, key("enter"))
+	if begin == nil || !a.setup.authStarting {
+		t.Fatal("enter must put up the connecting state and start the listener")
+	}
+	_, wait := a.Update(begin())
+	if wait == nil || opened != flow.url {
+		t.Fatalf("the ready flow opened %q and returned wait %v", opened, wait != nil)
+	}
+	if screen := setupScreen(a); !strings.Contains(screen, "finish connecting openrouter") || !strings.Contains(screen, flow.url) {
+		t.Fatalf("the wait must carry the browser address; got:\n%s", screen)
+	}
+	if _, next := a.Update(wait()); next != nil {
+		t.Fatal("a key landing on the first of three steps starts no extra command")
+	}
+	if got := config.PersistedAPIKey(dir); got != flow.key {
+		t.Fatalf("profile key = %q, want browser key", got)
+	}
+	if len(*handed) != 1 || (*handed)[0] != flow.key {
+		t.Fatalf("running process was handed %v", *handed)
+	}
+	if a.setup.step() != setupCrew {
+		t.Fatalf("browser success did not advance to the crew; step = %v", a.setup.step())
+	}
+}
+
+func TestAMissingDefaultProviderReturnsOverAResumedProfileAndKeepsTheDraft(t *testing.T) {
+	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "AFORGE_DAILY_BUDGET", "AFORGE_PROFILE_DIR"} {
+		t.Setenv(pin, "")
+	}
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := config.MarkSetupSeen(dir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	flow := &setupOpenRouterFlow{url: "https://openrouter.example/auth", key: "sk-or-v1-later-0123456789"}
+	a := newApp(t.Context(), Options{
+		Agent:      &fakeAgent{model: "openai/gpt-4.1-mini", past: []session.DisplayEntry{{Role: "user", Text: "earlier"}}},
+		Workspace:  "/tmp/lab",
+		ProfileDir: dir,
+		Resumed:    true,
+		ConnectOpenRouter: func(context.Context) (OpenRouterFlow, error) {
+			return flow, nil
+		},
+	})
+	a.width, a.height = 90, 30
+	a.pal = newPalette(tokens.ANSI256, false)
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.step() != setupKey {
+		t.Fatalf("a resumed profile with no model key must get the one-step provider door, got %+v", a.setup)
+	}
+	pressSetup(a, key("esc"))
+	if a.setup.open {
+		t.Fatal("not now must reveal the resumed conversation")
+	}
+	a.input.setText("keep these exact words")
+	if cmd := a.enter(); cmd != nil {
+		t.Fatal("the keyless draft must not be submitted")
+	}
+	if !a.setup.open || a.input.String() != "keep these exact words" {
+		t.Fatalf("enter must reopen the provider without clearing the draft; open=%v draft=%q", a.setup.open, a.input.String())
+	}
+	if got := noteSaying(t, a, "connects in a browser"); !strings.Contains(got, config.APIKeyEnv) {
+		t.Fatalf("the not-now note must name both direct roads, got %q", got)
+	}
+}
+
+func TestEscCancelsAnOpenRouterBrowserTripWithoutSkippingTheKeyStep(t *testing.T) {
+	a, _, _ := setupApp(t, nil)
+	flow := &setupOpenRouterFlow{url: "https://openrouter.example/auth", key: "sk-or-v1-unused-0123456789"}
+	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return flow, nil }
+	was := processOpener
+	processOpener = func(string) error { return nil }
+	t.Cleanup(func() { processOpener = was })
+
+	begin := pressSetup(a, key("enter"))
+	_, wait := a.Update(begin())
+	if wait == nil {
+		t.Fatal("the browser trip did not start waiting")
+	}
+	pressSetup(a, key("esc"))
+	if flow.cancelled != true || !a.setup.open || a.setup.step() != setupKey {
+		t.Fatalf("esc must cancel and stay on the key step; cancelled=%v open=%v", flow.cancelled, a.setup.open)
+	}
+	if !strings.Contains(setupScreen(a), setupConnectCancelledWord) {
+		t.Fatalf("the cancelled connection must say how to retry; got:\n%s", setupScreen(a))
 	}
 }
 

@@ -41,6 +41,27 @@ func TestTheImageGeneratorIsAWholeHandOrNoneAtAll(t *testing.T) {
 	}
 }
 
+func TestOnlyAnInteractiveDefaultOpenRouterLaunchGetsTheBrowserDoor(t *testing.T) {
+	if !v3UsesDefaultOpenRouter(config.Config{BaseURL: config.DefaultBaseURL + "/"}) {
+		t.Fatal("the process would refuse a trailing-slash spelling of the built-in provider")
+	}
+	if v3UsesDefaultOpenRouter(config.Config{BaseURL: "https://models.example/v1"}) {
+		t.Fatal("the process would open a custom provider without its required key")
+	}
+	if got := v3OpenRouterConnection(config.Config{BaseURL: config.DefaultBaseURL}, true); got == nil {
+		t.Fatal("an interactive launch on the built-in provider got no browser connection")
+	}
+	if got := v3OpenRouterConnection(config.Config{BaseURL: config.DefaultBaseURL + "/"}, true); got == nil {
+		t.Fatal("a trailing slash made the built-in provider look custom")
+	}
+	if got := v3OpenRouterConnection(config.Config{BaseURL: config.DefaultBaseURL}, false); got != nil {
+		t.Fatal("a headless launch offered a browser nobody can finish")
+	}
+	if got := v3OpenRouterConnection(config.Config{BaseURL: "https://models.example/v1"}, true); got != nil {
+		t.Fatal("a custom model endpoint was offered an OpenRouter connection")
+	}
+}
+
 // And the model half, which the door does NOT resolve: the environment slot is
 // passed through, and an empty one is passed through as empty so the session
 // falls back to the person's own pin. The tier ladder is deliberately not

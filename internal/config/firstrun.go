@@ -6,13 +6,14 @@ import (
 	"time"
 )
 
-// THE FIRST-RUN SETUP'S THREE FACTS, AND ITS ONE MARKER.
+// THE FIRST-RUN SETUP'S THREE FACTS, AND ITS ONE PREFERENCE MARKER.
 //
 // The v3 chat opens a three-step setup the first time it meets a profile with
 // nothing in it — a key, a crew, a daily ceiling (internal/tui3's firstrun.go).
-// Which steps it asks is decided HERE, from the same readers every other surface
-// resolves those rows through, so the setup cannot ask for a key Load would
-// have found in the environment or a crew /crew would already report.
+// Which facts are missing is decided HERE, from the same readers every other
+// surface resolves those rows through. The marker suppresses the crew and rails
+// after the first run; the default provider's key is a prerequisite and tui3
+// may ask for it again through the browser while [APIKeyConfigured] is false.
 //
 // "Configured" is deliberately narrower than "resolves to something". Every row
 // resolves — the crew reads `balanced` and the ceiling reads $20 on a profile

@@ -245,6 +245,16 @@ type Conversation struct {
 	ApplyApprovals   func() error
 }
 
+// OpenRouterFlow is one browser connection that will hand this profile a model
+// key. The concrete loopback listener belongs to the door, not the surface;
+// this is the smallest seam the setup screen needs to show it, wait for it and
+// release it when the person presses escape.
+type OpenRouterFlow interface {
+	URL() string
+	Wait(context.Context) (string, error)
+	Cancel()
+}
+
 // Options configures one surface.
 type Options struct {
 	// Agent is the conversation this surface shows. Required.
@@ -673,16 +683,18 @@ type Options struct {
 	// this window turns out to be holding itself.
 	TakeOver string
 
-	// Setup says this launch may open the first-run setup — the three-step
-	// screen that asks for a key, a crew and a daily ceiling (firstrun.go) —
-	// if the profile is missing any of the three and has never been shown it.
+	// Setup says this launch may open the once-only first-run questions — the
+	// crew and spending rails, plus the key when no browser seam exists
+	// (firstrun.go) — if the profile is missing them and has never seen them.
 	//
 	// IT IS AN OPT-IN FOR [Options.Landing]'s REASON: only a person sitting at
 	// a full terminal with no particular conversation in mind is asked, and
 	// every other door — --once, --host, the picker, a named session, a test,
 	// a pipe — leaves it false by saying nothing. The one door that sets it is
-	// `aforge` and `aforge chat` bare on a TTY (cmd/aforge's chatv3.go), which
-	// is also the one launch the door lets open with no key at all.
+	// `aforge` and `aforge chat` bare on a TTY (cmd/aforge's chatv3.go). The
+	// returning OpenRouter connection is governed separately by
+	// [Options.ConnectOpenRouter], because a missing prerequisite is not a
+	// first-run greeting and may stand over a resumed conversation too.
 	Setup bool
 
 	// ApplyAPIKey hands a key the person just gave — on the setup screen or in
@@ -695,6 +707,15 @@ type Options struct {
 	// nothing different: the profile is still the record. A test, and a door
 	// with no process behind it, are that surface.
 	ApplyAPIKey func(key string) error
+
+	// ConnectOpenRouter starts the default model provider's browser connection.
+	// It is present only on a local interactive launch using aforge's built-in
+	// OpenRouter endpoint. With no key, its presence turns the key step into a
+	// one-press browser trip and makes that step return on later launches until
+	// the profile is connected. Nil keeps the direct paste box, which is the
+	// honest path for a custom endpoint, a hosted surface, and a test with no
+	// browser behind it.
+	ConnectOpenRouter func(context.Context) (OpenRouterFlow, error)
 
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says

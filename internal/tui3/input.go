@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // prompt is the input line's mark. Two cells, and the only furniture below the
@@ -1103,6 +1105,18 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// sentence wins.
 	if line == "" && !held && a.sel >= 0 {
 		a.openTool(a.sel)
+		return nil
+	}
+	// A MODEL MESSAGE WITH NO DEFAULT-PROVIDER KEY OPENS THE CONNECTION BEFORE
+	// THE DRAFT IS CLEARED. This is the returning half of the key gate: a person
+	// who pressed esc to read an existing conversation can still type naturally,
+	// and enter gives them the browser door rather than spending their words on
+	// the provider's "no API key" refusal. Slash commands stay local and keep
+	// working — /help and /settings do not need a model — and a custom endpoint
+	// has no OpenRouter seam, so it keeps its own credential path.
+	if !strings.HasPrefix(line, "/") && (line != "" || held) &&
+		a.routerConnect != nil && !config.APIKeyConfigured(a.profileDir) {
+		a.openSetup(false)
 		return nil
 	}
 	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
