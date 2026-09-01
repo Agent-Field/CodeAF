@@ -4,10 +4,13 @@ import (
 	"context"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -66,20 +69,38 @@ func (l *scriptedLedger) sightingFor(lane string) (lanes.Sighting, bool) {
 	return lanes.Sighting{}, false
 }
 
-// laneRig is one scenario: a fake router, a client pointed at it, and a ledger
-// and chooser wired into the registry for the length of the test.
+// laneRig is one scenario: a fake router, a client pointed at it, a ledger and
+// chooser wired into the registry, and the waiting controller installed through
+// the seam a shipped build installs it through.
 type laneRig struct {
 	server *lanestub.Server
 	client *Client
 	ledger *scriptedLedger
 	model  string
+	// ceiling is the bound a scenario states for itself, zero when it takes the
+	// role's own scaled down to the rig's timeline.
+	ceiling atomic.Int64
 }
+
+// rigLanes is which machines each scenario's router really offers, so that the
+// choice a test hands the transport can name exactly those.
+//
+// IT IS WHAT "NOWHERE TO GO" NOW MEANS. Routing and waiting are two questions:
+// a choice no longer carries the lane a rescue would go to, so a request with
+// no alternative is one whose FRONTIER holds nothing else — which is the
+// honest shape of a router that offers one machine, of a strict pin, and of a
+// ledger that has heard of one lane.
+var rigLanes sync.Map
 
 // newLaneRig starts the router and the client. The model is spelled
 // `openrouter/…` because the transport only sends a routing preference to
 // something it believes is a router, and a loopback address is not one.
 func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneRig {
 	t.Helper()
+	// NO TEST WRITES THE REAL HOME. The registry's own store is under it, and a
+	// suite that saved its scripted beliefs into somebody's ledger would be a
+	// suite that cost them their afternoon.
+	t.Setenv(home.EnvVar, t.TempDir())
 	model := "openrouter/" + name
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)
@@ -99,11 +120,70 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	registry := lanes.Default()
 	registry.SetLedger(ledger)
 	SetHedgeBudget(lanes.NewBudget(6, 0))
+	// THE CONTROLLER IS INSTALLED THROUGH THE ONE SEAM, exactly as a shipped
+	// build installs it, so that what these tests exercise is the wiring and
+	// not a second arrangement built for them.
+	rig := &laneRig{server: server, client: client, ledger: ledger, model: model}
+	lanes.SetController(func(plan control.Plan) control.Controller {
+		return ridePolicy(rig.scaled(plan))
+	})
+	names := make([]string, 0, len(lanesOffered))
+	for _, offered := range lanesOffered {
+		names = append(names, offered.Name)
+	}
+	rigLanes.Store(model, names)
 	t.Cleanup(func() {
 		registry.SetLedger(nil)
+		lanes.SetController(nil)
+		rigLanes.Delete(model)
 		SetHedgeBudget(nil)
 	})
-	return &laneRig{server: server, client: client, ledger: ledger, model: model}
+	return rig
+}
+
+// patience shortens the ceiling every controller in this scenario is built
+// with.
+//
+// THE CEILING IS THE ROLE'S AND ITS VALUE IS `control`'s, not this file's: ten
+// seconds is a statement about how long a person is asked to watch an empty
+// line, and a wire test that really waited it would take ten seconds to prove
+// something about a channel. So the scenarios below state the ceiling they are
+// about and prove what this lane owns — that the ceiling is what acts when
+// nothing at all is believed, and that it acts through the wire.
+func (r *laneRig) patience(_ *testing.T, ceiling time.Duration) {
+	r.ceiling.Store(int64(ceiling))
+}
+
+// rigScale is how much shorter every bound a scenario is judged against is than
+// the one a person is really given.
+//
+// THE RIG IS A TIMELINE AT 1:100 and its bounds are at 1:20, and the difference
+// is deliberate. A lane's own numbers are scripted in milliseconds and read as
+// seconds; the ceiling, the action floor and the hysteresis are scaled less
+// hard so that BOTH kinds of bound are reachable inside one scenario — the
+// belief-derived crossing, which is what almost every test here is about, and
+// the ceiling over it, which is what the two cold-store scenarios are about. At
+// a hundred they would be a fifth of a millisecond apart and every test would
+// be about whichever fired first.
+const rigScale = 20
+
+// ridePolicy is the controller these wire tests run against. It is a variable
+// so that the one line which swaps the double below for `control.New` is the
+// one line: the policy is the lane package's and its arithmetic is proved
+// there, and what is proved here is that the wire drives it.
+var ridePolicy control.Factory = newWireController
+
+// scaled is the plan as this rig hands it over: the role's own ceiling, floor
+// and hysteresis brought onto the rig's timeline, and an explicit ceiling where
+// a scenario states one.
+func (r *laneRig) scaled(plan control.Plan) control.Plan {
+	plan.Ceiling /= rigScale
+	plan.Floor /= rigScale
+	plan.Margin /= rigScale
+	if stated := r.ceiling.Load(); stated > 0 {
+		plan.Ceiling = time.Duration(stated)
+	}
+	return plan
 }
 
 // believes states what the ledger thinks of one lane: a median first token in
@@ -118,19 +198,32 @@ func (r *laneRig) believes(lane string, ttft, rate float64) {
 	}
 }
 
-// choice is what the chooser would have handed this request: A first, B as the
-// alternative, with the frontier's own numbers so the commitment rule has
-// something to compare against.
+// choiceFor is what the chooser would have handed this request: the router's
+// own machines in order, with the frontier's numbers so that the commitment
+// rule and the purse have something to compare against.
+//
+// IT CARRIES NOTHING ABOUT TIME. The deadline argument is what a choice used to
+// hold, and it is kept so that every scenario still reads as the sentence it
+// was written as; the controller derives its own bound from what the ledger
+// believes about the lane expected to serve, which is the whole point of
+// separating the two questions.
 func choiceFor(model string, deadline time.Duration) lanes.Choice {
-	return lanes.Choice{
-		Order:    []string{"A", "B"},
-		Alt:      "B",
-		Deadline: deadline,
-		Frontier: []lanes.Scored{
-			{ID: lanes.ID{Model: model, Lane: "A"}, TTFT: 2, Rate: 2000, Price: 0.01},
-			{ID: lanes.ID{Model: model, Lane: "B"}, TTFT: 5, Rate: 2000, Price: 0.01},
-		},
+	names, _ := rigLanes.Load(model)
+	offered, _ := names.([]string)
+	if len(offered) == 0 {
+		offered = []string{"A", "B"}
 	}
+	choice := lanes.Choice{Order: append([]string(nil), offered...)}
+	for index, lane := range offered {
+		ttft := 5.0
+		if index == 0 {
+			ttft = 2
+		}
+		choice.Frontier = append(choice.Frontier, lanes.Scored{
+			ID: lanes.ID{Model: model, Lane: lane}, TTFT: ttft, Rate: 2000, Price: 0.01,
+		})
+	}
+	return choice
 }
 
 // notices collects what the person was told, in order.
@@ -159,8 +252,8 @@ func (n *notices) kinds(kind StreamEventKind) []StreamEvent {
 
 func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testing.T) {
 	rig := newLaneRig(t, "late/first-token",
-		// Ten virtual seconds to the first token, against half a second.
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 100 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		// Thirty virtual seconds to the first token, against half a second.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 20, 2000)
@@ -199,7 +292,7 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 	// THE WHOLE RESCUE LANDS BEFORE A WOULD HAVE SAID ITS FIRST WORD: about 1.5
 	// virtual seconds to decide, and the answer written by the alternative, all
 	// inside the ten seconds the first lane was going to spend thinking.
-	if took >= 100*time.Millisecond {
+	if took >= 200*time.Millisecond {
 		t.Fatalf("the answer took %s (×100 virtual), want it inside A's own first token", took)
 	}
 	// A never named a lane, so there is nothing honest to write about it.
@@ -434,7 +527,7 @@ func TestWithNoLaneChoiceTheStreamIsExactlyWhatItAlwaysWas(t *testing.T) {
 
 func TestAHedgeDemandsItsOwnLaneAndTakesNoFallback(t *testing.T) {
 	rig := newLaneRig(t, "hedge/wire",
-		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 60 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 20, 2000)
@@ -654,3 +747,593 @@ func TestARescueTellsItsCallerTheMomentItGoesOut(t *testing.T) {
 		t.Fatalf("winner %q, want the lane that answered", winner)
 	}
 }
+
+// ── THE POLICY THESE WIRE TESTS RUN AGAINST ─────────────────────────────────
+//
+// The controller is `internal/lane/control`'s and its arithmetic is proved in
+// its own package, against a fake clock and a scripted belief. What is proved
+// HERE is the wire: that a controller is built for every call, that one reading
+// per stream event reaches it, that its verdicts become requests, offers,
+// cancels and rows, and that the purse bounds them.
+//
+// So the policy under these tests is a DOUBLE, installed through the same seam
+// a shipped build installs the real one through — and it is deliberately the
+// policy this build already proved, restated on the new contract: a derived
+// first-token bound, a drift test over the gaps, a dead-path bound, the
+// commitment rule, and the role's ceiling over all of it. Restating it here is
+// what lets every scenario in this file keep its meaning across the change: a
+// test that both moved its policy and rewrote its expectations would be a test
+// that proved the new arrangement agrees with itself.
+//
+// TWO DELIBERATE DIFFERENCES FROM A SHIPPED CONTROLLER. It does not apply
+// [control.Plan.Floor] — the rig runs at 1:100 against the wall clock, and the
+// action floor is a statement about real handshakes — and it never fires
+// [control.Commit], because an arm that finishes commits anyway and the double
+// has no view of the other arms.
+
+const (
+	// The drift test's slack and alarm, in nats of log-gap, and the one gap
+	// long enough to complain about on its own whatever the lane's rate.
+	doubleSlack = 0.5
+	doubleAlarm = 3.0
+	doubleLump  = 15 * time.Second
+	// The visible tokens past which an answer is somebody's half-read reply.
+	doubleCommit = 64
+)
+
+type wireController struct {
+	plan  control.Plan
+	first control.Survival
+	gap   control.Survival
+	// began is when the request went out, progress the last delta of any kind,
+	// and visibleAt the last word a person could read — which is the only one
+	// the silence clock is measured from.
+	began     time.Time
+	progress  time.Time
+	visibleAt time.Time
+	tokens    int
+	visible   int
+	beats     int
+	drift     float64
+	phase     control.Phase
+	acted     control.Kind
+	done      bool
+}
+
+func newWireController(plan control.Plan) control.Controller {
+	return &wireController{
+		plan: plan, first: plan.First, gap: plan.Gap,
+		began: plan.Began, visibleAt: plan.Began, phase: control.PhaseSilent,
+	}
+}
+
+func (c *wireController) Note(reading control.Reading) control.Act {
+	if reading.Beat {
+		c.beats++
+		// A BEAT NEVER MOVES THE SILENCE. It is proof about the path and about
+		// nothing else, so it is counted and the clock is asked the same
+		// question it would have been asked without it.
+		return c.judge(reading.At, false)
+	}
+	if reading.Visible == 0 && reading.Hidden == 0 {
+		return c.judge(reading.At, false)
+	}
+	// THE FIRST DELTA CARRIES NO GAP. There is nothing before it to measure
+	// against, so it only stops the first-token clock.
+	first := c.tokens == 0
+	c.tokens += reading.Visible + reading.Hidden
+	c.visible += reading.Visible
+	if reading.Visible > 0 {
+		c.visibleAt = reading.At
+		c.phase = control.PhaseWriting
+	} else if c.phase == control.PhaseSilent {
+		c.phase = control.PhaseThinking
+	}
+	previous := c.progress
+	c.progress = reading.At
+	if first {
+		return control.Act{}
+	}
+	return c.judgeGap(reading.At, reading.At.Sub(previous), true)
+}
+
+func (c *wireController) Quiet(now time.Time) control.Act { return c.judge(now, false) }
+
+func (c *wireController) Serving(lane string, first, gap control.Survival, now time.Time) {
+	c.plan.Lane = lane
+	if first.Known() {
+		c.first = first
+	}
+	if gap.Known() {
+		c.gap = gap
+	}
+}
+
+func (c *wireController) Phase() control.Phase { return c.phase }
+
+func (c *wireController) Acted(kind control.Kind) bool { return c.acted == kind && c.done }
+
+func (c *wireController) Deadline() time.Time {
+	if c.done {
+		return time.Time{}
+	}
+	next := c.visibleAt.Add(c.plan.Ceiling)
+	if c.tokens == 0 {
+		if first := c.began.Add(c.firstBound()); first.Before(next) {
+			next = first
+		}
+		return next
+	}
+	if gap := c.progress.Add(c.allowance()); gap.Before(next) {
+		next = gap
+	}
+	return next
+}
+
+// judge is the whole double: the ceiling first, because it holds whatever is
+// believed, then the phase's own bound.
+func (c *wireController) judge(now time.Time, fold bool) control.Act {
+	if c.done {
+		return control.Act{}
+	}
+	if silence := c.silence(now); silence >= c.plan.Ceiling {
+		return c.reachedCeiling(now, silence)
+	} else if silence < c.plan.Floor {
+		// BELOW THE FLOOR A SECOND REQUEST IS RACING THE NETWORK rather than
+		// the lane: it has its own handshake and its own prefill to pay before
+		// it can say anything.
+		return control.Act{}
+	}
+	if c.tokens == 0 {
+		if now.Sub(c.began) >= c.firstBound() {
+			return c.act(now, c.silence(now), "first token late", true)
+		}
+		return control.Act{}
+	}
+	return c.judgeGap(now, now.Sub(c.progress), fold)
+}
+
+// silence is how long it is since anything a person could read arrived, which
+// is the clock the ceiling and the cost are both measured against.
+func (c *wireController) silence(now time.Time) time.Duration {
+	silence := now.Sub(c.visibleAt)
+	if silence < 0 {
+		return 0
+	}
+	return silence
+}
+
+// atCeiling is the bound that holds whatever is believed. A ceiling reached
+// with no sign of life AT ALL — no comment line, no byte — is a claim about the
+// path rather than about the machine, and the belief must not be charged for
+// somebody's network.
+func (c *wireController) reachedCeiling(now time.Time, silence time.Duration) control.Act {
+	if c.tokens == 0 && c.beats == 0 {
+		return c.act(now, silence, "no heartbeat", true)
+	}
+	return c.act(now, silence, ceilingReason, false)
+}
+
+// judgeGap is the mid-stream half: one gap, against what this lane's believed
+// rate says a gap should be.
+func (c *wireController) judgeGap(now time.Time, gap time.Duration, fold bool) control.Act {
+	if c.done {
+		return control.Act{}
+	}
+	silence := c.silence(now)
+	if silence >= c.plan.Ceiling {
+		return c.reachedCeiling(now, silence)
+	}
+	if silence < c.plan.Floor {
+		return control.Act{}
+	}
+	alarm, reason := c.alarm(gap, fold)
+	if !alarm {
+		return control.Act{}
+	}
+	return c.act(now, silence, reason, false)
+}
+
+// act is the one place a verdict is made, so the commitment rule and the
+// once-only rule cannot be routed around.
+func (c *wireController) act(now time.Time, silence time.Duration, reason string, path bool) control.Act {
+	if !path && c.visible >= doubleCommit && !c.worthLeaving() {
+		return control.Act{}
+	}
+	c.done = true
+	act := control.Act{Reason: reason, Silence: silence, Wait: silence.Seconds(), Cost: c.cost()}
+	switch {
+	case len(c.plan.Alts) == 0:
+		act.Kind = control.Report
+	case c.plan.Pinned:
+		act.Kind, act.Lane = control.Ask, c.plan.Alts[0].Lane
+	default:
+		act.Kind, act.Lane = control.Hedge, c.plan.Alts[0].Lane
+	}
+	if act.Kind != control.Report && c.plan.Purse != nil && !c.plan.Purse.Allows(c.plan.Alts[0].Extra, now) {
+		act.Kind, act.Lane = control.Report, ""
+	}
+	c.acted = act.Kind
+	return act
+}
+
+func (c *wireController) cost() float64 {
+	if len(c.plan.Alts) == 0 {
+		return 0
+	}
+	return c.plan.Alts[0].First.Mean()
+}
+
+func (c *wireController) firstBound() time.Duration {
+	if !c.first.Known() {
+		return c.plan.Ceiling
+	}
+	bound := time.Duration(c.first.Quantile(1.2816) * float64(time.Second))
+	if bound < time.Millisecond {
+		bound = time.Millisecond
+	}
+	if bound > c.plan.Ceiling {
+		bound = c.plan.Ceiling
+	}
+	return bound
+}
+
+// allowance is how long the current gap may run before the drift alarm fires,
+// which is what lets the beat sleep until the moment it would.
+func (c *wireController) allowance() time.Duration {
+	expected := typicalGap(c.gap)
+	if expected <= 0 {
+		return doubleLump
+	}
+	allowed := expected * math.Exp(doubleAlarm-c.drift+doubleSlack)
+	if allowed <= 0 || allowed > doubleLump.Seconds() {
+		return doubleLump
+	}
+	return time.Duration(allowed * float64(time.Second))
+}
+
+// typicalGap is the gap this lane USUALLY leaves between two tokens, in
+// seconds: the median and not the mean.
+//
+// THE TWO ARE NOT THE SAME NUMBER AND THE DIFFERENCE IS THE POINT. A log-normal
+// with the predictive spread floored at a nat has a mean two-thirds above its
+// median, so a drift test judged against the mean would excuse every gap by
+// that much before it started counting. What a rate says is what a gap usually
+// is.
+func typicalGap(gap control.Survival) float64 {
+	if !gap.Known() {
+		return 0
+	}
+	return math.Exp(gap.Mu)
+}
+
+func (c *wireController) alarm(gap time.Duration, fold bool) (bool, string) {
+	if gap >= doubleLump {
+		return true, "gap"
+	}
+	expected := typicalGap(c.gap)
+	if expected <= 0 || gap <= 0 {
+		return false, ""
+	}
+	drift := c.drift + math.Log(gap.Seconds()) - math.Log(expected) - doubleSlack
+	if drift < 0 {
+		drift = 0
+	}
+	if fold {
+		c.drift = drift
+	}
+	return drift >= doubleAlarm, "drift"
+}
+
+// worthLeaving reports whether finishing here really would take longer than
+// redoing the whole answer somewhere else from cold. The comparison is
+// asymmetric in the sunk cost's favour on purpose.
+func (c *wireController) worthLeaving() bool {
+	expected := typicalGap(c.gap)
+	if expected <= 0 || c.plan.Expected <= 0 || len(c.plan.Alts) == 0 {
+		return false
+	}
+	remaining := float64(c.plan.Expected - c.visible)
+	if remaining <= 0 {
+		return false
+	}
+	rate := 1 / expected
+	alt := c.plan.Alts[0]
+	altRate := alt.Rate
+	if altRate <= 0 {
+		altRate = rate
+	}
+	return remaining/rate > alt.First.Mean()+float64(c.plan.Expected)/altRate
+}
+
+// ── THE CASE THAT USED TO HAVE NO CLOCK AT ALL ──────────────────────────────
+
+// TestAColdStoreStillActsAtTheCeiling is the reported defect, run rather than
+// read.
+//
+// Nothing is believed about any lane here — no sighting, no sheet, the state of
+// every model somebody picks after launch — so there is no derived deadline to
+// wait against. Until this wave that meant no watch at all: the request went
+// out with no deadline, no silence beat and nothing to hedge to, and the first
+// thing that acted on the silence was a transport bound two and a half minutes
+// away. The ceiling is what makes the invariant hold from a cold store, and it
+// exists whether or not a belief does.
+func TestAColdStoreStillActsAtTheCeiling(t *testing.T) {
+	rig := newLaneRig(t, "cold/store",
+		// Thirty virtual seconds to a first word, with the router's own comment
+		// lines on the way — so the path is demonstrably alive and the only
+		// thing left to act on the wait is the ceiling.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24, Heartbeats: true,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	// AND THE LEDGER IS LEFT EMPTY. That is the whole scenario.
+	rig.patience(t, 150*time.Millisecond)
+
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(context.Background(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+
+	began := time.Now()
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	took := time.Since(began)
+
+	if !report.Hedged() || report.Reason() != "ceiling" {
+		t.Fatalf("report = hedged %v, reason %q; want the ceiling to have acted with nothing believed",
+			report.Hedged(), report.Reason())
+	}
+	if winner, _ := report.Lanes(); winner != "B" {
+		t.Fatalf("winner = %q, want the answer from the lane the rescue went to", winner)
+	}
+	if tokens := answerTokens(response); tokens != 24 {
+		t.Fatalf("the answer is %d tokens, want B's 24", tokens)
+	}
+	if took >= 500*time.Millisecond {
+		t.Fatalf("the answer took %s, want it acted on at the ceiling rather than at A's own pace", took)
+	}
+	// AND THE LOSER IS CANCELLED, which is what stops the bill on the lanes
+	// that honour it.
+	waitFor(t, func() bool { return rig.server.Cancels("A") == 1 })
+}
+
+// TestAHeartbeatNeverResetsTheSilence is the difference between a claim about
+// the PATH and a claim about the endpoint.
+//
+// `: OPENROUTER PROCESSING` proves the connection is alive and proves nothing
+// whatsoever about the model, so it buys the dead-path bound patience and it
+// buys the wait none. A clock a comment line reset would be a clock a router
+// could hold open forever by saying nothing in a well-formed way — which is
+// exactly what a stalled lane emitting keepalives does.
+func TestAHeartbeatNeverResetsTheSilence(t *testing.T) {
+	rig := newLaneRig(t, "beat/only",
+		// Three comment lines on the way to a first token six hundred
+		// milliseconds away: one of them lands before the ceiling does.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 600 * time.Millisecond, Rate: 2000, Tokens: 24, Heartbeats: true,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.patience(t, 300*time.Millisecond)
+
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(context.Background(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+
+	began := time.Now()
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	took := time.Since(began)
+
+	if !report.Hedged() {
+		t.Fatal("a stream that said nothing but keepalives for twice its ceiling was never acted on")
+	}
+	// A BEAT WAS SEEN, so this is a slow lane and not a dead path — and the
+	// belief is charged accordingly rather than being let off.
+	if report.PathFault() {
+		t.Fatal("a stream that was sending keepalives was called a dead path")
+	}
+	// AND IT WAS ACTED ON AT THE CEILING AND NOT AT THE BEAT AFTER IT. The
+	// second comment line lands at four hundred milliseconds; a clock it reset
+	// would have waited for the third.
+	if took >= 500*time.Millisecond {
+		t.Fatalf("the answer took %s, want the ceiling rather than a clock the keepalives kept alive", took)
+	}
+}
+
+// TestALongHealthyThinkIsLeftAlone is the failure mode this design most risks
+// introducing.
+//
+// A model asked at the top rung may deliberate for a long time on purpose, and
+// hedging that fires a second long deliberation and buys nothing. A think is
+// judged against what a think costs — not against the first-token belief, and
+// not against a fixed gap — so a run of thought arriving at the believed rate
+// is a stream that is working.
+func TestALongHealthyThinkIsLeftAlone(t *testing.T) {
+	rig := newLaneRig(t, "think/healthy",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 5 * time.Millisecond, Rate: 1000, Reasoning: 300, Tokens: 24,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 5, 250)
+
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(context.Background(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Hedged() {
+		t.Fatalf("hedged a model that was thinking at exactly the rate it is believed to write at; reason %q",
+			report.Reason())
+	}
+	if got := rig.server.Requests("B"); got != 0 {
+		t.Fatalf("Requests(B) = %d, want none", got)
+	}
+	if tokens := answerTokens(response); tokens != 24 {
+		t.Fatalf("the answer is %d tokens, want A's own 24", tokens)
+	}
+}
+
+// TestTheRowSaysWhyItWaitedAndWhatWasDone is the autopsy this design was
+// written for: one line that answers when it acted, what it believed, what it
+// did and what it cost.
+func TestTheRowSaysWhyItWaitedAndWhatWasDone(t *testing.T) {
+	read := loggingTo(t)
+	rig := newLaneRig(t, "row/why",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
+			StallAfter: 30, StallFor: 300 * time.Millisecond,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 2, 250)
+
+	ctx := WithLaneChoice(context.Background(), choiceFor(rig.model, 0))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE LOSER'S ROW LANDS A MOMENT AFTER THE CALLER HAS ITS ANSWER, which is
+	// the whole point of a rescue: nobody waits for the arm that was cancelled.
+	waitFor(t, func() bool { return len(ended(read())) == 2 })
+
+	var acted, rescue bool
+	for _, row := range ended(read()) {
+		if row.Lane == "B" {
+			rescue = true
+			if !row.Hedged || row.Arms < 2 {
+				t.Fatalf("the rescue's own row says hedged %v over %d arms; want it to name the pair it was half of", row.Hedged, row.Arms)
+			}
+		}
+		if row.Action == "" {
+			continue
+		}
+		acted = true
+		if row.Action != "hedge" {
+			t.Fatalf("the row says the wait was answered with %q, want the rescue that really went out", row.Action)
+		}
+		if row.Lane != "A" {
+			t.Fatalf("the acted row names lane %q, want the machine the preference asked for", row.Lane)
+		}
+		if row.SilenceMs <= 0 {
+			t.Fatal("the row records an action and no silence, so nobody can say when it was taken")
+		}
+		if row.DeadlineMs <= 0 {
+			t.Fatal("the row records no deadline, so nobody can say whether it was set in the right place")
+		}
+		if row.WaitS <= 0 {
+			t.Fatal("the row records the action without the wait it was decided on")
+		}
+		if row.Arms != 2 {
+			t.Fatalf("the row says %d arms, want the original and its rescue", row.Arms)
+		}
+		if row.WasteUSD <= 0 {
+			t.Fatal("two arms went out and the row says the second one was free")
+		}
+	}
+	if !acted || !rescue {
+		t.Fatalf("no row said what was done about the wait (acted %v, rescue %v)", acted, rescue)
+	}
+}
+
+// TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued is the owner's order,
+// stated as a scenario: ALL of this build's calls answer promptly, not only the
+// ones a person is reading.
+//
+// λ is what a second of a wait is worth, and for a background errand it is
+// zero: no amount of money buys speed for an answer nobody is waiting on, so
+// the arithmetic under the ceiling never crosses and the honest verdict there
+// is to say the wait is real. THE CEILING IS NOT PART OF THAT ARITHMETIC. It is
+// the promise that nothing waits longer than the role's own bound, and a
+// promise kept by reporting is a promise to keep waiting. So a report raised at
+// the ceiling with somewhere to go becomes the rescue it would have been for a
+// person.
+func TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued(t *testing.T) {
+	rig := newLaneRig(t, "ceiling/reported",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 400 * time.Millisecond, Rate: 2000, Tokens: 24, Heartbeats: true,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 20, 2000)
+	// A POLICY THAT ONLY EVER REPORTS, which is what a controller reading λ = 0
+	// says about every wait it is asked about.
+	lanes.SetController(func(plan control.Plan) control.Controller {
+		plan.Ceiling = 100 * time.Millisecond
+		return &reportingController{plan: plan, began: plan.Began}
+	})
+
+	report := &HedgeReport{}
+	ctx := WithRole(context.Background(), lanes.RoleStanding)
+	ctx = WithHedgeReport(ctx, report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 0))
+
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Action() != "hedge" {
+		t.Fatalf("the row says %q; a wait reported at the ceiling with a lane to go to is a rescue", report.Action())
+	}
+	if got := rig.server.Requests("B"); got != 1 {
+		t.Fatalf("Requests(B) = %d, want the rescue the ceiling owed", got)
+	}
+	if tokens := answerTokens(response); tokens != 24 {
+		t.Fatalf("the answer is %d tokens, want the rescuer's 24", tokens)
+	}
+}
+
+// reportingController says the wait is real and never does anything about it,
+// which is the shape of every verdict under λ = 0.
+type reportingController struct {
+	plan    control.Plan
+	began   time.Time
+	visible time.Time
+	done    bool
+}
+
+func (c *reportingController) Note(reading control.Reading) control.Act {
+	if reading.Visible > 0 {
+		c.visible = reading.At
+	}
+	return c.judge(reading.At)
+}
+
+func (c *reportingController) Quiet(now time.Time) control.Act { return c.judge(now) }
+
+func (c *reportingController) judge(now time.Time) control.Act {
+	since := c.began
+	if !c.visible.IsZero() {
+		since = c.visible
+	}
+	silence := now.Sub(since)
+	if c.done || silence < c.plan.Ceiling {
+		return control.Act{}
+	}
+	c.done = true
+	return control.Act{Kind: control.Report, Reason: ceilingReason, Silence: silence}
+}
+
+func (c *reportingController) Serving(string, control.Survival, control.Survival, time.Time) {}
+
+func (c *reportingController) Deadline() time.Time {
+	if c.done {
+		return time.Time{}
+	}
+	if c.visible.IsZero() {
+		return c.began.Add(c.plan.Ceiling)
+	}
+	return c.visible.Add(c.plan.Ceiling)
+}
+
+func (c *reportingController) Phase() control.Phase { return control.PhaseSilent }
+
+func (c *reportingController) Acted(kind control.Kind) bool { return c.done && kind == control.Report }

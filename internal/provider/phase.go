@@ -78,6 +78,16 @@ const (
 	// PhaseSwitching is a rescue in flight — a second request to another lane,
 	// with nobody committed yet. Then names the lane it went to.
 	PhaseSwitching Phase = "switching"
+	// PhaseAsking is a wait a person can end: the lane they pinned has gone
+	// quiet, there is somewhere else to go, and a pin is asked rather than
+	// overridden (offer.go). Detail carries "coreweave is slow", Then the lane
+	// the rescue would go to, and Ask the token `y` answers with.
+	//
+	// IT IS A PHASE AND NOT A SECOND CHANNEL. One sentence about one request,
+	// on the seam that already carries every other sentence about it — a second
+	// channel for it would be a second thing to keep alive, and the first time
+	// one of them stalled the other would still be drawing.
+	PhaseAsking Phase = "asking"
 	// PhaseSwitchingModel is the LAST rung of the ladder and the only one that
 	// changes what a person asked for: every lane of the model has been tried
 	// and a fallback model is being asked instead. Then names it.
@@ -157,6 +167,12 @@ type PhaseNews struct {
 	// Detail is the phase's own noun, already in a person's words: the tool
 	// being run, the rung of the ladder, how long a stall had gone on.
 	Detail string
+	// Ask is the token naming an open offer, empty when there is none — which
+	// is every phase but [PhaseAsking] and the post that withdraws one. A
+	// surface hands it back to [AnswerOffer] with the person's answer, so the
+	// keystroke lands on the request that raised the question and never on the
+	// one that came after it.
+	Ask string
 	// Model is the model this request is on, and Role who it is for. A surface
 	// draws only the roles a person is reading (internal/lane's roles.go): the
 	// naming errand and the memory reflex that run beside a talk turn are not
@@ -173,7 +189,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel:
+	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking:
 		return true
 	}
 	return false
@@ -192,6 +208,18 @@ func OnPhase(fn func(PhaseNews)) (previous func(PhaseNews)) {
 	defer phaseMu.Unlock()
 	previous, phaseReader = phaseReader, fn
 	return previous
+}
+
+// phaseListening reports whether anybody is reading phases at all.
+//
+// IT IS WHAT "NO SURFACE" MEANS, and it is asked in exactly one place besides
+// the clock's own constructor: a pinned lane that stalls with nobody to ask
+// borrows instead of asking (offer.go). Reading the same seam for both is what
+// stops the two ideas of "headless" from drifting apart.
+func phaseListening() bool {
+	phaseMu.RLock()
+	defer phaseMu.RUnlock()
+	return phaseReader != nil
 }
 
 // postPhase tells whoever is listening.
@@ -243,6 +271,8 @@ type phaseClock struct {
 	tokens   int
 	deadline time.Time
 	then     string
+	// ask is the open offer's token while one is up, empty otherwise.
+	ask string
 	// now is the clock, which is the client's own so that a test can move it.
 	now func() time.Time
 }
@@ -294,6 +324,10 @@ func (p *phaseClock) enter(phase Phase, detail string) {
 	if phase != PhaseFirstWord && phase != PhaseConnecting {
 		p.deadline, p.then = time.Time{}, ""
 	}
+	// AND AN OFFER BELONGS TO THE WAIT THAT RAISED IT. A question about a lane
+	// that has since started writing is a question about nothing, and leaving
+	// it on the screen would be the surface asking a person to answer it.
+	p.ask = ""
 	p.say(detail, now)
 }
 
@@ -376,6 +410,7 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Since:    p.since,
 		Deadline: p.deadline,
 		Then:     p.then,
+		Ask:      p.ask,
 		Lane:     p.lane,
 		Detail:   detail,
 		Model:    p.model,
@@ -422,6 +457,61 @@ func (p *phaseClock) switching(alt, stalled string) {
 	p.phase, p.since, p.tokens = PhaseSwitching, now, 0
 	p.deadline, p.then = time.Time{}, alt
 	p.say(stalled, now)
+}
+
+// asking raises the offer: this lane is slow, there is somewhere else to go,
+// and the person who pinned it is asked rather than overridden (offer.go).
+//
+// IT IS RAISED ONCE PER REQUEST and the caller is what holds that; a second
+// offer for one answer would be nagging.
+func (p *phaseClock) asking(lane, alt, ask string) {
+	if p == nil || ask == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := p.now()
+	p.phase, p.since, p.tokens = PhaseAsking, now, 0
+	p.deadline, p.then, p.ask = time.Time{}, alt, ask
+	p.say(lane+" is slow", now)
+}
+
+// withdrew takes the offer back down: the pin came good, or it was answered, or
+// the request ended. It is a POST and never an absence, for the reason
+// [phaseClock.done] is: a question left on the screen for a request that is
+// over is worse than one that was never asked.
+func (p *phaseClock) withdrew() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ask == "" {
+		return
+	}
+	p.ask = ""
+	now := p.now()
+	if p.phase == PhaseAsking {
+		p.phase, p.since, p.tokens = PhaseFirstWord, now, 0
+	}
+	p.say("", now)
+}
+
+// stillWaiting is the visible half of [control.Report]: there is nowhere better
+// to go and the wait is real.
+//
+// IT DOES NOT MOVE THE PHASE. What is happening has not changed — the endpoint
+// still owes a first word, or is still thinking — and the only new fact is that
+// this build has weighed the alternatives and there are none. So it rides the
+// phase in force as its detail, which is where a person reads "all lanes slow ·
+// still waiting".
+func (p *phaseClock) stillWaiting(detail string) {
+	if p == nil || detail == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.say(detail, p.now())
 }
 
 type phaseClockContextKey struct{}

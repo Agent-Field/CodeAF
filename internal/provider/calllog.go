@@ -227,6 +227,27 @@ func (c *Client) record(facts recordFacts) {
 		}
 		record.ReasoningTokens = facts.reasoningTokens
 	}
+	// ── WHY IT WAITED AND WHAT WAS DONE ABOUT IT
+	//
+	// The controller is what knows: which machine was asked for, when it was
+	// going to be acted on, how long the silence had really run, what was done,
+	// and what the arms that did not answer cost. Read from the watch driving
+	// THIS attempt, so that the row of a rescue says what the rescue did and
+	// the row of the request it rescued says what happened to that one.
+	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
+		record.Lane = wait.lane
+		record.DeadlineMs = wait.deadline.Milliseconds()
+		record.TTFTms = wait.ttft.Milliseconds()
+		record.SilenceMs = wait.silence.Milliseconds()
+		record.Action = wait.action
+		record.WaitS, record.CostS = wait.wait, wait.cost
+		record.Hedged = wait.hedged
+		record.WasteUSD = wait.waste
+		record.Note = wait.note
+		if wait.arms > 1 {
+			record.Arms = wait.arms
+		}
+	}
 	if facts.knobs.trace != nil {
 		record.ID = facts.knobs.trace.attemptID
 	}
