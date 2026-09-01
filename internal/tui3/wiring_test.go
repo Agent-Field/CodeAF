@@ -296,23 +296,26 @@ func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
 
 // ── 2. the session's name ───────────────────────────────────────────────────
 
-func TestTheTitleReachesTheStatusLineLiveAndOnResume(t *testing.T) {
+// THE NAME IS A PLACE, NOT A TELEMETRY FACT, so it is the top bar that carries
+// it (ISSUE-126): it is the crumb's chat step, left of the right cluster, and it
+// was the status line's until the bar existed to hold it.
+func TestTheTitleReachesTheTopBarLiveAndOnResume(t *testing.T) {
 	_, a := wired([]session.Event{{Kind: session.EventTitleChanged, Text: "porting the parser"}})
 	typeLine(t, a, "port it")
 
-	status := plain(a.status(a.width))
-	if !strings.Contains(status, "porting the parser") {
-		t.Fatalf("the status line is missing the title:\n%s", status)
+	bar := plain(a.topBarWord(120))
+	if !strings.Contains(bar, "porting the parser") {
+		t.Fatalf("the top bar is missing the title:\n%s", bar)
 	}
-	if strings.Index(status, "porting the parser") > strings.Index(status, a.model) {
-		t.Fatalf("the title has to sit left of the model:\n%s", status)
+	if strings.Index(bar, "porting the parser") > strings.Index(bar, a.model) {
+		t.Fatalf("the title has to sit left of the model:\n%s", bar)
 	}
 
 	// A resumed session is already named, and opens saying so.
 	named := &wiredAgent{fakeAgent: &fakeAgent{model: "m"}, name: "the tasker wave"}
 	resumed := newTestApp(named)
-	if !strings.Contains(plain(resumed.status(resumed.width)), "the tasker wave") {
-		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.status(resumed.width)))
+	if !strings.Contains(plain(resumed.topBarWord(120)), "the tasker wave") {
+		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.topBarWord(120)))
 	}
 }
 

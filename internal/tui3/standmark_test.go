@@ -244,10 +244,20 @@ func TestPressingTheKeepingSegmentOpensTheStandingPage(t *testing.T) {
 
 // A press anywhere else on that row falls through, because the rest of it is
 // telemetry — figures, not controls.
+//
+// THE COLUMN IT AIMS AT MOVED WITH THE CLUSTER (ISSUE-126). This used to press
+// column zero, on the reasoning that the row opened with the identity and the
+// segment was far away on the right; the presence cluster is the LEFT end of the
+// row now and the keeping segment opens it, so column zero is the door itself.
+// The quiet cells are the ones just past it.
 func TestPressingBesideTheKeepingSegmentOpensNothing(t *testing.T) {
 	a, _ := standDoorLab(t)
 	_, y := standDoorAt(t, a)
-	drive(t, a, tea.MouseClickMsg{X: 0, Y: y, Button: tea.MouseLeft})
+	x := a.keepSpan.to + 1
+	if a.keepSpan.holds(x) {
+		t.Fatalf("the column beside the door is inside it: %+v", a.keepSpan)
+	}
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if a.at(pageStanding) {
 		t.Fatal("the whole status row acted as the door")
 	}

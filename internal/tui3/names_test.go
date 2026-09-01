@@ -27,16 +27,30 @@ func TestOneTokenNamesAreReadBackAsWords(t *testing.T) {
 	}
 }
 
-// The status line draws the read-back name, and the session keeps the raw one:
-// a name is for a person, an id is for a resume.
-func TestTheStatusLineDrawsTheReadableName(t *testing.T) {
+// The top bar's crumb draws the read-back name, and the session keeps the raw
+// one: a name is for a person, an id is for a resume. It was the status line's
+// until the identity cluster left that row (ISSUE-126) — the conversation's own
+// name is a fact about the whole session rather than something that ticks, so it
+// is the crumb's chat step now, between the project and any task below it
+// (topbar.go's [app.crumbSegments]).
+func TestTheTopBarsCrumbDrawsTheReadableName(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
 	a := newTestApp(agent)
 	a.width = 120
 	a.setTitle("port_b_parser_fix")
 
-	if got := plain(a.status(a.width)); !strings.Contains(got, "Port B Parser Fix") {
-		t.Fatalf("the status line drew a machine name:\n%s", got)
+	if got := a.sessionName(); got != "Port B Parser Fix" {
+		t.Fatalf("the session reads back as %q", got)
+	}
+	found := false
+	for _, seg := range a.crumbSegments() {
+		found = found || seg.text == "Port B Parser Fix"
+	}
+	if !found {
+		t.Fatalf("the crumb has no step for the conversation: %+v", a.crumbSegments())
+	}
+	if got := plain(a.topBarWord(a.width)); !strings.Contains(got, "Port B Parser Fix") {
+		t.Fatalf("the top bar drew a machine name:\n%s", got)
 	}
 	if a.title != "port_b_parser_fix" {
 		t.Fatalf("the session's own name was rewritten: %q", a.title)

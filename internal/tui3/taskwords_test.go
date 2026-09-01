@@ -144,7 +144,7 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	// sentence and the state is the second thing in it.
 	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
 	head := plain(a.topBarWord(120))
-	if !strings.Contains(head, "Write the report · "+taskFinishingWord) {
+	if !strings.Contains(head, "Write the report #7 · "+taskFinishingWord) {
 		t.Fatalf("the top bar is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {
@@ -330,7 +330,7 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			// state is the second thing in it.
 			a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
 			head := plain(a.topBarWord(120))
-			if !strings.Contains(head, "Write the report · "+taskHeldWord) {
+			if !strings.Contains(head, "Write the report #7 · "+taskHeldWord) {
 				t.Fatalf("the top bar is %q", head)
 			}
 

@@ -719,9 +719,17 @@ func TestHoverRepaintsOnlyWhenTheAnswerChanges(t *testing.T) {
 
 // ── 6. the frame ────────────────────────────────────────────────────────────
 
-// THE STATUS LINE IS THE LAST ROW, and it carries every segment. It used to be
-// the first row, two feet from everything that moves.
-func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
+// THE STATUS LINE IS THE LAST ROW, AND THE SLOW HALF OF IT IS THE FIRST. The
+// row used to open the frame; it moved to the foot, two feet from everything
+// that moves, and it carried every segment on its own until ISSUE-126 split the
+// frame's chrome in two. What ticks stays here — the bill, the meter, the state
+// — and what a person reads once and then stops seeing went to the top bar above
+// the conversation: the name, the model, the branch, the machine, YOLO.
+//
+// So the law is the SPLIT, and this test states both ends of it, because the
+// defect either half could hide is the same one: a fact drawn twice, or a fact
+// drawn nowhere.
+func TestTheFramesTwoRowsSplitTheSlowFactsFromTheTickingOnes(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini", usage: session.Usage{CostUSD: 0.14}}
 	a := newApp(t.Context(), Options{
 		Agent: agent, Workspace: "/tmp/lab", ContextWindow: 10_000,
@@ -729,11 +737,9 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	})
 	a.width, a.height = 90, 20
 	a.pal = newPalette(tokens.ANSI256, false)
-	// This conversation is empty, so the welcome box is up (welcome.go) and it
-	// names the model on purpose. It is not what this test is about, and the
-	// "nothing above the conversation says this" check below is about the top
-	// bar that used to be there — so the box is dismissed the way a keystroke
-	// would dismiss it.
+	// This conversation is empty, so the welcome box is up (welcome.go), and a
+	// greeting quiets both rows on purpose (render.go's [app.statusQuiet]) — so
+	// the box is dismissed the way a keystroke would dismiss it.
 	a.dismissWelcome()
 	a.title = "porting the parser"
 	a.cost = 0.14
@@ -742,34 +748,45 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 
 	lines := strings.Split(plain(frame(a)), "\n")
 	last := lines[len(lines)-1]
-	// THE TWO CLUSTERS, on the one row a ninety-column frame keeps them on:
-	// identity left (the name and the model's BASENAME — the vendor is a routing
-	// address, and it stays in the picker), telemetry right, state word last.
-	// The product name is no longer on this line at all.
-	for _, want := range []string{"porting the parser", "gpt-4.1-mini", "$0.14", "1k/10k · 10%", "idle"} {
+	// THE TICKING ROW, at the foot: the bill and the meter, and the meter is a
+	// PERCENT ALONE below the crowding line — the fraction is the workings, and
+	// it comes back only where the decision needs it ([app.ctxAmbient]).
+	for _, want := range []string{"$0.14", "10%"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}
 	}
-	if strings.Contains(last, product) {
-		t.Fatalf("the product name is still on the status line: %q", last)
-	}
-	if strings.Contains(last, "openai/") {
-		t.Fatalf("the vendor prefix is still on the status line: %q", last)
-	}
-	// NO TOP BAR. Nothing above the conversation says any of this.
-	for _, line := range lines[:len(lines)-1] {
-		if strings.Contains(line, "openai/gpt-4.1-mini") && !strings.Contains(line, "model ·") {
-			t.Fatalf("the model is still drawn above the conversation: %q", line)
+	// AND THE SLOW FACTS ARE NOT ON IT. The name and the model left with the
+	// identity cluster; `idle` left with them, because a word saying nothing is
+	// happening is said better by the row's own emptiness (render.go's
+	// [app.stateWord]).
+	for _, gone := range []string{"porting the parser", "gpt-4.1-mini", "idle", product} {
+		if strings.Contains(last, gone) {
+			t.Fatalf("the status line is still carrying %q:\n%q", gone, last)
 		}
 	}
-	if strings.Contains(lines[0], "$0.14") {
-		t.Fatalf("the top row is still a status bar: %q", lines[0])
+
+	// THE SLOW ROW, at the head: the crumb's chat step and the model's BASENAME —
+	// the vendor is a routing address and it stays in the picker.
+	bar := lines[0]
+	for _, want := range []string{"porting the parser", "gpt-4.1-mini"} {
+		if !strings.Contains(bar, want) {
+			t.Fatalf("the top bar is missing %q:\n%q", want, bar)
+		}
+	}
+	if strings.Contains(bar, "openai/") {
+		t.Fatalf("the vendor prefix is on the top bar: %q", bar)
+	}
+	// AND THE BAR CARRIES NO NUMBER THAT MOVES. A figure in a static bar becomes
+	// wallpaper, which is the whole of why the split runs where it does.
+	if strings.Contains(bar, "$0.14") || strings.Contains(bar, "10%") {
+		t.Fatalf("the top bar grew a ticking number: %q", bar)
 	}
 
-	// The four states, painted where the state is.
-	if !strings.Contains(a.status(a.width), a.pal.dim("idle")) {
-		t.Fatal("idle is not dim")
+	// The states, painted where the state is — and idle painted nowhere at all,
+	// which is the emptiness law applied to a word rather than to a figure.
+	if word, _ := a.stateSegment(); word != "" {
+		t.Fatalf("an idle session says %q on the row", word)
 	}
 	a.state = stateWorking
 	if !strings.Contains(a.status(a.width), a.pal.accent("working")) {

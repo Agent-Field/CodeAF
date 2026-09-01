@@ -292,7 +292,7 @@ func TestTheTierWordsAndTheClassKeysAreTheSameSet(t *testing.T) {
 // ── THE CREW IS READABLE WHERE PEOPLE GO TO CHECK ───────────────────────────
 //
 // /crew writes four class models and the session picks them up on its next
-// call, and NOTHING ON THE FRAME MOVES: the status line's model readout is the
+// call, and NOTHING ON THE FRAME MOVES: the model readout on the top bar is the
 // conversation's model, which the crew never touches. Before these three
 // surfaces existed, the whole of the evidence was one note that scrolled away,
 // and a person who set the crew and then went to look for it concluded the
@@ -495,69 +495,63 @@ func TestBareCrewReadsTheFiveSeats(t *testing.T) {
 	}
 }
 
-// THE STATUS LINE PAIRS THE TWO DIALS: the crew word stands at the head of the
-// telemetry, across the gap from the conversation's model, and the word is the
-// same one /status, the picker's hint and the chooser read — derived from the
-// four live rows through one function.
-func TestTheStatusLinePairsTheCrewWithTheModel(t *testing.T) {
+// THE CREW IS A SETTING, AND SETTINGS ARE NOT ON THE ROW (ISSUE-126). It used
+// to open the telemetry, across the gap from the conversation's model, so the
+// two dials read as a pair; the bottom row keeps only what TICKS now
+// (render.go's [hudLaneOf] routes [segCrew] to [hudSheet]), and a preset word
+// that changes when a person changes it and never otherwise is exactly what a
+// static number in a live row becomes: wallpaper.
+//
+// So the segment is still ASSEMBLED — the sheet and /status read the whole set
+// — and it is drawn where somebody went to look for it: under the model on the
+// status sheet, in full, and in /status. The word is one word wherever it is
+// said, derived from the four live rows through one function.
+func TestTheCrewIsOffTheRowAndOnTheSheet(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.width = 200
 	a.slash("/crew max")
 
-	line := plain(a.status(a.width))
-	if !strings.Contains(line, "crew max") {
-		t.Fatalf("the status line does not name the crew:\n%q", line)
+	if got := a.crewSegment(); got != "crew max" {
+		t.Fatalf("the crew segment reads %q", got)
 	}
-	if strings.Index(line, "crew max") < strings.Index(line, "gpt-4.1-mini") {
-		t.Fatalf("the crew word is not beside the model, on its right:\n%q", line)
+	// AT NO WIDTH IS IT ON THE BOTTOM ROW. Wide, where there is room for
+	// everything, and crowded, where there is room for nothing — the answer is
+	// the same because the row is not where this fact lives, not because it was
+	// squeezed off.
+	a.ctxWindow, a.ctxTokens = 200_000, 24_000
+	a.cost = 0.31
+	for _, width := range []int{200, 100} {
+		if line := plain(a.status(width)); strings.Contains(line, "crew") {
+			t.Fatalf("the %d-column row carries the crew:\n%q", width, line)
+		}
 	}
-	if parts := a.telemetry(a.width); len(parts) == 0 || parts[0].kind != segCrew {
-		t.Fatalf("the crew is not the head of the telemetry: %+v", parts)
+	// And the numbers the row DOES carry are still on it, so this is a row that
+	// dropped one fact rather than a row that emptied.
+	if line := plain(a.status(200)); !strings.Contains(line, "$0.31") || !strings.Contains(line, "12%") {
+		t.Fatalf("the row lost the figures that tick:\n%q", line)
 	}
 	// ONE SOURCE FOR THE WORD, wherever it is said.
 	if a.crewHint() != a.crewSegment() {
 		t.Fatalf("the hint says %q and the segment says %q", a.crewHint(), a.crewSegment())
 	}
-	a.slash("/status")
-	if !strings.Contains(lastNote(t, a), "\ncrew     max ·") {
-		t.Fatalf("/status does not read the same word:\n%s", lastNote(t, a))
+	// THE SHEET SAYS IT IN FULL, under the model — the reading the row's one word
+	// was always a shorthand for (statusdeck.go's [app.deckItems]).
+	if got := deckValue(a.deckItems(), "crew"); got != a.crewWord() {
+		t.Fatalf("the sheet's crew row reads %q, want %q", got, a.crewWord())
+	}
+	if got := a.statusText(); !strings.Contains(got, "\ncrew     max ·") {
+		t.Fatalf("/status does not read the same word:\n%s", got)
 	}
 	// A hand-set seat turns every reading to custom at once.
 	a.openSettings()
 	toProviders(t, a)
 	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
 	a.closeSettings()
-	if line := plain(a.status(a.width)); !strings.Contains(line, "crew custom") || strings.Contains(line, "crew max") {
-		t.Fatalf("the status line did not follow the hand-set seat:\n%q", line)
+	if got := a.crewSegment(); got != "crew "+config.CrewCustom {
+		t.Fatalf("the crew segment did not follow the hand-set seat: %q", got)
 	}
-}
-
-// THE CREW IS AMONG THE FIRST SEGMENTS TO GO: a setting rather than a
-// measurement, said in full elsewhere, so a short row gives it up before the
-// bill and the meter and nothing else on the row moves.
-func TestTheCrewSegmentYieldsBeforeTheNumbers(t *testing.T) {
-	a, _ := sheetApp(t)
-	// The name is sized so that at a hundred columns the telemetry is over by
-	// exactly the crew's width: dropping it is enough, and nothing else goes.
-	a.title = "a conversation with a name long enough to crowd"
-	a.ctxWindow, a.ctxTokens = 200_000, 24_000
-	a.cost = 0.31
-
-	wide := plain(a.status(200))
-	if !strings.Contains(wide, "crew balanced") {
-		t.Fatalf("the wide row does not carry the crew:\n%q", wide)
-	}
-	narrow := plain(a.status(100))
-	if strings.Contains(narrow, "crew") {
-		t.Fatalf("the crowded row kept the crew over the numbers:\n%q", narrow)
-	}
-	for _, kept := range []string{"$0.31", "24k/200k", "idle"} {
-		if !strings.Contains(narrow, kept) {
-			t.Fatalf("the crowded row lost %q while dropping the crew:\n%q", kept, narrow)
-		}
-	}
-	if dropOrder[1] != segCrew {
-		t.Fatalf("the crew is not second in the drop order: %v", dropOrder)
+	if got := deckValue(a.deckItems(), "crew"); !strings.Contains(got, config.CrewCustom) || strings.Contains(got, config.CrewMax) {
+		t.Fatalf("the sheet did not follow the hand-set seat: %q", got)
 	}
 }
 

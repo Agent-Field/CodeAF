@@ -171,11 +171,18 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 	from := screenRowWith(t, a, "how do I print?")
 	to := screenRowWith(t, a, "Use fmt.Println.")
 
+	// THE SPAN IS IN CONTENT ROWS AND THE FIXTURE FOUND SCREEN ROWS, and the two
+	// are not the same number: the top bar and its rule stand above the
+	// transcript now (topbar.go), so the body starts at [app.bodyTop] rather than
+	// at row zero, and a scrolled body moves them apart again. [app.bodyContentRow]
+	// is the one conversion the surface itself uses — the selection is anchored
+	// to the text and not to the glass, which is the law the sweep below rides.
+	wantLow, wantHigh := a.bodyContentRow(from), a.bodyContentRow(to)
 	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
 	low, high, on := a.dragSpan()
-	if !on || low != from || high != to {
-		t.Fatalf("the selection spans %d..%d (on=%v), want %d..%d", low, high, on, from, to)
+	if !on || low != wantLow || high != wantHigh {
+		t.Fatalf("the selection spans %d..%d (on=%v), want %d..%d", low, high, on, wantLow, wantHigh)
 	}
 	// THE RELEASE DOES NOT SNUFF THE SELECTION. The rows stay lit for as long
 	// as the status line still says "copied", so a person sees exactly what
@@ -183,7 +190,7 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 	// moment they let go — which read as the copy never having happened.
 	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
 	low, high, on = a.dragSpan()
-	if !on || low != from || high != to {
+	if !on || low != wantLow || high != wantHigh {
 		t.Fatalf("the copied rows are not kept lit: %d..%d (on=%v)", low, high, on)
 	}
 	a.dragUntil = time.Now().Add(-time.Second)
@@ -202,13 +209,20 @@ func TestTheSweptRowsWearTheSelectionWhileTheButtonIsDown(t *testing.T) {
 // longer there.
 func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	a := dragApp(t)
-	// Fifteen rows and not fourteen: the eight blocks that land below are one
-	// turn's prose, so THE ANSWER HIERARCHY demotes all but the last of them and
-	// opens one blank above the one it promotes (hierarchy.go's [answerBreath]).
-	// That row is the difference between the pressed block scrolling two rows up
-	// — which is what this test is about — and scrolling clean off the top,
-	// which is a different case with a test of its own below.
-	a.width, a.height = 80, 15
+	// ELEVEN ROWS OF TRANSCRIPT, and the window is sized to buy exactly that.
+	// The eight blocks that land below are one turn's prose, so THE ANSWER
+	// HIERARCHY demotes all but the last of them and opens one blank above the
+	// one it promotes (hierarchy.go's [answerBreath]) — those eleven rows are the
+	// difference between the pressed block scrolling up to the top of the window,
+	// which is what this test is about, and scrolling clean off it, which is a
+	// different case with a test of its own below.
+	//
+	// It used to be fifteen rows of window. Three more buy the same eleven now:
+	// two go to the top bar and its rule, which stand above the conversation and
+	// are charged to it (topbar.go, [app.headHeight]), and the third is the
+	// second helping of breathing room, which the ladder hands back at sixteen
+	// (view.go's [app.breathingRows]).
+	a.width, a.height = 80, 18
 	a.touch()
 
 	// The click: press the thinking block, let eight more rows land and the

@@ -176,7 +176,7 @@ func TestTheRoomHeaderSaysWhichLifeTheNodeIsIn(t *testing.T) {
 	}
 	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
 	head := plain(a.topBarWord(120))
-	if !strings.Contains(head, "Write the report · "+taskCheckingWord) {
+	if !strings.Contains(head, "Write the report #7 · "+taskCheckingWord) {
 		t.Fatalf("the top bar is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {

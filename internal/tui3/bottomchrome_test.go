@@ -15,14 +15,24 @@ import (
 // blankRow reports whether a drawn row carries nothing but spaces.
 func blankRow(s string) bool { return strings.TrimRight(plain(s), " ") == "" }
 
-// ruleAt is the index of the frame's one horizontal line, or -1.
+// ruleAt is the index of the LEGEND's hairline — the border over the input box —
+// or -1 when the frame drew none.
+//
+// IT IS THE LAST RULE ON THE FRAME AND NOT THE FIRST, because there are two of
+// them now: the top bar draws its own hairline under itself, on row 1, above the
+// conversation (topbar.go's [app.topBarRows]). Everything in this file is about
+// the BOTTOM chrome — the breathing gap, the jump chip, the draft's window — and
+// every one of those rows is measured from the border under the input, so a
+// search that stopped at the first line it found was measuring the frame's other
+// end.
 func ruleAt(rows []string) int {
+	at := -1
 	for i, r := range rows {
 		if strings.Contains(plain(r), "──") {
-			return i
+			at = i
 		}
 	}
-	return -1
+	return at
 }
 
 // chipAtRow is the index of the row the jump chip was drawn on, or -1.

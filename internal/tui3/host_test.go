@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -59,23 +60,39 @@ func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 	}
 }
 
-// TestTheLegendNamesTheMachineAsItsOwnSegment pins how a connection reaches the
-// border under the input now that the path has left it: the machine leads, and
-// it leads with the legend's own separator rather than with the path's colon.
-func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
+// TestTheTopBarNamesTheMachineAndTheLegendDoesNot pins where a connection is
+// said now (ISSUE-126). The border under the input used to carry the machine as
+// its own segment — `devbox`, with the legend's separator rather than the path's
+// colon — and the machine is a SLOW fact about the whole conversation, so it
+// moved with the rest of them to the top bar's right cluster (topbar.go's
+// [app.topBarRightFit]). The legend keeps the modal hint ladder and nothing
+// about where this is running.
+func TestTheTopBarNamesTheMachineAndTheLegendDoesNot(t *testing.T) {
 	a, _ := hostLab(t)
 	a.title = "porting the parser"
+	// The machine reaches the cluster through [app.linkSegment], which says
+	// nothing at all until a round trip has answered (hostlink.go) — so a
+	// measurement is what makes the term exist to be looked for here.
+	a.linkLatency = 3 * time.Millisecond
+
+	bar := plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, "devbox · 3ms") {
+		t.Fatalf("the top bar does not carry the machine: %q", bar)
+	}
 	line := plain(a.legend(a.width))
-	if !strings.Contains(line, "devbox") || strings.Contains(line, "porting the parser") {
-		t.Fatalf("the legend does not carry only the machine: %q", line)
+	if strings.Contains(line, "devbox") {
+		t.Fatalf("the legend is still carrying the machine: %q", line)
 	}
 	if strings.Contains(line, "/s/c/app") {
 		t.Fatalf("the legend is still carrying the path: %q", line)
 	}
-	// Unnamed, the machine is still the whole of what the border can say — the
-	// branch probe is off over a connection, so there is nothing else true.
+	if strings.Contains(line, "porting the parser") {
+		t.Fatalf("the legend is carrying the conversation's name: %q", line)
+	}
+	// AND THE LEFT END IS EMPTY OUTSIDE A ROOM, named or not: there is no fact
+	// left that belongs there, so the border draws from the frame's edge.
 	a.title = ""
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "" {
 		t.Fatalf("an unnamed remote legend = %q", got)
 	}
 }
@@ -109,8 +126,10 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 		t.Fatalf("place = %q", a.place)
 	}
 	a.title = "porting the parser"
-	// The legend gave the name to the status line (render.go): a local session
-	// with no machine and no branch has a legend with nothing on its left.
+	// The legend gave its left end up entirely (render.go's [app.legendLeft]):
+	// outside a room there is nothing true to put there, so a local session with
+	// no machine and no branch has a legend with nothing on its left — and so
+	// does a remote one.
 	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "" {
 		t.Fatalf("a local legend = %q — neither a machine nor a name belongs on it", got)
 	}
@@ -139,15 +158,28 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 		t.Fatal("probeGit produced work over --host")
 	}
 	a.title = "porting the parser"
-	// The machine stays on the legend; the name lives on the status line now.
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
-		t.Fatalf("the legend grew a branch or a name: %q", got)
+	// AND THE BAR IS WHERE THE ABSENCE HAS TO SHOW. The branch used to be the
+	// legend's, beside the machine, and both are the top bar's right cluster now
+	// (topbar.go) — so this is the surface a branch invented over a connection
+	// would appear on, and the one that must be silent about it.
+	if got := a.branchWord(); got != "" {
+		t.Fatalf("a session on another machine has a branch word: %q", got)
+	}
+	a.linkLatency = 3 * time.Millisecond
+	bar := plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, "devbox") {
+		t.Fatalf("the bar lost the machine it is connected to: %q", bar)
+	}
+	// The right cluster is the model, the machine and nothing else: no branch,
+	// and no `*` for a dirty tree nobody probed.
+	if strings.Contains(bar, "*") {
+		t.Fatalf("the bar grew a branch over --host: %q", bar)
 	}
 }
 
 // deckValue is one row of the status sheet, by its label — the sheet is where
-// the workspace path went when the legend gave its left end to the
-// conversation's name.
+// the workspace path went when the legend gave its left end up, and where every
+// fact the bottom row stopped drawing is read back.
 func deckValue(items []deckItem, label string) string {
 	for _, item := range items {
 		if item.label == label {

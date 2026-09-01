@@ -496,10 +496,19 @@ func TestATurnStreamsTextToolsAndSettles(t *testing.T) {
 	// as the exchange it was — the question, and the sentence it was answered
 	// with. The read call is not gone, it is behind the key the chip names.
 	got := plain(frame(a))
-	for _, want := range []string{"› what does bar.go do?", "▸ worked", "1 tool call · ctrl+e", "it parses.", "idle"} {
+	for _, want := range []string{"› what does bar.go do?", "▸ worked", "1 tool call · ctrl+e", "it parses."} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("frame is missing %q:\n%s", want, got)
 		}
+	}
+	// AND THE SETTLED ROW SAYS NOTHING ABOUT ITS OWN STATE (ISSUE-126). It used
+	// to spell `idle` here, which is the surface narrating a default; the word
+	// now lives only in the sheet /status prints, where somebody asked for it.
+	if strings.Contains(got, "idle") {
+		t.Fatalf("the settled row narrates its own rest:\n%s", got)
+	}
+	if !strings.Contains(a.statusText(), "idle") {
+		t.Fatalf("/status lost the state word:\n%s", a.statusText())
 	}
 	if strings.Contains(got, "read foo/bar.go") {
 		t.Fatalf("a settled turn still shows its machinery:\n%s", got)

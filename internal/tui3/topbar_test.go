@@ -3,6 +3,8 @@ package tui3
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── the crumb's ladder ──────────────────────────────────────────────────────
@@ -107,7 +109,9 @@ func TestFitTrailNoParentDropsTheParent(t *testing.T) {
 func TestFitTrailTitleTruncatesToTheFloorWithTheHandle(t *testing.T) {
 	got := fitTrail(trailOf(), trailTitle)
 	last := got[len(got)-1]
-	if w := len(last.text); w > roomHeadFloor {
+	// CELLS AND NOT BYTES: the ellipsis the cut leaves behind is one column and
+	// three bytes, so a byte count reads a title that fits as one that does not.
+	if w := ansi.StringWidth(last.text); w > roomHeadFloor {
 		t.Fatalf("the truncated title is %d cells, want at most the floor %d", w, roomHeadFloor)
 	}
 	if last.handle != " #2.1" {

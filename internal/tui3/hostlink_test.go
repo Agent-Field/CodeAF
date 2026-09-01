@@ -9,7 +9,15 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// ── 1. the note on the status line ──────────────────────────────────────────
+// ── 1. the note on the top bar ──────────────────────────────────────────────
+//
+// THE WIRE IS A SLOW FACT AND IT MOVED WITH THE REST OF THEM (ISSUE-126). Which
+// machine is answering, and how far away it is, changes only when the connection
+// does — so the segment these tests are about is drawn in the top bar's right
+// cluster now (topbar.go's [app.topBarRightFit]) rather than at the end of the
+// bottom row. It is still ASSEMBLED into the telemetry, because the status sheet
+// and /status read that list whole, and it is still routed away from the row by
+// name (render.go's [hudLaneOf] sends [segLink] to [hudTopBar]).
 
 // A HEALTHY LINK SAYS NOTHING BEFORE ITS FIRST MEASUREMENT. The emptiness law
 // applied to a whole segment: no badge, no icon, no "connected" word and no
@@ -25,10 +33,10 @@ func TestAWorkingLinkDrawsNothingBeforeItsFirstMeasurement(t *testing.T) {
 			t.Fatalf("a working link drew %q", part.text)
 		}
 	}
-	line := plain(a.status(a.width))
-	for _, banned := range []string{"connected", "reconnect", "·  ·", "—"} {
-		if strings.Contains(line, banned) {
-			t.Fatalf("the status line says %q about a link with nothing to say:\n%s", banned, line)
+	bar := plain(a.topBarWord(a.width))
+	for _, banned := range []string{"connected", "reconnect", "devbox", "—"} {
+		if strings.Contains(bar, banned) {
+			t.Fatalf("the top bar says %q about a link with nothing to say:\n%s", banned, bar)
 		}
 	}
 	// AND A LOCAL SESSION HAS NO SEAM AT ALL, which must be the same nothing
@@ -48,26 +56,33 @@ func TestALocalSurfaceNeverDrawsTheRoundTripSegment(t *testing.T) {
 	if got := a.linkSegment(); got != "" {
 		t.Fatalf("a local surface drew %q", got)
 	}
-	if got := plain(a.status(200)); strings.Contains(got, "3ms") {
-		t.Fatalf("a local status line drew a hosted round trip:\n%s", got)
+	if got := plain(a.topBarWord(200)); strings.Contains(got, "3ms") {
+		t.Fatalf("a local top bar drew a hosted round trip:\n%s", got)
 	}
 }
 
 // A HOSTED SURFACE WAITS FOR THE ANSWER. The host alone is not permission to
 // guess `0ms`; the first reply creates the segment and the same cached fact is
-// written as a sentence by /status.
+// written as a sentence by /status. The healthy reading is drawn in the TOP
+// BAR's right cluster, beside the model and the branch, where the facts that
+// change only when the wire does now live.
 func TestAHostedSurfaceDrawsLatencyOnlyAfterAReply(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.host = "spark"
 	a.link = LinkSeam{Ping: func() (time.Duration, error) { return 3 * time.Millisecond, nil }}
 	a.width = 200
 
-	if got := plain(a.status(a.width)); strings.Contains(got, "ms") || strings.Contains(got, "spark ·") {
-		t.Fatalf("the hosted status line guessed before a reply:\n%s", got)
+	if got := plain(a.topBarWord(a.width)); strings.Contains(got, "ms") || strings.Contains(got, "spark") {
+		t.Fatalf("the hosted top bar guessed before a reply:\n%s", got)
 	}
 	a.linkPingBack(linkPingMsg{elapsed: 3 * time.Millisecond})
-	if got := plain(a.status(a.width)); !strings.Contains(got, "spark · 3ms") {
-		t.Fatalf("the hosted status line missed the answered round trip:\n%s", got)
+	if got := plain(a.topBarWord(a.width)); !strings.Contains(got, "spark · 3ms") {
+		t.Fatalf("the hosted top bar missed the answered round trip:\n%s", got)
+	}
+	// AND THE BOTTOM ROW SAYS NOTHING ABOUT IT, at any width: the row keeps only
+	// what ticks, and a round trip that moves by a millisecond an hour is not it.
+	if got := plain(a.status(a.width)); strings.Contains(got, "spark") || strings.Contains(got, "3ms") {
+		t.Fatalf("the bottom row is still drawing the link:\n%s", got)
 	}
 	if got := a.statusText(); !strings.Contains(got, "the round trip to spark is about 3ms") {
 		t.Fatalf("/status does not say the measured fact in a sentence:\n%s", got)
@@ -112,49 +127,61 @@ func TestReconnectingWinsOverLatencyAndSkipsPing(t *testing.T) {
 	}
 }
 
-// AND WHILE IT IS BEING REDIALLED THE SENTENCE IS ON THE LINE, verbatim. The
+// AND WHILE IT IS BEING REDIALLED THE SENTENCE IS ON THE TOP BAR, verbatim. The
 // words are internal/remote's, built there from the window the redialling
-// actually uses, and this surface neither shortens nor rebuilds them.
-func TestALinkBeingRedialledPutsItsSentenceOnTheStatusLine(t *testing.T) {
+// actually uses, and this surface neither shortens nor rebuilds them. It used to
+// stand at the end of the bottom row, exempt from that row's give-way; the wire
+// moved to the bar's right cluster with the rest of the slow facts, and the
+// exemption moved with it (topbar.go's [app.topBarRightFit]).
+func TestALinkBeingRedialledPutsItsSentenceOnTheTopBar(t *testing.T) {
 	const note = "reconnecting to devbox — trying for up to 5 minutes"
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.host = "devbox"
+	a.model = "vendor/zephyr"
 	a.link = LinkSeam{Note: func() string { return note }}
 	a.width = 200
 
-	if got := plain(a.status(a.width)); !strings.Contains(got, note) {
-		t.Fatalf("the status line does not say the link is being redialled:\n%s", got)
+	if got := plain(a.topBarWord(a.width)); !strings.Contains(got, note) {
+		t.Fatalf("the top bar does not say the link is being redialled:\n%s", got)
 	}
 	if !a.linkNoting() {
 		t.Fatal("the paint clock was not told there is something moving")
 	}
-	// AND IT IS PAINTED ONE STEP UP FROM THE CLUSTER, because the age ramp has
-	// nothing to say about a fact that is true for exactly as long as it is
-	// drawn — and would have left it dim forever.
-	painted := a.paintPart(hudPart{kind: segLink, text: note})
-	if painted == a.pal.dim(note) {
-		t.Fatal("the link segment was painted as furniture")
+	// AND IT IS PAINTED ONE STEP UP FROM THE TERMS BESIDE IT, which is the ruling
+	// the status row made about this sentence carried up with it: the accent and
+	// not [palette.bad], because a redial is expected, bounded and usually
+	// resolves itself — and never the dim the rest of the cluster wears, which
+	// would be the age ramp's answer and would leave it furniture forever.
+	if !strings.Contains(a.topBarWord(a.width), a.pal.accent(note)) {
+		t.Fatalf("the reconnect sentence was not painted a step up:\n%s", a.topBarWord(a.width))
 	}
-	if painted != a.pal.accent(note) {
-		t.Fatalf("the link segment is painted %q", painted)
+	// ONE RULING, IN THE TWO PLACES THE SENTENCE IS DRAWN: the sheet still paints
+	// it through [app.paintPart], and the bar must not have taught itself a
+	// second hue for the same fact.
+	if got := a.paintPart(hudPart{kind: segLink, text: note}); got != a.pal.accent(note) {
+		t.Fatalf("the sheet paints the sentence %q and the bar paints it the accent", got)
 	}
-	// AND IT IS NEVER THE SEGMENT A NARROW FRAME GIVES UP. Everything droppable
-	// is dropped around it, because it is the reason none of those numbers are
-	// moving. The give-way is [dropRowSegment] walking [dropOrder] across both
-	// clusters now, and the link is not in the order at all — so the walk can
-	// empty the row and the sentence is still on it.
-	var left, right []hudPart
-	for _, part := range a.telemetry(hudWide) {
-		right = append(right, part)
+	// AND IT IS NEVER THE TERM A NARROW BAR GIVES UP — it EVICTS the terms beside
+	// it instead. The cluster's ladder drops the latency detail, the branch, the
+	// effort rider, the model and the back word in that order, and the note is
+	// not on the ladder at all: at sixty columns the model is gone and the whole
+	// sentence is still there, because it is the reason none of those facts
+	// matter.
+	wide := plain(a.topBarWord(200))
+	if !strings.Contains(wide, "zephyr") {
+		t.Fatalf("the wide bar does not carry the model this is about:\n%s", wide)
 	}
-	for dropRowSegment(&left, &right) {
+	narrow := plain(a.topBarWord(60))
+	if !strings.Contains(narrow, note) {
+		t.Fatalf("a sixty-column bar dropped the sentence:\n%s", narrow)
 	}
-	found := false
-	for _, part := range right {
-		found = found || part.kind == segLink
+	if strings.Contains(narrow, "zephyr") {
+		t.Fatalf("the sentence did not evict the model beside it:\n%s", narrow)
 	}
-	if !found {
-		t.Fatal("the link segment was dropped to make room for telemetry")
+	// AND THE BOTTOM ROW IS SILENT ABOUT IT, because the row draws no link
+	// segment at all now — [hudLaneOf] routes it away by name.
+	if got := plain(a.status(a.width)); strings.Contains(got, "reconnecting") {
+		t.Fatalf("the bottom row is still drawing the link:\n%s", got)
 	}
 }
 

@@ -508,9 +508,22 @@ func TestALongDraftScrollsInsideTheBoxAndLeavesTheChromeAlone(t *testing.T) {
 	}
 	// The status line is the LAST row of the frame, and a six-line paste does
 	// not push it anywhere (view.go).
+	//
+	// IT IS ASKED FOR AS A REGION AND NOT FOR A WORD (ISSUE-126). It used to be
+	// found by looking for the model on it; the model is the top bar's now, and
+	// what is left down there is the ticking facts — of which a fresh idle
+	// session that has spent nothing has NONE, so the row is legitimately blank.
+	// The frame's own marks are the honest way to ask whether it is still there.
 	painted := strings.Split(plain(frame(a)), "\n")
-	if len(painted) != a.height || !strings.Contains(painted[len(painted)-1], a.model) {
-		t.Fatalf("the frame lost its status line:\n%s", strings.Join(painted, "\n"))
+	if len(painted) != a.height {
+		t.Fatalf("the frame is %d rows, want %d:\n%s", len(painted), a.height, strings.Join(painted, "\n"))
+	}
+	if mark, ok := a.chromeAt(a.height - 1); !ok || mark.kind != chromeStatus {
+		t.Fatalf("the frame's last row is not the status line: %+v (ok=%v)\n%s",
+			mark, ok, strings.Join(painted, "\n"))
+	}
+	if !strings.Contains(painted[0], a.model) {
+		t.Fatalf("the frame lost its top bar:\n%s", strings.Join(painted, "\n"))
 	}
 }
 
@@ -1106,8 +1119,17 @@ func TestTheContextMeterIsTheAgentsTokensOverTheWindow(t *testing.T) {
 	if !ok || pct != 10 {
 		t.Fatalf("the meter says %d%% (ok=%v), want 10%%", pct, ok)
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "1k/10k · 10%") {
+	// A PERCENT AND NOT THE FRACTION on the row (ISSUE-126): the workings come
+	// back only past the crowding line, and ten percent is a long way under it
+	// (render.go's [app.ctxAmbient]). The fraction is `/status` and the sheet's.
+	if got := plain(frame(a)); !strings.Contains(got, "10%") {
 		t.Fatalf("the status line is missing the meter:\n%s", got)
+	}
+	if got := plain(frame(a)); strings.Contains(got, "1k/10k") {
+		t.Fatalf("a calm row drew the meter's workings:\n%s", got)
+	}
+	if got := deckValue(a.deckItems(), "context"); !strings.Contains(got, "1k/10k · 10%") {
+		t.Fatalf("the sheet's meter is %q, want the fraction and the percent", got)
 	}
 
 	// A window nobody knows draws no meter at all.

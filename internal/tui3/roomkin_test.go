@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -246,6 +247,9 @@ func TestAShortCrumbSkipsTheRungsItHasNothingFor(t *testing.T) {
 // every region asks.
 func TestTheTopBarCostsTheBodyTwoRows(t *testing.T) {
 	a, _, _ := roomApp(t)
+	// A NAME TO LOOK FOR ON THE RULE. An untitled conversation makes the last
+	// assertion below vacuous — every string contains the empty one.
+	a.title = "port the lexer"
 	a.width, a.height = 120, 24
 	a.touch()
 
@@ -336,6 +340,12 @@ func TestTheBarCarriesTheRoomsFactsAsTrimmings(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(3, "Write the tree")
+	// A CLOCK NEEDS A START. railRun's updates carry no elapsed, so the node has
+	// no age to say and the clock trimming is honestly absent — which is the
+	// wrong fixture for a test about the trimmings being DRAWN.
+	if node := a.tasks[3]; node != nil {
+		node.began = a.now().Add(-90 * time.Second)
+	}
 	a.width, a.height = 160, 24
 	a.touch()
 

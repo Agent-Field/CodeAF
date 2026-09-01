@@ -50,8 +50,11 @@ func TestTheSpendStaysAndLeavesNoHole(t *testing.T) {
 	a, _, advance := roomApp(t)
 	a.openRoom(7, "Fix the nil-map crash")
 	advance(90 * time.Second)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTurnDone,
-		Task: &session.TaskNotice{ID: 7}, Usage: session.Usage{CostUSD: 0.04}}})
+	// THE PRICE COMES OFF THE NODE'S OWN NOTICE (session's TaskNotice.CostUSD),
+	// which is the only thing the trimming reads: a turn's usage is the
+	// conversation's bill and not this node's.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{CostUSD: 0.04})})
 	width := a.bodyWidth()
 	before := plain(a.topBarWord(width))
 	if !strings.Contains(before, "$0.04") {

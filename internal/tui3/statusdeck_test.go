@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // deckApp is the phone-tier harness: a session with a name, a model, a bill
@@ -240,8 +242,13 @@ func TestStatusRowPinned(t *testing.T) {
 	row := plain(a.statusRows(a.width)[0])
 	// hudApp is 200 wide; the right cluster is right-aligned, so the row ends
 	// with the meter and the bill is left of it. The left end is empty: no
-	// jobs, no watches, nothing standing.
-	want := strings.Repeat(" ", 200-len("$0.42 · 12.4k/128k · 10%")) + "$0.42 · 12.4k/128k · 10%"
+	// jobs, no watches, nothing standing. The meter is A PERCENT and not the
+	// fraction — the row wears the workings only past the crowding line, and
+	// ten percent is a long way under it (render.go's [app.ctxAmbient]).
+	// CELLS AND NOT BYTES: the ` · ` separator is two bytes wide and one column,
+	// so a byte count pads the row one cell short of where it is drawn.
+	const tail = "$0.42 · 10%"
+	want := strings.Repeat(" ", 200-ansi.StringWidth(tail)) + tail
 	if row != want {
 		t.Fatalf("the pinned row moved:\n got %q\nwant %q", row, want)
 	}
@@ -252,9 +259,8 @@ func TestStatusRowPinned(t *testing.T) {
 // part of either row a band would be promising a door it does not have.
 func TestStatusDeckPressOpensTheSheet(t *testing.T) {
 	a := deckApp(t)
-	// The press lands on row 1, off the model chip.
-	y := a.height - deckHeight
-	a.deckPress(20, y)
+	// The press lands on the deck's first row, off the model chip.
+	a.deckPress(20, 0)
 	if !a.deck.open {
 		t.Fatal("pressing row 1 did not open the sheet")
 	}
@@ -266,9 +272,9 @@ func TestStatusDeckChipPressOpensThePicker(t *testing.T) {
 	a := deckApp(t)
 	// Lay the deck out once so the chip's columns are recorded.
 	a.statusRows(a.width)
-	y := a.height - 1 // row 2
-	// The chip starts one cell in (deckPad).
-	a.deckPress(len(deckPad)+1, y)
+	// [app.deckPress] takes the DECK's row and not the frame's — the deck is two
+	// rows and its second is 1, wherever on the screen the frame put it.
+	a.deckPress(len(deckPad)+1, 1)
 	if a.deck.open {
 		t.Fatal("pressing the model chip opened the sheet, want the picker")
 	}
@@ -351,13 +357,13 @@ func TestStatusDeckHoverLightsTheWholeRow(t *testing.T) {
 	if len(rows) != deckHeight {
 		t.Fatalf("statusRows returned %d rows, want %d", len(rows), deckHeight)
 	}
-	// The hovered row is painted through hoverRow: the plain text is the same,
-	// but the painted row carries the band, so it is no longer its own plain
-	// form.
-	if rows[0] == plain(rows[0]) {
-		t.Fatal("the hovered row is unpainted, want the whole-row band")
+	// THE BAND IS THE QUESTION, not "is there any paint on this row" — row 2's
+	// model chip is drawn dim whether or not anything is hovered, so a row that
+	// merely differs from its plain form proves nothing.
+	if !strings.Contains(rows[0], hoverBg()) {
+		t.Fatalf("the hovered row carries no band: %q", rows[0])
 	}
-	if rows[1] != plain(rows[1]) {
-		t.Fatal("the row NOT under the pointer is painted, want only the hovered row lit")
+	if strings.Contains(rows[1], hoverBg()) {
+		t.Fatalf("the row NOT under the pointer carries the band: %q", rows[1])
 	}
 }

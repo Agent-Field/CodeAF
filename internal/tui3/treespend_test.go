@@ -163,15 +163,18 @@ func TestCostSaysNothingAboutASplitThatIsNotOne(t *testing.T) {
 	}
 }
 
-// AND THE TWO SILENCES AROUND THE FIGURE ARE UNCHANGED. The live row keeps
-// `$0.00` so its segments do not jump sideways; /status and /cost drop the line.
+// AND THE SILENCE AROUND THE FIGURE IS NOW TOTAL. The live row used to keep
+// `$0.00` so its segments would not jump sideways — the one sanctioned exception
+// to the emptiness law, and the exception is gone (ISSUE-126): the row's facts
+// are the ticking ones now, they arrive and leave as the work does, and a zero
+// bill is a fact nobody has yet. So all three spellings draw nothing.
 func TestTheEmptinessLawSurvivesTheTreeReading(t *testing.T) {
 	a := spendTreeLab(t, 0, nil)
 	a.width = 200
 	a.readTreeSpend()
 
-	if line := plain(a.status(a.width)); !strings.Contains(line, "$0.00") {
-		t.Fatalf("the live row lost its $0.00 and its segments will jump:\n%s", line)
+	if line := plain(a.status(a.width)); strings.Contains(line, "$0.00") {
+		t.Fatalf("the live row printed a zero bill:\n%s", line)
 	}
 	if text := a.statusText(); strings.Contains(text, "$0.00") {
 		t.Fatalf("/status printed a zero bill:\n%s", text)
