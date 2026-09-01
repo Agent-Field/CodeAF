@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -312,18 +313,33 @@ func TestTheNamerIsRegisteredOnTheCheapClass(t *testing.T) {
 // /Users/me/src" — which names the work after the path they pasted.
 func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 	const ask = "read /Users/me/src and say what the parser does and where it is weakest"
-	garbage := func(context.Context, []ai.Message) (*ai.Response, error) {
-		return textResponse("Sure! Here is a brief for you:"), nil
-	}
-	// Two attempts at the shaper, then the namer: the shaping calls are made and
-	// exhausted before the task is admitted, so the order is fixed.
-	client := &scriptedCompleter{steps: []step{garbage, garbage,
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if !isNameCall(messages) {
-				t.Errorf("the third call was not the namer's")
-			}
-			return textResponse("parser recon"), nil
-		}}}
+	// THE PROVIDER ANSWERS BY WHAT IT WAS ASKED, NEVER BY HOW MANY CALLS CAME
+	// BEFORE IT. Admitting the node starts two things that both reach this one
+	// completer and neither of which the code orders against the other: the
+	// naming errand, and the node itself, whose finish posts `while you worked:
+	// task 1 finished` and wakes the conversation into a turn of its own. This
+	// test used to script three steps by index and assert that the third was
+	// the namer's; on a loaded machine the woken turn takes the third slot
+	// perhaps one run in ten, the namer falls off the end of the script, and
+	// the row is called "(unscripted)". The identity of a call is a fact about
+	// its messages, so it is read from its messages.
+	var mu sync.Mutex
+	shaped, named := 0, 0
+	client := answeringCompleter(func(messages []ai.Message) string {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case isShapeCall(messages):
+			// Prose where a brief was asked for, which is what shaping failing
+			// looks like: the shaper reads JSON and there is none.
+			shaped++
+			return "Sure! Here is a brief for you:"
+		case isNameCall(messages):
+			named++
+			return "parser recon"
+		}
+		return "(nothing else was scripted)"
+	})
 	agent, ran := shapeAgent(t, client)
 
 	id, title, err := agent.StartTask(t.Context(), ask)
@@ -339,6 +355,35 @@ func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 	if !nameLanded(func() bool { return agent.graph().node(id).title() == "parser recon" }) {
 		t.Fatalf("the row is still called %q", agent.graph().node(id).title())
 	}
+	mu.Lock()
+	defer mu.Unlock()
+	// The shaping really was tried and really did fail, and the name really did
+	// cost one call — which is the whole claim the discarded call-index script
+	// was standing in for.
+	if shaped != 2 {
+		t.Fatalf("the shaper was asked %d times, want the two attempts it is allowed", shaped)
+	}
+	if named != 1 {
+		t.Fatalf("the namer was asked %d times, want exactly one", named)
+	}
+}
+
+// answeringCompleter answers a request from the request itself, which is the
+// only thing a provider shared by several agents at once can safely be scripted
+// on. A list indexed by call number is a script for one caller, and this
+// package's tests rarely have only one.
+type answeringCompleter func(messages []ai.Message) string
+
+func (a answeringCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	// The end of a turn asks a reader whether the person's ask is finished and
+	// re-opens the turn when it is not, so THAT question is answered with the
+	// remains contract's own token — otherwise a test that only cares about one
+	// errand runs to the meter's ceiling. Same reasoning as the past-the-script
+	// branch of [scriptedCompleter].
+	if len(messages) > 0 && strings.Contains(messageText(messages[len(messages)-1]), "[still asked]") {
+		return textResponse(checkpointNothingLeft), nil
+	}
+	return textResponse(a(messages)), nil
 }
 
 // nameLanded spins on a condition for as long as a naming call can take to land.
