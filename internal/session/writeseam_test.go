@@ -90,6 +90,13 @@ func TestATurnThatOnlyReadsIsNeverMovedByTheWriteSeam(t *testing.T) {
 	}
 }
 
+// AND ITS LINE IS IN THE REGISTER every line in this house is held to, which is
+// the same assertion the ceiling's and the split's lines carry: one line,
+// lowercase, no full stop, a middle dot, and not one word of machinery.
+func TestTheWriteSeamLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
+	inTheHouseRegister(t, writeSeamNote)
+}
+
 // THE COUNTER ITSELF: either half of the allowance spends it, and the door opens
 // once.
 func TestTheAllowanceIsSpentByEitherFilesOrCalls(t *testing.T) {
