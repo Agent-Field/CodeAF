@@ -1906,7 +1906,11 @@ func (a *app) telemetry(width int) []hudPart {
 	if width >= hudWide {
 		add(segDelta, a.deltaSegment())
 	}
-	add(segCost, dollars(a.cost))
+	// THE BILL IS THE WHOLE TREE'S and not the conversation's own half of it: the
+	// work this conversation started is spending its money, and a segment that
+	// waited for each task to close said `$2.53` for two hours over a family
+	// burning $51.05 (treespend.go's [app.spendShown]).
+	add(segCost, dollars(a.spendShown()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark

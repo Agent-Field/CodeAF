@@ -606,14 +606,26 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 `/cost` (or `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and
 on what, into the conversation.
 
-It draws up to five aligned lines:
+It draws up to seven aligned lines:
 
-- `spend` — only when it is above zero.
+- `spend` — only when it is above zero. It is **this conversation and every task it
+  started**, which is the same figure the status line carries.
+- `conversation` and `tasks` — the two halves of that figure, in that order, and they add
+  up to it. Both lines are dropped unless the work has actually spent something: a
+  conversation that has started no tasks has no split to state.
 - `tokens` — like `48.1k in · 3.2k out`, or one half alone, or the combined figure.
 - `cache` — like `31.2k read · saved $0.0180`. The money half appears only when a price
   pair was published.
 - `model calls` — requests to the provider. Deliberately not called "turns".
 - `time`.
+
+So a conversation whose tasks are still running reads:
+
+```
+spend         $53.58
+conversation  $2.53
+tasks         $51.05
+```
 
 Every line is dropped when its figure is absent. A provider that publishes no cache
 accounting says nothing about caches, rather than teaching you that your cache never

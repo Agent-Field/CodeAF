@@ -573,3 +573,70 @@ func UsageSubjectWord(kind string) string {
 	}
 	return ""
 }
+
+// ── one conversation and everything it started ──────────────────────────────
+
+// TreeSpend is what a conversation has cost WITH the work it started, split
+// into the two halves so that a surface can say which is which.
+//
+// THE SPLIT IS THE POINT AND THE TOTAL IS THE HEADLINE. The defect this answers
+// (issue #145) is a conversation whose ambient figure read $2.53 while the tasks
+// it had started were spending $51.05 — the smaller number, alone, for two
+// hours, because a node's money only reaches the conversation's own books when
+// the node closes. The total here is the honest one; the halves are what makes
+// it auditable rather than a figure that jumped.
+type TreeSpend struct {
+	// ConversationUSD is what the conversation's OWN calls cost — its turns and
+	// the auxiliary calls made on its behalf.
+	ConversationUSD float64
+	// TasksUSD is every call made inside work this conversation started, at any
+	// depth, including the checks and the repair rounds. It is what the
+	// conversation's own books will eventually hold as each node closes, and it
+	// is here now.
+	TasksUSD float64
+	// Calls is the whole tree's requests, on [TreeSpend.TotalUSD]'s terms: the
+	// denominator the total is the sum over.
+	Calls int
+}
+
+// TotalUSD is the tree: the conversation and its work.
+func (s TreeSpend) TotalUSD() float64 { return s.ConversationUSD + s.TasksUSD }
+
+// UsageTree sums the ledger around one conversation: what it spent itself, and
+// what the work it started spent.
+//
+// IT IS EACH CALL ONCE, which is the whole reason it reads the ledger rather
+// than adding a running total of its own. A fold writes no ledger line
+// ([Agent.addFoldedUsage]), so a node's calls are here under the node that made
+// them whether the node is still running or closed an hour ago — and a reader
+// that added this to a conversation's own books would count a closed node
+// twice. The books and this are two readings of the same money, not two
+// quantities to add.
+//
+// A LINE BELONGS TO THE WORK WHENEVER IT NAMES A ROOT, and to the conversation
+// only when it names the conversation itself. That ordering matters at exactly
+// one point: a conversation whose journal id somehow appeared as a root would
+// otherwise be counted in both halves.
+//
+// An empty conversation id matches nothing at all rather than everything, which
+// is the honest answer for a surface that does not know which conversation it
+// is in.
+func UsageTree(lines []UsageLine, conversation string) TreeSpend {
+	var tree TreeSpend
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		return tree
+	}
+	for _, line := range lines {
+		switch {
+		case strings.TrimSpace(line.Root) == conversation:
+			tree.TasksUSD += line.USD
+		case strings.TrimSpace(line.Session) == conversation:
+			tree.ConversationUSD += line.USD
+		default:
+			continue
+		}
+		tree.Calls += line.Calls
+	}
+	return tree
+}
