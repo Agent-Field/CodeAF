@@ -39,8 +39,8 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 		{
 			name: "the crew answers when it is the only thing said",
 			crew: CrewFrugal,
-			work: DefaultLowModel, workRung: "crew frugal",
-			plan: DefaultHighModel, planRung: "crew frugal",
+			work: "deepseek/deepseek-v4-flash-0731", workRung: "crew frugal",
+			plan: "z-ai/glm-5.3-flash:high", planRung: "crew frugal",
 		},
 		{
 			name:    "the environment outranks the crew",
@@ -77,7 +77,7 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// (Config.providerConfig).
 			name: "the crew's thinking level travels with the value",
 			crew: CrewMax,
-			work: "deepseek/deepseek-v4-pro", workRung: "crew max",
+			work: "z-ai/glm-5.3", workRung: "crew max",
 			plan: "moonshotai/kimi-k3:high", planRung: "crew max",
 		},
 		{
@@ -93,16 +93,18 @@ func TestTheSeatLadderAnswersInItsOwnOrder(t *testing.T) {
 			// so rather than naming a preset the four rows do not make.
 			name: "a hand-written row reads as the custom crew it makes",
 			crew: CrewFrugal,
-			hand: map[string]string{ModelTierLow: "vendor/my-own-worker"},
+			// THE WORK SEAT IS THE WORKER ROW, and not the small-work row beside
+			// it: the same row a task handed off in conversation rides.
+			hand: map[string]string{ModelTierWorker: "vendor/my-own-worker"},
 			work: "vendor/my-own-worker", workRung: "crew custom",
-			plan: DefaultHighModel, planRung: "crew custom",
+			plan: "z-ai/glm-5.3-flash:high", planRung: "crew custom",
 		},
 		{
 			// A row cleared on purpose means "follow the conversation", and a
 			// headless run has no conversation to follow.
 			name: "a cleared row falls through to the default",
 			crew: CrewFrugal,
-			hand: map[string]string{ModelTierLow: "", ModelTierMastermind: ""},
+			hand: map[string]string{ModelTierWorker: "", ModelTierMastermind: ""},
 			work: DefaultModel, workRung: "default",
 			plan: "", planRung: "default",
 		},
@@ -185,7 +187,8 @@ func TestTheReceiptNamesBothSeatsAndTheirRungs(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := ResolveSeats(dir, "", "").Line()
-	want := "models: work " + DefaultLowModel + " (crew frugal) · plan vendor/plans (" + PlanModelEnv + ")"
+	frugal, _ := CrewModels(CrewFrugal)
+	want := "models: work " + frugal[ModelTierWorker] + " (crew frugal) · plan vendor/plans (" + PlanModelEnv + ")"
 	if line != want {
 		t.Fatalf("the opening line reads\n\t%s\nwant\n\t%s", line, want)
 	}

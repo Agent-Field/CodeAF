@@ -2192,7 +2192,7 @@ Two more chords surprise people:
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
 
-## ctrl+v — how hard the thing you are looking at thinks
+## ctrl+v — how hard the thing you are looking at thinks, and making this one task think harder
 
 `ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
 and it moves the rung of **the thing you are standing on**. One chord, three scopes:

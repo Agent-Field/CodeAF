@@ -211,16 +211,16 @@ func (p *crewPicker) move(delta int) {
 const (
 	// crewScopeLine is the header: what the presets below move, and what they
 	// do not. It is the one sentence the whole surface exists to make plain.
-	crewScopeLine = "the four models aforge uses on its own behalf — not the one you chat with"
+	crewScopeLine = "the five models aforge uses on its own behalf — not the one you chat with"
 	// crewSeatLead is seat one's label. It is a plain phrase and not a class word,
 	// because the class words are what the presets change and this seat is not.
 	crewSeatLead = "you talk to"
 	// crewPinLine is the closing note: the door to moving one seat on its own,
 	// which this chooser deliberately does not offer.
-	crewPinLine = "each of the four can be pinned on its own in /settings → Providers"
+	crewPinLine = "each of the five can be pinned on its own in /settings → Providers"
 	// crewCustomLine is the fourth reading, said as a fact about where the person
 	// is rather than as a fourth row they could pick.
-	crewCustomLine = "yours is none of the three — picking one puts all four back"
+	crewCustomLine = "yours is none of the three — picking one puts all five back"
 	// crewFrameRows is how many of the chooser's rows are not preset rows: the
 	// scope line, seat one, and the closing note.
 	crewFrameRows = 3
@@ -380,7 +380,7 @@ func (a *app) crewListing() string {
 		// four live models here would repeat the settings panel; naming the row
 		// that made it custom is what they need to undo it.
 		out.WriteString("\nyours is none of the three — " + config.CrewSummary(a.profileDir) +
-			"\n/crew balanced puts all four back")
+			"\n/crew balanced puts all five back")
 	}
 	return strings.TrimRight(out.String(), "\n")
 }

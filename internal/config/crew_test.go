@@ -24,6 +24,7 @@ func TestTheShippedTierDefaultsAreExactlyTheBalancedCrew(t *testing.T) {
 	for _, c := range []struct{ tier, want string }{
 		{ModelTierReflex, DefaultReflexModel},
 		{ModelTierLow, DefaultLowModel},
+		{ModelTierWorker, DefaultWorkerModel},
 		{ModelTierHigh, DefaultHighModel},
 		{ModelTierMastermind, DefaultMastermindModel},
 	} {
@@ -41,19 +42,22 @@ func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
 	want := map[string]map[string]string{
 		CrewFrugal: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-flash",
-			ModelTierHigh:       "qwen/qwen3.8-27b",
-			ModelTierMastermind: "qwen/qwen3.8-27b",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
+			ModelTierHigh:       "z-ai/glm-5.3-flash",
+			ModelTierMastermind: "z-ai/glm-5.3-flash:high",
 		},
 		CrewBalanced: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-flash",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "z-ai/glm-5.3-flash",
 			ModelTierHigh:       "qwen/qwen3.8-27b",
-			ModelTierMastermind: "moonshotai/kimi-k3:low",
+			ModelTierMastermind: "z-ai/glm-5.3:high",
 		},
 		CrewMax: {
 			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-pro",
+			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
+			ModelTierWorker:     "z-ai/glm-5.3",
 			ModelTierHigh:       "moonshotai/kimi-k3",
 			ModelTierMastermind: "moonshotai/kimi-k3:high",
 		},
@@ -105,8 +109,8 @@ func TestEveryPresetNamesEveryClass(t *testing.T) {
 	}
 }
 
-// Setting a preset writes all four tier keys, and the row reads that preset back.
-func TestSettingAPresetWritesAllFourTiers(t *testing.T) {
+// Setting a preset writes all five tier keys, and the row reads that preset back.
+func TestSettingAPresetWritesAllFiveTiers(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)
 	crew := mustRow(t, rows, KeyCrew)
@@ -123,7 +127,7 @@ func TestSettingAPresetWritesAllFourTiers(t *testing.T) {
 	if got := CrewAt(dir); got != CrewMax {
 		t.Fatalf("the crew reads %q after max was set", got)
 	}
-	// THE FOUR KEYS ARE ON DISK, all of them, in one file — a preset is not a
+	// THE FIVE KEYS ARE ON DISK, all of them, in one file — a preset is not a
 	// word stored beside four rows it claims to have written.
 	values := map[string]json.RawMessage{}
 	raw, err := os.ReadFile(BudgetConfigPath(dir))
@@ -179,7 +183,7 @@ func TestAnsweringOneTierRowMakesTheCrewCustom(t *testing.T) {
 		t.Fatalf("the crew reads %q with a cleared mastermind, want %q", got, CrewCustom)
 	}
 
-	// Putting the preset back is one keystroke and heals all four.
+	// Putting the preset back is one keystroke and heals all five.
 	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
 		t.Fatal(err)
 	}
@@ -248,9 +252,9 @@ func TestTheTierRowsTakeALevelAndRefuseAMisspeltOne(t *testing.T) {
 		}
 	}
 
-	// EVERY TIER ROW HAS THE SAME GATE. A fifth tier must not be able to arrive
+	// EVERY TIER ROW HAS THE SAME GATE. A sixth tier must not be able to arrive
 	// with the check missing.
-	for _, key := range []string{KeyTierReflexModel, KeyTierLowModel, KeyTierHighModel} {
+	for _, key := range []string{KeyTierReflexModel, KeyTierLowModel, KeyTierWorkerModel, KeyTierHighModel} {
 		if err := mustRow(t, registry(t, dir), key).Apply("some/model:off"); err == nil {
 			t.Errorf("%s took a level it cannot honour", key)
 		}

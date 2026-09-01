@@ -188,8 +188,9 @@ row carries its digest.
 
 **Each node row names the model it runs on, and it is not the planner's.** A run is
 deliberately two classes of model: the root row carries the **mastermind** class that cuts
-the goal, and every node row under it carries the **small work** class that does it — one
-careful call deciding what happens, many cheap ones doing it. So opening a node and reading
+the goal, and every node row under it carries the **worker** class that does it — one
+careful call deciding what happens, many cheaper ones doing it. It is the same class a task
+handed off in conversation runs on. So opening a node and reading
 `task <model>` at the foot of the frame is how you see your crew actually working; the run's
 own row above it will be naming something else, and that is the arrangement rather than a
 disagreement. The id is settled once, when the run starts, so a `/model` half way through

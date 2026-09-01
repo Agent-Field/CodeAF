@@ -6,6 +6,8 @@ package session
 import (
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 // testModels is one plausible install: two vendors, two families, and the two
@@ -172,5 +174,62 @@ func TestTaskModelAmbiguityBecomesAShortlistRatherThanARefusal(t *testing.T) {
 	}
 	if shown := firstTaskModel(choice.options, choice.model); shown != "anthropic/claude-opus-5" {
 		t.Fatalf("the card would show %q, want the leading option", shown)
+	}
+}
+
+// THE CREW'S WORKER SEAT SITS BETWEEN THE CONFIGURED ROW AND THE CONVERSATION.
+// It is the seat that pays most of a task's bill, and before it was on this
+// ladder a person on `frugal` who was talking to a frontier model handed every
+// task to that frontier model — the crew moved everything about a task except
+// its cost. The row a person pinned still wins, a cleared seat still falls to
+// the conversation, and a level on the seat stays on the seat.
+func TestTaskModelDefaultsToTheCrewsWorkerSeatBeforeTheSession(t *testing.T) {
+	seat := func(value string, more ...string) func(*Config) {
+		return func(config *Config) {
+			pairs := map[string]string{roles.TierKey(roles.TierWorker): value}
+			for i := 0; i+1 < len(more); i += 2 {
+				pairs[more[i]] = more[i+1]
+			}
+			config.RolesSource = tierSettings(pairs)
+		}
+	}
+
+	// The seat answers when nothing nearer to the work has.
+	worker := taskModelAgent(t, seat("cheap/worker"))
+	if choice := worker.resolveTaskModel(""); choice.model != "cheap/worker" {
+		t.Fatalf("resolveTaskModel(\"\") = %+v, want the crew's worker seat", choice)
+	}
+	// A seat written loosely is resolved through the same matcher a proposal's
+	// word is, exactly as the task.model row is.
+	loose := taskModelAgent(t, seat("opus-5"))
+	if choice := loose.resolveTaskModel(""); choice.model != "anthropic/claude-opus-5" {
+		t.Fatalf("a loosely written seat = %+v, want it resolved to one id", choice)
+	}
+	// The configured task.model row is the more specific answer and wins.
+	pinned := taskModelAgent(t, func(config *Config) {
+		seat("cheap/worker")(config)
+		config.TaskModel = "private/model"
+	})
+	if choice := pinned.resolveTaskModel(""); choice.model != "private/model" {
+		t.Fatalf("with task.model set = %+v, want the configured row over the seat", choice)
+	}
+	// A level on the seat is the one-shot roles' notation and does not travel
+	// onto the task, whose thinking depth is its own dial.
+	levelled := taskModelAgent(t, seat("cheap/worker:high"))
+	if choice := levelled.resolveTaskModel(""); choice.model != "cheap/worker" {
+		t.Fatalf("a seat carrying a level = %+v, want the id alone", choice)
+	}
+	// A seat cleared on purpose means "follow the conversation", on this tier as
+	// on every other.
+	cleared := taskModelAgent(t, seat(""))
+	if choice := cleared.resolveTaskModel(""); choice.model != "test/model" {
+		t.Fatalf("a cleared seat = %+v, want the session's own model", choice)
+	}
+	// And the small-work tier beside it is NOT the worker's: a task is work.
+	small := taskModelAgent(t, func(config *Config) {
+		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierLow): "cheap/small"})
+	})
+	if choice := small.resolveTaskModel(""); choice.model != "test/model" {
+		t.Fatalf("with only the low tier set = %+v, want the session's own model", choice)
 	}
 }

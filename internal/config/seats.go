@@ -169,10 +169,12 @@ func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 //  1. the flag, which is what this invocation said;
 //  2. the environment, which is what this campaign said;
 //  3. the profile's crew — the planning seat takes the MASTERMIND tier and the
-//     work seat takes the LOW tier, because that is where the two roles ride in
-//     chat: roles.DefaultAssignment puts RolePlanner on TierMastermind and
-//     RoleWorker on TierLow, so a headless run and a conversation on the same
-//     profile now call the same two models;
+//     work seat takes the WORKER tier, because that is where the two roles ride
+//     in chat: roles.DefaultAssignment puts RolePlanner on TierMastermind and
+//     RoleWorker on TierWorker, and a chat task's own worker resolves through
+//     the same row (internal/session's defaultTaskModel), so a headless run, an
+//     adaptive run and a task handed off in conversation all call the same
+//     model on the same profile;
 //  4. this build's default.
 //
 // profileDir is the profile to ask, [ProfileDir] for an ordinary process. The
@@ -190,7 +192,7 @@ func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 // model policy this whole file exists to remove.
 func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
 	return Seats{
-		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierLow, DefaultModel),
+		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierWorker, DefaultModel),
 		Plan: resolveSeat(SeatPlan, profileDir, flagPlanModel, ModelTierMastermind, ""),
 	}
 }

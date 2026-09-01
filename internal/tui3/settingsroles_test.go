@@ -68,6 +68,7 @@ func tieredSheet(t *testing.T) *app {
 	toProviders(t, a)
 	setRow(t, a, config.KeyTierHighModel, "test/careful-model")
 	setRow(t, a, config.KeyTierLowModel, "test/cheap-model")
+	setRow(t, a, config.KeyTierWorkerModel, "test/worker-model")
 	setRow(t, a, config.KeyTierMastermindModel, "test/thinking-model")
 	setRow(t, a, config.KeyTierReflexModel, "test/reflex-model")
 	return a
@@ -101,7 +102,9 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 		// short answers that must not be wrong.
 		{roles.RolePlanner, "mastermind", "test/thinking-model"},
 		{roles.RoleDesigner, "mastermind", "test/thinking-model"},
-		{roles.RoleWorker, "small work", "test/cheap-model"},
+		// The worker is the seat that does the work, and sits apart from the
+		// small calls beside it.
+		{roles.RoleWorker, "worker", "test/worker-model"},
 		{roles.RoleCompaction, "careful work", "test/careful-model"},
 		{roles.RoleTitle, "small work", "test/cheap-model"},
 	} {
@@ -145,7 +148,7 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 		}
 	}
 	want := []string{
-		rolesHead + " · reflex", rolesHead + " · small work",
+		rolesHead + " · reflex", rolesHead + " · small work", rolesHead + " · worker",
 		rolesHead + " · careful work", rolesHead + " · mastermind",
 	}
 	if strings.Join(heads, "|") != strings.Join(want, "|") {
@@ -179,7 +182,7 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 // A ROLE WHOSE CLASS SHIPS WITH A MODEL ANSWERS ON IT, and a role whose class was
 // CLEARED falls to the conversation — [roles.Resolve]'s floor, and not a failure.
 //
-// The first half is new since the crew landed: all four classes arrive pointed at
+// The first half is new since the crew landed: all five classes arrive pointed at
 // a model (internal/config's crew.go), because a whole crew following the
 // conversation means the most expensive model in the build answering the cheapest
 // questions in it. The second half is the answer a person can still give.
@@ -193,7 +196,8 @@ func TestARoleFollowsItsShippedClassAndThenTheConversation(t *testing.T) {
 		want string
 	}{
 		{roles.RolePlanner, config.DefaultMastermindModel},
-		{roles.RoleWorker, config.DefaultLowModel},
+		{roles.RoleWorker, config.DefaultWorkerModel},
+		{roles.RoleTitle, config.DefaultLowModel},
 		{roles.RoleCompaction, config.DefaultHighModel},
 		{roles.RoleReflex, config.DefaultReflexModel},
 	} {

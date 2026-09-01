@@ -784,8 +784,8 @@ const (
 	// THE CREW STEP SAYS WHAT IT IS NOT. People conflate the crew with the model
 	// they talk to, and /crew's own confirmation already has to say the same
 	// thing after the fact (crew.go's applyCrew). Here it is said before.
-	setupCrewWord = "these four are the models aforge uses on its own behalf — planning, " +
-		"checking, reading every turn. the model you talk to is a separate choice, " +
+	setupCrewWord = "these five are the models aforge uses on its own behalf — the work " +
+		"inside every task, planning, checking, reading every turn. the model you talk to is a separate choice, " +
 		"made with /model."
 	// THE RAILS SCREEN'S OWN WORDS. `none` is offered in the header on purpose:
 	// no limits is a choice a person should SEE, rather than a trick they learn

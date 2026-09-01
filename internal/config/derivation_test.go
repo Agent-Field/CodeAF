@@ -132,7 +132,7 @@ var settingReaders = map[string]string{
 	KeyQuickSwitch: "QuickSwitchAt",
 	// The hints row names its accessor too: the surface reads it at boot and at
 	// every turn end, beside the mouse row (internal/tui3's notice.go).
-	KeyHints:    "HintsAt",
+	KeyHints: "HintsAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls
@@ -227,6 +227,11 @@ var settingReaders = map[string]string{
 	KeyTaskModel:     "TaskModelAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
+	// The worker row names its tier for the mastermind row's reason: a third
+	// TierKey would let the low row prove this one. cmd/aforge's crew source,
+	// internal/session's task ladder and internal/tui3's settings skin all
+	// reach it by this name.
+	KeyTierWorkerModel: "TierWorker",
 	// The mastermind row names the TIER rather than the shared spelling, for the
 	// reason the reflex row below does: naming TierKey a third time would let the
 	// low row prove this one. cmd/aforge's crew source and internal/tui3's

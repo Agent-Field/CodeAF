@@ -424,6 +424,7 @@ func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): "test/brain-model",
 			roles.TierKey(roles.TierHigh):       "test/careful-model",
+			roles.TierKey(roles.TierWorker):     "test/worker-model",
 			roles.TierKey(roles.TierLow):        "test/cheap-model",
 		})
 	})
@@ -437,8 +438,10 @@ func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
 	if got := watch.model("planner"); got != "test/brain-model" {
 		t.Fatalf("the planner thought with %q, want the mastermind tier's model", got)
 	}
-	if got := watch.model("node"); got != "test/cheap-model" {
-		t.Fatalf("a node ran on %q, want the low tier's model", got)
+	// A node is WORK, and rides the worker tier — the same seat a task handed
+	// off in conversation rides — rather than the small-work tier beside it.
+	if got := watch.model("node"); got != "test/worker-model" {
+		t.Fatalf("a node ran on %q, want the worker tier's model", got)
 	}
 }
 
@@ -505,6 +508,7 @@ func TestARunTakesAPlannerPinOverItsTier(t *testing.T) {
 		config.RolesSource = tierSettings(map[string]string{
 			roles.PinKey(roles.RolePlanner): "test/pinned-model",
 			roles.TierKey(roles.TierHigh):   "test/careful-model",
+			roles.TierKey(roles.TierWorker): "test/worker-model",
 			roles.TierKey(roles.TierLow):    "test/cheap-model",
 		})
 	})
@@ -518,7 +522,7 @@ func TestARunTakesAPlannerPinOverItsTier(t *testing.T) {
 	if got := watch.model("planner"); got != "test/pinned-model" {
 		t.Fatalf("the planner thought with %q, want the pin", got)
 	}
-	if got := watch.model("node"); got != "test/cheap-model" {
+	if got := watch.model("node"); got != "test/worker-model" {
 		t.Fatalf("a pinned planner moved the workers too: %q", got)
 	}
 }
@@ -784,6 +788,7 @@ func TestARunsSnapshotNamesThePlannersModel(t *testing.T) {
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): "test/brain-model",
 			roles.TierKey(roles.TierHigh):       "test/careful-model",
+			roles.TierKey(roles.TierWorker):     "test/worker-model",
 			roles.TierKey(roles.TierLow):        "test/cheap-model",
 		})
 	})
