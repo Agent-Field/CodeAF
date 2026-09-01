@@ -386,40 +386,9 @@ its belt rather than refusing. The composition law is pinned by folding a nested
 into a part's own ledger and landing that, not by running a third generation.
 *(#261 asks the owner to rule on whether that stays; see Still open.)*
 
-**Merging the two versions of a changed folder file, or handing the parent the
-resolution.** There is nothing to merge with: the ground is a plain folder and neither
-side is a commit. Naming the file and standing back is the honest answer and the one a
-person can act on — and it is what git already does for a repository ground, where a
-person's own edit to a file the branch touches is exactly what makes the merge refuse.
-With ownership enforced at admission there is no sibling conflict for a parent to
-resolve either; what is left is the person's own edit, which is theirs.
-
-**Standing the universe rung down for every part of a frozen family.** That was the
-first answer to the freeze, and it was the wrong trade: a part of a family whose parent
-had a `node_modules` would have lost it to gain a guarantee about files it was never
-going to ship — this rung's own defect written backwards. The fork honours the freeze
-instead (`openForkAt`), which costs one checkout because the freeze is an object the
-byte-exact copy already holds.
-
 **Initialising a `.git` in the person's own folder.** `in place` and `folder` mode are
 the person saying `here`. The family tree is that directory. A test pins that it never
 gains a `.git`. Isolation there is a different promise and is not this family.
-
-**Merging the two versions of a changed folder file, or handing the parent the
-resolution.** There is nothing to merge with: the ground is a plain folder and
-neither side is a commit, so a three-way merge has no base and a model asked to
-reconcile them would be inventing one. Naming the file and standing back is the
-honest answer and the one a person can act on — and it is what git already does
-for a repository ground, where a person's own edit to a file the branch touches
-is exactly what makes the merge refuse.
-
-**Standing the universe rung down for every part of a frozen family.** The first
-answer to the freeze did that, because a fork opened from the ground would hold a
-world the division never chose. It would also have taken a `.env`, an installed
-dependency tree and a dev database away from parts of a family whose parent had
-them. The fork honours the freeze instead (`openForkAt`), which is the same
-answer stated as an edge rather than as a retreat: the freeze is over what git can
-see.
 
 ### Decided during the build
 
@@ -479,18 +448,12 @@ one new file plus three insertions in the landing roads — did not touch
 PR #249 was the `dev`-targeted copy of #236 and was closed once #239 carried the
 same commits. PR #246 was closed in favour of #262 (see above).
 
-**And it is proved through the real door.** PR #280 is the wave's end-to-end
-lane — `internal/e2e/families_e2e_test.go` behind the `e2e` build tag, every model
-row pinned at one cheap model and the pin checked against the machine's own usage
-ledger. Three scenarios, every assertion on disk and none of them on a model's
-prose: a three-section report on a folder ground (the mirror is a repository with
-a baseline commit, each part in a worktree cut off it on its own branch, each
-merged part's file arriving on its own commit, the family's ledger in the person's
-folder, and the folder never gaining a `.git`), a two-part write-up on a
-repository ground, and two parts claiming one file refused at admission with
-`refused:scope` and zero parts admitted. About four minutes and six cents for the
-file. It is what turns every claim above from an argument into a measurement, and
-it is where #281 was found.
+**And it is proved through the real door — once #280 lands.** That lane pins the
+whole page with a real cheap model on both grounds: every model row pinned and
+the pin checked against the machine's own usage ledger, every assertion on disk
+rather than on a model's prose, about four minutes and six cents for the file.
+It is what turns the claims above from arguments into measurements, and it is
+where #281 was found. It is still in flight; see *Still open*.
 
 ## Still open
 
@@ -518,15 +481,6 @@ it is where #281 was found.
   told to read one plan file are currently refused. Measured while building the
   real-model e2e suite (#280). Ownership is a claim about *writing*; the decision is
   which of the two conservative shapes takes it.
-- **`restoreFromFolder` re-mirrors at check time.** A mirrored node is judged
-  against a fresh copy of the person's folder taken when the check runs
-  (`mirrorGround(tree.ground, dir)`) with the ledger laid over it — not against the
-  folder as it stood when the family was given it. So an edit the person makes
-  mid-run reaches the checker's world, which is a different window from the
-  landing's and not the one `ground-baseline.json` closes: the landing refuses,
-  while the check that ran before it had already read the person's newer file as
-  part of the family's result. Whether the check should restore from the baseline
-  instead is unruled and nobody has filed it.
 
 ## Outside this family
 
