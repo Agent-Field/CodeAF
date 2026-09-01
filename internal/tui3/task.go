@@ -1098,7 +1098,7 @@ func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	// The model picker is the one overlay that can be up over a proposal with an
 	// empty box, and its filter answers to the same letters.
-	if !a.input.empty() || a.pick.open {
+	if a.chordsStandDown() || a.pick.open {
 		return nil, false
 	}
 	switch msg.String() {
@@ -2052,13 +2052,26 @@ const (
 	// run is over, so it is named only while the row under the cursor could take
 	// it ([app.railHoldHintWord]), and esc stays last because leaving is what a
 	// person looks to the end of the line for.
-	railHoldKeys = "↑↓ move · →← tree · enter open · w wide"
+	railHoldKeys = "↑↓ move · →← tree · enter open · " + railWidenChord + " wide"
 	railHoldHint = railHoldKeys + " · esc"
 	// The footer names both answers the handle can give. A bare "w" in a column
 	// of counts is a keystroke nobody would risk pressing, and a handle whose
 	// return trip is not named is only half an affordance.
-	railWideHint   = "w widen · click seam"
-	railNarrowHint = "w narrow · click seam"
+	railWideHint   = railWidenChord + " widen · click seam"
+	railNarrowHint = railWidenChord + " narrow · click seam"
+)
+
+// The two spellings of widen, and why there are two.
+//
+// [railWidenChord] IS THE ONE THE HINTS NAME, because it is the one that works
+// wherever the roster is drawn. The bare letter is a view toggle, and a view
+// toggle is the one kind of bare letter this surface may not have beside a
+// composer (chordfocus.go): nothing is blocked on it, so a person pressing `w`
+// at the start of a sentence meant the sentence. [railWidenKey] is kept for the
+// full-frame roster, where there is no box on the screen at all.
+const (
+	railWidenChord = chordAltWord + "w"
+	railWidenKey   = "w"
 )
 
 // The column's own door, and the two lines that name it.
@@ -3588,7 +3601,27 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "left":
 		a.railIn()
 		return nil, true
-	case "w":
+	case railWidenChord:
+		// WIDEN, IN THE ONE SPELLING NOTHING CAN EAT. It used to be the bare
+		// letter `w` with no guard on it at all, and it is the only bare letter
+		// this surface ever bound to a VIEW TOGGLE rather than to an answer
+		// (chordfocus.go states the whole law): nothing was blocked on it, so
+		// there was no moment at which pressing it was the only thing a person
+		// could have meant — and a held roster is a state people type under.
+		// Sentences came out as `riting the port` and `orktree`.
+		a.railWiden(!a.railWide)
+		return nil, true
+	case railWidenKey:
+		// THE BARE LETTER SURVIVES WHERE THERE IS NO BOX TO STEAL FROM, which is
+		// the home sheet's own rule said about the roster ("it is modal and has
+		// no box, so a letter here cannot be the start of anybody's sentence",
+		// homesheet.go). The full-frame roster IS that: it is drawn over the
+		// body, the composer is not on the frame, and `w` cannot be the first
+		// letter of anything. Beside a column it falls through to the box as the
+		// letter it is.
+		if !a.railFull() || a.chordsStandDown() {
+			return nil, false
+		}
 		a.railWiden(!a.railWide)
 		return nil, true
 	case "ctrl+v":
@@ -3610,6 +3643,13 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// focus outranks ambient place, and this is that rule applied to one more
 		// key; the way out is esc, which the hint already advertises
 		// ([railHoldHint]).
+		return nil, true
+	}
+	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING, on the row that is
+	// asking it (tasksettle.go's [app.railSettleKey]). It is read last so that
+	// nothing above it changes meaning, and it takes the same three letters the
+	// card and the room take, under the same guard.
+	if a.railSettleKey(msg) {
 		return nil, true
 	}
 	return nil, false
@@ -3899,9 +3939,12 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 			segs = append(segs, itoa(n)+" "+railGroupWords[g])
 		}
 	}
-	hintText := railWideHint
+	// IN THIS TERMINAL'S OWN SPELLING of the modifier (chords.go), because the
+	// offer names a chord now rather than a bare letter and a Mac's keycap says
+	// `⌥`.
+	hintText := a.chords.say(railWideHint)
 	if a.railWide {
-		hintText = railNarrowHint
+		hintText = a.chords.say(railNarrowHint)
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
 	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
