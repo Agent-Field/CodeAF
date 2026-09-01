@@ -180,7 +180,7 @@ var divideSchemaJSON = `{"type":"object","properties":{` +
 	`"parts":{"type":"array","minItems":2,"maxItems":` + strconv.Itoa(taskFanLimit) + `,"description":"The parts, each of which one worker could take from start to finished knowing nothing of what the others produced","items":{"type":"object","properties":` +
 	`{"title":{"type":"string","description":"WHAT THIS PART IS CALLED, in ` + strconv.Itoa(TaskNameWords) + ` words or fewer — the role or the slice, never its instructions. It is read in a narrow column beside its siblings: \"the eleven adapters\""},` +
 	`"summary":{"type":"string","description":"One or two lines: what this part does, and to what"},` +
-	`"brief":{"type":"string","description":"THIS PART'S WHOLE WORLD. It never sees your conversation and cannot ask you anything: name the files and symbols, the conventions, what you have learned about this material, and what NOT to touch because another part owns it"},` +
+	`"brief":{"type":"string","description":"WHAT THIS PART OWNS — its scope, and only that. It never sees your conversation and cannot ask you anything, so name the material it works on, the symbols and the conventions, and what you have learned that it would otherwise find out again. The work being divided and what the other parts own are composed around this for you: do not restate either"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking this part's word for it"},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"HOW THIS PART CAN GO WRONG, which decides how much thinking it is done with. \"` + gradeMechanical + `\", the default and most parts: the failure mode is NOT BEING DONE YET, visible to anybody looking at the result. \"` + gradeCareful + `\": the failure mode is SUBTLE WRONGNESS — a design decision, tricky debugging, a judgement about somebody else's code — where the work can look finished and be quietly wrong. Grade for the failure mode, never size or importance: a long dull part is ` + gradeMechanical + `, a short part that must be RIGHT is ` + gradeCareful + `"},` +
 	expectsSchemaJSON + `},` +
@@ -865,9 +865,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// afterwards.
 	grades := graph.grades.reader(model)
 	request := a.taskRequest()
+	// AND WHAT EVERY PART IS TOLD ABOUT THE FAMILY IS COMPOSED ONCE, HERE, FOR
+	// THE WHOLE DIVISION. A part's brief is two halves with two authors — the
+	// work being divided and the map of who owns what, which the harness holds,
+	// and the scope, which only the worker in the material could write — and this
+	// is where the first half is written for both roads, so a part drawn out of a
+	// sketch and a part a worker wrote open on the same world
+	// (task_divide_compose.go says why that had to stop depending on the road).
+	// It is composed above the loop for the reason the two models are: the parts
+	// of one division must read one document, not five fittings of it.
+	family := familyOf(request, node.ownBrief(), parsed.Parts)
 	ids := make([]uint64, 0, len(parsed.Parts))
 	titles := make([]string, 0, len(parsed.Parts))
-	for _, part := range parsed.Parts {
+	for index, part := range parsed.Parts {
 		partModel := model
 		switch {
 		case part.careful():
@@ -891,7 +901,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 			named:      true,
 			summary:    part.Summary,
 			request:    request,
-			brief:      part.Brief,
+			brief:      family.partBrief(index, part.Brief),
 			acceptance: part.Acceptance,
 			expects:    part.Expects,
 			model:      partModel,
@@ -1023,13 +1033,13 @@ const (
 // from here.
 var divideReviewBrief = `A worker part-way through a piece of work has decided it is wider than one pair of hands, and has written the parts it wants to hand out. You read the whole division ONCE and answer for it.
 
-Each part becomes a worker of its own, in its own copy of the repository. It never sees this conversation, it cannot ask anybody anything, and its brief is the only thing it will ever know about why it exists. Whatever you leave in a brief is that worker's whole world.
+Each part becomes a worker of its own, in its own copy of the repository. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part owns, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice.
 
 READ THE PARTS TOGETHER, WHICH IS THE ONE THING THEIR AUTHOR COULD NOT DO:
 
   - two parts that would edit the same file, or whose scopes overlap. Fix the boundary in both briefs, or merge them into one part. An overlap you leave standing is not a rough edge: a division whose parts still name the same file when you are done is REFUSED OUTRIGHT and nothing is handed out, because everything the parts write goes into one deliverable and the file would be kept once, one part's work quietly over the other's.
   - a part that cannot start until another has finished. That is a stage and not a part: merge it into the part it waits on.
-  - a brief that assumes what its author knew. Name the files, the symbols and the conventions THIS part works in. Where something nearby belongs to a sibling, say whose it is — "the report itself is another part's" — rather than listing its files under this one, so that no two briefs read as claiming the same thing.
+  - a scope that assumes what its author knew. Name the files, the symbols and the conventions THIS part works in. Where something nearby belongs to a sibling, say whose it is — "the report itself is another part's" — rather than listing its files under this one, so that no two scopes read as claiming the same thing.
   - a done-condition somebody else could not check without taking the part's own word for it.
 
 Answer with ONE JSON object and nothing else — no prose, no code fence:

@@ -140,7 +140,7 @@ func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 	if !drawn.proposes() {
 		return "", ""
 	}
-	proposal, ok := drawn.proposal(node.ownBrief())
+	proposal, ok := drawn.proposal()
 	if !ok {
 		return "", ""
 	}
@@ -251,21 +251,12 @@ func (n *TaskNode) ownBrief() string {
 
 // ── the drawing, as a division ──────────────────────────────────────────────
 
-// These three are the INHIBITION SENTENCE, and it is the one thing a part of a
-// harness-submitted division needs that a worker-written one gets for free.
-//
-// A worker writing its own parts knows what it kept and what it gave away, and the
-// schema tells it to say what NOT to touch because another part owns it. Nobody
-// wrote these briefs: they are one letter of a drawing apiece, cut out of a
-// legend. So the boundary is stated by the harness, in both directions — this is
-// yours, those are somebody else's — because a part that does not know its
-// siblings exist is a part that does all four jobs and collides with three
-// workers doing the same.
-const (
-	divisionThisPart    = "THIS PART IS "
-	divisionOtherParts  = "THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS RIGHT NOW: "
-	divisionStayInScope = ". Do none of them, and do not change what they own — make your own part whole and say in your report what you did."
-)
+// THE BOUNDARY IS NOT WRITTEN HERE ANY MORE, and neither is the parent's brief.
+// What a part is told about its family — the work being divided and which scopes
+// somebody else owns — is composed for EVERY part of EVERY division by one
+// composer (task_divide_compose.go), on the road both this file and `divide_work`
+// come through. This file writes one thing and it is the thing only the drawing
+// knows: what each part owns, in the legend's own words.
 
 // divisionStandInDone is the done-condition a part is given when nobody has
 // written one, and it is deliberately the WEAKEST honest thing that can be said:
@@ -291,18 +282,19 @@ func divisionStandInDone(scope string) string {
 // of the shape, the legend's own words for each, and the evidence the reader was
 // shown. The second answer is false where there is nothing to propose.
 //
-// THE PARENT'S BRIEF IS IN EVERY PART, because a part never sees this
-// conversation and cannot ask anybody anything, and the parent's brief is where
-// the turn's findings are (checkpoint.go's dowry). What is added to it is the one
-// thing that is different per part: which letter this is, and which letters
-// somebody else is holding.
+// WHAT IT WRITES IS THE SCOPE AND NOTHING ELSE. The parent's brief — which is
+// where the turn's findings are (checkpoint.go's dowry) — and the map of which
+// scopes somebody else owns are composed around every part of every division by
+// [divisionFamily] on the road below, so a part drawn out of a sketch and a part
+// a worker wrote get the same world by construction rather than because two
+// files agree today.
 //
 // NOTHING HERE CLIPS THE SHAPE TO THE FAN CAP. A sketch with more parts than one
 // piece of work may be split into is put whole and refused whole by
 // [TaskGraph.claimChild], for the reason a division is refused whole there: the
 // harness quietly handing out the first five of seven would be a shape nobody
 // drew.
-func (d drawnDivision) proposal(brief string) (divideArguments, bool) {
+func (d drawnDivision) proposal() (divideArguments, bool) {
 	pieces := readShape(d.sketch.shape).parts
 	if len(pieces) < checkpointSketchParts {
 		return divideArguments{}, false
@@ -326,7 +318,7 @@ func (d drawnDivision) proposal(brief string) (divideArguments, bool) {
 		parts = append(parts, dividePart{
 			Title:   sketchName(said[index], piece, index),
 			Summary: summary,
-			Brief:   sketchBrief(brief, scopes, index),
+			Brief:   scopes[index],
 			// THE DONE-CONDITION IS READ ALONE, by somebody who cannot see the shape
 			// (task_audit.go's auditQuestion), so it is written out of the legend's
 			// WORDS and never out of the letter beside them: "A: the release notes is
@@ -384,53 +376,6 @@ func (d drawnDivision) evidence() string {
 		out.WriteString(digest)
 	}
 	return clip(out.String(), divideReviewEvidenceBytes)
-}
-
-// sketchBrief is one part's whole world: the work's own brief, then which letter
-// of the drawing this is and which letters are elsewhere.
-//
-// NO MODEL WRITES ANYTHING HERE, which is why the handoff's own two-model
-// arrangement does not need repeating in this file. The brief this composes on
-// top of is the parent's, and on the checkpoint road that is already the document
-// a mastermind wrote out of the runner's draft (checkpoint.go's
-// [Agent.writeHandoff]) — so every part inherits the structural checks that stood
-// in front of it, and a degeneration that never became the parent's brief cannot
-// become a part's.
-//
-// IT IS HELD TO THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO. The clip is
-// from the front, so a parent brief that was already at the limit loses its tail
-// rather than the sentence naming the siblings — which would leave a worker with
-// no idea it had any.
-func sketchBrief(brief string, scopes []string, index int) string {
-	var tail strings.Builder
-	tail.WriteString(divisionThisPart)
-	tail.WriteString(scopes[index])
-	tail.WriteString(".")
-	others := make([]string, 0, len(scopes)-1)
-	for other, scope := range scopes {
-		if other != index {
-			others = append(others, scope)
-		}
-	}
-	if len(others) > 0 {
-		tail.WriteString("\n")
-		tail.WriteString(divisionOtherParts)
-		tail.WriteString(strings.Join(others, "; "))
-		tail.WriteString(divisionStayInScope)
-	}
-	// THE ROOM THE BOUNDARY NEEDS IS TAKEN OUT OF THE BOUND BEFORE THE BRIEF IS
-	// FITTED, which is [checkpointDigest]'s own arithmetic for the same reason: a
-	// part whose siblings were clipped off the end is a part that will do all
-	// three jobs, and that is worse than a part missing the last page of what the
-	// turn found out.
-	room := taskShapeBriefLimit - tail.Len() - len("\n\n")
-	var out strings.Builder
-	if brief = strings.TrimSpace(brief); brief != "" && room > 0 {
-		out.WriteString(clip(brief, room))
-		out.WriteString("\n\n")
-	}
-	out.WriteString(tail.String())
-	return clip(out.String(), taskShapeBriefLimit)
 }
 
 // sketchScope is how one part is named to itself and to its siblings: the letter
