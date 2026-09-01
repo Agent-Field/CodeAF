@@ -16,6 +16,10 @@ package session
 // as happily on a belt that had stopped obeying the absence law.
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -228,6 +232,72 @@ func TestTheHarnessBeltCarriesTheMediaVerbsAndLacksThemWithoutModels(t *testing.
 	if len(empty) != wire {
 		t.Fatalf("a harness belt with no media seams carries %d tools, want %d: %v", len(empty), wire, empty)
 	}
+}
+
+// A HARNESS IS NOT A LESSER WRITER THAN A CONVERSATION. What it makes lands
+// where the conversation's own films land and gets the same row in `/files` —
+// and until the seams carried a Place and the index, it did neither: the
+// throwaway agent the verbs are built through had a zero Place, so every cut
+// fell to the legacy dot directory under the person's repository, and a nil
+// index recorded nothing at all.
+func TestAHarnessBeltLandsItsCutWhereASessionsWouldAndIndexesIt(t *testing.T) {
+	if !video.Available() {
+		t.Skipf("%s is not on PATH; edit_video is absent everywhere without it", video.Missing())
+	}
+	folder := filepath.Join(t.TempDir(), "session")
+	workspace := t.TempDir()
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	// A BORROWED session: the workspace is the person's repository, so its
+	// deliverables land in the session's own artifacts/ and nothing of aforge's
+	// is dropped in the project (landing.go's ladder, second rung).
+	place := Place{Dir: folder, Workspace: workspace}
+
+	one := madeVideo(t, workspace, "one.mp4", 1, false)
+	two := madeVideo(t, workspace, "two.mp4", 1, true)
+	said, isError, err := runHarnessTool(t, HarnessBelt(workspace, HarnessBeltSeams{
+		Place: place, ArtifactsIndex: index,
+	}), "edit_video", fmt.Sprintf(`{"action":"join","clips":[%q,%q]}`, one, two))
+	if err != nil || isError {
+		t.Fatalf("the harness could not join two clips: %v %s", err, said)
+	}
+
+	if cut := onlyFileIn(t, place.Artifacts()); !strings.HasSuffix(cut, ".mp4") {
+		t.Errorf("a harness landed %s in the session's artifacts/, want the cut", cut)
+	}
+	if stray := filesIn(t, filepath.Join(workspace, ".aforge-v3", "video")); len(stray) != 0 {
+		t.Errorf("a harness dropped %v in the hidden dot directory inside the person's project", stray)
+	}
+	if rows := ReadArtifacts(index); len(rows) != 1 || rows[0].Kind != "video" {
+		t.Fatalf("artifact rows = %+v, want one video row so /files finds a harness's cut", rows)
+	}
+
+	// AND A BELT WITH NO PLACE STILL WRITES SOMEWHERE, honestly and on the rung
+	// the struct's own essay names: a door that genuinely has no session folder
+	// is not a door whose tools may refuse.
+	nowhere := t.TempDir()
+	source := madeVideo(t, nowhere, "only.mp4", 1, false)
+	second := madeVideo(t, nowhere, "also.mp4", 1, false)
+	said, isError, err = runHarnessTool(t, HarnessBelt(nowhere, HarnessBeltSeams{}),
+		"edit_video", fmt.Sprintf(`{"action":"join","clips":[%q,%q]}`, source, second))
+	if err != nil || isError {
+		t.Fatalf("a harness with no seams could not join two clips: %v %s", err, said)
+	}
+	if cut := onlyFileIn(t, filepath.Join(nowhere, ".aforge-v3", "video")); !strings.HasSuffix(cut, ".mp4") {
+		t.Errorf("a harness with no Place landed %s, want the legacy rung the essay promises", cut)
+	}
+}
+
+// runHarnessTool calls one tool off a harness belt by name — the same hand the
+// run's bridge reaches for it with (cmd/aforge's chatv3_harness.go).
+func runHarnessTool(t *testing.T, belt []bare.Tool, name, arguments string) (string, bool, error) {
+	t.Helper()
+	for _, tool := range belt {
+		if tool.Name == name {
+			return tool.Execute(context.Background(), json.RawMessage(arguments))
+		}
+	}
+	t.Fatalf("the harness belt carries no %s", name)
+	return "", false, nil
 }
 
 // ── (5) the cutting verb, which travels on a different condition ─────────────

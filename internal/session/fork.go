@@ -32,8 +32,10 @@ package session
 //
 //   - Every hand declares the paths it may write, and [writeGuard] — the
 //     pre-action citizen the adaptive run already uses (orchestrate.go) —
-//     refuses `edit` and `write` outside them. Disjoint scopes make a conflict
-//     impossible by construction rather than unlikely by instruction.
+//     refuses any call aimed outside them whose target is a path it can read:
+//     `edit`, `write`, and the `edit_video` actions that save a file. Disjoint
+//     scopes make a conflict impossible by construction rather than unlikely by
+//     instruction.
 //   - OVERLAPPING SCOPES ARE REFUSED AT THE CALL, before a single hand starts.
 //     Two hands sharing a path is the one shape the guard cannot save, so it
 //     never gets to exist.

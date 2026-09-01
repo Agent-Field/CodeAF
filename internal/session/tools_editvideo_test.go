@@ -108,6 +108,64 @@ func TestAJoinOfOneClipOrNoneIsRefusedRatherThanCopied(t *testing.T) {
 	}
 }
 
+// THE NAME IS CLAIMED BEFORE THE WORK IS ATTEMPTED, so a refusal has to give it
+// back. mediaDestination creates the default timestamped file empty and holds it
+// with O_EXCL — which is how two calls of one batch cannot be handed one name —
+// and every refusal the library makes on its own facts happens after that. Each
+// one of them used to leave a nought-byte mp4 in the person's folder that
+// `/files` and the person then had to make sense of.
+func TestARefusedActionLeavesNothingWhereItWouldHaveWritten(t *testing.T) {
+	requireFfmpeg(t)
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	clip := madeVideo(t, workspace, "clip.mp4", 1, false)
+	silent := madeVideo(t, workspace, "quiet.mp4", 1, false)
+
+	// A join of one clip is the cheapest of them: the library refuses on the
+	// count alone, before ffmpeg is started and after the name has been taken.
+	result, isError := runTool(t, agent, "edit_video", fmt.Sprintf(`{"action":"join","clips":[%q]}`, clip))
+	if !isError {
+		t.Fatalf("a join of one clip must be refused, got %q", result)
+	}
+	if left := filesIn(t, VideoDir(agent.config.Place, workspace)); len(left) != 0 {
+		t.Errorf("a refused join left %v behind — a claimed name a refusal did not fill is litter, and /files offers it", left)
+	}
+
+	// The same for a score the library refuses on the audio it was given: a
+	// video file with no sound in it is not something to lay under a picture.
+	result, isError = runTool(t, agent, "edit_video",
+		fmt.Sprintf(`{"action":"score","video":%q,"audio":%q}`, clip, silent))
+	if !isError {
+		t.Fatalf("a score with a silent audio file must be refused, got %q", result)
+	}
+	if left := filesIn(t, VideoDir(agent.config.Place, workspace)); len(left) != 0 {
+		t.Errorf("a refused score left %v behind", left)
+	}
+}
+
+// AND IT NEVER DELETES SOMEBODY'S FILE, which is the other half of the same
+// rule. A path the model NAMED is not claimed by this belt at all — it may
+// already hold work a person or a provider was paid for — so a refusal on that
+// road leaves it exactly as it found it.
+func TestARefusalNeverRemovesAFileTheModelNamedItself(t *testing.T) {
+	requireFfmpeg(t)
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	clip := madeVideo(t, workspace, "clip.mp4", 1, false)
+
+	kept := filepath.Join(workspace, "keep.mp4")
+	if err := os.WriteFile(kept, []byte("somebody's film"), 0o644); err != nil {
+		t.Fatalf("could not write the fixture: %v", err)
+	}
+	result, isError := runTool(t, agent, "edit_video",
+		fmt.Sprintf(`{"action":"join","clips":[%q],"path":"keep.mp4"}`, clip))
+	if !isError {
+		t.Fatalf("a join of one clip must be refused, got %q", result)
+	}
+	held, err := os.ReadFile(kept)
+	if err != nil || string(held) != "somebody's film" {
+		t.Errorf("the refusal took keep.mp4 (%q, %v) — a file with bytes in it is somebody's", held, err)
+	}
+}
+
 func TestAFrameSavedAsSomethingThatIsNotAPictureIsRefusedByExtension(t *testing.T) {
 	// ffmpeg's own complaint about an unknown muxer is not a sentence anybody
 	// can act on, so the extension is checked here where the reason is known.
@@ -413,6 +471,22 @@ func madeAudio(t *testing.T, home, name string, length float64) string {
 		t.Fatalf("could not make the fixture %s: %v\n%s", name, err, out)
 	}
 	return path
+}
+
+// filesIn is what a directory holds, and a directory that was never made holds
+// nothing — which is the answer a test of litter wants, because "no folder at
+// all" and "an empty folder" are the same clean workspace.
+func filesIn(t *testing.T, directory string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
 }
 
 func onlyFileIn(t *testing.T, directory string) string {

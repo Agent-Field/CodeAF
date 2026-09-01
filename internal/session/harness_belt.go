@@ -47,14 +47,21 @@ import (
 )
 
 // HarnessBeltSeams is everything the media half of the belt needs from the door
-// that builds it. It is a struct rather than four arguments because the run
-// door (cmd/aforge's chatv3_harness.go) fills it from a config it already holds,
-// and a positional list of three interfaces and a function is a call nobody can
-// read at the call site.
+// that builds it: what it may generate with, what it may look with, and where
+// what it makes lands. It is a struct rather than a handful of arguments because
+// the run door (cmd/aforge's chatv3_harness.go) fills it from a config it
+// already holds, and a positional list of two interfaces, two functions, a
+// folder and a path is a call nobody can read at the call site.
 //
-// ALL OF IT IS OPTIONAL. A zero HarnessBeltSeams yields exactly the seven wire
-// tools, which is what a harness has always had and what a machine with no media
-// models still gets.
+// ALL OF IT IS OPTIONAL, and it stays optional now that two of the seams are
+// about WHERE rather than about what: a zero HarnessBeltSeams yields exactly the
+// seven wire tools, which is what a harness has always had and what a machine
+// with no media models still gets. A zero [HarnessBeltSeams.Place] does not take
+// a verb away — it moves what the verbs write. Such a run lands its files on the
+// legacy rung, `<workspace>/.aforge-v3/images` and its siblings (landing.go's
+// ladder), and records none of them, which is the honest answer for a door that
+// genuinely has no session folder to land in and the WRONG one for every door
+// that has.
 type HarnessBeltSeams struct {
 	// Media and MediaModel are [Config]'s own pair, with [Config]'s own meaning:
 	// the client that carries a generation request, and the resolver that says
@@ -75,6 +82,29 @@ type HarnessBeltSeams struct {
 	// answers, because a verb with nothing to send the picture to is a verb that
 	// would refuse on every call.
 	Seer Completer
+
+	// Place and ArtifactsIndex are WHERE A HARNESS'S WORK LANDS AND HOW IT IS
+	// FOUND AGAIN — [Config]'s own two fields, with [Config]'s own meaning.
+	//
+	// They are seams rather than something this file could work out because a
+	// harness writes real deliverables and the media verbs decide where through
+	// exactly one ladder (landing.go's [ImagesDir] and its siblings): the owned
+	// workspace, then the borrowed session's own artifacts/, then the dot
+	// directory under the workspace. Without the Place every belt built here fell
+	// to that last rung — the one landing.go's essay calls the wrong answer about
+	// litter — so a film a saved procedure assembled landed in a hidden folder
+	// inside the person's repository, and without the index it appeared in
+	// `/files` nowhere at all. A harness is not a lesser writer than a
+	// conversation: what it makes is the same kind of file, wanted back the same
+	// way, and it lands in the same place.
+	Place Place
+
+	// ArtifactsIndex is the deliverables index file (artifacts.go). Empty
+	// records nothing, which is what a test and a door with no home both want,
+	// and it is not double-counting anything: a run's SPEND is accounted through
+	// the trail (see the throwaway agent below), while a row here is a citation
+	// of a path, written once by whichever hand actually wrote the file.
+	ArtifactsIndex string
 }
 
 // HarnessBelt is every tool a saved harness may name on its whitelist, may
@@ -100,8 +130,24 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 	// Its usage counters go nowhere, which is correct here and stated so nobody
 	// "fixes" it: a harness run accounts its own spend through the trail, and a
 	// picture billed twice would be worse than one billed in one place.
+	//
+	// THE DELIVERABLES INDEX IS THE OPPOSITE CASE AND IS THEREFORE WIRED. A row
+	// there is not a charge, it is a citation of a path, and it is written by the
+	// one hand that wrote the file — nothing on the run's side records what a
+	// tool produced, so carrying the index here adds a row where there was none
+	// rather than a second row for one file. What it cannot carry is the session
+	// id: this agent has no journal, so the row's `session` is empty, which is
+	// design-law §EMPTINESS's own answer — a citation nobody could verify is
+	// worse than a row without one.
 	agent := &Agent{
-		config: Config{Workspace: workspace, Media: seams.Media, MediaModel: seams.MediaModel, MediaPick: seams.MediaPick},
+		config: Config{
+			Workspace:      workspace,
+			Media:          seams.Media,
+			MediaModel:     seams.MediaModel,
+			MediaPick:      seams.MediaPick,
+			Place:          seams.Place,
+			ArtifactsIndex: seams.ArtifactsIndex,
+		},
 		client: seams.Seer,
 	}
 	tools = append(tools, agent.imageTools()...)
@@ -136,9 +182,11 @@ func HarnessBeltNames(workspace string, seams HarnessBeltSeams) map[string]bool 
 // with the door's, and both are the person's one install.
 func (a *Agent) harnessSeams() HarnessBeltSeams {
 	return HarnessBeltSeams{
-		Media:      a.config.Media,
-		MediaModel: a.config.MediaModel,
-		MediaPick:  a.config.MediaPick,
-		Seer:       a.client,
+		Media:          a.config.Media,
+		MediaModel:     a.config.MediaModel,
+		MediaPick:      a.config.MediaPick,
+		Seer:           a.client,
+		Place:          a.config.Place,
+		ArtifactsIndex: a.config.ArtifactsIndex,
 	}
 }

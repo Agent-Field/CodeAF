@@ -224,6 +224,7 @@ func (a *Agent) frameVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err != nil {
 		return "Could not work out where to save the frame: " + err.Error(), true, nil
 	}
+	defer releaseVideoClaim(parsed.Path, destination)
 	if err := video.SaveFrame(ctx, full, at, destination); err != nil {
 		return "Could not save the frame: " + err.Error(), true, nil
 	}
@@ -286,6 +287,7 @@ func (a *Agent) joinVideo(ctx context.Context, parsed editVideoArguments) (strin
 	if err != nil {
 		return "Could not work out where to save the cut: " + err.Error(), true, nil
 	}
+	defer releaseVideoClaim(parsed.Path, destination)
 	facts, err := video.Join(ctx, clips, destination)
 	if err != nil {
 		return "Could not join the clips: " + err.Error(), true, nil
@@ -336,6 +338,7 @@ func (a *Agent) scoreVideo(ctx context.Context, parsed editVideoArguments) (stri
 	if err != nil {
 		return "Could not work out where to save the scored video: " + err.Error(), true, nil
 	}
+	defer releaseVideoClaim(parsed.Path, destination)
 	facts, err := video.Score(ctx, clip, audio, destination, scoring)
 	if err != nil {
 		return "Could not score the video: " + err.Error(), true, nil
@@ -392,6 +395,42 @@ func (a *Agent) videoDestination(asked, said, extension, directory string, allow
 	}
 	path, err := a.mediaDestination(asked, said, extension, directory)
 	return path, "", err
+}
+
+// releaseVideoClaim gives back a destination this call CLAIMED and then wrote
+// nothing to. It is the ONE place the three writing actions clean up after a
+// refusal, deliberately not one patch per refusal.
+//
+// The claim is the thing being cleaned up, and it is not a mistake: a
+// destination nobody named is CREATED empty and O_EXCL'd (tools_media.go), which
+// is how two calls of one tool batch racing for the same timestamped name cannot
+// both be handed it. But the name is taken BEFORE the library is asked to do the
+// work, and every refusal the library makes on its own facts — a join of one
+// clip or of too many, a clip nothing can be read out of, a fade longer than the
+// picture, an audio file with no sound in it, a moment past the end of the clip —
+// returns after that. What each of those used to leave behind was a nought-byte
+// mp4 in the person's own folder, which `/files` and the person then have to work
+// out the meaning of.
+//
+// TWO GUARDS, AND THEY ARE THE SAME RULE TWICE: NEVER DELETE SOMEBODY'S FILE.
+// A path the MODEL named was never claimed here — mediaDestination hands one
+// back untouched, and it may well be a file that already exists and has
+// somebody's work in it — so this does not go near one. And a claimed name with
+// bytes in it is a name something has written to, so only an empty claim is
+// given back.
+//
+// It is DEFERRED rather than called at each error return, so that a refusal
+// added between the claim and the encode later cannot forget to do it. On the
+// way out of a call that worked, the file it wrote has bytes in it and this does
+// nothing at all.
+func releaseVideoClaim(asked, destination string) {
+	if strings.TrimSpace(asked) != "" {
+		return
+	}
+	if info, err := os.Stat(destination); err != nil || info.Size() > 0 {
+		return
+	}
+	_ = os.Remove(destination)
 }
 
 // formatList is the allowed extensions in a stable order, for a refusal.
