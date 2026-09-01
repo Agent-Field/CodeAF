@@ -154,6 +154,15 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // turn, so each rule is stated once, in the field it governs, in as few words as
 // keep it. The rhetoric is gone and nothing else is.
 //
+// AND `expects` IS INTERPOLATED, NEVER SPELLED HERE. It is the handoff
+// contract's checkable half — what this brief assumes is already true of the
+// folder the worker will get, walked before the first model call — and it is
+// the SAME text the divider's schema carries, from the one constant that
+// spells it (handoffcontract.go). Two doors reading one shape must not come to
+// two opinions about it. Its 1,230 bytes were PAID FOR out of prompts/system.md
+// rather than taken out of the fixed-prefix budget; the constant's own header
+// says what came out and why none of it was a rule stated only there.
+//
 // AND THE BRIEF IS ALSO WHERE THE DOWRY RIDES. A proposal made from INSIDE an
 // answer that has already begun the work holds something no other proposal can:
 // what the model has just found out. prompts/system.md teaches the principle —
@@ -172,6 +181,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
 	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
+	expectsSchemaJSON + `,` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
 	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. The worker may hand parts out under itself once the material shows the width is real, then fold their reports into one deliverable. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items. Leave it out for a linear job"},` +
 	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word — resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle, one fitting none returns the nearest ids"},` +
@@ -181,18 +191,22 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 
 // taskArguments is the wire form.
 type taskArguments struct {
-	Title       string   `json:"title"`
-	Summary     string   `json:"summary"`
-	Brief       string   `json:"brief"`
-	Deliverable string   `json:"deliverable"`
-	Where       string   `json:"where"`
-	Ground      string   `json:"ground"`
-	Acceptance  string   `json:"acceptance"`
-	DependsOn   []uint64 `json:"depends_on"`
-	Wide        bool     `json:"wide"`
-	Model       string   `json:"model"`
-	MaxSteps    int      `json:"max_steps"`
-	NoProgress  int      `json:"no_progress"`
+	Title       string `json:"title"`
+	Summary     string `json:"summary"`
+	Brief       string `json:"brief"`
+	Deliverable string `json:"deliverable"`
+	Where       string `json:"where"`
+	Ground      string `json:"ground"`
+	Acceptance  string `json:"acceptance"`
+	// Expects is what this brief assumes is already true of the folder the
+	// worker will get, checked before it is allowed to spend anything
+	// (handoffcontract.go). It is optional and the harness never writes one.
+	Expects    []Expectation `json:"expects,omitempty"`
+	DependsOn  []uint64      `json:"depends_on"`
+	Wide       bool          `json:"wide"`
+	Model      string        `json:"model"`
+	MaxSteps   int           `json:"max_steps"`
+	NoProgress int           `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and
@@ -649,15 +663,6 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
 	}
-	// THIS DOOR CARRIES NO MANIFEST, and the reason is a bill rather than a
-	// principle (handoffcontract.go). propose_task's schema rides in front of
-	// every request of every turn of every conversation and is already the
-	// heaviest tool on that belt; the fixed-prefix budget
-	// (prefixbudget_test.go) had no room for a second contract there. The
-	// divider's own handoff carries one, which is where the failure this was
-	// built from happened and where a brief is written by a model that cannot
-	// see the world its reader will get. Nothing else here would have to
-	// change: [taskSpec.expects] is read by the preflight whoever filled it.
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary
 	// case, but a model that asked for -1 steps meant something it did not say,
@@ -688,6 +693,17 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 			return spec, "Invalid arguments: " + missing.field + " is required"
 		}
 	}
+	// THE MANIFEST IS READ LAST BECAUSE IT IS THE ONLY OPTIONAL HALF OF THE
+	// CONTRACT. A proposal missing its brief is told about the brief; a
+	// proposal that named an assumption it could not shape is told about that,
+	// in the same words the divider's door uses, because one shape checked in
+	// two places would drift into two accounts of what an expectation is
+	// (handoffcontract.go owns both).
+	expects, problem := parseExpectations(parsed.Expects)
+	if problem != "" {
+		return spec, problem
+	}
+	spec.expects = expects
 	return spec, ""
 }
 
