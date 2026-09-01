@@ -48,7 +48,6 @@ TestTheEnginesStandingStoreAnswersOverTheWire
 TestTickWalksTheItemsAndWritesAWakeLine
 TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch
 TestRenderTerrainStaysUnderTheCap
-TestTheFixedPrefixStaysUnderItsBudget
 TestATransientClaimFailureDoesNotEndDispatchForever
 
 # From the second Linux run (2026-08-31, the first in which internal/tui3 ever

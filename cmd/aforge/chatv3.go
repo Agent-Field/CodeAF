@@ -928,7 +928,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// must resolve against the belt the designer was offered — one list, three
 	// readers (internal/session's harness_belt.go). It is wired here rather than
 	// in the literal above because the resolver it needs is one line up.
-	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel, cfg.MediaPick)
+	// THE FOLDER AND THE INDEX TRAVEL WITH THE MEDIA PAIR, and for the same
+	// reason: a film a saved procedure assembles is a deliverable of THIS
+	// conversation, so it lands where this conversation's own films land and gets
+	// the same row in `/files`. Left out, the run's belt fell to the legacy dot
+	// directory and recorded nothing, which made a harness's work invisible.
+	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, session.HarnessBeltSeams{
+		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick,
+		Place: cfg.Place, ArtifactsIndex: cfg.ArtifactsIndex,
+	})
 	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
 	// a program this conversation can run, so it belongs on `/subharness` beside
 	// the bundles and the compiled-in workers rather than in a catalog of its own

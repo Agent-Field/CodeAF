@@ -587,12 +587,19 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 			case EventTextDelta:
 				said.WriteString(event.Text)
 			case EventToolEnd:
-				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [savingTools] is
-				// the one place this build says which calls those are (task_run.go).
-				// It is read on the END of a call and never on its start: a `write`
-				// that failed saved nothing, and a run whose only act was a refused
-				// write came to exactly nothing.
-				if savingTools[event.Tool] {
+				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [producedAFile]
+				// is the one place this build says which calls those are
+				// (task_run.go). It is read on the END of a call and never on its
+				// start: a `write` that failed saved nothing, and a run whose only
+				// act was a refused write came to exactly nothing.
+				//
+				// AND IT IS ASKED OF THE CALL, NOT OF THE HAND. edit_video is on
+				// the saving belt with one action that reads and three that write,
+				// so a wordless firing whose whole night's work was
+				// `{"action":"measure"}` used to report as landed — which is the
+				// one outcome the sweep may never reap, so its run folder was kept
+				// for ever by a call that left nothing in it.
+				if producedAFile(event.Tool, event.Args) {
 					saved = true
 				}
 			case EventToolFinished:
@@ -722,10 +729,11 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 //
 // WHY THE DELIVERABLES INDEX IS NOT ASKED. Every engine-side writer of a row in
 // it (artifacts.go) is one of `generate_image`, `generate_video`, `speak` and
-// `generate_music`, and all four are in [savingTools] already — so reading the
-// index would be a second answer to a question one map already answers, and the
-// first day the two disagreed the honest one would be whichever this function
-// did not use (design-law §ONE SOURCE OF TRUTH).
+// `generate_music`, and every one of those calls already answers yes to
+// [producedAFile] — so reading the index would be a second answer to a question
+// one predicate already answers, and the first day the two disagreed the honest
+// one would be whichever this function did not use (design-law §ONE SOURCE OF
+// TRUTH).
 //
 // AND A SENTENCE COUNTS AS SOMETHING. A nightly job that changed no file and
 // reported "the three flaky tests passed this time" delivered that report to

@@ -62,16 +62,58 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// mutatingTools are the belt hands whose effect on the disk is a known path.
+// mutatingTools are the belt hands whose effect on the disk is a known path,
+// each held against the condition under which one of ITS calls is a write.
 //
 // It is a LIST, exactly as the early-start law's is (loop.go), and it is short
 // for the same reason: membership is a claim this file has to be able to make
 // good on. bash is deliberately absent — a shell command's effects are whatever
 // it did, and a ledger that guessed at them would offer to revert a set of files
 // that is not the set that changed.
-var mutatingTools = map[string]bool{
-	"edit":  true,
-	"write": true,
+//
+// TWO OF THE THREE ARE UNCONDITIONAL AND THE THIRD IS NOT, which is the whole
+// reason this is a map to a predicate rather than a set of names. edit and write
+// exist to change the file they name; edit_video is four operations behind one
+// name and only three of them write ([editVideoWrites]). Admitting the name
+// alone would have put a read-only `measure` into the revert ledger, and — in
+// the reader that resolves no path at all — made it the strongest kind of
+// forward evidence the loop detector has (looped.go's
+// [loopWatch.materialProgress]).
+var mutatingTools = map[string]func(arguments string) bool{
+	"edit":       everyCallWrites,
+	"write":      everyCallWrites,
+	"edit_video": editVideoWrites,
+}
+
+// everyCallWrites is the condition for a hand with no read-only shape at all:
+// it changed the file it named, or it failed — and the failures are filtered
+// where the results are read ([changeLedger.PostFeedback]) rather than here,
+// because this question is asked at pre-action too, before there is a result.
+func everyCallWrites(string) bool { return true }
+
+// editVideoWrites reports whether one edit_video call is one of the three
+// actions that put a file on disk: a joined cut, a saved frame, a scored cut.
+// `measure` is the reading, and it writes nothing (tools_editvideo.go).
+//
+// IT IS SPELLED ONCE, HERE, AND BOTH SIDES OF THE BUILD THAT CARE READ IT — the
+// mutating machinery above, which asks so it can guard and revert the file, and
+// task_run.go's [producedAFile], which asks so that a firing whose only act was
+// a measure is not written up as having landed something. The action names are
+// the tool's own constants rather than three string literals, on the ONE SOURCE
+// OF TRUTH law: a respelt action must not be able to mean one thing where it is
+// implemented and another thing here.
+func editVideoWrites(arguments string) bool {
+	var args struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
+		return false
+	}
+	switch strings.TrimSpace(args.Action) {
+	case editVideoFrame, editVideoJoin, editVideoScore:
+		return true
+	}
+	return false
 }
 
 // fileChange is one file this turn touched.
@@ -216,30 +258,62 @@ func (c *changeLedger) PostFeedback(_ context.Context, ep *episode, _ *eventHub,
 	}
 }
 
-// mutatingPath reports the absolute path one call is about to change, and the
-// same path as a person reads it.
+// mutatedPath is THE ONE PREDICATE for "this call is about to change a file",
+// and it answers with the path as the CALL ITSELF SPELLS IT.
 //
-// The resolution mirrors bare's resolveToCwd (internal/exec/bare/tools.go) for
-// the ordinary shapes — an absolute path is itself, a relative one hangs off the
-// workspace — and declines everything else: no workspace, no path argument,
-// arguments that do not parse. A path this cannot resolve is a change this
-// cannot offer to revert, which is the correct amount of ambition.
-func (a *Agent) mutatingPath(call ai.ToolCall) (string, string, bool) {
-	if !mutatingTools[call.Function.Name] {
-		return "", "", false
-	}
-	workspace := strings.TrimSpace(a.config.Workspace)
-	if workspace == "" {
-		return "", "", false
+// A CALL WRITES A FILE IF AND ONLY IF ITS PATH RESOLVES HERE, and the two
+// readers that need that fact ask this one question rather than each deciding
+// for itself: [Agent.mutatingPath], which puts the answer under the workspace
+// for the guards and the ledger, and looped.go's [loopWatch.materialProgress],
+// which has no workspace to put anything under and wanted only the yes or no.
+// The second one used to read the NAME, which is how a read-only `measure`
+// would have come to count as this turn putting something in the world.
+//
+// THE UNNAMED DESTINATION IS OUT OF REACH, AND SAYING SO IS THE POINT OF THIS
+// PARAGRAPH. edit_video called with no path lands under a timestamped name in
+// this session's own video or picture folder, which is not a name anything can
+// read out of the arguments — exactly the case task_run.go's [savingTools]
+// essay describes for generate_image, and it gets the same answer: no path, no
+// claim. Such a call still writes a real file. Nothing here scopes it, reverts
+// it or counts it, and a reader must not finish this function believing the
+// hole is closed in that case too.
+//
+// AND THE PATH IS TAKEN EXACTLY AS SPELLED. edit_video's destination gains the
+// extension its action saves in when the model named none (tools_media.go's
+// mediaDestination), so a scope decision is still the right one — the file lands
+// in the directory that was judged — while the ledger's entry for a bare
+// `assets/cut` names a file that never appeared and a revert of it puts nothing
+// back.
+func mutatedPath(call ai.ToolCall) (string, bool) {
+	writes, listed := mutatingTools[call.Function.Name]
+	if !listed || !writes(call.Function.Arguments) {
+		return "", false
 	}
 	var args struct {
 		Path string `json:"path"`
 	}
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-		return "", "", false
+		return "", false
 	}
 	path := strings.TrimSpace(args.Path)
-	if path == "" {
+	return path, path != ""
+}
+
+// mutatingPath reports the absolute path one call is about to change, and the
+// same path as a person reads it.
+//
+// The resolution mirrors bare's resolveToCwd (internal/exec/bare/tools.go) for
+// the ordinary shapes — an absolute path is itself, a relative one hangs off the
+// workspace — and declines everything else: no workspace, and everything
+// [mutatedPath] declines. A path this cannot resolve is a change this cannot
+// offer to revert, which is the correct amount of ambition.
+func (a *Agent) mutatingPath(call ai.ToolCall) (string, string, bool) {
+	path, writes := mutatedPath(call)
+	if !writes {
+		return "", "", false
+	}
+	workspace := strings.TrimSpace(a.config.Workspace)
+	if workspace == "" {
 		return "", "", false
 	}
 	if !filepath.IsAbs(path) {

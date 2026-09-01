@@ -176,12 +176,13 @@ func strictlyInside(inner, outer string) bool {
 // early starts included, and a check written into the belt's write tool instead
 // would be a check the next tool appended does not have (hooks.go).
 //
-// IT BINDS EXACTLY WHAT [writeGuard] BINDS — edit and write, the two hands whose
-// target is a path this process can read before the call runs (recovery.go's
-// mutatingTools). A shell command's effects are whatever it did, and a guard
-// that pattern-matched commands would be promising something it cannot keep. The
-// hole is the same hole, named in the same place, and it is smaller than it
-// looks: the measured failure was an `edit`.
+// IT BINDS EXACTLY WHAT [writeGuard] BINDS — every call whose target is a path
+// this process can read before the call runs, which is edit, write and the three
+// edit_video actions that write one (recovery.go's [mutatedPath]). A shell
+// command's effects are whatever it did, and a guard that pattern-matched
+// commands would be promising something it cannot keep. The hole is the same
+// hole, named in the same place, and it is smaller than it looks: the measured
+// failure was an `edit`.
 type treeClaimGuard struct{ agent *Agent }
 
 func (treeClaimGuard) Name() string { return "tree-claim" }

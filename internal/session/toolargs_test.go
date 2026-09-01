@@ -280,9 +280,13 @@ func TestNoToolDecodesItsOwnArgumentsWithEncodingJSON(t *testing.T) {
 // invitation to send the form the decoder used to refuse — which is exactly what
 // a provider did, ten times over, on `tasks.limit`.
 //
-// The allowlist is the arguments that really are fractional.
+// The allowlist is the arguments that really are fractional — the ones whose
+// USEFUL values are not whole. edit_video's `level` is a loudness whose own
+// default is 0.3, and its `fade` is a length of time where half a second is an
+// ordinary answer; declaring either an integer would refuse the value the tool
+// itself reaches for.
 func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
-	fractional := map[string]bool{"per_run_usd": true}
+	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {

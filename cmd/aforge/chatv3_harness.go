@@ -104,12 +104,18 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // the entries are: a settings row that cannot build a client is a reason to run
 // the ordinary turn, not a reason to refuse to open a conversation. The session
 // checks this seam for nil before it matches anything (its harness.go).
-// The media pair is [session.Config]'s own, handed down so a run's belt carries
-// the same generation verbs the conversation's does — and the same absences.
-// Both may be nil, which is a machine with no media models and a harness belt of
-// seven wire tools, exactly as before.
+// THE SEAMS ARE THE CONVERSATION'S OWN, handed down whole rather than
+// reassembled here, so that a run's belt carries the same generation verbs the
+// conversation's does, the same absences, and — the half that was missing — the
+// same answer about where what it makes lands and how the person finds it again.
+// Every one of them may be zero, which is a machine with no media models writing
+// to the legacy rung, and a harness belt of seven wire tools, exactly as before.
+//
+// The Seer is the ONE seam this door fills rather than passes on, because it is
+// the run's own client — built here, from the person's settings, and held by
+// nothing upstream that could have handed it over.
 func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string,
-	media session.MediaGenerator, mediaModel func(string) string, mediaPick func(string, string) (string, error),
+	seams session.HarnessBeltSeams,
 ) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 	if store == nil {
 		return nil
@@ -126,9 +132,8 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	// The run's own client is what view_image looks with: a harness that can
 	// check the picture it just made needs somewhere to send it, and this is the
 	// completer the run already holds.
-	tools := v3HarnessToolBridges(workspace, session.HarnessBeltSeams{
-		Media: media, MediaModel: mediaModel, MediaPick: mediaPick, Seer: client,
-	})
+	seams.Seer = client
+	tools := v3HarnessToolBridges(workspace, seams)
 	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {

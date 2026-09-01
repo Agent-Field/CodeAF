@@ -231,7 +231,14 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.speakTools()...)
 	tools = append(tools, a.musicTools()...)
 	tools = append(tools, a.videoTools()...)
-	return append(tools, a.viewTools()...)
+	tools = append(tools, a.viewTools()...)
+	// edit_video (tools_editvideo.go) belongs beside them and is gated on
+	// something else entirely: ffmpeg on PATH. It buys nothing, so it needs no
+	// model, no key and no money — which means it is present on a machine that
+	// cannot generate a single frame, where cutting together footage the person
+	// already has is the only video work there is. It rides last because it is
+	// what the other five's output is assembled WITH.
+	return append(tools, a.videoEditTools()...)
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's
