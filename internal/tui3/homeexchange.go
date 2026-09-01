@@ -365,7 +365,7 @@ func (ex *homeExchange) over() bool { return !ex.working && !ex.asking() }
 func (ex *homeExchange) spent() bool { return ex.over() && ex.seen }
 
 // closeReply ends the reply row being streamed into, and it is this pane's
-// [app.closeLive] — the same law, one column narrower.
+// [feed.closeLive] — the same law, one column narrower.
 //
 // SETTLING IS A PROPERTY OF THE BOUNDARY AND NOT OF THE EVENT THAT FIRED. A
 // reply stops growing for five different reasons — a call starts under it, a
