@@ -1564,3 +1564,112 @@ instrument's spread nor the bound.
   a `SheetWeight` that says how sure to be of a published row are all untested
   from here, and the last section's ruling on `SheetWeight` is untouched by this
   run.
+
+## The abnormality gate, on two seed sets — three of four, and the fourth is stable
+
+*`go run ./bench/lanelab/gosim -proof` twice, 2026-09-01, on `feat/waiting-policy`
+at `c9833f1b`. **Four arms each** — two stores (`cold`, `warmed`) × two doors
+(`shipped`, `flat`) — five rows an arm, **150 requests per row per seed**, so
+**450 trials per row**, **2,250 per arm**, **9,000 per seed set**, **18,000 in
+all**; per arm that is **1,125 healthy requests** and **225 staged silences** in
+the row the ceiling is read off. **18m 14s** and **18m 16s** wall.*
+
+*The two seed sets are named on purpose. **Familiar: 7 / 9 / 11** — the seeds
+that have now judged the six frontier candidates, the warmed arm and this one,
+and which a mechanism could in principle have been fitted to. **Held out:
+23 / 25 / 27** — never used anywhere in this lane before this run, chosen before
+it and not changed after. `gosim/proof.json` and `gosim/proof-fresh.json` are
+the two runs.*
+
+### What changed in the build
+
+`W(s) > A + m` answers **does acting pay**. It does not answer **is this lane
+misbehaving**, and the warmed arm above is the measurement that separated them:
+with a tight, correct belief the controller hedged healthy requests MORE often
+than from a cold store, because a cheap alternative and a well-known median make
+"another arm would probably be quicker" true on ordinary draws.
+
+So an act before the ceiling now needs both tests — the payoff crossing, and the
+wait being past the `1 − p` quantile of the very survival that clock reads. `p`
+is derived from §K rather than chosen: under the null each alarm opportunity
+exceeds its own quantile with probability `p`, a request offers `k` of them, the
+union bound puts the per-request false-act rate at `k · p`, and §K already fixes
+that at 2%. So `p = 0.02 / k` with `k` counted from the request's shape — one
+first token, one thought, one per expected visible token. `internal/lane/control/hazard.go`
+and `DESIGN.md` §B carry the derivation; it was written and committed **before**
+this run.
+
+### The four bounds, both seed sets
+
+| bound | cold·shipped | cold·flat | **warmed·shipped** | warmed·flat |
+|---|---|---|---|---|
+| **familiar, 7/9/11** | | | | |
+| time-to-action ≤ 10 s in 100% | 100.00% of 225, max 10.00 s | 100.00% of 225 | **100.00% of 225, max 10.00 s** | 100.00% of 225 |
+| false hedges ≤ 2% | 0.71% | 0.98% | **0.62%** | 0.36% |
+| spend overhead ≤ 3% | 4.12% of $1.3999 | 4.23% of $1.3924 | **4.45% of $1.5207** | 3.87% of $1.5800 |
+| long think ≥ 95% | 97.27% of 220 | 95.52% of 223 | **98.21% of 224** | 98.22% of 225 |
+| purse cap ≤ 10% | 4.12% PASS | 4.23% PASS | — | — |
+| **held out, 23/25/27** | | | | |
+| time-to-action ≤ 10 s in 100% | 100.00% of 225, max 10.00 s | 100.00% of 225 | **100.00% of 225, max 10.00 s** | 100.00% of 225 |
+| false hedges ≤ 2% | 0.98% | 0.80% | **0.80%** | 0.53% |
+| spend overhead ≤ 3% | 4.02% of $1.3485 | 3.55% of $1.3967 | **3.78% of $1.5709** | 4.45% of $1.5123 |
+| long think ≥ 95% | 95.96% of 223 | 95.98% of 224 | **97.77% of 224** | 98.22% of 225 |
+| purse cap ≤ 10% | 4.02% PASS | 3.55% PASS | — | — |
+
+> **warmed · shipped, the arm the decision rests on: time-to-action PASS, false
+> hedges PASS, long think PASS, spend overhead FAIL — on BOTH seed sets.
+> 3 of 4, twice.**
+
+**Held-out seeds say the same thing as familiar ones**, criterion by criterion
+and within a few tenths of a point. Nothing here is fitted to a seed, and the
+one failure is as stable as the three passes.
+
+### What the gate was worth, and what it did not touch
+
+| | before the gate | familiar | held out |
+|---|---:|---:|---:|
+| false hedges, warmed·shipped | 2.84% | **0.62%** | **0.80%** |
+| long think, warmed·shipped | 93.21% | **98.21%** | **97.77%** |
+| spend overhead, warmed·shipped | 5.56% | 4.45% | 3.78% |
+| time-to-action | 100% of 225 | 100% of 225 | 100% of 225 |
+
+Two bounds that failed now pass by a factor of two to three, and the invariant
+did not move at all, on any arm, in either run: **every one of the 225 staged
+silences in every one of the eight arms was acted on inside the ceiling.** That
+is the guard the derivation promised — the ceiling is untouched and a stall
+crosses its own quantile within seconds — and it is measured rather than argued.
+
+### Why spend still fails, measured
+
+**It is no longer false hedging, and the row counts say so.** On
+warmed · shipped, familiar seeds, the five rows raised **103 arms** in total
+(24 / 25 / 29 / 0 / 25). **Seven of them were on healthy requests** — that is
+what 0.62% of 1,125 is. **The other 96 were rescues of genuinely staged
+stalls**: the mechanism doing exactly what it exists for.
+
+So the residual 4.45% is very largely the loser-side cost of **correct**
+rescues, on a workload where **half of every row's requests are a staged
+fault**. §K's spend clause is a share of the bill and cannot tell a dollar
+wasted on a healthy lane from a dollar spent rescuing a broken one; on a 50%-
+fault mix those are mostly the second kind. Whether that clause is measuring
+what it was written to measure on this workload is a question about the
+acceptance criterion, not a number this lane may adjust — and it is the owner's.
+
+**One behavioural change worth naming.** The `thinking model` row's stall used
+to be caught by the drift clock and is now caught by the ceiling: its act p50
+moved from 4.95 s to 10.00 s and its clock tally from `drift 209, first token
+late 114` to `ceiling 228`. Time-to-action still holds at 100% of 225 with a
+maximum of 10.00 s, so no bound moved — but a stall inside a run of thought is
+now answered at the ceiling rather than before it, and that is a real cost of
+the gate on the one row where the believed gap is half a second.
+
+### A correction the next reader needs — cold numbers are not restraint
+
+**The cold arms' low arm counts have always been partly an INABILITY TO HEDGE,
+not restraint, and reading them as restraint is the mistake this lane already
+made once.** On a cold store the `silent lane` row has no belief, no frontier
+and no alternative, so every act it can possibly raise is a `Report`: it armed
+**0** times cold and **29** times warmed in the run before this one, on the same
+seeds and the same world. A cold-store cost figure is therefore a floor produced
+in part by having nowhere to go, and the correct comparison for any future
+candidate is the warmed arm, where the frontier is real and an arm is a choice.

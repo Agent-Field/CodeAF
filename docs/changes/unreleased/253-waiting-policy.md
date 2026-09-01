@@ -91,6 +91,35 @@ Nothing was tuned in response and `docs/design/waiting/DESIGN.md` §K is
 unchanged: the ruling's premise is not what the measurement says, and the
 decision is the owner's.
 
+**And the warmed failure was a controller defect, which is now fixed and
+measured.** The hazard inequality alone answered two questions — *does acting
+pay* and *is the lane misbehaving* — and with a tight, correct belief it
+rationally hedges healthy draws. An act before the ceiling now requires both the
+payoff crossing AND an abnormality test: the wait is past the `1 − p` quantile
+of the very survival that clock reads, first token against the first-token
+survival, drift against the gap survival, the duration clock against the think
+survival. **`p` is derived from §K rather than chosen** — under the null each
+alarm opportunity exceeds its own quantile with probability `p`, a request
+offers `k` of them, the union bound puts the per-request false-act rate at
+`k · p`, and §K already fixes that at 2%, so `p = 0.02 / k` with `k` counted from
+the request's own shape. `DESIGN.md` §B carries the derivation. The ceiling is
+untouched and absolute, so time-to-action cannot regress, and a survival nobody
+measured has no quantile — the gate stands open exactly where the payoff test is
+already closed.
+
+**Measured on two seed sets, 18,000 trials: three of the four bounds pass and
+spend does not.** On warmed · shipped: time-to-action 100.00% of 225 acts at a
+maximum of 10.00 s (PASS), false hedges **0.62%** familiar / **0.80%** held out
+against 2% (PASS), long think **98.21%** / **97.77%** against 95% (PASS), spend
+**4.45%** / **3.78%** against 3% (FAIL). The gate cut false hedges from 2.84% and
+lifted long think from 93.21%, and the invariant did not move on any of the
+eight arms. **The residue is no longer false hedging**: of 103 arms on that arm,
+seven were on healthy requests and ninety-six were rescues of genuinely staged
+stalls, so what spend is measuring on a workload that is half staged faults is
+mostly the cost of the mechanism working. That is a question about the
+acceptance criterion and it is the owner's; nothing was tuned, and §K's gate
+shape is not written into the design while its load-bearing arm is red.
+
 Measured, on the shipped door: false hedges fall from 5.3% to 2.9% of healthy
 requests and the spend overhead from 5.5% to 4.8% of the bill, against
 thresholds of 2% and 3%. Neither gate closes. `REPORT.md` carries the frontier —
