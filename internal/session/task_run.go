@@ -1200,6 +1200,23 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 // being about the conditions. `orders` is [TaskGraph.standingWorld]'s answer,
 // resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
+	brief := g.inheritedLocked(node)
+	if orders != "" {
+		// The section is rendered with a trailing newline for the block the
+		// conversation wraps it in; a brief is prose and ends where it ends.
+		brief += "\n\n" + strings.TrimRight(orders, "\n")
+	}
+	return brief
+}
+
+// inheritedLocked is the half of the brief above that A PART OF THIS WORK
+// INHERITS: what the node was admitted with, and what the work before it
+// learned. It is a function of its own because the division road composes every
+// part's world on it (task_divide_compose.go), and the standing orders are the
+// one section it must not carry — the frontier appends those to each part in its
+// own right a moment later, so a part composed on the whole assembled brief
+// would read the house rules twice.
+func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 	var learned strings.Builder
 	for _, id := range node.dependsOn {
 		prerequisite := g.nodes[id]
@@ -1212,11 +1229,6 @@ func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := node.spec.brief
 	if learned.Len() > 0 {
 		brief += "\n\nWhat the work before you learned:" + learned.String()
-	}
-	if orders != "" {
-		// The section is rendered with a trailing newline for the block the
-		// conversation wraps it in; a brief is prose and ends where it ends.
-		brief += "\n\n" + strings.TrimRight(orders, "\n")
 	}
 	return brief
 }

@@ -351,6 +351,15 @@ func (c *folderPartCompleter) CompleteWithMessages(_ context.Context, messages [
 	if system == titleSystem {
 		return textResponse("the report"), nil
 	}
+	// IT READS THE SCOPE AND NOT THE WHOLE PROMPT. Every part is composed with a
+	// map of what its SIBLINGS own above its own scope (task_divide_compose.go),
+	// so a fixture that dispatched on the whole document would answer for
+	// whichever part the map happened to name first — and beta's worker would
+	// write alpha's file. What is dispatched on is the section under
+	// [divisionThisPart], which is this part's own and nobody else's.
+	if _, own, found := strings.Cut(text, divisionThisPart); found {
+		text = own
+	}
 	for _, part := range []string{"alpha", "beta"} {
 		if !strings.Contains(text, "write "+part+".md") {
 			continue

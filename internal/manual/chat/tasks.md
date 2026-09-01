@@ -2445,16 +2445,26 @@ parts themselves. That is the whole of the exception. A count that says no on wo
 read for width is final and free, exactly as it always was, and the free-lane test is never
 waived by anything.
 
+**What each part is told is composed, not copied.** A part opens on the same document
+every task opens on: your own message word for word, then the work being divided as the
+task itself was given it, then one line — `THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS
+RIGHT NOW:` — naming what each of its siblings owns and telling it to leave them alone.
+Last comes `WHAT THIS PART OWNS`, and that part alone is what the splitting worker wrote.
+**The harness writes everything but the scope**, and it writes the same thing for a part a
+worker split out and a part a second model drew — so a part never depends on the model
+doing the splitting remembering to restate the job once per part. Your own sentence still
+appears exactly once, at the top, where it appears on every task.
+
 **And then the plan itself is read once, by your `mastermind` model.** Both tests above are
-about whether a split is worth it; neither of them reads the parts. But a part's
-brief is everything that worker will ever know — it never sees your conversation and cannot
-ask anybody anything — and the briefs were written by whatever model the task itself runs on.
+about whether a split is worth it; neither of them reads the parts. But what a part owns is
+everything that worker will act on — it never sees your conversation and cannot
+ask anybody anything — and the scopes were written by whatever model the task itself runs on.
 So once the two tests have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
-brief, fix a boundary two parts share, fold two parts into one, or say the parts are really
+scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
 worker carries on, exactly as a no from either test above. So the parts you see may be fewer
-than the worker asked for, and their briefs may not be word for word what it wrote.
+than the worker asked for, and what they own may not be word for word what it wrote.
 
 **And it has one more answer, which is not about the split at all.** The mastermind may
 read the work and find that what is left of it **cannot be done by a worker** — an approving
