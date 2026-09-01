@@ -123,6 +123,37 @@ func TestTheChatIsTaughtTheSameWorkingDisciplineAsTheWorker(t *testing.T) {
 	}
 }
 
+// TestTheDeliverableFilePathLawIsSaidOnce is the same one-wording law the
+// discipline fragment already obeys, applied to the deliverable-file path
+// rule. prompts/system.md is read by every surface this package renders, so a
+// second copy in prompts/task.md is a paragraph every worker paid for twice
+// (prefixbudget_test.go weighs the assembled prompt) and a law with two
+// places to drift apart from.
+//
+// The needle is the idea, not the ALL-CAPS house-rule line: the restatement
+// that used to live in task.md said "full absolute path" in different words,
+// and counting only the system.md wording would have called that once.
+func TestTheWorkerPromptStatesTheDeliverableFilePathLawOnce(t *testing.T) {
+	const law = "full absolute path"
+	chat := chatSystem(t)
+	worker := workerSystem(t)
+	if !strings.Contains(strings.ToLower(chat), law) {
+		t.Error("the conversation prompt lost the deliverable-file path law")
+	}
+	// EXACTLY ONCE. Absent is the defect this test was written for; twice is
+	// the other one — a paragraph of the fixed prefix bought twice on every
+	// request of every turn, and a law with two places to drift apart from.
+	if count := strings.Count(strings.ToLower(worker), law); count != 1 {
+		t.Errorf("the deliverable-file path law appears %d times in the prompt a worker reads, not once", count)
+	}
+	// THE DECLARATION DOOR IS A DIFFERENT LAW and stays on the task page:
+	// declaredFiles / declarationWord read a last line spelled exactly
+	// `files:`. Dropping the path restatement must not take that with it.
+	if !strings.Contains(worker, "    files: path/one.go, path/two.json") {
+		t.Error("the worker prompt lost the files: declaration door")
+	}
+}
+
 // AND IT TEACHES THEM WITHOUT NAMING A TRADE. aforge is handed prose, research,
 // data, operations and code by the same door, and a surface reading a law written
 // in one trade's nouns reads a law that is not about the job in front of it. So
