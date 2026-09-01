@@ -1,10 +1,12 @@
 package manual
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -306,6 +308,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it keep compacting", "compacting-over-and-over"},
 		{"it compacts after every step", "compacting-over-and-over"},
 		{"compacting over and over", "compacting-over-and-over"},
+		// And the knob for it, asked the four ways somebody reaches for it: the
+		// flag, the settings row's own words, and the two things they want it to
+		// do.
+		{"what does --context-fill do", "compacting-over-and-over"},
+		{"context fill setting", "compacting-over-and-over"},
+		{"make it compact sooner", "compacting-over-and-over"},
+		{"stop it compacting so early", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
@@ -1420,5 +1429,41 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
+	}
+}
+
+// ONE SOURCE OF TRUTH, ACROSS A MEDIUM THAT CANNOT INTERPOLATE. A number that
+// appears in two places drifts, and the manual is the second place for two of
+// the context law's own figures: the shipped fill percentage and the room every
+// call keeps for its answer. Markdown cannot read a Go constant, so this test
+// is the interpolation — move either constant and the page that quotes it goes
+// red, naming the figure it is now wrong about.
+//
+// `propose_task`'s schema said the step default was 40 while the executor
+// applied 200, and every model that read it reasoned from the wrong figure.
+// This is that lesson applied to the pages the model reads about compaction.
+func TestTheCompactionPageQuotesTheContextLawsOwnNumbers(t *testing.T) {
+	page, ok := Chat().Page("compacting-over-and-over")
+	if !ok {
+		t.Fatal("the chat corpus lost compacting-over-and-over")
+	}
+	for _, one := range []struct {
+		what  string
+		spelt string
+	}{
+		{"the shipped context fill", strconv.Itoa(ctxbudget.DefaultFillPercent)},
+		{"the answer room", "65,536"},
+	} {
+		if !strings.Contains(page, one.spelt) {
+			t.Fatalf("compacting-over-and-over does not say %s as %q — the constant moved and the page did not",
+				one.what, one.spelt)
+		}
+	}
+	// The answer room is spelled with a thousands separator on the page, which
+	// is how a person reads it and not how Go writes it, so the check above is
+	// only honest while this holds.
+	if ctxbudget.DefaultCompletionReserveTokens != 65536 {
+		t.Fatalf("the completion reserve is now %d; the page still says 65,536",
+			ctxbudget.DefaultCompletionReserveTokens)
 	}
 }

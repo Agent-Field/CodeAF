@@ -27,7 +27,8 @@ never folded, and the full record stays readable in the store or the session jou
 
 It should not, and it no longer does. **The line it fires at follows the model's own
 window** — `window − max(15% of window, 16384)` — so a model claiming 1,310,720 tokens
-folds at 1,114,112 and one claiming 128,000 folds at 108,800.
+folds at 1,114,112 and one claiming 128,000 folds at 108,800. That is the line whenever
+you have not set one yourself; the next section is how to set one.
 
 Two things used to make a big model fold like a small one, and both are fixed:
 
@@ -42,9 +43,47 @@ Two things used to make a big model fold like a small one, and both are fixed:
 A measured run in August 2026 compacted nineteen times in two and a half hours for exactly
 those two reasons, at about a twentieth of the room its model advertised.
 
-If you are still seeing it on a model you know is large, the thing to check is what aforge
-believes the window is: `/status` reports the model's own figure, and a much smaller number
-there means the model catalog on this machine has not answered for it.
+If you are still seeing it on a model you know is large, the two things to check are both
+on `/status`: the `context` line reports the model's own figure, and a much smaller number
+there means the model catalog on this machine has not answered for it; the `compacts at`
+line under it says where the fold line actually is and whether you pinned it.
+
+## What --context-fill does — the context fill setting, and compacting sooner
+
+Context fill is how full a window may get before it folds, as a percent, and when you set
+it that is the line. Three ways say the same thing and all set the same context fill:
+
+- the `context fill` row on the settings sheet's Models tab (`/settings`), which is
+  written down and holds for every later session;
+- `AFORGE_CONTEXT_FILL_PCT` exported in your shell, which holds for every aforge started
+  from it;
+- `--context-fill N` on a headless run, which sets that variable for that run.
+
+The fill is clamped to **10–90**. Lower it to compact sooner, raise it to compact later. A
+session where you have set a context fill says so on `/status`: the `compacts at` line
+reads `60% of 1M (pinned)` where an untouched session reads `85% of 1.3M (derived)`.
+
+**Not setting the context fill is not the same as setting it to 60.** The shipped fill is
+60 and it sizes a task's own workers; the conversation you type in ignores it until you
+set one, and follows the window instead. Honouring an untouched 60 would fold a
+1,310,720-token model at 786,432 rather than 1,114,112 — every session paying for a
+number nobody chose.
+
+## Two clamps on a context fill you set
+
+Both only ever bind at the edges, and between them a fill you set is the line exactly as
+you typed it.
+
+- **The answer room is kept.** The line never rises so far that the reply aforge is
+  waiting for has nowhere to go — that room is the `answer room` setting, 65,536 tokens by
+  default (`--completion-reserve`). On a window under about 437,000 tokens the derived
+  line is the higher of the two and becomes the ceiling instead, so asking for 90 on a
+  128,000-token model gives you 108,800 rather than something lower than an untouched
+  session would have got.
+- **The line never falls under the tail.** The most recent 20,000 tokens are never folded,
+  so a threshold at or below them would fire on every step and find nothing to take. The
+  floor is twice that tail. On a large window it never binds; on a small one it is what
+  stops a fill of 10 from being a fold that cannot work.
 
 ## Why compaction costs more than it looks like it should — the prompt cache
 
