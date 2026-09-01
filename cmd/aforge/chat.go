@@ -1169,7 +1169,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
 					outcome.Text, store.UserCancelReason, workerModel)
 			}
-			result := leafSpend(spent, spentShape, workerModel, banker.banked())
+			// A pause is work coming back and a cancel is work nobody wants
+			// any more; neither is a leaf that ran out, and the ending is
+			// carried verbatim so the scheduler reads the true one.
+			result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, true)
 			result.Summary = outcome.Text
 			result.ServiceRequests = outcome.ServiceRequests
 			return result, nil
@@ -1285,7 +1288,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// task twice by the time we arrive here, so this is the most
 			// expensive kind of result there is — and returning a bare zero
 			// value is what made real spend journal as $0.00 on the daily rail.
-			return leafSpend(spent, spentShape, workerModel, banker.banked()), failure
+			return leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, false), failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -1304,13 +1307,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// assembled deliverable reaches the gate. Semantic failure stays honest
 		// and still lands with the evidence from the failing leaf.
 		//
-		// But exhaustion alone is not evidence of unfinished work. A leaf that
+		// But exhaustion alone is not evidence of unfinished WRITING. A leaf that
 		// is told to land within its reserve often lands complete — one real
 		// run split a finished, self-described "complete and verified"
 		// inventory into 27 rounds of invented verification, because the
 		// replan was asked to find a remainder rather than whether one exists.
-		// So the judge runs first: a checked "done" ships the result as-is,
-		// and a named gap becomes the replan's target instead of a guess.
+		// So the judge runs first, and what it settles is the SIZE of the
+		// remainder: a named gap is what the continuation is aimed at, and a
+		// "nothing left" buys the one turn the exhaustion took away rather than
+		// a tick. Either way the work carries on — a leaf that ran out is never
+		// settled on its own last sentence.
 		// A LEAF THAT RAN OUT OF TIME RAN OUT OF ROOM. Overran deliberately
 		// excludes the clock — it answers "was this leaf too big for its token
 		// envelope" — and reading it here meant the one ending that most needs
@@ -1318,68 +1324,81 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// deadline, landed with a half-finished implementation, and was
 		// delivered as a failure rather than continued. leafRanOutOfRoom is the
 		// predicate the record already uses for exactly this question, and the
-		// judge below is what stops a finished leaf being continued anyway.
+		// judge below is what keeps a finished leaf's continuation cheap.
 		if !isReflex && leafRanOutOfRoom(outcome) {
-			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text, workerModel)
-			if remainder.Checked && remainder.Done {
-				outcome.Verdict = provider.VerdictVerifiedSuccess
-			} else {
-				// The gap is what the continuation is aimed at, and it is the one
-				// string on this path that reaches the overrun planner, the
-				// continuation's own brief, and every judge downstream of it. A
-				// node whose lineage already blew its prediction by multiples is
-				// about to be given more money on the strength of an estimate the
-				// measurement has already contradicted; the gap says so, and the
-				// planner sizes the remainder knowing it.
-				gap := remainder.Remaining
-				if clause := surpriseEvidence(graph, node.ID); clause != "" {
-					gap = strings.TrimSpace(gap + "\n\n" + clause)
+			// THE JUDGE SIZES THE REMAINDER. IT DOES NOT SETTLE THE NODE.
+			//
+			// This used to read `if remainder.Checked && remainder.Done` and
+			// overwrite the verdict to a verified success — a leaf cut off
+			// mid-edit with a red build was ✓ two seconds after its own ⏳ line,
+			// on the strength of one 10k-token judge call, and its siblings were
+			// briefed on truncated work. A measured fact is never overturned by
+			// an unmeasured claim, and running out is measured: it is journaled,
+			// it has two numbers on it, and nothing that runs after the ✓ can
+			// recover the cut work. So both answers take the same arm — the
+			// judge only decides WHAT the continuation is aimed at. See
+			// revision.RemainderVerify for what a "done" buys instead of a tick.
+			remainder := revision.JudgeRemainder(ctx, settings, planClient, graph, node, text,
+				gateEvidence(node, task.Spec, outcome, jobArtifacts(opts.produced, absolute), true, jobDir),
+				workerModel)
+			// The gap is what the continuation is aimed at, and it is the one
+			// string on this path that reaches the overrun planner, the
+			// continuation's own brief, and every judge downstream of it. A
+			// node whose lineage already blew its prediction by multiples is
+			// about to be given more money on the strength of an estimate the
+			// measurement has already contradicted; the gap says so, and the
+			// planner sizes the remainder knowing it.
+			gap := strings.TrimSpace(remainder.Remaining)
+			if gap == "" {
+				gap = revision.RemainderVerify
+			}
+			if clause := surpriseEvidence(graph, node.ID); clause != "" {
+				gap = strings.TrimSpace(gap + "\n\n" + clause)
+			}
+			// The recorded work is NOT passed in from here any more. It is
+			// read at the splice, from the lineage, so that every reason a
+			// job grows — this overrun, the gate's gap round, a cooperative
+			// split, a deferred resumption — is seeded by one rule instead
+			// of by whichever caller somebody remembered to wire. Passing it
+			// from here worked on this path and on none of the others, and
+			// the textual run of 2026-08-29 spliced fourteen cold children
+			// on `reason: gap` to prove it. See resident.LineageBank.
+			spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
+				settings.DailyBudgetUSD,
+				resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
+				replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
+			if replanErr == nil && spliced > 0 {
+				continuing = true
+				notes = append(notes, "["+continuationMessage(spliced)+"]")
+				// How work was divided is the machinery's own arithmetic. The
+				// person asked for a result, not for a count of pieces, and the
+				// receipt on the summary above already tells every reader
+				// downstream that this node's last word is not its last word.
+				recordOnNode(graph, node.ID, continuationMessage(spliced), store.RoleSystem)
+			} else if replanErr == nil {
+				// A zero splice at the rail is a pause, not a final partial. The
+				// question and deferred remainder are journaled; the reconciler
+				// resumes the split after the head records consent. A zero
+				// splice from a governor cap is final: the rail check below
+				// stays false and the partial delivers as the result.
+				if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
+					continuing = rail.Reached
 				}
-				// The recorded work is NOT passed in from here any more. It is
-				// read at the splice, from the lineage, so that every reason a
-				// job grows — this overrun, the gate's gap round, a cooperative
-				// split, a deferred resumption — is seeded by one rule instead
-				// of by whichever caller somebody remembered to wire. Passing it
-				// from here worked on this path and on none of the others, and
-				// the textual run of 2026-08-29 spliced fourteen cold children
-				// on `reason: gap` to prove it. See resident.LineageBank.
-				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
-					settings.DailyBudgetUSD,
-					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
-					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
-				if replanErr == nil && spliced > 0 {
-					continuing = true
-					notes = append(notes, "["+continuationMessage(spliced)+"]")
-					// How work was divided is the machinery's own arithmetic. The
-					// person asked for a result, not for a count of pieces, and the
-					// receipt on the summary above already tells every reader
-					// downstream that this node's last word is not its last word.
-					recordOnNode(graph, node.ID, continuationMessage(spliced), store.RoleSystem)
-				} else if replanErr == nil {
-					// A zero splice at the rail is a pause, not a final partial. The
-					// question and deferred remainder are journaled; the reconciler
-					// resumes the split after the head records consent. A zero
-					// splice from a governor cap is final: the rail check below
-					// stays false and the partial delivers as the result.
-					if rail, err := graph.DailyRailToday(settings.DailyBudgetUSD); err == nil {
-						continuing = rail.Reached
-					}
-					if continuing {
-						// Continuing suppresses the announcement, which is right for
-						// a job that will speak again in a minute and wrong for one
-						// waiting on a human. Without this the user got the budget
-						// question and no result line at all, while a real partial
-						// sat finished in the graph. It is posted here rather than
-						// left to the announcer because the announcer is the thing
-						// being suppressed.
-						_, _ = thread.Post(graph, store.Message{
-							SessionID: node.Provenance.SessionID,
-							Role:      store.RoleSystem,
-							NodeID:    node.ID,
-							Body: boundedDelivery(text) +
-								"\n\nThat is as far as today's budget goes. The rest is planned and waiting on the rail — raise it and I'll carry on.",
-						})
-					}
+				if continuing {
+					// Continuing suppresses the announcement, which is right for
+					// a job that will speak again in a minute and wrong for one
+					// waiting on a human. Without this the user got the budget
+					// question and no result line at all, while a real partial
+					// sat finished in the graph. It is posted here rather than
+					// left to the announcer because the announcer is the thing
+					// being suppressed.
+					_, _ = thread.Post(graph, store.Message{
+						SessionID: node.Provenance.SessionID,
+						Role:      store.RoleSystem,
+						NodeID:    node.ID,
+						Body: boundedDelivery(text) +
+							"\n\nThat is as far as today's budget goes. The rest is planned and waiting on the rail — raise it and I'll carry on.",
+					})
 				}
 			}
 		}
@@ -1941,7 +1960,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			}
 		}
-		result := leafSpend(spent, spentShape, workerModel, banker.banked())
+		result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, continuing || extended)
 		result.Summary = text
 		result.Promote = promoted
 		result.ServiceRequests = outcome.ServiceRequests
@@ -2581,10 +2600,7 @@ func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
 		record.Reason = "the worker did not come back within " + record.Allowed +
 			" and was stopped — its work is recorded and the node goes back on the queue"
 	case err == nil && outcome != nil && leafRanOutOfRoom(outcome):
-		bound := outcome.Stop
-		if bound == exec.StopDone || bound == "" {
-			bound = outcome.Exhausted
-		}
+		bound := leafStop(outcome)
 		record.Bound = string(bound)
 		record.Turns = outcome.Turns
 		record.Allowed = exhaustionAllowance(bound, deadline)
@@ -2617,8 +2633,32 @@ func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
 // to stop — and it is the one that actually ended the ink run's attempts, so a
 // record built only on Overran would have written down nothing.
 func leafRanOutOfRoom(outcome *exec.Outcome) bool {
-	return outcome.Overran() || outcome.Stop == exec.StopDeadline ||
-		outcome.Exhausted == exec.StopDeadline
+	return leafStop(outcome).OutOfRoom()
+}
+
+// leafStop is HOW THIS LEAF ENDED, in the executor's own one word for it.
+//
+// Two fields hold the answer and they are not interchangeable: Stop is what
+// landed the leaf and Exhausted is what ran out on the way, and a leaf granted a
+// landing reserve carries both. What every reader downstream wants is the
+// ending that says the leaf was still working, so an ending that ran out wins
+// over one that did not — and where neither did, Stop is the answer it always
+// was. It is one function because three readers ask it: the record, the
+// settlement, and the scheduler on the other side of the exec seam.
+func leafStop(outcome *exec.Outcome) exec.StopReason {
+	if outcome == nil {
+		return ""
+	}
+	if outcome.Stop.OutOfRoom() {
+		return outcome.Stop
+	}
+	if outcome.Exhausted.OutOfRoom() {
+		return outcome.Exhausted
+	}
+	if outcome.Stop != "" {
+		return outcome.Stop
+	}
+	return outcome.Exhausted
 }
 
 // exhaustionAllowance spells the room this attempt was given, in the unit that
@@ -2741,7 +2781,8 @@ func withOpenFindings(graph *store.Store, node store.Node, brief string) string 
 // executor, written by the runner, and never once carried across this seam, so
 // the leaf rows — the ones holding almost all the tokens — journalled a warm
 // prefix as a cold run. Anything added to the ledger belongs here, once.
-func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked exec.Usage) resident.ExecResult {
+func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked exec.Usage,
+	outcome *exec.Outcome, continued bool) resident.ExecResult {
 	// THE SUMMED ROW IS THE REMAINDER, NEVER THE TOTAL. Calls banked as they
 	// were billed are already on disk, and summing them again here would charge
 	// the node twice for one leaf. What is left over is real spend nobody has
@@ -2766,7 +2807,7 @@ func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked ex
 	if left.Cost < 0 {
 		left.Cost = 0
 	}
-	return resident.ExecResult{
+	result := resident.ExecResult{
 		PromptTokens:     left.PromptTokens,
 		CompletionTokens: left.CompletionTokens,
 		CachedTokens:     left.CachedTokens,
@@ -2775,6 +2816,20 @@ func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked ex
 		Model:            model,
 		SpendBanked:      banked.PromptTokens > 0 || banked.CompletionTokens > 0 || banked.Cost > 0,
 	}
+	// AND HOW THE LEAF ENDED CROSSES THE SEAM WITH WHAT IT COST. This is the
+	// one place a resident.ExecResult is built on this path, so it is the only
+	// place the fact can be put on: a field added to the struct and never filled
+	// in here is dead code that reads like a fix, which is exactly what one
+	// attempt at this defect shipped. Stopped is set whenever there is an
+	// outcome to read, so an ending of "done" is recorded as an ending rather
+	// than as a silence. See resident.ExecResult.RanOut.
+	if outcome != nil {
+		result.Stopped = true
+		result.Stop = leafStop(outcome)
+		result.Meter = outcome.Meter
+	}
+	result.Continued = continued
+	return result
 }
 
 // atLeastZero is the clamp above, named so the reason it exists is readable at

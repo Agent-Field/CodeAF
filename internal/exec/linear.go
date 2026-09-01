@@ -797,7 +797,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// on that path Stop stays StopDone, so this is the only record that
 			// the leaf was still working when the clock took it.
 			outcome.Exhausted = StopDeadline
-			outcome.Meter = Meter{Name: "deadline", Unit: "seconds",
+			outcome.Meter = Meter{Name: MeterDeadline, Unit: "seconds",
 				Reached: int(time.Since(started).Seconds()), Allowed: int(l.deadline.Seconds())}
 			trace.note("deadline close — landing reserve started")
 			messages = append(messages, ai.Message{Role: "user", Content: text(
@@ -1168,7 +1168,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// and the line a person reads are composed from one fact rather
 			// than from two guesses. See Outcome.Meter.
 			outcome.Meter = Meter{
-				Name: "cost", Reached: spent(outcome), Allowed: l.maxTokens,
+				Name: MeterCost, Reached: spent(outcome), Allowed: l.maxTokens,
 				Unit: "tokens of billed work",
 			}
 			reached := "budget exhausted — landing reserve granted"
@@ -1231,7 +1231,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				// The one bound with no allowance worth printing: it is a
 				// structural detector rather than a ceiling, and what it
 				// reached is a description, not a figure.
-				outcome.Meter = Meter{Name: "no-progress", Reached: outcome.Turns}
+				outcome.Meter = Meter{Name: MeterNoProgress, Reached: outcome.Turns}
 				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 				trace.note(progress.noProgressReason() + " — leaf terminated")
 				return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
@@ -1243,7 +1243,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish in well under it, so reaching it is evidence the sizing anchors put
 	// too much into one node — which is worth reporting rather than hiding.
 	outcome.Stop = StopTurnCap
-	outcome.Meter = Meter{Name: "turns", Reached: outcome.Turns, Allowed: l.maxTurns, Unit: "turns"}
+	outcome.Meter = Meter{Name: MeterTurns, Reached: outcome.Turns, Allowed: l.maxTurns, Unit: "turns"}
 	outcome.Text = strings.TrimSpace(lastAssistantText(messages))
 	return l.land(ctx, task, outcome, started, reading, inheritedReading), nil
 }
@@ -1317,6 +1317,21 @@ func (l *Linear) land(
 	PhotographAfter(ctx, l.workspace, l.history, l.deadline, task, reading,
 		len(outcome.Artifacts) > 0, inherited, outcome)
 	outcome.Elapsed = time.Since(started)
+	// AND THE METER IS READ AT LAND, NOT AT THE GRANT. The two live bounds are
+	// read when the landing reserve is handed out, and then the landing turns
+	// run — more model calls, more seconds — so the figure the journal keeps and
+	// the figure the person reads were both the leaf's spend one turn before it
+	// stopped. Recomputed from the run's own usage rows, a measured run reported
+	// 152,090 tokens against 172,791 actually spent and 178,086 against 199,131:
+	// every exhaustion line under-reported by 12-14%, and an autopsy comparing a
+	// grant against a reading of the grant learns nothing. This is the one place
+	// every exit passes through, so it is where the reading is taken.
+	switch outcome.Meter.Name {
+	case MeterCost:
+		outcome.Meter.Reached = spent(outcome)
+	case MeterDeadline:
+		outcome.Meter.Reached = int(time.Since(started).Seconds())
+	}
 	outcome.Verdict = verdictFor(outcome)
 	provider.Report(ctx, outcome.Verdict)
 	return outcome

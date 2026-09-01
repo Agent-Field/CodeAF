@@ -439,3 +439,35 @@ func spentOfTurn(turn turnBilling) int {
 	}
 	return turn.prompt - cached + cached*cachedTokenWeightPercent/100 + turn.completion
 }
+
+// THE METER IS READ AT LAND, NOT AT THE GRANT.
+//
+// Both live bounds are read when the landing reserve is handed out, and then the
+// landing turns run — more model calls, more seconds. Every ⏳ line and every
+// stored leaf_exhausted.reached therefore reported the leaf's spend one turn
+// before it stopped: recomputed from one run's own usage rows, 172,791 tokens
+// were written down as 152,090 and 199,131 as 178,086, an under-report of 12-14%
+// on the one figure an autopsy of a runaway leaf is made of.
+func TestTheExhaustionMeterIsReadWhenTheLeafActuallyStops(t *testing.T) {
+	client := &warmRunaway{window: calibratedWindow(), hitPercent: 98}
+	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, defaultLeafTokens, time.Hour)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Meter.Name != MeterCost {
+		t.Fatalf("the leaf was landed by %q, so this test is not measuring what it claims to",
+			outcome.Meter.Name)
+	}
+	if outcome.Meter.Reached != spent(outcome) {
+		t.Fatalf("the record says the leaf reached %d and it spent %d — the reading was taken "+
+			"when the landing was granted, not when the leaf stopped",
+			outcome.Meter.Reached, spent(outcome))
+	}
+	// And the landing really did cost something, or the two figures would agree
+	// whether or not anything was recomputed.
+	if landed := spent(outcome) - outcome.Meter.Allowed; landed <= 0 {
+		t.Fatalf("the landing reserve billed nothing (%d spent against a %d grant), so the "+
+			"two readings cannot differ", spent(outcome), outcome.Meter.Allowed)
+	}
+}

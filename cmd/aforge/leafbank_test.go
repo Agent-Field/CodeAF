@@ -74,7 +74,7 @@ func TestTwoBilledCallsLeaveTwoUsageRowsWithoutALanding(t *testing.T) {
 	landing := leafSpend(exec.Usage{
 		PromptTokens: 4563 + 11002, CompletionTokens: 610 + 318,
 		CachedTokens: 3840 + 8192, Cost: 0.000228 + 0.00051,
-	}, nil, "deepseek/deepseek-v4-flash", banker.banked())
+	}, nil, "deepseek/deepseek-v4-flash", banker.banked(), &exec.Outcome{Stop: exec.StopDone}, false)
 	if !landing.SpendBanked {
 		t.Fatal("the landing does not know its money was banked")
 	}
@@ -87,7 +87,7 @@ func TestTwoBilledCallsLeaveTwoUsageRowsWithoutALanding(t *testing.T) {
 	escalated := leafSpend(exec.Usage{
 		PromptTokens: 4563 + 11002 + 90000, CompletionTokens: 610 + 318 + 2000,
 		CachedTokens: 3840 + 8192, Cost: 0.000228 + 0.00051 + 0.4,
-	}, nil, "vendor/strong-model", banker.banked())
+	}, nil, "vendor/strong-model", banker.banked(), &exec.Outcome{Stop: exec.StopDone}, false)
 	if escalated.PromptTokens != 90000 || escalated.CompletionTokens != 2000 {
 		t.Fatalf("an escalation's own spend came out as %d/%d, want the 90000/2000 nobody banked",
 			escalated.PromptTokens, escalated.CompletionTokens)
