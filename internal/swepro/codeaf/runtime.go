@@ -849,7 +849,6 @@ func (runtime *runtimeAdapter) definitionsFor(
 		ProviderID: providerID,
 		ModelID:    modelID,
 		AgentName:  agentName,
-		Flags:      tool.CurrentWebSearchFlags(),
 	})
 	return filterTools(definitions, disabled)
 }

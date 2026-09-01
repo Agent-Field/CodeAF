@@ -120,11 +120,12 @@ func TestRuntimeMergeRecoveryRunsRawToolLoopWithSelectedLanguage(t *testing.T) {
 }
 
 // aforge-embed: D9 — the gpt-family edit-strategy gate is gone, so write is no
-// longer dropped for gpt-5. The bypass contract is now exercised against
-// websearch, which FilterDefinitions still drops for an openrouter caller
-// with no search flags: bypass keeps it, normal filtering removes it.
+// longer dropped for gpt-5. The bypass contract is exercised against a review
+// specialist tool: bypass keeps it, normal filtering removes it.
 func TestRawRecoveryBypassesNormalToolFiltering(t *testing.T) {
-	tools := []orclient.Tool{{Name: "git_leaf"}, {Name: "write"}, {Name: "report"}, {Name: "websearch"}}
+	// V7: websearch is no longer suitable as a normally-filtered sentinel,
+	// because the keyless back end keeps it on the ordinary belt.
+	tools := []orclient.Tool{{Name: "git_leaf"}, {Name: "write"}, {Name: "report"}, {Name: "review_proof"}}
 	client := codeafStreamClient{
 		model: orclient.Model{ProviderID: "openrouter", ID: "openai/gpt-5"},
 		agent: "merge-recovery", bypassToolFilter: true,

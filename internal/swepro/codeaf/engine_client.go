@@ -299,7 +299,6 @@ func (client codeafStreamClient) visibleTools(tools []orclient.Tool) []orclient.
 		ProviderID: client.model.ProviderID,
 		ModelID:    client.model.ID,
 		AgentName:  client.agent,
-		Flags:      tool.CurrentWebSearchFlags(),
 	})
 	out := make([]orclient.Tool, 0, len(filtered))
 	for _, definition := range filtered {

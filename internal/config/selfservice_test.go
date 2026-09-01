@@ -43,7 +43,7 @@ func TestTheRestraintRowsAreNotSelfService(t *testing.T) {
 		// Whether the work is checked, and how it is signed.
 		KeyTaskAudit, KeyAttribution,
 		// The credentials.
-		KeyExaKey, KeyJinaKey, KeyGoogleOAuthClient, KeyGoogleOAuthSecret, KeySlackOAuthClient,
+		KeyExaKey, KeyFirecrawlKey, KeyJinaKey, KeyGoogleOAuthClient, KeyGoogleOAuthSecret, KeySlackOAuthClient,
 	}
 	registry := registryForGuards(t)
 	for _, key := range restrained {

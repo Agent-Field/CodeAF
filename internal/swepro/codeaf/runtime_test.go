@@ -94,11 +94,11 @@ func TestRunLeafFiltersDefinitionsForActualModel(t *testing.T) {
 	}{
 		{
 			modelID: "deepseek/deepseek-v4-pro",
-			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"},
+			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "websearch", "apply_patch"},
 		},
 		{
 			modelID: "openai/gpt-6.1-codex",
-			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"},
+			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "websearch", "apply_patch"},
 		},
 	}
 	for _, test := range tests {
@@ -134,9 +134,9 @@ func TestRunLeafToolListMatchesAgentAndModelContract(t *testing.T) {
 		// aforge-embed: D9 — the model edit-strategy gate is gone; the coder and
 		// root-orchestrator both get edit, write, and apply_patch regardless of
 		// model. The rows still pin agent-based filtering: coder drops task/plandb.
-		{"coder", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"}},
-		{"root-orchestrator", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "apply_patch"}},
-		{"root-orchestrator", "openai/gpt-6.1-codex", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "apply_patch"}},
+		{"coder", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "websearch", "apply_patch"}},
+		{"root-orchestrator", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "websearch", "apply_patch"}},
+		{"root-orchestrator", "openai/gpt-6.1-codex", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "websearch", "apply_patch"}},
 	}
 	for _, test := range tests {
 		t.Run(test.agent+"/"+test.model, func(t *testing.T) {
@@ -225,7 +225,8 @@ func TestModelFilteringPreservesDisabledTools(t *testing.T) {
 	got := requestToolNames(runtime.definitionsFor(
 		"openrouter", "deepseek/deepseek-v4-pro", "coder", map[string]bool{"write": true},
 	))
-	want := []string{"question", "bash", "read", "glob", "grep", "edit", "webfetch", "apply_patch"}
+	// V7: Disabling an unrelated tool does not remove keyless websearch.
+	want := []string{"question", "bash", "read", "glob", "grep", "edit", "webfetch", "websearch", "apply_patch"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tools = %v, want %v", got, want)
 	}

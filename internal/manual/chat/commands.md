@@ -1443,7 +1443,7 @@ errands on two screens. Neither is the conversation's own money limit here any m
 `per conversation` on **Spending**.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
-"context reuse", "searching", "exa key", "jina key".
+"context reuse", "searching", "exa key", "firecrawl key", "jina key".
 
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",

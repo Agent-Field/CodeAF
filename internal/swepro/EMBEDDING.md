@@ -521,3 +521,28 @@ use, so the roster costs a chat or a `--help` nothing, exactly as before;
 `baked/registry.go`'s embed or `assets/assets.go` must re-apply the
 `aforge-embed:` markers there, and must regenerate the archives rather than
 hand-edit them.
+
+### D13 — `internal/tool`: Firecrawl is the keyless web-search default
+
+*Web-search availability and selection.* Upstream gates `websearch` by provider
+or experimental flags, then splits unflagged sessions between Exa and Parallel.
+The embedded engine always has Firecrawl's keyless MCP endpoint behind the tool,
+so the gate and its frozen `webSearchEnabled` fixtures are deleted. Every coder
+belt now carries `websearch`; `CODEAF_WEBSEARCH_PROVIDER` is trimmed and folded
+to accept `exa`, `parallel`, or `firecrawl`, the Parallel and Exa enable flags
+keep their precedence, and Firecrawl answers every remaining session. The
+session hash and its FNV-1a implementation are gone.
+
+*Wire and result shape.* Firecrawl uses one stateless `firecrawl_search`
+`tools/call`. Every search requests main-content Markdown, whose per-result
+content is capped before the readable numbered result block is returned.
+`FIRECRAWL_API_KEY`, read directly rather
+than added to the frozen environment inventory, becomes an optional bearer
+header. The existing two-endpoint test seam is widened to include Firecrawl;
+Exa and Parallel keep their request and response paths unchanged. The schema
+names which provider honors each knob and derives Firecrawl's content bounds
+from the same constants the renderer applies.
+
+*Cherry-pick note:* upstream still has the provider gate and session split. A
+harvest touching `registry.go`, `websearch.go`, or `web_common.go` must preserve
+the `aforge-embed: D13` availability, selection, rendering, and endpoint seam.

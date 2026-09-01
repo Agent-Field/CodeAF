@@ -17,8 +17,9 @@ import (
 // It answers unauthenticated at about 20 requests a minute, which is why
 // [Options.JinaKey] does NOT gate availability: the key raises the ceiling for
 // someone who has one, and its absence costs nothing but rate. That is what
-// makes this the fetch counterpart to DuckDuckGo — the rung that is always
-// there — with exa-fetch taking over whenever an exa key is present.
+// makes this the fetch counterpart to Firecrawl search — the rung that is
+// always there — with exa-fetch or firecrawl-fetch taking over when its key is
+// present.
 
 var jinaBaseURL = "https://r.jina.ai/"
 
@@ -31,11 +32,9 @@ func init() {
 //
 // s.jina.ai is Search Foundation: the same key the fetch plug takes, spent on
 // the finding rather than the reading. It exists in the registry for one
-// reason — the zero-key search default (DuckDuckGo's HTML endpoint) is
-// bot-walled from datacenter IPs with a 202 and an empty page, which is a
-// search plug that answers "nothing found" to every question. A keyed jina
-// search wins [Resolve]'s keyed rung whenever the key is present, so the
-// person who already pays for fetches never meets that wall.
+// reason — a paid Jina search remains a keyed upgrade over every zero-key
+// search plug. It wins [Resolve]'s keyed rung whenever the key is present, so
+// the person who already pays for Jina keeps using that service for search.
 
 // jinaSearchBaseURL is the endpoint the query is appended to, escaped.
 var jinaSearchBaseURL = "https://s.jina.ai/"

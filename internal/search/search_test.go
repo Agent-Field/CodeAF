@@ -458,9 +458,16 @@ func TestResolveAuto(t *testing.T) {
 		wantFetch  string
 	}{
 		{
-			// A fresh install: nothing configured, and search still works.
+			// V1: A fresh install searches through Firecrawl with nothing configured.
 			name:       "no keys falls to the zero-key plugs",
 			opts:       Options{},
+			wantSearch: "firecrawl",
+			wantFetch:  "jina",
+		},
+		{
+			// V2: DuckDuckGo remains a working safety-valve pin.
+			name:       "duckduckgo remains pinnable",
+			opts:       Options{Provider: "duckduckgo"},
 			wantSearch: "duckduckgo",
 			wantFetch:  "jina",
 		},
@@ -475,12 +482,20 @@ func TestResolveAuto(t *testing.T) {
 		{
 			// JinaKey raises a rate ceiling; it is not a plug selector, so
 			// it changes nothing about who wins.
-			// A jina key now buys SEARCH too: s.jina.ai wins the keyed rung,
-			// because the zero-key default is bot-walled from datacenter IPs.
+			// A jina key buys SEARCH too: s.jina.ai wins the keyed rung over
+			// every zero-key default.
 			name:       "a jina key wins the keyed search rung",
 			opts:       Options{JinaKey: "jina-key"},
 			wantSearch: "jina-search",
 			wantFetch:  "jina",
+		},
+		{
+			// V3: A Firecrawl key raises its ceiling without gating search,
+			// and upgrades only the fetch half to the paid plug.
+			name:       "a firecrawl key upgrades fetch without gating search",
+			opts:       Options{FirecrawlKey: "fc-key"},
+			wantSearch: "firecrawl",
+			wantFetch:  "firecrawl-fetch",
 		},
 		{
 			name:       "a pin wins over the keyed plug",
@@ -631,7 +646,9 @@ func TestRegisterRejectsBadInput(t *testing.T) {
 func TestBuiltInPlugsAreRegistered(t *testing.T) {
 	// The zero-key rungs must exist in a built binary, which is what makes
 	// Resolve total.
-	wantSearch := map[string]bool{"exa": false, "duckduckgo": false}
+	// V1 and V3: Both Firecrawl halves must be registered for the keyless
+	// search and keyed fetch ladders to exist.
+	wantSearch := map[string]bool{"exa": false, "duckduckgo": false, "firecrawl": false}
 	for _, p := range RegisteredSearch() {
 		wantSearch[p.Name()] = true
 	}
@@ -641,7 +658,7 @@ func TestBuiltInPlugsAreRegistered(t *testing.T) {
 		}
 	}
 
-	wantFetch := map[string]bool{"exa-fetch": false, "jina": false}
+	wantFetch := map[string]bool{"exa-fetch": false, "firecrawl-fetch": false, "jina": false}
 	for _, f := range RegisteredFetch() {
 		wantFetch[f.Name()] = true
 	}

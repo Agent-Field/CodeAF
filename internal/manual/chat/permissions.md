@@ -483,7 +483,7 @@ The whole list, by settings key:
 - **Whether aforge's own work is checked** — `task.audit`. A session that can
   switch off the auditor can call anything done.
 - **How work that leaves this machine is signed** — `attribution`.
-- **Your credentials** — `search.exaKey`, `search.jinaKey`,
+- **Your credentials** — `search.exaKey`, `search.firecrawlKey`, `search.jinaKey`,
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the
   secret beside it. These restrain nothing; they are refused because a key
   overwritten with something a model invented is a working account broken in a

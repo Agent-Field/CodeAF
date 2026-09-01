@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// DuckDuckGo: the zero-key default, and the reason this package works on a
-// fresh install with nothing configured.
+// DuckDuckGo: the zero-key safety valve a person can pin when Firecrawl is not
+// the back end they want.
 //
 // It has no API. What it has is html.duckduckgo.com, the no-JavaScript results
 // page, which we request and read with regexes over its stable result__a and
@@ -21,9 +21,10 @@ import (
 // starts returning a parse error instead of results. That failure is loud —
 // see the error in parseDuckDuckGo — and it is survivable precisely because
 // the registry is the upgrade path: a person with a key resolves to exa and
-// never touches this code, and a new zero-key back end can take the default
-// by registering itself. The alternative — no results at all without a key —
-// would make the agent useless for anyone who has not signed up for anything.
+// never touches this code, while the explicit zero-key order in search.go
+// makes Firecrawl the fresh-install default without unregistering this plug.
+// The alternative — no results at all without a key — would make the agent
+// useless for anyone who has not signed up for anything.
 
 var ddgURL = "https://html.duckduckgo.com/html/"
 
@@ -41,9 +42,9 @@ type duckDuckGo struct{ opts Options }
 
 func (duckDuckGo) Name() string { return "duckduckgo" }
 
-// Available is unconditionally true: this is the always-available rung of the
-// resolution ladder, and [Resolve] identifies it by exactly this answer under
-// empty Options.
+// Available is unconditionally true: this remains an always-available rung of
+// the resolution ladder, and [Resolve] identifies it by exactly this answer
+// under empty Options.
 func (duckDuckGo) Available(Options) bool { return true }
 
 func (duckDuckGo) Bind(opts Options) Provider { return duckDuckGo{opts: opts} }

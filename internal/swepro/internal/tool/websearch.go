@@ -6,36 +6,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
 )
 
 const (
-	defaultExaWebSearchURL      = "https://mcp.exa.ai/mcp"
-	defaultParallelWebSearchURL = "https://search.parallel.ai/mcp"
-	webSearchTimeout            = 25 * time.Second
-	webSearchMaxResponseSize    = 5 * 1024 * 1024
+	defaultExaWebSearchURL       = "https://mcp.exa.ai/mcp"
+	defaultParallelWebSearchURL  = "https://search.parallel.ai/mcp"
+	defaultFirecrawlWebSearchURL = "https://mcp.firecrawl.dev/v2/mcp"
+	webSearchTimeout             = 25 * time.Second
+	webSearchMaxResponseSize     = 5 * 1024 * 1024
+	firecrawlContextCharacters   = 4000
+	// A per-result rune cap cannot usefully exceed the accepted whole response.
+	firecrawlMaxContextCharacters = webSearchMaxResponseSize
 )
 
-const webSearchSchema = `{
+// aforge-embed: D13 — the schema names each provider's knobs and derives the
+// Firecrawl bounds from the constants that enforce them.
+var webSearchSchema = fmt.Sprintf(`{
 	"$schema":"https://json-schema.org/draft/2020-12/schema",
 	"type":"object",
 	"properties":{
 		"query":{"type":"string","description":"Websearch query"},
-		"numResults":{"type":"number","description":"Number of search results to return (default: 8)"},
-		"livecrawl":{"type":"string","enum":["fallback","preferred"],"description":"Live crawl mode - 'fallback': use live crawling as backup if cached content unavailable, 'preferred': prioritize live crawling (default: 'fallback')"},
-		"type":{"type":"string","enum":["auto","fast","deep"],"description":"Search type - 'auto': balanced search (default), 'fast': quick results, 'deep': comprehensive search"},
-		"contextMaxCharacters":{"type":"number","description":"Maximum characters for context string optimized for LLMs (default: 10000)"}
+		"numResults":{"type":"number","description":"Number of search results for Exa or Firecrawl (default: 8; Parallel ignores it)"},
+		"livecrawl":{"type":"string","enum":["fallback","preferred"],"description":"Exa live-crawl mode; Firecrawl always returns main-page Markdown and ignores this knob"},
+		"type":{"type":"string","enum":["auto","fast","deep"],"description":"Search type for Exa only; Firecrawl and Parallel ignore it"},
+		"contextMaxCharacters":{"type":"number","description":"Maximum context characters for Exa, or Markdown runes per Firecrawl result (Firecrawl default: %d, maximum: %d; Parallel ignores it)"}
 	},
 	"required":["query"]
-}`
+}`, firecrawlContextCharacters, firecrawlMaxContextCharacters)
 
 type webSearchInput struct {
 	Query                string   `json:"query"`
@@ -128,9 +134,11 @@ func (r *Registry) executeWebSearch(ctx context.Context, call steploop.ToolCall)
 }
 
 func selectWebSearchProvider(sessionID string, flags WebSearchFlags) string {
-	// websearch.ts:30-40 gives the env override first priority, then Parallel,
-	// then Exa, and finally a stable FNV-1a session split.
-	if override := os.Getenv("CODEAF_WEBSEARCH_PROVIDER"); override == "exa" || override == "parallel" {
+	// aforge-embed: D13 — the normalized override remains first, the legacy
+	// enables keep their order, and every other session uses Firecrawl. Session
+	// identity is deliberately ignored: there is no experiment split now.
+	_ = sessionID
+	if override := strings.ToLower(strings.TrimSpace(os.Getenv("CODEAF_WEBSEARCH_PROVIDER"))); override == "exa" || override == "parallel" || override == "firecrawl" {
 		return override
 	}
 	if flags.Parallel {
@@ -139,24 +147,7 @@ func selectWebSearchProvider(sessionID string, flags WebSearchFlags) string {
 	if flags.Exa {
 		return "exa"
 	}
-	if jsFNV1a(sessionID)%2 == 0 {
-		return "exa"
-	}
-	return "parallel"
-}
-
-func jsFNV1a(value string) uint32 {
-	if value == "" {
-		// encode.ts:23 returns undefined for empty content; websearch.ts:39 then
-		// parses the fallback string "0".
-		return 0
-	}
-	hash := uint32(0x811c9dc5)
-	for _, unit := range utf16.Encode([]rune(value)) {
-		hash ^= uint32(unit)
-		hash *= 0x01000193
-	}
-	return hash
+	return "firecrawl"
 }
 
 func webSearchProviderLabel(provider string) string {
@@ -165,6 +156,9 @@ func webSearchProviderLabel(provider string) string {
 	}
 	if provider == "exa" {
 		return "Exa Web Search"
+	}
+	if provider == "firecrawl" {
+		return "Firecrawl Web Search"
 	}
 	return "Web Search"
 }
@@ -222,7 +216,97 @@ func callWebSearchProvider(
 			headers["Authorization"] = "Bearer " + key
 		}
 	}
-	return callMCPWebSearch(ctx, endpoint, toolName, arguments, headers)
+	// aforge-embed: D13 — Firecrawl returns the main-page Markdown the issue's
+	// zero-setup contract promises. The optional key raises the public quota; it
+	// does not decide whether a result carries content.
+	if provider == "firecrawl" {
+		endpoint = options.firecrawlURL
+		if endpoint == "" {
+			endpoint = defaultFirecrawlWebSearchURL
+		}
+		toolName = "firecrawl_search"
+		arguments = map[string]any{
+			"query": input.Query,
+			"limit": nonzeroOr(input.NumResults, 8),
+			"scrapeOptions": map[string]any{
+				"formats": []string{"markdown"}, "onlyMainContent": true,
+			},
+		}
+		if key := strings.TrimSpace(os.Getenv("FIRECRAWL_API_KEY")); key != "" {
+			headers["Authorization"] = "Bearer " + key
+		}
+	}
+	result, err := callMCPWebSearch(ctx, endpoint, toolName, arguments, headers)
+	if err != nil || provider != "firecrawl" {
+		return result, err
+	}
+	return parseFirecrawlResults(result, true, firecrawlContentLimit(input))
+}
+
+func firecrawlContentLimit(input webSearchInput) int {
+	if input.ContextMaxCharacters == nil {
+		return firecrawlContextCharacters
+	}
+	limit := *input.ContextMaxCharacters
+	if math.IsNaN(limit) || limit <= 0 {
+		return firecrawlContextCharacters
+	}
+	// Clamp in floating-point space before converting so a huge model-supplied
+	// JSON number cannot wrap into a negative slice bound on amd64.
+	if math.IsInf(limit, 0) || limit > float64(firecrawlMaxContextCharacters) {
+		return firecrawlMaxContextCharacters
+	}
+	return int(limit)
+}
+
+// aforge-embed: D13 — Firecrawl's nested JSON text becomes the readable result
+// blocks returned by the embedded engine rather than leaking a vendor dump.
+func parseFirecrawlResults(payload string, includeContent bool, maxCharacters int) (string, error) {
+	var response struct {
+		Success bool            `json:"success"`
+		Error   json.RawMessage `json:"error"`
+		Data    struct {
+			Web []struct {
+				Title       string `json:"title"`
+				URL         string `json:"url"`
+				Description string `json:"description"`
+				Markdown    string `json:"markdown"`
+			} `json:"web"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(payload), &response); err != nil {
+		return "", fmt.Errorf("invalid Firecrawl response: %w", err)
+	}
+	if !response.Success {
+		message := strings.TrimSpace(string(response.Error))
+		var plain string
+		if json.Unmarshal(response.Error, &plain) == nil && strings.TrimSpace(plain) != "" {
+			message = strings.TrimSpace(plain)
+		}
+		if message == "" || message == "null" {
+			message = "request was unsuccessful"
+		}
+		return "", fmt.Errorf("Firecrawl search failed: %s", message)
+	}
+	blocks := make([]string, 0, len(response.Data.Web))
+	for index, hit := range response.Data.Web {
+		title := strings.TrimSpace(hit.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		var block strings.Builder
+		fmt.Fprintf(&block, "%d. %s — %s", index+1, title, strings.TrimSpace(hit.URL))
+		if description := strings.Join(strings.Fields(hit.Description), " "); description != "" {
+			fmt.Fprintf(&block, "\n   %s", description)
+		}
+		if includeContent {
+			if markdown := strings.TrimSpace(hit.Markdown); markdown != "" {
+				fmt.Fprintf(&block, "\n\n%s", firstRunes(markdown, maxCharacters))
+			}
+		}
+		blocks = append(blocks, block.String())
+	}
+	return strings.Join(blocks, "\n\n"), nil
 }
 
 func callMCPWebSearch(

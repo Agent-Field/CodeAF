@@ -140,9 +140,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
+          go generate ./internal/manual
           AFORGE_REV="$(git rev-parse --short HEAD)"
           AFORGE_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build \
+            -tags=aforge_packed_manual \
             -trimpath \
             -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=${AFORGE_REV} -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=false -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=${AFORGE_BUILT_AT}" \
             -o "dist/aforge-${GOOS}-${GOARCH}${{ matrix.extension }}" \

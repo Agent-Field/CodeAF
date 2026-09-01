@@ -25,26 +25,19 @@
 package manual
 
 import (
-	_ "embed"
 	"fmt"
 	"strings"
-
-	"github.com/Agent-Field/aforge-v2/internal/packed"
 )
 
 // The pages ship packed, not raw: a megabyte of Markdown is otherwise a
 // megabyte of binary, and a manual is the most compressible thing aforge
-// carries. internal/packed says how and why. The folders below remain the
-// source of truth — the archives beside them are generated from the folders,
-// `make build` regenerates them, and packed_test.go fails when they drift.
+// carries. internal/packed says how and why. The folders below are the only
+// tracked source of truth. `make build` generates ignored archives and selects
+// packed_source.go; ordinary Go commands select raw_source.go so a clean
+// checkout still compiles without committing a shared binary merge hotspot.
 
 //go:generate go run github.com/Agent-Field/aforge-v2/internal/packed/cmd/pack -o pages.pack.gz pages
-//go:embed pages.pack.gz
-var residentPages []byte
-
 //go:generate go run github.com/Agent-Field/aforge-v2/internal/packed/cmd/pack -o chat.pack.gz chat
-//go:embed chat.pack.gz
-var chatPages []byte
 
 const (
 	// DefaultResults is how many sections one question is answered from. Four
@@ -60,10 +53,10 @@ const (
 // resident is the employee's own account of itself. The package-level functions
 // below all read it, because they were this package's whole API before there
 // was a second product to describe and every caller of them means the resident.
-var resident = newCorpus(packed.New(residentPages), "pages/*.md")
+var resident = newCorpus(residentFiles, "pages/*.md")
 
 // chat is the v3 chat's account of itself, reached through [Chat].
-var chat = newCorpus(packed.New(chatPages), "chat/*.md")
+var chat = newCorpus(chatFiles, "chat/*.md")
 
 // Chat is the v3 chat surface's manual: what it can do, how a mechanism works,
 // and why it behaved the way it did. It is a separate corpus from the resident

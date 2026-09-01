@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed furrow test test-swepro test-remote vet check size clean \
+.PHONY: all build debug demo-home embed furrow test test-packed-manual test-swepro test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -18,6 +18,7 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/aforge-v2/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+MANUAL_TAG := aforge_packed_manual
 
 # The imported swe-pro engine (internal/swepro) arrived with fifteen tests
 # already failing on macOS in a clean upstream checkout — /var-vs-/private/var,
@@ -33,10 +34,9 @@ AFORGE_PKGS = $(shell go list ./... | grep -v '/internal/swepro/')
 # The packed corpora — the two manuals, the baked agent roster, the engine's
 # prompt assets. Each folder is the source of truth and the archive beside it is
 # generated from it (internal/packed says why), so a build that skipped this
-# could ship yesterday's manual. The packer is a pure function of the folder, so
-# regenerating on every build rewrites identical bytes and leaves the tree
-# clean — cheaper to trust than a freshness check, and the test beside each
-# corpus asserts the same thing for `make test`.
+# could ship yesterday's manual. The manual archives are ignored build products
+# because one committed binary edited by every manual change conflicts on every
+# merge. The other archives remain tracked and their tests catch drift.
 PACKED_PKGS = ./internal/manual ./internal/swepro/internal/baked ./internal/swepro/internal/assets
 
 all: build
@@ -90,13 +90,19 @@ furrow:
 # shipped binary's compiled-in root never exists on the machine running it, so
 # both lookups already fell through to the cwd copy and then to PATH.
 build: furrow embed
-	go build -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 debug: furrow embed
-	go build -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
+	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 test:
 	go test $(AFORGE_PKGS)
+
+# Exercise the source mode the shipped binary uses. Ordinary Go commands embed
+# the Markdown directly so a clean checkout compiles without generated files;
+# this target proves the generated, compressed path reads the same pages.
+test-packed-manual: embed
+	go test -tags=$(MANUAL_TAG) ./internal/manual
 
 # The engine's own suite. Run it when you change internal/swepro, and compare
 # against `go test ./...` in a clean upstream checkout: at import, the two
@@ -190,7 +196,7 @@ size: build
 
 # The end-of-change ritual in one word: prove it, then ship the binary, then
 # weigh it.
-check: vet test size
+check: vet test test-packed-manual size
 
 # ── the changelog ───────────────────────────────────────────────────────────
 #

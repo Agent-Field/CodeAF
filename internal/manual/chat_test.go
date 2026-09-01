@@ -1395,6 +1395,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
+	// V6: The question a person asks retrieves the implemented zero-key ladder
+	// and the exact Firecrawl failure string in one self-contained section.
+	found := Chat().Search("can you search the web", DefaultResults)
+	for _, section := range found {
+		if section.Page != "what-i-can-do" || section.Title != "Can you search the web?" {
+			continue
+		}
+		for _, want := range []string{
+			"Firecrawl: keyless, with a free monthly allowance and no key needed",
+			"DuckDuckGo remains available as an explicit pin",
+			"Search failed (firecrawl): <err>",
+		} {
+			if !strings.Contains(section.Body, want) {
+				t.Errorf("search section does not contain %q:\n%s", want, section.Body)
+			}
+		}
+		return
+	}
+	t.Fatalf("search question did not retrieve its section: %#v", found)
+}
+
 // The two corpora must stay strangers. This is the package-level half of the
 // same law internal/session tests from the belt side: a chat page and a
 // resident page may never share a name, because a name is how a page is asked

@@ -28,9 +28,10 @@ Five things, in `ci.yml`, job name `check`:
   the most blocking possible failure.
 - **`go vet ./...`** — the class of bug agents produce most: a `printf` verb that
   does not match, a cancel that is never called, a result that is thrown away.
-- **The packed corpora match their folders.** `go generate` on the three packed
-  packages, then demand the tree comes back clean. A manual page edited without a
-  build ships yesterday's manual.
+- **The packed corpora build from their folders.** `go generate` on the three
+  packed packages, then compile and test the manual's packed release path. Its
+  archives are ignored build products, avoiding one binary merge hotspot; the
+  other packed corpora remain tracked, so the tree must still come back clean.
 - **The change is written down.** A new file in `docs/changes/unreleased/`,
   well formed. Two seconds. It carries the one thing a diff cannot — which of
   the things somebody believes about this repository stopped being true — and it
@@ -45,7 +46,7 @@ Five things, in `ci.yml`, job name `check`:
 Run the same thing before you push:
 
 ```sh
-go build ./... && go vet ./... && make embed && git diff --exit-code
+go build ./... && go vet ./... && make test-packed-manual && git diff --exit-code
 make changelog-check
 go test ./internal/manual/ && go test -run Manual ./internal/tui3/ ./internal/session/
 ```
