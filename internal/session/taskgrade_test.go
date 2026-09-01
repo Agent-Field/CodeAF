@@ -155,6 +155,7 @@ func TestTheGradedRecordCarriesTheModelKindOutcomeRetriesCostAndDuration(t *test
 	// must carry the graph's rather than take a second measurement of its own.
 	nest.settleWith(t, "the eleven adapters", "cheap/model", provider.VerdictSemanticFailure, 2, TaskFailed,
 		func(node *TaskNode) {
+			node.ending = TaskEndingRefused
 			node.cost = 0.42
 			node.started = time.Now().Add(-2 * time.Second)
 		})
@@ -272,7 +273,8 @@ func TestGradingASettledNodeSpendsNoModelCall(t *testing.T) {
 func TestWorkNobodyCheckedWritesItsRecordAndMovesNoRating(t *testing.T) {
 	nest := newGradeNest(t, &scriptedCompleter{})
 
-	nest.settle(t, "the halted sweep", "cheap/model", "", 0, TaskFailed)
+	nest.settleWith(t, "the halted sweep", "cheap/model", "", 0, TaskFailed,
+		func(node *TaskNode) { node.ending = TaskEndingError })
 
 	if entries := nest.entries(t); len(entries) != 0 {
 		t.Fatalf("work nobody checked rated a model: %v", entries)
@@ -281,8 +283,10 @@ func TestWorkNobodyCheckedWritesItsRecordAndMovesNoRating(t *testing.T) {
 	if len(rows) != 1 || rows[0].Verdict != "" {
 		t.Fatalf("the record for unjudged work is %+v, want one row carrying no verdict", rows)
 	}
-	if rows[0].Outcome != "not accepted" {
-		t.Fatalf("the record's outcome reads %q, want the settle's own word", rows[0].Outcome)
+	// AND IT DOES NOT READ AS A JUDGEMENT. A node that fell over is not a node
+	// the check turned down, and the record must not say it was.
+	if rows[0].Outcome != "did not finish" {
+		t.Fatalf("the record's outcome reads %q, want the settle's own word for work nobody judged", rows[0].Outcome)
 	}
 }
 

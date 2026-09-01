@@ -392,11 +392,19 @@ func taskKindWordSet(kind string) map[string]bool {
 
 // taskGradeOutcome is the settle's own plain word for how a node ended, and it
 // is the vocabulary a person already reads on a row: work that landed, work the
-// check would not accept, work somebody stopped, and work waiting on somebody to
-// look at it. No machinery vocabulary reaches this string — it goes into a file
-// a person may open, and `needs your look` is the surface's own words for that
-// state rather than a second spelling of them (CLAUDE.md's vocabulary law).
-func taskGradeOutcome(state TaskState, stopped bool) string {
+// check would not accept, work that did not finish, work somebody stopped, and
+// work waiting on somebody to look at it. No machinery vocabulary reaches this
+// string — it goes into a file a person may open, and `needs your look` is the
+// surface's own words for that state rather than a second spelling of them
+// (CLAUDE.md's vocabulary law).
+//
+// THE ENDING IS READ AND NOT ONLY THE STATE, because a node fails for two
+// completely different reasons and one of them is not about the work at all. A
+// check that named gaps is `not accepted`; a worktree that could not be made, a
+// worker that would not start, a connection that dropped is `did not finish` —
+// and a record that called the second one `not accepted` would be reading a
+// judgement into a fault nobody judged.
+func taskGradeOutcome(state TaskState, ending TaskEnding, stopped bool) string {
 	switch {
 	case stopped:
 		return "stopped"
@@ -404,8 +412,10 @@ func taskGradeOutcome(state TaskState, stopped bool) string {
 		return "landed"
 	case state == TaskUnverified:
 		return "needs your look"
-	case state == TaskFailed:
+	case state == TaskFailed && ending == TaskEndingRefused:
 		return "not accepted"
+	case state == TaskFailed:
+		return "did not finish"
 	default:
 		return string(state)
 	}
@@ -444,7 +454,7 @@ func (g *TaskGraph) grade(node *TaskNode) {
 	record := taskGradeRecord{
 		Model:    node.runModelLocked(),
 		Kind:     taskKindOf(node.spec.title),
-		Outcome:  taskGradeOutcome(node.state, node.stopped),
+		Outcome:  taskGradeOutcome(node.state, node.ending, node.stopped),
 		Verdict:  node.checked,
 		Retries:  node.repairs,
 		Cost:     cost,
