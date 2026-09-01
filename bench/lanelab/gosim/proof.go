@@ -276,6 +276,22 @@ type trial struct {
 	// the request.
 	action  float64
 	silence float64
+	wait    float64
+	cost    float64
+	// ttft is the wait before the SERVING stream's first token of any kind, in
+	// seconds from the request going out, and zero when it never wrote one.
+	//
+	// IT IS WHAT THE LEDGER LEARNS FROM, AND IT IS NOT [trial.action]. This
+	// file used to fold time-to-action in as the first-token wait, which is a
+	// different quantity on every request and a MISSING one on every request
+	// that never acted — so the belief was taught by the acts alone, at the
+	// moment each one fired, and every act made the lane that served it look
+	// slower than it is. The build stamps its first token on the first content
+	// delta OR the first reasoning delta (`internal/provider/client.go`) and
+	// folds that as `Sighting.TTFT`, so this does too: a run of thought that
+	// began on time and stalled in the middle is a lane that STARTED on time,
+	// and the gap clock is what has anything to say about the stall.
+	ttft float64
 	// late is how much of `action` was this bench's own alarm rather than the
 	// build's decision, in milliseconds of the world.
 	late float64
@@ -774,9 +790,7 @@ func (p *prover) untilActed(watch *lane.Watch, s *armed, out *trial) (control.Ac
 			if seen.reading.Hidden > 0 && !out.sick {
 				out.thought = true
 			}
-			if seen.reading.Visible > 0 {
-				out.answered = true
-			}
+			p.sawToken(out, seen)
 			if act := watch.Read(seen.reading); act.Kind != control.None {
 				p.mark(out, act, seen.reading.At, 0)
 				return act, served, nil
@@ -803,11 +817,26 @@ func (p *prover) untilActed(watch *lane.Watch, s *armed, out *trial) (control.Ac
 	}
 }
 
+// sawToken records one moment from the stream that is answering: whether a
+// word a person can read has arrived, and — the first time anything at all
+// does — how long this lane took to start, which is the only first-token
+// measurement there is to fold back.
+func (p *prover) sawToken(out *trial, seen sight) {
+	if seen.reading.Visible <= 0 && seen.reading.Hidden <= 0 {
+		return
+	}
+	if out.ttft == 0 {
+		out.ttft = seen.reading.At.Sub(p.at).Seconds()
+	}
+	out.answered = out.answered || seen.reading.Visible > 0
+}
+
 // mark records the first act with the numbers the controller decided it on, and
 // with how late this bench's own alarm was when it asked.
 func (p *prover) mark(out *trial, act control.Act, asked time.Time, late time.Duration) {
 	out.acted, out.kind, out.reason = true, act.Kind, act.Reason
 	out.silence = act.Silence.Seconds()
+	out.wait, out.cost = act.Wait, act.Cost
 	out.action = asked.Sub(p.at).Seconds()
 	out.late = float64(late) / float64(time.Millisecond)
 }
@@ -841,10 +870,12 @@ func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, se
 	// cancelled after its prompt was read has already been billed for it.
 	select {
 	case seen := <-arm.sights:
+		// The ARM's first word is not the served lane's, so it answers the
+		// request and teaches the ledger nothing about the lane it rescued.
 		out.answered = out.answered || seen.reading.Visible > 0
 		out.waste += p.priceOf(served)
 	case seen := <-primary.sights:
-		out.answered = out.answered || seen.reading.Visible > 0
+		p.sawToken(out, seen)
 		out.waste += price
 	case <-arm.done:
 		out.waste += price
@@ -860,9 +891,7 @@ func (p *prover) drain(one *armed, out *trial) {
 	for {
 		select {
 		case seen := <-one.sights:
-			if seen.reading.Visible > 0 {
-				out.answered = true
-			}
+			p.sawToken(out, seen)
 		case <-one.done:
 			return
 		}
@@ -874,10 +903,10 @@ func (p *prover) drain(one *armed, out *trial) {
 // world moving on by what this took plus the seconds somebody spends reading
 // what arrived.
 func (p *prover) close(index int, served string, out trial) {
-	if p.kase.prime && out.answered {
+	if p.kase.prime && out.ttft > 0 && out.answered {
 		p.ledger.Note(lane.Sighting{
 			ID:           lane.ID{Model: p.world.model, Lane: served},
-			TTFT:         time.Duration(out.action * float64(time.Second)),
+			TTFT:         time.Duration(out.ttft * float64(time.Second)),
 			Gen:          time.Duration(float64(p.kase.tokens()) / p.rateOf(served) * float64(time.Second)),
 			Tokens:       p.kase.tokens(),
 			PromptTokens: promptTokens,
@@ -894,8 +923,8 @@ func (p *prover) close(index int, served string, out trial) {
 	p.budget.NoteRequest(p.at)
 	p.budget.NoteSpend(out.usd, p.at)
 	if p.trace {
-		fmt.Fprintf(os.Stderr, "proof %-22s/%d %4d  served %-14s %-22s action %7.2fs  s %7.2fs  $%.6f%s\n",
-			p.kase.name, p.seed, index, served, kindWords[out.kind]+"/"+out.reason, out.action, out.silence, out.usd,
+		fmt.Fprintf(os.Stderr, "proof %-22s/%d %4d  served %-14s %-36s action %7.2fs  s %7.2fs  $%.6f%s\n",
+			p.kase.name, p.seed, index, served, kindWords[out.kind]+"/"+out.reason+fmt.Sprintf(" W%.2f A%.2f", out.wait, out.cost), out.action, out.silence, out.usd,
 			map[bool]string{true: "  SICK", false: ""}[out.sick])
 	}
 	reading := float64(p.scen.visible) / lane.ReadRate * float64(time.Second)

@@ -19,11 +19,15 @@ counts and this one is the bug report.
 > the earlier verdicts are kept because the failures are the point.
 >
 > **The design's own acceptance, §K, is measured separately and does not pass.**
-> Its four proof rows are the last section of this file, ["The proof
+> Its four proof rows are ["The proof
 > rows"](#the-proof-rows--docsdesignwaitingdesignmd-k-measured), and **two of
 > its four criteria fail** — a healthy talk turn wants an arm the instant the
 > action floor passes. The waiting invariant the design was written for holds on
-> all 225 staged silences.
+> all 225 staged silences. The last section of this file, ["The spread floor,
+> the two silences"](#the-spread-floor-the-two-silences-and-what-k-measured-after-them),
+> is what was done about the cost: the two failing criteria are roughly halved
+> and neither reaches its threshold, and it carries the frontier — every
+> candidate tried, against all four gates — and where the residue really is.
 
 ## Two corrections since the first run of this lab
 
@@ -1263,6 +1267,12 @@ is not — is a change to `internal/lane` that moves a number the design fixes a
 a prior, so it is left to the owner rather than taken here. It would be
 measurable in this bench in nine minutes.
 
+**It was taken, and the last section of this file is what it measured.** The
+repair is in `internal/lane` on this branch: the floor is the pair's own
+published dispersion and `SpreadFloor` is the prior for a pair nothing has been
+published about. It halves the false-hedge rate. It does not close the gate, and
+the section says where the rest of it lives.
+
 ### Where this model is wrong
 
 Everything in "Where this model can be wrong" above still applies — the world is
@@ -1301,3 +1311,107 @@ the same world. Five more that belong to these rows alone:
   ceiling, which the 10.00 s figure beside it makes unambiguous. It is a
   reporting collision rather than a wrong decision, and it will make an autopsy
   of a real call log harder in exactly the case the log exists for.
+
+## The spread floor, the two silences, and what §K measured after them
+
+*`go run ./bench/lanelab/gosim -proof -json bench/lanelab/gosim/proof.json`,
+2026-09-01, on `feat/waiting-policy`: the same five rows, the same three seeds
+(7/9/11), 150 requests a row a seed, both doors — **9m 7s** wall, 4,500 trials.
+This section answers Finding 2 above, and it also corrects this lab.*
+
+### What was changed, and what each of the three was worth
+
+**The rule.** `lane.SpreadFloor` was one figure under every lane. It is now the
+**prior for a pair nothing has been published about**, and what stands under a
+pair the sheet HAS published is that pair's own dispersion —
+`ln(p90/p50) / 1.2816`, which the ledger already keeps per pair because it is
+the same number a sighting is weighed against as observation noise
+(`lane.Hierarchy.Draw`). It is a floor and not a figure either way: a lane whose
+belief is genuinely wider is believed. The design's own words are the argument
+for the change as much as for the floor — *a measured thing outranks a prior* —
+and Finding 2's arithmetic is the measurement: the lane these rows are proved
+against publishes σ = 0.577 and was waited against 1.0.
+
+**The two silences.** `s` was one quantity and it is two. The clock that guards
+the ANSWER reads the silence a person is waiting through — since the last
+visible word — and it is what the action floor and the role's ceiling ask about.
+The clock that guards the WIRE reads the time since the endpoint last wrote
+anything at all, readable or not, and it is what the stall clocks ask about. The
+thinking phase's liveness clock already read the wire; the WRITING phase's drift
+clock did not, so a lane that had written three words and then reasoned was read
+as a stall. It is one line in `internal/lane/control/hazard.go` and
+`TestReasoningAfterAWordIsWritingAndNotDrift` fails without it.
+
+**And a correction that belongs to this lab.** `proof.go` folded
+**time-to-action** back into the ledger as the first-token wait. That is a
+different quantity on every request and a MISSING one on every request that
+never acted, so the belief was taught by the acts alone, at the moment each one
+fired — every act making the lane that served it look slower than it is, which
+made the next act likelier. The build stamps its first token on the first
+content delta OR the first reasoning delta (`internal/provider/client.go`) and
+folds that; `proof.go` does too now. **It is a change to the instrument and it
+is reported separately below for that reason.**
+
+### The frontier — every candidate against all four gates
+
+*Shipped door, pooled over the five rows. `time-to-action` is 100% of 225 acts
+with a maximum of 10.00 s on every row of this table; no candidate moved it.*
+
+| # | candidate | false hedges (≤ 2%) | spend (≤ 3%) | long think (≥ 95%) | gates |
+|---|---|---:|---:|---:|---:|
+| 0 | **shipped**, re-measured here | 5.33% | 5.52% | 98.92% of 93 | 2/4 |
+| 1 | predictive spread ADDED to the estimate's, per lane | 4.98% | 5.69% | 90.79% of 76 | 1/4 |
+| 2 | flat 1.0 floor, instrument corrected | 4.09% | 5.01% | — | 2/4 |
+| 3 | **per-lane floor**, instrument corrected | **2.31%** | **4.52%** | 97.62% of 126 | 2/4 |
+| 4 | per-lane floor + a crossing that must LAST one margin | 2.22% | 4.39% | 97.35% of 151 | 2/4 |
+| 5 | **per-lane floor + two silences** — what this branch carries | **2.58%** | **4.71%** | 95.52% of 134 | **2/4** |
+
+- **Row 1 is why the floor is a floor and not a term.** Adding one draw's
+  variance to the estimate's is the honest composition where both are known, and
+  it is wrong here: the four level priors were fitted to cover the measured span
+  of medians *and* their draws, so adding a nat on top double-counts the tail —
+  and the clocks with the least evidence behind them (the thinking row's) got
+  wider rather than tighter. It lost the long-think gate outright.
+- **Rows 2 and 3 attribute the two halves.** The instrument's own correction is
+  worth 1.24 points of false hedges and 0.51 of spend; **the rule is worth a
+  further 1.78 and 0.49** — the larger share of both, and it is the change to
+  the build.
+- **Row 4 was measured and is not carried.** Requiring the crossing to hold for
+  one margin before it counts — hysteresis as a dwell rather than only as a size
+  — bought 0.09 points of false hedges and 0.13 of spend, inside this bench's
+  own run-to-run spread, at the price of a change to §B's inequality and to the
+  two `control` tests that pin its closed form. It is not worth that.
+- **Row 5's long-think figure is not a regression and the denominator says so.**
+  The shipped row acted at 0.70 s on most requests — *before* the run of thought
+  had begun — so 41 of the thinking phases in row 5 were never OBSERVED under
+  the shipped floor at all: 93 phases became 134. Six of those 134 were armed
+  where one of 93 was.
+
+**Run-to-run spread, because these rows are driven over a real socket:** the
+same code and the same seeds moved the committed table's 4.89% / 5.78% to
+5.33% / 5.52% when it was re-measured here, and the count of thinking phases
+between 64 and 151. Differences under about half a point are this instrument.
+
+### The two gates still fail, and the residue is not the floor
+
+**It is one row.** Of the 29 healthy arms in row 5, **21 are the `thinking
+model` row** (9.33% of its healthy half) and the other four rows contribute
+eight between them — two of the five fire none at all. Spend follows it: that
+row's overhead is 8.67% against 5.5–6.8% on the other two that arm at all.
+
+**And its cause is measured.** Traced with `-trace`, that row's healthy acts
+carry `W` of 1.5 to 3.5 s against an `A` of about 0.9 s, on lanes whose first
+token really arrives inside a second. The chain is not wrong about the tail any
+more; it is wrong about the MEDIAN. A pair whose only evidence is one sheet row
+predicts `μ + a + b + e`, and the row may move only `b` and `e` at
+`R = SheetWeight·σ²` — a quarter of one of our own sightings — so a lane the
+sheet publishes at 430 ms is believed at about 1.0–1.2 s, exactly as Finding 1's
+own after-table records. Seventeen lanes over 150 requests is thin per pair, so
+that prior is what most requests are waited against.
+
+**Which is a ruling about a number this design fixes as a prior**, not about the
+floor: `SheetWeight`, or which levels a published row may absorb into. Both are
+§C's, and this lane does not take them. What it can say is what it measured:
+with the floor per lane and the silences separated, the design's own inequality
+still asks for an arm on roughly one healthy request in forty, and the purse is
+what holds the bill down.
