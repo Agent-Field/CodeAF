@@ -26,6 +26,15 @@ import (
 
 func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 	dir := t.TempDir()
+	// THE REAL CLOCK, DELIBERATELY, and it is the only safe reading of it here:
+	// half of what this test checks is the two live rows, and a presence file is
+	// believed for three heartbeats measured against the wall — so a fixture
+	// seeded at a pinned instant is a fixture whose conversations are all dead
+	// before the first assertion. What must NOT depend on where in the day this
+	// runs is the day-bucketed half — the standing ledger's today and the spend
+	// page's fourteen-day axis — and that is
+	// [TestTheDemoHomesLedgersStayInsideTheirOwnDays], which pins both sides of
+	// midnight instead.
 	now := time.Now()
 	built, err := seedDemoHome(dir, now)
 	if err != nil {
@@ -360,5 +369,80 @@ func TestTheDemoHomeRefusesADirectoryThatIsNotItsOwn(t *testing.T) {
 	}
 	if _, fresh, err := demoDir(empty, true); err != nil || fresh {
 		t.Fatalf("--keep on a built demo home came back as (fresh=%v, %v)", fresh, err)
+	}
+}
+
+// A DEMO HOME BUILT AT TEN PAST MIDNIGHT IS AS FULL AS ONE BUILT AT NOON.
+//
+// Every ledger in the fixture is bucketed by local calendar day, and the
+// seeders used to reach those buckets by adding an offset to `now`: a firing
+// "today" was stamped seventeen minutes before now, a turn "today" up to
+// eighty-eight minutes after it. Within an hour of midnight those offsets left
+// the day they named, so a home built just after midnight had nothing standing
+// spent today and the spend page's day axis lost a column — which is how a
+// `make check` that straddled midnight on 2026-09-01 failed
+// [TestTheDemoHomeFillsEveryPlace] and then passed three times in a row
+// twenty minutes later.
+//
+// So the day boundary is exercised on purpose, from both sides, with instants
+// this test chooses rather than instants it happens to run at. Nothing here
+// reads a presence file: liveness is the other test's business and is the one
+// thing that genuinely needs the wall clock.
+func TestTheDemoHomesLedgersStayInsideTheirOwnDays(t *testing.T) {
+	day := time.Now()
+	for _, moment := range []struct {
+		name string
+		at   time.Time
+	}{
+		{"a second before midnight", time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 0, time.Local)},
+		{"a second after midnight", time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 1, 0, time.Local)},
+		{"the middle of the afternoon", time.Date(day.Year(), day.Month(), day.Day(), 14, 30, 0, 0, time.Local)},
+	} {
+		t.Run(moment.name, func(t *testing.T) {
+			dir := t.TempDir()
+			built, err := seedDemoHome(dir, moment.at)
+			if err != nil {
+				t.Fatalf("seed the demo home: %v", err)
+			}
+
+			orders, err := standing.Open(filepath.Join(dir, ".aforge", "v3", "standing"))
+			if err != nil {
+				t.Fatalf("open the standing store: %v", err)
+			}
+			spend, err := orders.Today("", moment.at)
+			if err != nil {
+				t.Fatalf("read today's standing ledger: %v", err)
+			}
+			if spend.USD <= 0 {
+				t.Fatal("nothing standing has spent anything today, so cost per firing draws nothing")
+			}
+
+			lines, err := session.ReadUsage(filepath.Join(dir, ".aforge", "v3", session.UsageLedgerName), time.Time{})
+			if err != nil {
+				t.Fatalf("read the usage ledger: %v", err)
+			}
+			if len(lines) != built.UsageLines {
+				t.Fatalf("the ledger holds %d lines out of %d written", len(lines), built.UsageLines)
+			}
+			// The oldest column the page draws, and the newest: a line outside
+			// that window is a line on a row the fixture never meant to fill.
+			oldest := time.Date(moment.at.Year(), moment.at.Month(), moment.at.Day(), 0, 0, 0, 0, time.Local).
+				AddDate(0, 0, -(usageDays - 1))
+			days := map[string]bool{}
+			for _, line := range lines {
+				days[line.Day] = true
+				if line.At.After(moment.at) {
+					t.Fatalf("a ledger line is stamped %s, which is after the %s the home was built at: %+v",
+						line.At, moment.at, line)
+				}
+				if line.At.Before(oldest) {
+					t.Fatalf("a ledger line is stamped %s, which is before the fourteen-day window opens at %s: %+v",
+						line.At, oldest, line)
+				}
+			}
+			if len(days) != usageDays {
+				t.Fatalf("the spend page's day axis has %d days on it, want %d", len(days), usageDays)
+			}
+		})
 	}
 }

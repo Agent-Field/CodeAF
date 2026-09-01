@@ -420,13 +420,39 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	defer pinnedStub.Close()
 	pinned := newE2ERouter(pinnedStub, control).run(t, 20, victim, true)
 
-	routedP90, controlP90 := e2eP90(routed.answers), e2eP90(pinned.answers)
+	// ── WHAT THE TWO ARMS ARE SCORED ON, AND WHY IT IS THE FIRST TOKEN ──────
+	//
+	// The design's ship gate for a talk turn is p90 TIME TO FIRST TOKEN
+	// (`ideation/provider-routing.md`, C3: "for the talk scenario the prize is
+	// the FIRST TOKEN only, because above the reading rate every lane is the
+	// same speed to a person, so talk gates on p90 TTFT"), and this scenario is
+	// a talk turn. The victim is scripted to go slow in exactly that way — four
+	// seconds to say its first word — so the first token is also the only part
+	// of the answer the script moves at all.
+	//
+	// IT IS ALSO THE ONLY PART THE TEST MACHINE DOES NOT DOMINATE. Scoring the
+	// gate on the whole answer folds the generation phase in, and on this
+	// hundredfold clock the generation phase is twenty-four timer sleeps of a
+	// few hundred microseconds each — which the note on [e2eLane.stub] already
+	// says outright is "a measurement of the scheduler". Measured on a quiet
+	// machine, a healthy answer here took 3.7 s of world time of which about
+	// 1.2 s was the script; the other 2.5 s was one loopback stream's overhead
+	// multiplied by a hundred on the way back into the world's units. That
+	// overhead sits in the numerator AND the denominator of a RATIO, where it
+	// does not cancel — it drags every ratio toward zero — so on a loaded
+	// machine a single ten-millisecond scheduler delay landing on the
+	// eighteenth of twenty routed answers took the measured improvement from
+	// 45% to 28.7% and failed the gate. The first token carries one round trip
+	// of the machine instead of twenty-five sleeps.
+	routedP90, controlP90 := e2eP90(routed.firsts), e2eP90(pinned.firsts)
 	if controlP90 <= 0 {
 		t.Fatalf("the control measured nothing")
 	}
-	t.Logf("victim %s — routed p90 %v over %d requests, pinned p90 %v over %d",
+	t.Logf("victim %s — routed p90 first token %v over %d requests, pinned p90 %v over %d "+
+		"(whole answers: routed p90 %v, pinned p90 %v)",
 		victim, routedP90.Round(time.Millisecond), stub.Requests(victim),
-		controlP90.Round(time.Millisecond), pinnedStub.Requests(victim))
+		controlP90.Round(time.Millisecond), pinnedStub.Requests(victim),
+		e2eP90(routed.answers).Round(time.Millisecond), e2eP90(pinned.answers).Round(time.Millisecond))
 
 	// THE BAR IS THE DESIGN'S OWN SHIP GATE, and it is not the one this
 	// scenario was first written with.
@@ -444,12 +470,12 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 	// request of the arm that does not.
 	const gateImprovement = 0.30
 	if improvement := 1 - float64(routedP90)/float64(controlP90); improvement < gateImprovement {
-		t.Fatalf("the router's p90 is %v against the pin's %v — %.1f%% better, and the gate is %.0f%%",
+		t.Fatalf("the router's p90 first token is %v against the pin's %v — %.1f%% better, and the gate is %.0f%%",
 			routedP90.Round(time.Millisecond), controlP90.Round(time.Millisecond),
 			improvement*100, gateImprovement*100)
 	}
-	if controlP50 := e2eP50(pinned.answers); routedP90 >= controlP50 {
-		t.Fatalf("the router's p90 is %v and the pin's ordinary request is %v: the arm that moves "+
+	if controlP50 := e2eP50(pinned.firsts); routedP90 >= controlP50 {
+		t.Fatalf("the router's p90 first token is %v and the pin's ordinary request is %v: the arm that moves "+
 			"has to have a worse tail than the arm that does not has a middle",
 			routedP90.Round(time.Millisecond), controlP50.Round(time.Millisecond))
 	}
@@ -665,9 +691,20 @@ type e2eRouter struct {
 	// scenarios need it because a belief ages, and ten minutes of ageing is
 	// what lets a lane come back.
 	at time.Time
-	// answers is the world-time to a finished answer, per request, and hedges
-	// is how many of them needed a second one.
+	// answers is the world-time to a finished answer, per request, firsts is
+	// the world-time to its FIRST TOKEN, and hedges is how many of them needed
+	// a second one.
+	//
+	// Both are kept because they answer different questions and only one of
+	// them is a ship gate. THE DESIGN GATES A TALK SCENARIO ON p90 TTFT
+	// (`ideation/provider-routing.md`, C3: "for the talk scenario the prize is
+	// the FIRST TOKEN only, because above the reading rate every lane is the
+	// same speed to a person"), and `firsts` is that quantity. `answers` is
+	// what the world's clock advances by and what a scenario asserting that an
+	// arm was SLOW reads, where a number the machine inflated can only make the
+	// claim harder to meet.
 	answers []time.Duration
+	firsts  []time.Duration
 	hedges  int
 }
 
@@ -737,6 +774,7 @@ func (r *e2eRouter) send(t *testing.T, pinned string, pin bool) {
 	r.budget.NoteRequest(r.at)
 	r.budget.NoteSpend(answer.cost, r.at)
 	r.answers = append(r.answers, answer.total)
+	r.firsts = append(r.firsts, answer.first)
 	if answer.hedged {
 		r.hedges++
 	}
@@ -753,7 +791,13 @@ func (r *e2eRouter) send(t *testing.T, pinned string, pin bool) {
 
 // e2eAnswer is what one request came back with, in the world's units.
 type e2eAnswer struct {
-	total     time.Duration
+	total time.Duration
+	// first is the world-time from the moment the request was sent to the first
+	// word a person could read — WHICH IS NOT THE WINNING STREAM'S OWN TTFT
+	// when a hedge won it. A rescued request cost the person the wait before
+	// the hedge fired as well, and a gate that read the alternate's own first
+	// token would be crediting the design with a wait it did not save.
+	first     time.Duration
 	cost      float64
 	hedged    bool
 	sightings []Sighting
@@ -763,6 +807,10 @@ type e2eAnswer struct {
 // it. The deadline comes from the choice, which computed it from the belief
 // about the lane it expects to serve rather than from any constant here.
 func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e2eAnswer, error) {
+	// The moment the person asked. Every wait below is measured from here and
+	// not from whichever stream happened to answer, because a hedge starts a
+	// second stream late and its own clock knows nothing about the first.
+	asked := time.Now()
 	primary := r.start(ctx, choice.Order, choice.Only, choice.Ignore, request)
 	var alternate *e2eStream
 	var hedgeTimer *time.Timer
@@ -811,24 +859,30 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 			if alternate != nil {
 				alternate.cancel()
 			}
-			return r.finish(answer, result, request)
+			return r.finish(answer, result, request, asked)
 
 		case result := <-alternateDone:
 			if result.err != nil {
 				continue
 			}
 			primary.cancel()
-			return r.finish(answer, result, request)
+			return r.finish(answer, result, request, asked)
 		}
 	}
 }
 
 // finish turns a finished stream into the answer and the sighting it earns.
-func (r *e2eRouter) finish(answer e2eAnswer, result e2eResult, request Request) (e2eAnswer, error) {
+func (r *e2eRouter) finish(answer e2eAnswer, result e2eResult, request Request, asked time.Time) (e2eAnswer, error) {
 	if result.err != nil {
 		return answer, result.err
 	}
 	answer.total = e2eWorld(result.elapsed)
+	// A stream that wrote nothing at all has no first token, so the whole of it
+	// is the wait.
+	answer.first = answer.total
+	if !result.firstAt.IsZero() {
+		answer.first = e2eWorld(result.firstAt.Sub(asked))
+	}
 	answer.cost = result.cost
 	answer.sightings = append(answer.sightings, Sighting{
 		ID:           ID{Model: request.Model, Lane: result.lane},
@@ -857,7 +911,12 @@ func (r *e2eRouter) servedBy(lane string) int {
 
 // e2eResult is one finished stream.
 type e2eResult struct {
-	lane                string
+	lane string
+	// firstAt is the absolute moment this stream's first readable token
+	// arrived, which is what a caller that started more than one stream needs;
+	// ttft is the same instant expressed from this stream's own start, which is
+	// what the LANE earns a sighting on.
+	firstAt             time.Time
 	ttft, gen, elapsed  time.Duration
 	tokens, promptCount int
 	cost                float64
@@ -983,6 +1042,7 @@ func (r *e2eRouter) read(ctx context.Context, first chan string, order, only, ig
 	}
 	result.elapsed = time.Since(began)
 	if !firstToken.IsZero() {
+		result.firstAt = firstToken
 		result.ttft = firstToken.Sub(began)
 		result.gen = lastToken.Sub(firstToken)
 	}

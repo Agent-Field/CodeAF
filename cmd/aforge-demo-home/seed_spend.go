@@ -38,6 +38,40 @@ var demoModels = []struct {
 	{"openai/gpt-5-mini", 0.001},
 }
 
+// demoDayAnchor is the hour of the day a fixture's lines cluster around. Nine
+// in the morning is late enough that an offset an hour or two either side of it
+// is still that morning, which is the whole point of anchoring at all.
+const demoDayAnchor = 9 * time.Hour
+
+// demoMoment is when a fixture line meant for daysAgo days ago is stamped, and
+// IT NEVER LEAVES THE DAY IT NAMES.
+//
+// The offsets the seeders add — a firing seventeen minutes before the last one,
+// a turn eleven minutes after the one before it — used to be added to `now`
+// itself, so a demo home built at ten past midnight stamped TODAY's standing
+// firing fifty minutes earlier, which is yesterday, and the spend page's
+// cost-per-firing clause then drew nothing on a fixture whose entire purpose is
+// to have something on every place. One built at half past eleven at night put
+// today's turns on tomorrow's row of the day axis. The day is chosen first, the
+// offset is applied inside it, and the result is clamped to the day at both
+// ends — and to `now` as well, because money spent in the future reads as a
+// broken fixture rather than a full one.
+func demoMoment(now time.Time, daysAgo int, offset time.Duration) time.Time {
+	day := now.AddDate(0, 0, -daysAgo)
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	at := start.Add(demoDayAnchor + offset)
+	if end := start.AddDate(0, 0, 1).Add(-time.Second); at.After(end) {
+		at = end
+	}
+	if at.Before(start) {
+		at = start
+	}
+	if at.After(now) {
+		at = now
+	}
+	return at
+}
+
 // usageDays is how far back the ledger goes. Fourteen is what the spend page's
 // widest window asks for, so the demo has something under every column of it.
 const usageDays = 14
@@ -58,7 +92,10 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 	next := func() int { step++; return step }
 
 	for day := usageDays - 1; day >= 0; day-- {
-		at := now.AddDate(0, 0, -day).Add(-time.Duration(day%7) * time.Hour)
+		// The hour a day's lines cluster around, spread a little across the
+		// fortnight so the page does not draw fourteen identical days. It is an
+		// offset INSIDE the day and never a shift of the day itself.
+		spread := -time.Duration(day%7) * time.Hour
 
 		// TWO CONVERSATIONS A DAY, ROTATING, and not every conversation on every
 		// day it was alive. A person's ledger is a handful of lines a day, and a
@@ -75,7 +112,7 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 			model := demoModels[next()%len(demoModels)]
 			tokens := 3_000 + 900*(next()%7)
 			if err := record(path, session.UsageLine{
-				At:        at.Add(time.Duration(next()%9) * 11 * time.Minute),
+				At:        demoMoment(now, day, spread+time.Duration(next()%9)*11*time.Minute),
 				Model:     model.slug,
 				Calls:     1 + next()%3,
 				Input:     tokens,
@@ -99,7 +136,7 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 				model := demoModels[next()%len(demoModels)]
 				tokens := 6_000 + 1_500*(next()%5)
 				if err := record(path, session.UsageLine{
-					At:        at.Add(time.Duration(next()%7) * 13 * time.Minute),
+					At:        demoMoment(now, day, spread+time.Duration(next()%7)*13*time.Minute),
 					Model:     model.slug,
 					Calls:     2 + next()%4,
 					Input:     tokens,
@@ -125,7 +162,7 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 				// vocabulary, and it is NOT the five router slots — nothing in the
 				// program records which slot a call ran under.
 				if err := record(path, session.UsageLine{
-					At:        at.Add(time.Duration(next()%5) * 19 * time.Minute),
+					At:        demoMoment(now, day, spread+time.Duration(next()%5)*19*time.Minute),
 					Model:     demoModels[len(demoModels)-1].slug,
 					Role:      string(roles.RoleIntake),
 					Calls:     1,
@@ -151,7 +188,7 @@ func writeUsage(path string, projects map[string]*demoProject, ids map[string]st
 					continue
 				}
 				if err := record(path, session.UsageLine{
-					At:      at.Add(time.Duration(next()%3) * 23 * time.Minute),
+					At:      demoMoment(now, day, spread+time.Duration(next()%3)*23*time.Minute),
 					Model:   demoModels[len(demoModels)-1].slug,
 					Role:    string(roles.RoleTitle),
 					Calls:   1,

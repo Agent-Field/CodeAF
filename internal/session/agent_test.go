@@ -2794,6 +2794,15 @@ type beatSheet struct {
 	ctx    context.Context
 	called chan struct{}
 	once   sync.Once
+	// refreshed carries one name per Refresh, so a test can wait for AS MANY
+	// calls as it is about to assert on rather than for the first one and a
+	// hope. [lanes.Beat] walks its models one at a time and checks the context
+	// before each, so a test that watched only the first call and then closed
+	// the session was racing the cancel against the second model — which is a
+	// race the beat's goroutine loses on a loaded machine. Buffered well past
+	// anything asked here, because a beat running ahead of its watcher must
+	// never block on it.
+	refreshed chan string
 }
 
 func (s *beatSheet) Rows(string) []lanes.Row { return nil }
@@ -2804,7 +2813,25 @@ func (s *beatSheet) Refresh(ctx context.Context, model string) error {
 	s.ctx = ctx
 	s.mu.Unlock()
 	s.once.Do(func() { close(s.called) })
+	select {
+	case s.refreshed <- model:
+	default:
+	}
 	return nil
+}
+
+// waitForRefreshes blocks until the sheet has been asked about count models,
+// which is the signal a test asserting on that many of them actually needs.
+func (s *beatSheet) waitForRefreshes(t *testing.T, count int) {
+	t.Helper()
+	for asked := 0; asked < count; asked++ {
+		select {
+		case <-s.refreshed:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the beat asked about %d models and this session rides %d: %v",
+				asked, count, s.models())
+		}
+	}
 }
 
 func (s *beatSheet) models() []string {
@@ -2821,7 +2848,7 @@ func (s *beatSheet) lifetime() context.Context {
 
 func installBeatSheet(t *testing.T) *beatSheet {
 	t.Helper()
-	sheet := &beatSheet{called: make(chan struct{})}
+	sheet := &beatSheet{called: make(chan struct{}), refreshed: make(chan string, 16)}
 	lanes.Default().SetSheet(sheet)
 	t.Cleanup(func() { lanes.Default().Reset() })
 	return sheet
@@ -2840,12 +2867,12 @@ func TestOpeningASessionStartsTheLaneBeatAndClosingItStopsIt(t *testing.T) {
 		t.Fatalf("open the session: %v", err)
 	}
 
-	select {
-	case <-sheet.called:
-	case <-time.After(2 * time.Second):
-		_ = agent.Close()
-		t.Fatal("the session opened and no beat ever asked the sheet for anything")
-	}
+	// BOTH SLOTS ARE WAITED FOR, NOT THE FIRST AND THEN A CLOSE. The beat asks
+	// about its models one at a time and gives up the moment the session's
+	// context is cancelled, so closing after the first answer used to cancel the
+	// second question about one run in thirty on a loaded machine — and the
+	// assertion below, which is about both slots, then read only one.
+	sheet.waitForRefreshes(t, 2)
 
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close the session: %v", err)
