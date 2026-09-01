@@ -551,6 +551,14 @@ func init() {
 // drawStateBand: STATE IS THE LOUDEST CONTENT LINE, because it is the only band
 // that is about right now. A conversation stopped on a question says so here
 // and then says what it is stopped on, in ink.
+//
+// AND MOVING A CONVERSATION HERE IS A STATE LIKE ANY OTHER, so it is drawn in
+// this band and not in one of its own. It used to be told entirely on the foot
+// line — the far end of a forty-five-row frame from the row it was about — and
+// while a claim was actually out it was told nowhere at all (takeovervoice.go
+// has the whole of that story). The door and its live state sit UNDER what the
+// far window is doing, because `open in another window · working` is the fact
+// the door is an answer to.
 func drawStateBand(a *app, ctx bandContext) []string {
 	row, width, pal := ctx.subject.row, ctx.width, ctx.pal
 	var state []string
@@ -566,7 +574,7 @@ func drawStateBand(a *app, ctx bandContext) []string {
 			state = append(state, pal.ink(wrapped))
 		}
 	}
-	return state
+	return append(state, a.takeoverCard(row, width, pal)...)
 }
 
 // itemView is a convenience for bands that draw for items.
