@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -875,7 +876,7 @@ const SearchProviderAuto = "auto"
 // new plug needs a line here to be pinnable — which is the right cost, because
 // a plug nobody can name in the sheet is still reachable through auto.
 // jina-search is named here too so every registered search plug is pinnable.
-var SearchProviders = []string{SearchProviderAuto, "exa", "firecrawl", "jina-search", "duckduckgo"}
+var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "exa", "jina-search"}
 
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
@@ -1484,7 +1485,7 @@ func (s *Settings) build() []Setting {
 			Label: "searching", Choices: SearchProviders,
 			Hint: "where a web search goes. auto uses the best back end your keys reach and " +
 				"falls back to one that needs none, so search works with nothing set. " +
-				"A change lands on the next session.",
+				"A change lands on the next search.",
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
 		},
@@ -1495,7 +1496,7 @@ func (s *Settings) build() []Setting {
 		// it as it always has (apikey.go's resolution order), and a write lands
 		// on the RUNNING session through the surface's Applied hook rather than
 		// waiting for the next launch — the row this was modelled on says "on the
-		// next session" because search is an accessory; this is the conversation.
+		// next search" because search reads live; this is the conversation.
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
@@ -1509,7 +1510,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyExaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "exa key", Env: "EXA_API_KEY", EmptyLabel: "not set",
 			Hint: "an exa.ai key, which buys better results and page fetches than the free " +
-				"back end. Optional — search works without it. A change lands on the next session.",
+				"back end. Optional — search works without it. A change lands on the next search.",
 			read:  func() string { return maskCredential(ExaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyExaKey, raw, ExaKeyAt(dir)) },
 		},
@@ -1517,7 +1518,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyFirecrawlKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "firecrawl key", Env: "FIRECRAWL_API_KEY", EmptyLabel: "not set",
 			Hint: "a firecrawl.dev key, for when the free monthly allowance runs out. " +
-				"Optional — search works without it. A change lands on the next session.",
+				"Optional — search works without it. A change lands on the next search.",
 			read: func() string { return maskCredential(FirecrawlKeyAt(dir)) },
 			write: func(raw string) error {
 				return writeCredential(dir, KeyFirecrawlKey, raw, FirecrawlKeyAt(dir))
@@ -1528,7 +1529,7 @@ func (s *Settings) build() []Setting {
 			Label: "jina key", Env: "JINA_API_KEY", EmptyLabel: "not set",
 			Hint: "a jina.ai key. It buys nothing but headroom: page fetches already work " +
 				"unauthenticated and the key only raises the rate ceiling. " +
-				"A change lands on the next session.",
+				"A change lands on the next search.",
 			read:  func() string { return maskCredential(JinaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
 		},
@@ -2832,6 +2833,51 @@ func FirecrawlKeyAt(profileDir string) string {
 // JinaKeyAt resolves the Jina credential the same way.
 func JinaKeyAt(profileDir string) string {
 	return credentialAt(profileDir, "JINA_API_KEY", KeyJinaKey)
+}
+
+// SearchOptionsAt is the one mapping from profile rows to the search layer's
+// input. Auto becomes an absent pin because the resolver treats absence as the
+// instruction to walk its ladder; credentials retain their environment-first
+// resolution from the rows above.
+func SearchOptionsAt(profileDir string) search.Options {
+	pin := SearchProviderAt(profileDir)
+	if pin == SearchProviderAuto {
+		pin = ""
+	}
+	return search.Options{
+		Provider:     pin,
+		ExaKey:       ExaKeyAt(profileDir),
+		FirecrawlKey: FirecrawlKeyAt(profileDir),
+		JinaKey:      JinaKeyAt(profileDir),
+	}
+}
+
+// SearchProviderHintAt explains what the searching row means right now. It is
+// recomputed when the sheet rebuilds after a write, so the row describes the
+// next search without turning every rendered frame into a config-file read.
+func SearchProviderHintAt(profileDir string) string {
+	opts := SearchOptionsAt(profileDir)
+	status := search.Status(opts)
+	spoken := strings.Replace(status, " · ", ", ", 1)
+	if opts.Provider == "" {
+		if strings.HasSuffix(status, " · keyless") {
+			return "now " + spoken + " — set search.exaKey or search.firecrawlKey to raise it"
+		}
+		return "now " + spoken
+	}
+	if strings.HasSuffix(status, " · key not set — searches fail") {
+		key := ""
+		switch opts.Provider {
+		case "exa":
+			key = KeyExaKey
+		case "jina-search":
+			key = KeyJinaKey
+		}
+		if key != "" {
+			return fmt.Sprintf("%s is pinned but %s is not set — every search answers %q. Choose auto, or set the key.", opts.Provider, key, search.Failure(opts.Provider, search.ErrNoAPIKey))
+		}
+	}
+	return spoken
 }
 
 // GoogleOAuthClientAt resolves the Google registration: the environment first,
