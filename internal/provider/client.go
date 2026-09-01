@@ -1107,7 +1107,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
 	// lineage's widest — no chunk has named a serving endpoint yet — and
 	// narrows to the lane's own the moment one does, below.
-	stall := newStallWatch(cutStream, c.streamWall(c.modelFor(request), ""))
+	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""))
 	defer stall.stop()
 	// THE MOMENT THE ENDPOINT OWES AN ANSWER is the moment this arm's wait
 	// really began, and it is taken from the reading above rather than from a
@@ -1170,6 +1170,19 @@ func (c *Client) completeWithMessagesStreaming(
 	var split answerSplit
 	finishReason := ""
 	thinking := false
+	// thoughtBegan is when this run of reasoning started, and it is held so that
+	// how long the whole phase lasted can be FOLDED BACK when the first word of
+	// answer ends it.
+	//
+	// A DURATION MODEL THAT IS NEVER MEASURED IS A PRIOR FOREVER. The controller
+	// judges a run of thought against how long this model's thinking usually
+	// lasts, and that belief is only worth having if the finished ones teach it:
+	// without this, a model that deliberates for a minute by design and one that
+	// has hung look alike for as long as the prior is wide.
+	var thoughtBegan time.Time
+	// The rung it was asked at, resolved once: how long a model deliberates is a
+	// property of the model AND of the effort it was told to spend.
+	effortRung := c.recordedEffort(c.modelFor(request), knobsFrom(ctx))
 	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
 	// accumulation is quadratic in the length of a single message, which costs
 	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
@@ -1381,6 +1394,19 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 			}
 			if answerText != "" {
+				if thinking {
+					// THE FIRST WORD OF ANSWER IS WHAT ENDS A THOUGHT, and it is
+					// the only thing that does: a phase that ends with the stream
+					// is a phase that never finished, and a run of thought that
+					// was cut off is not evidence about how long thinking takes.
+					//
+					// IT IS THE SPLIT'S FIRST WORD OF ANSWER (answer.go), not the
+					// first byte on the content channel: a model that fences its
+					// working inside `content` is still thinking, and closing the
+					// phase on that byte would teach the duration clock that this
+					// model deliberates for no time at all.
+					lanes.NoteThought(c.modelFor(request), effortRung, c.clock().Sub(thoughtBegan), c.clock())
+				}
 				thinking = false
 				content.WriteString(answerText)
 				observer(StreamEvent{Kind: StreamDelta, Delta: answerText, Session: session})
@@ -1410,7 +1436,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// ride the event so the session can replay it as assistant metadata.
 			if choice.Delta.thinking() {
 				if !thinking {
-					thinking = true
+					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
 				}
 				events, count := choice.Delta.reasoningEvents()
@@ -1430,7 +1456,12 @@ func (c *Client) completeWithMessagesStreaming(
 			// would be handing the endpoint back a message it never sent.
 			if workingText != "" {
 				if !thinking {
-					thinking = true
+					// AND IT OPENS THE DURATION CLOCK'S PHASE exactly as a
+					// reasoning field does. How long a model deliberates is a
+					// property of the model, not of which channel its provider
+					// put the deliberation on, so a fenced thought is timed and
+					// folded back like any other (answer.go, and the close above).
+					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})

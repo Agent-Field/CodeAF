@@ -87,7 +87,7 @@ func TestTheControllerIsInstalledExactlyOnce(t *testing.T) {
 // says how long, and neither of them is allowed to say the other.
 func TestThePlanIsTheRolesAndTheFrontiers(t *testing.T) {
 	now := time.Now()
-	plan := PlanFor(raced(), beliefOf(400, 50), RoleStanding, now)
+	plan := PlanFor(raced(), PaceOf(beliefOf(400, 50)), RoleStanding, now)
 	if plan.Lane != "A" {
 		t.Errorf("lane = %q, want the head of the order", plan.Lane)
 	}
@@ -113,7 +113,7 @@ func TestThePlanIsTheRolesAndTheFrontiers(t *testing.T) {
 // reported three-minute wait, said about the type that fixes it.
 func TestEveryPlanHasACeilingEvenWithNoChoiceAtAll(t *testing.T) {
 	for _, role := range Roles() {
-		plan := PlanFor(Choice{}, Belief{}, role, time.Now())
+		plan := PlanFor(Choice{}, Pace{}, role, time.Now())
 		if plan.Ceiling != role.Ceiling() || plan.Ceiling <= 0 {
 			t.Errorf("role %q: a request with no opinion about where to go got a ceiling of %s", role, plan.Ceiling)
 		}
@@ -124,15 +124,15 @@ func TestEveryPlanHasACeilingEvenWithNoChoiceAtAll(t *testing.T) {
 // the ESTIMATE, and a controller handed it would believe a tail impossible.
 func TestThePredictiveSpreadIsFloored(t *testing.T) {
 	certain := Belief{TTFT: Posterior{X: math.Log(400), P: 1e-6}, Rate: Posterior{X: math.Log(50), P: 1e-6}}
-	first, gap := survivals(certain)
-	if first.Sigma != SpreadFloor || gap.Sigma != SpreadFloor {
-		t.Fatalf("spreads = %g and %g, want the floor of %g", first.Sigma, gap.Sigma, SpreadFloor)
+	certainly := PaceOf(certain)
+	if certainly.First.Sigma != SpreadFloor || certainly.Gap.Sigma != SpreadFloor {
+		t.Fatalf("spreads = %g and %g, want the floor of %g", certainly.First.Sigma, certainly.Gap.Sigma, SpreadFloor)
 	}
 	wide := Belief{TTFT: Posterior{X: math.Log(400), P: 4}, Rate: Posterior{X: math.Log(50), P: 4}}
-	if got, _ := survivals(wide); got.Sigma != 2 {
+	if got := PaceOf(wide).First; got.Sigma != 2 {
 		t.Fatalf("a genuinely wide belief was narrowed to %g", got.Sigma)
 	}
-	if first, gap := survivals(Belief{}); first.Known() || gap.Known() {
+	if blank := PaceOf(Belief{}); blank.First.Known() || blank.Gap.Known() {
 		t.Fatal("an empty belief invented a distribution")
 	}
 }
@@ -160,7 +160,7 @@ func TestALaneNothingIsBelievedAboutIsStillBounded(t *testing.T) {
 func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
 	start := time.Now()
 	choice, belief := raced(), beliefOf(400, 50)
-	plan := PlanFor(choice, belief, RoleTalk, start)
+	plan := PlanFor(choice, PaceOf(belief), RoleTalk, start)
 	cost := plan.Alts[0].First.Mean() + plan.Lambda*plan.Alts[0].Extra + plan.Margin
 
 	crossing := 0
@@ -343,7 +343,7 @@ func TestTheTextOnTheScreenIsWhatBuysCommitment(t *testing.T) {
 	// ten-second ceiling gets there first, which is the invariant doing its job
 	// and not the commitment rule failing to.
 	stall := func(written int) int {
-		plan := PlanFor(choice, beliefOf(400, 50), RoleTalk, start)
+		plan := PlanFor(choice, PaceOf(beliefOf(400, 50)), RoleTalk, start)
 		plan.Ceiling = time.Minute
 		watch := Watching(plan)
 		moment := 400
@@ -395,7 +395,7 @@ func TestAPinnedChoiceAsksRatherThanHedging(t *testing.T) {
 	start := time.Now()
 	choice := raced()
 	choice.Only = []string{"A"}
-	plan := PlanFor(choice, beliefOf(400, 50), RoleTalk, start)
+	plan := PlanFor(choice, PaceOf(beliefOf(400, 50)), RoleTalk, start)
 	plan.Pinned = true
 	watch := Watching(plan)
 	for ms := 0; ms <= 30_000; ms += 50 {

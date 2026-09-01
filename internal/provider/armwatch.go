@@ -100,8 +100,7 @@ func (w *streamWatch) note(reading control.Reading) {
 		w.visible += reading.Visible
 	}
 	spoke := reading.Visible > 0
-	act := w.control.Note(reading)
-	w.after(act, reading.At)
+	act := w.after(w.control.Note(reading), reading.At)
 	arm, race := w.arm, w.race
 	w.mu.Unlock()
 
@@ -120,29 +119,52 @@ func (w *streamWatch) quiet(now time.Time) {
 		return
 	}
 	w.mu.Lock()
-	act := w.control.Quiet(now)
-	w.after(act, now)
+	act := w.after(w.control.Quiet(now), now)
 	arm, race := w.arm, w.race
 	w.mu.Unlock()
 	race.act(arm, act)
 }
 
-// after records what the controller said and how the deadline moved. It runs
-// with the lock held, from the two callers above and from nowhere else.
-func (w *streamWatch) after(act control.Act, now time.Time) {
-	if act.Kind != control.None && w.acted.Kind == control.None {
-		w.acted, w.silence = act, act.Silence
+// after records what the controller said, names the fault where there is one,
+// and moves the deadline. It runs with the lock held, from the two callers above
+// and from nowhere else, and it hands back the act as it will be reported.
+//
+// THE PATH CLAIM IS NOT THE CONTROLLER'S. It knows how long a silence has run
+// and what it would cost to act; it does not know the difference between an
+// endpoint that is thinking and a connection that never opened, because a
+// heartbeat is proof about the path and moves nothing in the arithmetic. This
+// layer is where both facts are held, so this is where they are joined.
+func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
+	if act.Kind != control.None {
 		// AN ACT TAKEN WITH NO SIGN OF LIFE AT ALL IS ABOUT THE PATH. A router
 		// that is working says so in comments long before the model does, so a
 		// stream with neither a comment nor a byte says nothing about the
-		// machine at the other end and must not be charged to it.
-		w.fault = w.tokens == 0 && w.beats == 0
+		// machine at the other end and must not be charged to it — and the row
+		// says which of the two it was, because "this lane is slow" and "this
+		// connection never opened" are different autopsies.
+		dead := w.tokens == 0 && w.beats == 0 && act.Silence >= lanes.DeadPathFloor
+		if dead {
+			act.Reason = pathFaultReason
+		}
+		if w.acted.Kind == control.None {
+			w.acted, w.silence, w.fault = act, act.Silence, dead
+		}
 	}
 	if next := w.control.Deadline(); !next.Equal(w.deadline) {
 		w.deadline = next
 		w.race.rearm()
 	}
+	return act
 }
+
+// pathFaultReason is what a row says when nothing at all reached this stream.
+//
+// THE FLOOR UNDER THE CLAIM IS [lane.DeadPathFloor] and it is what separates the
+// two readings. A lane that has said nothing for thirty milliseconds is a lane
+// that is slow; one that has said nothing at all for seconds — no token, no
+// comment — is a connection that never opened, and a handshake on a cold path
+// can honestly take longer than a fast lane's whole believed wait.
+const pathFaultReason = "no heartbeat"
 
 // opened is the moment this arm's request really went out, taken from the
 // stream loop's own reading so that nothing here spends a clock read of its
@@ -185,10 +207,10 @@ func (w *streamWatch) serve(lane string) {
 		return
 	}
 	now := waitNow()
-	wait, gap := laneSurvival(lanes.ID{Model: model, Lane: lane}, now)
+	pace := lanes.PaceFor(lanes.ID{Model: model, Lane: lane}, now)
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.control.Serving(lane, wait, gap, now)
+	w.control.Serving(lane, pace.First, pace.Gap, now)
 	if next := w.control.Deadline(); !next.Equal(w.deadline) {
 		w.deadline = next
 		w.race.rearm()

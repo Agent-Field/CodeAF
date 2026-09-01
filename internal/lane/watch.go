@@ -39,7 +39,7 @@ import (
 // and one beat, one call at a time — owns the serialization, and
 // `internal/provider/hedge.go` is that owner.
 
-// deadPathFloor is the shortest silence that may be read as a DEAD PATH rather
+// DeadPathFloor is the shortest silence that may be read as a DEAD PATH rather
 // than as a slow lane.
 //
 // It is the one claim the controller cannot make, because it is not about time
@@ -49,7 +49,7 @@ import (
 // machine on the evidence of somebody's wifi. Three seconds is the floor under
 // it because a TLS handshake and a cold connection can honestly take longer
 // than a fast lane's whole believed wait.
-const deadPathFloor = 3 * time.Second
+const DeadPathFloor = 3 * time.Second
 
 // Watch follows one stream from the moment it is sent.
 type Watch struct {
@@ -85,35 +85,99 @@ func Watching(plan control.Plan) *Watch {
 // the errand it is rescuing. A caller that knows better builds its own [Plan]
 // with [PlanFor] and hands it to [Watching]; nothing here may guess a role.
 func NewWatch(choice Choice, belief Belief, now time.Time) *Watch {
-	return Watching(PlanFor(choice, belief, RoleTalk, now))
+	return Watching(PlanFor(choice, PaceOf(belief), RoleTalk, now))
 }
 
-// PlanFor turns a routing answer and a belief into a waiting one.
+// Pace is what is believed about the machine expected to serve, as the two
+// distributions a wait is judged against: how long its first word takes, and
+// how long a gap between two visible ones may be. Both are in SECONDS, and an
+// unknown one is a real state that leaves the ceiling as the only bound.
+type Pace struct {
+	First control.Survival
+	Gap   control.Survival
+}
+
+// PlanFor turns a routing answer into a waiting one, and it is the ONE place a
+// plan is built.
 //
 // ROUTING AND WAITING ARE TWO QUESTIONS. The choice says WHICH LANE and this
 // says WHEN TO ACT, and a choice that expressed no preference at all still
 // yields a plan — with a ceiling, with a floor, and with whatever alternatives
 // the frontier named. That is the whole of "a cold ledger may not switch the
 // clock off".
-func PlanFor(choice Choice, belief Belief, role Role, now time.Time) control.Plan {
-	head := headOf(choice)
-	first, gap := survivals(belief)
+//
+// IT TAKES A [Pace] RATHER THAN A BELIEF, and the difference is where the
+// belief came from. A test scripts one with [PaceOf]; the transport asks
+// [PaceFor], which prefers the four-level chain — the world's pace plus the
+// provider's offset plus the model's — over a flat belief about a pair nobody
+// has measured. Both answer the same two questions, so the plan is built once
+// and not twice.
+func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
+	head := HeadOf(choice)
 	return control.Plan{
 		Lane:    head,
 		Ceiling: role.Ceiling(),
 		Floor:   ActionFloor,
 		Lambda:  role.Lambda(),
 		Margin:  Hysteresis.Seconds(),
-		First:   first,
-		Gap:     gap,
+		First:   pace.First,
+		Gap:     pace.Gap,
 		Alts:    alternatives(choice, head),
 		Began:   now,
 	}
 }
 
-// headOf is the lane this request was expected to land on: the pin if there is
-// one, else the head of the order.
-func headOf(choice Choice) string {
+// PaceFor is what THIS PROCESS believes about one pair right now.
+//
+// IT ASKS FOR THE BETTER DOOR AND FALLS BACK TO THE PLAINER ONE. A four-level
+// chain answers for a pair nobody has measured — which is the whole of cold
+// start — and a flat belief answers only for a pair it has seen. The ledger is
+// one object that may be both ([Hierarchy] beside [Ledger]), so a build whose
+// ledger is only the plainer kind still gets a plan, with a ceiling under it
+// either way.
+func PaceFor(id ID, now time.Time) Pace {
+	if id.Lane == "" || id.Model == "" {
+		return Pace{}
+	}
+	ledger := Default().Ledger()
+	if chains, ok := ledger.(Hierarchy); ok {
+		pace := Pace{
+			First: chains.Wait(id, now).Survival(SpreadFloor, millisecondsInASecond),
+			Gap:   reciprocal(chains.Rate(id, now).Survival(SpreadFloor, 1)),
+		}
+		if pace.First.Known() || pace.Gap.Known() {
+			return pace
+		}
+	}
+	belief, ok := ledger.Belief(id)
+	if !ok {
+		return Pace{}
+	}
+	return PaceOf(belief)
+}
+
+// millisecondsInASecond is how many of the first-token chain's own units make
+// the second [control] waits in. It is spelled rather than written as 1000 in
+// the middle of a conversion, because a unit error here is a deadline off by
+// three orders of magnitude and nothing would look wrong.
+const millisecondsInASecond = 1000
+
+// reciprocal turns a belief about tokens a second into one about the seconds
+// between two tokens. The log of a reciprocal is the negated log and the spread
+// is unchanged, which is the whole conversion.
+func reciprocal(rate control.Survival) control.Survival {
+	if !rate.Known() {
+		return control.Survival{}
+	}
+	return control.Survival{Mu: -rate.Mu, Sigma: rate.Sigma}
+}
+
+// HeadOf is the lane this request was expected to land on: the pin if there is
+// one, else the head of the order. It is exported because the transport asks it
+// the same question before it can ask what is believed about the answer, and two
+// spellings of "which lane did we mean" is how a plan comes to be built against
+// one machine and drawn against another.
+func HeadOf(choice Choice) string {
 	if len(choice.Only) > 0 {
 		return choice.Only[0]
 	}
@@ -123,28 +187,27 @@ func headOf(choice Choice) string {
 	return ""
 }
 
-// survivals is one lane's belief as the two distributions a wait is judged
-// against: how long its first word takes, and how long a gap between two words
-// may be.
+// PaceOf is one lane's FLAT belief as a [Pace].
 //
 // THE SPREAD HAS A FLOOR AND IT IS NOT OPTIONAL. A posterior's variance is the
 // variance of the ESTIMATE, which shrinks toward nothing as evidence
 // accumulates. What a wait is judged against is how variable ONE DRAW is, and a
 // controller handed the estimate's spread would believe a tail impossible and
 // would never hedge the lane that has one.
-func survivals(belief Belief) (first, gap control.Survival) {
+func PaceOf(belief Belief) Pace {
+	var pace Pace
 	if belief.TTFT.Known() {
-		first = control.Survival{
-			Mu:    belief.TTFT.X - math.Log(1000),
+		pace.First = control.Survival{
+			Mu:    belief.TTFT.X - math.Log(millisecondsInASecond),
 			Sigma: predictiveSpread(belief.TTFT.P),
 		}
 	}
 	if belief.Rate.Known() {
 		// A gap is one over a rate, so its log is the rate's negated and its
 		// spread is the same.
-		gap = control.Survival{Mu: -belief.Rate.X, Sigma: predictiveSpread(belief.Rate.P)}
+		pace.Gap = control.Survival{Mu: -belief.Rate.X, Sigma: predictiveSpread(belief.Rate.P)}
 	}
-	return first, gap
+	return pace
 }
 
 // predictiveSpread is a predictive standard deviation in nats, floored.
@@ -163,14 +226,26 @@ func expected(seconds float64) control.Survival {
 }
 
 // alternatives is where acting could go, best first, with what the frontier
-// already scored them at. An empty list is a real state and the reason
-// [control.Report] exists.
+// already scored them at.
+//
+// AN EMPTY LIST IS A REAL STATE and the reason [control.Report] exists: a call
+// with nowhere better to go still has a ceiling, and what it does there is say
+// so. It is what `routing off`, an endpoint that is not a router, and a ledger
+// that has heard of one machine all look like from here.
+//
+// THE LANES THE CHOICE RULED OUT ARE NOT ALTERNATIVES. Ignore names the lanes
+// this process is SURE about rather than the ones it is merely unlucky with,
+// and a rescue that went to one would be sending somebody's answer to the
+// machine the belief just refused.
 func alternatives(choice Choice, head string) []control.Alternative {
 	numbers := make(map[string]Scored, len(choice.Frontier))
 	for _, scored := range choice.Frontier {
 		numbers[strings.ToLower(scored.ID.Lane)] = scored
 	}
 	seen := map[string]bool{strings.ToLower(head): true}
+	for _, refused := range choice.Ignore {
+		seen[strings.ToLower(strings.TrimSpace(refused))] = true
+	}
 	alts := make([]control.Alternative, 0, len(choice.Frontier))
 	add := func(lane string) {
 		key := strings.ToLower(strings.TrimSpace(lane))
@@ -207,10 +282,17 @@ func Spending(budget *Budget) control.Purse { return purse{budget} }
 
 type purse struct{ budget *Budget }
 
-// Allows asks the budget for one arm AND COUNTS IT when the answer is yes,
-// which is [Budget.Allow]'s contract: two arms decided at one moment must not
-// both be allowed on the strength of one allowance.
-func (p purse) Allows(usd float64, now time.Time) bool { return p.budget.Allow(now, usd) }
+// Allows ASKS AND DOES NOT SPEND, which is [Budget.Affordable] and deliberately
+// not [Budget.Allow].
+//
+// The two halves of a rescue are two different moments. The controller asks
+// whether an arm is affordable while it is still deciding — a reading, and one
+// it may take several times over one silence — and the race takes the allowance
+// at the instant the arm really goes out, which is the decision. A controller
+// that reserved would leave allowances held by every request that recovered on
+// its own, and one that counted here as well would charge the budget twice for
+// one arm.
+func (p purse) Allows(usd float64, now time.Time) bool { return p.budget.Affordable(now, usd) }
 
 // ── DRIVING IT ──────────────────────────────────────────────────────────────
 
@@ -270,7 +352,7 @@ func (w *Watch) record(act control.Act, now time.Time) control.Act {
 	if act.Kind == control.None {
 		return act
 	}
-	if w.tokens == 0 && !w.alive.After(w.began) && now.Sub(w.began) >= deadPathFloor {
+	if w.tokens == 0 && !w.alive.After(w.began) && now.Sub(w.began) >= DeadPathFloor {
 		w.fault = true
 		act.Reason = "no heartbeat"
 	}
@@ -282,8 +364,8 @@ func (w *Watch) record(act control.Act, now time.Time) control.Act {
 // it, so that everything after the first chunk is judged against the machine
 // that is really answering.
 func (w *Watch) Serving(lane string, belief Belief, now time.Time) {
-	first, gap := survivals(belief)
-	w.controller().Serving(lane, first, gap, now)
+	pace := PaceOf(belief)
+	w.controller().Serving(lane, pace.First, pace.Gap, now)
 }
 
 // Heartbeat records a sign of life that is not a token.

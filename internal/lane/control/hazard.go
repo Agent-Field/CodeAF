@@ -246,14 +246,15 @@ func (h *hazard) verdict() Act {
 		return h.hold(out)
 	case wait > cost+h.plan.Margin:
 		out.Reason = word
-		return h.act(out)
+		return h.act(out, false)
 	case silence >= h.plan.Ceiling:
-		out.Reason = "ceiling"
-		return h.act(out)
+		out.Reason = CeilingReason
+		return h.act(out, true)
 	default:
 		return h.hold(out)
 	}
 }
+
 
 // assess is W and A right now, with the machine word for whichever clock is
 // governing. It is the arithmetic of §B and the only place either number is
@@ -331,7 +332,15 @@ func (h *hazard) costAlt() (Alternative, bool) {
 // because asking it is spending it: [internal/lane.Budget.Allow] counts the arm
 // it allows, and a controller that polled it while deciding to report something
 // else would spend somebody's allowance on a decision nobody acted on.
-func (h *hazard) act(out Act) Act {
+// AND AT THE CEILING λ STOPS DECIDING. What a second is worth is what makes a
+// wait worth money, and for a role nobody is watching it is nothing — but the
+// ceiling is not about money at all. It is the promise that no call this build
+// makes waits longer than that, whatever the arithmetic said, so a wait that
+// reaches it with an affordable alternative in hand becomes the act it would
+// have been for a person: a rescue, or the question when a person named the
+// machine. Reporting there would be saying the wait is real while holding
+// somewhere better to be.
+func (h *hazard) act(out Act, ceiling bool) Act {
 	if h.plan.Pinned {
 		// A PIN IS ASKED, NEVER OVERRIDDEN, and it is asked once: a second
 		// offer for one request is nagging.
@@ -339,7 +348,7 @@ func (h *hazard) act(out Act) Act {
 			return out
 		}
 		out.Kind, out.Lane = Ask, h.offered()
-	} else if alt, ok := h.reachable(); ok {
+	} else if alt, ok := h.reachable(ceiling); ok {
 		out.Kind, out.Lane = Hedge, alt.Lane
 		h.used++
 	} else if h.used > 0 && h.used >= len(h.plan.Alts) && !h.acted[Escalate] {
@@ -369,9 +378,15 @@ func (h *hazard) offered() string {
 }
 
 // reachable is the next alternative worth acting on, and whether there is one.
-// A purse that refuses is final for this request.
-func (h *hazard) reachable() (Alternative, bool) {
-	if h.used >= len(h.plan.Alts) || h.refused || h.plan.Lambda <= 0 {
+//
+// A purse that refuses is final for this request. λ at zero refuses too — with
+// nobody waiting, no amount of money buys speed — EXCEPT at the ceiling, where
+// the question is no longer what a second is worth: see [hazard.act].
+func (h *hazard) reachable(ceiling bool) (Alternative, bool) {
+	if h.used >= len(h.plan.Alts) || h.refused {
+		return Alternative{}, false
+	}
+	if h.plan.Lambda <= 0 && !ceiling {
 		return Alternative{}, false
 	}
 	alt := h.plan.Alts[h.used]

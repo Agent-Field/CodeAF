@@ -87,7 +87,7 @@ func TestAStrictPinRanksNothingAndStillKnowsWhereToOffer(t *testing.T) {
 	// AND THE OFFER HAS SOMEWHERE TO POINT. A plan over this choice is pinned,
 	// so the act is a question rather than a rescue — and a question that could
 	// not name a lane would be one nobody could answer.
-	plan := lanes.PlanFor(choice, lanes.Belief{}, lanes.RoleTalk, time.Now())
+	plan := lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now())
 	if !plan.Pinned && len(choice.Only) > 0 {
 		plan.Pinned = true
 	}
@@ -134,7 +134,7 @@ func TestABorrowablePinLeadsTheOrderAndKeepsARescue(t *testing.T) {
 	SetLanePin(LanePin{})
 	without, _ := client.laneChoiceFor(callKnobs{}, model, request)
 	rescues := func(choice lanes.Choice) int {
-		return len(lanes.PlanFor(choice, lanes.Belief{}, lanes.RoleTalk, time.Now()).Alts)
+		return len(lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now()).Alts)
 	}
 	if rescues(without) > 0 && rescues(withPin) == 0 {
 		t.Fatalf("the belief would have rescued from %v and the borrowable pin took it away", without.Order)

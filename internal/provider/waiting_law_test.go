@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -113,18 +114,27 @@ func TestTheControllerIsInstalledExactlyOnce(t *testing.T) {
 		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		source, readErr := os.ReadFile(path)
-		if readErr != nil {
+		fset := token.NewFileSet()
+		file, parseErr := parser.ParseFile(fset, path, nil, 0)
+		if parseErr != nil {
 			return nil
 		}
-		// The QUALIFIED call and never the declaration: the seam's own
-		// `func SetController` lives in internal/lane and is the thing being
-		// counted against, not one of the counts.
-		text := string(source)
-		if strings.Contains(text, "lanes.SetController(") || strings.Contains(text, "lane.SetController(") {
+		// THE CALLS AND NEVER THE DECLARATION, and both spellings of a call.
+		// The package that owns the seam installs it with an unqualified
+		// `SetController(...)` — a qualified-name grep could not see that, and a
+		// law that cannot see the one real installation would report zero while
+		// the build is correct and one while somebody has added a second. The
+		// declaration is a [ast.FuncDecl] and is not a call, so it excludes
+		// itself.
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || !namesSetController(call.Fun) {
+				return true
+			}
 			rel, _ := filepath.Rel(root, path)
-			sites = append(sites, rel)
-		}
+			sites = append(sites, rel+":"+strconv.Itoa(fset.Position(call.Pos()).Line))
+			return true
+		})
 		return nil
 	})
 	if err != nil {
@@ -133,10 +143,23 @@ func TestTheControllerIsInstalledExactlyOnce(t *testing.T) {
 	switch len(sites) {
 	case 1:
 	case 0:
-		t.Error("nothing installs a waiting controller, so lane.Controller() is nil in every shipped build (lane W2)")
+		t.Error("nothing installs a waiting controller, so lane.Controller() is nil in every shipped build")
 	default:
 		t.Errorf("the waiting controller is installed in %d places: %s", len(sites), strings.Join(sites, ", "))
 	}
+}
+
+// namesSetController reports whether this callee is the seam's installer, said
+// either way a caller can say it: bare inside the package that owns it, and
+// qualified everywhere else.
+func namesSetController(fun ast.Expr) bool {
+	switch named := fun.(type) {
+	case *ast.Ident:
+		return named.Name == "SetController"
+	case *ast.SelectorExpr:
+		return named.Sel != nil && named.Sel.Name == "SetController"
+	}
+	return false
 }
 
 // TestAHeartbeatIsReportedAsAHeartbeat keeps the two claims apart at the seam

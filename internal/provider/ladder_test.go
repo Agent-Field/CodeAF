@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +55,7 @@ func TestARefusedRescueWalksToTheNextLaneRatherThanRelaxingTheRequest(t *testing
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, ladderChoice(rig.model, 12*time.Millisecond))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
@@ -110,7 +109,7 @@ func TestEveryLaneIsAskedBeforeAnythingElseIsTried(t *testing.T) {
 	)
 	rig.believes("A", 2, 2000)
 
-	ctx := WithLaneChoice(context.Background(), ladderChoice(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), ladderChoice(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatalf("three refusing lanes produced an answer")
 	}

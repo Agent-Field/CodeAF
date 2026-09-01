@@ -1,7 +1,6 @@
 package session
 
 import (
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -135,19 +134,21 @@ func forwardPhase(news PhaseNews) {
 // question about a request that is over never sits on a screen. A thinking
 // delta does NOT withdraw it — nothing has arrived that a person can read.
 
-// PhaseAsking is a wait a person can end.
+// PhaseAsking is a wait a person can end, and PhaseAllSlow is a wait nothing
+// can: every reachable lane is believed slow, acting buys nothing, and saying
+// so IS the act.
 //
-// IT IS SPELLED HERE AND IN internal/provider, ONCE EACH, WHILE TWO LANES OF
-// WORK LAND. The transport owns the vocabulary and W3 adds the constant there;
-// this is the same word, so that the surface and the engine can be written and
-// tested against it before the two halves meet. Joining them is a rename with no
-// behaviour in it.
-const PhaseAsking = provider.Phase("asking")
-
-// PhaseAllSlow is the visible half of a report: every reachable lane is believed
-// slow, so acting buys nothing and the only honest act left is to SAY the wait
-// is real. Silence is never an option; a wait that is real is reported.
-const PhaseAllSlow = provider.Phase("all lanes slow")
+// THEY ARE THE TRANSPORT'S OWN WORDS AND NOT A SECOND SPELLING OF THEM. The
+// vocabulary is one closed set, owned by the layer that knows what a request is
+// doing (internal/provider's phase.go); these two names exist so that this
+// package and the surface above it can say `session.PhaseAsking` beside every
+// other phase they already name that way, and a build in which the two ever
+// differed would be a surface drawing nothing for a wait the engine was
+// posting.
+const (
+	PhaseAsking  = provider.PhaseAsking
+	PhaseAllSlow = provider.PhaseAllSlow
+)
 
 // offerAnswerer is the transport's side of an open offer.
 //
@@ -162,6 +163,13 @@ type offerAnswerer interface {
 	// whether one was still open to answer.
 	AnswerOffer(ask string, yes bool) bool
 }
+
+// answerOffer is a plain function wearing that one method, so the thing
+// installed can be [provider.AnswerOffer] itself rather than a wrapper type
+// somebody has to keep in step with it.
+type answerOffer func(ask string, yes bool) bool
+
+func (fn answerOffer) AnswerOffer(ask string, yes bool) bool { return fn(ask, yes) }
 
 // openOffer is one live question and the moment it was raised.
 type openOffer struct {
@@ -191,9 +199,10 @@ func noteOffer(news PhaseNews) {
 	if model == "" {
 		return
 	}
+	ask := askOf(news)
 	offers.mu.Lock()
 	defer offers.mu.Unlock()
-	if news.Phase != PhaseAsking {
+	if news.Phase != PhaseAsking || ask == "" {
 		// EVERY OTHER PHASE IS AN ANSWER TO THE QUESTION. The first visible
 		// token, the request ending, a rescue that went out anyway: all of them
 		// mean the offer is moot, and a question a person can no longer act on
@@ -203,22 +212,21 @@ func noteOffer(news PhaseNews) {
 	}
 	// A HELD OFFER KEEPS ITS OWN MOMENT. The phase says itself again while it
 	// lasts, and an offer whose clock restarted on every beat would never lapse.
-	if held, open := offers.open[model]; open && held.ask == askOf(news) {
+	if held, open := offers.open[model]; open && held.ask == ask {
 		return
 	}
-	offers.open[model] = openOffer{ask: askOf(news), at: news.Since}
+	offers.open[model] = openOffer{ask: ask, at: news.Since}
 }
 
 // askOf is the opaque token naming the offer this news carries.
 //
-// THE TOKEN IS THE REQUEST'S IDENTITY AND NOT ITS WORDS. W3 adds `Ask` to
-// [provider.PhaseNews] in parallel with this lane, so the read is in ONE
-// function and the join is its body: `return news.Ask`. Until then an offer is
-// named by the request it belongs to — the model, and the moment the phase
-// began — which is unique for exactly as long as an offer lives.
-func askOf(news PhaseNews) string {
-	return news.Model + "@" + strconv.FormatInt(news.Since.UnixNano(), 10)
-}
+// THE TOKEN IS THE TRANSPORT'S AND THIS PACKAGE NEVER READS IT. It names the
+// REQUEST that raised the question — not the model, not the moment — which is
+// what makes a keystroke land on the wait somebody is answering rather than on
+// whichever request happens to be in flight when the key is pressed. The read
+// is in one function so that the surface, the desk and the transport cannot
+// come to three ideas of what an offer is called.
+func askOf(news PhaseNews) string { return news.Ask }
 
 // liveOffer is the open offer for one model, false when there is none or when
 // the one on the desk has lapsed. It clears what it finds either way: an offer

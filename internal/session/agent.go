@@ -82,6 +82,12 @@ func New(config Config) (*Agent, error) {
 	// process with no window open is a process where nobody is
 	// ([someoneIsWatching]).
 	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
+	// AND THE OFFER DESK IS POINTED AT THE SIDE THAT HOLDS THE OPEN QUESTIONS,
+	// at the same moment and for the same reason: this is where a real transport
+	// exists. A pinned lane that goes quiet raises `coreweave is slow · switch to
+	// auto? (y)` on the phase channel; `y` comes back through this package, and
+	// without this line it would come back to nobody (phasenews.go).
+	SetOfferAnswerer(answerOffer(provider.AnswerOffer))
 	return newAgent(config, client)
 }
 

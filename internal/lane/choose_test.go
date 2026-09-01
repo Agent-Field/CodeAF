@@ -500,7 +500,7 @@ func TestAChoiceCarriesTheFrontierAndNothingAboutTime(t *testing.T) {
 		t.Fatal("a choice with an opinion said nothing about it")
 	}
 	// AND THE PLAN IS WHAT CARRIES THE CLOCK, out of that same frontier.
-	plan := PlanFor(choice, Belief{}, RoleTalk, noon)
+	plan := PlanFor(choice, Pace{}, RoleTalk, noon)
 	if plan.Ceiling != RoleTalk.Ceiling() {
 		t.Fatalf("the plan's ceiling is %s, want the role's %s", plan.Ceiling, RoleTalk.Ceiling())
 	}
@@ -619,6 +619,10 @@ func (h fakeHierarchy) Think(string, string, time.Time) Chain {
 	return Chain{}
 }
 func (h fakeHierarchy) Shifted(ID) bool { return false }
+
+// It learns nothing: this double is a WORLD, scripted, and a fold here would be
+// the test rewriting the fixture it is asserting against.
+func (h fakeHierarchy) NoteThinking(string, string, time.Duration, time.Time) {}
 
 // worldOf is a hierarchy that has seen these lanes at about a second to the
 // first token and about forty tokens a second, honestly wide.

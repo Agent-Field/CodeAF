@@ -311,6 +311,57 @@ func TestALongThinkIsNotAStallAndAStalledThinkIs(t *testing.T) {
 
 // ── WHICH ACT ───────────────────────────────────────────────────────────────
 
+// TestAtTheCeilingAnAffordableAlternativeIsTakenAndNotReported is the one
+// ruling that separates the ceiling from the arithmetic above it.
+//
+// λ decides how early a wait is worth money, and for a role nobody is watching
+// it is zero: no amount of money buys speed, so nothing fires while the
+// inequality is what is being asked. THE CEILING ASKS A DIFFERENT QUESTION. It
+// is the promise that no call this build makes waits longer than that, whatever
+// is believed and whatever a second is worth — so a wait that reaches it with
+// somewhere affordable to go takes it, and a report there would be the build
+// saying the wait is real while holding the answer to it.
+//
+// A PIN IS STILL ASKED AND NEVER OVERRIDDEN, which is the second half: the same
+// moment, the same alternative, and a question instead of a rescue.
+func TestAtTheCeilingAnAffordableAlternativeIsTakenAndNotReported(t *testing.T) {
+	unwatched := plan()
+	unwatched.Lambda = 0
+
+	// NOTHING IS BOUGHT BEFORE THE CEILING. With nobody waiting the inequality
+	// can never fire, so every moment short of the bound is a moment of waiting.
+	watch := New(unwatched)
+	for step := 0; step < int(unwatched.Ceiling/time.Millisecond); step += 50 {
+		if act := watch.Quiet(at(step)); act.Kind != None {
+			t.Fatalf("with nobody waiting, %v was bought at %dms — before the ceiling", act.Kind, step)
+		}
+	}
+	act := watch.Quiet(at(int(unwatched.Ceiling / time.Millisecond)))
+	if act.Kind != Hedge || act.Lane != "other" {
+		t.Fatalf("at the ceiling the act was %v to %q, want a rescue to the lane the frontier named", act.Kind, act.Lane)
+	}
+	if act.Reason != "ceiling" {
+		t.Fatalf("reason = %q, want the bound that raised it", act.Reason)
+	}
+
+	// AND A PINNED LANE IS ASKED THERE, not overridden.
+	pinned := unwatched
+	pinned.Pinned = true
+	asked := New(pinned).Quiet(at(int(pinned.Ceiling/time.Millisecond) + 50))
+	if asked.Kind != Ask || asked.Lane != "other" {
+		t.Fatalf("a pinned lane at its ceiling raised %v to %q, want the question", asked.Kind, asked.Lane)
+	}
+
+	// AND WITH NOWHERE AFFORDABLE TO GO IT IS STILL A REPORT. Silence is never
+	// an option; a wait that is real is said out loud.
+	unaffordable := unwatched
+	unaffordable.Purse = broke{}
+	if told := New(unaffordable).Quiet(at(int(unaffordable.Ceiling/time.Millisecond) + 50)); told.Kind != Report {
+		t.Fatalf("a ceiling with a refusing purse raised %v, want the wait reported", told.Kind)
+	}
+}
+
+
 func TestWhichActIsRaised(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -321,7 +372,7 @@ func TestWhichActIsRaised(t *testing.T) {
 		{"an ordinary slow lane is hedged", func(p Plan) Plan { return p }, Hedge, "other"},
 		{"a pinned lane is asked", func(p Plan) Plan { p.Pinned = true; return p }, Ask, "other"},
 		{"nothing to hedge to is reported", func(p Plan) Plan { p.Alts = nil; return p }, Report, ""},
-		{"nobody waiting is reported", func(p Plan) Plan { p.Lambda = 0; return p }, Report, ""},
+		{"nobody waiting is still rescued at the ceiling", func(p Plan) Plan { p.Lambda = 0; return p }, Hedge, "other"},
 		{"a purse that refuses is reported", func(p Plan) Plan { p.Purse = broke{}; return p }, Report, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {

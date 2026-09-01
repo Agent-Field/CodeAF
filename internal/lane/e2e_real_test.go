@@ -809,7 +809,7 @@ func TestRealRouterChoosesForATierAndATurnThatCarriesTools(t *testing.T) {
 		t.Fatalf("a turn carrying tools, on a model with %d primed lanes, got no preference at all — "+
 			"which is the incident this test is written from", len(rows))
 	}
-	plan := lane.PlanFor(choice, lane.Belief{}, lane.RoleTalk, time.Now())
+	plan := lane.PlanFor(choice, lane.Pace{}, lane.RoleTalk, time.Now())
 	t.Logf("choice: order %v, why %q; plan: %d alternatives, ceiling %v", choice.Order, choice.Why, len(plan.Alts), plan.Ceiling)
 	head, ok := ledger.Belief(lane.ID{Model: bare, Lane: choice.Order[0]})
 	if !ok || !head.Facts.Tools {

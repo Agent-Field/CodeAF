@@ -88,6 +88,21 @@ const (
 	// channel for it would be a second thing to keep alive, and the first time
 	// one of them stalled the other would still be drawing.
 	PhaseAsking Phase = "asking"
+	// PhaseAllSlow is the visible half of [control.Report]: every reachable lane
+	// is believed slow, so acting would buy nothing and the only honest act left
+	// is to SAY the wait is real.
+	//
+	// SILENCE IS NEVER AN OPTION, and saying nothing was the old behaviour. A
+	// person watching a line that says "still working" through a real wait is
+	// being told less than this build knows, and what this build knows is that
+	// it has weighed the alternatives and there are none.
+	//
+	// IT KEEPS THE CLOCK OF THE WAIT IT IS ABOUT. The report does not start a
+	// new phase in a person's terms — nothing has changed about what the
+	// endpoint is doing — so [phaseClock.allSlow] leaves [PhaseNews.Since]
+	// exactly where it was and the surface goes on counting up from the moment
+	// the wait began.
+	PhaseAllSlow Phase = "all lanes slow"
 	// PhaseSwitchingModel is the LAST rung of the ladder and the only one that
 	// changes what a person asked for: every lane of the model has been tried
 	// and a fallback model is being asked instead. Then names it.
@@ -189,7 +204,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking:
+	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
 		return true
 	}
 	return false
@@ -497,21 +512,28 @@ func (p *phaseClock) withdrew() {
 	p.say("", now)
 }
 
-// stillWaiting is the visible half of [control.Report]: there is nowhere better
-// to go and the wait is real.
+// allSlow is the visible half of [control.Report]: there is nowhere better to go
+// and the wait is real.
 //
-// IT DOES NOT MOVE THE PHASE. What is happening has not changed — the endpoint
-// still owes a first word, or is still thinking — and the only new fact is that
-// this build has weighed the alternatives and there are none. So it rides the
-// phase in force as its detail, which is where a person reads "all lanes slow ·
-// still waiting".
-func (p *phaseClock) stillWaiting(detail string) {
-	if p == nil || detail == "" {
+// IT MOVES THE PHASE AND KEEPS THE CLOCK, and the pair is deliberate. The phase
+// moves because a person reads a sentence rather than a field — a surface that
+// had to notice a detail riding some other phase would be a surface inferring
+// what it was told, which is the defect this whole file exists to end. The clock
+// stays because nothing about the wait restarted: what changed is what this
+// build now knows about it.
+//
+// detail is the controller's own word for why, empty when the sentence the
+// surface owns says all there is. It never replaces the phase.
+func (p *phaseClock) allSlow(detail string) {
+	if p == nil {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.say(detail, p.now())
+	now := p.now()
+	// The wait's own moment survives: [phaseClock.enter] would restart it.
+	p.phase = PhaseAllSlow
+	p.say(detail, now)
 }
 
 type phaseClockContextKey struct{}

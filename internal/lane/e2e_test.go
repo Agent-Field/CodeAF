@@ -819,8 +819,8 @@ func (r *e2eRouter) race(ctx context.Context, choice Choice, request Request) (e
 	primary := r.start(ctx, choice.Order, choice.Only, choice.Ignore, request)
 	var alternate *e2eStream
 	var hedgeTimer *time.Timer
-	head, _ := r.ledger.Belief(ID{Model: request.Model, Lane: headOf(choice)})
-	watch := Watching(PlanFor(choice, head, RoleTalk, r.at))
+	head, _ := r.ledger.Belief(ID{Model: request.Model, Lane: HeadOf(choice)})
+	watch := Watching(PlanFor(choice, PaceOf(head), RoleTalk, r.at))
 	rescue := watch.Alt()
 	if deadline := watch.Deadline(); deadline > 0 && rescue != "" {
 		hedgeTimer = time.NewTimer(e2eScaled(deadline))
@@ -1517,7 +1517,7 @@ func TestS6TwoProcessesOneFileAndARequestThatCarriesTools(t *testing.T) {
 	// [Request.Model] directly — so a request still wearing its tier suffix
 	// would get a plan with nothing but its ceiling, which is the half of the
 	// incident a non-empty Order alone would not have caught.
-	plan := PlanFor(choice, head, RoleTalk, noon)
+	plan := PlanFor(choice, PaceOf(head), RoleTalk, noon)
 	if !plan.First.Known() || len(plan.Alts) == 0 {
 		t.Fatalf("the plan over this choice believes nothing and would rescue nowhere: %+v", plan)
 	}

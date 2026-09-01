@@ -260,6 +260,15 @@ type Act struct {
 	Cost float64
 }
 
+// CeilingReason is the machine word [Act.Reason] carries when the bound is what
+// raised the act rather than the arithmetic under it.
+//
+// IT IS SPELLED ONCE AND EXPORTED because two layers read it — the call log,
+// which says why a request acted, and the tests of the wire, which script a
+// controller of their own — and a second spelling would be a second answer to
+// "why did it act" on the one row somebody autopsies.
+const CeilingReason = "ceiling"
+
 // Reading is one moment of a stream's life as the read loop sees it.
 //
 // THE THREE COUNTS ARE NOT INTERCHANGEABLE. Visible is text on the screen and

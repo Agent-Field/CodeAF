@@ -205,23 +205,11 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		wake:     make(chan struct{}, 1),
 		decided:  make(chan struct{}),
 	}
-	if head := headLane(choice); head != "" {
+	if head := lanes.HeadOf(choice); head != "" {
 		race.tried[strings.ToLower(head)] = true
 	}
 	race.plan = c.planFor(ctx, choice, race.model, race.expected)
 	return race, true
-}
-
-// headLane is the lane the request is expected to land on: the pin if there is
-// one, else the head of the order.
-func headLane(choice lanes.Choice) string {
-	if len(choice.Only) > 0 {
-		return choice.Only[0]
-	}
-	if len(choice.Order) > 0 {
-		return choice.Order[0]
-	}
-	return ""
 }
 
 // ── RUNNING IT ──────────────────────────────────────────────────────────────
@@ -435,27 +423,12 @@ func (r *hedgeRace) act(from int, act control.Act) {
 	case control.Ask:
 		r.ask(from, act)
 	case control.Report:
-		// THE CEILING IS NOT A REPORT WHEN THERE IS SOMEWHERE TO GO. λ decides
-		// how early a wait is worth money, and for a role nobody is watching it
-		// is zero — but the ceiling is not about money at all: it is the
-		// promise that no call this build makes waits longer than that,
-		// whatever the arithmetic said. So a report raised at the ceiling with
-		// an alternative in hand becomes the act it would have been for a
-		// person: a rescue, or the question when a person named the machine.
-		if alt, affordable := r.affordableAlt(); alt != "" && affordable && r.atCeiling(act) {
-			// AND THE ROW SAYS WHAT WAS DONE, not what was first suggested: the
-			// verdict is rewritten here rather than reported as a report that
-			// somehow put a request on the wire.
-			act.Lane = alt
-			if r.plan.Pinned {
-				act.Kind = control.Ask
-				r.ask(from, act)
-				return
-			}
-			act.Kind = control.Hedge
-			r.hedge(from, act, alt)
-			return
-		}
+		// THE CONTROLLER DECIDES AND THE WIRE OBEYS. A report is a report: that
+		// a wait reaching the ceiling with an affordable alternative in hand is
+		// a rescue rather than a report is `internal/lane/control`'s ruling and
+		// is taken there, so the act that arrives here is the act that happened.
+		// Rewriting a verdict at this layer would put a request on the wire that
+		// the row still called a report.
 		r.tellTheWait(act)
 	case control.Escalate:
 		// THE CONTROLLER NEVER CHANGES A MODEL. Rung four of the ladder is
@@ -601,23 +574,6 @@ func (r *hedgeRace) withdraw() {
 	r.phase.withdrew()
 }
 
-// ceilingReason is the controller's own machine word for the bound that holds
-// whatever the arithmetic says. It is spelled here because it is the one word
-// the two layers have to agree on: the log records it, and the rule above turns
-// the verdict it carries into an act.
-const ceilingReason = "ceiling"
-
-// atCeiling reports whether a verdict was reached at the role's own bound
-// rather than by the arithmetic under it.
-//
-// The word and the figure are both read, and either is enough. The word is what
-// the controller stamps on exactly that branch; the figure is what a controller
-// built with a bound of its own — a bench, a simulator, a rig running at a
-// scale of its own — would show instead.
-func (r *hedgeRace) atCeiling(act control.Act) bool {
-	return act.Reason == ceilingReason || (r.plan.Ceiling > 0 && act.Silence >= r.plan.Ceiling)
-}
-
 // tellTheWait is the visible half of [control.Report]: there is nowhere better
 // to go and the wait is real. Saying nothing was the old behaviour and it is
 // the one thing this design will not do.
@@ -634,7 +590,7 @@ func (r *hedgeRace) tellTheWait(act control.Act) {
 			report.action, report.silence, report.reason = actionWord(act.Kind), act.Silence, act.Reason
 		}
 	})
-	r.phase.stillWaiting(r.waitWords(act))
+	r.phase.allSlow(r.waitWords(act))
 }
 
 // waitWords is what a person is told when nothing can be done.
@@ -646,16 +602,16 @@ func (r *hedgeRace) tellTheWait(act control.Act) {
 // not a router looks like. Saying "all lanes slow" about a request that had one
 // lane would be inventing a comparison nobody made.
 func (r *hedgeRace) waitWords(act control.Act) string {
+	// THE SURFACE OWNS THE SENTENCE and this owns only the exception to it.
+	// `all lanes slow · still waiting` is one line, spelled in `internal/tui3`
+	// where the words a person reads live, and a machine word posted beside it
+	// would be the same fact said twice. What this layer knows that the surface
+	// cannot is that the ladder itself is spent — every lane of this model has
+	// been asked — and that is a different sentence.
 	if act.Kind == control.Escalate {
 		return "every lane tried"
 	}
-	r.mu.Lock()
-	weighed := len(r.plan.Alts)
-	r.mu.Unlock()
-	if weighed == 0 {
-		return "still waiting"
-	}
-	return "all lanes slow"
+	return ""
 }
 
 // quietWords is a silence as a person says it.

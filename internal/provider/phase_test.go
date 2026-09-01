@@ -82,7 +82,7 @@ func TestAHealthyAnswerTellsItsPhasesInOrderAndThenStops(t *testing.T) {
 	)
 	rig.believes("A", 5, 200)
 
-	ctx := WithLaneChoice(context.Background(), choiceFor(rig.model, 500*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 500*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestAStallInsideTheThinkingShowsTheCountdownAndThenTheSwitch(t *testing.T) 
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
@@ -186,7 +186,7 @@ func TestWithNowhereToGoTheClockPromisesNothing(t *testing.T) {
 	// A choice with no alternative is what `routing off`, a strict pin and a
 	// ledger that has heard of one lane all look like from here.
 	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
-	ctx := WithLaneChoice(context.Background(), choice)
+	ctx := WithLaneChoice(talking(), choice)
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestTheGuardStillProtectsWhenNoRescueIsPossible(t *testing.T) {
 	rig.believes("A", 2, 2000)
 
 	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
-	ctx := WithLaneChoice(context.Background(), choice)
+	ctx := WithLaneChoice(talking(), choice)
 	_, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if _, cut := CutFrom(err); !cut {
 		t.Fatalf("err = %v, want the stall guard's cut: with no rescue possible it is the last thing standing between a person and forever", err)
@@ -258,7 +258,7 @@ func TestNoCountdownIsDrawnOverARescueNobodyCanAfford(t *testing.T) {
 	// A budget with no bucket is how the speed guard is switched off.
 	SetHedgeBudget(lanes.NewBudget(0, 0))
 
-	ctx := WithLaneChoice(context.Background(), choiceFor(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}

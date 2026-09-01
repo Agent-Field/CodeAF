@@ -160,6 +160,49 @@ type Hierarchy interface {
 	// component toward its parents, and clears the flag. It is what the call log
 	// records and what the HUD may explain a sudden re-route with.
 	Shifted(id ID) bool
+	// NoteThinking folds in how long one whole run of reasoning lasted.
+	//
+	// IT IS ON THIS DOOR RATHER THAN ON [Ledger] because it is the only
+	// observation in the design that is not about a deployment: a lane cannot
+	// make a model think less, it can only make the same thought arrive faster,
+	// which the rate chain already says. [Hierarchy.Think] is what reads it back,
+	// and the two belong to one another — a build that could predict a thinking
+	// phase but never record one would be predicting from the prior forever.
+	NoteThinking(model, rung string, took time.Duration, at time.Time)
+}
+
+// ── THE TWO DOORS, ASKED WITHOUT ASKING WHICH ───────────────────────────────
+//
+// [Hierarchy] is a SECOND DOOR onto the same ledger, and a build whose ledger
+// is only the plainer kind is a legal build. That leaves every caller with the
+// same three lines of type assertion and the same decision about what to do
+// when it fails — which is three places to get it wrong and one vocabulary of
+// waiting spread across two packages.
+//
+// So the assertion is made HERE, once per question, and what a caller outside
+// this package sees is a function that answers or says it does not know. The
+// transport never learns what a [Chain] is.
+
+// Thinks is how long this model's whole thinking phase is expected to last, in
+// SECONDS, keyed on the model and the effort rung it was asked at.
+//
+// An unknown one is a real state: the duration clock then has nothing to say
+// and the liveness clock and the ceiling are what bound the phase.
+func Thinks(model, rung string, now time.Time) control.Survival {
+	chains, ok := Default().Ledger().(Hierarchy)
+	if !ok || model == "" {
+		return control.Survival{}
+	}
+	return chains.Think(model, rung, now).Survival(SpreadFloor, 1)
+}
+
+// NoteThought folds in how long one whole run of reasoning really lasted. It is
+// what makes [Thinks] a measurement rather than a prior, and a ledger that
+// cannot hold one drops it.
+func NoteThought(model, rung string, took time.Duration, at time.Time) {
+	if chains, ok := Default().Ledger().(Hierarchy); ok {
+		chains.NoteThinking(model, rung, took, at)
+	}
 }
 
 // ── THE WAITING SEAM ────────────────────────────────────────────────────────
@@ -182,12 +225,19 @@ var controller struct {
 }
 
 // SetController installs the factory every token-generating call is watched
-// with. A nil factory uninstalls it, which is what a test that wants the bare
-// stream loop back asks for.
-func SetController(build control.Factory) {
+// with, and hands back the one that was there.
+//
+// IT RETURNS THE PREVIOUS ONE FOR THE SAME REASON [provider.OnPhase] DOES: a
+// caller that swaps a seam has to be able to put back what it found, and a
+// caller that put back NIL would leave the process with no policy at all —
+// which is a build where nothing waits on anything, arrived at by a test
+// tidying up after itself. A nil factory is still a legal argument, because a
+// caller that really wants the bare stream loop back has to be able to ask.
+func SetController(build control.Factory) (previous control.Factory) {
 	controller.mu.Lock()
 	defer controller.mu.Unlock()
-	controller.build = build
+	previous, controller.build = controller.build, build
+	return previous
 }
 
 // Controller is the installed factory, nil when nothing is installed.
