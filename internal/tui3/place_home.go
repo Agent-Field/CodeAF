@@ -120,7 +120,7 @@ func (h *homeView) buildSwitch() {
 	// written to close.
 	world := h.world
 	world.Projects = h.everyProject()
-	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket}, h.gone, h.seen, h.world.Read,
+	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket, coming: h.claim}, h.gone, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in
@@ -523,7 +523,15 @@ func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []stri
 	}
 	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
 	for _, band := range [][]string{
-		a.homeCardPlace(row, width, pal),
+		// MOVING THIS CONVERSATION HERE IS PART OF THE PLACE BAND AND NOT A BAND
+		// OF ITS OWN. The place line has just said `open in another window`;
+		// this is the door out of that sentence and the live state of one
+		// somebody has walked through, so it is the SAME subject and belongs
+		// under it with no blank row between (takeovervoice.go). A band of its
+		// own would also have cost every held conversation's card the blank row
+		// that separates bands, and a short frame would have paid for it by
+		// dropping something further down.
+		append(a.homeCardPlace(row, width, pal), a.takeoverCard(row, width, pal)...),
 		// AND WHAT IT IS ABOUT BESIDES, directly under where it is standing,
 		// because the two lines are one question asked twice over
 		// (homeband_folders.go). It is the registry's own band called by hand

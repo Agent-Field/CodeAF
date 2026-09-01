@@ -80,20 +80,25 @@ const (
 // switcherRow holds every kind of door the router can open. Zero fields are
 // deliberately meaningful: a row never fabricates an address it was not given.
 type switcherRow struct {
-	kind     switcherKind
-	session  session.SessionRow
-	item     StandingItemView
-	place    string
-	project  string
-	title    string
-	note     string
-	age      string
-	at       time.Time
-	needs    bool
-	moving   bool
-	paused   bool
-	here     bool
-	held     bool
+	kind    switcherKind
+	session session.SessionRow
+	item    StandingItemView
+	place   string
+	project string
+	title   string
+	note    string
+	age     string
+	at      time.Time
+	needs   bool
+	moving  bool
+	paused  bool
+	here    bool
+	held    bool
+	// coming is a conversation another window has been asked to let go of, and
+	// it OUTRANKS [switcherRow.held] on the margin: `another window` is where it
+	// is, and a person who has just pressed enter is asking whether it is on its
+	// way (takeovervoice.go).
+	coming   bool
 	gone     bool
 	fold     bool
 	foldWord string
@@ -132,6 +137,11 @@ type switcherReading struct {
 type switcherHere struct {
 	session string
 	project string
+	// coming is the transcript this window has asked another window to let go
+	// of, and "" when it has asked for nothing. It is a fact about THIS window
+	// rather than about the world, which is why it travels with the two
+	// addresses above rather than being read off any row.
+	coming string
 }
 
 // switcherGone is which project folders were NOT on the disk when the world was
@@ -169,10 +179,11 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 			if row.NeedsPerson() && strings.TrimSpace(row.Presence.Question.Text) != "" {
 				options = append(options, row.Presence.Question.Options...)
 			}
+			coming := !atHere && here.coming != "" && strings.TrimSpace(row.Transcript) == here.coming
 			all = append(all, switcherRow{
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
-				at: switcherSortAt(row), needs: needs, moving: moving, here: atHere,
+				at: switcherSortAt(row), needs: needs, here: atHere,
 				// AND THE TWO FACTS THAT DECIDE WHETHER ENTER CAN WORK AT ALL. A row
 				// another window is holding and a row whose folder is not there any
 				// more both refuse when they are pressed, and a list that said so only
@@ -183,7 +194,14 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 				// conversation saying what it is doing, which the note already
 				// carries and which would put `another window` on the margin of
 				// every row that is asking anything.
-				held:    !atHere && row.Open && strings.TrimSpace(row.Transcript) != "",
+				held:   !atHere && row.Open && strings.TrimSpace(row.Transcript) != "",
+				coming: coming,
+				// AND A CONVERSATION ON ITS WAY HERE IS MOVING, whatever else is
+				// or is not running in it. The one spinner belongs to the thing
+				// that started most recently (homespinner.go), and nothing on
+				// this machine started more recently than the keystroke that
+				// asked for this row.
+				moving:  moving || coming,
 				gone:    gone[switcherWhere(row, project)],
 				options: options,
 			})
@@ -722,6 +740,8 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 	switch {
 	case row.gone:
 		age = homeGoneShort
+	case row.coming:
+		age = takeoverComingWord
 	case row.held:
 		age = homeHeldShort
 	case row.here:

@@ -275,9 +275,12 @@ to the wrong machine, and before that it refused to open.
 These are two different things and they are easy to run together.
 
 **Another window** is a second aforge on the *same* machine holding a conversation you can
-see on home. Its row says `another window` in the right margin, and `enter` on it will not
-open a second copy — one conversation, one writer. Go to that terminal, or start a new
-conversation here.
+see on home. Its row says `another window` in the right margin. `enter` on it never opens a
+second copy — one conversation, one writer — but it does something better: it **moves** the
+conversation into this terminal. Two presses, the row says `coming here` while it is on its
+way, and the other window lands on whatever else it was holding. *Continue a conversation
+from another terminal*, on the home page, is the whole of it. (The old answer here was "go
+to that terminal, or start a new conversation here", which is no longer the only way.)
 
 **Another machine** is `--host`. The conversation lives over there and your terminal
 *attaches* to it: what you type crosses the wire, the work runs on that machine, and the

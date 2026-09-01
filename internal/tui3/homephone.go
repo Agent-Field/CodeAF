@@ -660,7 +660,7 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	switch line.kind {
 	case homeSession:
 		return homeGlyph(line.row, pal.ascii) + " " + homeName(line.row),
-			homeNote(line.row, a.homeHeld(line.row), a.homeMark(line.row),
+			homeNote(line.row, a.homeHeld(line.row), a.takeoverRowWord(line.row), a.homeMark(line.row),
 				a.homeRowGone(line.row), a.homeFresh(line.row), h.world.Read),
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
 	case homeItem:

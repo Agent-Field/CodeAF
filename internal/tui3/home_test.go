@@ -3272,8 +3272,8 @@ func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	if !a.waitingToTakeOver() {
 		t.Fatal("three presses left the window waiting for nothing")
 	}
-	if got := strings.Count(homeText(a), "waiting for the other window"); got != 1 {
-		t.Fatalf("the waiting line is on the screen %d times", got)
+	if got := strings.Count(homeText(a), "moving it here"); got != 1 {
+		t.Fatalf("the moving line is on the screen %d times", got)
 	}
 }
 
