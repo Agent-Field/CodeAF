@@ -326,6 +326,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"context fill setting", "compacting-over-and-over"},
 		{"make it compact sooner", "compacting-over-and-over"},
 		{"stop it compacting so early", "compacting-over-and-over"},
+		// The fold marker now names the journal path, asked the ways somebody
+		// meets a conversation that just got shorter: where the work went, and
+		// how to read it back.
+		{"where did the folded messages go", "compacting-over-and-over"},
+		{"how do I get the compacted text back", "compacting-over-and-over"},
+		{"what happened to the earlier messages", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
