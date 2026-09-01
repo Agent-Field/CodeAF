@@ -812,6 +812,13 @@ type app struct {
 	// row that quotes the day quotes one figure.
 	dayCost   float64
 	dayCosted bool
+	// tree is what this conversation AND the work it started have spent, read
+	// off the usage ledger on the frame clock while there is work to read about,
+	// and treeCache is the tail-reading cache that makes re-reading it cheap
+	// (treespend.go). Both belong to this surface's own goroutine, which is
+	// [session.UsageCache]'s own condition for being used at all.
+	tree      session.TreeSpend
+	treeCache session.UsageCache
 	// spendRail is this conversation's own ceiling as the profile last read it,
 	// and railRead whether it has been read at all. The pair is held rather than
 	// asked for because the status line's ink consults it on EVERY paint
@@ -3550,6 +3557,17 @@ func (a *app) paint() tea.Cmd {
 		// times a second, while a turn's events were arriving on the same pipe.
 		// The answer lands as a message and folds in there ([app.usageBack]).
 		kick = tea.Batch(kick, a.usageKick())
+		// AND WHAT THE WORK THIS CONVERSATION STARTED IS SPENDING, on the same
+		// clock and ON this loop, because that reading is a tail read of a file
+		// and not a lock or a round trip (treespend.go). A node's money reaches
+		// the conversation's own books only when the node closes, so without this
+		// the figure on the row is hours behind exactly while somebody is
+		// watching it — which is issue #145. It is asked only while this
+		// conversation HAS work: with no roster there is nothing in the ledger
+		// this reading could find, and the file is left alone.
+		if a.railAvail() {
+			a.readTreeSpend()
+		}
 	}
 	// WHAT THE OTHER WINDOWS HAVE OUT IS RE-READ HERE, and only while something
 	// on the frame is drawing it: the roster's record rows say `running` or
