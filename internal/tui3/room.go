@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -388,6 +389,12 @@ const (
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
+	// roomBusyWord is the opener when the node is STILL RUNNING and simply has
+	// nobody inside to read a line — mid-check, or landing. "is parked" would be
+	// a lie about live work, and the revive key is withheld for the same reason:
+	// asking the head to start the work again while the original is minutes from
+	// done manufactures a duplicate task.
+	roomBusyWord    = " cannot read this right now — "
 	roomLoadingWord = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
@@ -1622,6 +1629,15 @@ func (a *app) steer() tea.Cmd {
 		// away the half that says what to do about it. It goes on the guard's
 		// second row rather than into the room, because it is the reason the
 		// question below is being asked.
+		//
+		// AND THE ENGINE SAYS WHICH KEYS ARE HONEST. A refusal that means the
+		// node is still running with no reader inside it withholds revive
+		// (session.ErrNobodyToRead); every other refusal — done, gone, never
+		// started — is exactly what revive is for.
+		if errors.Is(err, session.ErrNobodyToRead) {
+			a.raiseBusyGuard(line, err.Error())
+			return nil
+		}
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
@@ -1710,16 +1726,35 @@ type steerGuard struct {
 	// why is the engine's own sentence about the node, or empty when the room
 	// simply saw its lane close.
 	why string
+	// busy is a node that is STILL RUNNING with nobody inside to read a line —
+	// refused mid-check, or while the work lands (#273). A busy guard offers no
+	// revive: the honest keys are m and esc, because "start it again" about work
+	// that is minutes from done would race the original with a duplicate.
+	busy bool
 }
 
 // raiseGuard puts the question up. The room stays open underneath it: the page
 // is what the person was reading, and the question is about what to do with a
 // line they typed into it.
 func (a *app) raiseGuard(line, why string) {
+	a.raiseGuardOf(line, why, false)
+}
+
+// raiseBusyGuard is the same question about a node that is STILL RUNNING with
+// nobody inside to read the line ([steerGuard.busy]). Only the engine can tell
+// the two apart — this page's own `done` is its record of a close it may not
+// have been told about yet, and reading "still running" off it would withhold
+// revive from a node the engine just said was finished (#273's own test,
+// TestASteerTheEngineRefusedRaisesTheGuardWithItsReason).
+func (a *app) raiseBusyGuard(line, why string) {
+	a.raiseGuardOf(line, why, true)
+}
+
+func (a *app) raiseGuardOf(line, why string, busy bool) {
 	if a.room == nil {
 		return
 	}
-	a.guard = &steerGuard{title: a.room.title, text: line, why: why}
+	a.guard = &steerGuard{title: a.room.title, text: line, why: why, busy: busy}
 	// The typed lists follow the draft, and the draft is spoken for while the
 	// question is up: the same law the approval question states (consent.go).
 	a.closeLists()
@@ -1750,6 +1785,11 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+c":
 		return nil, false
 	case "r":
+		// A busy guard has no revive (see [steerGuard.busy]): the key does
+		// nothing rather than restarting work that is still running.
+		if a.guard.busy {
+			return nil, true
+		}
 		return a.guardSend(true), true
 	case "m":
 		return a.guardSend(false), true
@@ -1842,6 +1882,11 @@ func (a *app) guardRows(width int) []string {
 	parts := []string{
 		a.guard.title + roomParkedWord, "[r]", " revive and send · ", "[m]",
 		" send to main · ", "[esc]", " cancel",
+	}
+	if a.guard.busy {
+		parts = []string{
+			a.guard.title + roomBusyWord, "[m]", " send to main · ", "[esc]", " cancel",
+		}
 	}
 	line := strings.Join(parts, "")
 	out := make([]string, 0, 2)
