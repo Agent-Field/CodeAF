@@ -821,10 +821,18 @@ type app struct {
 	drag       dragSelect
 	dragCopied int
 	dragUntil  time.Time
-	// dragFrom and dragTo are the CONTENT rows the last sweep copied, kept so
-	// the selection stays lit while the status line still says "copied"
-	// (dragselect.go's [app.dragSpan]).
-	dragFrom, dragTo int
+	// dragLit is the selection the last release copied, kept so its cells stay
+	// lit while the status line still says "copied", and dragChars how many
+	// characters it was when it fit inside one row (dragselect.go's
+	// [app.dragSel] and [app.dragWord]).
+	dragLit   dragSelect
+	dragChars int
+	// clickAt, clickX, clickY and clicks are the multi-click count: a press
+	// soon and near the last is the same gesture's second or third click
+	// (dragselect.go's [app.countClick]).
+	clickAt        time.Time
+	clickX, clickY int
+	clicks         int
 
 	// ── the effort ladder's surfaces (effortscope.go) ──
 	//
@@ -3110,6 +3118,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// A new press retires the lit remnant of the last copy: one
 			// selection on screen at a time.
 			a.dragCopied = 0
+			// A SECOND PRESS ON THE SAME SPOT IS A DOUBLE-CLICK, and it takes
+			// the word under the pointer; a third takes the row. Both are
+			// copied on release exactly as a sweep is (dragselect.go).
+			a.dragTake(a.countClick(msg.Mouse().X, msg.Mouse().Y))
 			return a, nil
 		}
 		return a, nil
