@@ -109,8 +109,14 @@ const (
 	// one model, which is the exec.leaf mistake arm B paid for.
 	taskKindOverlap = 0.5
 
-	// taskGradeEvidence is how many checked settles of one kind-shaped work it
+	// TaskGradeEvidence is how many checked settles of one kind-shaped work it
 	// takes before the store may move a tier.
+	//
+	// It is EXPORTED for one reader: `aforge models`, which prints a note under
+	// every row that is not yet driving anything and would otherwise print the
+	// router's own gate over a task node's row. Two gates guarding two decisions
+	// is fine; two numbers claiming to be the same gate is the drift the
+	// one-source-of-truth law forbids.
 	//
 	// TWO, and it is deliberately not the ledger's own [router.MinGraded] of
 	// eight. That gate guards a decision this one is not: it decides whether a
@@ -124,7 +130,7 @@ const (
 	//
 	// Two is also the fewest that can tell "keeps getting rejected" from "went
 	// wrong once", which is the sentence the road is built on.
-	taskGradeEvidence = 2
+	TaskGradeEvidence = 2
 )
 
 // taskGrades is the ratings store as this engine writes to and reads from it:
@@ -301,14 +307,14 @@ func (r taskGradeReader) reading(kind string) taskGradeReading {
 // here, does this model keep getting turned down on this kind of work?
 //
 // TWO CONDITIONS, AND BOTH ARE ABOUT EVIDENCE. There has to be enough of it
-// ([taskGradeEvidence]), and it has to point the wrong way — a rating below the
+// ([TaskGradeEvidence]), and it has to point the wrong way — a rating below the
 // middle of the scale is the ledger's own statement that the checks went against
 // this model more often than they went for it. Neither condition mentions a
 // domain, a model id or a word in a title, which is the house law: what counts
 // as mechanical is a learned fact and never a hardcoded one.
 func (r taskGradeReader) saysCareful(kind string) bool {
 	reading := r.reading(kind)
-	return reading.Count >= taskGradeEvidence && reading.Rating < 0
+	return reading.Count >= TaskGradeEvidence && reading.Rating < 0
 }
 
 // reading and saysCareful on the store itself are the one-question form, for a

@@ -365,7 +365,7 @@ func TestOneRejectionDoesNotMoveATier(t *testing.T) {
 
 	for _, kid := range nest.graph.children(nest.parent.id) {
 		if got := kid.spec.model; got != "test/model" {
-			t.Fatalf("one rejection lifted a part onto %q; the gate is %d", got, taskGradeEvidence)
+			t.Fatalf("one rejection lifted a part onto %q; the gate is %d", got, TaskGradeEvidence)
 		}
 	}
 }

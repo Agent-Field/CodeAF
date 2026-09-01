@@ -510,7 +510,9 @@ is the honest answer rather than a guess.
 `aforge models` in a terminal is where you read it back. It prints a row per model per
 kind of work, with the rating, the chance of it holding, and how many settled tasks stand
 behind the number — that last column matters, because a rating with two behind it and one
-with two hundred are different claims. Until something has settled it says
+with two hundred are different claims. A row that is not yet driving anything says so at
+the end of the line: `under the gate — a part moves up once 2 of this kind have settled`.
+Until something has settled at all it says
 `nothing measured yet. Ratings appear once calls have been graded.`
 
 **What aforge does with it** is one thing only: when a task splits itself, a part the

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -106,7 +108,20 @@ func runModels(args []string) error {
 		// not driving anything. Arm B's collapse is what happens when that is
 		// invisible.
 		gate := ""
-		if entry.Count < router.MinGraded {
+		// TWO GATES, AND THE ROW SAYS THE ONE THAT GOVERNS IT. A routed call's
+		// rating has to clear router.MinGraded before an ordering may prefer it
+		// to the cold-start prior; a settled task node's rating governs something
+		// else entirely — whether a part of a division is done a tier up — and
+		// that gate is internal/session's own and much lower. Printing the
+		// router's number over a task node's row said the row was driving
+		// nothing when it may well have been.
+		switch {
+		case strings.HasPrefix(string(entry.Class), string(provider.ClassTaskNode)):
+			if entry.Count < session.TaskGradeEvidence {
+				gate = fmt.Sprintf("  under the gate — a part moves up once %d of this kind have settled",
+					session.TaskGradeEvidence)
+			}
+		case entry.Count < router.MinGraded:
 			gate = fmt.Sprintf("  under the gate — ordering uses the prior until n=%d", router.MinGraded)
 		}
 		fmt.Printf("  %-*s %-38s %+7.2f %7.2f %6d%s\n",
