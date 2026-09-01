@@ -54,20 +54,22 @@ const (
 	divisionStayInScope = ". Do none of them, and do not change what they own — make your own part whole and say in your report what you did."
 )
 
-// divisionScopeLimit bounds ONE part's line of the sibling map. It is short on
-// purpose: the map answers "what is somebody else's", which a title and a line
-// of summary answer, and every part carries every other part's line — so a
-// summary somebody wrote three paragraphs into would be paid for once per part
-// and would bury the boundary it exists to draw.
-const divisionScopeLimit = 240
+// divisionScopeLimit bounds ONE part's line of the sibling map. It is short
+// because every part carries every other part's line: a scope somebody wrote
+// three paragraphs of would be paid for once per part and would bury the boundary
+// it exists to draw. It is not shorter than this because what a map is FOR is the
+// files and the material a sibling has claimed, and a title alone names none of
+// them.
+const divisionScopeLimit = 320
 
 // divisionFamily is the context of one division, composed ONCE for all of its
-// parts: the work being divided, and how each part is named to the others.
+// parts: the work being divided, how each part is named to the others, and the
+// room a part's own scope has inside the bound.
 //
 // IT IS A VALUE COMPUTED BEFORE THE FIRST PART IS BUILT because it is the same
-// for all of them. The parent's brief is fitted to its bound once here rather
-// than once per part — a division into five parts fitting the same document five
-// times is four passes over a page nobody changed.
+// for all of them. The parent's brief is fitted to its room once here rather than
+// once per part — a division into five parts fitting the same document five times
+// is four passes over a page nobody changed.
 type divisionFamily struct {
 	// ground is the work being divided, already fitted to the room a part's
 	// brief leaves for it, or empty where there is nothing to carry.
@@ -75,40 +77,73 @@ type divisionFamily struct {
 	// scopes is how each part is named to its siblings, in the order the parts
 	// were settled in.
 	scopes []string
+	// room is what ONE part's own scope may take, and it is the same figure for
+	// every part of the division. See [familyOf] for the arithmetic it comes out
+	// of and what it guarantees.
+	room int
 }
 
 // familyOf composes the context every part of one division is given.
 //
-// THE GROUND IS THE PARENT'S OWN BRIEF and not its assembled one, which is the
-// difference [TaskNode.ownBrief] states: the assembled brief carries the standing
-// orders over this place and the reports of whatever ran before it, and every
-// part is started by the same frontier that appends both — so a part composed on
-// the assembled one would read the house rules twice.
+// THE GROUND IS WHAT A PART INHERITS ([TaskGraph.inheritedLocked]): the brief the
+// work was admitted with AND the reports of whatever ran before it, which is
+// where a family's findings actually are. It stops short of the standing orders,
+// which the frontier appends to every part in its own right — a part composed on
+// the whole assembled brief would read the house rules twice.
 //
-// AND A BRIEF THAT IS THE PERSON'S OWN SENTENCE IS NOT CARRIED AT ALL. Where
-// somebody wrote the work themselves the brief and the request are one paragraph
-// ([composeBrief] prints it once for the same reason), and a part told it under
-// two headings would be reading two instructions that happen to agree.
+// AND THE PERSON'S OWN WORDS COME OFF THE FRONT OF IT. Where somebody wrote the
+// work themselves the brief opens on their sentence verbatim, and [composeBrief]
+// is already printing that sentence above all of this under the heading that says
+// whose it is. Printing it twice under two headings reads as two instructions
+// that happen to agree.
+//
+// ── ONE BOUND, AND WHAT IT GUARANTEES ──
+//
+// A part's whole brief fits in [taskShapeBriefLimit], which is the bound every
+// brief on this road is held to. The three sections are fitted in the order they
+// may not be lost in, and the arithmetic is done ONCE, here, against the worst
+// case any part of this division can present:
+//
+//  1. THE BOUNDARY IS NEVER CUT. Its widest form names every scope — one more
+//     than any single part is given — and that width is taken off the top.
+//  2. THE SCOPE IS NEVER CUT FOR THE GROUND. What is left after the boundary is
+//     the scope's room, and the LONGEST scope in the division is reserved out of
+//     it, so the fitting is the same for the first part and the fifth.
+//  3. THE GROUND TAKES WHAT REMAINS. A part that lost the last page of what the
+//     work already found out is worse off; a part that lost the sentence saying
+//     what it owns, or the one saying what its siblings own, is dangerous.
 func familyOf(request, brief string, parts []dividePart) divisionFamily {
 	scopes := make([]string, len(parts))
 	for index, part := range parts {
 		scopes[index] = siblingScope(part)
 	}
 	family := divisionFamily{scopes: scopes}
-	// THE ROOM THE BOUNDARY NEEDS IS TAKEN OUT OF THE BOUND BEFORE THE GROUND IS
-	// FITTED, and it is taken against ALL of the scopes — which is more than any
-	// one part's sentence names and is therefore the same arithmetic for every
-	// part of the division. A ground clipped to fit part one and not part four
-	// would be one division whose parts had read different documents.
-	room := taskShapeBriefLimit - len(divisionOtherParts+strings.Join(scopes, "; ")+divisionStayInScope) - len("\n\n")
-	brief = strings.TrimSpace(brief)
-	if brief == strings.TrimSpace(request) {
-		return family
+	family.room = taskShapeBriefLimit -
+		len(divisionOtherParts+strings.Join(scopes, "; ")+divisionStayInScope) -
+		len("\n\n"+"\n\n"+divisionThisPart+"\n")
+	longest := 0
+	for _, part := range parts {
+		if size := len(strings.TrimSpace(part.Brief)); size > longest {
+			longest = size
+		}
 	}
-	if brief != "" && room > 0 {
-		family.ground = clip(brief, room)
+	if longest > family.room {
+		longest = family.room
 	}
+	family.ground = fit(personsWordsOff(request, brief), family.room-longest)
 	return family
+}
+
+// personsWordsOff is the ground with the person's own sentence taken off the
+// front of it, where the brief opens on it. See [familyOf]: their words are
+// printed once, by [composeBrief], and this is the one place they could come to
+// be printed a second time.
+func personsWordsOff(request, brief string) string {
+	brief = strings.TrimSpace(brief)
+	if request = strings.TrimSpace(request); request == "" {
+		return brief
+	}
+	return strings.TrimSpace(strings.TrimPrefix(brief, request))
 }
 
 // partBrief is one part's whole world: the family's context, the boundary, and
@@ -118,12 +153,6 @@ func familyOf(request, brief string, parts []dividePart) divisionFamily {
 // why this work exists and what it may not touch; what it reads last, and acts
 // on, is its own job — and the heading is what keeps the two from reading as one
 // paragraph of instruction.
-//
-// IT IS HELD TO THE SAME BOUND EVERY BRIEF ON THIS ROAD IS HELD TO, once per
-// half. The two halves have different authors and neither may eat the other: a
-// context clipped to make room for a rambling scope would lose the findings the
-// parts were cut out of, and a scope clipped to make room for the context would
-// lose the only sentence saying what this part is for.
 func (f divisionFamily) partBrief(index int, scope string) string {
 	sections := make([]string, 0, 3)
 	if f.ground != "" {
@@ -132,7 +161,7 @@ func (f divisionFamily) partBrief(index int, scope string) string {
 	if siblings := f.siblings(index); siblings != "" {
 		sections = append(sections, siblings)
 	}
-	if scope = clip(strings.TrimSpace(scope), taskShapeBriefLimit); scope != "" {
+	if scope = fit(strings.TrimSpace(scope), f.room); scope != "" {
 		// A SCOPE STANDING ALONE WEARS NO HEADING, by the emptiness law: where
 		// there is no context and no sibling to tell it apart from, the heading
 		// would be a section marker over the whole of a one-section document.
@@ -160,27 +189,64 @@ func (f divisionFamily) siblings(index int) string {
 	return divisionOtherParts + strings.Join(others, "; ") + divisionStayInScope
 }
 
-// siblingScope is how one part is named to its siblings: its title, and the line
-// its author wrote about what it does.
+// siblingScope is how one part is named to its siblings: its title, and the
+// opening of the scope its author wrote for it.
 //
-// IT IS NOT [partScope] (task_divide_scope.go), which reads the material a part
-// claims so that two parts claiming the same thing are refused. This one is
-// prose for a worker to read; that one is a set of paths for the harness to
-// compare, and one function answering both questions would have to be wrong
-// about one of them.
+// IT IS CUT FROM THE SCOPE AND NOT FROM THE SUMMARY, which is the difference
+// between a map somebody can stay off and a label. The summary says what a part
+// does; the scope is where the files, the paths and the material it has claimed
+// are written, and a sibling that is told the words but not the material is a
+// sibling that finds the boundary by writing over it. The summary stands in only
+// where there is no scope at all.
 //
-// THE TITLE IS DROPPED WHERE THE SUMMARY ALREADY OPENS ON IT. A title is
-// frequently the summary cut to [TaskNameWords] — that is exactly what the sketch
-// road mints (task_divide_sketch.go's [sketchName]) — and "the http client major:
-// the http client major version" is one name said twice with a colon in it.
+// THE TITLE IS DROPPED WHERE THE SCOPE ALREADY SAYS IT. A title is frequently the
+// scope's own words cut to [TaskNameWords] — that is exactly what the sketch road
+// mints (task_divide_sketch.go's [sketchName]) — and "the http client major: the
+// http client major version" is one name said twice with a colon in it.
+//
+// AND THE WHOLE LABEL IS BOUNDED, title included. Every field here was written by
+// a model, so any of them can arrive at any length; a bound on one of the two
+// halves is not a bound.
 func siblingScope(part dividePart) string {
 	title := strings.TrimSpace(part.Title)
-	summary := clip(strings.TrimSpace(part.Summary), divisionScopeLimit)
-	switch {
-	case summary == "":
-		return title
-	case title == "" || strings.HasPrefix(strings.ToLower(summary), strings.ToLower(title)):
-		return summary
+	scope := strings.TrimSpace(part.Brief)
+	if scope == "" {
+		scope = strings.TrimSpace(part.Summary)
 	}
-	return title + ": " + summary
+	switch {
+	case scope == "":
+		return clip(title, divisionScopeLimit)
+	case title == "" || strings.Contains(strings.ToLower(scope), strings.ToLower(title)):
+		return clip(scope, divisionScopeLimit)
+	}
+	return clip(title+": "+scope, divisionScopeLimit)
+}
+
+// fit is [clip] with the one answer clip has no room to give: a section whose
+// room will not hold even the mark of a cut is LEFT OUT, rather than printed as a
+// stub of nothing. Every figure this file bounds against is arithmetic on strings
+// a model wrote, so any of them can come out at or below zero.
+func fit(text string, room int) string {
+	if room <= len("…") {
+		return ""
+	}
+	return clip(text, room)
+}
+
+// inheritedBrief is the work being divided, as a part of it inherits it: what
+// this node was admitted with and what the work before it learned, read under the
+// graph's lock ([TaskGraph.inheritedLocked] says why the standing orders are not
+// in it).
+//
+// IT IS NOT [TaskNode.assembledBrief], and the difference is the one section a
+// part would otherwise read twice. It is not the spec's brief alone either: the
+// reports of the work that ran before this node are where a family's findings
+// are, and a part cut off from them is a part that finds them out again.
+func (n *TaskNode) inheritedBrief() string {
+	if n == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.graph.inheritedLocked(n)
 }

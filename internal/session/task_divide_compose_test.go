@@ -21,6 +21,14 @@ func familyBlock(brief string) string {
 	return block
 }
 
+// siblingSentence is the boundary alone — what this part is told somebody ELSE is
+// holding, with neither the ground above it nor its own scope below it.
+func siblingSentence(brief string) string {
+	_, said, _ := strings.Cut(brief, divisionOtherParts)
+	said, _, _ = strings.Cut(said, divisionThisPart)
+	return said
+}
+
 // divideScopedArgs is one well-formed call whose parts carry the titles,
 // summaries and scopes named — the shape a worker writes when it says what each
 // part owns and nothing about the work it came out of.
@@ -46,8 +54,8 @@ func TestAWorkerWrittenPartOpensOnTheParentsBriefAndItsSiblingsScope(t *testing.
 	nest := newDivideNest(t, wideBrief, 0)
 
 	nest.divide(t, divideScopedArgs(wideEvidence,
-		dividePart{Title: "the alpha adapter", Summary: "move alpha onto the new interface", Brief: "alpha.go only"},
-		dividePart{Title: "the beta adapter", Summary: "move beta onto the new interface", Brief: "beta.go only"}))
+		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only, and the Port interface it names"},
+		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
 
 	kids := nest.graph.children(nest.parent.id)
 	if len(kids) != 2 {
@@ -60,25 +68,65 @@ func TestAWorkerWrittenPartOpensOnTheParentsBriefAndItsSiblingsScope(t *testing.
 		}
 		// AND WHAT IT OWNS IS STILL ITS AUTHOR'S OWN WORDS, under a heading of
 		// its own — the composer writes around the scope and never over it.
-		own := []string{"alpha.go only", "beta.go only"}[index]
+		own := []string{"alpha.go only, and the Port interface it names", "beta.go only"}[index]
 		if !strings.Contains(opening, divisionThisPart+"\n"+own) {
 			t.Fatalf("part %d does not own %q under the heading that says so: %q", kid.id, own, opening)
 		}
-		sibling := []string{"move beta onto the new interface", "move alpha onto the new interface"}[index]
-		if !strings.Contains(opening, divisionOtherParts) || !strings.Contains(opening, sibling) {
+		// AND THE BOUNDARY NAMES THE SIBLING'S MATERIAL, not merely its title:
+		// a part told the words but not the files finds the boundary by writing
+		// over it.
+		sibling := []string{"the beta adapter: beta.go only", "the alpha adapter: alpha.go only"}[index]
+		said := siblingSentence(opening)
+		if said == "" || !strings.Contains(said, sibling) {
 			t.Fatalf("part %d is not told that %q is in somebody else's hands: %q", kid.id, sibling, opening)
 		}
 		// AND IT IS NOT TOLD THAT ITS OWN JOB IS SOMEBODY ELSE'S. A map that
 		// named every part would leave each worker with nothing it may touch.
-		mine := []string{"move alpha onto the new interface", "move beta onto the new interface"}[index]
-		if _, others, _ := strings.Cut(opening, divisionOtherParts); strings.Contains(others, mine) {
-			t.Fatalf("part %d is told its own scope belongs to somebody else: %q", kid.id, opening)
+		if strings.Contains(said, own) {
+			t.Fatalf("part %d is told its own scope belongs to somebody else: %q", kid.id, said)
 		}
 		// AND THE PERSON'S ASK IS PRINTED ONCE. It rides on the spec and
 		// [composeBrief] prints it under the heading that says whose words those
 		// are; the family's context must not print it a second time.
 		if said := strings.Count(opening, personSentence); said != 1 {
 			t.Fatalf("part %d reads the person's own sentence %d times, want once: %q", kid.id, said, opening)
+		}
+	}
+}
+
+// AND WHAT THE WORK BEFORE THE PARENT LEARNED REACHES EVERY PART OF IT.
+//
+// A part is composed on what its parent INHERITED — the brief it was admitted
+// with AND the reports of whatever ran ahead of it — because that is where a
+// family's findings are. A part composed on the admitted brief alone would be
+// sent to find out again what a prerequisite has already written down, which is
+// the whole class of bug this composer closes, one level up.
+func TestAPartInheritsWhatTheWorkBeforeItsParentLearned(t *testing.T) {
+	const finding = "the reconciler writes through internal/ledger/absorb.go, never the store"
+	nest := newDivideNest(t, wideBrief, 0)
+
+	// The work that ran before this one, with its report in hand — which is the
+	// shape the frontier assembles a brief from ([TaskGraph.briefLocked]).
+	before := nest.graph.reserve()
+	nest.graph.admit(before, taskSpec{title: "the survey", brief: "read the ledger", acceptance: "a", depth: 1})
+	nest.graph.mu.Lock()
+	nest.graph.nodes[before].report = finding
+	nest.graph.nodes[before].state = TaskDone
+	nest.parent.dependsOn = []uint64{before}
+	nest.graph.mu.Unlock()
+
+	nest.divide(t, divideScopedArgs(wideEvidence,
+		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only"},
+		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	for _, kid := range kids {
+		if !strings.Contains(kid.instruction(), finding) {
+			t.Fatalf("part %d was sent to find out again what the work before its parent already wrote down: %q",
+				kid.id, kid.instruction())
 		}
 	}
 }
@@ -96,11 +144,11 @@ func TestASketchPartAndAWorkerWrittenPartGetTheSameFamilyContext(t *testing.T) {
 	drawn.node.divideFromSketch(context.Background())
 
 	// The same two parts as the drawing bore, said by a worker instead: the
-	// legend's words as the summary, and the name the sketch road mints from it.
+	// legend's words as the scope, and the name the sketch road mints from it.
 	written := newDivideNestFrom(t, spec, 0, &scriptedCompleter{}, nil)
 	written.divide(t, divideScopedArgs(wideEvidence,
-		dividePart{Title: "the flaking auth", Summary: "the flaking auth test", Brief: "the fixture races"},
-		dividePart{Title: "the release notes", Summary: "the release notes", Brief: "RELEASE-2.4.md"}))
+		dividePart{Title: "the flaking auth", Summary: "the flaking auth test", Brief: "A: the flaking auth test"},
+		dividePart{Title: "the release notes", Summary: "the release notes", Brief: "B: the release notes"}))
 
 	sketched, authored := drawn.graph.children(drawn.parent.id), written.graph.children(written.parent.id)
 	if len(sketched) != 2 || len(authored) != 2 {
@@ -114,5 +162,59 @@ func TestASketchPartAndAWorkerWrittenPartGetTheSameFamilyContext(t *testing.T) {
 		if one != other {
 			t.Fatalf("part %d reads a different world on the two roads:\n  drawn:  %q\n  worker: %q", index+1, one, other)
 		}
+	}
+}
+
+// AND NOTHING A MODEL WROTE CAN BLOW THE BOUND OR THE ARITHMETIC. Every field the
+// composer reads — the title, the summary, the scope — arrived from a model, so
+// each of them can arrive at any length, and the fitting has to hold for all of
+// them at once.
+func TestAPartsBriefHoldsItsBoundWhateverLengthTheFieldsArriveAt(t *testing.T) {
+	huge := strings.Repeat("pathological ", 2000)
+	for _, test := range []struct {
+		name  string
+		parts []dividePart
+		// ground says whether the work being divided still has room to be
+		// carried, which is the section that gives way first and only first.
+		ground bool
+	}{
+		{"a title no column could hold", []dividePart{
+			{Title: huge, Summary: "s", Brief: "alpha.go only"},
+			{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"},
+		}, true},
+		{"scopes that fill the whole bound", []dividePart{
+			{Title: "the alpha adapter", Summary: "s", Brief: huge},
+			{Title: "the beta adapter", Summary: "s", Brief: huge},
+		}, false},
+		{"every field at once", []dividePart{
+			{Title: huge, Summary: huge, Brief: huge},
+			{Title: huge, Summary: huge, Brief: huge},
+		}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			nest := newDivideNest(t, wideBrief, 0)
+			nest.divide(t, divideScopedArgs(wideEvidence, test.parts...))
+
+			kids := nest.graph.children(nest.parent.id)
+			if len(kids) != 2 {
+				t.Fatalf("the division bore %d parts, want 2", len(kids))
+			}
+			for _, kid := range kids {
+				brief := kid.assembledBrief()
+				if len(brief) > taskShapeBriefLimit {
+					t.Fatalf("part %d was handed %d bytes, over the %d every brief on this road is held to",
+						kid.id, len(brief), taskShapeBriefLimit)
+				}
+				// THE BOUNDARY IS NEVER THE SECTION THAT GIVES WAY, whatever
+				// else had to.
+				if !strings.Contains(brief, divisionOtherParts) {
+					t.Fatalf("part %d lost the sentence saying what its sibling owns: %q", kid.id, brief)
+				}
+				if got := strings.Contains(brief, wideBrief); got != test.ground {
+					t.Fatalf("part %d carries the work being divided (%t), want %t: %q",
+						kid.id, got, test.ground, brief)
+				}
+			}
+		})
 	}
 }

@@ -230,25 +230,6 @@ func (n *TaskNode) drawn() drawnDivision {
 	return n.spec.drawn
 }
 
-// ownBrief is the node's OWN brief — what it was admitted with, which for a
-// handed-over turn is the sketch above the dowry (checkpoint.go's
-// [checkpointSketch.head]).
-//
-// IT IS THE SPEC'S AND NOT [TaskNode.assembledBrief]'S, and the difference is
-// what a part would otherwise be handed twice. The assembled one carries the
-// standing orders over this place and the reports of whatever ran before it, and
-// every part is started by the same frontier that appends both — so a part whose
-// brief already contained them would read the house rules twice and its
-// predecessor's report in the middle of its own instruction.
-func (n *TaskNode) ownBrief() string {
-	if n == nil {
-		return ""
-	}
-	n.graph.mu.Lock()
-	defer n.graph.mu.Unlock()
-	return n.spec.brief
-}
-
 // ── the drawing, as a division ──────────────────────────────────────────────
 
 // THE BOUNDARY IS NOT WRITTEN HERE ANY MORE, and neither is the parent's brief.

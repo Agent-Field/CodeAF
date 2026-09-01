@@ -874,7 +874,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// (task_divide_compose.go says why that had to stop depending on the road).
 	// It is composed above the loop for the reason the two models are: the parts
 	// of one division must read one document, not five fittings of it.
-	family := familyOf(request, node.ownBrief(), parsed.Parts)
+	family := familyOf(request, node.inheritedBrief(), parsed.Parts)
 	ids := make([]uint64, 0, len(parsed.Parts))
 	titles := make([]string, 0, len(parsed.Parts))
 	for index, part := range parsed.Parts {
