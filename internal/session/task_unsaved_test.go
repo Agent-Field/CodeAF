@@ -323,7 +323,8 @@ func folderContents(t *testing.T, folder string) string {
 }
 
 // savedWorkAnswerDropped names the functions allowed to throw away what
-// [stageTaskWork] or [commitTaskWork] answered, and says why each may.
+// [stageTaskWork], [commitTaskWork] or [commitTaskWorkAs] answered, and says why
+// each may.
 //
 // EVERY OTHER CALL SITE READS IT. That is the whole of #255: three silent
 // endings, one dropped answer, and a landing that merged an empty branch over
@@ -340,7 +341,7 @@ var savedWorkAnswerDropped = map[string]string{
 // TestNoLandingDropsWhatASaveAnswered fails when a call to either save discards
 // the failure without an entry above.
 func TestNoLandingDropsWhatASaveAnswered(t *testing.T) {
-	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1}
+	saves := map[string]int{"stageTaskWork": 0, "commitTaskWork": 1, "commitTaskWorkAs": 2}
 	found := map[string]bool{}
 	forEachPackageFile(t, func(path string, file *ast.File, fset *token.FileSet) {
 		var enclosing string
