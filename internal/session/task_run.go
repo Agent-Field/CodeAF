@@ -4828,15 +4828,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 			model = fallback
 		}
 	}
-	window := parent.ContextWindow
-	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {
-		// A WINDOW MEASURED FOR ANOTHER MODEL IS NOT A FACT ABOUT THIS ONE. The
-		// figure the surface handed down is the conversation model's, and a node
-		// running elsewhere gets zero — this package's own conservative default —
-		// rather than a number that could be four times the window it actually
-		// has. Compacting early costs a summary; overflowing costs the turn.
-		window = 0
-	}
+	// A WINDOW MEASURED FOR ANOTHER MODEL IS NOT A FACT ABOUT THIS ONE, so a node
+	// running elsewhere is not handed the conversation's figure. It is handed the
+	// CARD'S figure for the model it is actually going to run — the same catalog
+	// the conversation asks, through the same seam ([Agent.childWindow]) — and
+	// zero only when nothing can say, which is this package's own conservative
+	// default. Compacting early costs a fold and a cold prompt cache;
+	// overflowing costs the turn.
+	window := a.childWindow(model)
 	// AND THE PROVIDER REPAIR TRAVELS WITH THE CLIENT, WHICH IS WHY IT IS NOT IN
 	// THE LITERAL BELOW. Routing, ModelFallbacks and NearestModels are read in
 	// exactly one place — [New], where they are handed to the provider client
@@ -4918,14 +4917,19 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// AND WHETHER THIS DIRECTORY IS A PROJECT, which is the family's question
 		// and not the worker's: a worker carries no Place (session.go), so the
 		// answer is settled here, once, while the family's is in hand.
-		ownSpace:       standingInOwnSpace(family, dir),
-		Workspace:      dir,
-		Model:          model,
-		APIKey:         parent.APIKey,
-		BaseURL:        parent.BaseURL,
-		ContextWindow:  window,
-		CompactEnabled: parent.CompactEnabled,
-		SessionFile:    journal,
+		ownSpace:      standingInOwnSpace(family, dir),
+		Workspace:     dir,
+		Model:         model,
+		APIKey:        parent.APIKey,
+		BaseURL:       parent.BaseURL,
+		ContextWindow: window,
+		// AND THE CATALOG ITSELF, so a node that switches its own model later
+		// learns that model's window rather than keeping this one (agent.go's
+		// SetModel). A child without it is a child whose compaction stops
+		// following the window the moment it moves.
+		ContextWindowFor: parent.ContextWindowFor,
+		CompactEnabled:   parent.CompactEnabled,
+		SessionFile:      journal,
 		// ── how hard this worker thinks ─────────────────────────────────────
 		//
 		// A NODE IS THE PERSON'S OWN WORK AT ONE REMOVE, so it inherits their

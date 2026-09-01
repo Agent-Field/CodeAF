@@ -23,6 +23,29 @@ What does not change with the headroom: every message you typed survives every p
 system prompt and the verbatim tail (20,000 tokens, at most a quarter of the window) are
 never folded, and the full record stays readable in the store or the session journal.
 
+## Why is it compacting at a hundred thousand tokens when my model holds a million
+
+It should not, and it no longer does. **The line it fires at follows the model's own
+window** — `window − max(15% of window, 16384)` — so a model claiming 1,310,720 tokens
+folds at 1,114,112 and one claiming 128,000 folds at 108,800.
+
+Two things used to make a big model fold like a small one, and both are fixed:
+
+- aforge refused to believe any claim above 256,000 tokens, for every model alike. That
+  ceiling is gone; what can lower a claim now is an endpoint actually **refusing** a request
+  for being too long, which aforge writes down and never trusts that model past again.
+- work that left the conversation — a task's worker, an adaptive run's worker, a fork, the
+  reader that checks a task — was handed nothing at all when its model differed from yours,
+  and so folded against the conservative 128,000-token default whatever its own model held.
+  Each of those now asks the catalog for its own model.
+
+A measured run in August 2026 compacted nineteen times in two and a half hours for exactly
+those two reasons, at about a twentieth of the room its model advertised.
+
+If you are still seeing it on a model you know is large, the thing to check is what aforge
+believes the window is: `/status` reports the model's own figure, and a much smaller number
+there means the model catalog on this machine has not answered for it.
+
 ## Why compaction costs more than it looks like it should — the prompt cache
 
 Every pass rewrites the front of the transcript, and the provider's prompt cache is keyed

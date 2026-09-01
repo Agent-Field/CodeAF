@@ -641,6 +641,19 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// recovery from a request the provider has already refused.
 			if isContextOverflow(err.Error()) && !overflowCompacted {
 				overflowCompacted = true
+				// AND THE REFUSAL IS THE ONE THING THAT TEACHES THE WINDOW. Every
+				// other figure in this law is a claim: the catalog's row, the
+				// surface's hint, this package's own default. A provider saying
+				// "that did not fit" is a measurement, and it is the only one
+				// available — so what was in front of it becomes the ceiling on
+				// this model's claim, here and in every later process
+				// ([Agent.learnServedWindow]). Until this line the loop compacted
+				// and re-sent and learned nothing, so the same over-long request
+				// was built again on the next long turn.
+				a.mu.Lock()
+				refused := a.estimateTokensLocked()
+				a.mu.Unlock()
+				a.learnServedWindow(model, refused)
 				if compacted, compactErr := a.compact(ctx, hub); compacted && compactErr == nil {
 					continue
 				}
@@ -2509,25 +2522,37 @@ const (
 	// moves when compaction fires, never whether the request fits.
 	bytesPerToken = 4
 
-	// maxTrustedWindow is the largest window the compaction machinery will
-	// BELIEVE, whatever a catalog row claims, and it is a hard ceiling rather
-	// than a preference.
+	// THE THRESHOLD FOLLOWS THE WINDOW, AND THE WINDOW IS THE MODEL CARD'S UNTIL
+	// AN ENDPOINT SAYS OTHERWISE.
 	//
-	// The threshold is derived from a number a provider publishes about itself,
-	// and a published number can be enormous. The catalog row for
-	// ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens, which put this
-	// session's trigger at 1,114,112 — so a real conversation grew to 386,309
-	// tokens with compaction never once firing, and what came back at that size
-	// was not an answer but the model's own template turned inside out. Nothing
-	// was broken; the law simply believed the row.
+	// There used to be a flat ceiling here — twice [defaultContextWindow], so
+	// 256k — and it was put in for a real failure: the catalog row for
+	// ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens, the trigger
+	// followed the claim to 1,114,112, a conversation grew to 386,309 tokens
+	// with compaction never once firing, and what came back at that size was the
+	// model's own template turned inside out.
 	//
-	// Twice [defaultContextWindow] is the ceiling because that constant is what
-	// this codebase already believes about windows: 128k is the smallest window
-	// this surface routes to, and no model is asked to carry more than double
-	// the smallest into a single request. A model whose real window is 200k or
-	// 400k is untouched — only a claim beyond 256k is clamped, and a claim
-	// beyond 256k is exactly the kind that let 386k out.
-	maxTrustedWindow = 2 * defaultContextWindow
+	// The ceiling answered that by disbelieving EVERY claim above 256k, and the
+	// bill for it was paid by every model that was telling the truth. Measured
+	// on 2026-08-31: a two-and-a-half-hour run on a model advertising 1.3M
+	// compacted nineteen times, each pass throwing away the prefix cache the run
+	// was otherwise getting 57–61% of its prompt back from, and the model was
+	// reduced to keeping its own notes file to survive the folding.
+	//
+	// So the ceiling is not a constant any more, it is a MEASUREMENT: the
+	// narrowest prompt this model has actually been refused for, learned from
+	// the overflow refusal itself and remembered across processes
+	// (internal/provider's NoteServedWindow, and the branch in [Agent.runTurn]
+	// that teaches it). A model nobody has refused is believed; one that has
+	// refused is capped at what it refused, for good. The 386k incident now
+	// costs one turn per model per machine instead of every model forever, and
+	// what it costs is paid by the model that earned it.
+	//
+	// Two guards stand behind that trade and neither is new.
+	// [Agent.guardOversizeRequest] still shrinks a transcript that has grown past
+	// the window before it goes out, and the reply guard cuts an answer that has
+	// stopped being language (internal/provider's CutBabble and CutMachinery),
+	// which is exactly the shape the 386k incident came back in.
 )
 
 // window is the model's context in tokens, most specific answer first: the one
@@ -2545,24 +2570,113 @@ func (a *Agent) window() int {
 	return defaultContextWindow
 }
 
-func (a *Agent) compactThreshold() int {
-	return CompactThreshold(a.window())
+// trustedWindow is this agent's own window with everything this process has
+// learned about the model in use applied over it. It is what every bound below
+// is derived from, and it takes no lock for [Agent.window]'s reason.
+func (a *Agent) trustedWindow() int {
+	return trustedWindow(a.window(), int(a.servedWindow.Load()))
 }
 
-// TrustedWindow is a claimed context window with the ceiling applied — the
-// figure the compaction machinery works from, as opposed to [Agent.window],
-// which stays the model's own claim because the status meter is describing the
-// model rather than this law.
+// learnServedWindow is the closing half of the loop the threshold rides on: an
+// endpoint has just refused a prompt for being too long, so what it refused is
+// now the ceiling on that model's claim — in this session from the next check
+// onward, and in every later process through the memo.
+//
+// It is called with the estimate that was refused rather than with a figure from
+// the error, because no provider states one: what is known is that THIS many
+// tokens was too many, here, and that is the honest ceiling.
+func (a *Agent) learnServedWindow(model string, estimate int) {
+	if estimate <= 0 {
+		return
+	}
+	provider.NoteServedWindow(model, estimate)
+	if learned := provider.ServedWindow(model); learned > 0 {
+		a.servedWindow.Store(int64(learned))
+	}
+}
+
+// noteModelWindow refreshes what is known about the window of the model now in
+// use. It is called wherever the model or the window moves, so that the memo a
+// previous session wrote is in force from this session's first check.
+func (a *Agent) noteModelWindow(model string) {
+	a.servedWindow.Store(int64(provider.ServedWindow(model)))
+}
+
+// childWindow is how large the window of the model a CHILD agent is about to run
+// on should be taken to be — a task node's worker, an adaptive run's worker, a
+// forked hand, an auditor.
+//
+// A child on this agent's OWN model inherits the window this agent is running
+// on, the learned figure included: a catalog row that arrived after construction
+// is a better fact than the one Config was built with, and a child built from
+// Config alone would compact against a window its parent stopped believing an
+// hour ago. A child on ANOTHER model asks the same catalog this agent asks
+// (Config.ContextWindowFor), because the model card is the only thing that
+// knows. Zero when nothing can say, which is the honest answer and leaves this
+// package's conservative default standing.
+//
+// UNTIL THIS EXISTED A CHILD ON ANOTHER MODEL WAS HANDED ZERO OUTRIGHT, on the
+// argument that a window measured for one model is not a fact about another.
+// The argument is right and the conclusion was wrong: the answer to "that is not
+// a fact about this model" is to ask about this model, not to fall back to the
+// smallest window the surface routes to. The bill was measured on 2026-08-31 —
+// a two-and-a-half-hour run folded its work nineteen times against a 128k
+// default while the models doing it advertised ten times that.
+//
+// It reads a.model the way its callers already do, unlocked: the model a child
+// is being built for was latched by the caller a few lines earlier, and this is
+// the same read at the same moment.
+func (a *Agent) childWindow(model string) int {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.EqualFold(model, strings.TrimSpace(a.model)) {
+		return a.window()
+	}
+	if a.config.ContextWindowFor != nil {
+		if window := a.config.ContextWindowFor(model); window > 0 {
+			return window
+		}
+	}
+	return 0
+}
+
+func (a *Agent) compactThreshold() int {
+	return compactThresholdOf(a.trustedWindow())
+}
+
+// TrustedWindow is a claimed context window with everything this process has
+// learned applied over it — the figure the compaction machinery works from, as
+// opposed to [Agent.window], which stays the model's own claim because the
+// status meter is describing the model rather than this law.
+//
+// Called without a model there is nothing to have learned, so the claim comes
+// back untouched; [TrustedWindowFor] is the door that applies a model's memo.
 //
 // It is exported for the same reason [CompactThreshold] is: a surface that
 // needs to know how much room the guard leaves must read the guard, not a
 // second copy of it.
-func TrustedWindow(window int) int {
+func TrustedWindow(window int) int { return TrustedWindowFor("", window) }
+
+// TrustedWindowFor is [TrustedWindow] for a NAMED model: the claim, capped by
+// the narrowest prompt that model has been refused for, when this process has
+// ever seen it refused.
+//
+// An empty model, or one nothing has been learned about, gets its claim back
+// unchanged — which is the ordinary case and the emptiness law applied to a
+// measurement: "nothing was learned" may not be spelled the same way as "this
+// model has no room".
+func TrustedWindowFor(model string, window int) int {
+	return trustedWindow(window, provider.ServedWindow(model))
+}
+
+// trustedWindow is the law itself over two plain numbers, so that an agent
+// holding a learned figure of its own and a surface asking about a model by name
+// are running one arithmetic rather than two copies of it.
+func trustedWindow(window, learned int) int {
 	if window <= 0 {
 		return 0
 	}
-	if window > maxTrustedWindow {
-		return maxTrustedWindow
+	if learned > 0 && learned < window {
+		return learned
 	}
 	return window
 }
@@ -2577,12 +2691,24 @@ func TrustedWindow(window int) int {
 // is a number that means nothing, and a caller must have an answer for that
 // rather than treat it as a tiny model.
 //
-// A window larger than [maxTrustedWindow] is clamped to it BEFORE the reserve is
-// taken, so an absurd or unpublished claim can never move the trigger past the
-// ceiling. That is the guard, and it lives here rather than at the door because
-// the door is not the only way a window arrives.
-func CompactThreshold(window int) int {
-	window = TrustedWindow(window)
+// The window is trusted BEFORE the reserve is taken, so a claim this process has
+// learned to distrust can never move the trigger past what the endpoint was
+// actually willing to serve. That is the guard, and it lives here rather than at
+// the door because the door is not the only way a window arrives.
+func CompactThreshold(window int) int { return CompactThresholdFor("", window) }
+
+// CompactThresholdFor is [CompactThreshold] for a NAMED model, so that a surface
+// drawing how close a conversation is to being folded reads the same figure the
+// trigger does — including anything this process has learned about what that
+// model's endpoints really serve ([TrustedWindowFor]).
+func CompactThresholdFor(model string, window int) int {
+	return compactThresholdOf(TrustedWindowFor(model, window))
+}
+
+// compactThresholdOf is the arithmetic, over a window that has ALREADY been
+// trusted. Every door above applies the cap and then comes here, so the cap is
+// applied exactly once however the window arrived.
+func compactThresholdOf(window int) int {
 	if window <= 0 {
 		return 0
 	}
@@ -2634,11 +2760,10 @@ func CompactThreshold(window int) int {
 // the numbers stop meaning anything. Neither bound moves when compaction FIRES;
 // the trigger and the status meter's accent are [CompactThreshold]'s alone.
 func compactTarget(window int) int {
-	threshold := CompactThreshold(window)
+	threshold := compactThresholdOf(window)
 	if threshold <= 0 {
 		return 0
 	}
-	window = TrustedWindow(window)
 	headroom := (window - threshold) / 2
 	if gap := (threshold - keepRecent(window)) / 2; gap < headroom {
 		headroom = gap
@@ -2647,7 +2772,7 @@ func compactTarget(window int) int {
 }
 
 func (a *Agent) compactTargetTokens() int {
-	return compactTarget(a.window())
+	return compactTarget(a.trustedWindow())
 }
 
 // keepRecentTokens is the verbatim tail budget, capped at a quarter of the
@@ -2655,7 +2780,7 @@ func (a *Agent) compactTargetTokens() int {
 // is not a compaction at all, and without the cap a small-window session would
 // find nothing to summarize and overflow with the pass "succeeding".
 func (a *Agent) keepRecentTokens() int {
-	return keepRecent(a.window())
+	return keepRecent(a.trustedWindow())
 }
 
 // keepRecent is [Agent.keepRecentTokens] as a function of the window alone, so
@@ -2686,7 +2811,7 @@ func keepRecent(window int) int {
 // The bar is [TrustedWindow], not the model's own claim, for exactly that
 // reason — the claim is what was wrong.
 func (a *Agent) guardOversizeRequest(ctx context.Context, hub *eventHub) {
-	ceiling := TrustedWindow(a.window())
+	ceiling := a.trustedWindow()
 	if ceiling <= 0 {
 		return
 	}
