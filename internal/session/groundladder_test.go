@@ -229,10 +229,13 @@ func TestAUniverseGroundsACopiedTaskAndSaysSo(t *testing.T) {
 
 // ── A REPOSITORY TASK INHERITS THE WHOLE UNIVERSE (issue #172) ──────────────
 //
-// The four tests below are the four acceptance clauses. They share one shape,
-// because the promise and the world are the two halves of one claim: a
-// repository ground that takes the top rung must come home EXACTLY as it did
-// from the rung below, and must arrive holding what that rung could not carry.
+// The tests below are the issue's acceptance clauses, plus the one refusal that
+// keeps the rung honest. They share one shape, because the promise and the world
+// are the two halves of one claim: a repository ground that takes the top rung
+// must come home EXACTLY as it did from the rung below, and must arrive holding
+// what that rung could not carry. The fourth clause — that the manual answers
+// "does my task see my .env" in the asker's own words — is pinned where every
+// other question about the pages is, in internal/manual/chat_test.go.
 
 // worldGitCannotSee is [dirtyRepo] plus the two things a repository is
 // configured not to see: a `.env` and an installed dependency tree. They are the
