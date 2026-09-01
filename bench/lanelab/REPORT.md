@@ -17,6 +17,13 @@ counts and this one is the bug report.
 > last section of this file, ["The run after wave 2b"](#the-run-after-wave-2b);
 > everything before it is how the lab got there, in the order it got there, and
 > the earlier verdicts are kept because the failures are the point.
+>
+> **The design's own acceptance, §K, is measured separately and does not pass.**
+> Its four proof rows are the last section of this file, ["The proof
+> rows"](#the-proof-rows--docsdesignwaitingdesignmd-k-measured), and **two of
+> its four criteria fail** — a healthy talk turn wants an arm the instant the
+> action floor passes. The waiting invariant the design was written for holds on
+> all 225 staged silences.
 
 ## Two corrections since the first run of this lab
 
@@ -1025,19 +1032,21 @@ Unchanged from the section above, and none of it is a blocker:
 ## The proof rows — `docs/design/waiting/DESIGN.md` §K, measured
 
 *`go run ./bench/lanelab/gosim -proof -json bench/lanelab/gosim/proof.json`,
-2026-09-01, on the branch `feat/waiting-policy`: five rows, three seeds
-(7/9/11), 150 requests a row a seed, both doors a plan can be built against —
-**9m 12s** wall, 4,500 trials. `gosim/proof.json` is that run. Everything below
-was measured; nothing in it was estimated, and where a figure was not produced
-this section says so rather than filling the gap.*
+2026-09-01, on the branch `feat/waiting-policy` at `0a31168d`: five rows, three
+seeds (7/9/11), 150 requests a row a seed, both doors a plan can be built
+against — **9m 11s** wall, 4,500 trials. `gosim/proof.json` is that run.
+Everything below was measured; nothing in it was estimated, and where a figure
+was not produced this section says so rather than filling the gap.*
 
 **Two of the four criteria pass, on both doors.** The invariant holds — every
 one of 225 staged silences on a cold store was acted on at exactly the ceiling,
 and 99% of legitimate thinking phases finished with no arm behind them. The two
 that fail are the same failure twice: **the controller wants an arm on a healthy
 talk request the moment the action floor passes**, which costs 4.9% of healthy
-requests and 5.8% of the bill against thresholds of 2% and 3%. Two findings
-below say why, and both are arithmetic rather than accident.
+requests and 5.8% of the bill against thresholds of 2% and 3%. Finding 2 below
+says why, and it is arithmetic rather than accident. Finding 1 — an eightfold
+error in the believed first token — was found by these rows, fixed in
+`internal/lane/hier.go`, and re-measured here; the table is from after the fix.
 
 ### What these rows are, and what they are not
 
@@ -1061,29 +1070,29 @@ millisecond late — tens of milliseconds of the world. So the alarm sleeps to
 within two milliseconds of the moment and spins the rest, the controller is
 asked about **the moment it asked to be woken at** rather than the one the timer
 got round to, and what the timer cost is measured on every act and printed
-beside the table: **median 0 ms, worst 180 ms of world time** across all ten
+beside the table: **median 0 ms, worst 152 ms of world time** across all ten
 row-and-door pairs. The ceiling column is therefore the build's decision and not
 the instrument's overshoot.
 
 ### The pass table
 
 *Read off the `shipped` door — `lane.PaceFor`, which is what the transport asks.
-The `flat` door's figures are in the second table and differ by less than a
-point on every row.*
+The `flat` door's figures are in the second table and differ by a tenth of a
+point on the gated ones.*
 
 | criterion | threshold | measured | verdict |
 |---|---|---|---|
 | time-to-action, stalled lane, cold store, talk role | ≤ 10 s in **100%** | **100.00% of 225 acts, max 10.00 s** | **PASS** |
 | false hedges on a healthy lane | ≤ **2%** of requests | **4.89% of 1,125 healthy requests** | **FAIL** |
-| spend overhead | ≤ **3%** of the arm's own bill | **5.77% of $1.2839** | **FAIL** |
-| long think, not hedged | ≥ **95%** of thinking phases | **98.97% of 97 thinking phases** | **PASS** |
+| spend overhead | ≤ **3%** of the arm's own bill | **5.78% of $1.3232** | **FAIL** |
+| long think, not hedged | ≥ **95%** of thinking phases | **99.00% of 100 thinking phases** | **PASS** |
 
 | criterion | `flat` door | verdict |
 |---|---|---|
 | time-to-action | 100.00% of 225 acts, max 10.00 s | **PASS** |
-| false hedges | 5.07% of 1,125 healthy requests | **FAIL** |
-| spend overhead | 5.42% of $1.2669 | **FAIL** |
-| long think, not hedged | 98.91% of 92 thinking phases | **PASS** |
+| false hedges | 4.80% of 1,125 healthy requests | **FAIL** |
+| spend overhead | 5.72% of $1.2637 | **FAIL** |
+| long think, not hedged | 99.00% of 100 thinking phases | **PASS** |
 
 **Row by row, plain:**
 
@@ -1098,57 +1107,57 @@ point on every row.*
 - **False hedges, FAIL at about 2.5×.** 55 arms went out on 1,125 healthy
   requests. They are not spread evenly: the `cold store` and `pinned, a reader`
   rows fire none at all (nowhere to go, and a pin is asked rather than
-  overridden), and the other three fire on 7.6–8.9% of their healthy requests.
-- **Spend overhead, FAIL at about 2×.** $0.0741 of waste on a $1.2839 bill. It
+  overridden), and the other three fire on 8.0–8.4% of their healthy requests.
+- **Spend overhead, FAIL at about 2×.** $0.0765 of waste on a $1.3232 bill. It
   is the same 55 arms: the criterion is downstream of the one above and has no
   independent cause.
-- **Long think, PASS.** 96 of 97 legitimate thinking phases reached their first
-  visible word with no arm behind them, and 91 of 92 on the flat door. The
-  duration clock — the one §B added to keep a minute of deliberation from being
-  answered with a second minute of it — fired 8 times across that row, against
-  63 firings of the liveness clock beside it.
+- **Long think, PASS.** 99 of 100 legitimate thinking phases reached their first
+  visible word with no arm behind them, on both doors. The duration clock — the
+  one §B added to keep a minute of deliberation from being answered with a
+  second minute of it — fired 8 times across that row, against 54 firings of the
+  drift clock beside it.
 
 ### The five rows
 
 | row | n | faults | acts in the fault window | arms | time-to-action p50/p90/max | past 10 s from sending | false hedge % | spend over % |
 |---|---:|---:|---:|---:|---|---:|---:|---:|
 | `cold store` | 450 | 225 | 225 | 0 | 10.00 / 10.00 / 10.00 s | 0 | 0.00 | 0.00 |
-| `stalled lane` | 450 | 225 | 225 | 40 | 0.70 / 11.26 / 13.19 s | 78 | 7.56 | 7.63 |
-| `thinking model` | 450 | 225 | 225 | 40 | 0.70 / 8.18 / 10.00 s | 0 | 8.00 | 9.01 |
-| `pinned lane, a reader` | 450 | 225 | 225 | 0 | 0.70 / 0.70 / 5.03 s | 0 | 0.00 | 0.00 |
-| `pinned lane, no reader` | 450 | 225 | 225 | 42 | 0.70 / 0.72 / 5.08 s | 0 | 8.89 | 8.73 |
+| `stalled lane` | 450 | 225 | 225 | 40 | 0.70 / 10.92 / 12.36 s | 60 | 8.44 | 7.90 |
+| `thinking model` | 450 | 225 | 225 | 42 | 0.70 / 7.55 / 10.00 s | 0 | 8.00 | 8.42 |
+| `pinned lane, a reader` | 450 | 225 | 225 | 0 | 0.70 / 0.70 / 0.95 s | 0 | 0.00 | 0.00 |
+| `pinned lane, no reader` | 450 | 225 | 225 | 42 | 0.70 / 0.70 / 5.03 s | 0 | 8.00 | 8.73 |
 
-**The `stalled lane` row's 78 acts "past 10 s from sending" are not ceiling
+**The `stalled lane` row's 60 acts "past 10 s from sending" are not ceiling
 misses and the column is there so nobody has to guess.** That row stalls five
 visible words into the answer, and the ceiling bounds the SILENCE — measured
 from the fifth word, not from the request. Its silence-at-action never exceeded
-10.00 s on any of the 225. What the 78 say is that a person who has already read
-five words and then waits out the full ceiling has waited eleven or thirteen
+10.00 s on any of the 225. What the 60 say is that a person who has already read
+five words and then waits out the full ceiling has waited eleven or twelve
 seconds in total, which is the design's own arithmetic and worth knowing.
 
 | row | acts by kind | which clock decided | `s` at the act, p50/p90/max | `Report` share |
 |---|---|---|---|---:|
 | `cold store` | report 228 | no heartbeat 228 | 10.00 / 10.00 / 10.00 s | 100.0% |
-| `stalled lane` | report 286, hedge 40 | first token late 232, ceiling 75, drift 13, no heartbeat 6 | 0.70 / 10.00 / 10.00 s | 87.7% |
-| `thinking model` | report 320, hedge 40 | first token late 277, drift 63, ceiling 8, long think 8, no heartbeat 4 | 0.70 / 8.18 / 10.00 s | 88.9% |
-| `pinned lane, a reader` | ask 344 | first token late 343, no heartbeat 1 | 0.70 / 0.70 / 5.03 s | 0.0% |
-| `pinned lane, no reader` | ask 347 | first token late 344, no heartbeat 3 | 0.70 / 0.72 / 5.08 s | 0.0% |
+| `stalled lane` | report 313, hedge 40 | first token late 272, ceiling 55, drift 26 | 0.70 / 10.00 / 10.00 s | 88.7% |
+| `thinking model` | report 319, hedge 42 | first token late 292, drift 54, long think 8, ceiling 7 | 0.70 / 7.55 / 10.00 s | 88.4% |
+| `pinned lane, a reader` | ask 362 | first token late 362 | 0.70 / 0.70 / 0.95 s | 0.0% |
+| `pinned lane, no reader` | ask 362 | first token late 361, no heartbeat 1 | 0.70 / 0.70 / 5.03 s | 0.0% |
 
 ### The two figures §K asks for and does not gate
 
 **The distribution of `s` at the moment of action piles up at the two ends.**
 The p50 is **0.70 s — the `ActionFloor`, exactly** — on four rows of five, and
 **10.00 s — the ceiling, exactly** — on the cold one; the p90 is the ceiling on
-two more. What sits in between is almost entirely the `thinking model` row (p90
-8.18 s), where a run of thought moves the phase and the clock under it. On every
+one more. What sits in between is almost entirely the `thinking model` row (p90
+7.55 s), where a run of thought moves the phase and the clock under it. On every
 other row the arithmetic crossing that is supposed to decide has **already
 crossed by the time the floor allows an act at all**, so the floor is what the
 figure records. Finding 2 is why.
 
-**The share of actions that were `Report` rather than `Hedge` is 87.7–100% on
+**The share of actions that were `Report` rather than `Hedge` is 88.4–100% on
 every row that is not pinned**, and on the two pinned rows every act is `Ask`
 and none is either. That number is mostly **the purse talking**: the `stalled
-lane` row raised 326 acts and sent 40 arms, because `lane.DefaultBudget()`
+lane` row raised 353 acts and sent 40 arms, because `lane.DefaultBudget()`
 allows two hedges in any twenty requests and refuses the rest — and a refused
 purse is final for that request, so the act becomes `Report`. So the false-hedge
 and spend figures above are **what the design costs with the shipped purse
@@ -1156,35 +1165,45 @@ holding it back**, not what its inequality asked for. Without the purse both
 would be several times larger; this run does not measure how much larger,
 because it never ran without one.
 
-### Finding 1 — a sheet-primed pair is believed to take **8.1 seconds** to say its first word
+### Finding 1 — a sheet-primed pair was believed to take **8.1 seconds** to say its first word, and now is not
+
+*Found by these rows, and fixed on this branch in `internal/lane/hier.go` at
+`0a31168d`. The pass table above is from after the fix. This is kept because
+the defect is the reason the four-level chain has a regression test now.*
 
 `lane.PaceFor` is the door `internal/provider`'s `planFor` asks, and it prefers
 the four-level chain over the flat belief whenever the chain believes anything
-at all. Prime one row from this directory's own sheet — p50 430 ms, p90 900 ms —
-and read both back:
+at all. Priming one row from this directory's own sheet — p50 430 ms, p90 900 ms
+— used to read back like this:
 
 | door | median first token | σ | E[T] | W(0.7 s) |
 |---|---:|---:|---:|---:|
-| `PaceOf` (flat belief) | **0.430 s** | 1.000 | 0.709 s | 0.876 s |
-| `PaceFor` (the chain) | **8.088 s** | 1.662 | 32.164 s | 33.870 s |
+| `PaceOf` (flat belief) | 0.430 s | 1.000 | 0.709 s | 0.876 s |
+| `PaceFor` (the chain), **before** | **8.088 s** | 1.662 | 32.164 s | 33.870 s |
+| `PaceFor` (the chain), **after** | **1.200 s** | 1.691 | 5.014 s | 7.144 s |
 
-The chain's four components explain it exactly. `μ` sits at **7.0901** in ln
+The chain's four components explained it exactly. `μ` sat at **7.0901** in ln
 milliseconds — about 1.2 s, its seeded prior, untouched, `P` still 1.44 — while
-`b[model]` is at **1.1261** and `e[model, lane]` at **0.7820**. Those two are the
-gains `belief.go`'s `primeRow` produced by folding **the sheet's absolute
+`b[model]` was at **1.1261** and `e[model, lane]` at **0.7820**. Those two were
+the gains `belief.go`'s `primeRow` produced by folding **the sheet's absolute
 ln(p50) = 6.0638** into a subject that names only those two levels: predicted 0,
 surprise 6.0638, gains 0.1857 and 0.1290 against `R = P·SheetWeight = 1.328`.
-The sum `Chain.Predict` then returns is `7.0901 + 0 + 1.1261 + 0.7820 = 8.9981`
-— μ's absolute pace **plus** two components that have absorbed an absolute
-number as though it were an offset. 8,088 ms, for a lane the sheet publishes at
-430.
+The sum `Chain.Predict` then returned was `7.0901 + 0 + 1.1261 + 0.7820 =
+8.9981` — μ's absolute pace **plus** two components that had absorbed an
+absolute number as though it were an offset. 8,088 ms, for a lane the sheet
+publishes at 430.
 
-It is two lines to reproduce, and it needs no bench:
-
-```go
-led.Prime(lane.Row{ID: id, TTFTp50: 430, TTFTp90: 900, Ratep50: 60, Ratep90: 90, At: now}, lane.SheetWeight)
-mu, _ := led.(lane.Hierarchy).Wait(id, now).Predict()   // 8.9981, want ~6.06
-```
+**The repair, and why the number is 1.2 s and not 0.43 s.** A belief is a SUM
+and a row is an ABSOLUTE, so the innovation has to be taken against the *whole*
+belief; what a published row constrains is only *which levels may absorb it*.
+`chains.fold` now predicts and totals across every named level and passes an
+`absorbs [Levels]bool` that gates the gains alone — `everyLevel` for an
+observation, `publishedLevels` (model and pair) for a sheet row. The chain then
+comes back at **1.200 s**: μ's 1.2 s prior barely moved, because one sheet row
+at `SheetWeight` is a weak observation against a `P` of 1.44 and a scalar Kalman
+update is *supposed* to move partway. That is a prior doing its job, not the
+double count, and `TestAChangePointResetsTheLeafAndNotItsParents` now pins it —
+a row published at 768 ms must predict between 500 and 1,400 ms.
 
 **And a second half of the same finding, which is this lab's own:**
 `worldLane.row` in `gosim/world.go` sets no `Row.At`, and `primeRow` folds a row
@@ -1195,13 +1214,12 @@ chain on its prior — and the proof rows stamp the row (`published`, in
 actually reached. `world.go` is deliberately left alone: fixing it there would
 move the committed ship-gate table underneath a run nobody re-took.
 
-**What this costs the table:** less than you would think, and that is itself the
-point. The `flat` door — the same rows with the plan built from
-`lane.PaceOf(belief)`, which knows each lane's real median — fails the same two
-criteria at 5.07% and 5.42%. **An eightfold error in the believed first token
-moves the false-hedge rate by less than two tenths of a point**, because both
-doors have already crossed the inequality by the time the action floor lets
-anything happen. Which is Finding 2.
+**What the fix cost the table:** almost nothing, and that is itself the point.
+Before it, the two doors failed the same two criteria at 4.89%/5.77% and
+5.07%/5.42%; after it, at 4.89%/5.78% and 4.80%/5.72%. **An eightfold error in
+the believed first token moved the false-hedge rate by two tenths of a point in
+either direction**, because both doors have already crossed the inequality by
+the time the action floor lets anything happen. Which is Finding 2.
 
 ### Finding 2 — with a one-nat spread floor, a healthy talk turn crosses at the action floor
 
@@ -1241,8 +1259,9 @@ measured spread are not the same quantity and this build uses the larger of the
 two everywhere**, including for lanes whose own published p90/p50 says they are
 tighter than the floor claims. The obvious repair — floor the spread at the
 lane's own published dispersion where there is one, and at 1.0 only where there
-is not — is a change to `internal/lane`, is not this lane's to make, and would
-be measurable here in nine minutes.
+is not — is a change to `internal/lane` that moves a number the design fixes as
+a prior, so it is left to the owner rather than taken here. It would be
+measurable in this bench in nine minutes.
 
 ### Where this model is wrong
 
@@ -1254,7 +1273,7 @@ the same world. Five more that belong to these rows alone:
   import `internal/provider`; adding the import would let a bench reach into the
   package it is judging. What **is** exercised is the controller's own act: a
   plan with `Pinned` set raises `control.Ask` and never `Hedge`, once per
-  request, on 344 and 347 acts across the two rows. What is **not** exercised is
+  request, on 362 acts on each of the two rows. What is **not** exercised is
   `PhaseAsking`, `AnswerOffer`, the `y` keystroke, the withdrawal on a visible
   token, and the log line a headless borrow writes. **The headless row's borrow
   is this file's conversion of `Ask` into an arm, not the build's** — the build's
@@ -1274,7 +1293,7 @@ the same world. Five more that belong to these rows alone:
   exercised only by the staged stall and never by an ordinarily slow lane. The
   one exception is the `thinking model` row, whose deltas are really half a
   second apart on a world published at the rate it writes — which is why `drift`
-  appears 63 times there and 13 times on the stalled row.
+  appears 54 times there and 26 times on the stalled row.
 - **`Watch.record` relabels the cold row's every act `no heartbeat`.** The
   dead-path flag fires whenever nothing at all has arrived after
   `DeadPathFloor`, and it overwrites the clock's own word — so the `clock that

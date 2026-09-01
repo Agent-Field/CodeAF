@@ -33,3 +33,17 @@ migrated variances are the fold's rather than the file's. And **§E's "ask once
 whether the pin should borrow in future" is not built** — accepting an offer
 rescues this answer and writes no `lane.<slot>.borrow` row, so a person who
 wants a borrowable pin still sets it themselves in the picker.
+
+**And the design's own acceptance, §K, is measured and two of its four criteria
+fail.** `bench/lanelab/REPORT.md` has the run — five rows, three seeds, 4,500
+trials against the shipped chooser, ledger and controller. The invariant the
+work was ordered for holds: every one of 225 staged silences on a cold store was
+acted on at the ceiling to the centisecond, and 99% of legitimate thinking
+phases were left alone. What fails is cost: 4.9% of healthy requests raise an
+arm against a threshold of 2%, and 5.8% of the bill against 3%. The cause is
+one number. `lane.SpreadFloor` is 1.0 nat and the lane measured there publishes
+σ = 0.576, so `W(0.7 s)` is 0.876 s where the lane's own spread would give
+0.305 s — over the cost of acting at the very first instant an act is legal.
+Flooring the predictive spread at a lane's own published dispersion, and at 1.0
+only where there is none, is the repair; it moves a number the design fixes as
+a prior, so it is the owner's call and not the integration lane's.
