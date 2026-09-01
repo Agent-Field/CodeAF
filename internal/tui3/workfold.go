@@ -200,11 +200,32 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	// answering the question before it was never narration for the one after it —
 	// and it steps over a divider, which is a line about the session rather than
 	// a step in it.
+	//
+	// AND IT STEPS OVER A NOTE, WHICH IS THE SURFACE TALKING AND NOT WORK THE
+	// ANSWER WAS WAITING FOR (#178). The two notes a turn ends with — what it
+	// changed and what it cost — are written at the boundary and land UNDER the
+	// reply on purpose, so they are about the answer rather than after it
+	// (app.go's EventTurnDone). A walk that counted them read "there is more after
+	// this block" and demoted the answer itself, which is drawn plain: heading,
+	// bold and whole table came back as the characters they were typed as, two
+	// columns into the work column.
+	//
+	// IT ONLY EVER BIT WHERE THIS WALK IS THE CLASSIFIER, and that is the narrow
+	// part worth writing down. A turn that derives a fold is answered by the loop
+	// above instead — `i < f.answer`, and [deriveWorkfolds] already picks the
+	// answer as the group's last assistant block, so a trailing note is outside
+	// the chip and cannot reach it. The walk is reached when NO fold is derived:
+	// a group that is `blocked` (a task, connect or standing card in the turn, a
+	// `cancel…` note, a seam), a group with no work at all before its answer
+	// (no thought, no call), and every room, which folds nothing at all. The
+	// reproduction was the first of those — a turn carrying a task proposal, then
+	// a markdown answer, then its own `⟲ … cached` line — measured against a real
+	// model on this branch's parent.
 	for at := i + 1; at < len(es) && es[at].turn == e.turn; at++ {
 		if groupBreaks(&es[at]) {
 			return false
 		}
-		if es[at].kind != entryDivider && !entryWithdrawn(&es[at]) {
+		if es[at].kind != entryDivider && es[at].kind != entryNote && !entryWithdrawn(&es[at]) {
 			return true
 		}
 	}
