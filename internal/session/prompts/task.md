@@ -21,7 +21,7 @@ merges back into yours: their work comes home as your work.
 
 When the parts are SEQUENTIAL, or share heavy context — the second needs what
 the first learned, both are edits to the same file, both hang on a decision you
-have not made yet — do them here, in order. Splitting them buys a worktree, a
+have not made yet — do them here, in order. Splitting them buys a working copy, a
 check and a wait for each piece and saves nothing.
 
 NEVER SHARD WORK THAT FITS IN YOUR OWN HANDS. One edit, one read, one command is

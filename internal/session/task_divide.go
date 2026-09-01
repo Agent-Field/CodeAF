@@ -162,7 +162,7 @@ func init() {
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in its own copy of the repository, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them name, which is refused outright — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a copy of the repository, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in a copy of its own, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them name, which is refused outright — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a working copy, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -1033,7 +1033,7 @@ const (
 // from here.
 var divideReviewBrief = `A worker part-way through a piece of work has decided it is wider than one pair of hands, and has written the parts it wants to hand out. You read the whole division ONCE and answer for it.
 
-Each part becomes a worker of its own, in its own copy of the repository. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part owns, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice.
+Each part becomes a worker of its own, in a copy of its own. It never sees this conversation and it cannot ask anybody anything. A part's ` + "`brief`" + ` is its SCOPE — what that one part owns, and only that: the work being divided and the map of what its siblings own are composed around every part before it is handed over, so a scope that restates them says the same thing twice.
 
 READ THE PARTS TOGETHER, WHICH IS THE ONE THING THEIR AUTHOR COULD NOT DO:
 
@@ -1078,7 +1078,7 @@ const divideAdjudicateAsk = `THIS ONE IS YOURS TO DECIDE, not merely to sharpen.
 
   - could ONE person take each part from start to finished, knowing nothing of what the others produced? Not a step of one job — a whole job with its own end.
   - is what each part owns genuinely separate from what the others own — different files, different questions, nothing half-finished passing between them?
-  - and does handing them out actually pay? Every part costs its own copy of the repository, its own check and its own wait, so a handful of small edits one worker could do in order is not worth dividing however separate they are.
+  - and does handing them out actually pay? Every part costs its own working copy, its own check and its own wait, so a handful of small edits one worker could do in order is not worth dividing however separate they are.
 
 Yes to all three: answer with the parts, as usual. Any of them no: refuse, and the worker carries on as one worker with nothing lost.`
 
@@ -1297,7 +1297,7 @@ func divideReviewQuestion(parent *TaskNode, parsed divideArguments, thin bool) s
 // under-counted what it saw or genuinely has narrow work in front of it.
 func divisionTooNarrow(evidence string) string {
 	return fmt.Sprintf(
-		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a copy of the repository, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",
+		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a working copy, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",
 		splitgate.Items(evidence), splitgate.Floor)
 }
 
@@ -1333,11 +1333,11 @@ func divisionUnadjudicated() string {
 func divisionNoLane(parts int, limit int) string {
 	if limit == 1 {
 		return fmt.Sprintf(
-			"not split: this session runs one task at a time, so there is no second pair of hands to give the %d parts to — they would be done one after another exactly as you would do them, and each would cost its own copy of the repository. Carry on with the work in your own hands; asking again will not change this.",
+			"not split: this session runs one task at a time, so there is no second pair of hands to give the %d parts to — they would be done one after another exactly as you would do them, and each would cost its own working copy. Carry on with the work in your own hands; asking again will not change this.",
 			parts)
 	}
 	return fmt.Sprintf(
-		"not split: every lane is busy right now, so the %d parts would be done one at a time anyway and each would cost its own copy of the repository. Carry on with the work in your own hands; ask again once something finishes, if it is still too wide for one.",
+		"not split: every lane is busy right now, so the %d parts would be done one at a time anyway and each would cost its own working copy. Carry on with the work in your own hands; ask again once something finishes, if it is still too wide for one.",
 		parts)
 }
 
@@ -1413,7 +1413,7 @@ func divisionDone(ids []uint64, titles []string, machineBusy bool) string {
 	for i, id := range ids {
 		fmt.Fprintf(&out, "\n  %d — %s", id, titles[i])
 	}
-	out.WriteString("\nEach works from its own brief, in its own copy of the repository, and its branch comes home into yours. Keep working — do not wait for them; each report arrives here when it lands, and this work is not finished until you have folded them into one deliverable.")
+	out.WriteString("\nEach works from its own brief, in a copy of its own, and its branch comes home into yours. Keep working — do not wait for them; each report arrives here when it lands, and this work is not finished until you have folded them into one deliverable.")
 	if machineBusy {
 		out.WriteString("\nThis machine is busy right now, so the parts are waiting for it rather than working. They start themselves as soon as it clears; there is nothing for you to do about that and nothing to come back for.")
 	}

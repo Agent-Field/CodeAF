@@ -3,7 +3,7 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in a copy of its own — a worktree of your repository, or
+conversation carries on. It works in a copy of its own — a working copy of your repository, or
 a copy of the folder when the work is about a folder — and reports back when it lands. It
 never sees the conversation: what it reads is one written brief — your own message, word
 for word, then the work, what to produce and what done means. How that is
@@ -2427,7 +2427,7 @@ does not do them again. *An answer that runs long is read and moved* is where th
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
-  at a time anyway and each would still cost a copy of the repository, so the split is not
+  at a time anyway and each would still cost a working copy, so the split is not
   taken and the worker is told to ask again once something finishes. With `task.parallel`
   set to exactly **1** there is no second pair of hands at all, and the worker is told
   plainly that asking again will not change it.
@@ -2480,7 +2480,7 @@ this, has refused a division and the worker carries on with the work exactly as 
 **No two parts may own the same file, and that one is not a judgement — it is
 enforced.** The files each part's brief and done-condition name are checked against each
 other, and if the same file is claimed by more than one part the division is **refused
-before anything is handed out**: no part starts and no copy of the repository is made.
+before anything is handed out**: no part starts and no working copy is made.
 The worker is told which file — "`report.md` is claimed by more than one part" — and can
 redraw the boundary and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
@@ -2722,7 +2722,7 @@ its call answered with:
 It reads that as an instruction and does the rest itself.
 
 Neither bound is a setting. They are there because the third level and the sixth piece cost
-more than they save: every piece pays for its own copy of the repository, its own check and
+more than they save: every piece pays for its own working copy, its own check and
 its own wait, so past a few of them fanning out is slower than working. A task is told the
 same thing in its own words — split only what is genuinely independent, and never shard
 work that fits in its own hands.

@@ -1146,7 +1146,7 @@ func orchestrateBrief(root string, node orchestrate.Node, deps []orchestrate.Nod
 		out.WriteString("\n\nTHIS IS READ-ONLY WORK: find out, do not change anything.")
 	}
 	if !shared {
-		out.WriteString("\nYou are in an isolated worktree; nobody else is working in it.")
+		out.WriteString("\nYou are in a copy of your own; nobody else is working in it.")
 	}
 	// The kind and the rung are the planner's words about the SHAPE of the
 	// work. The only executor here is the session loop, so they ride in the

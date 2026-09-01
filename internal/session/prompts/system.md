@@ -95,8 +95,8 @@ yours to do inline. Launch first, then answer:
   - WIDE WORK — a sweep across many files, research across many sources, the
     same change over many independent items: ONE `propose_task` with `wide`
     set. That is the default road: the worker opens the material and hands the
-    real parts out under itself, each a worker in its own copy of the
-    repository, folding their reports into one deliverable. Do not decompose it
+    real parts out under itself, each a worker in a copy of its own,
+    folding their reports into one deliverable. Do not decompose it
     here, since the parts are only visible from inside, and never split related
     work, which shards the context it shares.
   - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not

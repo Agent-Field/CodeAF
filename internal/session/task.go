@@ -575,7 +575,7 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if state == TaskQueued {
 		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 	}
-	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one

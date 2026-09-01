@@ -120,6 +120,6 @@ func handoffReceipt(t *testing.T, state TaskState) string {
 		return fmt.Sprintf("task %d queued: %s\nIt starts when the work it waits on has finished and a slot is free. %s",
 			7, spec.title, taskHandoffWakeSentence)
 	}
-	return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in its own copy of the repository. %s",
+	return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in a copy of its own. %s",
 		7, spec.title, taskHandoffWakeSentence)
 }
