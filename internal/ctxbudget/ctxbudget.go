@@ -147,13 +147,37 @@ func configuredValue(read func(Limits) int) int {
 // configured setting, then the default. Clamped so a typo can neither starve
 // nor overrun a window.
 func FillPercent() int {
+	percent, _ := PinnedFillPercent()
+	return percent
+}
+
+// PinnedFillPercent is [FillPercent] with the one thing the integer alone could
+// never say: whether a PERSON chose it.
+//
+// A fill of sixty that somebody typed and a fill of sixty nobody has ever
+// touched are the same number and completely different instructions, and every
+// consumer that only needs the number is right not to care. The conversation's
+// compaction trigger is the consumer that has to: honouring an untouched sixty
+// would fold every session at sixty percent of its window, which is the opposite
+// of what the derived law arrived at (internal/session's CompactThresholdFor).
+//
+// The two sources it reads are the settings registry's own two ways of saying a
+// person set a row — the environment variable the registry names on that row
+// (config's Setting.PinnedBy), and the value written down in the profile
+// (config's Settings.PersistedKeys, handed here by [Configure]). Neither is a
+// second flag invented for this question; both already decided it and nobody
+// had asked them.
+//
+// The default comes back with false, so a caller that wants the number either
+// way still gets the law's own figure.
+func PinnedFillPercent() (int, bool) {
 	if v, ok := envInt("AFORGE_CONTEXT_FILL_PCT"); ok {
-		return clampFill(v)
+		return clampFill(v), true
 	}
 	if v := configuredValue(func(l Limits) int { return l.FillPercent }); v > 0 {
-		return clampFill(v)
+		return clampFill(v), true
 	}
-	return DefaultFillPercent
+	return DefaultFillPercent, false
 }
 
 // CompletionReserve is the process-wide completion+reasoning reserve:

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -2681,7 +2682,9 @@ func trustedWindow(window, learned int) int {
 	return window
 }
 
-// CompactThreshold is the law itself, exported because a surface has to be able
+// CompactThreshold is the law itself — [derivedThreshold] unless a person has
+// pinned a fill, and their fill of the window when they have ([compactThresholdOf]
+// picks between the two) — exported because a surface has to be able
 // to say how close a conversation is to being compacted — and a surface that
 // re-derived the formula from the same two constants would be a second copy of
 // it, free to drift the moment either one moves (internal/tui3 reads this for
@@ -2705,10 +2708,85 @@ func CompactThresholdFor(model string, window int) int {
 	return compactThresholdOf(TrustedWindowFor(model, window))
 }
 
-// compactThresholdOf is the arithmetic, over a window that has ALREADY been
+// ContextFillPinned is how full a PERSON has said a window may get before it is
+// folded, and whether anybody has said so at all — the settings registry's
+// `context fill` row, the `AFORGE_CONTEXT_FILL_PCT` environment pin behind it,
+// and the `--context-fill` flag that sets that pin for one run
+// (internal/ctxbudget's PinnedFillPercent, which is where those three meet).
+//
+// It is exported for [CompactThreshold]'s own reason: a surface saying WHY a
+// conversation folds where it folds has to read the rule the trigger reads,
+// rather than open the same three sources for itself and drift from them.
+func ContextFillPinned() (int, bool) { return ctxbudget.PinnedFillPercent() }
+
+// compactThresholdOf is the governing line, over a window that has ALREADY been
 // trusted. Every door above applies the cap and then comes here, so the cap is
 // applied exactly once however the window arrived.
+//
+// TWO LAWS CAN SET THIS LINE AND A PERSON'S OUTRANKS THE DERIVATION. Unpinned —
+// which is nearly every session — the line is [derivedThreshold], the reserve
+// law that follows the model's own window. Pinned, it is the fill that person
+// asked for, taken of that same window ([pinnedThreshold]).
+//
+// The distinction is the whole of it, and it is why the fill percentage was read
+// nowhere near here until now: `--context-fill` has meant sixty by default since
+// it was written, so a trigger that simply honoured the number would have folded
+// every conversation at sixty percent of its window — dropping the derived line
+// on a 1.3M-token model from around eighty-five percent to sixty, which is the
+// opposite of the thing the derivation was built to fix. What makes honouring it
+// safe is knowing that somebody typed it.
 func compactThresholdOf(window int) int {
+	if window <= 0 {
+		return 0
+	}
+	if fill, pinned := ContextFillPinned(); pinned {
+		return pinnedThreshold(window, fill)
+	}
+	return derivedThreshold(window)
+}
+
+// pinnedThreshold is the line a person asked for: their fill percentage of the
+// trusted window, held between a ceiling and a floor that the rest of the
+// compaction chain needs in order to mean anything.
+//
+// THE CEILING IS THE HIGHER OF THE TWO LINES THE LAW ALREADY DRAWS, and it is
+// what "the completion reserve is still honoured" comes to in arithmetic. One is
+// the room every call keeps for its answer and its reasoning
+// (ctxbudget.CompletionReserve, the `--completion-reserve` flag's own number):
+// a conversation may not grow so far that the reply it is waiting for cannot
+// fit behind it. The other is [derivedThreshold] itself, because on a small
+// window the completion reserve is the larger of the two and a pin of ninety
+// would otherwise land BELOW the line an unpinned session gets — a person asking
+// for more room being given less, which is worse than not honouring them at all.
+// Above roughly 437,000 tokens the completion reserve is the binding one, below
+// it the derivation is, and the pin is honoured exactly as typed anywhere under
+// whichever binds.
+//
+// THE FLOOR IS TWICE THE VERBATIM TAIL. A line at or under the tail is a line no
+// pass can reach: the tail is never folded, so a threshold below it fires on
+// every step and finds nothing to take (the chain [compactTarget] documents).
+// Twice it leaves a pass something to fold and somewhere to fold it to. On a
+// large window the floor is far below any fill the clamp permits and never
+// binds; on a small one a fill of ten would have put the line under the tail.
+func pinnedThreshold(window, fill int) int {
+	line := window * fill / 100
+	ceiling := window - ctxbudget.CompletionReserve()
+	if derived := derivedThreshold(window); derived > ceiling {
+		ceiling = derived
+	}
+	if line > ceiling {
+		line = ceiling
+	}
+	if floor := 2 * keepRecent(window); line < floor {
+		line = floor
+	}
+	return line
+}
+
+// derivedThreshold is the reserve law, and it is what governs every conversation
+// nobody has pinned a fill on: the window less the larger of fifteen percent of
+// it and sixteen thousand tokens.
+func derivedThreshold(window int) int {
 	if window <= 0 {
 		return 0
 	}
