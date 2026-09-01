@@ -81,8 +81,8 @@ func TestTheRoomOfANodeThatNeedsALookAsks(t *testing.T) {
 			t.Fatalf("the room is missing %q:\n%s", want, page)
 		}
 	}
-	if strings.Contains(page, roomFinishedWord) {
-		t.Fatalf("the room says %q under a question it is asking:\n%s", roomFinishedWord, page)
+	if strings.Contains(page, roomFinishedRefusal.what) {
+		t.Fatalf("the room says %q under a question it is asking:\n%s", roomFinishedRefusal.what, page)
 	}
 	if got := a.roomHint(); got != roomSettleHint {
 		t.Fatalf("the hint slot reads %q, want %q", got, roomSettleHint)
@@ -95,7 +95,7 @@ func TestADoneNodeRoomKeepsThePlainFoot(t *testing.T) {
 	a, _ := roomSettleApp(t, session.TaskDone)
 
 	page := roomText(a)
-	if !strings.Contains(page, roomFinishedWord) {
+	if !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("a finished room lost its foot:\n%s", page)
 	}
 	if strings.Contains(page, settleAskWord) || strings.Contains(page, settleTakeKey) {
@@ -123,7 +123,7 @@ func TestAcceptingFromTheRoomResolvesTheNodeAndTheCard(t *testing.T) {
 	if !strings.Contains(page, settleTookLine) {
 		t.Fatalf("the room does not say what was decided:\n%s", page)
 	}
-	for _, gone := range []string{settleAskWord, settleTakeKey + settleTakeWord, roomFinishedWord} {
+	for _, gone := range []string{settleAskWord, settleTakeKey + settleTakeWord, roomFinishedRefusal.what} {
 		if strings.Contains(page, gone) {
 			t.Fatalf("an answered room still shows %q:\n%s", gone, page)
 		}
@@ -229,7 +229,7 @@ func TestANodeSettledElsewhereStopsAskingInTheRoom(t *testing.T) {
 	if strings.Contains(page, settleAskWord) || strings.Contains(page, settleTakeKey) {
 		t.Fatalf("the room still asks about work that has settled:\n%s", page)
 	}
-	if !strings.Contains(page, roomFinishedWord) {
+	if !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("the settled room lost its foot:\n%s", page)
 	}
 }

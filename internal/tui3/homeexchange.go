@@ -88,6 +88,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -259,6 +260,12 @@ type homeExchange struct {
 	// characters are a query over every project on the machine, and a follow-up
 	// typed into them would re-filter the list underneath.
 	box editor
+	// chips is the tray THAT box carries, and it is the exchange's own for the
+	// box's own reason: a picture dropped into a follow-up belongs to this errand
+	// and not to whatever conversation the window is holding behind the screen
+	// (attach.go's tray, imagepaste.go's one door). It is emptied by the send
+	// that takes it.
+	chips []chip
 	// focused says the keyboard belongs to the exchange rather than to the
 	// list. THERE ARE TWO ZONES WHILE AN EXCHANGE IS UP — the list and this pane
 	// — and this bool is which of them has the hand. `tab` toggles it, esc hands
@@ -863,6 +870,14 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 		spoke: text, began: now, said: now,
 		turnBegan: now,
 	}
+	// AND HOME'S TRAY COMES WITH THE SENTENCE, because the sentence came out of
+	// home's box and the pictures were dropped into it (imagepaste.go). They move
+	// rather than being copied: two trays holding one file would be two answers
+	// to what the next message carries, which is the law attach.go states about
+	// there being one tray and not two.
+	ex.chips, a.chips = a.chips, nil
+	a.home.carrying = false
+	text = errandSentence(text, ex.chips)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	// A SECOND `ask here` ADDS ONE. It used to close the first, because the pane
 	// held one — and what that meant in a person's hands was that asking a
@@ -888,10 +903,41 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 // building a request is not instant and a surface that waited for it would drop
 // a frame at the exact moment a person is watching for one.
 func errandSend(ex *homeExchange, text string) tea.Cmd {
+	// THE TRAY IS TAKEN HERE AND NOT INSIDE THE COMMAND, for [app.submitImages]'
+	// reason: what the message carries is decided at the moment enter was
+	// pressed, and a tray read on the other side of the loop is a tray somebody
+	// may have added to while the request was being built.
+	chips := ex.chips
+	ex.chips = nil
 	return func() tea.Msg {
-		ch, err := ex.agent.Submit(errandContext(), text)
+		if len(chips) == 0 {
+			ch, err := ex.agent.Submit(errandContext(), text)
+			return errandStartedMsg{ex: ex, ch: ch, err: err}
+		}
+		// THE FILES ARE READ OFF THE LOOP, and the pictures travel as bytes while
+		// an ordinary file travels as the path it already has — which is exactly
+		// what a conversation does with the same tray, because an errand runs on
+		// this machine and the file is already on the engine's own disk
+		// (attach.go's header holds the whole law).
+		images, err := readAttachments(pictureChips(chips))
+		if err != nil {
+			return errandStartedMsg{ex: ex, err: err}
+		}
+		spoken := text
+		if files := fileChips(chips); len(files) > 0 {
+			spoken = remote.AttachedSentence(text, chipPaths(files))
+		}
+		ch, err := ex.agent.SubmitImage(errandContext(), spoken, images)
 		return errandStartedMsg{ex: ex, ch: ch, err: err}
 	}
+}
+
+// errandSentence is what an errand carrying pictures actually says, and it is
+// [imageSentence] with the tray's files left out of the count: a file carries no
+// `[image #n]` in the words, because the model is told its path (attach.go's
+// [chipLabels] states the same rule about the chip itself).
+func errandSentence(text string, chips []chip) string {
+	return imageSentence(text, pictureChips(chips))
 }
 
 // errandPlace is which project an errand belongs to, and which bucket a
@@ -1145,11 +1191,16 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if text := msg.Key().Text; text != "" {
+		at := ex.box.cursor
 		ex.box.insert(text)
 		// TYPING LEAVES THE OFFER ROW. The box is where characters go, and a
 		// person who starts typing has said which of the two things under the
 		// pane they meant.
 		ex.onOffer = false
+		// AND A DROP TYPED IN CHARACTER BY CHARACTER IS WATCHED FOR HERE, on the
+		// pane's own box and the pane's own tray, exactly as the draft and
+		// home's line watch on theirs (dropkeys.go).
+		return a.dropWatch(&ex.box, &ex.chips, at, text)
 	}
 	return nil
 }
@@ -1157,6 +1208,11 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 // exchangeEnter is what enter means in the pane, and it means exactly one of
 // three things depending on what is on screen.
 func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
+	// A DROP THE FOLD IS STILL HOLDING IS SPENT BEFORE THE LINE IS READ, which
+	// is input.go's law about enter said at the third of this surface's send
+	// doors: two frames of quiet is not a wait a person owes before pressing
+	// enter (dropkeys.go).
+	a.spendDrop()
 	text := strings.TrimSpace(ex.box.String())
 	switch {
 	case ex.changing:
@@ -1181,10 +1237,15 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 		return nil
 	case ex.onOffer:
 		return a.promoteExchange(ex)
-	case text == "":
+	case text == "" && len(ex.chips) == 0:
+		// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said here:
+		// an empty line with a picture on it is not an empty message.
 		return nil
 	}
 	ex.box.reset()
+	// AND A FOLLOW-UP CARRIES WHAT WAS DROPPED INTO IT, by the same door and the
+	// same numbering the first sentence used ([errandSentence]).
+	text = errandSentence(text, ex.chips)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
 	ex.said = a.now()
 	ex.startTurn(a.now())
@@ -1922,10 +1983,18 @@ func exchangeHint(ex *homeExchange) string {
 	}
 	var parts []string
 	if ex.asking() {
-		// The decline is named because in this pane it is the ONLY way to say
-		// no — esc here goes back to the list rather than answering
-		// ([app.answerCard]).
-		parts = append(parts, "1 yes · 2 change when or where · 3 just once · 0 no")
+		// THE ANSWERS THE CARD DREW, off the very row that drew them
+		// (standing.go's [standHintFields]). This clause used to be a third
+		// hardcoded copy of a line standing.go already kept two correct
+		// spellings of, and it named `3 just once` over a one-off reminder's
+		// card, which offers no such chip — a hint naming a digit the chips do
+		// not is the same defect as a chip that does nothing (#189).
+		//
+		// The decline is named as `0` and nothing else because in this pane it
+		// is the ONLY way to say no: esc here goes back to the list rather than
+		// answering ([app.answerCard]), where a conversation's own line says `0
+		// or esc, no`.
+		parts = append(parts, rowAll(standHintFields(ex.view, standNoWordChip)))
 	}
 	parts = append(parts, "enter sends a follow-up")
 	if ex.offering() {

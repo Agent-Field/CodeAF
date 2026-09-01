@@ -216,7 +216,7 @@ preset:
 
 | class | as shipped |
 | --- | --- |
-| reflex | `nex-agi/nex-n2-mini` |
+| reflex | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash` |
 | careful work | `qwen/qwen3.8-27b` |
 | mastermind | `moonshotai/kimi-k3:low` |
@@ -239,7 +239,7 @@ say rather than the default.
 
 | | frugal | balanced | max |
 | --- | --- | --- | --- |
-| reflex | `nex-n2-mini` | `nex-n2-mini` | `nex-n2-mini` |
+| reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
 | small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
 | careful work | `qwen3.8-27b` | `qwen3.8-27b` | `kimi-k3` |
 | mastermind | `qwen3.8-27b` | `kimi-k3:low` | `kimi-k3:high` |
@@ -352,6 +352,38 @@ the conversation's model when that row is empty. Only an **adaptive run** uses t
 its planner takes the **mastermind** class and every node under it takes **small work**.
 Those ids are settled once, when the run starts, so changing the crew — or `/model` — half
 way through does not move a run already going.
+
+## Does my crew reach aforge do, or only this conversation
+
+**It reaches both.** A crew you set here is the crew a run started from a script or a
+terminal uses — `aforge do`, `aforge exec`, `aforge plan`, `aforge run`, `aforge revise`
+and `aforge run subharness`. Set it once with `/crew frugal` and the same policy holds
+whether the work is asked for here or run with nobody watching.
+
+Those runs seat two models, and each one is resolved the same way. The first of these that
+answers wins:
+
+1. a model named on the command line — `--model` for the work, `--plan-model` for the
+   planning;
+2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
+3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
+   the **small work** class;
+4. what the build ships with.
+
+So `--model` is one voice of four rather than the only one. This was not always true: until
+recently a run outside the chat read only the flag and the environment, and a crew set here
+was silently lost the moment the same brain ran from a script.
+
+Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
+
+```
+models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+```
+
+Two details worth knowing. A crew answers only once you have actually set one — a profile
+nobody has touched takes the build's default rather than reading its own shipped values back
+as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
+the run plans on that model at that level, the same as it does here.
 
 ## What are the five models — the one you talk to and the four crew seats
 
@@ -496,6 +528,35 @@ Two things worth knowing:
   harness for triaging flakes with opus` designs on opus. The roles decide only when you
   named nothing. (There is no such sentence for an **adaptive run**: a conversation cannot
   start one at all — see *adaptive runs* — so a run's models are whatever started it.)
+
+## Does aforge learn which model is good at which kind of work — aforge models, ratings, why a part ran on the careful model by itself
+
+Yes, from the checks it was already running. **Every task that settles is written down**:
+the model it ran on, the name the work was given, how it ended in plain words — `landed`,
+`not accepted`, `did not finish`, `needs your look`, `stopped` — how many times the work was handed back, what
+it cost and how long it took. The check at the end of a task had already read the work and
+said whether it holds, so that answer *is* the grade: **nothing extra is spent, and no
+second model is asked to judge anything.** Work nobody could check teaches nothing, which
+is the honest answer rather than a guess.
+
+`aforge models` in a terminal is where you read it back. It prints a row per model per
+kind of work, with the rating, the chance of it holding, and how many settled tasks stand
+behind the number — that last column matters, because a rating with two behind it and one
+with two hundred are different claims. A row that is not yet driving anything says so at
+the end of the line: `under the gate — a part moves up once 2 of this kind have settled`.
+Until something has settled at all it says
+`nothing measured yet. Ratings appear once calls have been graded.`
+
+**What aforge does with it** is one thing only: when a task splits itself, a part the
+worker called ordinary work is minted on your **careful work** model instead if work
+named like it has been turned down twice or more on the model the task is on. That is the
+whole of it — no model is ever swapped out from under you, your chat model is untouched,
+and an install with no crew classes set never lifts anything, because there is nowhere
+dearer to lift it to. *Tasks*, under *When a task turns out to be too wide for one
+worker*, has the rest.
+
+The record lives with your settings, in `router-ledger.json` and `router-events.jsonl`.
+Several aforge windows write to it at once and it is kept across restarts.
 
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 
@@ -649,7 +710,7 @@ token of thinking, a piece of a tool call.
 | The clock | How long | What it catches |
 | --- | --- | --- |
 | first word | **1m30s** | accepted the request and never started |
-| a gap mid-reply | **45s** | started writing and stopped |
+| a gap mid-reply | **45s** on an endpoint aforge has not timed, less on one it has | started writing and stopped |
 
 There is a third clock for the opposite problem — a reply that keeps writing and never
 finishes. It is not a fixed number, so it has its own section below: *A reply that never
@@ -659,6 +720,15 @@ The first bound is generous on purpose: a reasoning model at a long context legi
 thinks for a minute before its first token, and cutting a request that was about to answer
 costs the whole prompt again. The second is shorter because the question is different — a
 model that has started writing has finished deciding.
+
+**And the second one gets shorter still on an endpoint aforge has measured.** Forty-five
+seconds is what a stranger gets. Once aforge knows how fast an endpoint writes — the
+`t/s` figure the status line shows you — the gap it will sit through is how long *that*
+endpoint would take to write about three and a half thousand tokens: roughly **15 seconds**
+on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
+an endpoint that has been writing two hundred and fifty words a second is not patience, it
+is a dead stream, and waiting it out costs the same minute on every retry. It never goes
+the other way: a slow endpoint gets the full 45 seconds and no more is ever granted.
 
 **Keepalives buy patience, never progress.** Some endpoints assemble a whole answer — most
 often one large tool call — on their own side and deliver it in one piece, sending
@@ -726,11 +796,21 @@ or not it is still writing.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
-than **5 minutes** and never more than **20 minutes**. Two endpoints serving the same model
+than **2m30s** and never more than **20 minutes**. Two endpoints serving the same model
 therefore get two different walls, and one that routinely writes long answers earns a
-longer one by writing them. A model aforge has not spoken to yet gets the 5-minute floor,
-because there is nothing measured to work from; the numbers are forgotten when aforge
-closes, so a fresh session starts from the floor again.
+longer one by writing them.
+
+**A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
+to work from. That figure used to be the floor under *everybody*, which meant the
+measurement could never make anything shorter than what a stranger got: an endpoint whose
+longest finished reply was twenty-four seconds still sat there for five whole minutes, and
+two hung streams in one measured run did exactly that. It is the outer bound for a stranger
+now, and an endpoint you have timed is held to its own history instead. The numbers are
+forgotten when aforge closes, so a fresh session starts from the 5-minute bound again.
+
+The lower clamp is 2m30s and not less, because that is the longest an endpoint is allowed to
+go quiet while assembling an answer on its own side (above). A wall shorter than that would
+cut a reply the silence clocks were still being patient with.
 
 When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
 the endpoint is avoided on the retry, and a dim line lands:
@@ -914,11 +994,21 @@ is a reply that is simply multilingual: switching language between words is ordi
 writing, and only switching *inside* words counts. A short repetitive answer is never cut
 either — there has to be several kilobytes of it.
 
+**The endpoint that served it loses standing.** A reply that had to be cut — because it lost
+its thread, because it came back as tool markup, or because it went quiet and never came
+back — is recorded against the endpoint that served it as an answer aforge could not use,
+and that endpoint drops down the order for the requests that follow. So does an answer that
+came back with nothing in it at all. Its row in the lane fold then reads `bad replies` (see
+*What the note on a lane row means*). It is not a ban: the mark fades on its own over about
+an hour, and every usable answer it serves afterwards walks it back up. Recovery is by
+serving properly, which is the only evidence there could be.
+
 **Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
 or `off`, and the default is **on**. Off means you see whatever arrives. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading.
+reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
+at all, and with it stops any of this being recorded.
 
 ## Strange tags instead of an answer — the reply was tool markup, odd tokens like `<|...|>` on the screen
 
@@ -963,12 +1053,51 @@ what, into the conversation. Up to six aligned lines:
 
 | Line | What it is |
 |---|---|
-| `spend` | the money, printed only when it is above zero |
+| `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
+| `conversation` | what the conversation's own calls cost |
+| `tasks` | what the work it started has cost, running or finished — tasks, the hands a reply forked, and the nodes of an adaptive run |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
 | `empty reflex answers` | paid memory-routing or extraction requests that reached their output ceiling without returning any answer |
 | `time` | how long |
+
+`conversation` and `tasks` are dropped together unless the work has spent something, so a
+conversation that has started no tasks prints `spend` alone. When they are there they add
+up to the line above them, always — that is the whole point of printing them.
+
+## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
+
+**The `$` on the status line is the whole tree: this conversation and every task it
+started, at every depth, while they are still running.** It is one figure, not two, and it
+is the same figure `/cost` leads with.
+
+**Hands and adaptive runs are in it too.** A reply that splits itself into hands, and a
+node of an adaptive run, are both work this conversation started: their money is on the
+row while they are still working, under `tasks` when you ask `/cost` for the halves.
+
+It used to be the conversation's own half alone. A task's money only reaches the
+conversation's books when the task **closes**, so a family working for two hours left the
+row saying `$2.53` while $51.05 was being spent under it, and the true figure could only be
+found by widening the task column and reading the parent row.
+
+Where the figure comes from: every model call writes one line into the spending ledger
+where the call was made, and a task's line names the conversation the work belongs to. The
+status line adds that up on the same clock the rest of the telemetry moves on — so a
+number is on the row within a second or two of being spent, not at the end of the task.
+Nothing is counted twice: a task finishing, a hand coming home, a run's node ending — each
+moves its tally into the conversation's books and writes **no** new ledger line.
+
+Two things follow that are worth knowing:
+
+- **It never goes backwards.** If the conversation's own books hold more than the ledger
+  can account for — an old session resumed, a ledger that was moved — the larger figure is
+  the one shown.
+- **The warm colour follows the figure you can see.** The `$` leaves the dim at four fifths
+  of this conversation's own limit, measured on the whole tree. The refusal itself still
+  reads the conversation's books, which each task's tally lands in as it closes.
+
+To see the halves, ask `/cost`. To see one task's own bill, open its card.
 
 ## Why the same conversation can suddenly cost more — one turn can make several model calls
 
@@ -1006,6 +1135,10 @@ conversation's own transcript recording what it cost. When you resume, those lin
 back and added up before anything else happens, and that sum *is* the session's totals. So
 `/cost`, `/status` and the status line the day after show yesterday's money and tokens with
 today's added on top, in one figure.
+
+**The status line has it on the first frame** — you do not have to type `/cost` or send a
+turn to make it appear, and the same is true of the phone status deck and the full status
+sheet. It is the same figure on all of them, because they all read the one total.
 
 Two things follow from that:
 
@@ -1047,7 +1180,11 @@ Three things are worth knowing about it:
   nothing for an unpriced call rather than calling it free.
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
-  not written here, or the same money would be counted twice.
+  not written here, or the same money would be counted twice. **That holds for every kind of
+  work, not only tasks** — the hands a reply forks and the nodes of an adaptive run each
+  record their own requests and are added up afterwards the same way. Until this was fixed
+  both were on this file twice, so a day that included a fork or a run read high, and the
+  daily limit was reached before that much had actually been spent.
 
 `/cost` and the status line are unchanged and are still rebuilt from **this conversation's**
 own transcript. The spend place is the whole machine; `/cost` is this conversation. They
@@ -1081,7 +1218,9 @@ same three-second beat every place runs on, and it draws three things:
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
-  shown and the rest fold into one line.
+  shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
+  forks, the check that reads what a piece of work left — is on the row of the conversation
+  it belongs to, because that is the only name it has.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a
@@ -1189,26 +1328,37 @@ since the last response is already visible to the threshold.
 
 An unknown window has no threshold at all.
 
-## The most tokens one request can carry — the 256,000-token ceiling
+## The most tokens one request can carry — the model's own window, and the ceiling an endpoint puts on it
 
-**Whatever a model claims, this conversation never carries more than 256,000 tokens into a
-single request.** That is a hard ceiling, twice the 128,000 default, and the threshold above
-is worked out from the smaller of it and the model's own window. On a model claiming
-1,310,720 tokens, compaction therefore fires at **217,600**, not at 1,114,112.
+**The threshold follows the model's own window.** On a model claiming 1,310,720 tokens,
+compaction fires at **1,114,112** — not at some smaller figure of aforge's choosing. On the
+default 128,000-token window it fires at 108,800. The line is always
+`window − max(15% of window, 16384)`, and `window` is what the model card says.
 
-It exists because the claim is published by the provider and a published number can be
-enormous. A session on `~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens —
-grew to 386,309 tokens with compaction checked after every step and never once firing, and
-what came back at that size was the model's own template turned inside out rather than an
-answer.
+There used to be a flat ceiling of 256,000 over every model alike, and it made a
+million-token model fold exactly like a small one — nineteen passes in one two-and-a-half
+hour run, each at around a hundred thousand tokens, each one throwing the provider's prompt
+cache away. That ceiling is gone.
 
-A model with a real 200,000 or 400,000-token window is not affected: only a claim above
-256,000 is clamped. What the status line reports is still the model's own window, because
-that line is describing the model.
+**What can still lower it is an endpoint refusing.** If a provider answers that a request
+would not fit, aforge writes down how big that request was and never trusts that model past
+that size again — in this conversation from the next check onward, and on this machine for
+good, because the note is kept in `model-quirks.json` beside your other settings. That is
+the one thing allowed to contradict a model card, and it is the only thing: a published
+window is a claim, and a refusal is a measurement.
+
+It exists because a claim can be very wrong. A session on
+`~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens — grew to 386,309 tokens
+without compaction firing once, and what came back at that size was the model's own template
+turned inside out rather than an answer. That now costs one turn on that model on this
+machine, instead of costing every model with real room every turn for ever.
+
+What the status line reports is still the model's own window, because that line is
+describing the model.
 
 **A request that would not fit is never sent.** Immediately before each request goes out,
-a transcript already past the ceiling is compacted first — and unlike the ordinary pass,
-this one runs **even when automatic compaction is switched off**. Fitting is not a
+a transcript already past the trusted window is compacted first — and unlike the ordinary
+pass, this one runs **even when automatic compaction is switched off**. Fitting is not a
 preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
 `/compact` runs, and every message you typed survives it.
 
@@ -1216,6 +1366,22 @@ preference. Nothing is truncated and nothing of yours is dropped; it is the same
 a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
 consumer is the sub-harness leaf sizing elsewhere in aforge. The chat's own law is the one
 above — do not describe this conversation as filling to 60%.
+
+## A task or a worker on another model gets that model's window
+
+Work that leaves the conversation — a task's worker, an adaptive run's worker, a fork, the
+reader that checks a task — often runs on a different model from the one you are talking
+to. Each of those asks the same model catalog the conversation asks, for **its own** model,
+so a worker on a million-token model folds at a million-token model's line.
+
+Before this it was handed nothing at all whenever its model differed from yours, and so
+fell back to the conservative 128,000-token default however much room its model really had.
+That was the whole of why a long run could fold its work again and again while every model
+in it advertised ten times the space.
+
+When nothing can say — a model the catalog has never carried, a machine that has not
+reached the catalog yet — the answer is still the 128,000-token default, which is the
+smallest window this surface routes to and the safe direction for a guess to be wrong in.
 
 ## What happens before the conversation is summarized
 
@@ -1505,6 +1671,11 @@ long it may go without progress. The money it spends is counted against the day'
 and against the limit on the conversation that started it, which are the two rows above it
 on the same tab.
 
+**What you get instead of a per-task limit is seeing it happen.** The `$` on the status
+line counts what the tasks are spending while they are spending it, and `/cost` splits that
+figure into `conversation` and `tasks`. A task is bounded by the wallet and watched on the
+row — it is never stopped on its own dollar count.
+
 So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
 command takes. Where you *can* put a figure on one piece of work is the **composer layer**:
 `alt+enter` before you send a task, and its third line reads `it may spend up to $100.00
@@ -1639,12 +1810,18 @@ One note at most, and it is the thing that would spoil the answer soonest:
 
 | Note | What it means |
 |---|---|
+| `bad replies` | enough of its answers came back unusable that aforge would rather ask elsewhere |
 | `no tools` | the lane does not honour a tool call — a fast wrong answer |
 | `out ≤ 65k` | it stops writing well before other lanes do, so a long answer is cut |
 | `fp4` | it serves weights at a lower precision than the others |
 | `tail 12s` | its worst answers start about that late — five times its own median |
 
-A lane with none of those shows no note.
+A lane with none of those shows no note, and a lane whose answers nobody has judged never
+shows `bad replies` — an untried lane is not a suspect.
+
+`bad replies` counts a reply that lost its thread, one that came back as tool markup, one
+that went quiet and had to be cut, and one that arrived with nothing in it. It fades over
+about an hour on its own, and every usable answer the lane serves takes it further off.
 
 ## Where the numbers on a lane row come from — the sheet, and your own answers
 
@@ -1655,7 +1832,10 @@ what that lane did for **you**, from where you are, with the prompts you send.
 
 The belief also **forgets**: with nothing new arriving, aforge's confidence in it halves
 about every ten minutes, so a lane that misbehaved once at breakfast is not held to it
-all day and there is no penalty box to let anything out of.
+all day and there is no penalty box to let anything out of. What aforge believes about a
+lane's **answers** rather than its speed forgets more slowly — about an hour — because real
+requests are minutes apart and a belief that forgot faster than the evidence arrived would
+never be worth anything.
 
 The dim line under the cursor says both halves out loud:
 

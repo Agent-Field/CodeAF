@@ -197,6 +197,17 @@ Several Claude sessions often work this repo at once, in the same working tree.
   ~/af-<name> -b <branch> origin/dev`), land through a pull request, then the
   worktrees and branches are removed. GitHub deletes the remote branch on merge.
 
+## Filing an issue
+
+`.github/ISSUE_TEMPLATE/defect.md` is the shape, and two of its lines are the law.
+**The replication is something a stranger can run** — a stub, a fixture, a `-tags e2e`
+run — never a path on your machine: #185's evidence lived in a private store on a
+benchmark box nobody else can reach, which left a real bug unactionable. **The
+acceptance is end-to-end first**, naming the real door and the exact string or receipt
+field asserted — the TUI e2e suite was unit-green and e2e-broken for a week (#184).
+#185 and #207 are the worked examples. Blank issues stay enabled: most of what is filed
+here is a proposal, and the template is for defects.
+
 ## Tests
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
@@ -209,14 +220,44 @@ tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuarded
 `TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
 TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
 green with `TMPDIR=/tmp/eh`) — all verified failing at what is now `origin/dev`
-on 2026-08-26. Two more FLAKE under full-suite load on a clean tree and pass
-alone: `internal/session TestOnlyADesignsOwnThreadCarriesTheReviseVerb` and
-`TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` — rerun them in isolation before
-believing a failure. Confirm anything else with a stash-and-rerun before chasing it.
+on 2026-08-26. Confirm anything else with a stash-and-rerun before chasing it.
+
+There is no longer a "flakes under load" list here. The three that were on it —
+`TestOnlyADesignsOwnThreadCarriesTheReviseVerb`,
+`TestInterruptedTurnDoesNotWakeOnTheNoteItDrained` and
+`TestAChangeWithdrawsTheCardRewritesThePageAndAsksAgain` — shared one cause with
+two more that were never written down, and it was fixed rather than described
+(#176). A `internal/session` test that fails only when other suites are running
+beside it is now a bug report, not a known shape: **reproduce it, do not rerun it
+in isolation and move on.**
 
 **This list is also `.github/known-red.txt`, which CI reads and skips**, so that red
 in the full run means the change caused it. The two are the same debt written twice;
 fix a test and delete it from both in the same commit.
+
+**The tmux TUI suite** is the only test that drives the real binary in a real
+terminal against a real model, and it is how a wave verifies that the surface
+still behaves:
+
+```sh
+go test -tags e2e -count=1 -timeout 40m -v ./internal/e2e/
+go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/   # just the nine TUI subtests
+```
+
+It needs `OPENROUTER_API_KEY` and `tmux`, costs a few cents, and takes about
+**seventeen minutes** for the whole tagged package (`TestTUIE2E` alone is about
+ten, most of it one subtest waiting out a five-minute standing pass). It SKIPS
+rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
+first. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
+paying for the whole thing, and capture the output to a file: the screens it logs
+are far too wide to read through a pipe.
+
+Its needles all come out of one table, `internal/e2e/tuiwords_test.go`, which an
+**untagged** test in the same package reads back against `internal/tui3`'s own
+sources — so `go test ./internal/e2e/` (no tag, no model, under a second) fails
+the moment the surface stops spelling a sentence the suite waits for. That gate
+exists because the suite silently rotted for a week after the home redesign
+(#184); if you respell a person-facing string, expect it to name you.
 
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
 

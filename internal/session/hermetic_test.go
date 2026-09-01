@@ -71,6 +71,24 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "session tests: could not clear %s: %v\n", home.EnvVar, err)
 		return 1
 	}
+	// AND THE TESTS DO NOT REACH THE MACHINE'S OWN FURROW EITHER.
+	//
+	// The ground ladder's top rung attaches a folder to furrow and forks it
+	// (groundladder.go), so on a developer's machine — where furrow is on PATH,
+	// and on a built binary where it is carried inside aforge — every test that
+	// grounds a task in a plain folder would attach a t.TempDir() and seal a
+	// snapshot of it. That is a suite whose answers depend on what the person
+	// running it happens to have installed, which is the one thing a test may
+	// never be. AFORGE_FURROW is the pin a person chose, and a pin naming
+	// something that is not there is an error rather than a quiet fall back to
+	// PATH — so this is the whole of "no furrow here".
+	//
+	// A test that wants the rung installs a furrow of its own over the top of
+	// this with t.Setenv, which is restored for it on the way out.
+	if err := os.Setenv("AFORGE_FURROW", filepath.Join(root, "no-furrow-in-the-tests")); err != nil {
+		fmt.Fprintf(os.Stderr, "session tests: could not pin furrow away: %v\n", err)
+		return 1
+	}
 
 	code := m.Run()
 

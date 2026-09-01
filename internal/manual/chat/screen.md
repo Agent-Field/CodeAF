@@ -543,6 +543,19 @@ On a terminal below 256 colours, and with `NO_COLOR` set, there is no ramp to fa
 and the rows are drawn plainly. Linear mode (`--linear`) drops it too, for the same reason
 it drops the thinking window's gradient.
 
+## What the `$` on the status line counts — the conversation and its tasks
+
+The money segment is **this conversation and every task it started**, added up while the
+work is still running. One figure, not two: the row is the most crowded thing on the
+screen, and its segments must not grow and shrink under your eye.
+
+It is also a **door** — pressing it opens the Spending tab — and it takes the warm ink at
+four fifths of this conversation's own limit, measured on that same whole-tree figure.
+
+`/cost` is where the figure is taken apart: it prints `conversation` and `tasks` under the
+total, and they add up to it. See *Does the status line's money include what my tasks are
+spending* on the models and cost page.
+
 ## Why the status line says $0.00
 
 A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown context
@@ -560,6 +573,14 @@ The commands keep the law instead. `/status` filters the spend line out when the
 zero, and `/cost` only adds it when the cost is above zero — so the two commands say
 `nothing spent yet — this session has not sent a turn.` where the row says `$0.00`. A
 landed task card also refuses to print `$0.00`.
+
+**A resumed conversation is not a $0.00 conversation.** Reopening a transcript with
+`--session`, `aforge resume` or `/resume` puts what that conversation has already spent on
+the spend segment on its first frame — the sum of every cost line in its file, the
+errands aforge ran beside your turns included — and the work it started is added on top
+as soon as the task column is up, the way it is on any conversation. New turns add to it. If you resume a
+session that spent real money and the row still says `$0.00`, the file has no cost lines
+in it (an older build wrote none), not that the money was forgotten.
 
 Other honest silences: the context percentage is dropped below 1% rather than shown as
 `0%`; the cache cash half appears only when there is a published price pair, never
@@ -1145,7 +1166,7 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part aforge wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own git worktree, so `internal/tui3/app.go`
+  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
   on one of those rows means THAT tree's copy and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
@@ -1961,12 +1982,19 @@ as everywhere else on this screen. Work that is running is pinned to the top and
 scroll away, and the `tasks` label stays with it.
 
 From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
-follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `w` to
+follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
-same: `↑↓ move · →← tree · enter open · w wide · esc`, and it gains `ctrl+v think harder`
+same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`
 before the `esc` while the row under the cursor is work that has not finished — that chord
-moves the task's own thinking rung. While the column holds the keyboard
+moves the task's own thinking rung. And on a row that **needs your look** the whole slot
+becomes `a accept · l look again · n not right · esc`, and those three letters answer that
+landing from the column without opening its room. While the column holds the keyboard
 the wheel walks that cursor instead of the window, so the two never fight.
+
+Widen is `alt+w` and not the bare letter `w`: the roster is read before the message box, so
+a bare `w` there ate the `w` out of every sentence somebody typed with the column still
+holding the keyboard. The bare letter is kept only on the full-frame roster, where there is
+no message box on the screen at all.
 
 There is **one scrollbar-less window and no second one**: the wheel, the arrow keys and a
 landing task all move the same offset. What the window cannot show is said at the foot of

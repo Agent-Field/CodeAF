@@ -2038,16 +2038,21 @@ func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
 	}
 }
 
-// Every sentence typed at home opens a conversation OF ITS OWN, and the one
-// that cannot open does not go into somebody else's.
+// Every sentence typed at home opens a conversation OF ITS OWN, however many are
+// already open, and each one is sent its own sentence and nobody else's.
 //
 // THE DEFECT THIS CLOSES, in the owner's own words: "whenever I create a new
 // chat, it seems to go into the same chat instead of creating a new one". Home
 // closed itself, asked [app.renew] for a conversation, and sent the sentence
 // whether or not one came back — so from the eighth conversation onward, where
-// the keeper refuses another ([app.roomForAnother]), every new chat typed at
-// home was delivered to the conversation that was already on the screen. The
-// same one, every time, with the refusal noted underneath it.
+// the keeper used to refuse another, every new chat typed at home was delivered
+// to the conversation that was already on the screen. The same one, every time,
+// with the refusal noted underneath it.
+//
+// THE CAP ITSELF IS GONE (keeper.go, owner's ruling 2026-08-31), so the count
+// here deliberately runs well past the eight that used to be the whole of the
+// defect: the ninth sentence and the twentieth get conversations of their own
+// exactly as the first did.
 func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
@@ -2067,14 +2072,15 @@ func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
 		}
 		runCmd(a.homeEnter())
 	}
-	// UP TO THE CAP EVERY SENTENCE GETS ITS OWN CONVERSATION. The first replaces
-	// the fresh empty one this window opened on; every one after it is added
-	// beside what is already running.
-	for i := 0; i < convCap; i++ {
+	// EVERY SENTENCE GETS ITS OWN CONVERSATION, twenty of them. The first
+	// replaces the fresh empty one this window opened on; every one after it is
+	// added beside what is already running, and none of them is refused.
+	const sentences = 20
+	for i := 0; i < sentences; i++ {
 		say(fmt.Sprintf("message %d", i))
 	}
-	if len(made) != convCap {
-		t.Fatalf("%d sentences opened %d conversations", convCap, len(made))
+	if len(made) != sentences {
+		t.Fatalf("%d sentences opened %d conversations", sentences, len(made))
 	}
 	for i, agent := range made {
 		want := fmt.Sprintf("message %d", i)
@@ -2082,26 +2088,27 @@ func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
 			t.Fatalf("conversation %d was sent %v, not %q alone", i, agent.sent, want)
 		}
 	}
-
-	// AND THE ONE THAT CANNOT OPEN IS REFUSED WHERE IT WAS TYPED. Home stays on
-	// the screen saying so, the sentence is still in the box, and not one word of
-	// it reaches the conversation in front.
-	last := made[len(made)-1]
-	say("this one has nowhere to go")
-	if len(last.sent) != 1 {
-		t.Fatalf("a new chat landed in the conversation already on screen, which was sent %v", last.sent)
+	// AND EVERY ONE OF THEM IS A DIFFERENT CONVERSATION. Two sentences landing
+	// on one agent is the defect this test exists for, so identity is asserted
+	// rather than inferred from the count.
+	seen := map[*fakeAgent]bool{}
+	for i, agent := range made {
+		if seen[agent] {
+			t.Fatalf("conversation %d was the same agent as an earlier one", i)
+		}
+		seen[agent] = true
 	}
-	if len(made) != convCap {
-		t.Fatalf("the cap was passed: %d conversations", len(made))
+	// The window is holding all twenty, and the twentieth is the one in front.
+	if got := a.openCount(); got != sentences {
+		t.Fatalf("the window holds %d conversations after %d sentences", got, sentences)
 	}
-	if !a.at(pageHome) {
-		t.Fatal("a refused conversation closed home anyway")
+	// AND HOME IS OUT OF THE WAY EACH TIME, because nothing refused. A refusal
+	// would have left home standing with its own sentence on it.
+	if a.at(pageHome) {
+		t.Fatal("home stayed up after a conversation opened")
 	}
-	if a.home.msg != convCapWord() {
-		t.Fatalf("home said %q about a refused conversation", a.home.msg)
-	}
-	if got := a.home.box.String(); got != "this one has nowhere to go" {
-		t.Fatalf("the refused sentence was left as %q", got)
+	if a.home.msg != "" {
+		t.Fatalf("home said %q about a conversation that opened", a.home.msg)
 	}
 }
 

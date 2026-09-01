@@ -855,6 +855,12 @@ type Config struct {
 
 	// ContextWindow is the model's window in tokens; compaction fires at
 	// window − max(15% of window, 16384). Zero selects a conservative default.
+	//
+	// THE FIGURE IS THE MODEL CARD'S AND IT IS BELIEVED. What was once clamped
+	// to twice the default for every model alike is now capped only by what an
+	// endpoint has actually refused to serve ([TrustedWindowFor]), so a model
+	// with a million tokens of room is no longer folded like one with a hundred
+	// and twenty-eight thousand.
 	ContextWindow int
 	// ContextWindowFor answers from the catalog owned by the machine running
 	// the session. A model switch consults it there so a remote surface's
@@ -1623,6 +1629,20 @@ type Config struct {
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
 
+	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
+	// and it is empty in a conversation — where the agent's own journal already
+	// names it — and set on every agent built for a piece of work, however deep
+	// (task_run.go's [Agent.newTaskAgentOn]).
+	//
+	// It exists because a node's ledger line names the node's own journal and
+	// not the conversation that asked for the work (usage_ledger.go's
+	// [UsageLine.Session]), so nothing outside the family could add a running
+	// tree's spend back onto the conversation until the tally was folded in at
+	// close. It is private for [Config.usageLedger]'s reason: no surface sets
+	// it, because the only honest source for it is the agent that built the
+	// worker.
+	rootSession string
+
 	// standingItemID is the id of the standing item whose firing this agent IS
 	// (standing_run.go), and empty in every conversation and every ordinary task.
 	// It rides on the config for [Config.taskID]'s reason: the money a firing
@@ -1819,6 +1839,17 @@ type Agent struct {
 	// outside mu holding its own lock for chatlog's reason: it is written from
 	// the stream goroutine while a turn holds mu for its own state.
 	turnLane laneWitness
+
+	// processRules is how many times each of the process rules the turn loop
+	// enforces has had to say anything in THIS CONVERSATION (processrule.go). It
+	// sits outside mu holding its own lock for the reason above it does: it is
+	// written from the step boundary while a turn holds mu for its own state.
+	processRules ruleLedger
+
+	// ruleStop is WHY THE LAST TURN ENDED when one of those rules ended it
+	// (processrule.go). It is a turn-shaped fact rather than a conversation's,
+	// and a task node's landing is its one reader.
+	ruleStop ruleStopWitness
 
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
@@ -2073,6 +2104,18 @@ type Agent struct {
 	// wakes for itself ([Agent.postTaskNews]).
 	taskNotes int
 	taskNews  chan struct{}
+	// handover is the seam a delivery's last two writes are made across, and the
+	// seam the runner reads them across ([Agent.handOverTaskNews] and
+	// [Agent.taskNewsStanding], which states the law). The pair it guards lives
+	// under two other locks — "outstanding" is the graph's and the job
+	// registry's, "owed" is this agent's — so nothing smaller than a lock of its
+	// own can make a delivery indivisible to whoever is reading it.
+	//
+	// IT IS THE OUTERMOST LOCK ON BOTH ROADS. It is taken while holding nothing,
+	// and everything done under it takes its own locks inside; taking it while
+	// holding mu or the graph's would be a second lock order in a package that
+	// has one.
+	handover sync.Mutex
 	// done is closed when the in-flight turn has recorded its last message,
 	// non-nil exactly while running. Close waits on it so a cancelled turn's
 	// tail reaches the journal before the file does.
@@ -2090,6 +2133,18 @@ type Agent struct {
 	// cutPointLocked, which already holds the lock: a second acquisition there
 	// would deadlock the one call — Interrupt — that must always be answerable.
 	contextWindow atomic.Int64
+	// servedWindow is what this process has LEARNED about the window the model
+	// now in use really has, as opposed to the one its catalog row claims: the
+	// narrowest prompt that model has been refused for being too long
+	// (internal/provider's ServedWindow). Zero means nothing has been learned
+	// and the claim stands alone, which is the ordinary case.
+	//
+	// It is a field rather than a call because the memo is keyed by MODEL and
+	// the model is guarded by mu, while the threshold is read from
+	// cutPointLocked with mu already held — so it is atomic for
+	// [Agent.contextWindow]'s reason, word for word, and refreshed wherever the
+	// model or the window moves.
+	servedWindow atomic.Int64
 
 	// compacting serializes compaction passes. One pass reads the transcript,
 	// releases the lock to summarize, then rebuilds; a second pass entering

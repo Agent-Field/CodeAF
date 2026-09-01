@@ -464,7 +464,11 @@ const (
 	KeySlackOAuthClient = "slack_oauth_client"
 
 	// The four context-law knobs. Fill is how much of a model's window any
-	// agent may use before compaction fires; the reserve is the room every
+	// agent may use before compaction fires — and WHETHER A PERSON SET IT is
+	// itself part of the law, because a conversation nobody has pinned folds
+	// against a line derived from its model's window instead
+	// (ctxbudget.PinnedFillPercent, internal/session's compactThresholdOf);
+	// the reserve is the room every
 	// call keeps for its answer and its reasoning; the working set caps what
 	// an agent keeps quoted in front of itself however large the window is;
 	// and reuse caps how many times over it may re-send that working set.
@@ -861,7 +865,7 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTie
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
 // here, and that distinction is the whole mechanism ([TierModelAt] says how).
 const (
-	DefaultReflexModel = "nex-agi/nex-n2-mini"
+	DefaultReflexModel = "mistralai/mistral-nemo"
 	DefaultLowModel    = "deepseek/deepseek-v4-flash"
 	DefaultHighModel   = "qwen/qwen3.8-27b"
 	// The mastermind ships with a LEVEL on it, which no other tier does. The
@@ -2023,7 +2027,9 @@ func (s *Settings) build() []Setting {
 			Label: "context fill", Env: "AFORGE_CONTEXT_FILL_PCT",
 			Hint: "how much of a model's context window aforge fills before it starts " +
 				"compacting, as a percent. Higher packs more in; the rest stays as thinking " +
-				"and answer room. A change lands on the next call.",
+				"and answer room. Left alone, a conversation follows its own model's window " +
+				"instead — set this and it becomes the line, which /status then says. " +
+				"A change lands on the next call.",
 			read:  func() string { return strconv.Itoa(ContextFillAt(dir)) },
 			write: func(raw string) error { return writeContextFill(dir, raw) },
 		},
@@ -3786,13 +3792,38 @@ func ContextReuseAt(profileDir string) int {
 // a writer that rebuilt only its own field would hand ctxbudget zeroes for the
 // other three and quietly revert them to their defaults for the life of the
 // process.
+//
+// EVERY FIELD IS THE ROW AS A PERSON WROTE IT, AND ZERO WHERE NOBODY HAS, which
+// is the law ctxbudget.Limits states about itself in as many words: "zero in any
+// field means unset — the environment pin, then the default, carry that field on
+// its own". This function used to hand over the fully resolved figure from the
+// *At readers instead, which answer with the built-in default when neither the
+// environment nor the profile has spoken. The resolved answer is identical
+// either way, because ctxbudget falls back to the same defaults — but it arrived
+// having thrown away the one thing only this end knew, and ctxbudget could no
+// longer tell a fill somebody pinned to sixty from a fill nobody has ever
+// touched. The conversation's compaction trigger needs exactly that distinction
+// (ctxbudget.PinnedFillPercent), so the provenance travels rather than a number
+// that has forgotten where it came from.
 func contextLaw(profileDir string) ctxbudget.Limits {
 	return ctxbudget.Limits{
-		FillPercent:             ContextFillAt(profileDir),
-		CompletionReserveTokens: CompletionReserveAt(profileDir),
-		WorkingSetTokens:        WorkingSetAt(profileDir),
-		ReusePercent:            ContextReuseAt(profileDir),
+		FillPercent:             persistedCount(profileDir, KeyContextFill),
+		CompletionReserveTokens: persistedCount(profileDir, KeyCompletionReserve),
+		WorkingSetTokens:        persistedCount(profileDir, KeyWorkingSet),
+		ReusePercent:            persistedCount(profileDir, KeyContextReuse),
 	}
+}
+
+// persistedCount is one count row as it is written down in this profile, and
+// zero when it is not written down at all. It is the registry's own answer to
+// "did a person set this?" — the same file [Settings.PersistedKeys] reads to
+// draw a provenance chip — narrowed to a single key for a caller that needs the
+// value with it.
+func persistedCount(profileDir, key string) int {
+	if value, ok := persistedInt(profileDir, key); ok && value > 0 {
+		return value
+	}
+	return 0
 }
 
 // writeContextFill persists the fill percent and hands the whole law to

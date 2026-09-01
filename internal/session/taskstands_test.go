@@ -193,7 +193,7 @@ func TestAFolderGroundIsMirroredAndLandsByName(t *testing.T) {
 	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
 	writeFile(t, filepath.Join(ground, "deep", "under.txt"), "kept\n")
 
-	tree, err := prepareTaskTreeOn(Place{}, t.TempDir(), "aaaa1111aaaa1111", 3, "write it up",
+	tree, err := prepareTaskTreeOn(context.Background(), Place{}, t.TempDir(), "aaaa1111aaaa1111", 3, "write it up",
 		taskStand{dir: ground, mode: TaskModeMirror})
 	if err != nil {
 		t.Fatalf("prepareTaskTreeOn: %v", err)
@@ -229,7 +229,7 @@ func TestTheCheckOnAMirrorIsCutFromTheFolderItStandsOn(t *testing.T) {
 	ground := t.TempDir()
 	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
 
-	tree, err := prepareTaskTreeOn(Place{}, t.TempDir(), "bbbb2222bbbb2222", 4, "write it up",
+	tree, err := prepareTaskTreeOn(context.Background(), Place{}, t.TempDir(), "bbbb2222bbbb2222", 4, "write it up",
 		taskStand{dir: ground, mode: TaskModeMirror})
 	if err != nil {
 		t.Fatalf("prepareTaskTreeOn: %v", err)

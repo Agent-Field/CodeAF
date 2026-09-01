@@ -691,12 +691,16 @@ func TestTheWallIsTheLanesOwnHistoryAndNotTheModels(t *testing.T) {
 	}
 }
 
-// TestTheWallIsClampedAtBothEnds pins the two constants that keep a derived
+// TestTheWallIsClampedAtBothEnds pins the three constants that keep a derived
 // bound honest: a lane whose replies are tiny cannot earn a wall shorter than
-// the floor, and one pathological completion cannot buy an hour.
+// the measured floor, one pathological completion cannot buy an hour, and a lane
+// nothing is known about gets the outer bound rather than a derivation.
 func TestTheWallIsClampedAtBothEnds(t *testing.T) {
-	if got := wallFor(time.Second); got != streamWallFloor {
-		t.Fatalf("wallFor(1s) = %s, want the floor", got)
+	if got := wallFor(0); got != streamWallFloor {
+		t.Fatalf("wallFor(0) = %s, want the cold outer bound", got)
+	}
+	if got := wallFor(time.Second); got != streamWallMeasuredFloor {
+		t.Fatalf("wallFor(1s) = %s, want the measured floor", got)
 	}
 	if got := wallFor(19 * time.Minute); got != streamWallCeiling {
 		t.Fatalf("wallFor(19m) = %s, want the ceiling", got)
@@ -793,7 +797,13 @@ func TestAWallCutStrikesTheLaneAndTheNextRequestRoutesAround(t *testing.T) {
 // would be testing a different law.
 func shortenWall(t *testing.T, floor, ceiling time.Duration) func() {
 	t.Helper()
-	oldFloor, oldCeiling := stallWallFloor, stallWallCeiling
-	stallWallFloor, stallWallCeiling = floor, ceiling
-	return func() { stallWallFloor, stallWallCeiling = oldFloor, oldCeiling }
+	oldFloor, oldMeasured, oldCeiling := stallWallFloor, stallWallMeasured, stallWallCeiling
+	// BOTH FLOORS MOVE TOGETHER. The cold floor and the measured one bound the
+	// same clock from the same side, and a test that shortened one while the
+	// other stayed at two and a half minutes would be timing a bound it did not
+	// set (see [wallFor]).
+	stallWallFloor, stallWallMeasured, stallWallCeiling = floor, floor, ceiling
+	return func() {
+		stallWallFloor, stallWallMeasured, stallWallCeiling = oldFloor, oldMeasured, oldCeiling
+	}
 }

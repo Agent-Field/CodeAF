@@ -26,7 +26,12 @@ package session
 //     conversation that spawned it (task_run.go's [Agent.foldTaskUsage]), which
 //     is right for a session's own books and would be double counting here. The
 //     fold has its own door ([Agent.addFoldedUsage]) that writes no ledger line,
-//     and this file's totals are therefore each call once.
+//     and this file's totals are therefore each call once. EVERY CHILD AGENT IS
+//     UNDER THIS RULE, not only a task node: a fork's hand (fork.go's
+//     [Agent.foldHandUsage]) and an adaptive run's worker (orchestrate.go's
+//     [orchestrateExec.spend]) each journal their own calls here and each fold
+//     home silently. Both folded through the auxiliary door until issue #168,
+//     and the day this file's rail reads was double on every one of them.
 //   - IT NEVER BLOCKS A TURN, AND THE TURN'S OWN GOROUTINE NEVER TOUCHES THE
 //     DISK. [RecordUsage] serializes the row and hands it to a bounded queue
 //     that one background writer per ledger drains ([usageWriter]); a full
@@ -141,6 +146,30 @@ type UsageLine struct {
 	// conversation. It is the node's id within its session, exactly as
 	// [TaskIndexEntry.ID] is, so the two join.
 	Task string `json:"task,omitempty"`
+	// Root is the CONVERSATION the work this call was made inside belongs to,
+	// and it is empty on a conversation's own line — where Session already names
+	// it — and on a standing firing no conversation asked for.
+	//
+	// IT IS THE ONE FIELD THAT MAKES A FAMILY ADDABLE. Session on a node's line
+	// is the NODE's journal, which is a file nobody outside the family has heard
+	// of, and Task is a small integer that restarts with every conversation; so
+	// with those two alone, "what has this conversation's work cost so far"
+	// could not be asked of this file at all — it could only be waited for,
+	// until each node closed and its tally was folded into the conversation's
+	// own books ([Agent.foldTaskUsage]). It is written on every agent inside a
+	// family, at every depth and on the check and repair rounds as well — and on
+	// the hands a turn forked (fork.go), which keep no journal of their own and
+	// whose lines therefore named nothing joinable at all before it — so a reader
+	// that sums it gets the whole subtree.
+	//
+	// A FOLD STILL WRITES NO LINE, so a closed node's calls are counted here
+	// exactly once — under the node that made them — and never again under the
+	// conversation they were folded into.
+	//
+	// It is ADDITIVE, and absence is ordinary: every line written before this
+	// field existed decodes without it, which reads as "this is not a family's
+	// line", and every one of them is a conversation's or a standing item's.
+	Root string `json:"root,omitempty"`
 	// Standing is the id of the standing item whose firing made this call, and
 	// empty everywhere else. A firing is InTask and may also carry a Task id;
 	// [UsageBySubject] prefers this one, because a person recognises the promise
@@ -723,7 +752,11 @@ func (a *Agent) recordUsageLine(used Usage, model, role string, lane laneFacts) 
 		// The node this agent IS, and nothing for a conversation — the same
 		// figure [TaskNotice.Parent] is registered under, spelled the way
 		// [TaskIndexEntry.ID] spells it so the two join.
-		Task:      usageTaskID(a.config.taskID),
+		Task: usageTaskID(a.config.taskID),
+		// The conversation the work is rooted in, which is nothing at all in a
+		// conversation: Session above is already that answer, and writing it
+		// twice would be the one-source-of-truth law broken on the same row.
+		Root:      strings.TrimSpace(a.config.rootSession),
 		Standing:  strings.TrimSpace(a.config.standingItemID),
 		Workspace: strings.TrimSpace(a.config.Workspace),
 	}

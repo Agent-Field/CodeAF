@@ -607,3 +607,96 @@ func (w *Workspace) OfferSync(remote string) SyncOffer {
 		Note: syncNote,
 	}
 }
+
+// ── a universe to work in, rather than a command run inside one ──────────────
+
+// Fork materializes a copy-on-write universe of the whole workspace and HANDS
+// IT BACK, running nothing inside it.
+//
+// It is the door [Workspace.RunInFork] is not. RunInFork exists for the model's
+// own `workspace_fork` verb, where a universe is the safe place one command
+// gets to run; this exists for the harness, where a universe is the GROUND a
+// task is given and everything that happens in it happens afterwards, over
+// hours, through the task's own belt. Until this door existed the rest of
+// aforge had to ground a task with `git worktree add`, which carries HEAD and
+// leaves the dirty tree, the untracked files and the `.env` behind — the defect
+// the ground law (internal/session/taskground.go) was written from.
+//
+// destination is where the universe is put. An empty one lets furrow choose
+// `<repo>.furrow-forks/<name>` beside the workspace, which is furrow's own
+// default and the wrong answer for a task — a task's world belongs under the
+// session that asked for it, not beside the person's project — so every caller
+// in this codebase names one.
+func (w *Workspace) Fork(ctx context.Context, name, destination string) (Fork, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Fork{}, fmt.Errorf("furrow: a universe to work in needs a name")
+	}
+	args := []string{"--json", "fork", name}
+	if destination = strings.TrimSpace(destination); destination != "" {
+		args = append(args, "--destination", destination)
+	}
+
+	stdout, stderr, err := w.run(ctx, args...)
+	if err != nil && len(documents(stdout)) == 0 {
+		return Fork{}, failure(stderr, err)
+	}
+	// `furrow fork` prints one document with the PLAN it costed and the RESULT
+	// it got. Only the result is read: the plan is a projection made before the
+	// copy happened, and a caller told what a fork was going to be rather than
+	// what it is would be told something that may not have happened.
+	var forked struct {
+		Result struct {
+			Name        string `json:"name"`
+			Destination string `json:"destination"`
+			Base        string `json:"base_snapshot"`
+			Head        string `json:"head_snapshot"`
+		} `json:"result"`
+	}
+	if err := decodeLast(stdout, &forked); err != nil {
+		return Fork{}, err
+	}
+	if strings.TrimSpace(forked.Result.Destination) == "" {
+		return Fork{}, fmt.Errorf("%w: furrow reported no universe", ErrUnreadable)
+	}
+	fork := Fork{
+		Name: forked.Result.Name,
+		Path: forked.Result.Destination,
+		Base: forked.Result.Base,
+		Head: forked.Result.Head,
+	}
+	if fork.Name == "" {
+		fork.Name = name
+	}
+	return fork, nil
+}
+
+// DropFork tells furrow to forget one universe while LEAVING ITS FILES ALONE.
+//
+// The two halves are separated on purpose. Whoever asked for the fork owns the
+// directory — for a task that is the session, which removes its own trees when
+// the work has landed — and a furrow that deleted those files from under it
+// would be a second owner of one directory. What furrow is asked to drop is the
+// record and the timeline, so that `furrow forks` does not fill up with the
+// universes of every task this machine has ever run.
+//
+// A FAILURE IS REPORTED AND NEVER DECIDED ABOUT HERE, because what one is worth
+// depends entirely on who asked. A landing has already put the work in, so a
+// record furrow would not drop costs it one line in a listing and it says
+// nothing about it. The sweep that reaps a session nobody landed is the last
+// thing on the machine that will ever know this fork's name, and the directory
+// the record points at is about to go — so it writes the miss down
+// (internal/session/sweep.go). One door, two readings, and neither of them is
+// this package's to make.
+func (w *Workspace) DropFork(ctx context.Context, name string) error {
+	if name = strings.TrimSpace(name); name == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+	stdout, stderr, err := w.run(ctx, "--json", "fork-rm", name, "--keep-files")
+	if err != nil && len(documents(stdout)) == 0 {
+		return failure(stderr, err)
+	}
+	return nil
+}

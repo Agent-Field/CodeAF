@@ -33,9 +33,17 @@ import (
 //
 // So this file gives the keystroke shape the same door. It watches for a run of
 // characters that spells a path, and when the run goes quiet it hands what it
-// found to [app.pasteFiles] — the same function, the same tray, the same chips,
-// the same hosted upload. There is no second tagging system and no second idea
-// of what a dropped file is.
+// found to [app.pasteFilesInto] — the same function, the same tray, the same
+// chips, the same hosted upload. There is no second tagging system and no second
+// idea of what a dropped file is.
+//
+// AND IT WATCHES WHICHEVER BOX HAS THE KEYBOARD. The fold was the conversation
+// draft's alone, so the one screen a person is most likely to be looking at when
+// they drag something in — home, fullscreen, with its own line at the foot —
+// held the raw path until enter caught it, filtering its list by a path no
+// conversation matches while it sat there. The fold carries the box it is
+// watching now, and one box at a time: home's line, the errand pane's and the
+// draft are three boxes and a person types into exactly one of them.
 //
 // WHAT IT COSTS, AND THE LAW THAT KEEPS IT THERE. PERF.md's doctrine is that a
 // gate counts work rather than time, and the work this file is allowed is
@@ -95,7 +103,21 @@ type dropMsg struct{}
 // the run began. So a burst that turns out to be an ordinary sentence needs
 // nothing put back, and the box is never a character behind the keyboard.
 type dropFold struct {
-	// at and end bound the run inside the draft, in runes. A key that does not
+	// box is the box the run is being typed into and chips is the tray that
+	// box's next message carries — the two things the one door is told
+	// (imagepaste.go's [app.pasteFilesInto]).
+	//
+	// ONE FOLD, ONE BOX AT A TIME. A character landing in a box the run did not
+	// begin in is not that run continuing, so the fold resets rather than
+	// keeping a range in a place nobody is typing. And the box is checked again
+	// on the way OUT, against the box that still has the keyboard: home opens
+	// over the draft and closes back onto it, and a run left standing behind a
+	// screen that went away must never become a token in a line off screen
+	// ([app.keyboardBox]).
+	box   *editor
+	chips *[]chip
+
+	// at and end bound the run inside that box, in runes. A key that does not
 	// land exactly at end is not part of this run — a caret moved, a word
 	// deleted — and starts the question again.
 	at, end int
@@ -120,19 +142,25 @@ type dropFold struct {
 	watched, armed, looked, took int
 }
 
-// dropWatch is called with every character that types itself into the draft,
-// and it is the whole of what ordinary typing pays for this file: two integer
+// dropWatch is called with every character that types itself into a box, and it
+// is the whole of what ordinary typing pays for this file: two integer
 // comparisons and, for a character that could open a path, one string test.
 //
-// at is where the character landed, before it was inserted.
-func (a *app) dropWatch(at int, text string) tea.Cmd {
+// box is the line the character went into and chips is the tray that box's next
+// message carries; at is where the character landed, before it was inserted.
+func (a *app) dropWatch(box *editor, chips *[]chip, at int, text string) tea.Cmd {
 	a.drop.watched++
+	if a.drop.box != box {
+		// A character in a box this run did not begin in. See [dropFold.box].
+		a.drop.open = false
+	}
+	a.drop.box, a.drop.chips = box, chips
 	runes := len([]rune(text))
 	switch {
 	case a.drop.open && a.drop.end == at:
 		// The run continuing, character by character.
 		a.drop.end = at + runes
-	case dropOpener(text) && dropWordStart(a.input.value, at):
+	case dropOpener(text) && dropWordStart(box.value, at):
 		// A character that could BEGIN a dropped path, standing where a word
 		// begins. Anything else — a letter mid-word, a character after a caret
 		// jump — is somebody typing, and the fold stays shut.
@@ -141,12 +169,12 @@ func (a *app) dropWatch(at int, text string) tea.Cmd {
 		a.drop.open = false
 		return nil
 	}
-	if a.drop.end > len(a.input.value) {
-		// The draft moved underneath the fold. It is not a run any more.
+	if a.drop.end > len(box.value) {
+		// The box moved underneath the fold. It is not a run any more.
 		a.drop.open = false
 		return nil
 	}
-	run := string(a.input.value[a.drop.at:a.drop.end])
+	run := string(box.value[a.drop.at:a.drop.end])
 	if !dropCouldGrowInto(run) {
 		// The run has proved itself an ordinary word — `fix` rather than
 		// `file://…`. It costs one comparison to find out and nothing after.
@@ -196,8 +224,18 @@ func (a *app) dropSettled() tea.Cmd {
 		a.ptr.still = true
 		return a.dropWake()
 	}
+	draft := a.drop.box == &a.input
 	if !a.spendDrop() {
 		a.ptr.still = true
+		return nil
+	}
+	if !draft {
+		// A DRAFT'S EDIT FOLLOW-UPS ARE THE DRAFT'S. [app.edited] syncs the
+		// completion lists over the conversation's box and arms its crash
+		// insurance (draft.go); home's line and the errand pane's have neither,
+		// and what they do owe — the row that counts a held file as something
+		// typed, the list under it — the door's own follow-up has already paid
+		// ([app.dropLanded]).
 		return nil
 	}
 	return a.edited()
@@ -212,13 +250,26 @@ func (a *app) spendDrop() bool {
 	if !a.drop.open {
 		return false
 	}
-	at, end := a.drop.at, a.drop.end
-	if at < 0 || end > len(a.input.value) || end <= at {
-		// The draft moved underneath the fold; there is no run to spend.
+	// AND IT IS ONLY EVER SPENT INTO THE BOX THAT STILL HAS THE KEYBOARD. Home
+	// opens over the draft fullscreen and closes back onto it, and the errand
+	// pane takes the keys from home's own line — each of those leaves a run
+	// standing in a box the person is no longer typing into, and converting
+	// there would put a token in a line nobody can see. The question is asked by
+	// IDENTITY rather than by page, which is what makes it true of a home that
+	// was closed and opened again: [app.dropHome] replaces the view with a fresh
+	// one and the fold's range means nothing in it.
+	box, chips := a.keyboardBox()
+	if a.drop.box != box {
 		a.drop.open = false
 		return false
 	}
-	run := string(a.input.value[at:end])
+	at, end := a.drop.at, a.drop.end
+	if at < 0 || end > len(box.value) || end <= at {
+		// The box moved underneath the fold; there is no run to spend.
+		a.drop.open = false
+		return false
+	}
+	run := string(box.value[at:end])
 	// A RUN THAT IS NOT A DROP LEAVES THE FOLD OPEN, which is what makes a drop
 	// delivered one character at a time work at all: `/var/f` names nothing and
 	// `/var/folders/x/shot.png` names something, and they are the same run three
@@ -228,28 +279,31 @@ func (a *app) spendDrop() bool {
 		return false
 	}
 	a.drop.open = false
-	// THE RUN COMES OUT OF THE DRAFT BEFORE THE DOOR IS ASKED, because the door
-	// reads the draft to decide. [app.pasteFiles] refuses a draft that starts
+	// THE RUN COMES OUT OF THE BOX BEFORE THE DOOR IS ASKED, because the door
+	// reads the box to decide. [app.pasteFilesInto] refuses a box that starts
 	// with `/` on purpose — `/attach ` followed by a dropped file is somebody
 	// using the command exactly as documented — and a keystroke drop into an
-	// EMPTY box puts its own `/` at the front of that draft. Taking the run out
-	// first is what tells the two apart: what is left is the command, or
-	// nothing at all.
-	a.input.value = append(a.input.value[:at], a.input.value[end:]...)
-	a.input.cursor = at
-	a.editTags(at, end, 0)
-	if a.pasteFiles(run) {
+	// EMPTY box puts its own `/` at the front of it. Taking the run out first is
+	// what tells the two apart: what is left is the command, or nothing at all.
+	box.value = append(box.value[:at], box.value[end:]...)
+	box.cursor = at
+	box.editTags(at, end, 0)
+	took := a.pasteFilesInto(box, chips, run)
+	if took {
 		a.drop.took++
-		return true
+	} else {
+		// The door said no — the box holds a command and this is its argument,
+		// or a file is over the ceiling and has been named. The characters go
+		// back exactly where they were typed, in order, and the box is the box
+		// the person was looking at.
+		box.cursor = at
+		box.insert(run)
+		box.editTags(at, at, end-at)
 	}
-	// The door said no — the draft is a command and this is its argument, or a
-	// file is over the ceiling and has been named. The characters go back
-	// exactly where they were typed, in order, and the box is the box the
-	// person was looking at.
-	a.input.cursor = at
-	a.input.insert(run)
-	a.editTags(at, at, end-at)
-	return false
+	// AND THE SURFACE OWES THE SAME FOLLOW-UP EITHER WAY, because either way the
+	// box and the tray under it have changed ([app.dropLanded]).
+	a.dropLanded(box)
+	return took
 }
 
 // ── telling a dropped path from a typed word ────────────────────────────────
@@ -385,6 +439,15 @@ func (a *app) droppedFiles(text string) bool {
 // An unknown command that names nothing on the disk still refuses exactly as it
 // always did: this returns false and the caller writes its own sentence.
 func (a *app) droppedLine(line string) bool {
+	return a.droppedLineInto(&a.input, &a.chips, line)
+}
+
+// droppedLineInto is that net under WHICHEVER box the line was typed into, so
+// home's own dispatcher falls into it too (home.go's [app.homeEnter]). Home
+// answered a dropped path with `unknown command`, the same sentence chat stopped
+// answering with when this net was written, because home ran the slash router
+// over its own box and never reached here.
+func (a *app) droppedLineInto(box *editor, chips *[]chip, line string) bool {
 	words := pastedWords(line)
 	if len(words) == 0 {
 		return false
@@ -394,14 +457,24 @@ func (a *app) droppedLine(line string) bool {
 		a.drop.looked++
 		info, err := os.Stat(a.resolvePath(pastedPath(word)))
 		if err != nil {
+			// A LINE SHAPED LIKE A DROP THAT NAMES NOTHING HERE IS A DROP FROM
+			// ANOTHER MACHINE, and the door says so in its own sentence rather
+			// than leaving the router to answer `unknown command` about a file
+			// that exists perfectly well on the laptop it was dragged from
+			// (imagepaste.go's [app.pasteFilesInto]). Anything else is the
+			// unknown command it looks like, and is refused as one.
+			if droppedPathShape(line) {
+				a.pasteFilesInto(box, chips, line)
+				return true
+			}
 			return false
 		}
 		if info.Mode().IsRegular() {
 			files++
 		}
 	}
-	held := len(a.chips)
-	if !a.pasteFiles(line) {
+	held := len(*chips)
+	if !a.pasteFilesInto(box, chips, line) {
 		return false
 	}
 	a.drop.took++
@@ -409,11 +482,12 @@ func (a *app) droppedLine(line string) bool {
 	// who has just watched their file turn into a line of text and press enter.
 	// The chips are the proof; the sentence is what stops them typing it again.
 	//
-	// A FOLDER SAYS ITS OWN SENTENCE AND IS NOT GIVEN A SECOND ONE. [app.pasteFiles]
-	// answers "<name> is a folder · attach a file" and attaches nothing, and
-	// "attached" underneath that would be this surface contradicting itself.
-	if files == len(words) && len(a.chips) > held {
-		a.note(droppedNote(files))
+	// A FOLDER SAYS ITS OWN SENTENCE AND IS NOT GIVEN A SECOND ONE.
+	// [app.pasteFilesInto] answers "<name> is a folder · attach a file" and
+	// attaches nothing, and "attached" underneath that would be this surface
+	// contradicting itself.
+	if files == len(words) && len(*chips) > held {
+		a.trayNote(droppedNote(files))
 	}
 	return true
 }

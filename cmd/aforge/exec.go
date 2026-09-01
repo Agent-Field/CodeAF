@@ -34,7 +34,7 @@ func runExec(args []string) error {
 	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
 	maxTokens := flags.Int("budget", 150000, "token budget for the agent (env AFORGE_EXEC_BUDGET)")
 	timeout := flags.Int("timeout", 0, "hard wall in seconds (env AFORGE_EXEC_TIMEOUT; default: scale from the token budget)")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "accepted for headless model-pin parity; exec performs no planning")
 	contextFill := flags.Int("context-fill", 0, "context compaction threshold in percent (default 60)")
 	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
@@ -64,7 +64,14 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
-	applyModelFlags(&settings, *model, *planModel)
+	// Both seats are resolved through the one ladder even here, where only one
+	// of them is ever sat in: --plan-model is accepted for parity, and a door
+	// that took the flag and then resolved it differently from every other door
+	// would be the parity it claims in name only. Only the work seat is printed,
+	// because only the work seat runs anything.
+	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	applySeats(&settings, seats)
+	fmt.Fprintln(os.Stderr, seats.Work.Line())
 	modelCatalog := sharedCatalog(settings)
 	settings.Models = modelCatalog
 	client, err := settings.Client()
