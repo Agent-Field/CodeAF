@@ -170,6 +170,32 @@ A slug the catalog has never carried is still **taken at its word**, exactly as 
 aforge may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
+## I changed the model but my task is still on the old one — /model does not move a running task's model
+
+`/model` moves the **conversation**. Work already handed over is not moved: a task's model
+is settled the moment the task is admitted and kept for its whole life, so a task that was
+running when you switched carries on in the voice it started in. That is deliberate — the
+switch you made mid-thought does not silently change the terms of work you already
+approved.
+
+When you switch while tasks are running, the note in the conversation says so in the same
+line that names the new model:
+
+```
+model · anthropic/claude-opus-5 — tasks already running keep the model they started on
+```
+
+With nothing running, the note is just `model · <the model>`.
+
+**To move one running task**, walk into its room and press the `task <model>` part of the
+status line — the ordinary picker opens aimed at that task, and the change takes effect on
+the task's next turn. That room is the only door; there is no command or setting that
+re-models running work from outside.
+
+**New tasks follow the switch.** Work admitted after `/model` runs on the model the
+conversation is now on — unless you have set `task.model` in settings, which always wins,
+or you name a model for that one task in words.
+
 ## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, naming a piece of work on the roster,
@@ -190,7 +216,7 @@ preset:
 
 | class | as shipped |
 | --- | --- |
-| reflex | `nex-agi/nex-n2-mini` |
+| reflex | `mistralai/mistral-nemo` |
 | small work | `deepseek/deepseek-v4-flash` |
 | careful work | `qwen/qwen3.8-27b` |
 | mastermind | `moonshotai/kimi-k3:low` |
@@ -213,7 +239,7 @@ say rather than the default.
 
 | | frugal | balanced | max |
 | --- | --- | --- | --- |
-| reflex | `nex-n2-mini` | `nex-n2-mini` | `nex-n2-mini` |
+| reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
 | small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
 | careful work | `qwen3.8-27b` | `qwen3.8-27b` | `kimi-k3` |
 | mastermind | `qwen3.8-27b` | `kimi-k3:low` | `kimi-k3:high` |
@@ -895,6 +921,42 @@ ask aforge to turn it off; it is not one of the rows it refuses. The two clocks 
 section above have no switch — a request that produced nothing at all has failed by any
 reading.
 
+## Strange tags instead of an answer — the reply was tool markup, odd tokens like `<|...|>` on the screen
+
+Some providers serve a model without translating its private tool-calling syntax, and the
+model — asked to use a tool — writes the call as visible text: angle brackets, bars, a tool
+name, a run of JSON, and no answer anywhere in it. The reply is well-formed as far as the
+connection can tell, so without its own guard aforge would show it to you and keep going.
+
+aforge reads the finished reply's shape — mostly symbols, a tool it was actually offered
+spelled inside the markup, and no real tool call attached — and cuts it. **None of the
+markup is kept**: not in the conversation, not sent back to the model. A dim line says
+
+```
+the model answered in its own internal markup instead of words — that text was dropped, asking again
+```
+
+and the same question is asked **once** more. The provider that served the markup is set
+aside first, so the retry genuinely lands somewhere else. If the markup keeps coming, the
+turn moves to the next model in your `fallback models` row, saying so:
+
+```
+the model kept answering in its own internal markup — finishing this one on openai/gpt-5-mini
+```
+
+With nowhere left to go, the turn ends in
+`the reply was the model's own internal markup instead of an answer and was cut`, and
+`/model` is the door — a different model, or the same model once its provider recovers.
+
+**What it will not cut.** A reply with a fenced code block in it is never judged — asking
+what a tool call looks like gets you an honest answer full of exactly this syntax. Prose
+that merely names a tool is safe: the markup has to be the substance of the reply, not a
+word in a sentence. And a conversation with no tools available cannot trigger it at all.
+
+**The switch is the same one.** `reply guard` on the **Providers** tab of `/settings`
+turns this off together with the repetition guard above; off means you see whatever
+arrives.
+
 ## Why does the same conversation suddenly cost more — what this conversation has cost with /cost
 
 `/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
@@ -902,12 +964,47 @@ what, into the conversation. Up to six aligned lines:
 
 | Line | What it is |
 |---|---|
-| `spend` | the money, printed only when it is above zero |
+| `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
+| `conversation` | what the conversation's own calls cost |
+| `tasks` | what the work it started has cost, running or finished |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
 | `empty reflex answers` | paid memory-routing or extraction requests that reached their output ceiling without returning any answer |
 | `time` | how long |
+
+`conversation` and `tasks` are dropped together unless the work has spent something, so a
+conversation that has started no tasks prints `spend` alone. When they are there they add
+up to the line above them, always — that is the whole point of printing them.
+
+## Does the status line's money include what my tasks are spending — yes, live
+
+**The `$` on the status line is the whole tree: this conversation and every task it
+started, at every depth, while they are still running.** It is one figure, not two, and it
+is the same figure `/cost` leads with.
+
+It used to be the conversation's own half alone. A task's money only reaches the
+conversation's books when the task **closes**, so a family working for two hours left the
+row saying `$2.53` while $51.05 was being spent under it, and the true figure could only be
+found by widening the task column and reading the parent row.
+
+Where the figure comes from: every model call writes one line into the spending ledger
+where the call was made, and a task's line names the conversation the work belongs to. The
+status line adds that up on the same clock the rest of the telemetry moves on — so a
+number is on the row within a second or two of being spent, not at the end of the task.
+Nothing is counted twice: closing a task moves its tally into the conversation's books and
+writes **no** new ledger line.
+
+Two things follow that are worth knowing:
+
+- **It never goes backwards.** If the conversation's own books hold more than the ledger
+  can account for — an old session resumed, a ledger that was moved — the larger figure is
+  the one shown.
+- **The warm colour follows the figure you can see.** The `$` leaves the dim at four fifths
+  of this conversation's own limit, measured on the whole tree. The refusal itself still
+  reads the conversation's books, which each task's tally lands in as it closes.
+
+To see the halves, ask `/cost`. To see one task's own bill, open its card.
 
 ## Why the same conversation can suddenly cost more — one turn can make several model calls
 
@@ -1444,6 +1541,11 @@ That is not a missing feature — it is what the rail actually is. A task's own 
 long it may go without progress. The money it spends is counted against the day's limit
 and against the limit on the conversation that started it, which are the two rows above it
 on the same tab.
+
+**What you get instead of a per-task limit is seeing it happen.** The `$` on the status
+line counts what the tasks are spending while they are spending it, and `/cost` splits that
+figure into `conversation` and `tasks`. A task is bounded by the wallet and watched on the
+row — it is never stopped on its own dollar count.
 
 So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
 command takes. Where you *can* put a figure on one piece of work is the **composer layer**:

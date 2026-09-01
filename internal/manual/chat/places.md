@@ -163,7 +163,11 @@ The box has two readings at once, with no switch between them:
 Two keys tell those apart:
 
 - **`enter`** — talk about it. On a row, it opens that row. With something typed and no row
-  chosen, it starts a conversation carrying what you wrote.
+  chosen, it starts a conversation carrying what you wrote. However many conversations this
+  terminal already holds, it starts another: there is no cap, and nothing refuses one for
+  being the ninth. Where the door itself fails — `/new is unavailable here`, or a session
+  folder that could not be made — your sentence is not sent anywhere at all, and never into
+  the conversation that was behind the place.
 - **`alt+enter`** — send it off as a task. It runs on its own and tells you when it lands.
   The first press opens the composer layer, where the three facts a task needs are settled;
   the second press is the send. The next section is that layer in full.

@@ -84,6 +84,13 @@ seconds.
 A still line here would mean something is wrong. If the mark is not turning, aforge is not
 waiting on the shaper — look for the task's own row on the roster instead.
 
+**You can watch the brief being written.** One dim row under the phase row carries the
+newest words as they arrive — the model's own reasoning in italics while it is still
+thinking, then your brief upright once it starts writing one — and `→` with an empty box
+(or a click on that row) opens it into the last six lines. It is a preview of the wait and nothing is kept from it — the
+whole block disappears when the task starts. The commands page has it in full, under *Can I
+see the brief while it is being written*.
+
 **If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
 answer that was not readable — the task starts with exactly your sentence and the plain
 done-condition `Complete the brief and report the result and checks run.`, which is what
@@ -1635,6 +1642,8 @@ too — see *I started a task over ssh and the sidebar stayed empty* above.
 | `pgup` `pgdown` | move twelve rows |
 | `home` `end` | first row, last row |
 | `enter` | open it — a room, or inside the record card; see below |
+| `→` | open the family under this row, where it has one; a second `→` on an open family opens the row's verbs |
+| `←` | fold that family back up |
 | any printable key | type into the filter |
 | `backspace` `ctrl+w` `ctrl+u` | edit the filter |
 | `esc` | clear the filter, or close the page when there is none |
@@ -1662,6 +1671,47 @@ going to get:
 Clicking a row does what `enter` on it does, on the **first** press — the page opens things,
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
+
+## What does +3 under mean — work that split into workers is folded on the task page, the family tree
+
+**A piece of work that handed itself out is one row, not nine.** The root is on the page and
+the workers are folded under it, shut:
+
+```
+today
+  ▸ port the parser              a report · 3 files      +3 under
+    rename the flag              a report · 1 file
+```
+
+**`→` opens it**, and the workers appear underneath, connected:
+
+```
+today
+  ▾ port the parser              a report · 3 files
+  ├ port the lexer               a report · 1 file
+  ├ port the tests               a report · 2 files
+  └ port the docs                a report
+    rename the flag              a report · 1 file
+```
+
+**`←` folds it back up.** The foot of the page says which you are being offered:
+`→ what ran under it` on a shut family, `← fold it back up` on an open one.
+
+Every family opens **shut**. A page of four hundred tasks with every family expanded is the
+clutter the fold exists to remove — and the shut row says `+3 under`, so you can see what
+opening it would be worth without opening it.
+
+The two cells in front of every row are the family column, and they **appear only when
+there is a family on the page**. On a machine that has never split work up, nothing on the
+page moves sideways.
+
+**A worker whose root is filed in another section stands on its own.** The sections are what
+you act on next — `needs you`, `running`, `today`, `earlier` — so a worker still running
+under a root that landed this morning is drawn under `running`, at the top level, rather
+than being hidden under a root that is not there. It is never missing from the page.
+
+This is the same shape and the same two keys the **roster column** uses (`ctrl+t`), so a
+family reads the same way in both places.
 
 ## Tasks on a phone — the ▸ tasks door, the list, and the way back
 

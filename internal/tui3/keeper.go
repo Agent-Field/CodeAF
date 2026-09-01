@@ -29,15 +29,19 @@ import (
 // window. `behind` describes a position on a screen nobody can see, which makes
 // it furniture; `open` describes what is true.
 
-// convCap is how many conversations this process holds at once.
+// THERE IS NO CAP ON HOW MANY CONVERSATIONS THIS PROCESS HOLDS. There was one —
+// eight — and its own comment said that a cap hit in practice by somebody who
+// was not testing it is evidence the number is wrong. It was hit in a day of
+// ordinary use, and the owner's ruling on 2026-08-31 was to remove the limit
+// rather than to raise it: "that is pointless".
 //
-// EIGHT, because of what one costs — a few goroutines, its transcript, one file
-// descriptor and a five-second presence tick, which is megabytes rather than
-// gigabytes — because it is roughly the number of projects a person genuinely
-// has in flight, and because a cap that can only be hit on purpose never has to
-// be explained. If it is ever hit in practice by somebody who was not testing
-// it, that is evidence the number is wrong and not that the person is.
-const convCap = 8
+// WHAT ONE OPEN CONVERSATION COSTS is still what it always was — a few
+// goroutines, its transcript, one file descriptor and a five-second presence
+// tick — and nothing evicts. So the memory of a window grows with the number of
+// conversations somebody opens, and stops growing when they stop; `/quit` and
+// `ctrl+w` on the switcher are what give one back. A future lane that wants a
+// number here should read that history first: a limit is not the answer to a
+// cost nobody has measured being a problem.
 
 // WorkspaceGoneWord is what any door says about a workspace that is not there.
 // It names the path the caller gave and nothing beyond it, because the caller is
@@ -48,13 +52,6 @@ const convCap = 8
 // directory disappears between that stat and the open. Two spellings of one
 // refusal would drift, and this is the sentence the manual quotes.
 const WorkspaceGoneWord = "that folder is gone"
-
-// convCapWord is the refusal at the cap, said in home's own voice, with the one
-// door out of it named. The count is interpolated from [convCap] because a
-// number written twice is a number that drifts.
-func convCapWord() string {
-	return itoa(convCap) + " open is as many as aforge holds — /quit closes this one"
-}
 
 // kept is one conversation this process holds that is not on screen: the bundle
 // the door built around its agent, the readings the person left in it, and the
@@ -107,9 +104,9 @@ type behindStirMsg struct{ key string }
 //
 // The alternative — keep every lane subscribed to the program loop and discard
 // the messages on arrival — was rejected: it wakes the frame for events nobody
-// is watching, which on eight conversations is the exact cost this design exists
-// to avoid, and it needs the discard to be correct, which is a conversation id
-// on every message type.
+// is watching, which on a window full of them is the exact cost this design
+// exists to avoid, and it needs the discard to be correct, which is a
+// conversation id on every message type.
 type behindWatch struct {
 	key   string
 	agent Agent
@@ -126,6 +123,16 @@ type behindWatch struct {
 	// trace on the agent that says "and it finished just now" — so it is carried
 	// on the watcher and taken by the surface rather than put on the message.
 	landed atomic.Bool
+	// finished counts turns that have ended in here since the person left, and
+	// it is a COUNTER BESIDE [behindWatch.landed] rather than a second reader of
+	// it: landed is consumed on every stir ([behindWatch.took]), so by the time
+	// the switcher asks, the fact that a turn landed has usually already been
+	// spent on a banner. This is the same edge, kept for the card to read.
+	//
+	// NOTHING RESETS IT, because nothing has to: the watcher dies when the
+	// conversation comes forward ([app.bringForward] stops it), so the count is
+	// always "since you left", by construction rather than by bookkeeping.
+	finished atomic.Int64
 	// takeover says another window has asked for this conversation
 	// ([session.EventTakeover], takeover.go). It is the ONE thing this watcher
 	// reads the content of a lane for: every other event here is a nudge, and
@@ -153,6 +160,16 @@ func (w *behindWatch) stir() {
 func (w *behindWatch) took() bool {
 	w.armed.Store(false)
 	return w.landed.Swap(false)
+}
+
+// landedSince is how many turns have ended in here since the person walked away,
+// read WITHOUT consuming anything — the switcher draws its card on a keystroke
+// and may draw it many times before anybody switches (hop.go).
+func (w *behindWatch) landedSince() int {
+	if w == nil {
+		return 0
+	}
+	return int(w.finished.Load())
 }
 
 // stop ends the watcher and gives every lane back. Calling it twice is calling
@@ -281,6 +298,7 @@ func (w *behindWatch) run() {
 				// landed in its own journal and moved nothing on screen; the
 				// banner is the whole of what tells the person.
 				w.landed.Store(true)
+				w.finished.Add(1)
 				w.stir()
 			}
 		}
@@ -291,10 +309,15 @@ func (w *behindWatch) run() {
 	}
 }
 
-// stirDepth is how many conversations may be owed a look at once. It is the cap
-// because at most that many can be open, and a stir is dropped rather than
-// queued twice for one conversation ([behindWatch.stir]).
-const stirDepth = convCap
+// stirDepth is how deep the shared stir lane is, and it is A BUFFER RATHER THAN
+// A LIMIT: nothing refuses a conversation because this number is small. A stir
+// says "read the agent" and nothing else, at most one is outstanding per
+// conversation ([behindWatch.stir]), and one that finds the lane full is dropped
+// because the wakeups already queued will say the same sentence. Eight is enough
+// that a person switching between a handful of conversations never loses a
+// frame, and a window holding thirty loses nothing a later wakeup does not
+// carry.
+const stirDepth = 8
 
 // waitStir takes one conversation's stir off the shared lane and asks for the
 // next. It is the pump every other standing lane on this surface uses, in the
@@ -542,19 +565,6 @@ func (a *app) lastConversation() tea.Cmd {
 	return cmd
 }
 
-// roomForAnother reports whether this process may open one more conversation,
-// and says so in home's own voice when it may not.
-//
-// THE CAP IS CHECKED AFTER THE KEEPER, NEVER BEFORE IT. Attaching something
-// already open is never capped, and a path that canonicalises to a transcript
-// this process holds is an attach rather than a second conversation.
-func (a *app) roomForAnother() (string, bool) {
-	if len(a.behind)+1 < convCap {
-		return "", true
-	}
-	return convCapWord(), false
-}
-
 // closeFront ends the conversation on screen for real and brings the most
 // recently open one forward, or reports that there was nothing to come forward.
 //
@@ -600,9 +610,11 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // IN PARALLEL, and is safe to call twice.
 //
 // PARALLEL BECAUSE THE GRACES OVERLAP RATHER THAN SUM. [session.Agent.Close] is
-// bounded on every axis and its phases are sequential, so eight closes in a row
-// is eight times the wait — and every one of those clocks exists precisely so a
-// quit never waits on somebody else's courtesy.
+// bounded on every axis and its phases are sequential, so a row of closes is
+// that many times the wait — and every one of those clocks exists precisely so a
+// quit never waits on somebody else's courtesy. Nothing caps how many
+// conversations a window holds, so a serial quit would get slower the more of
+// them somebody had open; this one does not.
 func (a *app) closeEverything() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
@@ -666,17 +678,11 @@ func (a *app) waitingCount() int {
 func (a *app) behindTasks() int {
 	tasks := 0
 	for _, held := range a.behind {
-		door, ok := held.conv.Agent.(interface {
-			TaskIndex() []session.TaskIndexEntry
-		})
-		if !ok {
-			continue
-		}
-		for _, entry := range door.TaskIndex() {
-			if entry.Status == string(session.TaskRunning) {
-				tasks++
-			}
-		}
+		// THE COUNT GOES THROUGH ONE FUNCTION, which the switcher's rows also
+		// call (hop.go's [runningTasks]): the assertion, the status string and
+		// the walk were about to exist twice, and two spellings of one count is
+		// how a status line and a card come to disagree about the same session.
+		tasks += runningTasks(held.conv.Agent)
 	}
 	return tasks
 }
@@ -690,4 +696,36 @@ func (a *app) behindSince(file string) time.Time {
 		return time.Time{}
 	}
 	return held.side.since
+}
+
+// closeKept ends one conversation the keeper is holding, for real.
+//
+// IT IS [app.closeFront] WITHOUT THE HALF THAT MOVES THE SURFACE. That function
+// closes the conversation ON SCREEN and has to bring another forward in the same
+// breath; this one closes a conversation nobody is looking at, so there is
+// nothing to attach, no sidecar to restore and no draft to hand over — only the
+// agent to end, the watcher to stop, and the two places the key was remembered.
+//
+// THE DRAFT FILE GOES WITH IT, on [app.closeFront]'s own reasoning: it is crash
+// insurance for a conversation that is no longer at risk, and left behind it is
+// somebody's finished sentence orphaned in a directory (draft.go's [adoptDraft]).
+func (a *app) closeKept(file string) bool {
+	key := a.convKey(file)
+	held := a.behind[key]
+	if key == "" || held == nil {
+		return false
+	}
+	delete(a.behind, key)
+	a.forget(key)
+	held.watch.stop()
+	if held.conv.Agent != nil {
+		held.conv.Agent.Interrupt()
+		if err := held.conv.Agent.Close(); err != nil {
+			a.note("close failed: " + err.Error())
+		}
+	}
+	if held.conv.DraftFile != "" {
+		dropDraftFile(held.conv.DraftFile)
+	}
+	return true
 }

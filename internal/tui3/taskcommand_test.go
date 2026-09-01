@@ -122,7 +122,7 @@ func TestHostedTaskUsesTheAgentDoor(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the hosted command opened no task door")
 	}
-	_, _ = a.Update(cmd())
+	_, _ = a.Update(taskMsg(cmd))
 	if f.singleCalls != 1 || f.brief != "fix the far parser" {
 		t.Fatalf("far starts=%d brief=%q", f.singleCalls, f.brief)
 	}
@@ -153,7 +153,7 @@ func TestAWideBriefStartsOneWorkerAndSaysSoWithoutAsking(t *testing.T) {
 	}
 	// AND THE LINE STAYS. It is a fact and not a wait, unlike the two notes
 	// either side of it, so nothing takes it back when the task lands.
-	if a.wait.live() {
+	if a.waiting() {
 		t.Fatal("a wait outlived the command that raised it")
 	}
 }
@@ -349,15 +349,28 @@ func TestTheShapingBlockCollapsesIntoTheSettledRow(t *testing.T) {
 	if frame != "" {
 		t.Fatalf("the scaffold survived in the settled frame: %q", frame)
 	}
-	if a.wait.live() {
+	if a.waiting() {
 		t.Fatal("the wait's clock outlived the wait")
 	}
 }
 
-func plainRowsText(rows []string) string {
+// paintedRowsText is the block with its ink left on, for the tests that ask
+// what colour or which glyph a row is wearing.
+func paintedRowsText(rows []row) string {
 	var out []string
-	for _, row := range rows {
-		out = append(out, plain(row))
+	for _, r := range rows {
+		out = append(out, r.text)
+	}
+	return strings.Join(out, "\n")
+}
+
+// plainRowsText is the forming block as a person would read it, with the ink
+// taken off. It takes ROWS because the block is pressable now — the tail is a
+// door, and each row of a block of several is one (formingblock.go).
+func plainRowsText(rows []row) string {
+	var out []string
+	for _, r := range rows {
+		out = append(out, plain(r.text))
 	}
 	return strings.Join(out, "\n")
 }
@@ -381,14 +394,14 @@ func TestTheShapingWaitCarriesASpinnerAndAClock(t *testing.T) {
 	if !strings.Contains(line, "· 6s") {
 		t.Fatalf("the wait has no clock: %q", line)
 	}
-	painted := strings.Join(a.preflightRows(60), "\n")
+	painted := paintedRowsText(a.preflightRows(60))
 	if !strings.ContainsAny(painted, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
 		t.Fatalf("the wait has no spinner: %q", plain(painted))
 	}
 	// AND THE FRAME KEEPS BEING ASKED FOR. No turn is running while a command
 	// sizes and shapes a brief, so without this the spinner above would never
 	// turn and the clock would never climb.
-	if !a.wait.live() {
+	if !a.waiting() {
 		t.Fatal("the surface stopped painting while the wait was up")
 	}
 	// UNDER A SECOND IT SAYS NOTHING ABOUT ITS LENGTH — the emptiness law, in the
@@ -418,8 +431,8 @@ func TestTheShapingBlockKeepsItsHairlineAtNarrowWidths(t *testing.T) {
 		if len(body) > 4 {
 			t.Fatalf("width %d drew %d rows, want at most four", width, len(body))
 		}
-		for i, row := range body {
-			line := plain(row)
+		for i, drawn := range body {
+			line := plain(drawn.text)
 			if got := ansi.StringWidth(line); got > width {
 				t.Fatalf("width %d row %d is %d cells wide: %q", width, i, got, line)
 			}
@@ -450,7 +463,7 @@ func TestTaskErrorCollapsesTheBlockToTheErrorLine(t *testing.T) {
 	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, err: errors.New("unknown brief")}
 	a := taskStartApp(t, f, config.TaskStartSingle)
 	_, _ = a.Update(taskMsg(a.slash("/task impossible work")))
-	if a.wait.live() || len(a.preflightRows(60)) != 0 {
+	if a.waiting() || len(a.preflightRows(60)) != 0 {
 		t.Fatal("the forming block outlived an error")
 	}
 	if got := lastNote(t, a); got != "could not start the task · unknown brief" {
@@ -487,7 +500,7 @@ func TestTheFormingBlockArmsTheFrameClockFromAStillSurface(t *testing.T) {
 			// and what is under test is the wake that has real work to do.
 			a.painting = false
 			road.raise(a)
-			if !a.wait.live() {
+			if !a.waiting() {
 				t.Fatal("the door raised no forming block")
 			}
 			_, cmd := a.Update(tea.WindowSizeMsg{Width: a.width, Height: a.height})
@@ -578,11 +591,11 @@ func TestAnApprovedProposalRaisesTheFormingBlockUntilItsTaskExists(t *testing.T)
 	// An update for a DIFFERENT task settles nothing; the first breath of this
 	// one collapses the scaffold in the same frame its row lands.
 	a.settleProposalWait(7)
-	if !a.wait.live() {
+	if !a.waiting() {
 		t.Fatal("another task's update stole the block")
 	}
 	a.settleProposalWait(41)
-	if a.wait.live() {
+	if a.waiting() {
 		t.Fatal("the block outlived its task's first update")
 	}
 	if got := plainRowsText(a.preflightRows(60)); got != "" {
@@ -596,7 +609,7 @@ func TestADeclinedProposalRaisesNoFormingBlock(t *testing.T) {
 	a.task = &taskCard{id: 42, title: "index the adapters", name: "adapter index"}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
 	a.answerTask(false, "")
-	if a.wait.live() {
+	if a.waiting() {
 		t.Fatal("a declined proposal left a forming block on screen")
 	}
 }

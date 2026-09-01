@@ -4730,6 +4730,24 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// the literal below is built after it is released.
 	family := a.familyPlace(node)
 	journal := taskJournalPath(family, a.sessionID(), node.id, suffix)
+	// AND THE CONVERSATION EVERY DOLLAR THIS WORKER SPENDS BELONGS TO, resolved
+	// here because here is the only place that can: this agent is the node's
+	// parent, so either it already carries a root — it is itself a node, and the
+	// root travelled down when it was built — or it IS the root, and its own
+	// journal names it. Reading it under the lock keeps it beside the journal
+	// name, which is the other fact about lineage this literal needs.
+	//
+	// WHAT IT IS FOR is the money segment on the conversation's own status line.
+	// A node's ledger lines name the node's journal, which is a file nobody
+	// outside the family has heard of, so before this the only way to add a
+	// running tree's spend back onto the conversation that started it was to
+	// wait for the fold at close ([Agent.foldTaskUsage]) — hours, on the run
+	// that produced issue #145. With the root on the row a reader adds up the
+	// subtree from the ledger it is already reading, each call once.
+	root := strings.TrimSpace(a.config.rootSession)
+	if root == "" {
+		root = a.sessionID()
+	}
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
@@ -4754,6 +4772,17 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// of error→fix pairs this product has, and every one of them would be
 		// lost in a private file nobody reads.
 		fixesDir: a.config.fixesBucket(),
+		// THE FAMILY SPENDS INTO ONE LEDGER, and it is the ledger the
+		// conversation was pointed at. Empty is the machine's own file, which is
+		// every door in the product; what this line fixes is the case where it
+		// is not — a test, or a second brain on one laptop — where a node used to
+		// fall back to the machine's ledger while its parent wrote somewhere
+		// else, and a rollup over the family then found half of it
+		// (usage_ledger.go).
+		usageLedger: parent.usageLedger,
+		// AND WHOSE MONEY IT IS. Every line this worker records names the
+		// conversation the work is rooted in, however deep the family goes.
+		rootSession: root,
 		// AND WHERE ITS LITTER GOES, which is NOT its workspace. A worker is not a
 		// session and carries no Place — that is deliberate (session.go) — so with
 		// nothing here its job logs and its stubbed tool results landed in
@@ -5195,8 +5224,21 @@ func cutTaskWorktree(place Place, root, session string, id uint64, title string)
 	// conversation standing in a subdirectory of a project still puts its
 	// worktrees in one place, which is what keeps a sweep able to find them.
 	dir, mode := taskOwnFolder(place, root, session, id)
-	branch := "task/" + slugify(title) + "-" + shortID()
+	return cutWorktreeAt(place, root, dir, "task/"+slugify(title)+"-"+shortID(), mode)
+}
 
+// cutWorktreeAt is the git of it, with the two names handed in: a directory to
+// stand the working copy in and a branch to cut.
+//
+// IT IS SEPARATE FROM [cutTaskWorktree] SO THAT THERE IS ONE WORKTREE ROAD AND
+// NOT TWO. A node's tree is named from its id under the session's trees/; the
+// conversation's own standing tree on a referred folder is named from that
+// folder (standingtree.go) and must NEVER land in the id space a node counts
+// through, or the reclaim below — which is safe precisely because the only
+// thing that can be sitting at a node's path is that node's own wreckage —
+// would be clearing out a live working copy. Everything else about a worktree
+// is identical for both, so everything else is here.
+func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (taskTree, error) {
 	defer lockGitRoot(place, root)()
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err

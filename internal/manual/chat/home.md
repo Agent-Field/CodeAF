@@ -981,14 +981,35 @@ shapes of work. Nothing is carried across, because nothing crosses.
 
 The status line then reads `2 open`, and `tab` over an empty message box goes back.
 
-Two refusals are still possible and both leave home standing:
+One refusal is still possible and it leaves home standing: the project's folder is gone —
+`that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads
+`folder gone` in its right margin and the card's place line says so too, see *Enter does
+nothing on a row — the folder is gone* — and this line is the check made again on the
+keystroke, for a folder deleted in the seconds since.
 
-- the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
-  already knew — the row reads `folder gone` in its right margin and the card's place line
-  says so too, see *Enter does nothing on a row — the folder is gone* — and this line is the
-  check made again on the keystroke, for a folder deleted in the seconds since;
-- this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
-  one`.
+**How many you already have open is never a refusal.** See *How many conversations can one
+terminal hold*.
+
+## How many conversations can one terminal hold — is there a limit, and why can I not open another
+
+**As many as you open.** Nothing counts them and nothing refuses another: the ninth, the
+twentieth and the fiftieth open exactly like the first, from home's `enter`, from a typed
+sentence, from a typed path, from the switcher (`ctrl+k`), from search and from `/new`.
+
+There used to be a cap of eight, and taking a ninth said `8 open is as many as aforge holds
+— /quit closes this one`. That sentence is gone and nothing says it any more.
+
+What is still true is what an open conversation costs. Each one is fully alive — its turn
+streams, its tasks run, it holds its transcript's lock, it heartbeats a presence file every
+five seconds — and **nothing closes one for you**. So a window with fifty open is holding
+fifty live conversations' worth of memory until you say otherwise. The two ways to say so:
+
+- `/quit` closes the conversation in front and brings the last one forward;
+- `ctrl+w` on the switcher card closes the conversation under the cursor without leaving the
+  one you are in.
+
+`2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
+rows. Home is the page that shows every one of them.
 
 ## Enter does nothing on a row — the folder is gone
 
@@ -1045,15 +1066,51 @@ rules, its crew, its spend ceiling and its saved shapes of work are resolved fro
 workspace it launched in, and carrying a conversation across without carrying those would
 be a window quietly running under another project's permissions. What changed is the
 answer: a second project is a second **conversation**, built the way the first one was, on
-its own workspace, with its own gate. A conversation still never moves between projects.
+its own workspace, with its own gate. A conversation still never moves between projects —
+though it can be **about** another folder without moving, which is what to reach for when
+you want the work somewhere else rather than a second set of settings: see *What also about
+means on a row* below and *Choosing a folder*.
 
 `another window` is a different sentence and still means what it always did — see *Why
 can't I open a session from home*.
 
+## What also about means on a row — the conversation is about another folder
+
+A conversation is filed under the project it is **standing in** — the folder aforge was
+opened in. It can also be **about** other folders: ones you named with `/folder` or
+`/attach`, and ones a task's ground settled on and the conversation wrote down. When that is
+true of a row, its dim tail ends with the name:
+
+```
+Flaky pipeline               2 running · 3h · also about wisp
+Tuesday notes                            1d · also about wisp +2
+```
+
+One name and a count, never a list — a row is the same shape whatever it is about. The card
+on the right names them in full under `also about`, three at a time, with `▸ …N more
+folders` behind the rest; `→` opens every fold on the card.
+
+**A row with nothing to add says nothing.** A conversation about exactly the project it is
+filed under draws no such clause, and neither does one whose folder would only repeat the
+project's own name. Nothing on this screen is a permanent "attached" list: a folder appears
+when it tells you something you could not already see.
+
+Where the work itself goes is *Which folder does a task work in*, and how a conversation
+comes to be about a folder is *Choosing a folder*.
+
 ## Switch between projects without leaving — work on two projects or two repos at once in one terminal
 
-One terminal holds up to **eight** conversations at once. One is on screen; the rest are
-open behind it, fully alive.
+**One conversation can be about more than one folder.** Name the other project — `/folder`,
+`/attach ~/code/other`, or the path in your own words when you ask for the work — and the
+work you ask for goes there; you do not need a second conversation for a second repository.
+What does not move is where the conversation is **standing**: its own working directory, its
+`AGENTS.md` and its settings stay the folder it was opened in. *Choosing a folder* has both
+halves.
+
+For a genuinely separate conversation — a different project's settings, its own model, its
+own history — one terminal holds **as many as you open**, with no cap on the number. One is
+on screen; the rest are open behind it, fully alive. Nothing closes one for you, so `/quit`
+and `ctrl+w` are how a conversation you are done with actually ends.
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before
@@ -1111,14 +1168,20 @@ old one.
 **Just type.** There is no prefix and no mode: the box at the foot of home searches every
 project on the machine as you type, live, and narrows the list in place.
 
-It matches four things, and the first that scores highest wins the row: the conversation's
-name, the project it is in, the titles of the tasks it ran, and **what those tasks came
-to** — the one-sentence outcome in the project's record. That last one is the closest thing
-to remembering something by what happened rather than by what it was called: typing
-`postgres` finds the conversation whose task outcome mentions the connection pool, even
-though nothing in its name does.
+It matches five things, and the first that scores highest wins the row: the conversation's
+name, the project it is in, **the folders it is about**, the titles of the tasks it ran, and
+**what those tasks came to** — the one-sentence outcome in the project's record. That last
+one is the closest thing to remembering something by what happened rather than by what it
+was called: typing `postgres` finds the conversation whose task outcome mentions the
+connection pool, even though nothing in its name does.
 
 Matching a project's name keeps every conversation in it.
+
+**A folder's name finds the chats about it wherever they were held.** A conversation opened
+in your home directory that spent an afternoon on `~/code/wisp` is filed under `~` and not
+under wisp — so typing `wisp` finds it too, alongside the conversations held inside wisp
+itself. Those come first: standing in a folder is a stronger claim on its name than being
+about it.
 
 Ranking is match quality first — a whole word beats a name that starts with what you typed,
 which beats a word inside it, which beats the letters appearing in order. Then two things
@@ -1230,6 +1293,15 @@ With **nothing** typed there is no action row and the list hangs from the top ag
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
 `/new is unavailable here`.
+
+**However many conversations are already open, this opens another** — there is no cap, and
+*How many conversations can one terminal hold* says so in full.
+
+**Where the door itself fails, your sentence is not sent anywhere.** On `new session
+failed: <error>` — a session folder that could not be made — home closes, the error is said
+on the entry line, and your words are put in the message box unsent. They are **not**
+delivered to the conversation this window was already holding: a sentence typed for a new
+conversation never lands in an old one.
 
 **Typing a path starts a conversation there instead.** When what you typed resolves to a
 directory on this machine — an absolute path, a `~` path, a `./` path, or a project name

@@ -627,6 +627,41 @@ On a terminal below 256 colours, and with `NO_COLOR` set, there is no ramp to fa
 and the rows are drawn plainly. Linear mode (`--linear`) drops it too, for the same reason
 it drops the thinking window's gradient.
 
+## What the `$` on the status line counts — the conversation and its tasks
+
+The money segment is **this conversation and every task it started**, added up while the
+work is still running. One figure, not two: the row is the most crowded thing on the
+screen, and its segments must not grow and shrink under your eye.
+
+It is also a **door** — pressing it opens the Spending tab — and it takes the warm ink at
+four fifths of this conversation's own limit, measured on that same whole-tree figure.
+
+`/cost` is where the figure is taken apart: it prints `conversation` and `tasks` under the
+total, and they add up to it. See *Does the status line's money include what my tasks are
+spending* on the models and cost page.
+
+## Why there is no $0.00 on the status line — where the zero went
+
+A figure nobody measured is not drawn. Zero jobs, zero watches, an unknown context
+window, an unpriced cache — every one of them draws nothing rather than a zero, and
+**the money segment now keeps the same law**. A conversation that has spent nothing has
+no `$` on its status line at all; the segment arrives with the first priced turn.
+
+It used to print `$0.00`, and the reason was stability: the status row was a live row
+carrying the model, the branch and the host beside the money, and a segment that came
+into existence mid-conversation shoved its neighbours sideways. Those slow facts moved
+to the bar at the top, so the row no longer has anything to jostle, and the exception
+died with the crowding that justified it.
+
+`/status` and `/cost` have always kept the law: `/status` filters the spend line out when
+the cost is zero, `/cost` only adds it above zero, and the two say `nothing spent yet —
+this session has not sent a turn.` A landed task card refuses to print `$0.00` too.
+
+Other honest silences: the context percentage is dropped below 1% rather than shown as
+`0%`; the cache cash half appears only when there is a published price pair, never
+"saved $0.00"; and the saved figure uses four decimals under a dollar, so a real
+fraction of a cent is not rounded away to nothing.
+
 ## The state word: working, stopping, waiting — and why there is no idle
 
 The last segment of the status line is the one thing true of the whole row. The exact
@@ -2290,10 +2325,29 @@ same clock:
 |---|---|
 | `running <tool>` | one call on the belt is executing |
 | `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work |
+| `taking stock` | the work stopped mid-round and a second model is being shown an account of it and asked what is left of what you asked for — ten to thirty seconds |
 | `tidying` | the conversation is being compacted |
 | `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
 
 Each of them is taken off the screen the moment the wait ends.
+
+## A stage that lasts minutes keeps drawing — the phase went blank, the status line disappeared while it was still working, does a slow stage stop being shown
+
+**No stage ever goes dark while the work behind it is alive**, however many minutes it
+lasts. A phase says
+itself again while it lasts — a request off its own stream, a turn's own stage off a timer
+— and the screen keeps drawing one it has heard from in the last fifteen seconds. A reading
+that takes a quarter of an hour draws a clock for the whole quarter of an hour.
+
+That fifteen seconds is the one thing that can take a line off the screen early, and it is
+deliberate: it is what stops a clock running forever when the layer behind it was killed
+without saying so. If a phase disappears and the work has **not** finished, what you are
+looking at is a layer that stopped reporting, and `still working` — the vaguest true
+sentence aforge has — is what takes its place.
+
+This was not always true. Long stages used to be drawn for fifteen seconds and then vanish
+while they carried on, and one of them worked around it by announcing itself twice. Neither
+is the case now: every stage is said once and kept alive until it ends.
 
 ## It says thinking and nothing is on the screen — is it stuck, is it frozen, why is it slow, and what still working means
 

@@ -2038,6 +2038,80 @@ func TestHomeStatsAFolderOncePerReadingAndNotPerFrame(t *testing.T) {
 	}
 }
 
+// Every sentence typed at home opens a conversation OF ITS OWN, however many are
+// already open, and each one is sent its own sentence and nobody else's.
+//
+// THE DEFECT THIS CLOSES, in the owner's own words: "whenever I create a new
+// chat, it seems to go into the same chat instead of creating a new one". Home
+// closed itself, asked [app.renew] for a conversation, and sent the sentence
+// whether or not one came back — so from the eighth conversation onward, where
+// the keeper used to refuse another, every new chat typed at home was delivered
+// to the conversation that was already on the screen. The same one, every time,
+// with the refusal noted underneath it.
+//
+// THE CAP ITSELF IS GONE (keeper.go, owner's ruling 2026-08-31), so the count
+// here deliberately runs well past the eight that used to be the whole of the
+// defect: the ninth sentence and the twentieth get conversations of their own
+// exactly as the first did.
+func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	var made []*fakeAgent
+	a.start = func(string) (Conversation, error) {
+		next := &fakeAgent{model: "m"}
+		made = append(made, next)
+		return Conversation{Agent: next,
+			SessionFile: fmt.Sprintf("/tmp/alpha/next-%d/transcript.jsonl", len(made))}, nil
+	}
+	// One round of what a person does: open home, type a sentence, press enter.
+	say := func(text string) {
+		a.openHome()
+		for _, r := range text {
+			a.homeKey(key(string(r)))
+		}
+		runCmd(a.homeEnter())
+	}
+	// EVERY SENTENCE GETS ITS OWN CONVERSATION, twenty of them. The first
+	// replaces the fresh empty one this window opened on; every one after it is
+	// added beside what is already running, and none of them is refused.
+	const sentences = 20
+	for i := 0; i < sentences; i++ {
+		say(fmt.Sprintf("message %d", i))
+	}
+	if len(made) != sentences {
+		t.Fatalf("%d sentences opened %d conversations", sentences, len(made))
+	}
+	for i, agent := range made {
+		want := fmt.Sprintf("message %d", i)
+		if len(agent.sent) != 1 || agent.sent[0] != want {
+			t.Fatalf("conversation %d was sent %v, not %q alone", i, agent.sent, want)
+		}
+	}
+	// AND EVERY ONE OF THEM IS A DIFFERENT CONVERSATION. Two sentences landing
+	// on one agent is the defect this test exists for, so identity is asserted
+	// rather than inferred from the count.
+	seen := map[*fakeAgent]bool{}
+	for i, agent := range made {
+		if seen[agent] {
+			t.Fatalf("conversation %d was the same agent as an earlier one", i)
+		}
+		seen[agent] = true
+	}
+	// The window is holding all twenty, and the twentieth is the one in front.
+	if got := a.openCount(); got != sentences {
+		t.Fatalf("the window holds %d conversations after %d sentences", got, sentences)
+	}
+	// AND HOME IS OUT OF THE WAY EACH TIME, because nothing refused. A refusal
+	// would have left home standing with its own sentence on it.
+	if a.at(pageHome) {
+		t.Fatal("home stayed up after a conversation opened")
+	}
+	if a.home.msg != "" {
+		t.Fatalf("home said %q about a conversation that opened", a.home.msg)
+	}
+}
+
 // Typing anything that is not a search is the start of a new conversation.
 func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	lab := newHomeLab(t)
@@ -2868,7 +2942,11 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 
 	// /new: another conversation in this project, which leaves the one the
 	// launch opened behind as somewhere to go back to (app.go's [app.renew]).
-	runCmd(a.renew())
+	renewed, started := a.renew()
+	if !started {
+		t.Fatal("/new refused to open a second conversation")
+	}
+	runCmd(renewed)
 	if a.file == mine {
 		t.Fatal("/new did not move the surface onto another conversation")
 	}

@@ -48,9 +48,35 @@ It was reset again on 2026-08-27 after the current branch, built with Go
 1.26.5, measured 52,895,586 bytes on darwin/arm64 and 51,380,386 bytes on
 linux/arm64. The build-identity package and its packed manual page landed at the
 same boundary where accumulated branch growth, the newer toolchain and the
-platform difference crossed the former cap. The budget is 53,954,000, two
+platform difference crossed the former cap. The budget was 53,954,000, two
 percent above the larger measured binary; the exact before-and-after source cost
 is not disguised as the whole reset.
+
+It was reset a third time on 2026-08-31, when furrow moved inside the binary
+(`internal/furrowbin`, the places wave's P0). This one is a decision and not a
+drift: the owner's ruling was **no variance — every aforge is an aforge with
+furrow, and if the only blocker is size, the limit rises**, so the four
+workspace verbs stop being a capability some machines have. The measurement on
+darwin/arm64, Go 1.26.5:
+
+| | bytes |
+| --- | --- |
+| the branch without the embed | 55,143,970 |
+| the same tree with furrow embedded | 58,347,314 |
+| what the embed itself cost | 3,203,344 |
+
+Two figures, deliberately, because they are two different bills. **3,203,344 is
+this change** — the gzipped furrow-darwin-arm64 artifact at 3,185,397 bytes,
+plus the package that carries it out to disk. The other 1,189,970 is accumulated
+branch growth that had already crossed the old 53,954,000 cap before this lane
+touched anything, and it is named here rather than folded quietly into a bigger
+number. The budget is 59,515,000, two percent above the larger measured binary,
+which is the headroom every figure in this section was given.
+
+Two things that do NOT grow with it. The artifact is fetched at build time
+against the sha256 in `internal/furrowbin/pin.json` and never committed, so a
+clone stays the size it was. And only the platform being built for is staged, so
+the binary carries one furrow rather than four.
 
 ## The flush ceiling
 

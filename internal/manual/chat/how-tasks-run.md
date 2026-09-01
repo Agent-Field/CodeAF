@@ -28,7 +28,9 @@ Every task has a **ground**: the one repository or folder the work is about. It 
 before you are asked to approve anything, out of what this conversation already holds, and
 the first of these that answers wins:
 
-1. **You said so** — a path in your own request, or `ground` on the proposal.
+1. **You said so** — a path in your own request, `ground` on the proposal, or a folder this
+   conversation is already **about**: one you named, or one a task's ground resolved to
+   earlier and the conversation wrote down.
 2. **What the conversation touched** — the repositories behind every file this conversation
    has read, edited, grepped or written, and every `cd` it ran, weighted so that lately
    counts for more. One repository ahead of the rest is the ground. **Two with real weight
@@ -41,6 +43,20 @@ the first of these that answers wins:
 So a conversation opened in your home directory that has spent an hour reading
 `~/code/thing` sends its task to `~/code/thing`, and not to the empty workspace beside the
 session.
+
+## Why am I asked which project a task is about — and am I asked again
+
+**Once per folder, and then not again.** A ground the conversation resolved is kept on it,
+so the answer you gave the first time is the answer the next task starts from. That covers
+both roads in: a ground the conversation worked out from what it had been reading, and the
+one you settled yourself when it asked which of two projects the work was for. The set
+lives in the conversation's own folder, so closing the terminal does not lose it.
+
+A folder **you named** stays until you say otherwise. One the conversation merely worked
+out **decays**: if every call since has been in another repository, the fresh evidence wins
+and the old answer stops being offered — the record stays, it just stops deciding. And two
+folders the conversation is about, with nothing in the work to choose between them, are
+the same one-keypress question rung 2 asks, in the two names you already know.
 
 **How it stands on that ground is not asked either — it follows from the work.** A
 repository the task writes in gets `git worktree add -b <branch> <dir> HEAD` cut **from that
@@ -1079,6 +1095,10 @@ what has been ruled out, and how anybody could tell when it is done.
 itself off the screen when the writing ends, because this road can still decide the work
 was already finished and leave the turn exactly where it was — in which case no task starts
 and no line claims one did.
+
+**It stays up for the whole wait.** The line keeps saying itself while the writing runs, so
+a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
+whole of it. It does not go blank partway through and it does not restart at zero.
 
 ## The three ways a task can land
 

@@ -78,6 +78,14 @@ type aside struct {
 	room uint64
 	// since is when this conversation was detached.
 	since time.Time
+	// title is what the surface was CALLING this conversation when it was left.
+	//
+	// IT IS A FALLBACK AND NOT THE ANSWER. The switcher asks the agent first, so
+	// a title groomed while nobody was watching is the one drawn (hop.go's
+	// [hopTitle]) — this is for the agent that has none to give, where the only
+	// other candidate is the transcript's own file name, and names.go states
+	// outright that a file name may never be offered to anybody as a title.
+	title string
 }
 
 // laneStops are the standing subscriptions this surface holds on the agent in
@@ -218,6 +226,7 @@ func (a *app) detachConversation() *aside {
 		offset: a.offset,
 		stick:  a.stick,
 		since:  a.now(),
+		title:  a.title,
 	}
 	if left, ok := a.askLeft(); ok {
 		side.askLeft, side.askPaused = left, a.askPaused
@@ -270,6 +279,12 @@ func (a *app) clearConversation() {
 	// The offers and the sign-ins belong to the conversation that raised them
 	// (connect.go), and a browser standing open on one is a browser nobody is
 	// coming back to.
+	// AND THE FORMING BLOCKS GO WITH IT (formingblock.go). A wait is a command
+	// somebody typed into THIS conversation, and one carried across the switch
+	// would spin at the tail of a transcript it has nothing to do with — with no
+	// door left to answer it, because the answer comes back on a lane this
+	// session no longer reads.
+	a.waits, a.waitAt = nil, 0
 	a.connAsks, a.connPanel = nil, connectPanel{}
 	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
 	a.harnessStep = ""
@@ -388,6 +403,10 @@ func (a *app) closeForSwitch() {
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.takeUp(conv, true)
 	agent := a.agent
+	// WHEN THIS ONE CAME FORWARD, stamped on the way in so the switcher's own row
+	// can say how long you have been sitting here (hop.go). Every other row
+	// measures from the sidecar its detach left; this is that stamp's other half.
+	a.frontAt = a.now()
 	a.state = stateIdle
 	a.resetMeters()
 	if agent != nil {

@@ -303,6 +303,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.takeRoomPump()
 	}
 
+	// THE SWITCHER IS READ HERE, ABOVE THE PLACES AND BELOW THE THREE QUESTIONS,
+	// and it is ONE arm for both roads (hop.go). It belongs above the places
+	// because it is drawn over them as well as over the conversation — a card
+	// that had to be claimed twice would be a card whose two claims drift — and
+	// below the questions because a session blocked on this keyboard outranks
+	// somewhere else to be.
+	//
+	// It answers false unless it is open or the key is its own, so on every other
+	// keystroke this line costs one string comparison.
+	if cmd, taken := a.hopKey(msg); taken {
+		return cmd
+	}
+
 	// AND WHATEVER PLACE IS STANDING IS MODAL AT THIS RUNG, in ONE arm and never
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
@@ -366,6 +379,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// each is opened by a command typed into a box neither of them leaves open.
 	if a.roster.open && msg.String() != "ctrl+c" {
 		return a.resumeKey(msg)
+	}
+
+	// And the folder picker at the same rung, for the same reasons again: it
+	// takes the input line's place, it holds its own filter — which is also the
+	// path box a person browses with — and esc leaves everything exactly as it
+	// was (folderpick.go).
+	if a.folder.open && msg.String() != "ctrl+c" {
+		return a.folderKey(msg)
 	}
 
 	// And the deliverables picker at the same rung, for the same reasons again:
@@ -777,6 +798,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if a.recallBack() {
 			return nil
 		}
+		// A BLOCK OF SEVERAL TASKS FORMING WALKS BEFORE THE CALLS DO. Its rows are
+		// the live thing at the tail of the transcript and the only rows on screen
+		// whose preview a person can steer, so for the seconds they are up the
+		// arrows walk them (formingblock.go). It answers false with one task
+		// forming and false at either end, so nothing about the ladder below
+		// changes in the ordinary case or when the walk runs out.
+		if a.input.empty() && a.walkForming(-1) {
+			return nil
+		}
 		if a.input.empty() && a.selectTool(-1) {
 			return nil
 		}
@@ -789,6 +819,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if a.recallForward() {
+			return nil
+		}
+		if a.input.empty() && a.walkForming(1) {
 			return nil
 		}
 		if a.input.empty() && a.selectTool(1) {
@@ -912,6 +945,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// matters, because the key keeps its ordinary meaning the instant there
 		// is a sentence to move through. See [app.navBack].
 		if a.input.empty() {
+			// AND THE FORMING BLOCK'S OWN FOLD SHUTS FIRST (formingblock.go). It is
+			// the same reading `→` gets below and for the same reason: the nearest
+			// thing a person is standing on answers before the navigation does, and
+			// a block with no window open answers nothing at all, so the key keeps
+			// the meaning it has had.
+			if a.closeForming() {
+				return nil
+			}
 			a.navBack()
 			return nil
 		}
@@ -930,6 +971,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// navigation it has always been.
 			if cmd, took := a.steerWaiting(); took {
 				return cmd
+			}
+			// AND THE FORMING BLOCK'S WINDOW OPENS BEFORE THE STEP INTO A ROOM. It
+			// is the fold every block on this surface has, spent on the one thing at
+			// the transcript tail that is still being written (formingblock.go) — and
+			// it is read here rather than given a key of its own because a new
+			// keybinding for a block that lives fifteen seconds is a key nobody
+			// learns. It answers false with no block up, with nothing written yet and
+			// with the window already open, so `→` goes on meaning what it means.
+			if a.openForming() {
+				return nil
 			}
 			return a.navForward()
 		}
@@ -1207,6 +1258,14 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
+	}
+	// AND THE FOLDER PICKER'S BOX IS TWO BOXES IN ONE POSITION, which is why its
+	// legend is asked for rather than named: free words filter a list and a path
+	// browses columns, and the keys mean different things in the two
+	// (folderpick.go's [folderPick.folderHintAt]).
+	if a.folder.open {
+		return draftBlock(&a.folder.filter, a.pal, width, 1,
+			a.folder.folderHintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	// AND /subharness TAKES IT ON THE SAME TERMS, for whichever of its two boxes
 	// is open: the filter over the list, and the box over one field of the intake

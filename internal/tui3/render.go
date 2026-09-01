@@ -79,6 +79,17 @@ const (
 	// reason: two blocks answer the same gesture with different questions, and
 	// the press must not be resolved against the other card's columns.
 	hitStandChoice
+	// hitForming is a row of the forming block at the transcript tail
+	// (formingblock.go): the tail under a wait, and — where several are forming —
+	// the compact row of each. A press points at that wait and opens or shuts its
+	// window.
+	//
+	// IT IS THE ONE HIT ON THIS SURFACE THAT BELONGS TO NO ENTRY. The block is
+	// not part of the conversation — it is what stands where a block is about to
+	// be — so `turn` carries the wait's place in the list, the way [hitFold]
+	// carries a turn and for the same reason: the field names whatever the kind
+	// is keyed by.
+	hitForming
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -262,9 +273,7 @@ func (a *app) layout(width int) []row {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		for _, text := range forming {
-			out = append(out, row{text: text, entry: -1})
-		}
+		out = append(out, forming...)
 		closed = true
 	}
 	line, ok := a.harnessStepRow(width)
@@ -562,7 +571,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 // once, and none of them has to remember the pass exists.
 func (a *app) hoverPass(out []row, width int) {
 	for i := range out {
-		if a.isHot(out[i]) || a.onCursorRow(out[i]) {
+		if a.isHot(out[i]) || a.onCursorRow(out[i]) || a.formingHot(out[i]) {
 			out[i].text = a.hoverRow(out[i].text, width)
 		}
 	}
@@ -1779,7 +1788,11 @@ func (a *app) telemetry(width int) []hudPart {
 	if width >= hudWide {
 		add(segDelta, a.deltaSegment())
 	}
-	add(segCost, dollars(a.cost))
+	// THE BILL IS THE WHOLE TREE'S and not the conversation's own half of it: the
+	// work this conversation started is spending its money, and a segment that
+	// waited for each task to close said `$2.53` for two hours over a family
+	// burning $51.05 (treespend.go's [app.spendShown]).
+	add(segCost, dollars(a.spendShown()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark
@@ -2793,32 +2806,55 @@ func (a *app) legendRight(width int) string {
 	if tip := a.noticeHint(); tip != "" {
 		return tip
 	}
-	// THE IDLE SLOT DECAYS WITH THE TIPS (ISSUE-126). The generic keys —
-	// `space space home · tab last · / commands` — are shown while the
-	// earned-tips machinery would still show a tip to this person, and quiet
-	// after: they are the same kind of thing as a tip, an advertisement for a
-	// gesture nobody has used yet, and a person who has retired every tip has
-	// earned the quiet too. The doors themselves do not decay — the crumb's
-	// project step is the home door now, and the conversations list is one
-	// press away on the status row (topbar.go, rowdoors.go) — so what quiets
-	// here is the ADVERTISING, not the way in.
+	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
+	// other ways — the manual, /help, typing a slash — and home, until this
+	// line existed, was recoverable only by knowing it was there. So the rest
+	// state of the slot names them both, and neither costs a row: this is the
+	// legend, which is on the frame either way (home.go).
+	// THE SWITCHER IS NAMED WHEREVER IT WOULD ACT, AND ITS CONDITION IS ITS OWN.
+	// `tab last` rides on the home door because both need a door onto a session
+	// ([app.canOpen]); the switcher needs none — it re-points the surface at a
+	// conversation this process is already holding — so a build with no resume
+	// door still has one, and the slot still says so (hop.go).
+	//
+	// IT IS NAMED WHENEVER IT WOULD ACT, AND FROM THE FIRST FRAME. It used to be
+	// held back until three conversations were open, on the reasoning that `tab`
+	// reaches the only other one in a single key — which was true and was the
+	// wrong trade: the card lists every conversation on this machine, not only
+	// the ones already open, so on a fresh session it is the thing that gets you
+	// anywhere at all, and a person who is never told about it never finds it.
+	// THE IDLE SLOT NAMES EVERY DOOR THAT WOULD ACT, IN THE ORDER A PERSON MEETS
+	// THEM: home, the flick back, the switcher, the commands. Each clause is
+	// under its own condition and none of them is under another's — a key that
+	// cannot act says so by not being advertised, and the converse defect is the
+	// one this wave was written to fix: a key that acts and is never named.
+	//
+	// `tab last` needs an empty box, because that is the only state it acts in
+	// (keeper.go's [app.lastConversation]); the switcher needs no box at all and
+	// no door onto sessions, because it re-points the surface at conversations
+	// this machine already has.
+	//
+	// AND THE WHOLE SLOT DECAYS WITH THE TIPS (ISSUE-126). The generic key
+	// advertising is the same kind of thing as an earned tip — a nudge towards a
+	// gesture nobody has used yet — so a person who has retired every tip has
+	// earned the quiet here too. The doors themselves do not decay: the crumb's
+	// project step is the home door now and the conversations list is one press
+	// away on the status row (topbar.go, rowdoors.go), so what quiets here is
+	// the ADVERTISING, never the way in.
 	if !a.noticeTipsLive() {
 		return ""
 	}
+	doors := make([]string, 0, 4)
 	if a.homeDoorShowing() {
-		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
-		// terminal holds only one conversation, which is the emptiness law again:
-		// a key that cannot act says so by not being advertised (keeper.go's
-		// [app.lastConversation]). It sits between the two doors because it is
-		// the same kind of thing — somewhere else to be — and it is dropped first
-		// when the slot is tight, by [app.homeDoorShowing]'s own rule about the
-		// box being empty.
-		if _, ok := a.lastBehind(); ok {
-			return homeDoorWord + " · " + lastDoorWord + " · " + microcopy
-		}
-		return homeDoorWord + " · " + microcopy
+		doors = append(doors, homeDoorWord)
 	}
-	return microcopy
+	if _, ok := a.lastBehind(); ok && a.input.empty() && !a.copy.on && !a.rew.on {
+		doors = append(doors, lastDoorWord)
+	}
+	if a.hopAvailable() {
+		doors = append(doors, hopDoorWord)
+	}
+	return strings.Join(append(doors, microcopy), " · ")
 }
 
 // lastDoorWord advertises the key back to the conversation before this one. It
@@ -2826,6 +2862,12 @@ func (a *app) legendRight(width int) string {
 // it goes to — the conversation you were in last, which is the same promise
 // `cd -` makes.
 const lastDoorWord = "tab last"
+
+// hopDoorWord advertises the switcher, and it names `ctrl+k` rather than the
+// `ctrl+tab` alias because this line is drawn on every terminal and the alias is
+// only real on some of them (hop.go states the whole argument). A hint may only
+// name a key that works.
+const hopDoorWord = hopOpenKey + " switch"
 
 // ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
 //

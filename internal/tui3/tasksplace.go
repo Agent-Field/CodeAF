@@ -123,6 +123,11 @@ type tasksReading struct {
 	win  session.UsageWindow
 	seen time.Time
 	now  time.Time
+	// open is which families are unfolded, and it is the PLACE'S state handed in
+	// rather than the reading's own: a snapshot is replaced whole every time a
+	// node lands (place_tasks.go), and a fold that lived here would shut itself
+	// every time the page reloaded under somebody reading it.
+	open map[tasksKey]bool
 }
 
 // tasksKey is what identifies ONE piece of work across every authority: the
@@ -278,6 +283,27 @@ type tasksLine struct {
 	// and air. It is what the cursor stands on, what a press resolves to, and
 	// what stops a card's second line reading as a second row.
 	owner int
+	// kin is the family column: the two cells in front of a row of work that say
+	// where it sits in a tree. It is "" on a page with no families in it at all,
+	// which is most pages — the column APPEARS when there is a tree to draw, so
+	// nothing moves sideways on a machine that has never split work up.
+	//
+	// A ROOT CARRIES THE FOLD MARK AND A CHILD CARRIES THE CONNECTOR. The marks
+	// are chosen in [tasksReading.lay] rather than in the paint, because which
+	// of them a row wears is a fact about the layout — how many rows are under
+	// it and whether they are drawn — and the paint may not re-derive it.
+	kin string
+	// folds says this line is a family root that can be opened and shut, and
+	// open says it is open. They are what `→` and `←` act on, and what the row's
+	// own clause reports (place_tasks.go's [app.taskSheetFold]).
+	folds bool
+	open  bool
+	// family is the key the fold is remembered under — the pair internal/session
+	// states is what identifies one row ([tasksKey]).
+	family tasksKey
+	// kids is how many pieces of work are under this root, which the row says
+	// out loud while the fold is shut. Zero everywhere else.
+	kids int
 }
 
 // tasksBareLead is the two cells in front of every row of work. On the row a
@@ -299,6 +325,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 		return nil
 	}
 	lines := make([]tasksLine, 0, len(r.items)+8)
+	// THE FAMILY COLUMN APPEARS ONLY WHERE THERE IS A TREE TO DRAW. On a machine
+	// that has never split work up every row is a root with nothing under it, and
+	// two cells of empty gutter in front of all of them would be a column that
+	// says "there is structure here" about a page that has none.
+	tree := r.families()
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
@@ -325,17 +356,121 @@ func (r tasksReading) lay(width int) []tasksLine {
 		}
 		add(tasksLineAir, "")
 		add(tasksLineWord, tasksSectionWord(section))
-		for _, item := range items {
+		// THE SECTION IS DRAWN AS FAMILIES AND NOT AS A FLAT LIST. A run that
+		// split into eight workers used to arrive as eight peers of everything
+		// else on the page, which buried the six other things this machine did
+		// today under one piece of work. Now the root is the row and the workers
+		// fold under it — shut unless somebody opened it (see [tasksFamilies]).
+		roots, kids := tasksFamilies(items)
+		for _, item := range roots {
 			at := len(lines)
-			lines = append(lines, tasksLine{kind: tasksLineTask, item: item, owner: at})
-			// phone lane: a row becomes a two-line card a thumb goes into
-			// (taskphone.go), and the second line belongs to the first.
+			line := tasksLine{kind: tasksLineTask, item: item, owner: at}
+			under := kids[tasksFamilyOf(item.entry)]
+			if tree {
+				line.kin = tasksKinPad
+			}
+			if len(under) > 0 {
+				line.folds, line.family, line.kids = true, tasksFamilyOf(item.entry), len(under)
+				line.open = r.open[line.family]
+				line.kin = tasksFoldShut
+				if line.open {
+					line.kin = tasksFoldOpen
+				}
+			}
+			lines = append(lines, line)
 			if phone && tasksCardTail(item, r.now) != "" {
-				lines = append(lines, tasksLine{kind: tasksLineTail, item: item, owner: at})
+				lines = append(lines, tasksLine{kind: tasksLineTail, item: item, owner: at, kin: line.kin})
+			}
+			if !line.open {
+				continue
+			}
+			for at, kid := range under {
+				own := len(lines)
+				kin := tasksKinCont
+				if at == len(under)-1 {
+					kin = tasksKinLast
+				}
+				lines = append(lines, tasksLine{kind: tasksLineTask, item: kid, owner: own, kin: kin})
+				// phone lane: a row becomes a two-line card a thumb goes into
+				// (taskphone.go), and the second line belongs to the first.
+				if phone && tasksCardTail(kid, r.now) != "" {
+					lines = append(lines, tasksLine{kind: tasksLineTail, item: kid, owner: own, kin: tasksKinPad})
+				}
 			}
 		}
 	}
 	return lines
+}
+
+// ── the family column ───────────────────────────────────────────────────────
+
+// The four things the two cells in front of a row of work can say. They are the
+// roster's own marks (task.go's [app.railGrow] draws the same tree in the
+// column beside a conversation), so a family reads the same way in both places.
+const (
+	// tasksKinPad is a row with no family at all, on a page that has one
+	// somewhere. It holds the column open so nothing is ragged.
+	tasksKinPad = "  "
+	// tasksFoldShut and tasksFoldOpen are a root that has work under it.
+	tasksFoldShut = "▸ "
+	tasksFoldOpen = "▾ "
+	// tasksKinCont and tasksKinLast are the connectors under an open root.
+	tasksKinCont = "├ "
+	tasksKinLast = "└ "
+)
+
+// tasksFamilyOf is the key one piece of work's FAMILY is remembered under: the
+// root's id inside the session that ran it.
+//
+// IT IS THE (SessionID, ID) PAIR internal/session states is a row's identity,
+// spelled here once. Node ids restart with every conversation, so a fold
+// remembered under the id alone would open a family in another project.
+func tasksFamilyOf(entry session.TaskIndexEntry) tasksKey {
+	id := strings.TrimSpace(entry.Parent)
+	if id == "" {
+		id = strings.TrimSpace(entry.ID)
+	}
+	return tasksKey{session: strings.TrimSpace(entry.SessionID), id: id}
+}
+
+// tasksFamilies splits one section's rows into the roots it draws and the work
+// that hangs under each of them, keeping the order the reading already ranked
+// them in.
+//
+// A CHILD WHOSE ROOT IS NOT IN THIS SECTION IS A ROOT HERE. The sections are
+// what a person acts on next — a worker still running under a root that landed
+// this morning belongs under `running`, where its root is not — and a child
+// filed under a parent nobody can see would be a row that vanished from the
+// page. So the parent has to be present, in this section, for the fold to exist.
+func tasksFamilies(items []tasksItem) ([]tasksItem, map[tasksKey][]tasksItem) {
+	here := make(map[tasksKey]bool, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.entry.Parent) == "" {
+			here[tasksFamilyOf(item.entry)] = true
+		}
+	}
+	roots := make([]tasksItem, 0, len(items))
+	kids := map[tasksKey][]tasksItem{}
+	for _, item := range items {
+		key := tasksFamilyOf(item.entry)
+		if strings.TrimSpace(item.entry.Parent) != "" && here[key] {
+			kids[key] = append(kids[key], item)
+			continue
+		}
+		roots = append(roots, item)
+	}
+	return roots, kids
+}
+
+// families reports whether anything on this page has work under it, which is
+// what decides that the column is drawn at all.
+func (r tasksReading) families() bool {
+	for _, item := range r.items {
+		if strings.TrimSpace(item.entry.Parent) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // rows is the whole page painted with no cursor anywhere on it, which is what a
@@ -375,16 +510,36 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lead s
 		return pal.dim(fit(line.text, width))
 	case tasksLineTail:
 		indent := strings.Repeat(" ", taskSheetPhoneIndent)
-		tail := room - taskSheetPhoneIndent
+		tail := room - taskSheetPhoneIndent - ansi.StringWidth(line.kin)
 		if tail < 1 {
 			tail = 1
 		}
-		return lead + indent + pal.dim(fit(tasksCardTail(line.item, r.now), tail))
+		return lead + pal.dim(line.kin) + indent + pal.dim(fit(tasksCardTail(line.item, r.now), tail))
+	}
+	// THE FAMILY COLUMN IS PAINTED HERE AND CHOSEN IN THE LAYOUT. It is dim
+	// everywhere — a connector is the surface's own furniture, not the row's
+	// words — and the room the row gets is what is left after it.
+	kin := pal.dim(line.kin)
+	room -= ansi.StringWidth(line.kin)
+	if room < 1 {
+		room = 1
 	}
 	if layoutTier(width) == tierPhone {
-		return lead + tasksCardHead(line.item, room, pal)
+		return lead + kin + tasksCardHead(line.item, room, pal)
 	}
-	return lead + tasksRow(line.item, room, r.now, pal)
+	row := tasksRow(line.item, room, r.now, pal)
+	if line.folds && !line.open {
+		// A SHUT FOLD SAYS WHAT IS UNDER IT. A mark with no count is a mark a
+		// person has to open to find out whether it was worth opening.
+		row = tasksRow(line.item, room-ansi.StringWidth(tasksUnderWord(line.kids))-1, r.now, pal) +
+			" " + pal.dim(tasksUnderWord(line.kids))
+	}
+	return lead + kin + row
+}
+
+// tasksUnderWord is what a shut fold says about the work it is holding.
+func tasksUnderWord(kids int) string {
+	return "+" + itoa(kids) + " " + plural("under", kids, "")
 }
 
 // at is the work drawn on one painted line, and whether the cursor may stand

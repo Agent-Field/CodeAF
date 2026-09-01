@@ -338,7 +338,10 @@ func (a *app) frame() (string, int, int) {
 	// read past is an overlay that made the page harder to read — and the chrome
 	// below stays, because the draft is still where this surface types.
 	if a.railFull() {
-		rows = append(rows, a.railRows(view)...)
+		// THE SWITCHER IS DRAWN OVER THE ROSTER TOO. On a frame with no columns
+		// to lend, the roster IS the body, and a card that skipped this branch
+		// would be a key that did nothing at sixty columns (hop.go).
+		rows = append(rows, a.hopMaybe(a.railRows(view), width)...)
 		// The lifted rows are still part of this frame's height even here, where
 		// the roster has taken the body: dropping them would draw a window short
 		// of the terminal by exactly the box. [app.chromeAt] does not resolve
@@ -382,6 +385,28 @@ func (a *app) frame() (string, int, int) {
 	// row's index plus the scroll — and a body that streams under a sweep keeps
 	// the highlight on the text rather than on the glass.
 	scroll := a.bodyScroll()
+	// THE SWITCHER TAKES THE WHOLE REGION, THE SLACK INCLUDED (hop.go). It is
+	// spliced here rather than into `body` alone because a two-line conversation
+	// is two rows of body and thirty of pad, and a card centred in the body would
+	// sit at the top of an empty screen. What it is centred in is what a person
+	// sees, which is the region.
+	if a.hopShowing() {
+		texts := make([]string, view)
+		for i, r := range body {
+			if i < len(texts) {
+				texts[i] = r.text
+			}
+		}
+		texts = a.hopOver(texts, a.bodyWidth(), a.pal)
+		body, pad = make([]row, len(texts)), 0
+		for i, text := range texts {
+			// NO HIT AND NO ENTRY. A click on a card row is a click on the card,
+			// not on whatever piece of the transcript the ladder happened to be
+			// drawing there (render.go's [row]).
+			body[i] = row{text: text, entry: -1}
+		}
+		selOn = false
+	}
 	for i, r := range body {
 		text := r.text
 		if selOn {
@@ -389,7 +414,7 @@ func (a *app) frame() (string, int, int) {
 				text = a.pal.mark(text, a.bodyWidth())
 			}
 		}
-		rows = append(rows, a.railJoin(text, railAt(i)))
+		rows = append(rows, a.railJoin(text, a.hopFadeRail(railAt(i))))
 	}
 	// THE GREETING SITS IN THE SLACK, a shade above its middle, with whatever
 	// the conversation already holds — a notice, an order standing here — above
@@ -563,6 +588,12 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	if line := a.followRow(width); line != "" {
 		add(line, chromeRow{})
 	}
+	// AND WHAT IS WAITING TO GO INTO ANOTHER FOLDER, in the same slot and by the
+	// same law: one dim row while there is something to land, nothing at all
+	// otherwise (landcmd.go).
+	if line := a.landRow(width); line != "" {
+		add(line, chromeRow{})
+	}
 	// AND WHAT YOU TYPED WHILE THE ANSWER WAS STILL COMING SITS DIRECTLY ABOVE
 	// THE BOX (park.go). It is the LAST block of the chrome for a reason that is
 	// the whole point of it: pinned here, between everything that has happened
@@ -702,7 +733,7 @@ func (a *app) chromeHeight() int {
 	// holding.
 	n := a.statusHeight(width) + a.overlayHeight() + a.consentHeight() +
 		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
-		a.followHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
+		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
 	// rule and its breathing room are not drawn under a greeting at all — both
 	// are [app.chrome]'s own decisions, read back here so the conversation is

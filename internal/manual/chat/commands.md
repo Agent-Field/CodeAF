@@ -183,6 +183,12 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
+| `/folder` | `/place`, `/dir` | — | opens the folder picker — say which folder this conversation is also about |
+| `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
+| `/attach` | `/upload` | `<path>` | a file goes on the tray; **a folder** is referred instead, and says `folder · <path>` |
+| `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
+| `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
+| `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
@@ -275,8 +281,9 @@ It ends with a note that says which of the two happened: `new conversation · <p
 when it added one, and `new session · <path>` — or just `new session` with no file — when
 it replaced a fresh empty one.
 
-At eight open it refuses with `8 open is as many as aforge holds — /quit closes this one`,
-and nothing is opened.
+**How many conversations are already open is never a reason to refuse.** There is no cap:
+the ninth and the fiftieth `/new` open exactly like the first, and the one you were in is
+left running. Nothing closes one for you — that is what `/quit` is for.
 
 Reasoning level does not survive: `/new` forgets the level you set on a model.
 
@@ -598,14 +605,26 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 `/cost` (or `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and
 on what, into the conversation.
 
-It draws up to five aligned lines:
+It draws up to seven aligned lines:
 
-- `spend` — only when it is above zero.
+- `spend` — only when it is above zero. It is **this conversation and every task it
+  started**, which is the same figure the status line carries.
+- `conversation` and `tasks` — the two halves of that figure, in that order, and they add
+  up to it. Both lines are dropped unless the work has actually spent something: a
+  conversation that has started no tasks has no split to state.
 - `tokens` — like `48.1k in · 3.2k out`, or one half alone, or the combined figure.
 - `cache` — like `31.2k read · saved $0.0180`. The money half appears only when a price
   pair was published.
 - `model calls` — requests to the provider. Deliberately not called "turns".
 - `time`.
+
+So a conversation whose tasks are still running reads:
+
+```
+spend         $53.58
+conversation  $2.53
+tasks         $51.05
+```
 
 Every line is dropped when its figure is absent. A provider that publishes no cache
 accounting says nothing about caches, rather than teaching you that your cache never
@@ -878,7 +897,6 @@ nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
 that folder is gone · <path>
-8 open is as many as aforge holds — /quit closes this one
 ```
 
 The first is not a refusal: it is what an empty home says where its rows will be, with the
@@ -886,9 +904,9 @@ box and the keys at the foot still live — typing there offers
 `start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
 rows are the **far** machine's and that machine may simply not have been used yet. `/new is
 unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
-The last two are `enter` on a project whose folder has been deleted or moved since its last
-conversation, and `enter` when this terminal is already holding eight — in both cases home
-stays up and nothing is opened.
+The last is `enter` on a project whose folder has been deleted or moved since its last
+conversation: home stays up and nothing is opened. **How many conversations this terminal
+already holds is never a refusal** — there is no cap on that.
 
 `that folder is gone` is never said over `--host`: the folders are the far machine's and this
 one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
@@ -1111,9 +1129,10 @@ tail. Every row has the same thin left line and one space of padding:
 The quoted line is your brief verbatim; a long brief is fitted to at most about two rows.
 The last row advances in place from `sizing it up…` to `shaping the brief…`. Explicit
 `/task solo <brief>` and a `single` starting setting begin at shaping because they skip
-sizing. When work starts, the thin line and scaffold disappear
-in the same frame and the normal started-task row takes their place. If starting fails,
-only the error sentence remains.
+sizing. Once shaping starts writing, a fourth dim row appears under the phase row with the
+newest words of the brief on it — see *Can I see the brief while it is being written*. When
+work starts, the thin line and scaffold disappear in the same frame and the normal
+started-task row takes their place. If starting fails, only the error sentence remains.
 
 ## Why is there a line next to my task
 
@@ -1121,6 +1140,72 @@ The thin `▏ ` at the transcript tail joins `task`, your quoted words, and the 
 into one thing being formed. It is a single left hairline, not a box or a task-status
 border. It exists only while a `/task` command is in flight and disappears when that
 command becomes the ordinary started-task row or an error line.
+
+## Can I see the brief while it is being written — the preview line under shaping the brief
+
+Yes. While `shaping the brief…` is up, one extra dim row hangs under it carrying the newest
+part of the brief as the model writes it:
+
+```text
+▏ task
+▏ "write the release notes"
+▏ ⠙ shaping the brief… · 13s
+▏ ▸ the failure this kind of work has is a release note that lists comm
+```
+
+It is **one row, always**. It never grows into a second row and never pushes the
+conversation up the screen — the words on it change, the height does not. It is the last
+line the brief lays out to at your terminal's width, so it fills up left to right and then
+starts again, and the end of it is where the model's pen is.
+
+**While the model is still thinking, the row shows its thinking, in italics.** The shaper
+runs on the careful-work model and is allowed to reason before it writes, and on some models
+that is most of the wait — so the row shows whatever is actually being produced. Italic is
+the model working; upright is your brief. **The brief takes the row the moment there is a
+brief and never gives it back**, so nothing you have started reading is un-said.
+
+**It appears only when there is something to show.** Before the model has produced anything
+there is no fourth row at all, and a task you approved from a proposal card never grows one
+— that brief was written before you were asked, so there is no stream behind the wait.
+
+**`▸` on the row means there is more behind it.** Press the row, or press `→` with an empty
+box, and the one line becomes the last six lines of the brief so far; `←` or another press
+shuts it again and `▾` goes back to `▸`. No new key is involved — it is the same fold every
+block on this surface has.
+
+Nothing about the preview is kept. The reasoning in particular is never written anywhere,
+never sent anywhere, and is not part of the brief the worker is given.
+
+The preview is **telemetry about a wait, not a transcript**. When the brief lands, the
+preview and the whole forming block disappear in the same frame, and what stays is the
+ordinary started-task row. Nothing of the preview is kept, and the shaped brief itself is
+readable in full in the task's own room.
+
+## Several tasks forming at once — one block with a row each
+
+Two `/task` commands can be shaping at the same time. They share **one** block rather than
+stacking two four-row blocks at the tail of the transcript:
+
+```text
+▏ tasks · 3 forming
+▏ ⠙ write the release notes · 13s
+▏ ⠙ fix the nil-map crash in the loader · 9s
+▏ ▸ Reproduce the crash from the stack trace in issue #94, then write a
+▏ ⠙ write the docs for /task · 2s
+```
+
+The head counts them. Each task is one compact row: the same spinning mark, its name or the
+opening of what you typed, and its own clock. **Only the row you are pointed at shows a
+preview under it**, so the block stays the same height however long the briefs get.
+
+`↑` and `↓` with an empty box move between the rows — the keys that walk rows in the
+transcript already — and the preview follows. `→` opens that row's window, `←` shuts it.
+Clicking a row you are not on points at it and opens it; clicking the row you are on shuts
+it again. Walking off either end of the block hands the arrows back to whatever they do
+next, so nothing else you press changes meaning.
+
+**With one task forming, none of this appears.** No head that counts, no rows to walk: the
+block is `task`, your words, the phase row and the preview, exactly as above.
 
 ## /history — the task history command: past tasks, every task this project has run
 
@@ -1175,11 +1260,11 @@ opens the five-seat reading, bottom-anchored like the model picker. From the top
 the four models aforge uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   frugal — qwen handles careful work · pennies a day
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   qwen/qwen3.8-27b
 › balanced — kimi-k3 thinks, qwen checks
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash · careful work qwen/qwen3.8-27b · mastermind   moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
-    reflex       nex-agi/nex-n2-mini · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-pro · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
 each of the four can be pinned on its own in /settings → Providers
 ```
 

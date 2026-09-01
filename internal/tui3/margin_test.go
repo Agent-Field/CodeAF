@@ -346,7 +346,10 @@ func TestTheTaskBriefFormsStillStartWork(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("/task solo <brief> did nothing")
 	}
-	if msg := cmd(); msg != nil {
+	// The command is a BATCH now — the task door, and the lane that watches the
+	// brief being written beside it (formingblock.go) — so it is run through the
+	// helper that flattens one rather than called for its single message.
+	if msg := taskMsg(cmd); msg != nil {
 		_, _ = a.Update(msg)
 	}
 	if a.at(pageTasks) {

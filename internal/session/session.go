@@ -1623,6 +1623,20 @@ type Config struct {
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
 
+	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
+	// and it is empty in a conversation — where the agent's own journal already
+	// names it — and set on every agent built for a piece of work, however deep
+	// (task_run.go's [Agent.newTaskAgentOn]).
+	//
+	// It exists because a node's ledger line names the node's own journal and
+	// not the conversation that asked for the work (usage_ledger.go's
+	// [UsageLine.Session]), so nothing outside the family could add a running
+	// tree's spend back onto the conversation until the tally was folded in at
+	// close. It is private for [Config.usageLedger]'s reason: no surface sets
+	// it, because the only honest source for it is the agent that built the
+	// worker.
+	rootSession string
+
 	// standingItemID is the id of the standing item whose firing this agent IS
 	// (standing_run.go), and empty in every conversation and every ordinary task.
 	// It rides on the config for [Config.taskID]'s reason: the money a firing
@@ -1885,8 +1899,42 @@ type Agent struct {
 	// field and not a map because it is a choice about THIS CONVERSATION rather
 	// than about a model: a person dialling their session deeper means the
 	// session, whatever they switch the model to inside it.
-	effort   effort.Rung
-	messages []ai.Message
+	effort effort.Rung
+	// places is the set of folders this conversation is ABOUT, newest first,
+	// kept in the session folder's meta.json so it survives a restart
+	// (places.go). It is under mu because the two hands that move it are a
+	// surface — a person naming a folder — and a turn resolving a task's ground,
+	// and those run at once.
+	//
+	// Nil is the ordinary state and means nothing: a conversation about the
+	// place it is standing in has referred to nowhere else, which is every
+	// conversation until one accrues.
+	//
+	// IT IS REPLACED AND NEVER EDITED IN PLACE, because a stamp hands the live
+	// slice to the marshaller and writes it after the lock is released
+	// (placemeta.go's [Agent.stampMeta]).
+	places []PlaceRef
+	// trees is the working copies this conversation holds of the folders it
+	// refers to, and what has been written into each that the folder itself
+	// does not have yet (standingtree.go). It rides the same meta.json for the
+	// same reason places does, and it is REPLACED AND NEVER EDITED IN PLACE for
+	// the same one.
+	//
+	// Nil is the ordinary state and means nothing has been written outside the
+	// folder this conversation stands in, which is every conversation until one
+	// aims a write somewhere else.
+	trees []StandingTree
+	// treeCut serializes the CUTTING of one, and nothing else. Making a working
+	// copy runs git and copies files, so it cannot be done under mu, and two
+	// tool calls in one turn that both find no copy would otherwise both make
+	// one — leaving a registered worktree that nothing holds a record of.
+	treeCut sync.Mutex
+	// toldStanding is which folders' working copies THIS PROCESS has already
+	// told the model about (standingbelt.go). It is not on the meta on purpose:
+	// what it tracks is whether the model in front of it has been told, and a
+	// resumed conversation's model has been told nothing.
+	toldStanding map[string]bool
+	messages     []ai.Message
 	// messageReasoning is aligned one-for-one with messages and carries the
 	// provider fields ai.Message cannot represent. Rewrites clear or move the
 	// matching slot; no model working is ever smuggled into visible Content.
@@ -2268,4 +2316,11 @@ type Agent struct {
 	// and never again, which is what lets task_run.go copy the whole config
 	// without a lock and still be right.
 	approvalPolicy *approval.Policy
+
+	// phase is the one stage this agent is holding open and the beat that keeps
+	// saying it while it lasts (phasenews.go). It has a lock of its own rather
+	// than riding mu because it is written from the beat's goroutine and read
+	// under it, and a measurement must never be able to contend with the turn it
+	// is measuring.
+	phase phaseHeart
 }
