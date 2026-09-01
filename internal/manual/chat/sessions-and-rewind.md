@@ -705,7 +705,7 @@ a credential already has it in its own environment — that is what `TOKEN=$(gh 
 does — so nothing on the belt is worse off for this.
 
 **Inside a task the read itself is refused.** A token never has to be shown to be spent, and
-a task runs unattended in a copy of your repository and holds no login of yours, so `gh
+a task runs unattended in a copy of its own and holds no login of yours, so `gh
 auth token` is answered there with `gh auth token is not yours to run` before the command
 runs — in every spelling, `$(gh auth token)` inside another command included. The page on
 how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always

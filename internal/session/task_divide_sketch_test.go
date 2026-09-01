@@ -397,7 +397,7 @@ func TestAPartIsNamedFromTheLegendAndNeverFromABareLetter(t *testing.T) {
 			[]string{"part 1", "part 2"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			proposal, ok := test.drawn.proposal("the work so far")
+			proposal, ok := test.drawn.proposal()
 			if !ok {
 				t.Fatal("the drawing proposed nothing")
 			}
@@ -418,7 +418,7 @@ func TestAPartIsNamedFromTheLegendAndNeverFromABareLetter(t *testing.T) {
 // judged is.
 func TestTheEvidencePutToTheGatesIsTheAccountTheReaderJudged(t *testing.T) {
 	drawn := batchSketch("A | B", "A is the auth test, B is the release notes")
-	proposal, ok := drawn.proposal("the work so far")
+	proposal, ok := drawn.proposal()
 	if !ok {
 		t.Fatal("the drawing proposed nothing")
 	}

@@ -912,7 +912,8 @@ type landingFiles struct {
 	// own is what this node's worker wrote.
 	own []string
 	// parts is what the parts it handed out wrote and brought home, in the order
-	// the parts finished, and never anything already in own.
+	// the parts finished. The two halves are disjoint, and a path they share is
+	// filed here — see [landingFilesFor].
 	parts []string
 }
 
@@ -923,33 +924,63 @@ func (f landingFiles) all() []string { return alsoChanged(f.own, f.parts) }
 // divided reports whether any part contributed to this landing.
 func (f landingFiles) divided() bool { return len(f.parts) > 0 }
 
-// landingFilesFor reads what a node's landing carries: its own writes, plus
-// every part of it that finished and came home.
+// landingFilesFor reads what a node's landing carries, split into the two halves
+// the checker's packet needs: the paths this node's own worker wrote, and the
+// paths its parts wrote and brought home into the same tree.
 //
 // ONLY A PART THAT LANDED COUNTS. A part that was refused kept its branch and
 // never merged, so its files are not in the parent's tree and claiming them would
 // be the check standing on work that is not there.
+//
+// IT IS READ FROM THE PARTS RATHER THAN INTO THEM, and that is what makes it
+// safe to call on a ledger that has ALREADY absorbed them (task_ledger.go). The
+// parts are whatever the graph says landed; own is the rest of the list. So a
+// re-audit handed the complete family ledger still sees its own half as its own
+// and its parts' half as its parts', and `Files it wrote:` stays a true claim
+// about this node however many times the list has been folded.
+//
+// A PATH BOTH WROTE IS FILED UNDER THE PARTS, and that is a decision rather
+// than a detail. It used to be filed under the node, which cannot survive being
+// asked twice: the second reading has no way to tell a path the node wrote from
+// one it absorbed, so the split would drift with every re-audit. Filing it with
+// the writer the graph can still name keeps one answer at every age — and it
+// costs the packet nothing, because the path is named in the packet either way,
+// staged either way, restored either way, and on [all] exactly once either way.
+// The only thing that changes is which of the two true sentences carries it.
 func landingFilesFor(node *TaskNode, changed []string) landingFiles {
-	files := landingFiles{own: changed}
 	if node == nil || node.graph == nil {
-		return files
+		return landingFiles{own: changed}
 	}
+	// ONE SET, ONE PASS. The parts are gathered against the same `seen` the
+	// split below reads, so a family of five parts costs one map and one walk of
+	// each list rather than a fresh map per part and a linear scan of the node's
+	// own list per path.
+	seen := make(map[string]bool, len(changed))
+	files := landingFiles{}
 	for _, child := range node.graph.children(node.id) {
 		if child.stateNow() != TaskDone {
 			continue
 		}
 		_, wrote, _, _ := child.leavings()
-		files.parts = alsoChanged(files.parts, wrote)
-	}
-	// A file both the parent and a part wrote is ONE file the landing carries,
-	// and it belongs to the parent's own list where it was first written.
-	var mine []string
-	for _, path := range files.parts {
-		if !containsPath(files.own, path) {
-			mine = append(mine, path)
+		for _, path := range wrote {
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			files.parts = append(files.parts, path)
 		}
 	}
-	files.parts = mine
+	if len(files.parts) == 0 {
+		files.own = changed
+		return files
+	}
+	for _, path := range changed {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		files.own = append(files.own, path)
+	}
 	return files
 }
 

@@ -3,7 +3,7 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in a copy of its own — a worktree of your repository, or
+conversation carries on. It works in a copy of its own — a working copy of your repository, or
 a copy of the folder when the work is about a folder — and reports back when it lands. It
 never sees the conversation: what it reads is one written brief — your own message, word
 for word, then the work, what to produce and what done means. How that is
@@ -2371,9 +2371,11 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of its **parent's** own working copy, and its branch merges
-back into the parent's — so a family's work comes home as the parent's work, in one merge,
-not as three branches racing for yours. That is true whether the family is working on a
+Each piece works in a copy of its **parent's** own working copy **as that copy stood at the
+moment the pieces were handed out**, and its branch merges back into the parent's — so a
+family's work comes home as the parent's work, in one merge, not as three branches racing
+for yours. Work the parent had not committed yet goes with them; work it does *after*
+handing out does not. *What the parts start with* below says how that is written down. That is true whether the family is working on a
 repository or on a plain folder: a family on a folder gets a private copy of it to work in,
 and the pieces branch off that copy and merge back into it, so two pieces writing different
 files never touch each other's directory. The person's own folder is written once, at the
@@ -2398,13 +2400,45 @@ that from the sentence you typed.
 
 So the worker can say so. Its tool for it is `divide_work` — it names the parts it found and
 what it actually saw that revealed them — and **the work splits**: each part becomes a worker of its own under the task, in its
-own copy of the parent's working copy, with its own branch coming home into the parent's.
+own copy of the parent's working copy as it stood at the moment of the split — the parent's
+unfinished work included, so a part can run the failing test rather than be told about it
+(*What the parts start with*, above) — with its own branch coming home into the parent's.
 Your transcript says it in plain words — `split into 3 parts:` and then each part by number and
 name.
 
 **The worker does not go away.** It keeps whatever part it decided to keep, every part's
 report reaches it as that part lands, and the one thing it owes you at the end is a single
 deliverable made out of all of it. A task never finishes while a part of it is still running.
+
+## What the parts start with — do the parts see the parent's unfinished work, when is the parent's work frozen for its parts, the wip commit before a split
+
+**They start with the parent's files already on disk.** A task that has opened the material
+has usually *written* something by the time it decides the work is too wide — a repro, a
+failing test, scraped material, a half-drafted section. All of it is there for every part,
+without the parent having to describe it in a brief.
+
+That is not automatic; it is a commit. Before the first part is handed out, aforge stages
+what the task has written so far and commits it to **the family's own branch**, worded
+`the work so far on <the task's title>, before its parts were handed out`. The parts branch
+from that commit. So does the second part, and the fifth: **the world is frozen once**, at
+the split, and every part gets the same one. Anything the parent writes *after* the split
+reaches none of them — which is why a brief that needs a file has to be written before the
+call, not after it.
+
+Three things follow, and they are the ones worth knowing:
+
+- **You never see that commit as a commit.** It lives on the family's branch, which is
+  internal to the task. When the whole family lands, it comes home inside **one merge**
+  along with everything else the family did.
+- **It is aforge committing, never the worker.** Tasks are told they never run `git add`,
+  and that is still true.
+- **Nothing is committed in your own folder.** A task working *in place* — in the directory
+  you are sitting in — has no branch of its own, so there is nothing to commit to and
+  aforge does not make one. Its parts share the directory, which is what "here" means.
+
+If the family's branch cannot take that commit at all — a disk gone read-only, a repository
+somebody broke — **the split is refused** rather than taken on a world the parts do not
+have. The worker is told in one line and carries on with the work in its own hands.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
@@ -2427,7 +2461,7 @@ does not do them again. *An answer that runs long is read and moved* is where th
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
-  at a time anyway and each would still cost a copy of the repository, so the split is not
+  at a time anyway and each would still cost a working copy, so the split is not
   taken and the worker is told to ask again once something finishes. With `task.parallel`
   set to exactly **1** there is no second pair of hands at all, and the worker is told
   plainly that asking again will not change it.
@@ -2445,16 +2479,26 @@ parts themselves. That is the whole of the exception. A count that says no on wo
 read for width is final and free, exactly as it always was, and the free-lane test is never
 waived by anything.
 
+**What each part is told is composed, not copied.** A part opens on the same document
+every task opens on: your own message word for word, then the work being divided as the
+task itself was given it, then one line — `THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS
+RIGHT NOW:` — naming what each of its siblings owns and telling it to leave them alone.
+Last comes `WHAT THIS PART OWNS`, and that part alone is what the splitting worker wrote.
+**The harness writes everything but the scope**, and it writes the same thing for a part a
+worker split out and a part a second model drew — so a part never depends on the model
+doing the splitting remembering to restate the job once per part. Your own sentence still
+appears exactly once, at the top, where it appears on every task.
+
 **And then the plan itself is read once, by your `mastermind` model.** Both tests above are
-about whether a split is worth it; neither of them reads the parts. But a part's
-brief is everything that worker will ever know — it never sees your conversation and cannot
-ask anybody anything — and the briefs were written by whatever model the task itself runs on.
+about whether a split is worth it; neither of them reads the parts. But what a part owns is
+everything that worker will act on — it never sees your conversation and cannot
+ask anybody anything — and the scopes were written by whatever model the task itself runs on.
 So once the two tests have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
-brief, fix a boundary two parts share, fold two parts into one, or say the parts are really
+scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
 worker carries on, exactly as a no from either test above. So the parts you see may be fewer
-than the worker asked for, and their briefs may not be word for word what it wrote.
+than the worker asked for, and what they own may not be word for word what it wrote.
 
 **And it has one more answer, which is not about the split at all.** The mastermind may
 read the work and find that what is left of it **cannot be done by a worker** — an approving
@@ -2470,7 +2514,7 @@ this, has refused a division and the worker carries on with the work exactly as 
 **No two parts may own the same file, and that one is not a judgement — it is
 enforced.** The files each part's brief and done-condition name are checked against each
 other, and if the same file is claimed by more than one part the division is **refused
-before anything is handed out**: no part starts and no copy of the repository is made.
+before anything is handed out**: no part starts and no working copy is made.
 The worker is told which file — "`report.md` is claimed by more than one part" — and can
 redraw the boundary and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
@@ -2712,7 +2756,7 @@ its call answered with:
 It reads that as an instruction and does the rest itself.
 
 Neither bound is a setting. They are there because the third level and the sixth piece cost
-more than they save: every piece pays for its own copy of the repository, its own check and
+more than they save: every piece pays for its own working copy, its own check and
 its own wait, so past a few of them fanning out is slower than working. A task is told the
 same thing in its own words — split only what is genuinely independent, and never shard
 work that fits in its own hands.
@@ -2774,8 +2818,10 @@ a chip on the row can win. Chips are spelled with the part after the vendor unle
 vendors share a tail, in which case all of them keep their full id; a chip that does not fit
 is dropped rather than cut, and a row that would show one chip is not drawn at all.
 
-Name nothing and the task runs on `task.model` if you have set it, and otherwise on the
-model the conversation was on **when the task was admitted**. The id is settled at that
+Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
+**worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped
+`balanced` crew), and only when that row is blank on the model the conversation was on
+**when the task was admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the
 conversation's model afterwards does not move work that was already handed over. This
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
@@ -2805,8 +2851,9 @@ What that does, exactly:
 - **A note is written in the conversation**, reading `task 7 · model · <the model you
   chose>`, so the change is on the record where every other model change is.
 - **New tasks are unaffected.** Work admitted after this still follows the ordinary
-  ladder: `task.model` from settings if you have set one, otherwise the model the
-  conversation is on. A pick made inside one room is not a preference the session learns.
+  ladder: `task.model` from settings if you have set one, otherwise the crew's worker
+  class, otherwise the model the conversation is on. A pick made inside one room is not a
+  preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
   and the change survives a restart.
 

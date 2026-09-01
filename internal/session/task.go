@@ -251,8 +251,13 @@ type taskSpec struct {
 	// WHERE AND GROUND ARE TWO QUESTIONS. `where` is the directory the worker
 	// types in; this is the project that directory is a copy of. A task that
 	// names neither gets both resolved for it.
-	ground     string
-	mode       TaskMode
+	ground string
+	mode   TaskMode
+	// frozen is THE WORLD THIS PART IS TO START FROM, set only by the division
+	// that admits it (task_divide_wip.go): the commit its parent put the family
+	// tree at before any part of it existed. Every other door leaves it empty,
+	// which is what "this task is nobody's part" means to the ground ladder.
+	frozen     string
 	acceptance string
 	// expects is the checkable half of the handoff contract: what this brief
 	// assumes is already true of the folder the worker will get
@@ -575,7 +580,7 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if state == TaskQueued {
 		return withElsewhere(fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 	}
-	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
+	return withElsewhere(fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence), elsewhere), false, nil
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one

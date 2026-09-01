@@ -35,11 +35,12 @@ package session
 // (task_audit.go's [restoreFromBranch]), and the parent is still judged against
 // the untouched folder with the integrated mirror's work laid over it.
 //
-// AND THE WIP COMMIT COMES FREE WHEN IT IS ORDERED. The snapshot rung seals a
-// parent's uncommitted world into a machine commit before it carves a child off
-// it and the landing replays it back out (groundladder.go's [sealGroundWork],
-// [taskTree.replayOwnWork]) — so the moment the mirror is a repository, a part
-// cut off it starts in the parent's world rather than in the family's baseline.
+// AND THE FAMILY'S MID-RUN CHECKPOINT REACHES IT ON THE SAME ROAD. A parent
+// about to hand its work out commits its ledger onto the family branch first, so
+// that the parts branch from a HEAD holding it (task_divide_wip.go) — and the
+// moment the mirror is a repository, a folder family has a family branch for
+// that commit to go on. Underneath it the snapshot rung still seals whatever a
+// ledger cannot name (groundladder.go's [sealGroundWork], [taskTree.replayOwnWork]).
 //
 // ── WHERE THIS DELIBERATELY DOES NOT GO ──
 //
