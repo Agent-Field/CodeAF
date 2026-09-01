@@ -80,14 +80,16 @@ func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	}
 }
 
-func TestTheStatusLinesPlaceCarriesTheMachine(t *testing.T) {
+func TestTheTopBarsCrumbCarriesTheMachine(t *testing.T) {
 	a, _ := hostLab(t)
 	if a.place != "devbox:app" {
 		t.Fatalf("place = %q, want the machine and the directory", a.place)
 	}
-	name, _ := a.identityParts(0)
-	if !strings.HasPrefix(plain(name), "devbox:app") {
-		t.Fatalf("the status line's identity = %q", plain(name))
+	// The identity that used to open the status row is the top bar's crumb now
+	// (topbar.go): the machine and the directory are the trail's first step.
+	bar := plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, "devbox:app") {
+		t.Fatalf("the top bar's crumb = %q", bar)
 	}
 }
 

@@ -184,29 +184,36 @@ const (
 	// right for a tool call and wrong for a paragraph, where the pressable thing
 	// is three words at the end of a table.
 	hoverTable
-	// hoverStrip is one CHIP of the task strip, and the identity it carries is
-	// the NODE's for [hoverRail]'s reason (taskstrip.go): the row re-packs itself
-	// as work starts and lands, so a hover stored as "the second chip" would
-	// follow the packing instead of following the work.
-	hoverStrip
-	// hoverStripHarness is the harness chip that leads that row, whose door is the
-	// panel rather than a room (harnesspanel.go). It belongs to no node, which is
-	// why it cannot be a [hoverStrip] carrying an id.
-	hoverStripHarness
-	// hoverStripMore is the `+N` at the row's end, whose door is the whole roster
-	// (task.go's [app.railTake]). It is a third kind for the reason the second one
-	// is: three things share that line and no two of them go to the same place.
-	hoverStripMore
-	// hoverRoomBack is the room's pinned header, which is the way out for the
-	// pointer (room.go's [app.roomBackPress]). The whole row lights, because the
-	// whole row is what the press acts on.
+	// hoverRoomBack is the top bar's way out for the pointer — the `esc/← back`
+	// word and the chat name's own step of the crumb, which climb one level
+	// (topbar.go's [app.topBarPress]). The two light as one kind because the
+	// press they answer is one climb; they light separately because they are
+	// separate spans, and what lights is what the press acts on.
 	hoverRoomBack
-	// hoverRoomStop is the ✕ riding the right end of that header (stop.go's
-	// [app.stopMarkPress]). It is a kind of its own and not part of the row above
-	// it because ending work and leaving the page you were watching it on are
-	// opposite gestures — so the two never light together, and the expensive one
-	// wins the cells it is drawn on.
+	// hoverRoomStop is the ✕ riding the right end of the top bar (stop.go's
+	// [app.stopMarkPress]). It is a kind of its own and not part of the back
+	// word beside it because ending work and leaving the page you were watching
+	// it on are opposite gestures — so the two never light together, and the
+	// expensive one wins the cells it is drawn on.
 	hoverRoomStop
+	// hoverHome is the crumb's project step, which is space space parity: the
+	// same door the legend's advertisement always opened, now on the bar where
+	// the project is named (topbar.go). It is a kind of its own rather than a
+	// second [hoverRoomBack] because the two doors open different pages, and
+	// what lights has to be what the press acts on.
+	hoverHome
+	// hoverYolo is the top bar's YOLO term, which opens the Settings page's
+	// Safety tab (topbar.go). It is a kind of its own for [hoverHome]'s reason:
+	// a door of its own, opening a page of its own.
+	hoverYolo
+	// hoverCtx is the status row's context percent, which prints /status into
+	// the transcript (rowdoors.go). A kind of its own for [hoverHome]'s reason:
+	// a door of its own, opening a note of its own.
+	hoverCtx
+	// hoverOpen is the status row's `N open · M want you` clause, which opens
+	// the conversations list (rowdoors.go) — tab parity, said in the pointer's
+	// own grammar.
+	hoverOpen
 	// hoverStopAnswer is one of the stop card's two answers; index is which
 	// (stop.go). Two presses share that row, so it is a chip and not a row for
 	// [hoverSettle]'s reason.
@@ -341,19 +348,16 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		}
 		return hoverAt{}
 	}
-	// THE PINNED ROWS ABOVE THE BODY ARE ASKED FIRST OF ALL, in the order
-	// [app.Update] presses them: the ✕ on a room's header, then the header itself,
-	// then the task strip under it. All three span the WHOLE window while the
-	// roster below claims columns of it, so a question asked the other way round
-	// would answer about a rail row that is not on those lines (stop.go, room.go,
-	// taskstrip.go).
+	// THE TOP BAR IS ASKED BEFORE THE CONVERSATION, for the reason [app.press]
+	// resolves it first: the bar spans the whole window above the body, so a
+	// question asked the other way round would answer about a transcript row
+	// that is not on those lines. The ✕ is asked first of all of them, because
+	// its hit box is three rows tall on a phone and deliberately overlaps the
+	// top of the body (stop.go).
 	if a.stopMarkAt(x, y) {
 		return hoverAt{kind: hoverRoomStop}
 	}
-	if a.roomBackAt(y) {
-		return hoverAt{kind: hoverRoomBack}
-	}
-	if at, ok := a.stripHoverAt(x, y); ok {
+	if at, ok := a.topBarHover(x, y); ok {
 		return at
 	}
 	// THE ROSTER IS ASKED BEFORE THE CONVERSATION, for the reason [app.press]
@@ -532,12 +536,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverJump}
 			}
 		case chromeStatus:
-			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
-			// because this file's law is that the set which lights is the set the
-			// press acts on: the overlays that swallow the press first, then the
-			// identity's own row, then the columns the render recorded for the model.
-			// Any of them answering differently here would be a name that brightens
-			// and then does nothing.
+			// THE SAME QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER, because
+			// this file's law is that the set which lights is the set the press acts
+			// on: the overlays that swallow the press first, then the columns the
+			// render recorded for the row's doors. Any of them answering differently
+			// here would be a name that brightens and then does nothing.
 			if a.copy.on || a.at(pageSettings) || a.pick.open {
 				return hoverAt{}
 			}
@@ -549,17 +552,21 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The two doors on this row, in the order [app.press] reads them
-			// (app.go): the keeping segment onto /standing, then the model's name
-			// onto the picker (standdoor.go).
+			// The row's doors, in the order [app.statusPress] reads them: the
+			// keeping segment onto /standing, the bill onto the Spending tab, the
+			// meter onto /status, and the count onto the conversations list
+			// (standdoor.go, moneydoor.go, rowdoors.go).
 			if mark.index == a.keepRow && a.keepSpan.holds(x) {
 				return hoverAt{kind: hoverKeeping}
 			}
 			if mark.index == a.moneyRow && a.moneySpan.holds(x) {
 				return hoverAt{kind: hoverMoney}
 			}
-			if mark.index == 0 && a.modelSpan.holds(x) {
-				return hoverAt{kind: hoverStatusModel}
+			if mark.index == a.ctxRow && a.ctxSpan.holds(x) {
+				return hoverAt{kind: hoverCtx}
+			}
+			if mark.index == a.openRow && a.openSpan.holds(x) {
+				return hoverAt{kind: hoverOpen}
 			}
 		}
 	}
@@ -628,21 +635,8 @@ func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
 // segment (render.go's [app.paintIdentity] is what it changes).
 func (a *app) hoveringStatusModel() bool { return a.hot.kind == hoverStatusModel }
 
-// hoveringStrip reports whether the pointer is on this node's chip of the task
-// strip (taskstrip.go's [app.stripChip] is what it changes).
-func (a *app) hoveringStrip(node *taskNode) bool {
-	return node != nil && a.hot.kind == hoverStrip && a.hot.id == node.id
-}
-
-// hoveringStripHarness reports whether the pointer is on the harness chip that
-// leads that row.
-func (a *app) hoveringStripHarness() bool { return a.hot.kind == hoverStripHarness }
-
-// hoveringStripMore reports whether the pointer is on the `+N` at its end.
-func (a *app) hoveringStripMore() bool { return a.hot.kind == hoverStripMore }
-
-// hoveringRoomBack reports whether the pointer is on the room's pinned header —
-// anywhere but the ✕, which claims its own cells.
+// hoveringRoomBack reports whether the pointer is on the top bar's way out —
+// the back word or the chat name's own step of the crumb.
 func (a *app) hoveringRoomBack() bool { return a.hot.kind == hoverRoomBack }
 
 // hoveringRoomStop reports whether the pointer is on that ✕.

@@ -1897,21 +1897,33 @@ func (a *app) orchHeadWord(width int) string {
 		}
 	}
 	mark := a.orchHeadMark()
-	trail := roomCrumbRoot
+	segs := []crumbSeg{{text: roomCrumbRoot}}
 	for _, crumb := range run.crumbs {
-		trail += roomCrumbSep + orchCrumbWord(crumb.goal, crumb.id)
+		segs = append(segs, crumbSeg{text: orchCrumbWord(crumb.goal, crumb.id)})
 	}
-	trail += roomCrumbSep + orchCrumbWord(run.goal, run.id)
+	segs = append(segs, crumbSeg{text: orchCrumbWord(run.goal, run.id)})
 	if run.card != "" {
-		trail += roomCrumbSep + run.card
+		segs = append(segs, crumbSeg{text: run.card})
 	}
 	if run.transcript != "" {
-		trail += roomCrumbSep + "transcript"
+		segs = append(segs, crumbSeg{text: "transcript"})
 	}
-	// The trail is what gives way, from its own end: the room a person is in is
-	// the one they can least afford to lose off the line.
-	space := width - ansi.StringWidth(mark+" "+tail)
-	return fit(mark+" "+fit(trail, space)+tail, width)
+	// The trail walks the same give-way ladder the top bar's crumb does
+	// (topbar.go's [fitTrail]) — one ladder for both, because the two are the
+	// same design wearing two separators, and a ladder each would be two places
+	// the same width could be spent two ways. The run a person is in is the
+	// current step, and it is the one they can least afford to lose off the
+	// line, which is the ladder's own floor.
+	space := width - ansi.StringWidth(mark + " " + tail)
+	rung := trailFull
+	for rung < trailTitle && trailWidth(fitTrail(segs, rung), roomCrumbSep) > space {
+		rung++
+	}
+	var steps []string
+	for _, seg := range fitTrail(segs, rung) {
+		steps = append(steps, seg.text)
+	}
+	return fit(mark+" "+strings.Join(steps, roomCrumbSep)+tail, width)
 }
 
 // orchCrumbWord is one step of the trail: the goal when there is one, and the

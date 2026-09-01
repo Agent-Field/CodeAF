@@ -215,7 +215,7 @@ started in.** `enter` on home opens a row of any project, and typing a path on
 home starts a conversation there — each on **its own** workspace, with that
 project's approval rules, crew, spend ceiling and saved shapes of work, resolved
 the same way this one's were. An unanchored conversation may acquire its project once with
-`/workspace`; otherwise there is simply more than one conversation. The status line's place word is
+`/workspace`; otherwise there is simply more than one conversation. The top bar's crumb is
 always the folder of the conversation on screen. See home's page under *Open
 another project from home*.
 

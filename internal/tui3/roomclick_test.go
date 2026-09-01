@@ -134,26 +134,99 @@ func TestAPressOnNothingInTheConversationDoesNothing(t *testing.T) {
 
 // ── WHAT IS STILL PRESSABLE ─────────────────────────────────────────────────
 
-// THE HEADER IS THE POINTER'S WAY OUT, AND IT IS PRESSABLE ALL THE WAY ACROSS —
-// its right end especially, because that is where "esc/← main" is printed and
-// that end is inside the roster's own columns. The rail claims every press in
-// those columns, so a header read after it would be dead at exactly the cells
-// carrying the words.
-func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
+// THE WAY OUT IS THE TOP BAR'S OWN WORD FOR IT, AND IT IS PRESSABLE AT ITS
+// CELLS — the "esc/← back" span at the bar's right end, where the header's
+// pinned row used to carry the same words. The bar is read before the body and
+// the rail, so a press on the span is the climb esc makes; a press anywhere
+// else on the bar's words is a press on nothing, because the crumb's titles
+// are facts, not doors.
+func TestTheBarsBackWordIsTheWayOut(t *testing.T) {
 	a, _, _ := roomApp(t)
-	for _, x := range []int{0, 2, a.width / 2, a.width - 2} {
+	clickRail(t, a, 0)
+	if !a.roomOpen() {
+		t.Fatal("the rail did not open a room")
+	}
+	if bar := plain(a.topBarWord(a.width)); !strings.Contains(bar, roomBackWord) {
+		t.Fatalf("the top bar does not name the way out:\n%q", bar)
+	}
+	if !a.backSpan.pressable() {
+		t.Fatal("the bar recorded no back span")
+	}
+	for _, x := range []int{a.backSpan.from, a.backSpan.to - 1} {
+		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
+		if a.roomOpen() {
+			t.Fatalf("a press on the bar's back word at column %d did not return to the conversation", x)
+		}
 		clickRail(t, a, 0)
 		if !a.roomOpen() {
 			t.Fatal("the rail did not open a room")
 		}
-		if head := plain(a.roomHead(a.width)); !strings.Contains(head, roomBackWord) {
-			t.Fatalf("the pinned header does not name the way out:\n%q", head)
+	}
+}
+
+// AND THE CRUMB'S TWO DOORS ARE THE TWO STEPS THAT ARE NOT WHERE YOU ARE: the
+// project is home, and the chat's own name is the precise way out of the room
+// — one crumb level up, the same climb esc makes.
+func TestTheCrumbsDoorsAreHomeAndTheWayOut(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+	if !a.roomOpen() {
+		t.Fatal("the rail did not open a room")
+	}
+	_ = plain(a.topBarWord(a.width)) // the spans are recorded by the draw
+	if !a.crumbHomeSpan.pressable() {
+		t.Fatal("the bar recorded no home span")
+	}
+	if !a.crumbChatSpan.pressable() {
+		t.Fatal("the bar recorded no chat span in a room")
+	}
+
+	// The chat's own name is the way out of the room.
+	drive(t, a, tea.MouseClickMsg{X: a.crumbChatSpan.from, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.crumbChatSpan.from, Y: 0, Button: tea.MouseLeft})
+	if a.roomOpen() {
+		t.Fatal("the room is still open after a press on the chat's name")
+	}
+
+	// And the project is home, from a room or from the conversation.
+	clickRail(t, a, 0)
+	_ = plain(a.topBarWord(a.width))
+	drive(t, a, tea.MouseClickMsg{X: a.crumbHomeSpan.from, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.crumbHomeSpan.from, Y: 0, Button: tea.MouseLeft})
+	if !a.at(pageHome) {
+		t.Fatal("a press on the project did not open home")
+	}
+}
+
+// A PRESS ON THE BAR'S OWN WORDS IS A PRESS ON NOTHING. The titles, the state,
+// the clock and the spend are things the bar says, and the doors are the spans
+// it records — a click that acted from anywhere else on that row would be a
+// door nobody can see.
+func TestAPressOnTheBarsWordsIsAPressOnNothing(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+	if !a.roomOpen() {
+		t.Fatal("the rail did not open a room")
+	}
+	bar := plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, "Fix the nil-map crash") {
+		t.Fatalf("the bar is %q, want the room's title", bar)
+	}
+
+	// Every cell of the bar row that no span claims, title and trimmings alike.
+	for x := 0; x < a.width; x++ {
+		if a.crumbHomeSpan.holds(x) || a.crumbChatSpan.holds(x) ||
+			a.modelSpan.holds(x) || a.topYoloSpan.holds(x) ||
+			a.backSpan.holds(x) || a.roomStop.holds(x) {
+			continue
 		}
-		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		if a.roomOpen() {
-			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
+		if _, took := a.topBarPress(x, 0); took {
+			t.Fatalf("a press at (%d, 0) on the bar's words acted", x)
 		}
+	}
+	if !a.roomOpen() {
+		t.Fatal("the bar's words are a door")
 	}
 }
 

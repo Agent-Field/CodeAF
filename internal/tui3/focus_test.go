@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// headRow is the frame's first row: the pinned focus header, when there is one.
+// headRow is the frame's first row: the top bar, when there is one.
 func headRow(a *app) string {
 	rows := strings.Split(frame(a), "\n")
 	if len(rows) == 0 {
@@ -19,8 +19,8 @@ func headRow(a *app) string {
 	return rows[0]
 }
 
-// THE HEADER SAYS WHERE YOU ARE AND WHAT IS HAPPENING THERE. It is pinned above
-// the page, it wears the accent, and it names the way out.
+// THE TOP BAR SAYS WHERE YOU ARE AND WHAT IS HAPPENING THERE. It is pinned above
+// the page, the room's cluster wears the accent, and it names the way out.
 func TestARoomPinsAFocusHeader(t *testing.T) {
 	a, _, advance := roomApp(t)
 	clickRail(t, a, 0)
@@ -30,31 +30,40 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	head := plain(headRow(a))
 	// The clock is the RAIL's spelling of an age ("2m 12s"), because the rail is
 	// where a person already reads this node's clock.
-	for _, want := range []string{"main ▸ Fix the nil-map", "working", "2m 12s", roomBackWord} {
+	for _, want := range []string{"Fix the nil-map", "working", "2m 12s", roomBackWord} {
 		if !strings.Contains(head, want) {
-			t.Fatalf("the focus header is missing %q:\n%s", want, head)
+			t.Fatalf("the top bar is missing %q:\n%s", want, head)
 		}
 	}
 	if !strings.Contains(headRow(a), sgr256(hueAccent)) {
-		t.Fatalf("the focus header is not in the accent:\n%q", headRow(a))
+		t.Fatalf("the room's bar is not in the accent:\n%q", headRow(a))
 	}
 	// PINNED: the page scrolls under it and it stays on the first row.
 	a.roomScroll(-3)
 	if got := plain(headRow(a)); !strings.Contains(got, "Fix the nil-map") {
-		t.Fatalf("the header scrolled away with the page:\n%s", got)
+		t.Fatalf("the top bar scrolled away with the page:\n%s", got)
 	}
-	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
-	// resolves through — a header the scrolling did not know about would push
-	// the room's last row under the input box. It is the ONLY pinned row here:
-	// the roster is standing on a frame this wide, and the strip stands down
-	// wherever it is (taskstrip.go, view.go's [app.topHeight]).
-	if a.headHeight() != 1 || a.stripHeight() != 0 || a.bodyTop() != 1 {
-		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
-			a.headHeight(), a.stripHeight(), a.bodyTop())
+	// AND IT COSTS THE PAGE ITS ROWS, in the one number every geometric question
+	// resolves through — a bar the scrolling did not know about would push the
+	// room's last row under the input box. The bar is two rows — itself and its
+	// rule — and it is the ONLY pinned thing here: the roster is standing on a
+	// frame this wide (view.go's [app.topHeight]).
+	if a.headHeight() != 2 || a.bodyTop() != 2 {
+		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d top=%d",
+			a.headHeight(), a.bodyTop())
 	}
+	// ESC CLIMBS ONE CRUMB LEVEL, and with no parent above this room that is the
+	// conversation — but the bar is the CONVERSATION'S head now, not the room's,
+	// so it stays: what leaves the frame is the room's facts on it.
 	drive(t, a, key("esc"))
-	if a.headHeight() != 0 {
-		t.Fatal("the header outlived the room")
+	if a.roomOpen() {
+		t.Fatal("esc left the room open")
+	}
+	if a.headHeight() != 2 {
+		t.Fatal("the top bar went with the room")
+	}
+	if got := plain(headRow(a)); strings.Contains(got, "Fix the nil-map") {
+		t.Fatalf("the closed room's title is still on the bar:\n%s", got)
 	}
 }
 

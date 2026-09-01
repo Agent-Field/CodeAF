@@ -5423,8 +5423,9 @@ func (a *app) tasksAnimating() bool {
 	}
 	// The strip turns the same spinner on a frame too narrow for a column, and
 	// the roster over the body is the column by another shape — either one is a
-	// reason to keep the paint clock alive (taskstrip.go, [app.railFull]).
-	if !a.railStanding() && !a.stripShowing() {
+	// reason to keep the paint clock alive (taskchip.go's [app.liveShowing],
+	// [app.railFull]).
+	if !a.railStanding() && !a.liveShowing() {
 		return false
 	}
 	// A ROSTER FULL OF SETTLED WORK IS A STILL PICTURE. The column stands for the

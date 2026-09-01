@@ -1049,6 +1049,32 @@ func (a *app) slotRefusal() error {
 // other way into a place (pages.go's [app.showPage]).
 func (a *app) openSettings() { a.showPage(pageSettings) }
 
+// openSettingsTab is the Settings page opened straight at one tab — the door
+// the top bar's YOLO term walks through (topbar.go), and the shape
+// [app.openSpending] has always had: the page, the tab, the query reset, the
+// rows rebuilt, in that order, because a tab the rows have not been rebuilt
+// for is a tab whose cursor answers about the tab before it.
+func (a *app) openSettingsTab(tab string) tea.Cmd {
+	cmd := a.showPage(pageSettings)
+	a.sheet.tab = settingsTabIndex(tab)
+	a.sheet.query.reset()
+	a.sheet.build()
+	a.touch()
+	return cmd
+}
+
+// settingsTabIndex is where a tab sits in the bar. It is looked up rather than
+// written down, so a tab inserted before it moves the doors with it
+// ([spendingTabIndex]'s own reason, said once more for every tab).
+func settingsTabIndex(tab string) int {
+	for at, title := range settingTabs {
+		if title == tab {
+			return at
+		}
+	}
+	return 0
+}
+
 // raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
 // else calls it, which is what makes the router the one road in.
 func (a *app) raiseSettings() {

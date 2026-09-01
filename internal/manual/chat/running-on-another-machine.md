@@ -103,7 +103,7 @@ terminal kill the ssh child this session started:
 pkill -f "ssh -T localhost aforge engine"
 ```
 
-The status line grows its `connection` segment, the surface redials itself, and the answer
+The top bar's host segment turns into the reconnect sentence, the surface redials itself, and the answer
 continues rather than restarting. Send something while it is down and the message is not
 lost quietly — it comes back as `submit failed: reconnecting to localhost — try that again
 in a moment`, and pressing enter again once it is back sends it.
@@ -231,7 +231,7 @@ The workspace is written with the machine in front of it and a colon between, th
 would type it into `scp`:
 
 - `devbox:/s/c/app` on the status sheet's `place` row
-- `devbox:app` in the status line's place segment
+- `devbox:app` in the top bar's host segment
 - `devbox:/srv/code/app` in full in `/status`
 
 The legend under the input box says the machine too, but as a segment of its own rather

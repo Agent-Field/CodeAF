@@ -1433,14 +1433,15 @@ func (a *app) status(width int) string {
 // row on chrome, and it spends it exactly where the alternative is truncating
 // the numbers a person opened the terminal to read.
 func (a *app) statusRows(width int) []string {
-	// THE DOOR IS CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE IT
-	// LANDED, so a span is its own answer to "was it drawn on this frame"
-	// (standdoor.go). Every early return below is a row with no keeping segment
-	// on it, and each of them leaves this cleared.
+	// THE DOORS ARE CLEARED BEFORE THE ROW IS LAID OUT AND WRITTEN ONLY WHERE
+	// THEY LANDED, so a span is its own answer to "was it drawn on this frame"
+	// (standdoor.go). Every early return below is a row with no doors on it,
+	// and each of them leaves these cleared.
 	a.keepSpan, a.keepRow = hudSpan{}, 0
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
+	a.ctxSpan, a.ctxRow = hudSpan{}, 0
+	a.openSpan, a.openRow = hudSpan{}, 0
 	if width < 1 {
-		a.modelSpan = hudSpan{}
 		return []string{""}
 	}
 	// AND AT PHONE WIDTH IT IS A DECK, deterministically two rows, because the
@@ -1451,73 +1452,39 @@ func (a *app) statusRows(width int) []string {
 	if layoutTier(width) == tierPhone {
 		return a.statusDeck(width)
 	}
-	left, parts, wrapped := a.statusLayout(width)
-	right, plainRight := a.paintParts(parts)
-	// THE CLUSTER GOES ACCENT IN A ROOM, and it is the one condition under which
-	// it is painted at all: the chip is a statement about which page the keyboard
-	// is pointed at, and it wears the accent at both ends of the frame — here and
-	// in the pinned header (room.go).
-	paint := a.pal.dim
-	if a.roomOpen() {
-		paint = a.pal.accent
+	// THE WELCOME BOX EMPTIES THE ROW ([app.statusQuiet]): the top bar carries
+	// the crumb and nothing else is true yet — a greeting is the one moment the
+	// surface is about nothing, and a row of numbers over a box that is asking
+	// for the first sentence would be answering a question nobody asked.
+	if a.statusQuiet() {
+		return []string{""}
 	}
-	// The right cluster is right-aligned in both shapes below, so where the
-	// keeping segment landed is one piece of arithmetic said once.
+	left, leftParts, parts, wrapped := a.statusLayout(width)
+	right, plainRight := a.paintParts(parts)
+	// The right cluster is right-aligned in both shapes below, so where its
+	// doors landed is one piece of arithmetic said once.
 	base := width - ansi.StringWidth(plainRight)
 	if wrapped {
-		a.markKeepingDoor(parts, base, 1)
+		a.markKeepingDoor(leftParts, 0, 0)
 		a.markMoneyDoor(parts, base, 1)
+		a.markCtxDoor(parts, base, 1)
+		a.markOpenDoor(parts, base, 1)
 		return []string{
-			fit(a.paintIdentity(left, paint), width),
+			fit(a.paintPresence(leftParts), width),
 			rightAlign(right, plainRight, width),
 		}
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(plainRight)
 	if gap < 1 {
-		// Nothing fits, even emptied: the telemetry is the half that survives,
-		// because what is HAPPENING outranks what it is called. The identity is
-		// not drawn, so nothing on this row is pressable either.
-		a.modelSpan = hudSpan{}
+		// Nothing fits, even emptied: the ticking facts are the half that
+		// survives, because what is HAPPENING outranks what is watching it.
 		return []string{fit(right, width)}
 	}
-	a.markKeepingDoor(parts, base, 0)
+	a.markKeepingDoor(leftParts, 0, 0)
 	a.markMoneyDoor(parts, base, 0)
-	return []string{a.paintIdentity(left, paint) + strings.Repeat(" ", gap) + right}
-}
-
-// paintIdentity paints the left cluster, BRIGHTENING THE MODEL SEGMENT while the
-// pointer is on it.
-//
-// Every interactive thing on this surface answers the pointer before it is
-// clicked (hover.go), and this one never did: the model's name has been the door
-// to the picker for a wave now, and it looked exactly like the telemetry it sits
-// beside. A label that is also a control has to say so.
-//
-// IT IS A BRIGHTENING AND NOT A BACKGROUND BAND, which is the jump chip's own
-// decision for the jump chip's own reason (jumpchip.go): the segment is three
-// words at the end of a line, not a row of a list, and a highlighted rectangle
-// around them would be the one boxed thing on a surface with no boxes. One step
-// up from wherever the cluster already is — accent from the conversation's dim,
-// ink from a room's accent — so the step reads the same in both.
-//
-// THE PIECES ARE PAINTED SEPARATELY RATHER THAN NESTED. These hues are raw SGR
-// with an explicit reset (styles.go's [palette.paint]), so a colour inside a
-// colour would end the outer one at the inner one's reset and leave the tail of
-// the cluster unpainted. The cluster is plain text at this point and the span was
-// measured against it, so cutting it in cells is exact.
-func (a *app) paintIdentity(left string, paint func(string) string) string {
-	span := a.modelSpan
-	if !span.pressable() || !a.hoveringStatusModel() || span.to > ansi.StringWidth(left) {
-		return paint(left)
-	}
-	lift := a.pal.accent
-	if a.roomOpen() {
-		lift = a.pal.ink
-	}
-	head := ansi.Cut(left, 0, span.from)
-	segment := ansi.Cut(left, span.from, span.to)
-	tail := ansi.Cut(left, span.to, ansi.StringWidth(left))
-	return paint(head) + lift(segment) + paint(tail)
+	a.markCtxDoor(parts, base, 0)
+	a.markOpenDoor(parts, base, 0)
+	return []string{a.paintPresence(leftParts) + strings.Repeat(" ", gap) + right}
 }
 
 // hudGap is the smallest barrier the two clusters will stand next to each
@@ -1538,50 +1505,75 @@ const hudGap = 3
 //	        name and a quiet session fits on one row at sixty columns, and
 //	        spending a row of the conversation on a gap nobody needed is the
 //	        cost this law exists to avoid.
-func (a *app) statusLayout(width int) (string, []hudPart, bool) {
-	// THE MODEL'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is what
-	// keeps the press and the paint in step: this function is what the frame, the
-	// chrome height and the hit-testing all resolve through, so a segment drawn
-	// here and a segment pressed there cannot be at two different offsets
-	// (app.go's [app.statusPress]). A cluster the width pressure then drops
-	// clears it again — see [app.statusRows].
-	left, span := a.identityParts(0)
-	a.modelSpan = span
+func (a *app) statusLayout(width int) (string, []hudPart, []hudPart, bool) {
+	// THE ROW'S TWO CLUSTERS ARE SPLIT BY WHAT THEY ARE ABOUT. The presence
+	// cluster (left, dim) is what the session is doing in the background — jobs,
+	// watches, standing orders — and the ticking cluster (right) is what is
+	// happening to the conversation itself. The identity that used to open this
+	// row is the top bar's crumb now (topbar.go), and the facts that left the
+	// row — crew, delta, cache, burn, the served rider, YOLO, the link — are one
+	// press away in the deck's sheet and in /status, which is what a sheet is
+	// for: everything, deep, behind the numbers that move.
 	parts := a.telemetry(width)
-	// The quiet row loses its bill and its meter BEFORE the clocks are stamped:
-	// this is a state and not width pressure, and a segment the row is not
-	// drawing has nothing to be fresh about ([app.statusQuiet]).
-	if a.statusQuiet() {
-		parts = quietParts(parts)
+	var leftParts, rightParts []hudPart
+	for _, p := range parts {
+		switch p.kind {
+		case segAmbient, segKeeping:
+			leftParts = append(leftParts, p)
+		case segOpen, segCost, segCtx, segETA, segState:
+			rightParts = append(rightParts, p)
+		}
 	}
 	// The change clocks are stamped from the ASSEMBLED segments, before any
 	// width pressure is applied: a number that moved has moved whether or not
 	// this frame had room to say so.
 	a.freshen(parts)
-
-	if room := width - ansi.StringWidth(left) - hudGap; hudWidth(parts) <= room {
-		return left, parts, false
+	fits := func() bool {
+		return hudWidth(leftParts)+hudGap+hudWidth(rightParts) <= width
 	}
-	// AND UNDER REAL PRESSURE THE CLUSTER IS SAID SHORTER, NEVER CLIPPED. Both
-	// branches below used to hand a cluster that had already overrun to
-	// something that cut it — [fit]'s ellipsis on the wrapped row, and the whole
-	// identity dropped on the row that did not wrap ([app.statusRows]). Asking
-	// for it again with the columns it actually has lets the served rider give
-	// up a spelling instead of a fact ([app.identityParts]).
-	if width < hudWrap {
-		for hudWidth(parts) > width && dropSegment(&parts) {
+	if !fits() && width < hudWrap {
+		// BELOW [hudWrap] THE TICKING CLUSTER TAKES ITS OWN ROW, right-aligned,
+		// and the presence cluster has the first to itself — the two clusters are
+		// about different things, and a frame this narrow is not wide enough for
+		// a sentence about one of them to sit beside a sentence about the other.
+		for hudWidth(rightParts) > width && dropRowSegment(&leftParts, &rightParts) {
 		}
-		left, span = a.identityParts(width)
-		a.modelSpan = span
-		return left, parts, true
+		for hudWidth(leftParts) > width && dropRowSegment(&leftParts, &rightParts) {
+		}
+		return joinParts(leftParts), leftParts, rightParts, true
 	}
-	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap && dropSegment(&parts) {
+	for !fits() && dropRowSegment(&leftParts, &rightParts) {
 	}
-	if room := width - hudWidth(parts) - hudGap; ansi.StringWidth(left) > room {
-		left, span = a.identityParts(room)
-		a.modelSpan = span
+	// AND UNDER REAL PRESSURE THE CLUSTERS ARE SAID SHORTER, NEVER CLIPPED: the
+	// [dropOrder] walk above is the whole of the giving way, and what it cannot
+	// reach is dropped by [app.statusRows]'s own last resort.
+	return joinParts(leftParts), leftParts, rightParts, false
+}
+
+// joinParts is the plain join of a cluster, for the width math that has not
+// painted anything yet.
+func joinParts(parts []hudPart) string {
+	var texts []string
+	for _, p := range parts {
+		texts = append(texts, p.text)
 	}
-	return left, parts, false
+	return strings.Join(texts, " · ")
+}
+
+// paintPresence paints the presence cluster. It is dim, always, and it is
+// painted through [app.paintPart] rather than a flat dim so the keeping segment
+// keeps its breathing glyph and its door's lift — the segment moved to the left
+// end, and neither the spin nor the affordance was ever the right cluster's to
+// own.
+func (a *app) paintPresence(parts []hudPart) string {
+	var painted string
+	for i, part := range parts {
+		if i > 0 {
+			painted += a.pal.dim(" · ")
+		}
+		painted += a.paintPart(part)
+	}
+	return painted
 }
 
 // statusHeight is how many rows the HUD's status takes: the frame, the chrome
@@ -1598,120 +1590,10 @@ func (a *app) statusHeight(width int) int {
 	if layoutTier(width) == tierPhone {
 		return deckHeight
 	}
-	if _, _, wrapped := a.statusLayout(width); wrapped {
+	if _, _, _, wrapped := a.statusLayout(width); wrapped {
 		return 2
 	}
 	return 1
-}
-
-// identity is the left cluster: WHICH conversation, and WHAT is answering it.
-//
-//	porting the parser · gpt-4.1-mini:high
-//
-// The model is its BASENAME. "deepseek/deepseek-v4-flash" is a routing address
-// and its first half is the same for every model a person is choosing between —
-// nine cells that never vary, on the row where width is scarcest. The whole id
-// stays wherever it is being CHOSEN or RECORDED: the picker's rows, the /model
-// note, the session file. The reasoning rider is kept because it is not part of
-// the address — it is how this model is being run (view.go's [app.statusRow]).
-//
-// The name falls back to the workspace's base name until the session has named
-// itself (session's title.go), so the cluster is never empty.
-func (a *app) identity() string {
-	text, _ := a.identityParts(0)
-	return text
-}
-
-// identityParts is that cluster and the COLUMNS ITS MODEL SEGMENT OCCUPIES on
-// the row, because the model segment is a thing you can press: the whole point
-// of a name on screen is that it is where a person already looks when they want
-// to change it, and until this wave the only door was typing /model.
-//
-// The span is [from, to) in cells from the row's left edge, which is where this
-// cluster is drawn. An empty span (to == 0) means there is nothing to press — a
-// session with no model yet, or a room whose node is past being moved: the press
-// always acts on WHAT THE ROW NAMES, so in a room it is the node's model and out
-// here it is the conversation's, and neither can ever be mistaken for the other.
-func (a *app) identityParts(width int) (string, hudSpan) {
-	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
-	// WHERE YOU ARE, and while a room is open where you are is a task — but the
-	// telemetry beside it is still the session's, because a room is a view over
-	// one body region and not a second session (room.go). A status line that
-	// re-pointed the cost and the context meter at a node would be quoting
-	// figures nobody is measuring.
-	//
-	// AND THE MODEL SEGMENT NAMES THE ROOM'S NODE. The status row is ABOUT THE
-	// WINDOW, and while a room is open the window IS that task — so the law above
-	// argues FOR this and not against it. What the law forbids is re-pointing the
-	// TELEMETRY, which measures the session and would be quoting figures nobody
-	// took; the node's model is not a measurement, it is a fact the node
-	// published. It is said here because this is the only ALWAYS-VISIBLE model
-	// name on the screen, and a person who launched a task on one model, opened
-	// its room, and read the conversation's model at the foot of the frame was
-	// told the wrong thing by the one line they could not look away from.
-	//
-	// AND WHILE A ROOM IS OPEN THE SEGMENT IS A DOOR ONTO THAT NODE'S OWN MODEL —
-	// never onto the conversation's. The two are one gesture over two subjects,
-	// which is the only reading of "press the name to change it" that stays true
-	// wherever the name is: what the row names is what the press moves. A picker
-	// opened from in here retargets THIS node from its next turn on and touches
-	// neither the conversation nor any other task (room.go's [app.retargetTask],
-	// internal/session's [Agent.RetargetTask]).
-	//
-	// THE SPAN IS EMPTY WHENEVER THE PICK COULD NOT LAND, which is the design law
-	// rather than a special case: a capability that cannot work is absent, not
-	// broken. A node that has finished, failed, been stopped or needs a look has a
-	// model that is a FACT about what happened — nothing can move it and the
-	// engine refuses to try — so the name is still drawn and simply cannot be
-	// pressed ([app.roomModelMovable] holds the whole of that list). An
-	// affordance that lit up and then apologised would be worse than none.
-	if a.roomOpen() {
-		cluster := a.roomChip()
-		word := a.roomModelWord()
-		if word == "" {
-			return cluster, hudSpan{}
-		}
-		// The LEAD WORD IS PART OF THE TARGET, exactly as the served rider is part
-		// of the conversation's: "task glm-5.2" is one fact said in three words, and
-		// a person pressing any of them means the same thing (room.go's
-		// [roomModelLead]).
-		from := ansi.StringWidth(cluster + " · ")
-		cluster += " · " + word
-		if !a.roomModelMovable() {
-			return cluster, hudSpan{}
-		}
-		return cluster, hudSpan{from: from, to: from + ansi.StringWidth(word)}
-	}
-	name := a.sessionName()
-	if name == "" {
-		name = a.place
-	}
-	model := modelBase(a.model)
-	if model == "" {
-		return name, hudSpan{}
-	}
-	// The RIDER IS PART OF THE TARGET. "via deepinfra · 92 tok/s" is a fact
-	// about the model that is answering, so a person pressing it means the same
-	// thing they mean by pressing the id.
-	//
-	// AND THE RIDER IS THE HALF THE WIDTH IS TAKEN OUT OF. The conversation's
-	// name and the model's are what the cluster IS; the rider is what is
-	// happening to it, and it is the only part of the line that has a shorter
-	// true spelling to fall back on. So the columns left after the two names are
-	// the rider's budget, and a width of zero or less is no budget at all — the
-	// reading every caller that is not laying out the status row wants
-	// ([app.identity]).
-	segment := model
-	switch {
-	case width <= 0:
-		segment += a.servedRiderAt(-1)
-	default:
-		if room := width - ansi.StringWidth(name+" · "+model); room > 0 {
-			segment += a.servedRiderAt(room)
-		}
-	}
-	from := ansi.StringWidth(name + " · ")
-	return name + " · " + segment, hudSpan{from: from, to: from + ansi.StringWidth(segment)}
 }
 
 // hudSpan is a pressable stretch of the status row: [from, to) cells on it.
@@ -1978,7 +1860,10 @@ func (a *app) openSegment() string {
 	}
 	word := itoa(open) + " " + homeOpenWord
 	if waiting := a.waitingCount(); waiting > 0 {
-		word += " · " + itoa(waiting) + " waiting"
+		// "want you" and not "waiting": the count is of conversations whose
+		// question is aimed at this person, and the row's job is to say whose
+		// move it is — "waiting" names the state, "want you" names the reader.
+		word += " · " + itoa(waiting) + " want you"
 	}
 	return word
 }
@@ -2004,16 +1889,25 @@ func (a *app) openSegment() string {
 //	open     how many other conversations this terminal holds — true, and about
 //	         somewhere else; at forty columns what a person needs is what THIS
 //	         conversation is doing
-var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
+// dropOrder is the bottom row's give-way, first dropped → last. The presence
+// clauses go first because a frame too narrow for what is watching can still
+// say what is happening; the bill is the last number to go, because it is the
+// one a person is watching move. The state word is not in the order at all —
+// what is happening is never dropped for a number.
+var dropOrder = []hudSeg{segAmbient, segKeeping, segOpen, segETA, segCtx, segCost}
 
-// dropSegment removes the least important segment still present, and reports
-// whether it found one to remove.
-func dropSegment(parts *[]hudPart) bool {
+// dropRowSegment removes the least important segment still present from either
+// cluster, and reports whether it found one to remove. It walks the order
+// across both lists, which is what keeps the left and the right end of the row
+// yielding in one order rather than two orders that could disagree.
+func dropRowSegment(left, right *[]hudPart) bool {
 	for _, kind := range dropOrder {
-		for i, part := range *parts {
-			if part.kind == kind {
-				*parts = append((*parts)[:i], (*parts)[i+1:]...)
-				return true
+		for _, list := range []*[]hudPart{left, right} {
+			for i, part := range *list {
+				if part.kind == kind {
+					*list = append((*list)[:i], (*list)[i+1:]...)
+					return true
+				}
 			}
 		}
 	}
@@ -2557,6 +2451,14 @@ func (a *app) stateWord() (string, string) {
 	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
+	// AND IDLE RENDERS AS NOTHING (ISSUE-126): the word the row used to end on
+	// said only that nothing was happening, which the row's own emptiness says
+	// better — an idle chat's status row simply ends at the numbers. The word
+	// stays in /status and the deck's sheet, where it is an answer to a question
+	// somebody asked; it is gone from the row, where it was an answer to nobody.
+	if a.state == stateIdle {
+		return "", ""
+	}
 	word := a.state.String()
 	switch a.state {
 	case stateWorking:
@@ -2819,29 +2721,22 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
-	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
-	// the path: none of them is a fact about the page on screen, and the one
-	// thing a person in here needs from this slot is the key that gets them out
-	// (room.go). The task's own title is on the status row two lines down, where
-	// a room renames the identity cluster ([app.identityParts]).
+	// THE LEFT END IS EMPTY AT REST (ISSUE-126): the host and the branch moved
+	// to the top bar's right cluster, where the slow facts live, and a legend
+	// that repeated them here would be the frame saying everything twice. What
+	// stays is the room's own word while one is open — the one thing a person
+	// in here needs from this slot, the key that gets them out — and while a
+	// history walk is on it says what esc actually does, which for those few
+	// keystrokes is not "back": the walk is dismissed first and the person's own
+	// draft comes back (room.go's [app.roomKey], recall.go). The slot is here to
+	// promise the NEXT keystroke, so it has to move with it.
 	if a.roomOpen() {
-		// AND WHILE A HISTORY WALK IS ON IT SAYS WHAT ESC ACTUALLY DOES, which for
-		// those few keystrokes is not "main": the walk is dismissed first and the
-		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
-		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
 			return roomLegendRecallWord, true
 		}
 		return roomLegendWord, true
 	}
-	if room < 1 {
-		return "", true
-	}
-	branch := a.branchWord()
-	if width < hudTight {
-		branch = ""
-	}
-	return fit(dotted(a.host, branch), room), true
+	return "", true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any
@@ -2898,11 +2793,18 @@ func (a *app) legendRight(width int) string {
 	if tip := a.noticeHint(); tip != "" {
 		return tip
 	}
-	// THE IDLE SLOT CARRIES BOTH DOORS. `/ commands` is recoverable a dozen
-	// other ways — the manual, /help, typing a slash — and home, until this
-	// line existed, was recoverable only by knowing it was there. So the rest
-	// state of the slot names them both, and neither costs a row: this is the
-	// legend, which is on the frame either way (home.go).
+	// THE IDLE SLOT DECAYS WITH THE TIPS (ISSUE-126). The generic keys —
+	// `space space home · tab last · / commands` — are shown while the
+	// earned-tips machinery would still show a tip to this person, and quiet
+	// after: they are the same kind of thing as a tip, an advertisement for a
+	// gesture nobody has used yet, and a person who has retired every tip has
+	// earned the quiet too. The doors themselves do not decay — the crumb's
+	// project step is the home door now, and the conversations list is one
+	// press away on the status row (topbar.go, rowdoors.go) — so what quiets
+	// here is the ADVERTISING, not the way in.
+	if !a.noticeTipsLive() {
+		return ""
+	}
 	if a.homeDoorShowing() {
 		// AND THE WAY BACK, when there is one. `tab last` is absent whenever this
 		// terminal holds only one conversation, which is the emptiness law again:

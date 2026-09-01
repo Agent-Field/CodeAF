@@ -9,7 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// ── THE STATUS LINE'S MODEL, WHILE A ROOM IS OPEN ───────────────────────────
+// ── THE MODEL, WHILE A ROOM IS OPEN ─────────────────────────────────────────
 //
 // The bug these tests hold shut: a conversation on one model, a task launched
 // on another, the task genuinely running on the one it was given — and the only
@@ -17,8 +17,12 @@ import (
 // inside the task's own room. A person read it and concluded their task had run
 // on the default.
 //
-// The law is render.go's own, applied rather than excepted: the status row is
-// about THE WINDOW, and while a room is open the window IS that task.
+// The law is the window's own, applied rather than excepted: while a room is
+// open the window IS that task. Where the law lives moved with the header: the
+// status row's identity cluster is the TOP BAR's now (topbar.go), so at wide
+// width the room's model is the bar's model segment — the one fact on the bar
+// that is also a door. At phone width nothing moved: the deck's model chip is
+// still row 2, and the sheet still says both models.
 
 // roomModelApp is a room open on a node that was launched with this model, on a
 // session running something else — the exact shape of the night's bug. An empty
@@ -40,54 +44,50 @@ func roomModelApp(t *testing.T, model string) (*app, *roomFake) {
 	return a, fake
 }
 
-// statusText is the status line as a reader sees it, drawn through the frame's
-// own door (view.go's [app.statusRow]) so the reasoning splice is on it.
-func statusText(a *app) string {
-	return plain(strings.Join(a.statusRow(a.width), "\n"))
-}
-
-// AT WIDE WIDTH THE SEGMENT NAMES THE ROOM'S NODE, and it says whose model it
+// AT WIDE WIDTH THE TOP BAR NAMES THE ROOM'S NODE, and it says whose model it
 // is: the task's, led by the word, and never the conversation's.
-func TestTheStatusLineNamesTheOpenRoomsModel(t *testing.T) {
+func TestTheTopBarNamesTheOpenRoomsModel(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 
-	line := statusText(a)
+	bar := plain(a.topBarWord(a.width))
 	for _, want := range []string{"Ship the parser fix", roomModelLead + "glm-5.2"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("the status line is missing %q while the room is open:\n%q", want, line)
+		if !strings.Contains(bar, want) {
+			t.Fatalf("the top bar is missing %q while the room is open:\n%q", want, bar)
 		}
 	}
-	// THE CONVERSATION'S MODEL IS NOT ON THE LINE while somebody is standing in a
+	// THE CONVERSATION'S MODEL IS NOT ON THE BAR while somebody is standing in a
 	// room that runs on something else. This is the whole bug.
-	if strings.Contains(line, "deepseek") {
-		t.Fatalf("the room's status line still names the conversation's model:\n%q", line)
+	if strings.Contains(bar, "deepseek") {
+		t.Fatalf("the room's bar still names the conversation's model:\n%q", bar)
 	}
-	// It is the BASENAME, which is the row's own law about its scarce width — the
-	// vendor is nine cells that never vary (render.go's [app.identity]).
-	if strings.Contains(line, "z-ai/") {
-		t.Fatalf("the task's model is drawn as a routing address, not a name:\n%q", line)
+	// It is the BASENAME, which is the surface's own law about its scarce width —
+	// the vendor is nine cells that never vary.
+	if strings.Contains(bar, "z-ai/") {
+		t.Fatalf("the task's model is drawn as a routing address, not a name:\n%q", bar)
 	}
 
 	// AND ESC GIVES EVERYTHING BACK. The window is the conversation again, so the
-	// name on the line is the conversation's again.
+	// name on the bar is the conversation's again — its basename, which is the
+	// bar's own law about its scarce width.
 	a.closeRoom()
-	line = statusText(a)
-	if !strings.Contains(line, "deepseek-v4-flash") {
-		t.Fatalf("closing the room did not restore the conversation's model:\n%q", line)
+	bar = plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, "deepseek-v4-flash") {
+		t.Fatalf("closing the room did not restore the conversation's model:\n%q", bar)
 	}
-	if strings.Contains(line, roomModelLead) || strings.Contains(line, "glm-5.2") {
-		t.Fatalf("the closed room's model is still on the line:\n%q", line)
+	if strings.Contains(bar, roomModelLead) || strings.Contains(bar, "glm-5.2") {
+		t.Fatalf("the closed room's model is still on the bar:\n%q", bar)
 	}
 }
 
 // AND AT PHONE WIDTH IT IS ROW 2 OF THE DECK, under a row 1 that has already
-// renamed itself to the task (statusdeck.go).
+// renamed itself to the task (statusdeck.go) — the phone tier has no top bar,
+// and the deck is where the crumb and the model live there.
 func TestTheDecksModelChipNamesTheOpenRoomsModel(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 44, 20
 	a.touch()
 
-	deck := deckRowsOf(t, a)
+	deck := deckRowsOf(a)
 	if got := len(deck); got != deckHeight {
 		t.Fatalf("the deck is %d rows in a room, want %d", got, deckHeight)
 	}
@@ -99,7 +99,7 @@ func TestTheDecksModelChipNamesTheOpenRoomsModel(t *testing.T) {
 	}
 
 	a.closeRoom()
-	if deck := deckRowsOf(t, a); !strings.Contains(deck[1], "deepseek-v4-flash") {
+	if deck := deckRowsOf(a); !strings.Contains(deck[1], "deepseek-v4-flash") {
 		t.Fatalf("closing the room did not restore the deck's model chip:\n%q", deck[1])
 	}
 }
@@ -113,38 +113,41 @@ func TestTheDecksModelChipNamesTheOpenRoomsModel(t *testing.T) {
 func TestANodeWithNoPublishedModelNamesNoModelAtAll(t *testing.T) {
 	a, _ := roomModelApp(t, "")
 
-	for _, width := range []int{200, 44} {
-		a.width = width
-		a.touch()
-		line := statusText(a)
-		if strings.Contains(line, roomModelLead) {
-			t.Fatalf("at %d columns a node with no model still led one:\n%q", width, line)
-		}
-		if strings.Contains(line, "deepseek") {
-			t.Fatalf("at %d columns the room borrowed the session's model as a fallback:\n%q",
-				width, line)
-		}
+	// The wide bar.
+	if bar := plain(a.topBarWord(a.width)); strings.Contains(bar, roomModelLead) ||
+		strings.Contains(bar, "deepseek") {
+		t.Fatalf("the bar borrowed the session's model as a fallback:\n%q", bar)
+	}
+
+	// And the phone deck.
+	a.width, a.height = 44, 20
+	a.touch()
+	deck := deckRowsOf(a)
+	if strings.Contains(strings.Join(deck, "\n"), roomModelLead) ||
+		strings.Contains(strings.Join(deck, "\n"), "deepseek") {
+		t.Fatalf("the deck borrowed the session's model as a fallback:\n%q", deck)
 	}
 }
 
-// THE DIAL IS THE CONVERSATION'S. The reasoning level is spliced onto the model
-// segment by lending a.model its suffixed form (view.go's [app.statusRow]), and
-// a task model must never wear it — a knob the person turned for this session,
-// printed on a node that was never run with it, is a fact invented on screen.
+// THE DIAL IS THE CONVERSATION'S. The reasoning level is spliced onto the
+// conversation's own model and never onto a task's — a knob the person turned
+// for this session, printed on a node that was never run with it, is a fact
+// invented on screen. What a task's word may carry is its own effort clause
+// (taskeffort.go), which is the node's fact, not this dial.
 func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	fake.levels = map[string]string{"deepseek/deepseek-v4-flash": "high"}
 	settleLevels(a, "deepseek/deepseek-v4-flash")
 
-	line := statusText(a)
-	if strings.Contains(line, ":high") {
-		t.Fatalf("the task's model is wearing the conversation's reasoning level:\n%q", line)
+	bar := plain(a.topBarWord(a.width))
+	if strings.Contains(bar, ":high") {
+		t.Fatalf("the task's model is wearing the conversation's reasoning level:\n%q", bar)
 	}
-	// And the level is real: it is on the line the moment the window is the
+	// And the level is real: it is on the bar the moment the window is the
 	// conversation again, which is what makes the absence above a decision.
 	a.closeRoom()
-	if line := statusText(a); !strings.Contains(line, "deepseek-v4-flash:high") {
-		t.Fatalf("the conversation's own level went missing with the room:\n%q", line)
+	if bar := plain(a.topBarWord(a.width)); !strings.Contains(bar, "deepseek-v4-flash:high") {
+		t.Fatalf("the conversation's own level went missing with the room:\n%q", bar)
 	}
 }
 
@@ -156,19 +159,18 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 	a.width, a.height = 120, 24
 	a.touch()
 
-	// The frame is what records the columns, so it is drawn before they are read.
-	rows := strings.Split(plain(frame(a)), "\n")
+	// The bar's draw is what records the span, so it is drawn before it is read.
+	bar := plain(a.topBarWord(a.width))
 	if !a.modelSpan.pressable() {
 		t.Fatal("a running node's room recorded no press target for its model")
 	}
-	// The columns the render recorded are the columns the name is actually drawn
+	// The columns the bar recorded are the columns the name is actually drawn
 	// on, which is what makes the press a press on the thing and not on a number.
-	line := rows[len(rows)-1]
-	if at := strings.Index(line, "glm-5.2"); at < 0 || !a.modelSpan.holds(at) {
-		t.Fatalf("the span %+v does not cover the task's model on the row:\n%q", a.modelSpan, line)
+	if at := strings.Index(bar, "glm-5.2"); at < 0 || !a.modelSpan.holds(at) {
+		t.Fatalf("the span %+v does not cover the task's model on the bar:\n%q", a.modelSpan, bar)
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: 0, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("pressing a running task's model opened nothing")
 	}
@@ -204,19 +206,19 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 }
 
 // AND OUT IN THE CONVERSATION THE SAME GESTURE IS THE SESSION'S, unchanged: one
-// esc from a room and the name on the line is the conversation's again, and
+// esc from a room and the name on the bar is the conversation's again, and
 // pressing it opens the picker with no task on it.
 func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 120, 24
 	a.closeRoom()
-	_ = frame(a)
+	_ = plain(a.topBarWord(a.width))
 
 	if !a.modelSpan.pressable() {
 		t.Fatal("closing the room did not give the model segment its columns back")
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: a.height - 1, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: a.modelSpan.from + 1, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.modelSpan.from + 1, Y: 0, Button: tea.MouseLeft})
 	if !a.pick.open {
 		t.Fatal("the conversation's model stopped opening the picker after a room closed")
 	}
@@ -231,7 +233,7 @@ func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) 
 
 // A NODE THAT IS PAST BEING MOVED KEEPS THE NAME AND LOSES THE DOOR — absent
 // affordance, never a failing one. The engine refuses a settled node, so the
-// render records no columns and the press falls through to the row it landed on.
+// bar records no columns and the press falls through to the row it landed on.
 func TestASettledTasksModelIsNotPressable(t *testing.T) {
 	for _, state := range []session.TaskState{
 		session.TaskDone, session.TaskFailed, session.TaskUnverified, session.TaskQueued,
@@ -240,19 +242,18 @@ func TestASettledTasksModelIsNotPressable(t *testing.T) {
 		a.width, a.height = 120, 24
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Ship the parser fix",
 			state, session.TaskNotice{Model: "z-ai/glm-5.2"})})
-		rows := strings.Split(plain(frame(a)), "\n")
+		bar := plain(a.topBarWord(a.width))
 
 		if a.modelSpan.pressable() {
 			t.Fatalf("a %s node's model is still a press target: %+v", state, a.modelSpan)
 		}
 		// The name is still there to be read — this is a door removed, not a fact.
-		line := rows[len(rows)-1]
-		at := strings.Index(line, "glm-5.2")
+		at := strings.Index(bar, "glm-5.2")
 		if at < 0 {
-			t.Fatalf("a %s node stopped naming its model at all:\n%q", state, line)
+			t.Fatalf("a %s node stopped naming its model at all:\n%q", state, bar)
 		}
-		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: 0, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: 0, Button: tea.MouseLeft})
 		if a.pick.open {
 			t.Fatalf("pressing a %s node's model opened the picker", state)
 		}
@@ -262,37 +263,37 @@ func TestASettledTasksModelIsNotPressable(t *testing.T) {
 	}
 }
 
-// THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model segment
-// is pressable at both subjects, so it lights at both — and where it is only a
-// fact, it does not.
-func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
+// THE SET THAT LIGHTS IS THE SET THE PRESS ACTS ON (hover.go). The model
+// segment is pressable at both subjects, so it lights at both — and where it is
+// only a fact, it does not.
+func TestTheTopBarsModelSegmentLightsUnderThePointer(t *testing.T) {
 	a, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a.width, a.height = 120, 24
-	_ = frame(a)
+	_ = plain(a.topBarWord(a.width))
 
-	a.setHover(a.modelSpan.from+1, a.height-1)
+	a.setHover(a.modelSpan.from+1, 0)
 	if !a.hoveringStatusModel() {
 		t.Fatal("the running node's model segment does not light under the pointer")
 	}
 	// One cell to the left of the span is the separator, which is not a control.
-	a.setHover(a.modelSpan.from-1, a.height-1)
+	a.setHover(a.modelSpan.from-1, 0)
 	if a.hoveringStatusModel() {
 		t.Fatal("the model segment lights from outside its own columns")
 	}
 
 	// Out in the conversation, the same segment and the same light.
 	a.closeRoom()
-	_ = frame(a)
-	a.setHover(a.modelSpan.from+1, a.height-1)
+	_ = plain(a.topBarWord(a.width))
+	a.setHover(a.modelSpan.from+1, 0)
 	if !a.hoveringStatusModel() {
 		t.Fatal("the conversation's model segment does not light under the pointer")
 	}
-	// And the hovered row is drawn differently from the resting one, which is what
-	// a person actually sees.
-	hot := frame(a)
+	// And the hovered bar is drawn differently from the resting one, which is
+	// what a person actually sees.
+	hot := a.topBarWord(a.width)
 	a.dropHover()
-	if cold := frame(a); hot == cold {
-		t.Fatal("hovering the model segment changed nothing on the frame")
+	if cold := a.topBarWord(a.width); hot == cold {
+		t.Fatal("hovering the model segment changed nothing on the bar")
 	}
 
 	// A node past being moved has no span, so nothing lights over its name.
@@ -300,9 +301,9 @@ func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
 	a2.width, a2.height = 120, 24
 	drive(t, a2, streamEventMsg{gen: a2.gen, ev: update(9, "Ship the parser fix",
 		session.TaskDone, session.TaskNotice{Model: "z-ai/glm-5.2"})})
-	rows := strings.Split(plain(frame(a2)), "\n")
-	at := strings.Index(rows[len(rows)-1], "glm-5.2")
-	a2.setHover(at+1, a2.height-1)
+	bar := plain(a2.topBarWord(a2.width))
+	at := strings.Index(bar, "glm-5.2")
+	a2.setHover(at+1, 0)
 	if a2.hoveringStatusModel() {
 		t.Fatal("a settled node's model lights under the pointer with no door behind it")
 	}

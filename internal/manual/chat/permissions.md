@@ -118,7 +118,7 @@ Two things tell you a window is waiting while you are elsewhere:
   is headed `aforge` and reads `<conversation> · waiting on you`.
 - **Home**, and every other aforge window, where the session's row wears `?`,
   reads `waiting on you`, and sorts to the top of its project. The status line
-  says it too, as the `· 1 waiting` half of `2 open · 1 waiting`.
+  says it too, as the `· 1 want you` half of `2 open · 1 want you`.
 
 If your terminal does not report focus to the programs inside it, aforge
 assumes the window is focused — so the countdown runs as it always did and no

@@ -264,46 +264,33 @@ func (r *runningAgent) RunningHarness() (string, bool) { return r.name, r.name !
 // A RUNNING HARNESS RAISES THE STRIP AND LEADS IT. Nothing else on the surface
 // would say so: the run happens inside one tool call, so the transcript shows a
 // row that has not come back yet and nothing more.
-func TestTheStripCarriesTheRunningHarness(t *testing.T) {
+// A RUNNING HARNESS KEEPS THE PAINT CLOCK ALIVE, which is what is left of the
+// strip's harness clause (ISSUE-126): the chip that led that row is gone, and
+// the clock's own reason to turn for a run — a panel alive for minutes at a
+// time, and a phone-tier deck that draws the live set — is pinned here
+// (taskchip.go's [app.liveShowing]).
+func TestARunningHarnessKeepsThePaintClockAlive(t *testing.T) {
 	a := newTestApp(&runningAgent{fakeAgent: &fakeAgent{}, name: "triage-flake"})
 	a.width, a.height = 100, 30
 	a.harn = subharness.At(t.TempDir())
 
-	if !a.stripShowing() {
-		t.Fatal("a running harness did not raise the strip")
-	}
-	row := plain(a.stripRow(a.width))
-	if !strings.Contains(row, "triage-flake") {
-		t.Fatalf("the strip does not name the harness: %q", row)
-	}
-	if a.stripHarn.to <= a.stripHarn.from {
-		t.Fatalf("the chip recorded no columns to be pressed: %+v", a.stripHarn)
-	}
-	// AND THE CHIP IS A DOOR: pressing it opens the registry, which is the only
-	// place a run can be looked at.
-	if _, took := a.stripPress(a.stripHarn.from+1, a.headHeight()); !took {
-		t.Fatal("the strip did not take the press")
-	}
-	if !a.harnPanel.open {
-		t.Fatal("pressing the harness chip did not open the panel")
+	if !a.liveShowing() {
+		t.Fatal("a running harness did not raise the paint clock")
 	}
 }
 
-// AND IT GOES AWAY when the run does — the strip is the live set, never a
-// permanent bar.
-func TestTheStripDropsTheHarnessWhenItEnds(t *testing.T) {
+// AND IT GOES AWAY when the run does — the clock is for the live set, never a
+// permanent clause.
+func TestTheClockDropsTheHarnessWhenItEnds(t *testing.T) {
 	agent := &runningAgent{fakeAgent: &fakeAgent{}, name: "triage-flake"}
 	a := newTestApp(agent)
 	a.width, a.height = 100, 30
-	if !a.stripShowing() {
-		t.Fatal("a running harness did not raise the strip")
+	if !a.liveShowing() {
+		t.Fatal("a running harness did not raise the paint clock")
 	}
 	agent.name = ""
-	if a.stripShowing() {
-		t.Fatal("the strip stayed up after the run ended")
-	}
-	if row := a.stripRow(a.width); row != "" {
-		t.Fatalf("the strip drew a row for nothing: %q", row)
+	if a.liveShowing() {
+		t.Fatal("the paint clock stayed up after the run ended")
 	}
 }
 

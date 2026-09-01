@@ -2,16 +2,16 @@
 
 ## Which model am I talking to, which model is it using right now, and how do I switch or change it
 
-The model in use is written in the status line. There are two doors to the picker:
+The model in use is written in the top bar. There are two doors to the picker:
 
 - type `/model` with nothing after it, or
-- press the model's name in the status line.
+- press the model's name in the top bar.
 
 If you have turned the mouse off (`ui.mouse`), only the command works.
 
 **The name you press is the model you move.** Out in the conversation that is the
-conversation's model. Inside a running task's room the status line names *that task's*
-model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
+conversation's model. Inside a running task's room the top bar names *that task's*
+model, and pressing it opens the same picker aimed at that task alone,
 from its next turn onward. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
@@ -229,7 +229,7 @@ enter applies and esc cancels. If the four classes make a custom crew, no row is
 the chooser says picking one puts all four back. `/crew max` still sets it directly and
 confirms in one line, which ends `· you are still talking to deepseek-v4-flash — /model
 changes that` — naming the conversation's own model by id, because the crew changes
-nothing about it and the model segment on the status line goes on saying what it said before.
+nothing about it and the model segment in the top bar goes on saying what it said before.
 The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
 frugal → balanced → max.
 
@@ -298,8 +298,8 @@ That is right, and nothing is broken. **`/crew` does not change the model you ar
 to**, and the readout at the bottom of the frame is that model — the conversation's. The
 only thing that moves it is `/model`, the model row in `/settings`, or naming one with
 `/model <name>`. The confirmation says so by name: `/crew max` ends
-`· you are still talking to deepseek-v4-flash — /model changes that`, and the status line
-now carries `crew max` beside the model so the two dials read as two.
+`· you are still talking to deepseek-v4-flash — /model changes that`, and `/status`
+now prints `crew max` beside the model so the two dials read as two.
 
 The crew is a different dial: the four **classes** aforge makes its own calls on — reflex,
 small work, careful work, mastermind — used for titles, memory, the safety gate, checks on
@@ -316,8 +316,9 @@ relaunch and no new session.
 - `/settings` → Providers has the **crew** row above the four class rows.
 - Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
   line naming the seat they do not touch.
-- The live status line says `crew max` at the head of the telemetry, across the gap from
-  the model segment — the same word `/status` prints, read from the same four rows.
+- The live status row no longer carries the crew word — the row keeps only what ticks.
+  `/status` prints `crew max` — the same word, read from the same four rows — and the
+  phone's status sheet carries it too.
 - The hint line under the model picker says `crew max` beside its keys, so the picker you
   opened looking for the change tells you the crew is a separate thing.
 
@@ -330,7 +331,7 @@ way through does not move a run already going.
 ## What are the five models — the one you talk to and the four crew seats
 
 aforge runs **five model seats**. **Seat one is the model you talk to**: it answers every
-message you type, it is the id on the left of the status line, and `/model` is the only thing
+message you type, it is the id in the top bar's right cluster, and `/model` is the only thing
 that moves it. The other four are the **crew** — the models aforge uses on its own behalf,
 for calls you did not type:
 
@@ -346,10 +347,10 @@ for calls you did not type:
 `max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
 presets, so the seat the presets do not touch is on the same page as the ones they do.
 `/settings` → Providers pins any one of the four on its own, which turns the crew word to
-`custom`. The live status line says both dials: the model segment on the left is seat one,
-and `crew max` at the head of the telemetry on the right is the other four.
+`custom`. The two dials stay separate: the model in the top bar is seat one, and the crew
+is the other four — read by `/status` and the phone's status sheet, not drawn on the row.
 
-## Does /crew change my chat model — no, and what crew max on the status line means
+## Does /crew change my chat model — no, and what crew max means
 
 No. `/crew max` moves the four crew seats and leaves the model you talk to exactly where it
 was. The confirmation names it:
@@ -360,11 +361,11 @@ crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 ·
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
 chat model, and `/crew` never offers to. The two dials also stay separate on the frame: the
-status line shows the chat model on the left and `crew max` — or `crew balanced`,
-`crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
-on the right. That segment is a setting, not a measurement, so it is among the first things
-a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
-width. A session opened without a profile has no crew and shows no `crew` segment at all.
+top bar shows the chat model in its right cluster, and the crew preset — `crew max`, or
+`crew balanced`, `crew frugal`, `crew custom` when you pinned a seat yourself — is not on
+the frame at all any more; `/status` prints `model` and `crew` on neighbouring lines at any
+width, and the phone's status sheet carries the full reading. A session opened without a
+profile has no crew and shows no `crew` line at all.
 
 ## Asking a class to think harder — a level on a class value
 
@@ -1008,7 +1009,7 @@ same three-second beat every place runs on, and it draws three things:
   changes it. A model that is on the bill and is bound to nothing today draws **no role word
   at all**, and a model bound to two slots says both. A model is drawn by the word you say
   out loud — `claude-opus-4-1`, not `anthropic/claude-opus-4-1` — which is the spelling
-  `/model`, the crew chips and the status line all use;
+  `/model`, the crew chips and the top bar all use;
 - **a role slot with nothing bound to it** gets a row of its own under the models —
   `planning · unbound · follows execution` — because "planning costs nothing" and "nothing
   is bound to planning" are opposite facts about the same blank. There is no figure on that
@@ -1092,16 +1093,17 @@ the three classes after it:
 crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 ```
 
-On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
-the head of the telemetry beside the model, and among the first a narrow row gives up; the
-`crew` line here and on the phone's status sheet is the full reading. A session opened
-without a profile directory has no crew to read and gets no `crew` line or segment at all.
+On the live frame the crew is not on the status row at all — the row keeps only what
+ticks. The `crew` line here, in `/status`, and on the phone's status sheet is the full
+reading. A session opened
+without a profile directory has no crew to read and gets no `crew` line at all.
 
 Two things differ deliberately from the status line on screen:
 
 - the session **file** is added, because a path is a thing you copy into another program;
-- the `spend` line is **dropped** when nothing has been spent. The live status line keeps
-  `$0.00`; a note printed into the conversation must not.
+- the `spend` line is **dropped** when nothing has been spent. The live status row shows
+  nothing at all when nothing has been spent; a note printed into the conversation must
+  not either.
 
 Over `--host`, the `place` and `file` values are written in full as `machine:/path`.
 After the first connection measurement answers, `connection` is a sentence such as
@@ -1622,34 +1624,34 @@ they combine:
 substring, then subsequence over the model id — so `ds v4` and `claude 4.5` work exactly
 as before, and a word this grammar does not know is simply a word to search for.
 
-## Why did it say via cloudflare — the lane named on the status line
+## Why did it say via cloudflare — the lane that answered
 
-Beside your model on the status line, `via <name>` is the lane that actually answered,
-and it is a fact rather than a decision: it is the name that came back on the answer. When
-aforge knows the timings it reads `via cloudflare · 0.6s · 61 t/s` — the wait before the
-first word, and how fast it was writing. The rate is only there **while a turn is
-running**, because a rate is a claim about now; the name alone goes quiet after ten
-minutes.
+`/status` prints `via <name>` — and the phone's status sheet carries it — when the
+endpoint that answered is not already named by the model id. It is a fact rather than a
+decision: it is the name that came back on the answer. When aforge knows the timings it
+reads `via cloudflare · 0.6s · 61 t/s` — the wait before the first word, and how fast it
+was writing. The rate is only there **while a turn is running**, because a rate is a
+claim about now; the name alone goes quiet after ten minutes.
 
 It is left off entirely when the lane's name is already in the model id: `gpt-4.1 ·
-via openai` is a row saying the same thing twice.
+via openai` is a reading saying the same thing twice.
 
-**While a turn is running you usually see something better than `via`.** The connection
-reports what it is doing right now, and that outranks both readings under it, so the same
-spot reads `thinking · 12s · friendli 38 t/s` or `first word · 3.1s → parasail at 4.4s`
+**While a turn is running the wait line above the box usually says something better than
+`via`.** The connection reports what it is doing right now, so the wait line reads
+`thinking · 12s · friendli 38 t/s` or `first word · 3.1s → parasail at 4.4s`
 until the request ends. The ranking is by tense: the phase is what this request is doing,
 `via <name>` is what the **last** answer did, and the older sighting under that is what
 some answer did in the last ten minutes. Drawing the older one under a request that has
 been stalled for a minute is exactly the thing this ordering exists to stop.
 
-## What "rescued" means on the status line, and "slow · trying …"
+## What "rescued" means, and "slow · trying …"
 
 Those two only appear together, and only when the **speed guard** is on.
 
 When an answer takes much longer to start than that lane normally takes, aforge asks
 the next-best lane the same question, and you read whichever one replies first.
 
-The moment the second request goes out, the status line says so and says **why**:
+The moment the second request goes out, the wait line above the box says so and says **why**:
 
 ```
   stalled 9s · switching to coreweave

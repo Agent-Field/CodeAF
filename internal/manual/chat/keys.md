@@ -1031,7 +1031,7 @@ follows what you type. Only these keys are taken from you:
 ## Keys in the model picker and the sessions roster
 
 **Model picker** — opened by `/model` with no argument, by clicking the model name
-in the status row, or by `enter` on the **your model** row of the settings panel's
+in the top bar, or by `enter` on the **your model** row of the settings panel's
 Providers tab (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
@@ -1470,8 +1470,7 @@ box. **No new key is added to the column by either of them.**
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · type to filter`, and the strip that opens it is one full-width door
-(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
+`enter open its room · type to filter`. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
 **`ctrl+g` closes the roster's column, and opens it again.** It works from the message
@@ -1521,9 +1520,9 @@ inside a room, because in here that is not what the key does.
 **A click inside the room's page does not leave it.** A press that lands on nothing —
 a blank row, the gap beside a paragraph, the slack under a short transcript — does
 nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
-the pinned header at the top of the page names both: `esc/← main`. That header row is
-also a button — press it anywhere along its width and you are back in the conversation
-— except the `✕` at its right end, which asks to stop the work instead.
+the top bar's task form names both: `esc/← back · ✕`. The back word is
+also a button — press it, or the crumb's conversation segment, and you are back in the
+conversation — except the `✕` at its right end, which asks to stop the work instead.
 
 **Inside a harness design's room, while its card is waiting on you**, two more chords
 appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
@@ -1620,24 +1619,26 @@ Only the left button acts. A press is resolved in this order:
    ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
-   the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
+   the right end of the top bar's task form. On a phone-width terminal the `✕`'s hit
    box is three rows tall, because a finger is about that wide.
-7. A room's **pinned header**, which is the pointer's way back to the conversation.
-   The whole row answers, both ends of it, because the row says `esc/← main` and a
-   row that named the exits and did nothing when pressed would be dead. The dim
-   family lines under it are facts, not doors, and do nothing.
-8. Task strip chips, then the rail column, then a proposal's choices row. On a wide
-   terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
-   pressing it asks to stop that work instead of opening its room. **When the column is
+7. The top bar's **crumb**, which is the pointer's way around: the project segment goes
+   home, and in a task the conversation's name is the way back to the conversation,
+   with the `esc/← back` word at the right end a second, wider target for the same
+   exit. The segment you are standing in is a fact, not a door, and does nothing.
+8. The rail column, then a proposal's choices row.
+   **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
    a press anywhere on it opens the column again, which is exactly what `ctrl+g` does.
    Within the column, its own lines are asked before its task rows: a `+ /task` or
    `+ /standing` row types that command into your message box, and a row in the
    `standing` section opens `/standing` with the cursor already on that order.
-9. Three segments of the status row: `◦ keeping an eye on N`, which opens the standing
-   orders page; the model name, which opens the model picker; and the **money figure**
-   (`$0.14`), which opens the **Spending** tab of `/settings`. Each brightens under the
-   pointer over its own cells to say it is a door. A press elsewhere on
+9. The status row's numbers, each a door over its own cells: `◦ keeping an eye on N`,
+   which opens the standing orders page; `N open · M want you`, which opens the
+   conversations list; the context percent, which prints `/status` into the transcript;
+   and the **money figure** (`$0.14`), which opens the **Spending** tab of `/settings`.
+   In the top bar, the model name opens the model picker — aimed at the task when a
+   room is open — and `YOLO` opens `/settings` on the **Safety** tab. Each brightens under
+   the pointer over its own cells to say it is a door. A press elsewhere on
    the status row falls through — the rest of it is figures, not controls. On a narrow
    terminal the whole two-row deck answers.
 10. A message of yours **waiting** for the answer to finish, in the block above the
@@ -1666,13 +1667,13 @@ terminals open one and what is deliberately not linked.
 **A click on empty space does nothing, anywhere** — there is no empty-space gesture on
 this surface, and that includes inside a room: a press on a blank row of a task's page
 is not the way out and never closes it. The way out of a room is `esc`, `←`, or a press
-on the pinned header that names them. **A click in copy mode acts on nothing**, because
+on the top bar's back word. **A click in copy mode acts on nothing**, because
 the rows there are a frozen snapshot.
 
 **Hover** lights whatever the pointer is on, at the size of the thing rather than the size
-of its row: a row that is one target — a tool call, a roster row, a parked message, a
-room's header — takes a background band across the width, and something that shares its
-line — a strip chip, a picture on the tray, one answer of a card, a task reference in a
+of its row: a row that is one target — a tool call, a roster row, a parked message —
+takes a background band across the width, and something that shares its
+line — a segment of the top bar's crumb, a picture on the tray, one answer of a card, a task reference in a
 reply — lights only its own cells, leaving its neighbours dark. Anything that answers to
 nothing does not react. On home it does one thing more: the preview on the right becomes
 the row you are pointing at, and returns to the cursor's row when you point somewhere else

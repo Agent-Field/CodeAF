@@ -579,7 +579,7 @@ you have switched away from holds it for as long as you are away, and coming bac
 gives you the reading time you had left — see the permissions page.
 
 All three say `waiting on you` while they wait: on home, on the status line's
-`2 open · 1 waiting`, and in a desktop notification the moment the question goes
+`2 open · 1 want you`, and in a desktop notification the moment the question goes
 up — which now fires for a conversation this terminal is holding behind the
 screen even while the terminal is focused, because a focused terminal is no
 longer evidence that anybody is looking at *that* conversation.
@@ -991,7 +991,7 @@ and the task's elapsed keeps running, because the task never landed.
 A task has several lives and one state. Its worker writes the work; a reading decides
 whether the work is handed out in parts; a second look reads what the worker left; a round
 closes the gaps that look named. **Every one of them is `running`** — nothing has landed
-and nothing was undone between them — so the card, the rail row, the room header and the
+and nothing was undone between them — so the card, the rail row, the top bar and the
 home row say which of them it is in:
 
 - `sizing the work` — a reading is deciding whether this job is handed out in parts, and

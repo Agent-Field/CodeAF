@@ -481,51 +481,6 @@ func TestTheLadderNeverOverrunsItsWidthNorEndsInATruncationGlyph(t *testing.T) {
 	}
 }
 
-// AND THE ROW HANDS THE LADDER THE COLUMNS IT ACTUALLY HAS. The rider is the
-// half of the identity cluster that has a shorter true spelling, so it is the
-// half the width comes out of — where before this wave the whole cluster was
-// handed to a clip, or dropped entire.
-func TestTheIdentityClusterShortensItsRiderRatherThanBeingClipped(t *testing.T) {
-	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
-	a := phaseApp(t, now)
-	a.title = "porting the parser"
-	PostPhaseNews(richPhase(now))
-
-	// Unbounded, the cluster is everything it has always been plus the ladder's
-	// widest rung.
-	want := "porting the parser · kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"
-	if got, _ := a.identityParts(0); got != want {
-		t.Fatalf("the unbounded cluster reads %q, want %q", got, want)
-	}
-	if got := a.identity(); got != want {
-		t.Fatalf("identity() reads %q, want %q", got, want)
-	}
-
-	// Bounded, it gives up a spelling — and never a fact, and never its shape.
-	for _, c := range []struct {
-		width int
-		want  string
-	}{
-		{width: 81, want: "porting the parser · kimi-k3 · via coreweave · first word 3.1s → parasail at 4.4s"},
-		{width: 77, want: "porting the parser · kimi-k3 · coreweave · first word 3.1s → parasail at 4.4s"},
-		{width: 63, want: "porting the parser · kimi-k3 · coreweave · 3.1s → parasail 4.4s"},
-		{width: 47, want: "porting the parser · kimi-k3 · coreweave · 3.1s"},
-		{width: 40, want: "porting the parser · kimi-k3 · coreweave"},
-		{width: 28, want: "porting the parser · kimi-k3"},
-	} {
-		got, _ := a.identityParts(c.width)
-		if got != c.want {
-			t.Fatalf("at %d columns the cluster reads %q, want %q", c.width, got, c.want)
-		}
-		if measured := ansi.StringWidth(got); measured > c.width {
-			t.Fatalf("the cluster ran %d columns over %d: %q", measured-c.width, c.width, got)
-		}
-		if strings.Contains(got, glyphMore) {
-			t.Fatalf("the cluster was clipped at %d columns: %q", c.width, got)
-		}
-	}
-}
-
 // TestAnotherWindowsWorkNeverTakesThisRow is the third of the three filters,
 // and the one the other two cannot do. The desk is keyed by MODEL, and a task
 // node running on the same model id posts phases whose role is perfectly

@@ -83,9 +83,10 @@ opening. Nothing is broken by it: the addresses this window minted go on working
 link is back, and a file already fetched opens from the copy on this machine without
 asking that machine anything (*Opening files from that machine*).
 
-## How do I know it is reconnecting — the segment on the status line
+## How do I know it is reconnecting — the segment in the top bar
 
-The status line says so, in one segment at its right-hand end, beside what the session is
+The top bar's host segment says so, taking the whole right cluster if it has to, beside
+what the session is
 doing:
 
 ```

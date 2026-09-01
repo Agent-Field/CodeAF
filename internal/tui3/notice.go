@@ -378,6 +378,21 @@ func (b *noticeBoard) save() {
 // retired says whether the profile has already retired this notice.
 func (b *noticeBoard) retired(id string) bool { return b.ledger.retired(id) }
 
+// tipsLive reports whether the earned-tips machinery still has anything to
+// say to this person: any notice in the table that is neither retired for good
+// nor done for this session. It is the gate the legend's idle slot decays
+// behind (render.go's [app.legendRight]) — the generic key advertising is
+// shown while a tip would still be, and quiet once the person has earned the
+// quiet.
+func (b *noticeBoard) tipsLive() bool {
+	for _, n := range notices {
+		if !b.retired(n.id) && !b.done[n.id] {
+			return true
+		}
+	}
+	return false
+}
+
 // retire files the notice for good, this session and every one after.
 func (b *noticeBoard) retire(id string) {
 	b.ledger.retire(id)
@@ -547,6 +562,11 @@ func (a *app) noticeShow(slot noticeSlot, id string) {
 // noticeHint is the hint slot's lowest rung: the line standing in [slotHint],
 // while the frame is quiet enough for a tip to be read over an idle box.
 //
+// noticeTipsLive is the legend's decay gate: whether the earned-tips
+// machinery still has anything to say to this person (notice.go's
+// [noticeBoard.tipsLive]).
+func (a *app) noticeTipsLive() bool { return a.notices.tipsLive() }
+
 // IT DRAWS OVER NOTHING THAT IS HAPPENING. Every state with keys of its own has
 // already answered in [app.hintWord] by the time this is asked, and the list
 // here is the handful of states that answer "" there on purpose — the rewind

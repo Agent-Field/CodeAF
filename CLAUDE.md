@@ -169,8 +169,8 @@ error).
 Violations get rejected in review, and some are pinned by tests.
 
 - **The emptiness law.** Unknown or zero renders as *nothing* — never `$0.00`, never
-  `0 tok`. (One deliberate exception: the live status line keeps `$0.00` so its segments
-  do not jump sideways. `/status` and `/cost` drop the line.)
+  `0 tok`. `/status` and `/cost` drop the line, and the status row does too: zero
+  spend draws no segment at all.
 - **No machinery vocabulary in anything a person reads.** `auditor`, `verdict`,
   `verified`, `refuted` are banned. Work is *running*, *finishing*, *done*, *incomplete*,
   or *needs your look*.

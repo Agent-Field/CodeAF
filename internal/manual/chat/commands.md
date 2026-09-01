@@ -580,17 +580,16 @@ the three classes:
 crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 ```
 
-On the live status line the same fact is one short segment — `crew max`, or
-`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
-the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading; there is no `crew` line at all when the session was opened
+On the live frame the crew is not on the status row at all — the row keeps only what
+ticks. The `crew` line here, in `/status`, and on the phone's status sheet is the full
+reading; there is no `crew` line at all when the session was opened
 without a profile directory.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
 - The session **file** is added. A path is a thing you copy into another program.
-- The `spend` line is **dropped** when nothing has been spent. The live status line keeps
-  showing `$0.00`; a note in the transcript must not.
+- The `spend` line is **dropped** when nothing has been spent. The live status row shows
+  nothing at all when nothing has been spent; a note in the transcript must not either.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
@@ -966,7 +965,8 @@ wrapped, because the indent under a lane is what says which step belongs to it.
 Building a harness is a conversation, not a command. This panel only says which ones exist;
 `/harness ` with a space picks one to run on a typed request, and `/subharness` lists the
 same programs beside everything else runnable here and starts one from its card. While one
-is running, a chip with a spinner and its name leads the task strip.
+is running, the state word at the bottom says `working` and its answer lands in the
+conversation when it finishes.
 
 Refusals, exactly as written:
 
@@ -1184,7 +1184,7 @@ each of the four can be pinned on its own in /settings → Providers
 ```
 
 The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+one** — `you talk to · <model>`, spelled as the top bar spells it — with no marker and
 no highlight, because nothing in this chooser can move it. Then the three presets: the one
 in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
 ↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
@@ -1216,8 +1216,8 @@ a command you can type. See "Why is one word in a line brighter than the rest" o
 screen page.
 
 The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the status line's model segment uses, so you can check it
-against the foot of the frame. `/crew` never changes that model and never offers to; only
+talking to, in the same spelling the top bar's model segment uses, so you can check it
+against the top of the frame. `/crew` never changes that model and never offers to; only
 `/model` does. When the session has no model yet the clause reads
 `the model you talk to is untouched — /model changes that`.
 

@@ -339,21 +339,23 @@ func (r *taskRoom) deck() deck {
 
 // The words the room says of itself.
 const (
-	// roomLegendWord replaces the path in the legend while a room is open: where
-	// you are, and the keys that leave. It names both of them for the reason the
-	// header does — a person's hand is either on esc or on the arrows.
-	roomLegendWord = "room · esc/←← main"
+	// roomLegendWord is what the legend's left end says while a room is open:
+	// the key that gets you out, and nothing else — the crumb above already
+	// names where you are, and the top bar's right end already names the way
+	// back, so this slot's one job is the promise the NEXT keystroke makes.
+	roomLegendWord = "room · esc/← back"
 	// roomLegendRecallWord stands in that word's place while a history walk is
 	// on, because for exactly that long esc is the WALK's key and gives the
 	// person their own draft back (recall.go's [app.recallCancel]) — the room is
-	// one keystroke further away. The legend promises what the next esc does, and
-	// a slot that kept promising "main" through a walk would be promising the
-	// keystroke after the one the person is about to press.
+	// one keystroke further away. The legend promises what the next esc does,
+	// and a slot that kept promising "back" through a walk would be promising
+	// the keystroke after the one the person is about to press.
 	roomLegendRecallWord = "room · esc your line back"
 	// roomRecallHint and roomStopHint are the room's half of the hint slot
-	// (render.go's [app.hintWord]). Neither names esc: the legend's LEFT end is
-	// already carrying that key while a room is open, and one row saying the same
-	// thing twice is the defect the rewind mode's empty hint exists to avoid.
+	// (render.go's [app.hintWord]). Neither names esc: the top bar's back word
+	// is already carrying that key while a room is open (topbar.go), and one row
+	// saying the same thing twice is the defect the rewind mode's empty hint
+	// exists to avoid.
 	roomRecallHint = "↑↓ history"
 	roomStopHint   = "x stop"
 	// roomFinishedWord is the foot under a node that has landed.
@@ -401,14 +403,16 @@ const (
 	// stop talking to them" are one question asked twice.
 	roomSteerLane = "Steer "
 	roomSteerBack = "… (esc: main)"
-	// roomBackWord is the focus header's right end: the two gestures that return
-	// to the conversation, in the order a hand reaches for them.
+	// roomBackWord is the top bar's right end: the two gestures that return to
+	// the conversation, in the order a hand reaches for them.
 	//
 	// It names ← and not ←← because that is what the arrow grammar settled on —
 	// one ← steps back a level and two go home to the live edge (see
-	// [app.navBack]) — and a header that named the second gesture for the first
-	// would be the one row on the page that lies about a key.
-	roomBackWord = "esc/← main"
+	// [app.navBack]) — and a bar that named the second gesture for the first
+	// would be the one row on the page that lies about a key. It says "back"
+	// rather than "main" because the crumb beside it already names where back
+	// goes, and the word's own job is the gesture, not the destination.
+	roomBackWord = "esc/← back"
 	// roomCrumbRoot is where every breadcrumb starts, and it is the ONE name on
 	// this surface for the conversation itself.
 	roomCrumbRoot = "main"
@@ -2230,13 +2234,41 @@ func (a *app) navBack() {
 // highlight taken off before nothing happens at all.
 func (a *app) stepBack() {
 	if a.room != nil {
-		a.closeRoom()
+		a.roomStepUp()
 		return
 	}
 	if a.sel >= 0 {
 		a.sel = -1
 		a.touch()
 	}
+}
+
+// roomStepUp climbs EXACTLY ONE CRUMB LEVEL (ISSUE-126): a sub-task's esc goes
+// to its parent task's room, not to the chat — the crumb names the levels, and
+// the way out walks them one at a time. A task with no parent above it is
+// already the chat's own room, and its one level up is the conversation itself.
+//
+// It is the back word's press and the ← gesture's climb, and NOT the crumb's
+// chat-name step: that step names the chat specifically, so its press goes
+// there however deep the trail is (topbar.go's [app.topBarPress]).
+func (a *app) roomStepUp() {
+	if a.room == nil {
+		return
+	}
+	node := a.roomNode()
+	if node == nil {
+		a.closeRoom()
+		return
+	}
+	byKey := map[string]*taskNode{}
+	for _, n := range a.tasks {
+		byKey[stripKey(n)] = n
+	}
+	if parent := byKey[node.ParentID()]; parent != nil {
+		a.openRoomFor(parent.id, parent.title)
+		return
+	}
+	a.closeRoom()
 }
 
 // goHome is ←← and it is the one gesture that does not care where you are: the
@@ -2455,261 +2487,6 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // the geometry counted and the frame did not draw ([app.roomKinRows]).
 const roomHeadFloor = 12
 
-func (a *app) roomHead(width int) string {
-	// [app.headHeight] is what the geometry budgeted for this row, and it is
-	// asked rather than second-guessed: a header the frame drew on a short
-	// terminal that the scrolling had not subtracted would push the room's last
-	// row under the input box.
-	a.roomStop = hudSpan{}
-	if a.headHeight() == 0 || width < roomHeadFloor {
-		return ""
-	}
-	left := a.roomHeadWord(width)
-	mark := a.roomStopWord()
-	// THE ✕ BRIGHTENS UNDER THE POINTER, and it is brightened HERE rather than
-	// spliced into the finished line: [app.legendLine] paints the right label as
-	// one piece and the mark is the last thing in it, so ink written into the label
-	// lands on the mark's own cells and the piece after it is painted separately
-	// anyway. It is a step up from the dim the label rests in, which is the model
-	// segment's own answer to a label that is also a control (render.go's
-	// [app.paintIdentity]) — the row is one line at the top of the frame, not a row
-	// of a list, and a highlighted rectangle round one glyph would be the one boxed
-	// thing on a surface with no boxes. The width is unchanged, so every attempt
-	// below still fits exactly as it did.
-	shown := mark
-	if mark != "" && a.hoveringRoomStop() {
-		shown = a.pal.ink(mark)
-	}
-	attempts := []string{roomBackWord, ""}
-	if mark != "" {
-		attempts = []string{roomBackWord + roomStopSep + shown, shown, roomBackWord, ""}
-	}
-	for _, right := range attempts {
-		line, ok := a.legendLine(left, right, width, a.pal.accent)
-		if !ok {
-			continue
-		}
-		// The mark is the LAST thing in the right label, and [app.legendLine]
-		// closes with one space and one rule cell after it — so its columns are
-		// arithmetic rather than a second layout, whichever attempt fitted.
-		if mark != "" && strings.HasSuffix(right, shown) {
-			cols := ansi.StringWidth(mark)
-			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
-		}
-		// AND THE ROW ITSELF TAKES THE BACKGROUND STEP, because the row itself is
-		// the control: everything on it is about leaving, and [app.roomBackPress]
-		// takes a press anywhere along it. The ✕ never lights with it — the two are
-		// different hovers and the pointer can only be on one of them — so the band
-		// is never the surface offering "leave" over cells that end work.
-		if a.hoveringRoomBack() {
-			line = a.pal.cursor(line, width)
-		}
-		return line
-	}
-	return a.pal.accent(fit(left, width))
-}
-
-// roomBackPress answers a press on the pinned header, and reports whether it
-// took it. The header IS the way out for the pointer.
-//
-// THE WHOLE ROW IS THE TARGET, not just the "esc/← main" at its right end. The
-// row is one line tall and about nine cells of it are the microcopy; asking a
-// person to land a pointer on those nine is asking them to aim at a label, and
-// the two things that share this row — the trail and the way out — are both
-// about leaving. The ✕ is the exception and it is claimed one rung earlier
-// (stop.go's [app.stopMarkPress]), because ending work and leaving the page you
-// were watching it on are opposite gestures and the expensive one wins the cells
-// it is drawn on.
-//
-// THE KIN ROWS UNDER IT ARE NOT PART OF THIS. They are dim telemetry about the
-// node's family ([app.roomKinRows]), and a press on a fact is not a press on a
-// door — it does nothing, exactly as a press on any other row that answers to
-// nothing does ([app.press]).
-//
-// It is read from the frame's OWN row numbering — the header is the first row of
-// a room's frame, always, because [app.view] draws it first and the geometry
-// charges [app.headHeight] for it — rather than through [app.chromeAt], which
-// resolves the block at the BOTTOM of the window and has never had a row up here
-// to answer for.
-func (a *app) roomBackPress(y int) bool {
-	if !a.roomBackAt(y) {
-		return false
-	}
-	a.closeRoom()
-	return true
-}
-
-// roomBackAt is that same test with nothing done about it, so the pointer can ask
-// what the press asks and the row can light on exactly the cells a click acts on
-// (hover.go's law). The ✕ is claimed one rung earlier and never reaches here
-// (stop.go's [app.stopMarkAt]).
-func (a *app) roomBackAt(y int) bool {
-	return a.roomOpen() && a.headHeight() != 0 && y == 0
-}
-
-// roomHeadWord is the header's left: the node's mark, the trail, the three
-// facts about the work, and — where somebody has set one — the rung it thinks
-// at. Every one of them is DROPPED when nobody has published it: a queued node
-// has no clock, an unpriced one has no cost, and a node nobody has dialled has
-// no rung. That is the reason the turn footer drops its own fields
-// (timestamps.go): a figure that is zero is a figure nobody measured.
-//
-// It is built PLAIN, without paint, because the whole line is painted once by
-// [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
-// the rest of the line would fall back to the terminal's default mid-sentence.
-func (a *app) roomHeadWord(width int) string {
-	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the three facts under
-	// it are a node's — a state, a clock, a spend — and a run has none of them.
-	// What it has instead is a tank, and the tank is the fact that cannot be left
-	// off this line.
-	if a.orchOpen() {
-		return a.orchHeadWord(width)
-	}
-	node := a.roomNode()
-	word := a.roomMark(node) + " " + a.roomTrail()
-	if node == nil {
-		// A room on a node this surface has had no update for. The trail is still
-		// true and nothing else is, which is exactly what gets said.
-		return fit(word, width)
-	}
-	// The model joins the three because it answers the same kind of question
-	// they do — what is true of this work right now — and it is dropped by the
-	// same rule when nobody published one. It goes last: the state and the clock
-	// change while you watch, and whose hands the work is in was settled before
-	// it started.
-	//
-	// AND THE RUNG GOES AFTER THE MODEL, for the reason the model goes after the
-	// clock, one step further along the same argument: how hard this node is
-	// asked to think is a setting somebody made about it rather than news, it
-	// belongs beside the model because the two together are what a call is made
-	// of, and it is dropped by the same rule — a node nobody has set a rung on
-	// says nothing at all (taskeffort.go's [app.taskEffortClause]). It is
-	// `ctrl+v` on this page that moves it.
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node),
-		strings.TrimSpace(node.model), a.taskEffortClause(node)} {
-		if part != "" {
-			word += " · " + part
-		}
-	}
-	return fit(word, width)
-}
-
-// roomKinRowCap is how many rows the kin block may take under the header. Three
-// is the whole of the family a room can have something to say about — who asked
-// for this work, and the five pieces it handed out (session's taskFanLimit) laid
-// along one wrapped sentence — and it is a CAP rather than a budget because
-// these rows are charged to the page under them: a header that grew with the
-// family would take the transcript a person opened the room to read.
-const roomKinRowCap = 3
-
-// roomKinRows is the pinned header's second region: WHERE THIS NODE SITS IN ITS
-// FAMILY, in at most [roomKinRowCap] dim rows under the accent line.
-//
-// THE ENGINE HAS ALWAYS MODELLED THIS AND THE PAGE NEVER SAID IT. A node carries
-// who spawned it and what it spawned (session's TaskNotice.Parent, and the
-// buckets task.go's [app.railKin] pours them into), and the roster draws its
-// whole tree from exactly that — so a person who walked INTO a piece of a
-// recursive task could not see, from inside it, that it was a piece of anything
-// or that anything was running underneath it. These rows are the tree's own
-// data said in words, on the one page where the tree shape is not on screen.
-//
-// NO NEW ENGINE STATE AND NO SECOND SOURCE: it reads [app.railKin], which is the
-// same function the column's forest is grown from, so a family that draws one
-// way on the rail cannot read another way here.
-//
-// WHAT IT WAITS ON IS NOT ON THESE ROWS, AND THAT IS NOT AN OMISSION. The accent
-// line above already spends its state word on "waits: <title>" for a node held
-// behind a prerequisite ([app.roomStateWord]), and the same sentence twice in
-// one header is a header read twice to learn one thing.
-//
-// It is DIM, INDENTED, AND UNLABELLED, which is the whole of its styling: this
-// is telemetry about the page rather than a second header, and v1's column is
-// the reference — restrained, no border, no frame of its own (internal/tui).
-func (a *app) roomKinRows(width int) []string {
-	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
-	// drawn there, node by node, with every prerequisite an edge — so a sentence
-	// about kin would be the picture read out loud beside the picture.
-	if a.room == nil || a.room.orch != nil || width < roomHeadFloor {
-		return nil
-	}
-	// THE SAME LADDER THE BREATHING ROOM STANDS ON (view.go's
-	// [app.breathingRows]). These rows cost the body its rows, so they are spent
-	// only where there is body to spend them from: the window tall enough to
-	// afford a second blank above the draft is the window tall enough to be told
-	// where this work sits. It is asked as a question of the existing ladder
-	// rather than written as a second height, because a floor stated twice drifts.
-	if a.breathingRows() < 2 {
-		return nil
-	}
-	node := a.roomNode()
-	if node == nil {
-		return nil
-	}
-	kids, byKey := a.railKin()
-	var lines []string
-	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
-	// task_contract.go states that difference in those words, and this line is
-	// the only place on the surface that says the parent out loud rather than
-	// drawing it as an elbow. A parent this surface has had no update for is left
-	// UNSAID rather than named as an id, which is the rule [app.railWaits]
-	// already applies at the other end of the family: "part of: 7" has told a
-	// person nothing.
-	if up := byKey[node.ParentID()]; up != nil && up != node {
-		lines = append(lines, roomKinUnderWord+up.title)
-	}
-	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
-	// everywhere else on the surface. The order is [app.railKin]'s, which is the
-	// order the session met them — the one order a family is allowed to use,
-	// because any other moves a row a person is watching for a reason they
-	// cannot see.
-	var spawned []string
-	for _, kid := range kids[stripKey(node)] {
-		spawned = append(spawned, kid.title+roomKinStateSep+a.roomKinWord(kid))
-	}
-	if len(spawned) > 0 {
-		lines = append(lines, roomKinSpawnedWord+strings.Join(spawned, railSep))
-	}
-	// NOTHING TO SAY IS NOTHING DRAWN. A task with no parent has no parent line
-	// and a task that spawned nothing has no spawned line — a room on a flat task
-	// is the one pinned row this surface has always drawn, unchanged, and the
-	// header does not grow an empty shelf to hold a fact nobody has (the
-	// emptiness law).
-	if len(lines) == 0 {
-		return nil
-	}
-	inner := width - ansi.StringWidth(roomKinIndent)
-	out := make([]string, 0, roomKinRowCap)
-	for _, line := range lines {
-		// THE SENTENCE WRAPS ON ITS SPACES and is cut at the cap, exactly as the
-		// rail's under-block is (task.go's [railWrap] and railUnderRows): a title
-		// broken mid-word is a title nobody can match against the roster.
-		for _, part := range railWrap(line, inner) {
-			if len(out) == roomKinRowCap {
-				return out
-			}
-			out = append(out, a.pal.dim(roomKinIndent+part))
-		}
-	}
-	return out
-}
-
-// roomKinWord is a CHILD's state on the spawned line: [app.roomStateWord]'s
-// answer about that child, except that one held behind a prerequisite says only
-// "queued".
-//
-// THE DEPENDENCY SENTENCE BELONGS TO THE PAGE YOU WOULD OPEN TO ACT ON IT. A row
-// reading "spawned: draft — waits: fetch the RFCs · review — running" is one
-// line carrying three tasks' business, and the task it is actually about is the
-// one it says least about. What this line owes a person is which pieces exist
-// and which of them are still moving; what a piece is behind is on its own row
-// in the roster and in its own header the moment they walk in.
-func (a *app) roomKinWord(node *taskNode) string {
-	if node.state == session.TaskQueued && !node.stopped && a.railWaits(node) != "" {
-		return roomQueuedWord
-	}
-	return a.roomStateWord(node)
-}
-
 // roomNode is the node the open room is about, or nil when this surface has
 // never had an update for it.
 func (a *app) roomNode() *taskNode {
@@ -2745,32 +2522,6 @@ func (a *app) roomMark(node *taskNode) string {
 	default:
 		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
-}
-
-// roomTrail is the breadcrumb: the root, then one step per room walked into
-// without coming back out.
-//
-// The path is one deep today, because the only door into a room is the rail and
-// the rail is a flat list of the session's nodes — walking from one row to
-// another is a step SIDEWAYS, and [app.openRoomFor] treats it as one. The trail
-// is written over a path rather than over the open room so that the day a node's
-// own page grows a door into the node it spawned, the breadcrumb is already the
-// thing on screen.
-func (a *app) roomTrail() string {
-	trail := roomCrumbRoot
-	for _, step := range a.roomPath() {
-		trail += roomCrumbSep + step
-	}
-	return trail
-}
-
-// roomPath is the titles of the rooms between the conversation and the page on
-// screen, outermost first.
-func (a *app) roomPath() []string {
-	if a.room == nil {
-		return nil
-	}
-	return []string{a.room.title}
 }
 
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
@@ -3401,10 +3152,10 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 // IT IS A SEGMENT AND NOT A ROW. A row above the box would be a row taken off
 // the transcript on every frame of every room, for a fact three cells can carry.
 const (
-	// roomLeadCap is the most of a node's name the segment spends, and it is the
-	// strip's cap said again for the same reason: past about three words a title
-	// stops identifying the work and starts being a sentence.
-	roomLeadCap = stripTitleCap
+	// roomLeadCap is the most of a node's name the segment spends, and it is
+	// the old strip's cap said again for the same reason: past about three
+	// words a title stops identifying the work and starts being a sentence.
+	roomLeadCap = 18
 	// roomLeadWordFloor is the least of a name worth drawing. Under this the
 	// segment is dropped whole rather than shown as an ellipsis with a letter in
 	// front of it, and the placeholder goes back to naming the node.

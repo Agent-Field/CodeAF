@@ -948,17 +948,11 @@ type app struct {
 	// the same reason. It is the door onto the Spending tab (moneydoor.go).
 	moneySpan hudSpan
 	moneyRow  int
-	// stripSpans is where the task strip's chips were last drawn, and stripMore
-	// the columns of its overflow mark — the same bargain modelSpan makes, for
-	// the same reason: the row that lays the chips out is the row that knows
-	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
-	stripSpans []stripSpan
-	stripMore  hudSpan
-	// stripHarn is where the running subharness's chip was last drawn, or the
-	// zero span when none is running (harnesspanel.go). It is kept apart from
-	// stripSpans because it opens a different door: a node chip opens that
-	// node's room, and this one opens the registry.
-	stripHarn hudSpan
+	// stripHarn is gone with the strip that drew it (ISSUE-126): a running
+	// sub-harness's ambient presence was the strip's leading chip, and what
+	// survives of it is the paint clock's own clause (taskchip.go's
+	// [app.liveShowing]) and the registry's panel, which a person opens on
+	// purpose rather than being told about.
 	// jumpSpan is where the jump-to-latest chip was last drawn, in columns — the
 	// same bargain again, for a chip that is right-aligned and so knows its own
 	// columns only once the frame has chosen a width (jumpchip.go's
@@ -1280,11 +1274,39 @@ type app struct {
 	// rung: both are the surface holding a keystroke back until it is told
 	// whether to act on it, and neither can be raised while the other is up.
 	stop *stopCard
-	// roomStop is where the ✕ was drawn on the room's pinned header, in columns,
+	// roomStop is where the ✕ was drawn on the top bar's right end, in columns,
 	// or the empty span when there is nothing there to stop. Written by
-	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
+	// [app.topBarWord] at layout and read by [app.stopMarkPress], which is the
 	// bargain every pointer target on this surface makes.
 	roomStop hudSpan
+	// THE TOP BAR'S DOORS, written by [app.topBarWord] as the row is laid out —
+	// the same bargain modelSpan and roomStop make, for the same reason: the row
+	// that lays the terms out is the row that knows where they landed. An empty
+	// span means there is nothing to press, which is how a dropped term and an
+	// unpressable one come to the same end.
+	//
+	// backSpan is the `esc/← back` word, the wider of the two ways out of a room
+	// (room.go's [app.roomBackWord]); crumbChatSpan is the precise one — the chat
+	// name's own step of the crumb, which climbs one level on a press.
+	backSpan     hudSpan
+	crumbChatSpan hudSpan
+	// crumbHomeSpan is the project's step of the crumb: space space parity, the
+	// same door the legend's advertisement always opened.
+	crumbHomeSpan hudSpan
+	// topYoloSpan is the YOLO term, and it opens the Settings page's Safety tab
+	// — seeing the gate open has to offer the way to close it.
+	topYoloSpan hudSpan
+	// THE STATUS ROW'S OWN DOORS, written by [app.statusRows] as the row is laid
+	// out — the same bargain every span on this surface makes. ctxSpan is the
+	// context percent, and its press prints /status into the transcript: the
+	// number is a meter, and the meter's own sheet is the note that explains
+	// every number at once. openSpan is the `N open · M want you` clause, and its
+	// press opens the conversations list — the same list tab walks, with the
+	// count spelled out beside it.
+	ctxSpan  hudSpan
+	ctxRow   int
+	openSpan hudSpan
+	openRow  int
 
 	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
 	// closed it; pasted is what has arrived inside it; pasteAt is when the last
@@ -2838,32 +2860,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
-			// the right end of the room's pinned header with a hit box three rows
-			// tall on a phone — which overlaps the strip and the top of the body,
-			// deliberately, because a finger that misses this one either ends work
-			// nobody meant to end or leaves a person with no way to end it at all.
+			// the right end of the top bar with a hit box three rows tall on a
+			// phone — which overlaps the top of the body, deliberately, because a
+			// finger that misses this one either ends work nobody meant to end or
+			// leaves a person with no way to end it at all.
 			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			// AND THE ROOM'S HEADER IS READ DIRECTLY UNDER THE ✕ THAT RIDES IT, which
-			// is the pointer's share of the way out: the row says "esc/← main", and a
-			// row that named the exits and did nothing when it was pressed would be the
-			// one dead cell on the page (room.go's [app.roomBackPress]).
-			//
-			// It is read HERE, above the strip and the rail, because the header spans
-			// the whole window while both of those claim columns of it — the rail takes
-			// every press in its own columns whether or not a row was under it, so a
-			// header read after it would be dead at exactly the end where the words are
-			// printed.
-			if a.roomBackPress(msg.Mouse().Y) {
-				return a, nil
-			}
-			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
-			// WHOLE window and the rail claims every press in its own columns
-			// whether or not one landed on a row (room.go) — asked the other way
-			// round, a chip in the rail's columns would be swallowed by the column
-			// under it (taskstrip.go).
-			if cmd, took := a.stripPress(msg.Mouse().X, msg.Mouse().Y); took {
+			// THE TOP BAR IS READ HERE, above the rail, because it spans the
+			// WHOLE window while the rail claims every press in its own columns
+			// whether or not a row was under it — asked the other way round, a
+			// door at the bar's right end would be swallowed by the column under
+			// it (topbar.go's [app.topBarPress]).
+			if cmd, took := a.topBarPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// THE RAIL IS THE OTHER COLUMN-AWARE TARGET, and it is read before
@@ -5471,8 +5480,8 @@ func (a *app) statusPress(x, y int) bool {
 	}
 	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing:
 	// [app.chromeAt] lays the chrome out to answer, and laying it out is what
-	// writes [app.modelSpan]. Reading the span first would be reading where the
-	// name was drawn on the frame before this one.
+	// writes the row's spans. Reading a span first would be reading where the
+	// term was drawn on the frame before this one.
 	mark, ok := a.chromeAt(y)
 	if !ok || mark.kind != chromeStatus {
 		return false
@@ -5486,24 +5495,25 @@ func (a *app) statusPress(x, y int) bool {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return a.deckPress(x, mark.index)
 	}
-	// Index zero is the identity's row in both status layouts — the shared row,
-	// and the first of the two when the telemetry wraps onto its own (render.go).
-	if mark.index != 0 || !a.modelSpan.holds(x) {
-		return false
-	}
-	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so
-	// through the span rather than through a second gesture: the segment in there
-	// is the task's model, so the picker it opens moves the task's model and
-	// nothing else. Which nodes may be moved at all is settled by the render, in
-	// the columns it recorded — a node past being moved has no span, so this never
-	// sees the press (render.go's [app.identityParts], room.go's
-	// [app.roomModelMovable]). One esc puts the door back on the conversation.
-	if a.roomOpen() {
-		a.openTaskPicker(a.room.id)
+	// THE ROW'S NUMBERS ARE DOORS, each opening the sheet that carries what the
+	// number is a summary of (rowdoors.go, moneydoor.go, standdoor.go) — the
+	// model moved to the top bar with the rest of the identity (topbar.go), and
+	// what is left here is the fast half: the bill, the meter, the count, and
+	// what is watching.
+	if a.ctxPress(x, y) {
 		return true
 	}
-	a.openPicker()
-	return true
+	if a.openPress(x, y) {
+		return true
+	}
+	if a.moneyDoorAt(x, y) {
+		a.openSpending(spendTodayKey)
+		return true
+	}
+	if a.keepingPress(x, y) {
+		return true
+	}
+	return false
 }
 
 // choicePress resolves a click on a proposal's choices row to the option under

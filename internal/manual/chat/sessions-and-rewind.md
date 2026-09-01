@@ -446,8 +446,8 @@ comes first (the getting-started page), and the greeting arrives the moment it c
 
 ## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
 
-The name is written by a model, once, and appears in the status line below the message
-box: `porting the parser · gpt-4.1-mini:high`.
+The name is written by a model, once, and appears in the top bar's crumb:
+`aforge-v2 › porting the parser`.
 
 **It arrives one turn in.** As soon as your first exchange finishes, the model on the
 `title` role — small work, so a cheap one — is shown the opening question and answer and

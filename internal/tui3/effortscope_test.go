@@ -296,14 +296,15 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 		t.Fatalf("the change left no note reading %q in the conversation:\n%s", want, taskText(a))
 	}
 
-	// AND THE ROOM'S HEADER STATES IT, beside the model, where the page already
-	// says what is true of this work right now.
+	// AND THE TOP BAR STATES IT, beside the room's model, where the bar already
+	// says what is true of this work right now (ISSUE-126 moved the room's
+	// header line into the top bar's right cluster).
 	drive(t, a, key("enter"))
 	if !a.roomOpen() || a.room.id != 7 {
 		t.Fatalf("enter did not open the focused node's room")
 	}
-	if head := plain(a.roomHeadWord(120)); !strings.Contains(head, "thinking low") {
-		t.Fatalf("the room's header does not state the rung: %q", head)
+	if head := plain(a.topBarWord(120)); !strings.Contains(head, "thinking low") {
+		t.Fatalf("the top bar does not state the rung: %q", head)
 	}
 	// And the chord means the same thing from inside the page it opened.
 	a.railTake(false)

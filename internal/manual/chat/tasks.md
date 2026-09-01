@@ -902,49 +902,17 @@ row per task under it. Any failure in the batch swaps the header to `✗ N tasks
 `needs your look` swaps it to `? N tasks landed`. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
-## Watching work: the strip along the top
+## Watching work: where a running task shows
 
-The strip is one row under the pinned header — a tab bar of doors into live work:
+Running work is marked in three places, none of them a strip: the top bar's lead glyph
+carries the state of the room you are in, the roster's row is the full record, and the
+rail column (when it is open) carries the running set. The old strip of chips along the
+top of the frame is gone — it said only what the roster already says, and it cost a row
+every frame.
 
-```
-⠙ Fix nil-map · ◆ Auth tests · +2
-```
-
-It appears only while something is running, and goes away the moment nothing is. It needs a
-frame at least 24 columns wide and 6 rows tall. It is the narrow-frame door: wherever the
-roster stands — as the right column or open over the whole frame — the strip stands down.
-A column you closed with `ctrl+g` is a roster standing down, so the strip comes back and
-running work stays reachable. The one exception is a running sub-harness: its chip raises
-the strip even beside a standing roster, because the roster's rows are tasks and a harness
-run is not one — the chip is the only place on the screen that run exists.
-
-A blank line sits under the chips, separating them from the first line of conversation.
-It is part of the strip and leaves with it.
-
-Order: running first, then work that needs you, then idle. Parked and finished work never
-appear on it — the strip is the live set, the roster is this session's whole record, and
-`/history` is the project's, across every session.
-
-A chip carries one glyph and the name cut to 18 cells, and nothing else: no clock, no
-spend, no tool name, no tree connector, no cursor mark, and no stop button. The room you
-are standing in takes a colour band. The strip is one flat row even when a task has
-children; the roster is where the family tree is drawn.
-
-The strip is pointer-only and adds no keys or cursor of its own.
-
-- Click a chip to walk into that task's room. Click the chip of the room you are already in
-  to close it.
-- Click the `+N` overflow mark to open the whole roster.
-- A press anywhere on the row belongs to the row, even in the gaps, so a miss never falls
-  through to the transcript.
-
-On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn cut and the
-`+N` is dropped: a count of things you cannot identify is worth less than one name.
-
-**Under 60 columns the strip is not chips at all.** It becomes one full-width door —
-`▸ 3 tasks · 1 running` — that a tap anywhere opens into the roster page. A thumb cannot
-land between chips a few cells apart, so the phone tier trades the tab row for one door. See
-*Tasks on a phone*.
+A running sub-harness has no roster row — the roster's rows are tasks and a harness run
+is not one. Its answer lands in the conversation when it finishes, and the state word
+at the bottom says `working` while it runs.
 
 ## The roster: the column of all the work
 
@@ -1004,8 +972,8 @@ its own identity mark, which never does. Then the name, then its id as `#7`, dim
 end — and the id stands down when the name would be left under 12 cells.
 
 **The name is the task's own title, cut to its first three words** — `Fix the nil-map`,
-`Collect the sources` — and that is the name it wears everywhere: the column, the strip
-above the conversation, its room's header, the card that lands, the home card and the task
+`Collect the sources` — and that is the name it wears everywhere: the column, the top
+bar's crumb, its room, the card that lands, the home card and the task
 page. Three words is also what the `taskname` call is asked for, so a named task fits the
 column whole rather than being cut to fit it. A row reading **`task 19`** means one thing
 only: nothing has told aforge what that task is called yet. It is a name you can still say
@@ -1015,10 +983,10 @@ most two more: what it is doing, what is holding it, what it waits on, or how it
 came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on the column.
 
 **The row of the room you are standing in is picked out.** Walk into a task — from the
-roster, a strip chip, a spawn card or a `task 7` link — and that task's row in the column
+roster, a spawn card or a `task 7` link — and that task's row in the column
 takes a colour band across its whole width, every line of it, with its title in the accent
-and bold. It is the same mark the strip puts on the chip of the room you are in, so the two
-lists of the work never disagree about which door you went through. It follows you: opening
+and bold. It is the same mark the top bar's lead glyph carries for the room you are in, so
+the two lists of the work never disagree about which door you went through. It follows you: opening
 another task's room moves it, and `esc` back to the conversation clears it. With no room
 open no row is marked at all. On a terminal with no background colours the accent title is
 what is left of it.
@@ -1293,9 +1261,9 @@ starts; `ctrl+g` acts immediately and wins for this session.
 
 With the column closed, work is still visible:
 
-- Anything **running** draws the task strip along the top — `⠙ Fix nil-map · ◆ Auth tests
-  · +2` — because the strip stands up wherever the roster stands down. Click a chip for
-  that task's room, or the `+N` for the whole roster.
+- Anything **running** is still on the top bar and the roster: the bar's lead glyph
+carries the state of the room you are in, and `ctrl+t` overlays the roster over the whole
+frame for the rest.
 - The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
   this session has any tasks at all, running or not. A session that has run nothing says
   nothing there — the column you closed was empty, and `ctrl+g` still brings it back.
@@ -1698,22 +1666,16 @@ cursor.
 ## Tasks on a phone — the ▸ tasks door, the list, and the way back
 
 Under 60 columns the whole task flow is a thumb's, with no keyboard anywhere in it. None of
-the surfaces is new — the strip, the roster page and the record card all exist and all
+the surfaces is new — the roster page and the record card both exist and both
 answer a key — but each is reshaped so a finger can do the flow end to end:
 
-1. **The strip is one door, and it looks like one.** Instead of a row of tiny chips a few
-   cells apart, the strip at phone width is a single full-width row that says what is there
-   and that it opens: `▸ 3 tasks · 1 running`. The `▸` is the same fold glyph the rest of
-   the phone screen folds with, the count is how many tasks are live, and the tail is the
-   most urgent of them — `running`, or `needs you`, or `idle`. One task still draws the
-   door: `▸ 1 task · running`. A tap **anywhere** on the row opens the roster page.
-2. **The roster is a list of cards.** Each task is a two-line card a thumb goes into — its
+1. **The roster is a list of cards.** Each task is a two-line card a thumb goes into — its
    name and state on top, and what it came to with how long ago under it. The list
    **scrolls**: walk it with a swipe or the arrows and the card you reach is drawn whole,
    never clipped at the fold.
-3. **Tap a card to go inside.** A task this session ran opens its room; a task from a
+2. **Tap a card to go inside.** A task this session ran opens its room; a task from a
    conversation that is closed opens its record card.
-4. **Two backs, both bands.** The record card's foot is `‹ back` and `m puts it in your
+3. **Two backs, both bands.** The record card's foot is `‹ back` and `m puts it in your
    message`; `‹ back` returns to the list. The list's own foot is a `‹ back` bar too, and
    it drops you back to the conversation. So the way out is `‹ back`, then `‹ back` — a
    tap each, no `esc` needed.
@@ -1727,8 +1689,6 @@ gesture, and no row lights up under a finger that is only resting on it.
 Every door onto a piece of work is a tap target at phone width, and none of them is a new
 door — they are the ones above, reshaped:
 
-- **The strip along the top** is one full-width door — `▸ 3 tasks · 1 running` — and a tap
-  anywhere on it opens the roster page. It is not a row of chips at this width.
 - **The roster's rows** are two-line cards, each a full-width target, and one press opens it
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
@@ -1794,7 +1754,7 @@ sentence.
   `its transcript is not on this disk any more` where the report would have been.
 
 A task **this** session ran opens its room instead, which is the live thing: the roster's
-`enter`, a strip chip and a `task 7` link all land there. Only work from a conversation that
+`enter` and a `task 7` link all land there. Only work from a conversation that
 is closed opens the card.
 
 ## The one door line at the bottom of the task column: `ctrl+. earlier`, `view more`
@@ -1834,7 +1794,7 @@ is never touched, which is why leaving restores it exactly.
 
 Ways in:
 
-- click a roster row, a strip chip, a proposal card, or a landed card;
+- click a roster row, a proposal card, or a landed card;
 - click an inline reference in the model's prose — `task 7`, `task #7`, `tasks id 7`,
   `task id #7` become underlined links when the id names a task this session has seen;
 - `enter` on a proposal card or a landed card selected with `↑`/`↓` over an empty box;
@@ -1846,8 +1806,8 @@ Pressing the same door again is always the way back out.
 Ways out: `esc` leaves and restores the conversation's scroll exactly. `←` over an empty box
 steps back one level. `←` twice within 600 ms goes home — out of everything, at the live
 edge, nothing selected. `/new` closes any open room, because a task dies with its session.
-With the pointer, the room's own pinned header is the way back: it reads `esc/← main` and
-the whole row answers to a press. **Clicking inside the page does not leave it** — a press
+With the pointer, the top bar's task form is the way back: it ends `esc/← back · ✕` and
+the words answer to a press. **Clicking inside the page does not leave it** — a press
 on a blank row, or on prose with nothing behind it, does nothing at all, the same as it
 does in the conversation.
 
@@ -1914,29 +1874,31 @@ conversation the same page tails that log live.
 | --- | --- | --- |
 | what the body draws | the conversation | that task's transcript |
 | its row on the roster | nothing is marked | that task's row wears a colour band and an accent title |
-| clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
+| clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the top bar's back word |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
 | what `↑`/`↓` do | walk your history, then select a tool row, then scroll | the same walk through **the same history** — steered lines are in it — then scroll the page |
 | what `esc` does | interrupts the running turn | leaves the room. It never interrupts and never stops work |
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top line | none | the focus header, and the family lines under it |
-| legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
+| top bar | the crumb ends at the conversation's name | the crumb grows the task's title and the room's facts, and the right end gains `esc/← back · ✕` |
+| legend left end | empty at rest | empty at rest — the way back is named in the top bar |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
-| the model on the status row | the conversation's model | `task <the task's model>` |
+| the model in the top bar | the conversation's model | the task's own model |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next turn — and does nothing at all once the task has landed |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
 | scroll position | the conversation's | the room's own, kept separately |
 | attachments | the tray sends pictures | a room's box sends words only |
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
 
-The focus header is an accent line pinned at the top:
-`─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─`. It carries
-the state glyph, a trail that always names `main` as the root, then the state word, the
-clock, the spend, the model and — where you have set one — how hard this task is asked to
-think, as `thinking high`. Each is dropped when nobody published it. It is pinned
-because a fact that scrolls away is only true at the top of the page.
+The room's facts are the top bar's task form:
+`⠙ main ▸ Fix the nil-map crash #2 · running · 2m12s · $0.04    esc/← back · ✕`. The
+state glyph leads, the crumb names the trail with `main` as the root, then come the state
+word, the clock, the spend — each dropped when nobody published it — and the right cluster
+ends with the room's two exits. The whole left cluster wears the accent while the room is
+open, because a fact that scrolls away is only true at the top of the page — and this one
+never scrolls. The model beside it is the task's own, with its effort as a `:high` rider
+on the segment; the task's model does not repeat after the crumb.
 
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
@@ -1944,16 +1906,17 @@ on a standing item, bound here to the task whose page you are standing in; the k
 has the whole of it. A worker already running keeps the rung it started with, so the line
 aforge writes says `task 7 · thinking · high · its next call takes it`.
 
-**The header is a button as well as a line.** Press it anywhere along its width and you
-are back in the conversation, which is the pointer's version of the `esc/← main` it
-prints. The one exception is the `✕` at its right end, which asks to stop the work
-instead. Every kind of room draws this header — a task's page, a sub-harness design, an
+**The bar is a button as well as a line.** Press the `esc/← back` word, or the crumb's
+conversation segment, and you are back in the conversation, scroll restored. The one
+thing that does not leave is the `✕` at the right end, which asks to stop the work
+instead. Every kind of room is in the top bar — a task's page, a sub-harness design, an
 adaptive run's graph, a run node's transcript — so the way out is always named and always
-pressable. It is dropped only on a terminal too short or narrower than 12 columns to draw
-it, where `esc` still leaves.
+pressable. The bar is not drawn below 60 columns, where the phone deck's top row takes
+the crumb, and it is the first chrome to go on a short frame, where `esc` still leaves.
 
-Under it, dim and indented, come up to three more pinned lines saying where this task sits
-in its family — see *Who started this task, and what it handed out*.
+Where this task sits in its family is the crumb's own business: the parent is a segment
+of the trail, and the children are visible in the room's body and on the rail — see
+*Who started this task, and what it handed out*.
 
 ## Typing in a task's room — the up arrow, editing what you sent, and escape
 
@@ -2116,9 +2079,9 @@ there is no work chip for it to mean instead.
 
 ## Who started this task, and what it handed out
 
-Standing inside a task, the pinned lines under the focus header say where it sits in the
+Standing inside a task, the crumb says where it sits in the
 family — who asked for the work, what the work handed out, and what it is still behind.
-They are dim, indented two cells under the trail, and each one is simply absent when there
+The parent is a segment of the trail, and each fact is simply absent when there
 is nothing to say:
 
 ```
@@ -2269,14 +2232,12 @@ task's own proposals begin the moment they are made. What you see instead is the
 
 Where they show up:
 
-- **the strip along the top** keeps one flat row of live chips on narrow frames; it does
-  not draw the family tree.
 - **the roster** draws the whole family together, with each piece joined to its parent by
   tree connectors and carrying its own id and state.
 - **the parent's room** shows the `propose_task` calls as they are made, and the parent's
-  own words when the reports come back — and its pinned header lists each piece by name
+  own words when the reports come back — and the top bar's crumb lists each piece by name
   with the state it is in (*Who started this task, and what it handed out*).
-- **the piece's own room** says `part of: <the parent's title>` under its header, so a task
+- **the piece's own room** says `part of: <the parent's title>` in its crumb, so a task
   you walked into knows it is a piece of something.
 
 Each piece works in a copy of the repository taken from its **parent's** copy, and its
@@ -2748,8 +2709,7 @@ press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep 
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
 
-With a pointer, the `✕` at the right end of a room's pinned header raises the same card.
-Strip chips do not carry a stop button.
+With a pointer, the `✕` at the right end of the top bar's task form raises the same card.
 
 **There is one other way to stop a task, and it asks no card.** On the **tasks** place
 (`ctrl+.`, `/history`), `→` on a task this conversation is holding opens the row's verbs and
@@ -2791,9 +2751,9 @@ What else you can do yourself, on a task that is running:
 
 | what | how |
 | --- | --- |
-| see it | its roster row, its room, an inline `task 7` link, or its strip chip on a narrow frame |
+| see it | its roster row, its room, or an inline `task 7` link |
 | see what it is doing this second | the roster row's tool line, or its room, live |
-| see what it is costing | the roster's telemetry row, the room's focus header, the `Σ` |
+| see what it is costing | the roster's telemetry row, the top bar's task form, the `Σ` |
 | walk into it | click it, `enter` on it, or `→` over an empty box |
 | talk to it | `enter` on a sentence in its room |
 | read its whole transcript | its room |

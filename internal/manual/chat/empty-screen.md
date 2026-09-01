@@ -25,10 +25,10 @@ shade above the middle. It shows once, arrives with a slow sweep across the lett
 over about a second and a quarter, and is then still.
 
 **Nothing else is drawn.** No column of tasks on the right, no rule with the legend in
-it, no `+ /task` or `+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token
-count on the status line — only the conversation's name and model on the left of the
-status row and `idle` on the right. Every one of those arrives with the conversation
-rather than before it (see the other headings on this page).
+it, no `+ /task` or `+ /standing` doors, no `❯ ctrl+g hide`, no numbers on the status
+row — the top bar carries the crumb alone, and the row under it is empty. Every one of
+those arrives with the conversation rather than before it (see the other headings on
+this page).
 
 **The first key, the first submit, or a click anywhere on the group except a recent
 session or the message box puts it away for good.** The message box goes back to the
@@ -76,20 +76,22 @@ does what it always does, which is to close the column it would just have raised
 it again to bring the column back. `ctrl+t` falls through on a fresh screen, as it does
 on any conversation that has run nothing.
 
-## Why the status line shows no cost or token count before I type — where is the $0.00
+## Why the status row is empty before I type — where are the numbers
 
-While the greeting is up the status row carries **only identity and state**: the
-conversation's name and its model on the left, `idle` on the right. There is no `$0.00`,
-no `9.4k/1.3M · 1%` context meter, no cache figure. A conversation nobody has typed into
-has nothing to bill and nothing but its own prompt to meter, and a row of zeros under a
+While the greeting is up the status row carries **nothing at all**, and the top bar
+carries the crumb alone: the conversation's project and name, no right cluster. There is
+no spend figure, no context meter, no state word. A conversation nobody has typed into has
+nothing to bill and nothing but its own prompt to meter, and a row of zeros under a
 greeting was the first thing a person paying with their own card read.
 
 From your first keystroke on — the same frame the greeting dissolves on — the row is
-exactly what the *What is on the screen* page describes, `$0.00` included: that figure
-stays on a session in use so the segments beside it do not jump sideways as it changes
-width. The phone-width status deck keeps the same rule: no spend and no percentage while
-the greeting is up. The full-screen status sheet, `/status` and `/cost` are unchanged —
-they answer with the prompt's size when asked, and never print a zero bill.
+exactly what the *What is on the screen* page describes. On a fresh session that is
+still an empty row: zero spend renders as nothing, the context meter waits for its first
+reading, and an idle chat's row ends at the numbers — there are no numbers yet. The
+first turn fills the row in, and nothing on it jumps sideways as it does. The phone-width
+status deck keeps the same rule: no spend and no percentage while the greeting is up.
+The full-screen status sheet, `/status` and `/cost` are unchanged — they answer with
+the prompt's size when asked, and never print a zero bill.
 
 A resumed conversation has no greeting, so its row shows the numbers on its first
 frame.

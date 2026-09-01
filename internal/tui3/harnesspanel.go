@@ -6,10 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE HARNESS PANEL: /harness, and the chip that appears while one runs.
@@ -344,27 +342,4 @@ func (a *app) runningHarness() (string, bool) {
 		return "", false
 	}
 	return live.RunningHarness()
-}
-
-// harnessChip is the strip's leading cell while a run is in flight: the spinner
-// and the harness's name, in the shape every other chip on that row has
-// (taskstrip.go). It returns the painted chip and the CELLS it occupies, which
-// is the pair the strip's budget is spent in.
-//
-// THE GLYPH CARRIES THE HUE AND THE NAME STAYS INK, which is [app.stripTitle]'s
-// own law for a chip that is running rather than open. The name used to take the
-// accent as well, and on a strip with a room open that put TWO chips on one row
-// claiming to be the thing you are looking at — the room you are standing in,
-// and a harness you are merely watching. Only the spinner leads here: it is the
-// one cell that says "this instant", and it is the cell that stops saying it the
-// moment the run lands.
-func (a *app) harnessChip(name string) (string, int) {
-	glyph := a.pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	if a.linear {
-		glyph = a.pal.accent(glyphRunASCII)
-	}
-	mark := a.linearMark(glyphHarness, glyphHarnessASCII)
-	title := fit(name, stripTitleCap)
-	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(mark) + 1 + ansi.StringWidth(title) + stripPadCols
-	return stripPad + glyph + " " + a.pal.muted(mark) + " " + a.pal.ink(title) + stripPad, cols
 }

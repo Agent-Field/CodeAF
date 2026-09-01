@@ -135,8 +135,7 @@ went past. Once you have answered, it is not asked twice while the run catches u
 ## Watching a run and steering it
 
 A run takes a root row on the roster, with its nodes drawn under it as a tree — see *A
-run's nodes on the roster* below. On narrow frames its live members take ordinary chips in
-the strip's single flat row; the strip does not draw the tree. Those rows and chips are a
+run's nodes on the roster* below. Those rows are a
 picture of the run, not tasks: the run's own **page** is where a node is read and where the run is steered. Press
 **→** over an empty message box with no room open and the page opens, or press the run's
 row — or any of its nodes' rows — on the roster; a paused run brings its own page up when

@@ -163,12 +163,17 @@ func TestAClosedColumnStillSaysWhereTheWorkIs(t *testing.T) {
 
 	railRun(a)
 	drive(t, a, ctrlG())
-	if !a.stripShowing() {
-		t.Fatal("the closed column left running work with no door on the frame")
+	if !a.railStowed() {
+		t.Fatal("ctrl+g did not leave the column's edge on the frame")
 	}
-	strip := plain(a.stripRow(a.width))
-	if !strings.Contains(strip, "Ship the port") {
-		t.Fatalf("the strip named no running node:\n%s", strip)
+	// THE EDGE IS THE DOOR NOW. The strip that used to stand up here is gone
+	// with the bottom's fold (topbar.go): what a closed column leaves is its own
+	// two-cell edge, and the one glyph it whispers with says the work is live —
+	// the same fact the strip's chips carried, at the size the space allows
+	// (task.go's [app.railGripState]).
+	grip := plain(strings.Join(a.railGripRows(a.viewHeight()), "\n"))
+	if !strings.Contains(grip, homeLiveGlyph) {
+		t.Fatalf("the closed column's edge says nothing about running work:\n%q", grip)
 	}
 	if got := a.hintWord(); got != railBackHint {
 		t.Fatalf("the legend's hint reads %q, want %q", got, railBackHint)

@@ -140,12 +140,17 @@ func TestALinkBeingRedialledPutsItsSentenceOnTheStatusLine(t *testing.T) {
 	}
 	// AND IT IS NEVER THE SEGMENT A NARROW FRAME GIVES UP. Everything droppable
 	// is dropped around it, because it is the reason none of those numbers are
-	// moving.
-	parts := a.telemetry(hudWide)
-	for dropSegment(&parts) {
+	// moving. The give-way is [dropRowSegment] walking [dropOrder] across both
+	// clusters now, and the link is not in the order at all — so the walk can
+	// empty the row and the sentence is still on it.
+	var left, right []hudPart
+	for _, part := range a.telemetry(hudWide) {
+		right = append(right, part)
+	}
+	for dropRowSegment(&left, &right) {
 	}
 	found := false
-	for _, part := range parts {
+	for _, part := range right {
 		found = found || part.kind == segLink
 	}
 	if !found {

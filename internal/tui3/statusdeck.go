@@ -204,18 +204,23 @@ func deckJoin(paint func(string) string, left, right, plainRight string, width i
 	return deckPad + paint(left) + strings.Repeat(" ", gap) + right
 }
 
-// deckTitle is row 1's left: where you are. A room renames it and nothing else
-// on the deck, which is the wide row's law again ([app.identityParts]) — the
-// telemetry beside it is still the session's, because a room is a view over one
-// body region and not a second session.
+// deckTitle is row 1's left: the crumb's current step, which is the whole of
+// the top bar a phone tier draws (ISSUE-126). The bar itself is not drawn
+// below [hudTight] — there is not a crumb and a way out's worth of line down
+// there — so the deck's first row takes the crumb instead, and the crumb at
+// this width is its last step alone: the room's own title and handle where one
+// is open, the conversation's name at rest. The steps above it are one press
+// away in the conversations list, which is what the deck's sheet is for.
 func (a *app) deckTitle() string {
+	segs := a.crumbSegments()
+	if len(segs) == 0 {
+		return ""
+	}
+	last := segs[len(segs)-1]
 	if a.roomOpen() {
 		return a.roomChip()
 	}
-	if name := a.sessionName(); name != "" {
-		return name
-	}
-	return a.place
+	return last.text
 }
 
 // deckSpend is row 1's right: the bill and the meter, painted by the same two

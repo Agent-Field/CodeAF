@@ -1060,7 +1060,7 @@ open behind it, fully alive.
   this one. Press it again and you are back. It is `cd -`.
 - **`/new`** adds a conversation in this project — unless the one on screen is fresh and
   empty, in which case it takes its place.
-- **the status line** reads `2 open · 1 waiting`: how many this terminal holds, and how many
+- **the status line** reads `2 open · 1 want you`: how many this terminal holds, and how many
   of them are stopped on a question. It is absent when only one is open.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
   only when that was the last one.
@@ -1078,7 +1078,7 @@ held and it keeps writing itself to disk. A desktop notification tells you when 
 a turn or stops on a question — even while the terminal is focused, because a focused
 terminal is no longer evidence that anybody is looking at *that* conversation.
 
-The status line says how many are open and how many want you: `2 open · 1 waiting`. Home
+The status line says how many are open and how many want you: `2 open · 1 want you`. Home
 says it per row: a conversation this terminal holds reads `open`, or `waiting on you` when
 it is stopped on a question, and those two are read from the conversation itself rather than
 from a file, so they are never a few seconds behind.

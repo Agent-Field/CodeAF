@@ -5,7 +5,7 @@
 The dim line at the right end of the rule above your message box is the hint slot. Most of
 the time it names the keys that work right now — `esc interrupt` while an answer is coming,
 `y allow · n deny · a always` while aforge is asking you something, `/ commands` when nothing
-is happening. Once you have used aforge a little, that idle line sometimes carries a tip
+is happening. Once you have used aforge a little, that resting line sometimes carries a tip
 instead: one sentence naming a key or a command you have not used yet, and what it does.
 For example `ctrl+. sees every task this project has run`, or `esc esc takes back the last
 message`.

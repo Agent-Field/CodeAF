@@ -63,7 +63,7 @@ The sentence above the rows is the one people most need on their first day:
 The crew and the model you talk to are **two different settings**. The crew is the four
 class rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.high`,
 `models.tiers.mastermind`) that aforge's own side-calls run on; the model that answers
-you in the conversation is chosen with `/model` and shown in the status line, and the
+you in the conversation is chosen with `/model` and shown in the top bar, and the
 crew never touches it. Choosing a crew here writes those four rows in one go, which is
 exactly what `/crew balanced` does.
 

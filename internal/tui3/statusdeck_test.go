@@ -4,319 +4,360 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// deckApp is a session at PHONE WIDTH with something on every part of the
-// status line: a name, a bill, a context reading and a model.
-func deckApp(t *testing.T) (*app, *fakeAgent) {
+// deckApp is the phone-tier harness: a session with a name, a model, a bill
+// and a meter, at a width the deck answers for. The welcome box is dismissed
+// the way a first keystroke dismisses it, because the deck keeps the row's own
+// quiet law ([app.statusQuiet]) and a greeting over it would empty the numbers
+// these tests are reading.
+func deckApp(t *testing.T) *app {
 	t.Helper()
-	a, agent, _ := hudApp(t)
-	a.width, a.height = 44, 20
-	a.title, a.cost = "Fix the nil-map crash", 0.31
-	a.ctxWindow, a.ctxTokens = 200_000, 24_000
-	a.touch()
-	return a, agent
+	a, _, _ := hudApp(t)
+	a.width, a.height = 44, 24
+	a.cost = 0.42
+	a.ctxTokens, a.ctxWindow = 12400, 128000
+	a.dismissWelcome()
+	return a
 }
 
-// deckRows is the last [deckHeight] rows of the frame — the deck itself, as a
-// reader sees it.
-func deckRowsOf(t *testing.T, a *app) []string {
-	t.Helper()
-	lines := strings.Split(plain(frame(a)), "\n")
-	if len(lines) != a.height {
-		t.Fatalf("the frame is %d rows, want the terminal's %d", len(lines), a.height)
+// deckRowsOf is the deck as a reader sees it: the two rows, plain.
+func deckRowsOf(a *app) []string {
+	rows := a.statusRows(a.width)
+	if len(rows) != deckHeight {
+		panic("the deck is not two rows")
 	}
-	return lines[len(lines)-deckHeight:]
+	return []string{plain(rows[0]), plain(rows[1])}
 }
 
-// ── THE DECK ────────────────────────────────────────────────────────────────
-
-// At forty-four columns the status is TWO ROWS, and the two carry the four
-// facts a phone-width frame can answer at a glance: what this is and what it
-// cost, then what is answering and what is still moving.
-func TestThePhoneStatusIsATwoRowDeck(t *testing.T) {
-	a, _ := deckApp(t)
-
+// THE DECK IS TWO ROWS, ALWAYS. The wide row's second row is wrap-driven — it
+// exists only when the clusters would collide — and the deck's is not: a phone
+// frame gets the same two rows in every state, which is what lets the chrome
+// height be a constant ([app.statusHeight]).
+func TestStatusDeckIsTwoRowsInEveryState(t *testing.T) {
+	a := deckApp(t)
 	if got := a.statusHeight(a.width); got != deckHeight {
-		t.Fatalf("the phone status is %d rows, want the deck's %d", got, deckHeight)
+		t.Fatalf("statusHeight(%d) = %d, want the deck's constant %d", a.width, got, deckHeight)
 	}
-	if got := len(a.statusRows(a.width)); got != deckHeight {
-		t.Fatalf("the row builder drew %d rows, want %d", got, deckHeight)
+	if rows := a.statusRows(a.width); len(rows) != deckHeight {
+		t.Fatalf("statusRows(%d) returned %d rows, want %d", a.width, len(rows), deckHeight)
 	}
+	// And the same answer while a turn is running, when the state word and the
+	// burn are on the line.
+	a.state = stateWorking
+	a.turnBegan = a.now().Add(-4 * time.Second)
+	if rows := a.statusRows(a.width); len(rows) != deckHeight {
+		t.Fatalf("statusRows(%d) mid-turn returned %d rows, want %d", a.width, len(rows), deckHeight)
+	}
+}
 
-	deck := deckRowsOf(t, a)
-	top, model := deck[0], deck[1]
-	for _, want := range []string{"Fix the nil-map crash", "$0.31", "12%"} {
-		if !strings.Contains(top, want) {
-			t.Fatalf("row 1 is missing %q:\n%q", want, top)
-		}
+// ROW 1 IS THE CRUMB'S OWN STEP AGAINST THE SPEND AND THE METER. ISSUE-126
+// moved the identity to the top bar's crumb, and the deck's first row is that
+// crumb's current step: the session's name in the conversation, the room's
+// chip in a room. The ▸ on its right end is the door to the sheet.
+func TestStatusDeckTopRowIsTheCrumbStepAgainstTheSpend(t *testing.T) {
+	a := deckApp(t)
+	rows := deckRowsOf(a)
+	if !strings.Contains(rows[0], "aforge-v2") {
+		t.Fatalf("row 1 = %q, want the session's name", rows[0])
 	}
-	if !strings.Contains(top, deckMore) {
-		t.Fatalf("row 1 carries no affordance for the sheet:\n%q", top)
+	if !strings.Contains(rows[0], "$0.42") {
+		t.Fatalf("row 1 = %q, want the bill", rows[0])
 	}
-	// The model is its BASENAME on the deck — the routing address is the sheet's,
-	// where the whole id is recorded.
-	if !strings.Contains(model, "deepseek-v4-flash") {
-		t.Fatalf("row 2 is missing the model chip:\n%q", model)
+	if !strings.Contains(rows[0], "10%") {
+		t.Fatalf("row 1 = %q, want the meter's percent", rows[0])
 	}
-	if strings.Contains(model, "deepseek/deepseek") {
-		t.Fatalf("row 2 spent nine cells on a vendor prefix:\n%q", model)
+	if !strings.Contains(rows[0], deckMore) {
+		t.Fatalf("row 1 = %q, want the sheet's ▸", rows[0])
 	}
-	if !strings.Contains(model, "idle") {
-		t.Fatalf("row 2 dropped the state word, which is the last thing to go:\n%q", model)
+}
+
+// ROW 2 IS WHAT IS ANSWERING AGAINST WHAT IS STILL MOVING. The model is its
+// basename — the rider and the full routing address are the sheet's — and the
+// right end is the state word, which is the last segment to go on the wide row
+// and the last here.
+func TestStatusDeckModelRowIsTheBasenameAgainstTheState(t *testing.T) {
+	a := deckApp(t)
+	a.state = stateWorking
+	a.turnBegan = a.now().Add(-4 * time.Second)
+	rows := deckRowsOf(a)
+	if !strings.Contains(rows[1], "deepseek-v4-flash") {
+		t.Fatalf("row 2 = %q, want the model's basename", rows[1])
 	}
-	for i, line := range deck {
-		if w := ansi.StringWidth(line); w > a.width {
-			t.Fatalf("deck row %d is %d cells wide, want at most %d:\n%q", i, w, a.width, line)
+	if strings.Contains(rows[1], "deepseek/deepseek-v4-flash") {
+		t.Fatalf("row 2 = %q, want the basename, not the full routing address", rows[1])
+	}
+	if !strings.Contains(rows[1], "working") {
+		t.Fatalf("row 2 = %q, want the state word", rows[1])
+	}
+}
+
+// THE IDLE WORD IS NOTHING, ON THE DECK AS ON THE WIDE ROW. A session that is
+// doing nothing says nothing where the state word would stand — the emptiness
+// law's plainest case, and the one the old row broke with a permanent dim
+// "idle".
+func TestStatusDeckSaysNothingWhenNothingIsHappening(t *testing.T) {
+	a := deckApp(t)
+	rows := deckRowsOf(a)
+	for i, row := range rows {
+		if strings.Contains(row, "idle") {
+			t.Fatalf("row %d = %q, want no state word for a session at rest", i+1, row)
 		}
 	}
 }
 
-// The deck is two rows in EVERY state, not two rows when it happens to wrap:
-// the chrome height, the frame and the hit-testing all read one constant.
-func TestTheDeckIsAlwaysTwoRowsAndTheChromeCountsBoth(t *testing.T) {
-	a, agent := deckApp(t)
-
-	states := []func(){
-		func() {},
-		func() { a.title, a.cost = "", 0 },
-		func() { a.title, a.cost = "a much longer session name than this frame can hold", 148.02 },
-		func() { a.state = stateWorking; a.turnBegan = a.now().Add(-4 * time.Second) },
+// A ROOM RENAMES BOTH ROWS, which is the wide row's own law at phone width:
+// row 1 takes the room's chip — the crumb's current step — and row 2 takes the
+// task's own model, because a page about a task that still named the
+// conversation's engine would be the deck's half of the same lie.
+func TestStatusDeckInARoomNamesTheRoom(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.width, a.height = 44, 24
+	a.cost = 0.42
+	a.ctxTokens, a.ctxWindow = 12400, 128000
+	a.dismissWelcome()
+	a.openRoom(7, "Fix the nil-map crash")
+	if !a.roomOpen() {
+		t.Fatal("the room did not open")
 	}
-	for i, set := range states {
-		set()
-		a.touch()
-		_ = agent
-		if got := a.statusHeight(a.width); got != deckHeight {
-			t.Fatalf("state %d: statusHeight says %d, want %d", i, got, deckHeight)
-		}
-		if got := len(a.statusRows(a.width)); got != deckHeight {
-			t.Fatalf("state %d: the row builder drew %d rows, want %d", i, got, deckHeight)
-		}
-		lines := strings.Split(plain(frame(a)), "\n")
-		if len(lines) != a.height {
-			t.Fatalf("state %d: the frame is %d rows, want %d", i, len(lines), a.height)
-		}
-		chrome, marks, _, _ := a.chrome(a.width)
-		if len(chrome) != len(marks) {
-			t.Fatalf("state %d: the chrome has %d rows and %d marks", i, len(chrome), len(marks))
-		}
-		status := 0
-		for _, mark := range marks {
-			if mark.kind == chromeStatus {
-				status++
-			}
-		}
-		if status != deckHeight {
-			t.Fatalf("state %d: the chrome marked %d status rows, want %d", i, status, deckHeight)
-		}
+	rows := deckRowsOf(a)
+	if !strings.Contains(rows[0], "Fix the nil-map crash") {
+		t.Fatalf("row 1 in a room = %q, want the room's chip", rows[0])
+	}
+	if strings.Contains(rows[0], "aforge-v2") {
+		t.Fatalf("row 1 in a room = %q, want the room's step, not the session's", rows[0])
 	}
 }
 
-// The running count and the background jobs are what row 2 says beside the
-// model, and the state word survives both.
-func TestTheDeckCountsWhatIsStillMoving(t *testing.T) {
-	a, _ := deckApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen,
-		ev: update(7, "port the parser", session.TaskRunning, session.TaskNotice{})})
-
-	row := deckRowsOf(t, a)[1]
-	if !strings.Contains(row, "1 running") {
-		t.Fatalf("row 2 does not say what is running:\n%q", row)
-	}
-}
-
-// ── THE SHEET ───────────────────────────────────────────────────────────────
-
-// TAPPING ROW 1 OPENS THE SHEET, and the sheet lists every fact the status line
-// can carry — including the ones the deck's two rows had no cells for.
-func TestTappingTheDeckOpensTheFullscreenStatusSheet(t *testing.T) {
-	a, _ := deckApp(t)
-	_ = frame(a)
-
-	drive(t, a, clickAt(6, a.height-deckHeight))
-	drive(t, a, releaseAt(6, a.height-deckHeight))
-	if !a.deck.open {
-		t.Fatal("a press on the deck's first row did not open the status sheet")
-	}
-
-	lines := strings.Split(plain(frame(a)), "\n")
-	if len(lines) != a.height {
-		t.Fatalf("the sheet is %d rows, want the terminal's %d", len(lines), a.height)
-	}
-	body := strings.Join(lines, "\n")
-	if !strings.HasPrefix(lines[0], " status") || !strings.Contains(lines[0], "esc close") {
-		t.Fatalf("the sheet has no head:\n%q", lines[0])
-	}
-	// Everything the deck kept, everything it moved, and the two the legend
-	// holds — one line each.
-	for _, want := range []string{
-		"session", "Fix the nil-map crash",
-		"model", "deepseek/deepseek-v4-flash",
-		"spend", "$0.31",
-		"context", "24k/200k · 12%",
-		"state", "idle",
-		"place", "chat-v3-task*",
-		"keys", microcopy,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("the sheet never says %q:\n%s", want, body)
-		}
-	}
-	for i, line := range lines {
-		if w := ansi.StringWidth(line); w > a.width {
-			t.Fatalf("sheet row %d is %d cells wide, want at most %d:\n%q", i, w, a.width, line)
-		}
-	}
-
-	// esc closes it and leaves the deck exactly as it was.
-	drive(t, a, key("esc"))
-	if a.deck.open {
-		t.Fatal("esc did not close the status sheet")
-	}
-	if got := len(deckRowsOf(t, a)); got != deckHeight {
-		t.Fatalf("the deck came back as %d rows", got)
-	}
-}
-
-// A press on the chrome — the head, the rules, the empty rows under a short
-// list — is a press OUTSIDE the list, and that is how a finger closes it.
-func TestTappingOutsideTheSheetsListClosesIt(t *testing.T) {
-	a, _ := deckApp(t)
+// THE SHEET IS WHAT THERE IS. The deck is what fits; the sheet is every item,
+// one per line, and it keeps the facts the rows gave up: the full routing
+// address, the served rider, the crew, the watch.
+func TestStatusDeckSheetCarriesWhatTheRowsGaveUp(t *testing.T) {
+	a := deckApp(t)
 	a.openStatusSheet()
-	_ = frame(a)
-
-	drive(t, a, clickAt(2, 0))
-	drive(t, a, releaseAt(2, 0))
-	if a.deck.open {
-		t.Fatal("a press on the sheet's head did not close it")
+	if !a.deck.sheet.open {
+		t.Fatal("the sheet did not open")
+	}
+	var lines []string
+	for _, item := range a.deckItems() {
+		lines = append(lines, item.label+": "+item.value)
+	}
+	sheet := strings.Join(lines, "\n")
+	if !strings.Contains(sheet, "deepseek/deepseek-v4-flash") {
+		t.Fatalf("the sheet does not carry the full routing address:\n%s", sheet)
+	}
+	if !strings.Contains(sheet, "session: aforge-v2") {
+		t.Fatalf("the sheet does not carry the session's name:\n%s", sheet)
 	}
 }
 
-// THE MODEL IS THE ONE LINE A TAP ACTS ON, at both ends: the chip on the deck's
-// second row, and the model line inside the sheet.
-func TestTheModelIsPressableOnTheDeckAndInTheSheet(t *testing.T) {
-	a, _ := deckApp(t)
-	_ = frame(a)
+// THE WIDE ROW IS TWO CLUSTERS NOW (ISSUE-126): the presence cluster on the
+// left, dim — jobs, watches, what is keeping watch — and the ticking cluster
+// on the right, hard against the edge. The identity that used to open this row
+// is the top bar's crumb, and the facts that left the row are one press away
+// in the sheet.
+func TestStatusRowIsTwoClusters(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.cost = 0.42
+	a.ctxTokens, a.ctxWindow = 12400, 128000
+	a.dismissWelcome()
+	rows := a.statusRows(a.width)
+	if len(rows) != 1 {
+		t.Fatalf("statusRows(%d) returned %d rows, want one", a.width, len(rows))
+	}
+	row := plain(rows[0])
+	if !strings.Contains(row, "$0.42") {
+		t.Fatalf("the row = %q, want the bill in the ticking cluster", row)
+	}
+	if !strings.Contains(row, "10%") {
+		t.Fatalf("the row = %q, want the meter in the ticking cluster", row)
+	}
+	// The identity is gone from the row: the session's name and the model's
+	// full address are the top bar's and the sheet's now.
+	if strings.Contains(row, "aforge-v2") {
+		t.Fatalf("the row = %q, want the identity off it — the crumb carries it", row)
+	}
+	if strings.Contains(row, "deepseek/deepseek-v4-flash") {
+		t.Fatalf("the row = %q, want the model's full address off it", row)
+	}
+}
 
-	if !a.modelSpan.pressable() {
-		t.Fatal("the deck recorded no columns for the model chip")
+// THE PRESENCE CLUSTER IS THE LEFT END, DIM, and it is what the session is
+// doing in the background: jobs and watches this surface watched start, and
+// the standing orders it is keeping.
+func TestStatusRowPresenceClusterIsTheLeftEnd(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.dismissWelcome()
+	a.hud = hudStats{jobs: 2, watches: 1}
+	a.hudStale = false
+	rows := a.statusRows(a.width)
+	row := plain(rows[0])
+	if !strings.Contains(row, "2 jobs") {
+		t.Fatalf("the row = %q, want the jobs count on the left", row)
 	}
-	if a.modelSpan.to-a.modelSpan.from < deckTouch {
-		t.Fatalf("the model target is %d cells wide, want at least %d",
-			a.modelSpan.to-a.modelSpan.from, deckTouch)
+	if !strings.Contains(row, "1 watch") {
+		t.Fatalf("the row = %q, want the watch count on the left", row)
 	}
-	drive(t, a, clickAt(a.modelSpan.from+1, a.height-1))
-	drive(t, a, releaseAt(a.modelSpan.from+1, a.height-1))
+	// The presence cluster stands left of the ticking one.
+	jobs := strings.Index(row, "2 jobs")
+	cost := strings.Index(row, "$")
+	if cost >= 0 && jobs > cost {
+		t.Fatalf("the row = %q, want the presence cluster left of the bill", row)
+	}
+}
+
+// THE TICKING CLUSTER'S ORDER IS THE SPEC'S: the open count, the bill, the
+// meter, the forecast, the state — each present only when it is true, and the
+// state word never dropped.
+func TestStatusRowTickingClusterReadsInOrder(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.dismissWelcome()
+	a.cost = 0.42
+	a.ctxTokens, a.ctxWindow = 12400, 128000
+	a.state = stateWorking
+	a.turnBegan = a.now().Add(-4 * time.Second)
+	row := plain(a.statusRows(a.width)[0])
+	cost := strings.Index(row, "$0.42")
+	pct := strings.Index(row, "10%")
+	state := strings.Index(row, "working")
+	if cost < 0 || pct < 0 || state < 0 {
+		t.Fatalf("the row = %q, want the bill, the meter and the state word", row)
+	}
+	if !(cost < pct && pct < state) {
+		t.Fatalf("the row = %q, want bill → meter → state, left to right", row)
+	}
+}
+
+// THE ROW'S BYTE-FOR-BYTE PIN, in the new form: one row, the presence cluster
+// on the left, the ticking cluster hard against the right edge, and nothing
+// where nothing is true. This is the pin that fails loudly when the row's
+// shape moves, which is what a pin is for.
+func TestStatusRowPinned(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.dismissWelcome()
+	a.cost = 0.42
+	a.ctxTokens, a.ctxWindow = 12400, 128000
+	row := plain(a.statusRows(a.width)[0])
+	// hudApp is 200 wide; the right cluster is right-aligned, so the row ends
+	// with the meter and the bill is left of it. The left end is empty: no
+	// jobs, no watches, nothing standing.
+	want := strings.Repeat(" ", 200-len("$0.42 · 12.4k/128k · 10%")) + "$0.42 · 12.4k/128k · 10%"
+	if row != want {
+		t.Fatalf("the pinned row moved:\n got %q\nwant %q", row, want)
+	}
+}
+
+// THE DECK'S PRESS IS THE ROW'S PRESS: every cell of both rows opens
+// something — the chip its picker, every other cell the sheet — so there is no
+// part of either row a band would be promising a door it does not have.
+func TestStatusDeckPressOpensTheSheet(t *testing.T) {
+	a := deckApp(t)
+	// The press lands on row 1, off the model chip.
+	y := a.height - deckHeight
+	a.deckPress(20, y)
+	if !a.deck.sheet.open {
+		t.Fatal("pressing row 1 did not open the sheet")
+	}
+}
+
+// THE CHIP'S PRESS IS THE PICKER, and only the chip's: the model's basename on
+// row 2 is the one cell that opens the model picker rather than the sheet.
+func TestStatusDeckChipPressOpensThePicker(t *testing.T) {
+	a := deckApp(t)
+	// Lay the deck out once so the chip's columns are recorded.
+	a.statusRows(a.width)
+	y := a.height - 1 // row 2
+	// The chip starts one cell in (deckPad).
+	a.deckPress(len(deckPad)+1, y)
+	if a.deck.sheet.open {
+		t.Fatal("pressing the model chip opened the sheet, want the picker")
+	}
 	if !a.pick.open {
-		t.Fatal("pressing the model chip on the deck did not open the picker")
+		t.Fatal("pressing the model chip opened nothing, want the picker")
 	}
-	drive(t, a, key("esc"))
+}
 
-	// And from the sheet, by the keyboard: the model line, then enter.
+// THE SHEET'S OWN ROWS ARE DOORS WHERE THEY CARRY ONE: the model line opens
+// the picker, and a line with no act is a fact and nothing else.
+func TestStatusDeckSheetModelLineIsADoor(t *testing.T) {
+	a := deckApp(t)
 	a.openStatusSheet()
 	items := a.deckItems()
-	at := -1
+	var modelAt = -1
 	for i, item := range items {
 		if item.act == deckActModel {
-			at = i
+			modelAt = i
+			break
 		}
 	}
-	if at < 0 {
-		t.Fatal("the sheet lists no model line")
+	if modelAt < 0 {
+		t.Fatal("the sheet has no model line")
 	}
-	a.deck.cursor = at
-	drive(t, a, key("enter"))
-	if a.deck.open {
-		t.Fatal("answering the model line left the sheet up under the picker")
-	}
+	// A press selects; the press on the row already selected answers it.
+	a.deck.cursor = modelAt
+	a.deckActivate(modelAt, items)
 	if !a.pick.open {
-		t.Fatal("enter on the sheet's model line did not open the picker")
+		t.Fatal("answering the sheet's model line opened nothing, want the picker")
+	}
+	if a.deck.sheet.open {
+		t.Fatal("the sheet is still open under the picker")
 	}
 }
 
-// A frame that GREW out of the phone tier has its whole status row back, and
-// the sheet standing in for it goes away with the tier that needed it.
-func TestTheSheetClosesWhenTheFrameLeavesThePhoneTier(t *testing.T) {
-	a, _ := deckApp(t)
-	a.openStatusSheet()
-	_ = frame(a)
-
-	a.width = 120
-	a.touch()
-	lines := strings.Split(plain(frame(a)), "\n")
-	if a.deck.open {
-		t.Fatal("the status sheet survived the frame growing past the phone tier")
+// THE QUIET LAW IS THE ROW'S OWN: the greeting empties the wide row, and the
+// deck keeps the same law — a phone frame over the welcome box draws the deck
+// with the bill and the meter taken out, because nothing has been said, sent
+// or spent yet.
+func TestStatusDeckKeepsTheQuietLaw(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.width, a.height = 44, 24
+	// The welcome box is still open: hudApp dismisses it, so open it again the
+	// way a fresh session would.
+	a.welcome.open = true
+	if !a.statusQuiet() {
+		t.Fatal("the welcome box is open and the row is not quiet")
 	}
-	if strings.HasPrefix(lines[0], " status") {
-		t.Fatalf("the sheet is still drawn at 120 columns:\n%q", lines[0])
-	}
-}
-
-// ── AND EVERY WIDER FRAME IS UNTOUCHED ──────────────────────────────────────
-
-// The deck is the PHONE tier's status and nothing else's. At sixty columns and
-// up the row is the one it has always been — one row, or the wrapped two — and
-// the height is still answered by the layout rather than by the tier.
-func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
-	a, _ := deckApp(t)
-
-	for _, width := range []int{200, 120, 100, 80, 70, 60} {
-		a.width = width
-		a.touch()
-		rows := a.statusRows(width)
-		_, _, wrapped := a.statusLayout(width)
-		want := 1
-		if wrapped {
-			want = 2
-		}
-		if len(rows) != want {
-			t.Fatalf("at %d columns the status is %d rows, want the layout's %d",
-				width, len(rows), want)
-		}
-		if got := a.statusHeight(width); got != len(rows) {
-			t.Fatalf("at %d columns statusHeight says %d and the row builder drew %d",
-				width, got, len(rows))
-		}
-		// The wide row keeps its two clusters on one line, which is the thing the
-		// deck replaces and must not have replaced here.
-		line := plain(strings.Join(rows, "\n"))
-		if !strings.Contains(line, "Fix the nil-map crash · deepseek-v4-flash") {
-			t.Fatalf("at %d columns the identity cluster is not the wide row's:\n%q", width, line)
+	rows := deckRowsOf(a)
+	for i, row := range rows {
+		if strings.Contains(row, "$") || strings.Contains(row, "%") {
+			t.Fatalf("row %d over the greeting = %q, want the bill and the meter taken out", i+1, row)
 		}
 	}
 }
 
-// THE BYTES, PINNED. The wave's promise is that a frame wide enough for the
-// status row renders exactly what it rendered before the deck existed, escape
-// sequences and all — so the row is asserted against its literal self.
-func TestTheWideStatusRowIsByteForByteWhatItWas(t *testing.T) {
-	a, _ := deckApp(t)
-	a.width = 120
-	a.touch()
-
-	const want = "Fix the nil-map crash · deepseek-v4-flash" +
-		"                                                  $0.31 · 24k/200k · 12% · idle"
-	if got := plain(strings.Join(a.statusRows(120), "\n")); got != want {
-		t.Fatalf("the wide status row changed:\n got %q\nwant %q", got, want)
+// THE DECK'S ROWS ARE THE FRAME'S OWN ROWS: the frame pins them at the bottom,
+// under the transcript, and the pointer's hit-testing resolves against the
+// same two rows the layout drew.
+func TestStatusDeckRowsAreTheFramesBottomRows(t *testing.T) {
+	a := deckApp(t)
+	frame, _, _ := a.frame()
+	lines := strings.Split(frame, "\n")
+	if len(lines) < a.height {
+		t.Fatalf("the frame has %d lines, want %d", len(lines), a.height)
+	}
+	bottom := plain(lines[a.height-1])
+	if !strings.Contains(bottom, "deepseek-v4-flash") {
+		t.Fatalf("the frame's last line = %q, want the deck's model row", bottom)
 	}
 }
 
-// The status row is one cell short of the frame's width at no width: the deck's
-// rows fill theirs the way the wide row fills its own.
-func TestTheDeckRowsFillTheFrame(t *testing.T) {
-	a, _ := deckApp(t)
-	for _, width := range []int{30, 44, 59} {
-		a.width = width
-		a.touch()
-		for i, line := range a.statusRows(width) {
-			if w := ansi.StringWidth(plain(line)); w > width {
-				t.Fatalf("at %d columns deck row %d is %d cells:\n%q", width, i, w, plain(line))
-			}
-		}
+// hoverRow lights the whole row under the pointer, which is the deck's own
+// bargain: every cell opens something, so the band never promises a door it
+// does not have.
+func TestStatusDeckHoverLightsTheWholeRow(t *testing.T) {
+	a := deckApp(t)
+	a.hot = hoverAt{kind: hoverDeck, index: 0}
+	rows := a.statusRows(a.width)
+	if len(rows) != deckHeight {
+		t.Fatalf("statusRows returned %d rows, want %d", len(rows), deckHeight)
+	}
+	// The hovered row is painted through hoverRow: the plain text is the same,
+	// but the painted row carries the band, so it is no longer its own plain
+	// form.
+	if rows[0] == plain(rows[0]) {
+		t.Fatal("the hovered row is unpainted, want the whole-row band")
+	}
+	if rows[1] != plain(rows[1]) {
+		t.Fatal("the row NOT under the pointer is painted, want only the hovered row lit")
 	}
 }

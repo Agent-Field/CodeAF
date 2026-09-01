@@ -31,116 +31,115 @@ func hoverBg() string { return "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m" }
 // is narrower than its row, or shares the row with one that is.
 func motionTo(x, y int) tea.MouseMotionMsg { return tea.MouseMotionMsg{X: x, Y: y} }
 
-// ── the task strip ──────────────────────────────────────────────────────────
+// ── the top bar's crumb ─────────────────────────────────────────────────────
 
-// A CHIP LIGHTS ALONE. Three doors share that line and each goes somewhere
-// else, so a band across the row would offer two rooms nobody is aiming at.
-func TestAStripChipLightsWithoutLightingTheRow(t *testing.T) {
-	a, _, _ := roomApp(t)
-	a.width = 80 // no rail at all: the strip is the only door
-	a.touch()
-	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Write the auth tests",
-		session.TaskRunning, session.TaskNotice{})})
-	// Laying the row out is what records the columns (taskstrip.go says why).
-	_ = stripText(a)
-	if len(a.stripSpans) < 2 {
-		t.Fatalf("the strip drew %d chips, want two to tell apart:\n%q",
-			len(a.stripSpans), stripText(a))
-	}
-	first, second := a.stripSpans[0], a.stripSpans[1]
-
-	drive(t, a, motionTo(first.span.from+1, a.headHeight()))
-	if !a.hoveringStrip(a.tasks[first.id]) {
-		t.Fatalf("the pointer on the first chip recorded %+v", a.hot)
-	}
-	row := a.stripRow(a.width)
-	if got := strings.Count(row, hoverBg()); got != 1 {
-		t.Fatalf("hovering one chip lit %d things on the row:\n%q", got, row)
-	}
-
-	// The chip beside it is a different door, so it is a different hover.
-	drive(t, a, motionTo(second.span.from+1, a.headHeight()))
-	if !a.hoveringStrip(a.tasks[second.id]) {
-		t.Fatalf("the pointer on the second chip recorded %+v", a.hot)
-	}
-	if got := strings.Count(a.stripRow(a.width), hoverBg()); got != 1 {
-		t.Fatalf("moving to the neighbour lit %d things on the row", got)
-	}
-
-	// AND THE GAP BETWEEN TWO CHIPS LIGHTS NOTHING. The press is swallowed there
-	// so it cannot fall through, and a gap that brightened would be claiming to be
-	// a door.
-	if gap := first.span.to; gap < second.span.from {
-		drive(t, a, motionTo(gap, a.headHeight()))
-		if strings.Contains(a.stripRow(a.width), hoverBg()) {
-			t.Fatalf("the gap between two chips lit up:\n%q", a.stripRow(a.width))
-		}
-	}
-}
-
-// THE +N BRIGHTENS RATHER THAN BANDING. It is two characters at the end of a
-// row of tabs, and a rectangle round them would be the one boxed thing here.
-func TestTheStripsOverflowMarkBrightensUnderThePointer(t *testing.T) {
-	a, _, _ := taskApp(t)
-	// WIDE ENOUGH THAT THE STRIP IS STILL A STRIP. Under sixty columns the row
-	// stops drawing chips at all and becomes the one-line rollup `▸ 5 tasks ·
-	// 5 running` (taskstrip.go), which has no +N to point at.
-	a.width = 60
-	for i := 1; i <= 5; i++ {
-		a.taskUpdate(update(uint64(i), "node number "+itoa(i), session.TaskRunning, session.TaskNotice{}))
-	}
-	_ = stripText(a)
-	if !a.stripMore.pressable() {
-		t.Fatal("five nodes in sixty columns dropped none of them")
-	}
-	word := stripMoreWord(5 - len(a.stripSpans))
-
-	drive(t, a, motionTo(a.stripMore.from, a.headHeight()))
-	if !a.hoveringStripMore() {
-		t.Fatalf("the pointer on the overflow mark recorded %+v", a.hot)
-	}
-	row := a.stripRow(a.width)
-	if !strings.Contains(row, a.pal.accent(word)) {
-		t.Fatalf("the overflow mark did not brighten:\n%q", row)
-	}
-	if strings.Contains(row, hoverBg()) {
-		t.Fatalf("the overflow mark took a background band:\n%q", row)
-	}
-}
-
-// ── a room's pinned header, and the ✕ on it ─────────────────────────────────
-
-// THE ROW AND THE ✕ ARE OPPOSITE GESTURES AND NEVER LIGHT TOGETHER. One leaves
-// the page, the other ends the work it is about, and the expensive one wins the
-// cells it is drawn on.
-func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
+// EACH STEP OF THE CRUMB IS ITS OWN DOOR, AND WHERE YOU ARE IS NONE. The
+// project goes home, the chat's name climbs out of the room, and the current
+// segment answers to nothing — a door to nowhere must not light. Three spans
+// share one row, so any of them answering for a neighbour's cells would be the
+// bar offering a page the hand is not on.
+func TestTheCrumbLightsOneStepAtATimeAndTheCurrentStepNever(t *testing.T) {
 	a, _ := stopApp(t)
 	a.openRoomFor(7, "Fix the nil-map crash")
 	a.touch()
 	width, _ := a.size()
-	if _ = a.roomHead(width); !a.roomStop.pressable() {
-		t.Fatal("the header drew no ✕ to aim at")
+	// Laying the bar out is what records the columns (topbar.go says why).
+	if _ = a.topBarWord(width); !a.crumbHomeSpan.pressable() || !a.crumbChatSpan.pressable() {
+		t.Fatalf("the bar drew no crumb to aim at: home=%+v chat=%+v\n%q",
+			a.crumbHomeSpan, a.crumbChatSpan, a.topBarWord(width))
+	}
+
+	// The project step is space space parity: home.
+	drive(t, a, motionTo(a.crumbHomeSpan.from, 0))
+	if a.hot.kind != hoverHome {
+		t.Fatalf("the pointer on the project step recorded %+v", a.hot)
+	}
+
+	// The chat's name is the precise way out of the room — one crumb level up,
+	// the same climb esc makes — and it is a different door from home's.
+	drive(t, a, motionTo(a.crumbChatSpan.from, 0))
+	if !a.hoveringRoomBack() {
+		t.Fatalf("the pointer on the chat's name recorded %+v", a.hot)
+	}
+
+	// THE CURRENT SEGMENT IS WHERE YOU ALREADY ARE, so it carries no span: the
+	// cells between the chat's name and the right cluster's doors answer to
+	// nothing, and a crumb that lit there would be promising a press that does
+	// nothing.
+	drive(t, a, motionTo(a.crumbChatSpan.to+1, 0))
+	if a.hot.kind != hoverNothing {
+		t.Fatalf("the current segment answered the pointer: %+v", a.hot)
+	}
+}
+
+// ── the top bar's right end: the way out and the ✕ ──────────────────────────
+
+// THE BACK WORD AND THE ✕ ARE OPPOSITE GESTURES AND NEVER LIGHT TOGETHER. One
+// leaves the page, the other ends the work it is about, and the expensive one
+// wins the cells it is drawn on.
+func TestTheTopBarsWayOutAndItsMarkLightSeparately(t *testing.T) {
+	a, _ := stopApp(t)
+	a.openRoomFor(7, "Fix the nil-map crash")
+	a.touch()
+	width, _ := a.size()
+	if _ = a.topBarWord(width); !a.roomStop.pressable() {
+		t.Fatal("the bar drew no ✕ to aim at")
+	}
+	if !a.backSpan.pressable() {
+		t.Fatal("the bar drew no back word to aim at")
 	}
 
 	drive(t, a, motionTo(a.roomStop.from, 0))
 	if !a.hoveringRoomStop() {
 		t.Fatalf("the pointer on the ✕ recorded %+v", a.hot)
 	}
-	head := a.roomHead(width)
-	if !strings.Contains(head, a.pal.ink(a.linearMark(roomStopMark, roomStopMarkASCII))) {
-		t.Fatalf("the ✕ did not brighten under the pointer:\n%q", head)
+
+	// The back word beside it is the way out, and a different hover: a hand
+	// reaching for "leave" must never be offered "end it".
+	drive(t, a, motionTo(a.backSpan.from, 0))
+	if !a.hoveringRoomBack() {
+		t.Fatalf("the pointer on the back word recorded %+v", a.hot)
 	}
-	if strings.Contains(head, hoverBg()) {
-		t.Fatalf("the ✕ banded the whole way-out row:\n%q", head)
+	if a.hoveringRoomStop() {
+		t.Fatal("the back word lit the ✕'s hover")
+	}
+}
+
+// ── the top bar's YOLO term ─────────────────────────────────────────────────
+
+// THE OPEN GATE LIGHTS AT THE SIZE OF THE WORD. YOLO is a safety affordance —
+// seeing the gate open has to offer the way to close it — and it is never
+// dropped by the width ladder, so the span is on the bar at every width the
+// bar is drawn at. A hover that answered for the whole right cluster would be
+// offering the Settings page under a hand reaching for the model.
+func TestTheYoloTermLightsAtTheSizeOfTheWord(t *testing.T) {
+	a, _ := stopApp(t)
+	a.approval = "allow"
+	a.touch()
+	width, _ := a.size()
+	if _ = a.topBarWord(width); !a.topYoloSpan.pressable() {
+		t.Fatalf("an open gate drew no YOLO to aim at:\n%q", a.topBarWord(width))
 	}
 
-	// Anywhere else along the row is the way out, and the way out is the row.
-	drive(t, a, motionTo(2, 0))
-	if !a.hoveringRoomBack() {
-		t.Fatalf("the pointer on the header recorded %+v", a.hot)
+	drive(t, a, motionTo(a.topYoloSpan.from, 0))
+	if a.hot.kind != hoverYolo {
+		t.Fatalf("the pointer on YOLO recorded %+v", a.hot)
 	}
-	if head = a.roomHead(width); !strings.Contains(head, hoverBg()) {
-		t.Fatalf("the header did not light as the way out:\n%q", head)
+
+	// The model beside it is a different door, so it is a different hover.
+	if a.modelSpan.pressable() {
+		drive(t, a, motionTo(a.modelSpan.from, 0))
+		if !a.hoveringStatusModel() {
+			t.Fatalf("the pointer on the model recorded %+v", a.hot)
+		}
+	}
+
+	// AND A CLOSED GATE IS NOTHING: the capability that cannot work is absent,
+	// so there is no span and the cells answer to nothing.
+	a.approval = ""
+	a.hot = hoverAt{}
+	if _ = a.topBarWord(width); a.topYoloSpan.pressable() {
+		t.Fatal("a closed gate kept its span on the bar")
 	}
 }
 
@@ -412,7 +411,7 @@ func TestAWaitingSignInLightsAsOneBlock(t *testing.T) {
 // its picker, everything else the sheet. There is no part of them a band would
 // be promising a door it does not have.
 func TestThePhoneDecksRowsLightUnderThePointer(t *testing.T) {
-	a, _ := deckApp(t)
+	a := deckApp(t)
 	_, height := a.size()
 
 	for row := 0; row < deckHeight; row++ {

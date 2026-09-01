@@ -215,16 +215,17 @@ func TestXOverSettledWorkRaisesNothing(t *testing.T) {
 
 // ── the pointer ─────────────────────────────────────────────────────────────
 
-// THE ✕ IN THE ROOM'S HEADER RAISES THE SAME CARD the key does. Same question,
-// two hands.
-func TestTheHeaderMarkRaisesTheSameCard(t *testing.T) {
+// THE ✕ AT THE TOP BAR'S RIGHT END RAISES THE SAME CARD the key does. Same
+// question, two hands — the header is gone, and the mark it carried at its
+// right end is the bar's now, in the same place a hand reaches for it.
+func TestTheTopBarMarkRaisesTheSameCard(t *testing.T) {
 	a, _ := stopApp(t)
 	a.openRoomFor(7, "Fix the nil-map crash")
 	a.touch()
 	width, _ := a.size()
-	head := a.roomHead(width)
-	if !strings.Contains(plain(head), roomStopMark) {
-		t.Fatalf("the header carries no ✕:\n%s", plain(head))
+	bar := a.topBarWord(width)
+	if !strings.Contains(plain(bar), roomStopMark) {
+		t.Fatalf("the top bar carries no ✕:\n%s", plain(bar))
 	}
 	if !a.roomStop.pressable() {
 		t.Fatalf("the ✕ was drawn but answers to no columns")
@@ -275,25 +276,42 @@ func stopCardRow(a *app) (int, bool) {
 	return 0, false
 }
 
-// THE STRIP CARRIES NO ✕ AND NO CURSOR ANY MORE, and neither is a loss: the row
-// is only ever on screen where the roster is NOT (taskstrip.go's
-// [app.stripShowing]), so a mark drawn from the roster's own cursor would be a
-// mark that can never be true. The button a pointer stops work with is the
-// room's own header, at every width (room.go).
-func TestTheStripCarriesNoStopMarkWhereTheRosterStands(t *testing.T) {
+// THE ✕ LIVES ON THE TOP BAR AND NOWHERE ELSE. The strip is gone with the
+// header, and the one place a pointer ends work is the bar's right end — drawn
+// only while the room's node is one the engine would take a stop for, so a
+// settled node's bar carries no mark and answers no press.
+func TestTheStopMarkLivesOnTheTopBarAlone(t *testing.T) {
 	a, _ := stopApp(t)
 	a.width, a.height = 140, 30
 	a.touch()
-	if a.stripShowing() {
-		t.Fatalf("the strip stood up beside the roster")
+
+	// Out of the room the bar carries no ✕: the mark is the room's own door
+	// (topbar.go draws it only while a room is open), and the roster's stop is
+	// the keyboard's, exactly as it always was.
+	if bar := plain(a.topBarWord(a.width)); strings.Contains(bar, roomStopMark) {
+		t.Fatalf("the conversation's bar offers a stop:\n%q", bar)
 	}
-	if row := plain(a.stripRow(a.width)); strings.Contains(row, roomStopMark) || row != "" {
-		t.Fatalf("the strip drew a row over the roster:\n%q", row)
-	}
-	// AND THE ROOM'S HEADER STILL HAS IT, which is where a pointer ends work.
+
+	// In the room, the mark is the bar's right end, and it is a door.
 	a.openRoom(7, "Fix the nil-map crash")
-	if !strings.Contains(plain(a.roomHead(a.bodyWidth())), roomStopMark) {
-		t.Fatalf("the room's header lost its ✕:\n%q", plain(a.roomHead(a.bodyWidth())))
+	bar := plain(a.topBarWord(a.width))
+	if !strings.Contains(bar, roomStopMark) {
+		t.Fatalf("the room's bar lost its ✕:\n%q", bar)
+	}
+	if !a.roomStop.pressable() {
+		t.Fatal("the ✕ was drawn but answers to no columns")
+	}
+
+	// AND A SETTLED NODE'S BAR CARRIES NO MARK: there is nothing left to stop,
+	// and a door that would be refused is a door that is not drawn.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskDone, session.TaskNotice{Merge: "merged cleanly", Branch: "task/nil-map"})})
+	bar = plain(a.topBarWord(a.width))
+	if strings.Contains(bar, roomStopMark) {
+		t.Fatalf("a landed node's bar still offers a stop:\n%q", bar)
+	}
+	if a.roomStop.pressable() {
+		t.Fatal("a landed node's ✕ is still a door")
 	}
 }
 

@@ -313,20 +313,15 @@ func (a *app) frame() (string, int, int) {
 	lift := welcomeLift(chromeMarks)
 	lifted := chrome[:lift]
 	chrome = chrome[lift:]
-	// THE FOCUS HEADER IS THE FRAME'S ONE PINNED ROW ABOVE the conversation, and
+	// THE TOP BAR IS THE FRAME'S ONE PINNED REGION ABOVE the conversation, and
 	// it spans the WHOLE window for the reason the status row does: it is about
-	// the window — which page this is, and how to leave it — rather than about
+	// the window — where this is, and what it is talking to — rather than about
 	// the transcript, so it is not one of the columns the rail borrows from
-	// (room.go).
-	head := a.roomHead(width)
-	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
-	// width: what is running is a fact about the SESSION, not about the
-	// transcript, and it is pinned because a door that scrolls away is a door
-	// only the person at the bottom of the page has (taskstrip.go).
-	// It is ROWS and not a row: a session running one thing is the single line
-	// this surface has always drawn, and a session running an adaptive tree is
-	// that line with the family under it, one node per row (taskstrip.go).
-	strip := a.stripRows(width)
+	// (topbar.go). It is the bar and its hairline rule, two rows, drawn for the
+	// chat and the task alike; the room header and the task strip it replaces
+	// were task-only surfaces, and the phone tier's deck takes the crumb instead
+	// (statusdeck.go).
+	head := a.topBarRows(width)
 	// THE RAIL COSTS COLUMNS, AND IT COSTS THEM HERE. The conversation is laid
 	// out at [app.bodyWidth] — everything below this line, the wheel and the
 	// hit-testing included, resolves through the same number — and the chrome is
@@ -335,17 +330,7 @@ func (a *app) frame() (string, int, int) {
 	view := a.viewHeight()
 
 	rows := make([]string, 0, height)
-	if head != "" {
-		rows = append(rows, head)
-		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
-		// work out and what it handed out itself, which is the fact the roster's
-		// tree carries in its shape and this page had no shape to carry it in
-		// (room.go's [app.roomKinRows]). They ride with the header rather than
-		// with the page because they are true of the page as a whole, and a fact
-		// that scrolls away is only true at the top.
-		rows = append(rows, a.roomKinRows(width)...)
-	}
-	rows = append(rows, strip...)
+	rows = append(rows, head...)
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
 	// same rows, the same folds, the same footer, laid out at the full width
 	// instead of squeezed into thirty columns that are not there (task.go's
@@ -629,39 +614,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.overlayRows(width, a.overlayHeight()) {
 		add(line, chromeRow{kind: chromeOverlay, index: i})
 	}
-	for i, line := range a.statusRow(width) {
+	for i, line := range a.statusRows(width) {
 		add(line, chromeRow{kind: chromeStatus, index: i})
 	}
 
 	return rows, marks, caretX, caretRow
-}
-
-// statusRow is the HUD's status row — one row, or two on a narrow frame where
-// the telemetry stops sharing with the identity (render.go's [app.statusRows])
-// — with the reasoning level on the model segment:
-// "anthropic/claude-sonnet-4.5:high" where a level has been dialled, and the
-// bare model id — the line exactly as it was — where none has.
-//
-// The level belongs on that line because it is a fact about what the next
-// request will cost and how long it will take, and the model segment is where a
-// person already looks for both. It is spelled with a colon rather than a fourth
-// segment for the same reason it is spelled that way on the picker row: it is
-// not a thing beside the model, it is how this model is being run.
-//
-// The splice happens by LENDING the model field its suffixed form for the length
-// of one call. [app.status] reads a.model directly (render.go), the frame is
-// drawn on the model goroutine one row at a time, and the alternative is a
-// second copy of the status line's segment layout — width budget, narrow-frame
-// dropping and all — kept in step with the first by nothing but attention.
-func (a *app) statusRow(width int) []string {
-	level := a.reasoningFor(a.model)
-	if level == "" || a.model == "" {
-		return a.statusRows(width)
-	}
-	id := a.model
-	a.model = id + ":" + level
-	defer func() { a.model = id }()
-	return a.statusRows(width)
 }
 
 // chromeAt resolves a screen row to the chrome row drawn on it. It is the
@@ -922,45 +879,33 @@ func (a *app) viewHeight() int {
 }
 
 // topHeight is everything the frame pins ABOVE the body region: the room's focus
-// header, and the task strip under it (taskstrip.go).
+// topHeight is what the whole pinned region above the conversation costs the
+// body: the top bar and its rule (topbar.go).
 //
 // It is one function for the reason [app.chrome] is one function: the frame
 // draws these rows, the conversation is shortened by their count, and a pointer
 // is resolved through them — three questions that must never be able to disagree
-// about where the body starts. Neither of the two may ask [app.viewHeight] back,
-// which is why both answer from the terminal's size alone.
-func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
+// about where the body starts. It may not ask [app.viewHeight] back, which is
+// why it answers from the terminal's size alone.
+func (a *app) topHeight() int { return a.headHeight() }
 
-// headHeight is what the pinned focus header costs the body region: one row
-// while a room is open on a frame with the height to spare, the kin rows under
-// it where there are any, and nothing otherwise (room.go).
+// headHeight is what the top bar costs the body region: two rows — the bar and
+// its rule — on a frame with the height to spare and the width for a bar, and
+// nothing otherwise (topbar.go).
 //
 // It is subtracted HERE, in the number every geometric question resolves
-// through, rather than at the frame — a header the frame drew and the scrolling
+// through, rather than at the frame — a bar the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
 	// The same floor the rule and the blank above the draft stand on: a terminal
-	// too short for breathing room is too short for a header, and what is
+	// too short for breathing room is too short for a head, and what is
 	// happening is still on the status line.
-	if a.room == nil || a.breathingRows() == 0 {
-		return 0
-	}
-	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
-	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
-	// way out's worth of line down there — so a row charged for here would be a
-	// row the frame never drew, and every hit-test on the page would land one line
-	// from where it was aimed.
 	width, _ := a.size()
-	if width < roomHeadFloor {
+	if !a.topBarShowing(width) {
 		return 0
 	}
-	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
-	// exactly the reason the header's own row is: they are drawn above the body
-	// by the frame, and rows the scrolling has not subtracted push the room's
-	// last row under the input box. They are asked at the frame's OWN width,
-	// which is the width [app.view] hands the header, so the count here and the
-	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	return 1 + len(a.roomKinRows(width))
+	// The bar and its rule, the two rows [app.topBarRows] draws.
+	return 2
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line
