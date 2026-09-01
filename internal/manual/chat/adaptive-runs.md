@@ -369,11 +369,14 @@ handed, word for word.
 Each node is a child agent working in your workspace, and two bounds are put on it.
 
 - **A write scope.** The planner says which paths a node may write. That is enforced by the
-  harness, not by asking politely in the brief: a write or an edit outside the scope is
-  refused with a result the node reads, so it can pick another file and carry on. `bash` is
-  deliberately not covered — a shell command's effects are whatever it did, and a guard that
-  pattern-matched commands would be claiming a guarantee it cannot keep. A node with no
-  scope is told it is read-only work.
+  harness, not by asking politely in the brief: a `write`, an `edit`, or an `edit_video`
+  cut, frame or score aimed outside the scope is refused with a result the node reads, so
+  it can pick another file and carry on. Two things are deliberately not covered. `bash`,
+  because a shell command's effects are whatever it did and a guard that pattern-matched
+  commands would be claiming a guarantee it cannot keep. And a saving call that names no
+  path at all — `edit_video` or `generate_image` with no `path` lands under a name of its
+  own in this session's picture or video folder, which is nowhere the scope is about. A
+  node with no scope is told it is read-only work.
 - **A working copy of its own, sometimes.** When the planner judges a node needs isolation,
   it runs in a copy of its own under the session folder. If there is nowhere to put one, the node
   shares the workspace instead and is told so. It degrades; it never fails for this.

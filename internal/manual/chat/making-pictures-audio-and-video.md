@@ -474,6 +474,13 @@ back to a render — and lands where this session keeps its pictures. `jpg`, `jp
 and `webp` also work if you name one in `path`; anything else is refused: `a
 frame is saved as a picture — .mp4 is not one of jpeg, jpg, png, webp`.
 
+**A moment past the end of the clip is refused, not saved empty.** An ffmpeg
+seeked past the last frame decodes nothing, writes nothing and reports success,
+so the refusal is aforge's own and it carries the clip's measured length: `Could
+not save the frame: ferry.mp4 runs 4.2s and has no frame at 9s — ask for a
+moment inside it, or for the closing frame`. `closing` is a seek from the end and can
+never be past one.
+
 The answer names the whole absolute path, the picture's measured shape, and which
 frame of which clip it is:
 
@@ -547,6 +554,15 @@ In one of three places, decided by whose folder the workspace is:
 Either way every generated file gets a row in the deliverables index, so
 `/files` finds it again later by name and date, from any directory. Give the
 tool an explicit `path` and that decision is yours instead.
+
+**A saved program lands its files in the same three places**, and they get the
+same row: a film a harness assembles is a deliverable of the conversation that
+ran it, not something hidden away in a folder of its own.
+
+**A refused action leaves nothing behind.** When `edit_video` will not do
+something — a join of one clip, a clip nothing can be read out of, a fade longer
+than the picture — no empty file is left where the result would have gone. A
+`path` you named yourself is never touched by that, whatever is already in it.
 
 ## What does a picture, a voiceover, a piece of music or a video cost?
 
