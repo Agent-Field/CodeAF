@@ -1,14 +1,15 @@
 ---
 kind: changed
 title: one top bar for chat and task, and the bottom folded to two rows
-pr: 100
+pr: 167
 surface: [chat]
 invalidates:
   - "The chat had no header — no longer true. Every conversation now wears a top bar: `· project › chat name` on the left, `model[:effort] · branch* · host · YOLO` on the right, with a hairline rule under it. It costs the body two rows, and on a frame too short for the body to keep a row it is the first chrome to go."
   - "The task strip existed — no longer true. The row of chips above the transcript is gone and nothing replaces it: the crumb says the place, the roster carries the running set, `ctrl+t`/`ctrl+g` open it, and the phone tier's deck draws the live set. Its phone form — one full-width `▸ 4 tasks · 2 running` door — went with it."
   - "The room header was a task-only surface — no longer true. Its facts moved up into the top bar's task form: the node glyph, the crumb `project › chat name › task title #N`, the state, the clock, the spend, and the `esc/← back · ✕` way out. The dim kin rows under it are gone too; the crumb carries the parent."
   - "`$0.00` was the stated exception to the emptiness law — no longer true. Zero spend draws no segment at all; the row ends at the numbers. `dollars()` itself still spells a zero, because a gauge with a tank and a ceiling somebody typed are figures where `$0.00` is the true reading — what refuses is the row (`render.go`'s `costSegment`), and `CLAUDE.md`'s stated law moved with it."
-  - "`idle` was a status word — no longer true. An idle chat's status row simply ends at the numbers."
+  - "`idle` was a status word — no longer true. An idle chat's status row simply ends at the numbers. The word itself is not gone: `/status` and the deck's sheet still print it, because somebody who asked deserves the answer, and the row that nobody asked does not narrate its own rest."
+  - "The one-screen scroll allocation ceiling was 220 — no longer true, it is 260 (`PERF.md`, `internal/tui3/inputsmooth_test.go`). The law is unchanged and still holds: four thousand lines scroll without re-wrapping any of them, and zero unchanged entries re-render. What rose is the cost of composing one frame, which now carries the bar — a crumb walked from the task tree, its cells and its spans, assembled fresh every frame because every fact on it is live."
   - "model, branch and host lived at the bottom of the screen — no longer true. They are the top bar's right cluster, dim at rest and brightening under the pointer; the bottom row carries only the ticking facts. YOLO and the reconnect note moved up with them."
   - "The status row's left end was the identity cluster — no longer true. It is the presence clauses (`N jobs · N watch`, `◦ keeping an eye on N`), dim; the identity is the crumb."
   - "The legend's left end carried `host · branch` — no longer true. It is empty at rest, and the generic key advertising (`space space home · tab last · ctrl+k switch · / commands`) now decays with the earned tips: the advertisement quiets, never the doors."
