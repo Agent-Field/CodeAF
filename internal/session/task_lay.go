@@ -30,6 +30,10 @@ import (
 type laidWork struct {
 	// staged pairs the temporary each path was copied to with where it goes.
 	staged [][2]string
+	// token is what this lay's temporaries are named after, minted once so two
+	// landings into one folder cannot rename each other's staged files into
+	// place, and so a name a person happens to have used is never the one taken.
+	token string
 	// made are the directories this lay created, deepest first, so abandoning it
 	// can take them away in the order it found them missing.
 	made []string
@@ -38,10 +42,11 @@ type laidWork struct {
 	gone []string
 }
 
-// layingSuffix is what a staged path is called while it waits beside its target.
-// It is the harness's own name so that a lay interrupted by a kill leaves
-// something a person can recognise as machinery rather than as their work.
-const layingSuffix = ".aforge-laying"
+// layingSuffix opens the name a staged path waits under beside its target, with
+// the lay's own token after it. It is the harness's own word so that a lay
+// interrupted by a kill leaves something a person can recognise as machinery
+// rather than as their work.
+const layingSuffix = ".aforge-laying-"
 
 // stageLay copies the whole ledger beside where it is going and reports the
 // first path that could not get there.
@@ -51,7 +56,7 @@ const layingSuffix = ".aforge-laying"
 // record that names a file absolutely and one that names it relatively land in
 // the same place.
 func stageLay(from, to string, wrote []string) (laidWork, string) {
-	var lay laidWork
+	lay := laidWork{token: shortID()}
 	for _, raw := range wrote {
 		relative, err := normalizeScopePath(from, raw)
 		if err != nil {
@@ -62,6 +67,12 @@ func stageLay(from, to string, wrote []string) (laidWork, string) {
 		source := filepath.Join(from, filepath.FromSlash(relative))
 		target := filepath.Join(to, filepath.FromSlash(relative))
 		if _, err := os.Lstat(source); err != nil {
+			if !os.IsNotExist(err) {
+				// A source that is there and cannot be read is not a deletion, and
+				// treating it as one would take the person's own file away over a
+				// permission somebody changed.
+				return lay, "the work could not be laid into a clean copy: " + err.Error()
+			}
 			// Written and then removed: what it goes over must not keep it either.
 			lay.gone = append(lay.gone, target)
 			continue
@@ -71,7 +82,7 @@ func stageLay(from, to string, wrote []string) (laidWork, string) {
 		if err != nil {
 			return lay, "the work could not be laid into a clean copy: " + err.Error()
 		}
-		staged := target + layingSuffix
+		staged := target + layingSuffix + lay.token
 		if err := copyPath(source, staged); err != nil {
 			lay.staged = append(lay.staged, [2]string{staged, target})
 			return lay, "the work could not be laid into a clean copy: " + err.Error()
@@ -81,9 +92,18 @@ func stageLay(from, to string, wrote []string) (laidWork, string) {
 	return lay, ""
 }
 
-// commit puts every staged path in place, and it is the half that may not fail:
-// a rename beside a file that has already been written is the last thing left
-// that can go wrong, and by then the ledger is known to fit.
+// commit puts every staged path in place, and it is the half that is left with
+// almost nothing to go wrong: each rename is within a directory this lay has
+// already written a whole file into, so the questions of room, permission and
+// parentage are all answered by the time it runs.
+//
+// WHAT IS LEFT IT REPORTS RATHER THAN HIDES. A rename that fails here is the one
+// case a person can be handed a folder with part of the ledger in it, and the
+// answer is the same as for every other refusal: the outcome says the work could
+// not be saved and the node asks for their look, with the copy it came from still
+// holding everything ([taskTree.landMirror]). Undoing the renames that already
+// happened would mean holding a second copy of the person's own files, which is
+// the cost of covering a window one rename wide.
 func (l laidWork) commit() string {
 	for _, pair := range l.staged {
 		staged, target := pair[0], pair[1]
@@ -98,7 +118,11 @@ func (l laidWork) commit() string {
 		}
 	}
 	for _, target := range l.gone {
-		_ = os.RemoveAll(target)
+		// A path the node wrote and then deleted is part of the ledger too, so one
+		// that will not go is the same news as one that will not arrive.
+		if err := os.RemoveAll(target); err != nil {
+			return "the work could not be laid into a clean copy: " + err.Error()
+		}
 	}
 	return ""
 }

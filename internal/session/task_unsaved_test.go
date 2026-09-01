@@ -335,10 +335,6 @@ var savedWorkAnswerDropped = map[string]string{
 		"staged into is caught by [taskTree.comeHome], which refuses to land it and writes the " +
 		"person the sentence naming where the work is; stopping the check here would spend that " +
 		"ending on a duller one and answer nothing about the work.",
-	"keptWork": "a node that settles WITHOUT merging keeps both the branch and the whole working " +
-		"copy — [taskTree.releaseKept] unregisters the directory and leaves every file in it — so " +
-		"a commit that could not be made there costs nobody anything they cannot still reach. The " +
-		"landing roads are the ones that had to stop, because only they throw the copy away.",
 }
 
 // TestNoLandingDropsWhatASaveAnswered fails when a call to either save discards
@@ -413,4 +409,94 @@ func reportDroppedSave(t *testing.T, path string, fset *token.FileSet, name, enc
 		return
 	}
 	found[enclosing] = true
+}
+
+// ONE FILE LEFT OUT IS ENOUGH. The batch fails over a path git cannot read, the
+// retry gets the rest of the ledger in, and the landing still refuses — because
+// merging now would put the branch in and take away the only copy of the file
+// that did not make it.
+func TestALandingRefusesWhenOnePathOfTheLedgerCouldNotBeStaged(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads through a file with no permissions, so nothing can be refused")
+	}
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "ffff6666ffff9999", 20, "write both halves")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "open.md"), "the half that fits\n")
+	writeFile(t, filepath.Join(tree.dir, "closed.md"), "the half that does not\n")
+	if err := os.Chmod(filepath.Join(tree.dir, "closed.md"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	merge, detail := tree.comeHome("write both halves", []string{"open.md", "closed.md"})
+
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q (%s), want the landing to refuse over the path it could not take", merge, detail)
+	}
+	for _, name := range []string{"open.md", "closed.md"} {
+		if _, err := os.Lstat(filepath.Join(tree.dir, name)); err != nil {
+			t.Fatalf("%s went missing from the working copy: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(repo, name)); err == nil {
+			t.Fatalf("%s was merged onto the person's branch by a landing that refused", name)
+		}
+	}
+}
+
+// A NODE THAT SETTLES WITHOUT MERGING KEEPS ITS WORKING COPY when the branch
+// could not take the work either. The sentence it is settled with offers a
+// branch; the directory is the only place the work actually is, so it stays
+// registered rather than being handed back to a later sweep.
+func TestAKeptBranchThatCouldNotBeCommittedKeepsItsWorkingCopy(t *testing.T) {
+	repo := newTestRepo(t)
+	tree, err := prepareTaskTree(Place{}, repo, "ffff6666ffffaaaa", 21, "build it")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "main.go"), "package main\n")
+	readOnlyGitDir(t, tree)
+
+	merge, _ := keptWork(tree, "build it", []string{"main.go"})
+
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q, want the branch kept", merge)
+	}
+	if _, err := os.Stat(filepath.Join(tree.dir, "main.go")); err != nil {
+		t.Fatalf("the work was destroyed by a settlement that saved nothing: %v", err)
+	}
+	worktrees := gitOut(t, repo, "worktree", "list")
+	if !strings.Contains(worktrees, tree.dir) || strings.Contains(worktrees, "prunable") {
+		t.Fatalf("the working copy holding the only copy of the work was given back:\n%s", worktrees)
+	}
+}
+
+// AND THE JOB LOG SAYS IT DID NOT MERGE, with the mark the landing handed over
+// rather than the conflict this settler used to assume.
+func TestASettledLandingThatSavedNothingSaysSoInTheJobLog(t *testing.T) {
+	agent := &Agent{}
+	graph := &TaskGraph{nodes: map[uint64]*TaskNode{}}
+	node := &TaskNode{graph: graph, id: 1, spec: taskSpec{title: "add the parser"}, state: TaskRunning}
+	graph.mu.Lock()
+	graph.nodes[node.id] = node
+	graph.order = append(graph.order, node.id)
+	graph.mu.Unlock()
+	tree := taskTree{dir: "/somewhere/trees/1", root: "/somewhere", branch: "task/add-the-parser"}
+	detail := unsavedSentence(tree.dir, "fatal: Unable to create index.lock: Permission denied")
+
+	var log strings.Builder
+	state := agent.landConflicted(node, tree, []string{"parser.py"},
+		"it wrote the parser", mergeAborted, detail, &log)
+
+	if state != TaskUnverified {
+		t.Fatalf("state = %q, want it to need a look", state)
+	}
+	if !strings.Contains(log.String(), "not merged: "+detail) {
+		t.Fatalf("the job log says %q", log.String())
+	}
+	_, _, _, merge := node.leavings()
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q, want the mark the landing handed over", merge)
+	}
 }

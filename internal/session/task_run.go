@@ -3809,7 +3809,7 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
-	saved, _ := commitTaskWork(tree.dir, title, changed)
+	saved, problem := commitTaskWork(tree.dir, title, changed)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -3821,7 +3821,13 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	// repository of its own owes the same fetch a merge would have owed
 	// (groundladder.go's [taskTree.carryBranchHome]).
 	tree.carryBranchHome()
-	tree.releaseKept()
+	if problem == "" {
+		// THE WORKING COPY IS ONLY GIVEN BACK ONCE THE BRANCH HOLDS THE WORK. A
+		// commit that could not be made leaves this directory holding the only copy
+		// there is, and unregistering it would point the person at a branch with
+		// nothing on it while a later sweep took the files (task_land_unsaved.go).
+		tree.releaseKept()
+	}
 	return mergeAborted, changed
 }
 
@@ -6518,7 +6524,10 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, er
 	if problem := stageTaskWork(dir, wrote); problem != "" {
 		return nil, "", errors.New(problem)
 	}
-	saved := stagedPaths(dir)
+	saved, problem := stagedPaths(dir)
+	if problem != "" {
+		return nil, problem
+	}
 	if len(saved) == 0 {
 		// Nothing the node wrote is different from HEAD, which is the ordinary
 		// answer for a node that only read and for a ledger already committed by a
@@ -6573,12 +6582,16 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 
 // stagedPaths is what the index holds that HEAD does not: the node's whole
 // change, by name, repo-relative and already slash-separated by git.
-func stagedPaths(dir string) []string {
+//
+// IT SAYS WHEN IT COULD NOT READ THE INDEX AT ALL, because the empty answer is
+// otherwise the same one a node that only read gives — and its caller merges and
+// then removes the only other copy of the work on the strength of it.
+func stagedPaths(dir string) ([]string, string) {
 	out, err := git(dir, "diff", "--cached", "--name-only")
 	if err != nil {
-		return nil
+		return nil, firstLine(out)
 	}
-	return nonEmptyLines(out)
+	return nonEmptyLines(out), ""
 }
 
 // stagedDiffStat is the node's change AS A SHAPE: one line per file with how

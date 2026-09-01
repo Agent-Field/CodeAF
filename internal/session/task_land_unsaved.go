@@ -70,28 +70,37 @@ func unsavedLanding(report string) bool { return strings.Contains(report, unsave
 // wrote `report[1].md` named a file, and to git's pathspec parser that is a glob.
 const literalPathspec = ":(literal)"
 
-// unstagedWork answers the one question a refused `git add` leaves open: is
-// there work here that the index did not take and the person would not find?
+// unstagedWork retries a batch git refused one path at a time and answers the one
+// question that is left: is there work here that the index did not take and the
+// person would not find on their branch afterwards?
 //
 // A BATCH GIT REFUSES IS NOT YET A FAILURE. One path .gitignore covers fails the
-// whole add, which is the reason the retry exists at all ([stageTaskWork]), and
-// a retry that gets the rest of the ledger in has lost nothing — the landing goes
-// on exactly as it always did. What is left when every single path is refused as
-// well is a repository that cannot be written, and that is work about to
-// disappear.
+// whole add, which is the reason the retry exists at all ([stageTaskWork]), and a
+// retry that gets the rest of the ledger in has lost nothing — the landing goes on
+// exactly as it always did. So the answer is per path rather than for the batch:
+// ONE FILE LEFT OUT IS ENOUGH, because a landing merges and then removes the only
+// other copy, and a file that was quietly dropped on the way is a file nobody has.
 //
-// A PATH THAT IS NOT THERE HAS NOTHING TO LOSE. A node that wrote a file and
-// then removed it still names it on its ledger, and a landing that stopped the
-// world over a file nobody can point at would be refusing over nothing.
+// TWO PATHS ARE NOT WORK AT RISK. One that is not on disk — a node that wrote a
+// file and then removed it still names it on its ledger — has nothing to lose. One
+// the repository IGNORES was never going to be on the branch under `add -A`
+// either, and refusing a landing over it would be this file's law inverted. The
+// ignore is asked of git and only on this road, which is the one a landing never
+// takes.
 func unstagedWork(dir string, paths []string) bool {
-	staged, onDisk := false, false
+	unstaged := false
 	for _, path := range paths {
 		if _, err := git(dir, "add", "--all", "--", path); err == nil {
-			staged = true
+			continue
 		}
-		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(path, literalPathspec)))); err == nil {
-			onDisk = true
+		relative := strings.TrimPrefix(path, literalPathspec)
+		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(relative))); err != nil {
+			continue
 		}
+		if _, err := git(dir, "check-ignore", "-q", "--", relative); err == nil {
+			continue
+		}
+		unstaged = true
 	}
-	return !staged && onDisk
+	return unstaged
 }
