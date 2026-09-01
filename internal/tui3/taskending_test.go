@@ -40,6 +40,7 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 		{session.TaskEndingCircling, endingWordCircling},
 		{session.TaskEndingBlocked, endingWordBlocked},
 		{session.TaskEndingSteps, endingWordSteps},
+		{session.TaskEndingNotes, endingWordNotes},
 	} {
 		a, _, _ := taskApp(t)
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
@@ -109,5 +110,39 @@ func TestAStoppedNodeStillWearsTheStopMarkOverItsEnding(t *testing.T) {
 	}
 	if !strings.Contains(rail, taskStoppedKept+" · task/parser") {
 		t.Fatalf("the rail lost the stopped sentence:\n%s", rail)
+	}
+}
+
+// A WORKER STOPPED BY THE WRITE-YOUR-NOTES RULE HAS ITS OWN ROW, and the row is
+// pinned in the words themselves rather than through the constant that spells
+// them — a reworded constant is exactly the change this is here to catch. It
+// said nothing at all before: the node settled as an ordinary failure and the
+// rail read "stopped — branch kept", which told somebody nothing was wrong when
+// the turn had been ended for refusing to write anything down.
+func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
+		endedNotice(session.TaskEndingNotes, "stopped here · would not write its notes down"))})
+
+	row := "would not write its notes down — branch kept"
+	// The branch is not asserted beside it: this row is the longest of the
+	// endings and the rail drops the branch to keep the name whole, which is the
+	// narrow-row law working rather than a missing word.
+	if rail := endedRailText(a); !strings.Contains(rail, row) {
+		t.Fatalf("the rail row does not read %q:\n%s", row, rail)
+	}
+	if room := taskText(a); !strings.Contains(room, row) {
+		t.Fatalf("the room does not read %q:\n%s", row, room)
+	}
+	// AND IT IS THE STEER MARK, NOT THE CROSS. Nobody found anything wrong with
+	// the work; it is on the branch and the next move is a person's.
+	if rail := endedRailText(a); !strings.Contains(rail, glyphHalted+" "+plain(a.taskMark(identFor(7)))+" Port the parser") {
+		t.Fatalf("the rail does not wear the steer mark:\n%s", rail)
+	}
+	// AND NO MACHINERY VOCABULARY REACHES IT (CLAUDE.md's vocabulary law).
+	for _, banned := range []string{"rule", "held", "process", "loop", "enforce"} {
+		if strings.Contains(strings.ToLower(row), banned) {
+			t.Fatalf("the row says %q to a person: %q", banned, row)
+		}
 	}
 }

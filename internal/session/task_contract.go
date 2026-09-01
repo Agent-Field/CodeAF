@@ -168,10 +168,10 @@ const (
 // line says the same thing in a sentence.
 //
 // THEY ARE THREE KINDS OF NEWS, and a surface draws them as three. A person
-// stopped it: nothing is wrong. The connection, a threshold, a loop or another
-// task's working copy ended it: nothing is known to be wrong, and the work can
-// go on from its branch. The check did not accept it, or it broke: something
-// is wrong, and the report says what.
+// stopped it: nothing is wrong. The connection, a threshold, a loop, another
+// task's working copy or a rule the worker would not follow ended it: nothing is
+// known to be wrong, and the work can go on from its branch. The check did not
+// accept it, or it broke: something is wrong, and the report says what.
 type TaskEnding string
 
 const (
@@ -201,6 +201,15 @@ const (
 	// because it is the one ending a person can fix by re-grounding,
 	// re-dividing or re-briefing rather than by reading a stack of steps.
 	TaskEndingStale TaskEnding = "stale"
+	// TaskEndingNotes says the worker was stopped by the write-your-notes rule:
+	// it was asked twice to write down what it was doing, its tool calls were
+	// held until it did, and it sent three more replies with nothing visible in
+	// them (processrule.go). It is its own ending rather than [TaskEndingCircling]
+	// because the worker was not repeating itself — it was working in silence,
+	// and what it worked out never reached the record its room, its check and its
+	// parent all read. The work it did do is on its branch like any other halted
+	// node's.
+	TaskEndingNotes TaskEnding = "notes"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"

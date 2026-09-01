@@ -158,7 +158,7 @@ func TestAWorkerRefusedByAnotherTasksTreeLandsAsBlocked(t *testing.T) {
 	if !strings.Contains(blocked, "task 4") {
 		t.Fatalf("the writer's row names %q as the holder, want task 4", blocked)
 	}
-	if got := endingOfClaim(loopLeftUndoneNote, blocked); got != TaskEndingBlocked {
+	if got := endingOfClaim(loopLeftUndoneNote, blocked, ""); got != TaskEndingBlocked {
 		t.Fatalf("ending = %q, want blocked", got)
 	}
 	if graph.node(4).blockedByNow() != "" {
@@ -219,5 +219,59 @@ func TestATaskThatWorkedQuietlyDoesNotGoInCircles(t *testing.T) {
 	}
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
+	}
+}
+
+// (6) A WORKER THAT WOULD NOT WRITE ITS NOTES LANDS UNDER ITS OWN WORDS. It was
+// advised twice, held three times and then stopped by the write-your-notes rule
+// (processrule.go) — and until this landing existed, `endingOfClaim` had nothing
+// to read but the worker's last words, so the node settled unexplained and the
+// rail said "stopped — branch kept", which reads as a person's own stop.
+//
+// The script is distinct shell commands with fresh output and no visible text
+// beside any of them: distinct, so the loop guard's identity rules have nothing
+// to hold; fresh, so the no-progress leash out at the task boundary keeps
+// resetting; and silent, so the ladder climbs to the rung where advice stops
+// being advice.
+func TestATaskWhoseWorkerWillNotWriteItsNotesLandsSayingSo(t *testing.T) {
+	var quiet []step
+	for round := range enforcedRungAt() + processRuleRefusals + 4 {
+		quiet = append(quiet, bashCall(fmt.Sprintf("call-quiet-%d", round),
+			fmt.Sprintf("printf 'looked at step %d\\n'", round)))
+	}
+	completer := &routedCompleter{
+		parent: []step{proposeCall("Add the greeting", "write greet.go with a greeting"), finalText("handed off")},
+		child:  quiet,
+		audit: []step{
+			bashCall("call-look", "git status --porcelain"),
+			verdictFromEvidence("greet.go", "VERIFIED — greet.go is staged", "REFUTED — no greet.go"),
+		},
+	}
+	agent, graph := endingAgent(t, completer)
+	notice := landedNode(t, agent, graph)
+
+	if notice.State != TaskFailed || notice.Ending != TaskEndingNotes {
+		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
+	}
+	// THE ROW SAYS WHY, and the landing note the conversation is handed says the
+	// same thing in a sentence.
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 would not write its notes down: ") {
+		t.Fatalf("the landing note opens %q", firstLines(note, 1))
+	}
+	// AND THE WORK IS KEPT. Nothing was found wrong with it: the turn was ended
+	// from outside, and whatever the worker had done is on its branch.
+	if notice.Branch == "" || notice.Merge == mergeMerged {
+		t.Fatalf("branch %q merge %q: the work was not kept", notice.Branch, notice.Merge)
+	}
+	// AND THE RECORD THAT GRADES THE MODEL SAYS `stopped` rather than `did not
+	// finish`: the run was ended from outside, and that is not a reading of what
+	// the work was worth (taskgrade.go).
+	if got := taskGradeOutcome(notice.State, notice.Ending, notice.Stopped); got != "stopped" {
+		t.Fatalf("the graded record for this node says %q, want stopped", got)
+	}
+	// AND THE STOP REALLY CAME FROM THE RULE rather than from a threshold that
+	// happened to fire first: the worker read the demand before it was stopped.
+	if !completer.childSaw("[held]") {
+		t.Fatalf("the worker was never held; report %q", notice.Report)
 	}
 }

@@ -1255,9 +1255,10 @@ yours, and the report leads with the task's own account of the work, with what i
 checked on under it — no lead word at all.
 
 **Halted.** `task 7 lost the connection: <title>`, `task 7 went in circles: <title>`,
-`task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`. Nothing was
-found wrong with the work; the branch is kept and the task can be run again from it. The
-rail draws these with `!` (see the section on the words under a stopped task).
+`task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`,
+`task 7 would not write its notes down: <title>`. Nothing was found wrong with the work; the
+branch is kept and the task can be run again from it. The rail draws these with `!` (see the
+section on the words under a stopped task).
 
 **Failed.** `task 7 failed: <title>`. Somebody looked and made a finding — or a limit fired
 and the work did not hold when it was checked afterwards. The branch is kept. Anything
@@ -1817,7 +1818,7 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, not accepted, blocked by another task
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, not accepted, blocked by another task, would not write its notes down
 
 A task that did not finish keeps its branch, and the row under its name on the rail says
 **why** it stopped. The same words lead the task's card. They are three kinds of news:
@@ -1839,6 +1840,11 @@ A task that did not finish keeps its branch, and the row under its name on the r
     then run this one again on top of it.
   - `out of steps — branch kept`: a step, no-progress or time limit fired and the work did
     not hold when it was checked.
+  - `would not write its notes down — branch kept`: the worker was asked twice to write down
+    what it was doing, its tool calls were **held** until it did, and it sent three more
+    replies with nothing visible in them — so the turn ended. Whatever it had already done
+    is on the branch; the thinking behind it was never written anywhere, which is why the
+    run stopped rather than carried on.
 - `✗` and one of these — **something was found**, and the report says what:
   - `not accepted — branch kept`: the check named gaps, or you refuted it on its card.
   - `ended with an error — branch kept`: a working copy could not be made, the worker would
@@ -1855,8 +1861,12 @@ After the second `[silent]` note its tool calls are **held** until it writes som
 visible — every call in the reply is answered `[held] Nothing was run this step…` and none
 of them runs — and if it sends only tool calls three more times its turn ends with
 `stopped here · would not write its notes down, so what this turn worked out is not on the record`.
-That is not circling and is never written up as it; the run settles on whatever it had
-actually done, and the branch is kept like any other. The keys page has the whole ladder
+That is not circling, and the row does not say it is. **It is written up in its own
+words**: the rail reads `would not write its notes down — branch kept`, with the same `!`
+every halted task wears; the landing note reads
+`task 7 would not write its notes down: <title>`; and the record that grades the model on
+the work says it was `stopped`, not that it did not finish. The run settles on whatever it
+had actually done and the branch is kept like any other. The keys page has the whole ladder
 under "Why did aforge stop running tool calls, and what is a [held] answer?".
 
 If a row says `went in circles`, the worker had genuinely stopped making progress, and its

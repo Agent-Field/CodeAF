@@ -1340,13 +1340,28 @@ func (n *TaskNode) blockedByNow() string {
 	return n.blockedBy
 }
 
-// endingOfClaim is what a run's LAST WORDS say about how it ended, and "" when
-// they say nothing: the loop guard's own sentence (looped.go's
-// loopLeftUndoneNote) is the one claim this package wrote rather than the
-// worker, and it is the difference between a worker that finished and one that
-// was stopped for going in circles. A worker whose writes were refused by another
-// task's working copy was not circling but queued, and is named as such.
-func endingOfClaim(claim, blockedBy string) TaskEnding {
+// endingOfClaim is why a run ended when the run itself did not choose to, and
+// "" for a worker that simply finished.
+//
+// IT ASKS TWO THINGS, AND THE FACT COMES FIRST. A turn a process rule stopped
+// says so as a value — the rule names its own ending (processrule.go's
+// [processRule.ending]) — and that is read before anything else, because the
+// loop knew the answer at the moment it stopped the turn and nothing here has to
+// infer it. Only then are the run's LAST WORDS read: the loop guard's own
+// sentence (looped.go's loopLeftUndoneNote) is the one claim this package wrote
+// rather than the worker, and it is the difference between a worker that
+// finished and one that was stopped for going in circles. A worker whose writes
+// were refused by another task's working copy was not circling but queued, and
+// is named as such.
+//
+// THE SENTENCE IS NOT THE EVIDENCE ANYWHERE IT DOES NOT HAVE TO BE. Matching
+// prose a person reads is a reading that breaks silently the day somebody
+// improves the wording, so the loop guard's line is matched here only because it
+// is the one ending whose fact this package has nowhere else to get.
+func endingOfClaim(claim, blockedBy string, stoppedByRule TaskEnding) TaskEnding {
+	if stoppedByRule != "" {
+		return stoppedByRule
+	}
 	if !strings.Contains(claim, loopLeftUndoneNote) {
 		return ""
 	}
@@ -2450,6 +2465,8 @@ func haltedVerb(ending TaskEnding) string {
 		return "was blocked by another task"
 	case TaskEndingSteps:
 		return "ran out of steps"
+	case TaskEndingNotes:
+		return "would not write its notes down"
 	}
 	return ""
 }
@@ -3227,10 +3244,12 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 		return TaskFailed
 	}
-	// WHAT THE WORKER'S LAST WORDS SAY ABOUT HOW IT ENDED is written before the
-	// gate reads them, so that a check refusing a run that had already given up
-	// does not become the reason on the row ([TaskNode.end]'s first-cause law).
-	node.end(endingOfClaim(lastSaid(child), node.blockedByNow()))
+	// WHY THE RUN ENDED WHEN IT DID NOT CHOOSE TO is written before the gate
+	// reads it, so that a check refusing a run that had already given up does not
+	// become the reason on the row ([TaskNode.end]'s first-cause law). It is the
+	// loop's own answer where the loop has one — a rule the worker would not
+	// follow — and the worker's last words otherwise ([endingOfClaim]).
+	node.end(endingOfClaim(lastSaid(child), node.blockedByNow(), child.stoppedOnProcessRule()))
 
 	// THE GATE. Everything above is the node's own account of itself; what
 	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict
