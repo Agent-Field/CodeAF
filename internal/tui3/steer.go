@@ -482,6 +482,15 @@ func (a *app) runHint() string {
 // full sentence and guarantees forward progress: one clause is the floor and
 // returns nothing, so [app.legend] can never loop on an unshortenable rung.
 func (a *app) hintShorter(slot string) string {
+	// A standing card has its own compact spelling, built from the same answer
+	// chips as its full row. Preserve that road before applying the running
+	// hint's right-to-left ladder below.
+	if a.awaitingStanding() && slot == standAskHint(a.stand) {
+		if short := standAskHintShort(a.stand); short != slot {
+			return short
+		}
+		return ""
+	}
 	full := a.runHint()
 	if slot == "" || slot != full && !strings.HasPrefix(full, slot+hintSegment) {
 		return ""

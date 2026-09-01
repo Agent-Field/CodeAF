@@ -63,6 +63,20 @@ type Event struct {
 	// append — a reader takes the last row for a call id as the truth.
 	Final bool `json:"final,omitempty"`
 
+	// Outcome is the settle's own plain word for how a whole piece of work
+	// ended — `landed`, `not accepted`, `stopped` — and it is empty on every
+	// row about a single model call. A verdict says what may be LEARNED from an
+	// outcome; this says what the outcome WAS, and the two stopped being the
+	// same question when the chat engine started grading settled task nodes:
+	// a node somebody stopped and a node nobody could check are both
+	// unlearnable and are not the same news (internal/session's taskgrade.go).
+	Outcome string `json:"outcome,omitempty"`
+	// Retries is how many times the work was handed back before it settled —
+	// the repair rounds a task node spent. Zero on a routed call, which retries
+	// by escalating rather than by repeating, and where Escalation already says
+	// what was tried.
+	Retries int `json:"retries,omitempty"`
+
 	PromptTokens     int     `json:"prompt_tokens,omitempty"`
 	CompletionTokens int     `json:"completion_tokens,omitempty"`
 	CachedTokens     int     `json:"cached_tokens,omitempty"`

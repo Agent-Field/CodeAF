@@ -64,7 +64,7 @@ const briefAskLimit = 6000
 // to put under THE WORK — their words are the whole of it — and printing the
 // same paragraph twice under two headings would read as two instructions that
 // happen to agree.
-func composeBrief(request, work, deliverable, acceptance string) string {
+func composeBrief(request, work, deliverable, acceptance, expects string) string {
 	request = clip(strings.TrimSpace(request), briefAskLimit)
 	work = strings.TrimSpace(work)
 	if work == request {
@@ -88,6 +88,11 @@ func composeBrief(request, work, deliverable, acceptance string) string {
 	section(briefWorkHeading, "", work)
 	section(briefMakeHeading, "", deliverable)
 	section(briefDoneHeading, "", acceptance)
+	// AND WHAT THE HANDOFF PROMISED ABOUT THE WORLD, last, because it is the
+	// only section that is about the folder rather than about the job
+	// (handoffcontract.go). A handoff that promised nothing has no section, like
+	// every other empty one here.
+	section(briefExpectsHeading, briefExpectsRule, expects)
 	return out.String()
 }
 

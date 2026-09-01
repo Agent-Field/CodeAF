@@ -92,7 +92,11 @@ the greeting is up. The full-screen status sheet, `/status` and `/cost` are unch
 they answer with the prompt's size when asked, and never print a zero bill.
 
 A resumed conversation has no greeting, so its row shows the numbers on its first
-frame.
+frame — and they are **the whole conversation's, not this sitting's**. The spend
+segment opens on the total its transcript records, before you type anything and
+before any turn is sent, so a session reopened tomorrow does not read as free. A
+resumed conversation that genuinely never spent anything still shows `$0.00`,
+because that is what a row in use shows.
 
 ## The try line under the message box — what does "try what is in this folder" mean
 

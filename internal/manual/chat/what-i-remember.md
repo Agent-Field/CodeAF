@@ -500,7 +500,7 @@ here. The two that ride every message are both on the cheapest of the four crew
 classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
-`nex-agi/nex-n2-mini`. Each goes out with a short
+`mistralai/mistral-nemo`. Each goes out with a short
 prompt, a 200-token ceiling and temperature 0, and each is asked to answer in a
 few words of JSON.
 
@@ -649,7 +649,7 @@ is what makes the first failure in a brand new checkout cheap. `AFORGE_HOME`
 moves both, with everything else aforge keeps.
 
 **Tasks write into the same project file.** A worker hammering a build in its own
-worktree is where most of this comes from, and a private file nobody ever read
+working copy is where most of this comes from, and a private file nobody ever read
 would waste it.
 
 The counts are a confidence rather than a tally: they are **halved every week**,

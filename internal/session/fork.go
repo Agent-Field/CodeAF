@@ -385,6 +385,12 @@ func (a *Agent) startHand(index int, part forkPart) (*job, context.Context, erro
 //     was queued would let the node land on top of it.
 //  4. And whoever is PARKED on it is released ([Agent.postTaskNews]), which is
 //     the same release a divided part's report makes.
+//
+// THE LAST TWO ARE ONE STEP, for the reason [Agent.taskNewsStanding] gives: the
+// waiter reads "is anything still out" and "is anything owed" as one fact, so
+// this side has to write them as one. A hand counted home before its news was
+// posted is the same half-delivery a divided part's report would be, and it costs
+// the same wasted turn.
 func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result forkResult) {
 	if listed == nil {
 		return
@@ -393,8 +399,7 @@ func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result 
 	if !requested {
 		a.enqueueSteering(handReport(index, parsed, result))
 	}
-	a.jobs.handHome()
-	a.postTaskNews()
+	a.handOverTaskNews(a.jobs.handHome)
 }
 
 // forkSeed is the copy each hand opens with: the caller's transcript up to this
@@ -835,6 +840,16 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	// chain and the nearest-model rescue are facts about the CONNECTION, and
 	// there is one connection.
 	client := unwrapCompleter(a.client)
+	// AND THE CONVERSATION EVERY DOLLAR THIS HAND SPENDS BELONGS TO, resolved
+	// here because here is the only place that can — the same question a node's
+	// worker answers where it is built (task_run.go's [Agent.newTaskAgent]).
+	// Either this agent already carries a root, because it is itself work inside
+	// a family and the root travelled down when it was built, or it IS the root
+	// and its own journal names it.
+	root := strings.TrimSpace(parent.rootSession)
+	if root == "" {
+		root = a.sessionID()
+	}
 	a.mu.Unlock()
 
 	// THE HANDS ARE THE CALLER'S OWN, so they run on the caller's model. They are
@@ -858,12 +873,18 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// repository, for every fork the conversation itself runs (landing.go).
 		// The caller's answer is the family's answer at any depth: a hand of a
 		// worker of a node inherits what that worker was handed.
-		droppings:     parent.droppingsPlace(),
-		Workspace:     parent.Workspace,
-		Model:         model,
-		APIKey:        parent.APIKey,
-		BaseURL:       parent.BaseURL,
-		ContextWindow: parent.ContextWindow,
+		droppings: parent.droppingsPlace(),
+		Workspace: parent.Workspace,
+		Model:     model,
+		APIKey:    parent.APIKey,
+		BaseURL:   parent.BaseURL,
+		// THE WINDOW OF THE MODEL THIS HAND WILL ACTUALLY RUN, which is the
+		// caller's own except where a careful part lifted it onto another tier
+		// — and then it is that model's card and not this one's
+		// (loop.go's [Agent.childWindow]). Config.ContextWindow alone would also
+		// miss a window the caller LEARNED after it was built.
+		ContextWindow:    a.childWindow(model),
+		ContextWindowFor: parent.ContextWindowFor,
 		// A hand opens on a transcript the caller has already been compacting,
 		// and it appends a short errand to it, so it compacts on the caller's own
 		// terms rather than on a rule of its own.
@@ -897,6 +918,24 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// ([forkBelt]) — so this carries identity and no new power.
 		tasker: parent.tasker,
 		taskID: parent.taskID,
+		// AND WHOSE MONEY A HAND IS SPENDING, which is the pair a task node
+		// carries for the same two reasons (task_run.go's [Agent.newTaskAgent]).
+		//
+		// THE FAMILY SPENDS INTO ONE LEDGER, and it is the ledger the conversation
+		// was pointed at. Empty is the machine's own file, which is every door in
+		// the product; what this line settles is the case where it is not — a
+		// test, or a second brain on one laptop — where a hand wrote to the
+		// machine's ledger while its caller wrote somewhere else, and now that the
+		// fold writes no line at all ([Agent.foldHandUsage]) that money would be
+		// missing from the redirected file rather than merely misfiled.
+		usageLedger: parent.usageLedger,
+		// AND THE CONVERSATION THE WORK IS ROOTED IN, so a hand's own lines add
+		// up with the rest of the family's while the hand is still out. Without
+		// it a hand's spend named nothing anybody outside the fork could join on
+		// — a hand keeps no journal, so its line said `unfiled` — and the tree
+		// rollup a status line reads ([UsageTree]) could not see a running hand
+		// at all.
+		rootSession: root,
 		// And the budget, as a citizen of the same plane (hooks.go).
 		handLeash:      leash,
 		SupportsImages: parent.SupportsImages,
@@ -995,6 +1034,14 @@ func forkBelt(belt []bare.Tool, dir string) []bare.Tool {
 // line is journaled with the role that made the call so a bad answer can be
 // traced to the model that gave it" (loop.go) — and until this there was no way
 // to read a turn's journal and say which of its tokens the hands spent.
+//
+// AND IT GOES THROUGH THE FOLD DOOR, WHICH WRITES NO LEDGER LINE. A hand
+// journals every call it makes into the machine's ledger as it makes it, exactly
+// as a task node does, so a fold that wrote a line of its own would put the same
+// money on that file twice — and the file's whole purpose is "what did this
+// machine spend", which the per-day rail reads. The fold is a settlement into
+// this session's own books and nothing more (usage_ledger.go's first rule; issue
+// #168 is the day total reading double).
 func (a *Agent) foldHandUsage(hand *Agent) {
 	used := hand.Usage()
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
@@ -1004,7 +1051,7 @@ func (a *Agent) foldHandUsage(hand *Agent) {
 	// The HAND's model and the hand's OWN call count: a hand that ran twelve
 	// rounds is twelve requests, and folding it in as one call on the
 	// conversation's model would put a number in the books that never happened.
-	a.addAuxiliaryUsageAs(&ai.Response{Usage: &ai.Usage{
+	a.addFoldedUsageAs(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,

@@ -26,6 +26,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -112,6 +113,48 @@ func runParent(t *testing.T, nest *nest, limits taskLimits) (<-chan struct{}, *s
 	return done, stopped
 }
 
+// waitParked waits for a node's runner to be ON A PARK LATER THAN `past` —
+// waiting on its parts with no turn running — and answers that park's
+// generation, so the caller can name it to the next wait. It fails rather than
+// hanging. Pass 0 for the first park of the run, when there is no earlier one to
+// be told apart from.
+//
+// It is the signal a test needs before it can say "and it did not ask", because
+// the honest reading of a parent that has been given no time is neither yes nor
+// no. A clock cannot answer that question on a machine carrying other work: the
+// milliseconds pass whether or not the goroutine behind them has been given a
+// processor.
+//
+// AND "PARKED" ALONE IS NOT THAT SIGNAL ONCE A REPORT HAS LANDED. A parent woken
+// by one part unparks, reads it, finds another part outstanding and parks again,
+// and the flag is true on both sides of that window — so a waiter looking only
+// at the flag can return on the park the parent has NOT YET WOKEN FROM, and the
+// assertion the caller makes one line later lands in the unpark → re-park gap
+// and reads the wrong park. That was 2 runs in 40 of
+// [TestAParentIsAskedNothingUntilEveryPartHasReported] under -race (#201).
+//
+// THE CURE IS THE GENERATION AND NOT A LONGER POLL. Sleeping until the flag
+// "looks settled" would pass on a quiet machine and hide a parent that had
+// genuinely stopped re-parking, which is the regression these tests exist to
+// catch. Waiting past a NAMED park is an answer about identity: this is a park
+// that had not been taken when the caller last looked.
+func waitParked(t *testing.T, node *TaskNode, past uint64) uint64 {
+	t.Helper()
+	for until := time.Now().Add(10 * time.Second); time.Now().Before(until); {
+		// One reading, never two: the flag and the number are taken under the
+		// same hold of the graph's lock ([TaskNode.parkStanding]).
+		if parked, generation := node.parkStanding(); parked && generation > past {
+			return generation
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if past > 0 {
+		t.Fatalf("the parent never parked again after park %d", past)
+	}
+	t.Fatal("the parent never parked on its parts")
+	return 0
+}
+
 // ── waiting is not spinning ─────────────────────────────────────────────────
 
 // THE MEASURED FAILURE, PINNED. Three parts out, five identical reads against a
@@ -153,22 +196,26 @@ func TestAParentWaitingOnItsPartsIsNotCountedAsStuck(t *testing.T) {
 // re-entered after the first of three reports has two thirds of an answer and one
 // honest thing to say about it, and every turn it spends saying so is money.
 func TestAParentIsAskedNothingUntilEveryPartHasReported(t *testing.T) {
-	first := make(chan struct{})
-	rest := make(chan struct{})
 	completer := &scriptedCompleter{steps: handOutThree("folded all three in")}
+	// THE PARTS ARE HELD AND LANDED ONE AT A TIME, each of them while the parent
+	// is on its park. Landing the last two together raced the delivery against
+	// the loop that reads it: a report is put on the parent's queue and its part
+	// marked reported ([TaskNode.markNoted]) one instant before the news counter
+	// moves ([Agent.postTaskNews]), so a runner that read "nothing outstanding,
+	// one note owed" between those two instants took its integration turn — with
+	// every report in it, correctly — and was then told about news that turn had
+	// already carried, spending one more turn on nothing. Landing them against
+	// the park closes the window: the parent is asleep, and the wake it comes
+	// back on is the last thing the last delivery does.
+	var partsMu sync.Mutex
+	var parts []*TaskNode
 	nest := newNest(t, completer, func(node *TaskNode) {
 		if node.parent == 0 {
 			return
 		}
-		gate := rest
-		if node.title() == "arithmetic" {
-			gate = first
-		}
-		go func() {
-			<-gate
-			node.finish(node.title()+" landed", nil, "", "")
-			node.graph.complete(node, TaskDone)
-		}()
+		partsMu.Lock()
+		parts = append(parts, node)
+		partsMu.Unlock()
 	})
 
 	done, stopped := runParent(t, nest, taskLimits{maxSteps: 200, noProgress: 6})
@@ -176,9 +223,27 @@ func TestAParentIsAskedNothingUntilEveryPartHasReported(t *testing.T) {
 	waitQuiet(t, nest.node)
 	asked := completer.requests()
 
+	partsMu.Lock()
+	landing := append([]*TaskNode(nil), parts...)
+	partsMu.Unlock()
+	if len(landing) != 3 {
+		t.Fatalf("%d parts were admitted, want the three that were handed out", len(landing))
+	}
+	// EVERY WAIT HERE NAMES THE PARK IT ALREADY SAW. A part is landed against a
+	// park the parent is known to be on, and the assertions that follow wait for
+	// the NEXT park — the one it took after reading that report — because the
+	// flag is true on both sides of the unpark → re-park window and "parked"
+	// alone would let the reads below land inside it.
+	parked := waitParked(t, nest.parent, 0)
+	land := func(part *TaskNode) {
+		t.Helper()
+		part.finish(part.title()+" landed", nil, "", "")
+		part.graph.complete(part, TaskDone)
+	}
+
 	// ONE part reports. Nothing may be asked on the strength of it.
-	close(first)
-	time.Sleep(300 * time.Millisecond)
+	land(landing[0])
+	parked = waitParked(t, nest.parent, parked)
 	if got := completer.requests(); got != asked {
 		t.Fatalf("the parent was asked %d times after one of three parts reported, want it left parked at %d", got, asked)
 	}
@@ -191,7 +256,9 @@ func TestAParentIsAskedNothingUntilEveryPartHasReported(t *testing.T) {
 		t.Fatalf("the parent's row says it is waiting on %q, want %q", got, waitingOnItsParts)
 	}
 
-	close(rest)
+	land(landing[1])
+	waitParked(t, nest.parent, parked)
+	land(landing[2])
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
@@ -447,13 +514,32 @@ func TestAPausedRunHandsItsLaneBackSoTheQueueBehindItMoves(t *testing.T) {
 // the turn the last report starts is the one that reads it — one request holding
 // the brief and every part's news at once.
 func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t *testing.T) {
-	release := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse("the parts are in; here is the one deliverable"), nil
 		},
 	}}
-	nest := newNest(t, completer, parkedParts(release, nil, nil))
+	// THE PARTS ARE HELD BY THE TEST AND LANDED ONE AT A TIME, which is what
+	// makes the count below a fact about the program rather than about the
+	// machine. Landing both at once has a race in it that belongs to neither
+	// this claim nor this test: a part's report reaches the parent's queue and
+	// marks the part reported ([TaskNode.markNoted]) BEFORE it bumps the news
+	// counter ([Agent.postTaskNews]), and a runner that reads the pair inside
+	// that gap — nothing outstanding, one report owed — takes its turn carrying
+	// both reports and is then told about news it has already carried, so it
+	// spends one more turn saying nothing. On a quiet machine the two goroutines
+	// never landed inside each other's gap; on a loaded one they did, and this
+	// test failed with two identical requests.
+	var partsMu sync.Mutex
+	var parts []*TaskNode
+	nest := newNest(t, completer, func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		partsMu.Lock()
+		parts = append(parts, node)
+		partsMu.Unlock()
+	})
 	// The division that was drawn for it, put on its behalf before its first
 	// request — which is what leaves a node with children and no turn yet.
 	for _, title := range []string{"arithmetic", "currency"} {
@@ -466,12 +552,33 @@ func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t
 	// NOT ONE REQUEST while the parts run. Before this the node opened on its
 	// brief and spent the whole window answering a question about work it had
 	// already given away.
-	time.Sleep(300 * time.Millisecond)
+	//
+	// The park is the SIGNAL that it reached the wait, and it replaces a
+	// three-hundred-millisecond sleep that only ever meant "it has probably got
+	// there by now" — which on a busy machine was a parent that had not started.
+	parked := waitParked(t, nest.parent, 0)
 	if got := completer.requests(); got != 0 {
 		t.Fatalf("the parent was asked %d times before any part reported, want none", got)
 	}
 
-	close(release)
+	// One at a time, each landed only once the parent is back on its park, so the
+	// last report is the one that wakes it and every earlier one is already
+	// counted when it does.
+	partsMu.Lock()
+	landing := append([]*TaskNode(nil), parts...)
+	partsMu.Unlock()
+	if len(landing) != 2 {
+		t.Fatalf("%d parts were admitted, want the two that were proposed", len(landing))
+	}
+	for index, part := range landing {
+		if index > 0 {
+			// Past the park the previous landing was made against, so this one
+			// really is going into a parent that has read what it was sent.
+			parked = waitParked(t, nest.parent, parked)
+		}
+		part.finish(part.title()+" is done", nil, "", "")
+		part.graph.complete(part, TaskDone)
+	}
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
@@ -487,6 +594,240 @@ func TestAParentHandedADivisionBeforeItStartedOpensOnTheReportsAndNotOnTheWait(t
 	for _, want := range []string{"do the whole job", "arithmetic is done", "currency is done"} {
 		if !strings.Contains(opening, want) {
 			t.Fatalf("the one turn reads %q, want %q in it", opening, want)
+		}
+	}
+}
+
+// ── the last two parts landing together ─────────────────────────────────────
+
+// AND WHEN THE LAST TWO PARTS LAND AT THE SAME INSTANT IT IS STILL ONE TURN.
+//
+// The two tests above land their parts one at a time, against the parent's park,
+// because landing them together used to race the delivery against the loop that
+// reads it — and that race was a real defect and not a test premise. A delivery
+// writes three things in a fixed order (the queue, the fact, the wake:
+// [Agent.deliverTaskNote]) and the runner read two of them as two separate
+// questions, owed first. A last part landing between those reads was seen as
+// "nothing outstanding, one note owed": the parent took its integration turn
+// carrying BOTH reports, correctly, and was then told about news that turn had
+// already carried, so it came back for one more turn with an empty request.
+// Measured as two byte-identical requests — a model turn's money, and a blank
+// exchange in the room.
+//
+// THE LANDINGS ARE RELEASED FROM ONE CHANNEL, which is as close to the same
+// instant as two goroutines get, and the run is repeated because what is being
+// pinned is that no interleaving of the two deliveries can buy a second turn.
+// The parent is on its park before either lands, so the only thing that varies
+// between rounds is the order the two deliveries reach the runner in.
+func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
+	for round := 0; round < 25; round++ {
+		t.Run(fmt.Sprintf("landing %d", round+1), func(t *testing.T) {
+			completer := &scriptedCompleter{steps: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return textResponse("both parts are in; here is the one deliverable"), nil
+				},
+			}}
+			var partsMu sync.Mutex
+			var parts []*TaskNode
+			nest := newNest(t, completer, func(node *TaskNode) {
+				if node.parent == 0 {
+					return
+				}
+				partsMu.Lock()
+				parts = append(parts, node)
+				partsMu.Unlock()
+			})
+			for _, title := range []string{"arithmetic", "currency"} {
+				if _, _, err := nest.node.proposeTask(context.Background(), pieceArgs(title)); err != nil {
+					t.Fatalf("propose_task: %v", err)
+				}
+			}
+
+			done, stopped := runParent(t, nest, taskLimits{maxSteps: 200, noProgress: 6})
+			// THE PARK IS THE STARTING LINE. Landing a part before the runner
+			// reaches its wait would be a different test — one about the brief
+			// being submitted — and it would not touch the window this pins.
+			waitParked(t, nest.parent, 0)
+
+			partsMu.Lock()
+			landing := append([]*TaskNode(nil), parts...)
+			partsMu.Unlock()
+			if len(landing) != 2 {
+				t.Fatalf("%d parts were admitted, want the two that were proposed", len(landing))
+			}
+			release := make(chan struct{})
+			var landed sync.WaitGroup
+			for _, part := range landing {
+				landed.Add(1)
+				go func(part *TaskNode) {
+					defer landed.Done()
+					<-release
+					part.finish(part.title()+" is done", nil, "", "")
+					part.graph.complete(part, TaskDone)
+				}(part)
+			}
+			close(release)
+			landed.Wait()
+
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the parent never ended after both parts reported")
+			}
+			if *stopped != "" {
+				t.Fatalf("the parent was stopped with %q", *stopped)
+			}
+			if got := completer.requests(); got != 1 {
+				extra := ""
+				if got > 1 {
+					extra = fmt.Sprintf("\nthe second request reads:\n%s", userTextIn(completer.request(1)))
+				}
+				t.Fatalf("the parent was asked %d times, want the one turn that holds the brief and both reports%s", got, extra)
+			}
+			opening := userTextIn(completer.request(0))
+			for _, want := range []string{"do the whole job", "arithmetic is done", "currency is done"} {
+				if !strings.Contains(opening, want) {
+					t.Fatalf("the one turn reads %q, want %q in it", opening, want)
+				}
+			}
+		})
+	}
+}
+
+// waitReported waits for one part's report to have been MARKED handed over —
+// the middle of the three things a delivery does ([Agent.deliverTaskNote]) — and
+// fails rather than hanging. It is the signal a test needs to say "the delivery
+// has reached the window" without a sleep standing in for it.
+func waitReported(t *testing.T, part *TaskNode) {
+	t.Helper()
+	for until := time.Now().Add(10 * time.Second); time.Now().Before(until); {
+		if part.reported() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("the delivery of %q never marked the part reported", part.title())
+}
+
+// AND IT IS ONE TURN WHEN THE LAST TWO PIECES LAND INSIDE EACH OTHER'S DELIVERY.
+//
+// The round above lands its two parts together and lets the machine decide the
+// interleaving, which catches this on a loaded machine and not on a quiet one.
+// THIS ONE HOLDS THE WINDOW OPEN ON PURPOSE, so what it says is a fact about the
+// program rather than about the hour it was run in.
+//
+// The window is the one the delivery law is about. A part's report reaches the
+// parent's queue, its node is marked reported — and only then is the news
+// counted and the parent woken. The mark owes the disk a checkpoint, so freezing
+// the task store's own write suspends the delivery INSIDE that gap, with the
+// part no longer outstanding and its news not yet posted. A forked hand coming
+// home meanwhile is the second piece of news, on the other delivery road and
+// touching no checkpoint at all, and its wake is what puts the parent's runner in
+// front of the pair while one of the two is half-written.
+//
+// Read as two questions, the parent saw "nothing outstanding, one note owed",
+// took its integration turn carrying BOTH reports — correctly — and was then told
+// about news that turn had already carried, so it came back for a second turn
+// with an empty request. Read as one fact ([Agent.taskNewsStanding]), the half
+// delivery is not visible at all: the turn happens once, and it holds everything.
+func TestAPartAndAHandLandingTogetherStillCostOneTurn(t *testing.T) {
+	var (
+		here      *nest
+		delivered sync.WaitGroup
+		once      sync.Once
+	)
+	// The frozen checkpoint is let go from INSIDE the integration turn, which is
+	// the whole point: the part's news is posted while the request that already
+	// carries its report is in flight. A mutex may be unlocked by a goroutine
+	// that did not take it, and this one deliberately is.
+	thaw := func() { once.Do(func() { here.graph.store.mu.Unlock() }) }
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			thaw()
+			delivered.Wait()
+			return textResponse("the part and the hand are in; here is the one deliverable"), nil
+		},
+		// A second step so that a parent which is asked twice is answered rather
+		// than erroring, and the count below is the finding instead of a stall.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("there was nothing in that request"), nil
+		},
+	}}
+
+	var partsMu sync.Mutex
+	var parts []*TaskNode
+	here = newNest(t, completer, func(node *TaskNode) {
+		if node.parent == 0 {
+			return
+		}
+		partsMu.Lock()
+		parts = append(parts, node)
+		partsMu.Unlock()
+	})
+	// THE GRAPH KEEPS A CHECKPOINT, which every real session's does
+	// ([runTaskChild] hands its graph a store built from the session file) and a
+	// scripted one does not. It is the file the mark owes a write to, and that
+	// write is the window this test holds open.
+	here.graph.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
+
+	// One part handed out, and one hand forked — the two roads a piece of this
+	// node's work can be on, and the two roads a report comes home by.
+	if _, _, err := here.node.proposeTask(context.Background(), pieceArgs("currency")); err != nil {
+		t.Fatalf("propose_task: %v", err)
+	}
+	hand, _, err := here.node.jobs.startHand("hand 1", "the shorter path")
+	if err != nil {
+		t.Fatalf("starting the hand: %v", err)
+	}
+
+	done, stopped := runParent(t, here, taskLimits{maxSteps: 200, noProgress: 6})
+	waitParked(t, here.parent, 0)
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("the parent was asked %d times while its work was out, want none", got)
+	}
+	partsMu.Lock()
+	landing := append([]*TaskNode(nil), parts...)
+	partsMu.Unlock()
+	if len(landing) != 1 {
+		t.Fatalf("%d parts were admitted, want the one that was proposed", len(landing))
+	}
+
+	// The store is frozen, so the part's delivery stops on the checkpoint its
+	// mark owes — queued, marked, and not yet posted.
+	here.graph.store.mu.Lock()
+	defer thaw()
+	delivered.Add(1)
+	go func() {
+		defer delivered.Done()
+		here.node.deliverTaskNote(landing[0], "task 2 finished: currency\ncurrency is done")
+	}()
+	waitReported(t, landing[0])
+
+	// And the hand comes home into that window, which is the wake the parent
+	// reads its pair on.
+	here.node.handIsHome(hand, 0,
+		forkArguments{Parts: []forkPart{{Role: "the shorter path"}}},
+		forkResult{say: "the shorter path is done", outcome: forkDone})
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the parent never ended after its part and its hand reported")
+	}
+	if *stopped != "" {
+		t.Fatalf("the parent was stopped with %q", *stopped)
+	}
+	if got := completer.requests(); got != 1 {
+		extra := ""
+		if got > 1 {
+			extra = fmt.Sprintf("\nthe second request reads:\n%s", userTextIn(completer.request(1)))
+		}
+		t.Fatalf("the parent was asked %d times, want the one turn that holds both reports%s", got, extra)
+	}
+	only := userTextIn(completer.request(0))
+	for _, want := range []string{"do the whole job", "currency is done", "the shorter path is done"} {
+		if !strings.Contains(only, want) {
+			t.Fatalf("the one turn reads %q, want %q in it", only, want)
 		}
 	}
 }

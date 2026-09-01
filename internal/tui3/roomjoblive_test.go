@@ -72,17 +72,17 @@ func TestARunningJobsRoomSaysTheLogIsGrowingAndNeverThatItFinished(t *testing.T)
 	clickRailNode(t, a, 4)
 
 	text := roomText(a)
-	if strings.Contains(text, roomFinishedWord) {
+	if strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("a running job's page says the task finished:\n%s", text)
 	}
-	if !strings.Contains(text, roomJobRunningWord) {
+	if !strings.Contains(text, roomJobRefusal.what) {
 		t.Fatalf("a running job's page draws no foot of its own:\n%s", text)
 	}
 	// AND THE BOX SAYS THE SAME THING, because the placeholder read the same
 	// field the foot did and told the same lie: `task finished` in front of a
 	// prompt somebody was about to type into.
 	rows := a.roomSteerLaneRows([]string{a.pal.dim(prompt)}, 120)
-	if line := plain(rows[0]); strings.Contains(line, roomFinishedWord) {
+	if line := plain(rows[0]); strings.Contains(line, roomFinishedRefusal.what) {
 		t.Fatalf("the box under a running job says the task finished: %q", line)
 	}
 	// The engine's own refusal never reaches the page, running or landed.
@@ -141,10 +141,10 @@ func TestAJobsRoomFlipsToFinishedAndKeepsTheFinalTail(t *testing.T) {
 	drive(t, a, farRoomTickMsg{gen: a.room.gen})
 
 	text := roomText(a)
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("a landed job's page never took the finished foot:\n%s", text)
 	}
-	if strings.Contains(text, roomJobRunningWord) {
+	if strings.Contains(text, roomJobRefusal.what) {
 		t.Fatalf("a landed job's page still says the log is growing:\n%s", text)
 	}
 	if !strings.Contains(text, "done · wrote out.mp4") {
@@ -169,7 +169,7 @@ func TestAJobsRoomWithNothingInItsLogDrawsNoFailure(t *testing.T) {
 			t.Fatalf("the page shouted %q about a job that is running fine:\n%s", banned, text)
 		}
 	}
-	if !strings.Contains(text, roomJobRunningWord) {
+	if !strings.Contains(text, roomJobRefusal.what) {
 		t.Fatalf("a running job with no log yet lost its foot:\n%s", text)
 	}
 }

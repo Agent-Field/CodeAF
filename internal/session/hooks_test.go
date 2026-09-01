@@ -92,10 +92,11 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		got  []string
 		want []string
 	}{
-		// The error→fix lane is the third piece of turn state (fixrecall.go).
+		// The error→fix lane is the third piece of turn state (fixrecall.go), and
+		// the process rules the loop enforces are the fourth (processrule.go).
 		// episode-init is the one hook whose order carries no argument: every
 		// citizen there writes its own field on a struct nobody has read yet.
-		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes"}},
+		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes", "process-rules"}},
 		{"pre-decision", planeNames(plane.preDecision), []string{"stub", "turn-fold"}},
 		// The write scope and the tree claim are the two citizens that are inert
 		// for an ordinary agent: both are registered on every plane and refuse

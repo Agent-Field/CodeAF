@@ -813,6 +813,13 @@ type app struct {
 	// row that quotes the day quotes one figure.
 	dayCost   float64
 	dayCosted bool
+	// tree is what this conversation AND the work it started have spent, read
+	// off the usage ledger on the frame clock while there is work to read about,
+	// and treeCache is the tail-reading cache that makes re-reading it cheap
+	// (treespend.go). Both belong to this surface's own goroutine, which is
+	// [session.UsageCache]'s own condition for being used at all.
+	tree      session.TreeSpend
+	treeCache session.UsageCache
 	// spendRail is this conversation's own ceiling as the profile last read it,
 	// and railRead whether it has been read at all. The pair is held rather than
 	// asked for because the status line's ink consults it on EVERY paint
@@ -2163,6 +2170,24 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a.noteStandingHere()
 	a.measureContext()
+	// AND WHAT THE CONVERSATION HAS ALREADY SPENT IS ASKED FOR ON THIS FRAME,
+	// beside the context it is measured with. The engine restores the total from
+	// the journal's usage lines at construction (session's [Agent.Usage], seeded
+	// by [sessionFile.RestoredUsage]), but nothing on this surface asked until a
+	// frame of the paint clock came round — and the paint clock only turns while
+	// something is animating. So a resumed conversation sat idle at the prompt
+	// with `$0.00` on its status line until the person sent a turn or typed
+	// /cost, under-reporting its own bill in the one direction that erodes trust
+	// in every other figure beside it (#128).
+	//
+	// It is the SYNCHRONOUS reading rather than [app.usageKick] for the reason
+	// [app.measureContext] above it is: this is the first frame, the figures have
+	// to be right on it rather than one round trip later, and a surface that
+	// already asks the agent what the conversation weighs can ask what it cost in
+	// the same breath. The emptiness law is unharmed — a conversation that spent
+	// nothing restores a zero Usage and every one of these fields stays as it
+	// was, so the sheet and /cost still draw nothing.
+	a.refreshUsage()
 	// The notices get their first look now that the conversation, the box and
 	// the directory's facts are all in place: a news line lands here, under the
 	// replay and above the door's own notice, and the hints that wait on this
@@ -3558,6 +3583,17 @@ func (a *app) paint() tea.Cmd {
 		// times a second, while a turn's events were arriving on the same pipe.
 		// The answer lands as a message and folds in there ([app.usageBack]).
 		kick = tea.Batch(kick, a.usageKick())
+		// AND WHAT THE WORK THIS CONVERSATION STARTED IS SPENDING, on the same
+		// clock and ON this loop, because that reading is a tail read of a file
+		// and not a lock or a round trip (treespend.go). A node's money reaches
+		// the conversation's own books only when the node closes, so without this
+		// the figure on the row is hours behind exactly while somebody is
+		// watching it — which is issue #145. It is asked only while this
+		// conversation HAS work: with no roster there is nothing in the ledger
+		// this reading could find, and the file is left alone.
+		if a.railAvail() {
+			a.readTreeSpend()
+		}
 	}
 	// WHAT THE OTHER WINDOWS HAVE OUT IS RE-READ HERE, and only while something
 	// on the frame is drawing it: the roster's record rows say `running` or
@@ -4230,7 +4266,9 @@ func (a *app) settle() tea.Cmd {
 	if !wasFollowing && oldOffset >= 0 && oldOffset < len(oldRows) {
 		anchor = oldRows[oldOffset]
 	}
-	a.closeLive()
+	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
+	// into ([app.settleTurn]).
+	a.settleTurn()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
 	a.collapseThought()
@@ -4437,6 +4475,48 @@ func (a *app) closeLive() {
 		e.settled, e.stale = true, true
 	}
 	a.live = -1
+}
+
+// settleTurn is THE SETTLE A TURN BOUNDARY OWES: every assistant block of the
+// turn that just ended is a finished document, whichever ending got here first.
+//
+// IT IS A PROPERTY OF THE BOUNDARY AND NOT OF THE EVENT THAT REACHED IT. A turn
+// ends TWICE on this surface — the session's own EventTurnDone, and then the
+// stream closing behind it ([app.sampleContext] states the law and counts by it)
+// — and both endings come through [app.settle], so the settle has to be
+// idempotent and has to cover the turn rather than the last thing touched. A
+// second pass finds every block already settled and writes nothing, which is
+// what makes taking both endings free.
+//
+// [app.closeLive] settles the block the stream was GROWING, and that is enough
+// only while "an assistant block stops being live exactly when something settles
+// it" holds — an invariant kept by a dozen scattered call sites (a tool row
+// opening, a note, a person's line) and stated nowhere. It is stated here. A
+// block that misses its settle draws its markdown raw for the rest of the
+// session ([app.assistantRows] renders through [app.settledMarkdown] on
+// [entry.settled] alone, and the promotion that moves [entry.mdCut] stops with
+// the stream), so the cost of the invariant being wrong once is permanent and
+// the cost of stating it is one walk per turn.
+//
+// IT WALKS THE ENDING TURN'S OWN BLOCKS AND NOTHING MORE. Entries are appended
+// in order and a turn number never goes backwards, so that turn is the tail of
+// the list: the walk runs from the end and stops at the first entry belonging to
+// an older one. Once per turn, never on a frame (PERF.md).
+func (a *app) settleTurn() {
+	a.closeLive()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.turn != a.turn {
+			return
+		}
+		if e.kind != entryAssistant || e.settled {
+			continue
+		}
+		// THE STALE FLAG IS THE WHOLE OF THE SETTLE, in [app.closeLive]'s words:
+		// the rows a block was drawn with mid-stream are handed back by
+		// [app.entryRows] until something says they are wrong.
+		e.settled, e.stale = true, true
+	}
 }
 
 // dropLive throws away the assistant block the CURRENT attempt was streaming
@@ -6336,12 +6416,6 @@ func (a *app) renew() (tea.Cmd, bool) {
 		return nil, false
 	}
 	replacing := a.freshAndEmpty()
-	if !replacing {
-		if word, room := a.roomForAnother(); !room {
-			a.note(word)
-			return nil, false
-		}
-	}
 	conv, whole, err := a.nextConversation()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
@@ -6408,23 +6482,6 @@ func (a *app) renew() (tea.Cmd, bool) {
 		a.rememberOpen(key)
 	}
 	return cmd, true
-}
-
-// roomToRenew is [app.renew]'s own room question asked BEFORE the door is
-// opened, in the words the refusal would use, so a caller standing on a screen
-// of its own can answer on that screen instead of noting into a conversation
-// nobody is looking at.
-//
-// IT IS THE SAME QUESTION AND NOT A SECOND ONE. A fresh empty conversation is
-// replaced rather than added to, so it needs no room at all; everything else
-// asks the keeper. Home used to ask [app.roomForAnother] flat on its typed-path
-// branch and not at all on its typed-sentence branch, which is two answers to
-// one question and how the sentence came to be sent into the wrong place.
-func (a *app) roomToRenew() (string, bool) {
-	if a.freshAndEmpty() {
-		return "", true
-	}
-	return a.roomForAnother()
 }
 
 // ── the adaptive-run lane ───────────────────────────────────────────────────
@@ -6883,13 +6940,23 @@ func (a *app) paste(text string) tea.Cmd {
 	// see until home was closed. It goes into the box the caret is actually in
 	// — the exchange pane's while that holds the keyboard, home's own otherwise
 	// — and home's list re-filters exactly as it does for a typed character.
+	//
+	// AND THE DROP DOOR IS ASKED FIRST, BY BOTH OF THOSE BOXES. It used to be
+	// reached only on the fall-through below, which is the conversation's draft
+	// — so a screenshot dragged onto home became the raw escaped path it arrived
+	// as, while the same gesture one screen away became a picture on the tray.
+	// One door, told which box it is writing into (imagepaste.go's
+	// [app.pasteFilesInto]); when it says the text was not files, the text goes
+	// in exactly as it always did.
 	if a.at(pageHome) {
-		if ex := a.paneExchange(); ex != nil && ex.focused {
-			ex.box.insert(text)
-		} else {
-			a.home.box.insert(text)
-			a.home.build()
+		// WHICH OF THE TWO BOXES THAT IS, IS ASKED ONCE AND IN ONE PLACE
+		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
+		// ask the same question of the same keyboard and get the same answer.
+		box, chips := a.keyboardBox()
+		if !a.pasteFilesInto(box, chips, text) {
+			box.insert(text)
 		}
+		a.dropLanded(box)
 		a.touch()
 		return nil
 	}
@@ -7155,7 +7222,7 @@ const (
 )
 
 func (a *app) ctxHeat() ctxHeat {
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || a.ctxTokens <= 0 {
 		return ctxCalm
 	}

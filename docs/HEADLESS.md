@@ -42,9 +42,9 @@ done.
 | `-timeout N` | `900` | Hard wall in seconds. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
 | `--yes-spend` | off | Approve a plan whose price crosses the consent threshold. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
-| `--model slug` | `AFORGE_MODEL` | The work model for this run. |
-| `--plan-model slug` | `AFORGE_PLAN_MODEL` | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
-| `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run; the law clamps it to 10–90. |
+| `--model slug` | the ladder below | The work model for this run. |
+| `--plan-model slug` | the ladder below | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
+| `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
 | `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Sets `AFORGE_COMPLETION_RESERVE` for this run. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 | `--subharness name` | the compiler chooses per node | Force every leaf onto one worker. This build has **`swe`** — a whole software-engineering pipeline that takes a coding issue in a git repository whole: it plans internally, edits in parallel worktrees, judges each change before merging, and audits the result against that repository's own build and tests. It exists for measuring one worker against another; an unknown name is a note on stderr and the default worker, never a refusal. `aforge run` takes the same flag. |
 
@@ -124,6 +124,48 @@ engine's event stream is written to `.obs/<node>.trace.log` in the workspace.
 Its exit codes are the ordinary ones — nothing about the verdict table below
 changes when a specialist ran the leaf. See `docs/SUBHARNESSES.md`.
 
+### Which models a run uses — one ladder, four rungs
+
+The two seats — the model that **works** and the model that **plans** — resolve
+the same way at every headless door (`do`, `exec`, `plan`, `run`, `revise`,
+`run subharness`). First rung that answers wins, per seat:
+
+| | work seat | plan seat |
+| --- | --- | --- |
+| 1 | `--model slug` | `--plan-model slug` |
+| 2 | `AFORGE_MODEL` | `AFORGE_PLAN_MODEL` |
+| 3 | the profile's crew — the **small work** row | the profile's crew — the **mastermind** row |
+| 4 | the build's default (`aforge --help`) | empty: the work model plans too |
+
+**Rung 3 is what `/crew` writes** (`models.tiers.*` in the profile's
+`config.json`), and it is the rung that used to be missing: until #166 a headless
+run read the flags and the environment and never opened the profile, so a machine
+told `frugal` in the chat ran something else the moment the same brain ran
+headless. The two rows are the ones the chat's own planner and worker ride, so
+the crew now means the same thing on both surfaces.
+
+The crew answers only where a crew was actually **written**. A profile nobody has
+touched falls to rung 4 — the four shipped tier values are the `balanced` row, so
+reading them as a crew would make rung 4 unreachable and change the default work
+model for everybody. `AFORGE_HOME` / `AFORGE_PROFILE_DIR` decide which profile is
+asked, so an isolated run is isolated here too.
+
+A crew row may carry a thinking level (`moonshotai/kimi-k3:low`), and so may a
+flag or a variable. The value travels whole and the level is applied per call by
+the role ladder, exactly as it is in the chat; the slug sent to the provider is
+the model alone. (Until this landed it was sent whole, so `--plan-model
+kimi-k3:low` asked OpenRouter for a model id nobody publishes.)
+
+**Every run says which rung answered**, on stderr, before anything else:
+
+```
+models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+models: work anthropic/whatever (--model) · plan follows the work model (default)
+```
+
+so a campaign can verify what actually ran instead of trusting the shell it
+launched from. `do --json` carries the same four facts as fields.
+
 ### Exit codes — the verdict
 
 | Code | Name | Means |
@@ -179,7 +221,11 @@ this happened, and `blocked_on` exists so it cannot happen again.
   "seconds": 184.2,
   "settled": true,
   "blocked_on": "the question it could not answer, verbatim",
-  "learned": ["what one worker told the others mid-flight"]
+  "learned": ["what one worker told the others mid-flight"],
+  "model": "deepseek/deepseek-v4-flash",
+  "plan_model": "qwen/qwen3.8-27b",
+  "model_source": "crew frugal",
+  "plan_model_source": "crew frugal"
 }
 ```
 
@@ -193,12 +239,15 @@ this happened, and `blocked_on` exists so it cannot happen again.
 | `settled` | Nothing pending can still move. See the matrix above — this is not a verdict. |
 | `blocked_on` | Omitted unless the run was stopped by a question. Non-empty **only** alongside a non-zero exit and an empty deliverable. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
+| `model` / `plan_model` | The two seats this run actually used. `plan_model` is empty when planning rode the work model. |
+| `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `AFORGE_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
 
 ### Stream discipline
 
 **stdout is the result and nothing else** — the JSON object under `--json`, the
-deliverable otherwise. Everything else goes to **stderr**: the kept-store path,
-the "another aforge is resident" notice, the price refusal, and the quiet line.
+deliverable otherwise. Everything else goes to **stderr**: the `models:` line the
+run opens with, the kept-store path, the "another aforge is resident" notice, the
+price refusal, and the quiet line.
 
 The quiet line is a structural read of the graph (no model call, one line)
 emitted after 30 seconds of silence, because a wedged run and a run thinking
@@ -296,7 +345,7 @@ harness passes anything with newlines in it.
 | `--turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
 | `--budget N` | `150000` | Token budget for the whole run. Hitting it exits `2`. |
 | `--timeout N` | scaled from `--budget` | Hard wall in seconds. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `4`. |
-| `--model slug` | `AFORGE_MODEL` | The work model. |
+| `--model slug` | the ladder in section 1 | The work model. `exec` opens with the same `models:` line on stderr, naming its one seat and the rung that chose it. |
 | `--plan-model slug` | — | Accepted so a headless caller can pin both slots the same way for every command. `exec` plans nothing, so it changes no behaviour. |
 | `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run. |
 | `--completion-reserve N` | `65536` | Tokens kept free for the answer and its reasoning. Sets `AFORGE_COMPLETION_RESERVE` for this run. |
@@ -546,14 +595,14 @@ The full list is `aforge --help`. What matters headless:
 | Variable | Default | Why a harness cares |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | Required. |
-| `AFORGE_MODEL` | see `--help` | The work model. `--model` overrides per run. |
-| `AFORGE_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset means the work model plans too. |
+| `AFORGE_MODEL` | see `--help` | The work model. `--model` overrides per run; unset, the profile's crew answers before the built-in default — see the ladder in section 1. |
+| `AFORGE_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset, the profile's crew mastermind answers; with no crew written, the work model plans too. |
 | `AFORGE_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
 | `AFORGE_DAILY_BUDGET` | `20.0` | Daily dollar rail; `0` is unlimited. A run that hits the rail stops. |
 | `AFORGE_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
 | `AFORGE_HOME` | `~/.aforge` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
 | `AFORGE_PROFILE_DIR` | `AFORGE_HOME` | Where measured behaviour is kept. |
-| `AFORGE_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. |
+| `AFORGE_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. **Setting it also moves the chat conversation's own fold line**, which otherwise follows the model's window (`/status` says which rule governs); leaving it unset is not the same as setting it to 60. |
 | `AFORGE_COMPLETION_RESERVE` | `65536` | Tokens every call keeps free for its answer plus its reasoning. `--completion-reserve` sets it per run. **Pin both when measuring** — they change how much material a call sees and therefore what it costs. |
 | `AFORGE_MAX_DEPTH` | `2` | Levels of decomposition. |
 | `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
@@ -590,10 +639,16 @@ Rules that came from getting them wrong:
 - **`--model` alone does not pin a chat cell to one model.** The tier rows and
   role pins answer the auxiliary calls, so a campaign attributing spend and
   quality to a named model must pass `--one-model` — or measure a profile it
-  did not record. `do` has no such rows and needs no flag; a run whose numbers
-  are being compared across the two shapes should say which is which. Verify
-  rather than assume: the `usage` records in the session transcript name the
-  model that actually served each call.
+  did not record. `do` takes its two seats from the same tier rows when nothing
+  else names them, so a headless cell is pinned by passing both flags (or both
+  variables), and `model_source` in the `--json` object says whether they took.
+  A run whose numbers are compared across the two shapes should say which is
+  which. Verify rather than assume: the `usage` records in the session
+  transcript name the model that actually served each call.
+- **The profile is part of the measurement.** Two cells run from two profiles
+  with different crews are two configurations, not one. Record `model_source`
+  and `plan_model_source` beside the score, or point every cell at one
+  `AFORGE_PROFILE_DIR`.
 - **`-timeout` is part of the result.** A cell that hit the wall measured the
   wall as much as the work. Report the timeout rate beside the score or the
   score is not what it appears to be.

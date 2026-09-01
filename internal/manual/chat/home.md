@@ -495,7 +495,7 @@ something the ground already says.
 **A project heading is never marked.** Under `alt+g` the project names are dim and stay
 dim — they are grouping rather than a place the keyboard can be.
 
-## Why is the needs you heading highlighted — it is not there any more
+## Why is the needs you heading highlighted, why is one project name darker than the others — it is not there any more
 
 **There is no `needs you` heading and no `moving` heading.** Both were labels over strips,
 and the strips are gone; what needs you is the top of the one list, wearing an amber `?`,
@@ -506,8 +506,9 @@ section line — `20 chats · what wants you first` — and, under `alt+g`, the 
 **None of them ever brightens** and none of them is a cursor stop. The one thing on the
 frame that is lifted out of the dim is the row your cursor is on.
 
-If a **project name** looks different from the others it is because `alt+g` is grouping the
-list and this window's own project sorts first. Press `alt+g` again for the flat list.
+If **one project name is darker** than the others, or looks different from them in any way,
+it is because `alt+g` is grouping the list: under it the project names are dim headings, and
+this window's own project sorts first. Press `alt+g` again for the flat list.
 
 ## Why are most projects collapsed on home — they are not, there is one list
 
@@ -981,14 +982,35 @@ shapes of work. Nothing is carried across, because nothing crosses.
 
 The status line then reads `2 open`, and `tab` over an empty message box goes back.
 
-Two refusals are still possible and both leave home standing:
+One refusal is still possible and it leaves home standing: the project's folder is gone —
+`that folder is gone · <path>`, and nothing is opened. Home already knew — the row reads
+`folder gone` in its right margin and the card's place line says so too, see *Enter does
+nothing on a row — the folder is gone* — and this line is the check made again on the
+keystroke, for a folder deleted in the seconds since.
 
-- the project's folder is gone: `that folder is gone · <path>`, and nothing is opened. Home
-  already knew — the row reads `folder gone` in its right margin and the card's place line
-  says so too, see *Enter does nothing on a row — the folder is gone* — and this line is the
-  check made again on the keystroke, for a folder deleted in the seconds since;
-- this terminal already holds eight: `8 open is as many as aforge holds — /quit closes this
-  one`.
+**How many you already have open is never a refusal.** See *How many conversations can one
+terminal hold*.
+
+## How many conversations can one terminal hold — is there a limit, and why can I not open another
+
+**As many as you open.** Nothing counts them and nothing refuses another: the ninth, the
+twentieth and the fiftieth open exactly like the first, from home's `enter`, from a typed
+sentence, from a typed path, from the switcher (`ctrl+k`), from search and from `/new`.
+
+There used to be a cap of eight, and taking a ninth said `8 open is as many as aforge holds
+— /quit closes this one`. That sentence is gone and nothing says it any more.
+
+What is still true is what an open conversation costs. Each one is fully alive — its turn
+streams, its tasks run, it holds its transcript's lock, it heartbeats a presence file every
+five seconds — and **nothing closes one for you**. So a window with fifty open is holding
+fifty live conversations' worth of memory until you say otherwise. The two ways to say so:
+
+- `/quit` closes the conversation in front and brings the last one forward;
+- `ctrl+w` on the switcher card closes the conversation under the cursor without leaving the
+  one you are in.
+
+`2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
+rows. Home is the page that shows every one of them.
 
 ## Enter does nothing on a row — the folder is gone
 
@@ -1087,8 +1109,9 @@ What does not move is where the conversation is **standing**: its own working di
 halves.
 
 For a genuinely separate conversation — a different project's settings, its own model, its
-own history — one terminal holds up to **eight** at once. One is on screen; the rest are
-open behind it, fully alive.
+own history — one terminal holds **as many as you open**, with no cap on the number. One is
+on screen; the rest are open behind it, fully alive. Nothing closes one for you, so `/quit`
+and `ctrl+w` are how a conversation you are done with actually ends.
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before
@@ -1272,12 +1295,14 @@ Starting a conversation this way is `/new` followed by your sentence, so everyth
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
 `/new is unavailable here`.
 
-**At eight conversations open it refuses and home stays exactly where it is.** The foot
-line reads `8 open is as many as aforge holds — /quit closes this one`, your sentence is
-still in the box, and nothing is sent anywhere — in particular it is **not** sent into the
-conversation this window was already holding. Close one with `/quit` and press `enter`
-again. The same is true of the rarer `new session failed: <error>`: the conversation you
-were in is never given a sentence that was typed for a new one.
+**However many conversations are already open, this opens another** — there is no cap, and
+*How many conversations can one terminal hold* says so in full.
+
+**Where the door itself fails, your sentence is not sent anywhere.** On `new session
+failed: <error>` — a session folder that could not be made — home closes, the error is said
+on the entry line, and your words are put in the message box unsent. They are **not**
+delivered to the conversation this window was already holding: a sentence typed for a new
+conversation never lands in an old one.
 
 **Typing a path starts a conversation there instead.** When what you typed resolves to a
 directory on this machine — an absolute path, a `~` path, a `./` path, or a project name

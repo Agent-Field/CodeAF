@@ -95,6 +95,26 @@ const (
 	// started writing has finished deciding, and forty-five seconds between two
 	// tokens of one sentence is a connection that is not coming back.
 	midStreamGapBound = 45 * time.Second
+	// streamGapLumpTokens is what the mid-stream bound BECOMES on a lane whose
+	// rate this process has measured, expressed as work rather than as time:
+	// a stream that has gone quiet for as long as this lane would take to write
+	// three and a half thousand tokens has stopped writing.
+	//
+	// It is the buffered lump of 2026-08-24 in the header, in tokens. That
+	// measurement is the largest legitimate quiet stretch this adapter has ever
+	// seen — fourteen kilobytes of tool call assembled server-side, delivered
+	// whole, and finished — and fourteen kilobytes at the estimator's four
+	// bytes to the token is three and a half thousand of them. So the bound
+	// says the same thing at every speed: an endpoint that has not produced the
+	// biggest lump we have ever measured, in the time IT takes to produce one,
+	// is not producing anything.
+	//
+	// The arithmetic is the whole point of the change. A lane measured at 250
+	// tokens a second is given fourteen seconds; one at 83, forty-two; one
+	// slower than about 78 is given [midStreamGapBound] and nothing more,
+	// because below that the derived figure is longer than the flat one it
+	// replaces and the flat one already stood. See [gapFor].
+	streamGapLumpTokens = 3_500
 	// bufferedQuietBound is the TOTAL quiet a stream may accumulate while its
 	// endpoint is still sending keepalives — the buffering case the header
 	// describes, where the answer is being assembled server-side and will land
@@ -116,10 +136,10 @@ const (
 //
 // IT IS DERIVED FROM WHAT THE LANE ITSELF HAS SERVED, and never from a table of
 // model sizes. A size table is a claim this process cannot check — the catalog
-// row that said one model held 1.3M tokens is why compaction has a
-// maxTrustedWindow — whereas "the longest reply this endpoint has actually
-// finished for us, this hour" is a measurement, and velocity.go is already
-// keeping it. The wall is that figure times [streamWallFactor], clamped between
+// row that said one model held 1.3M tokens is why compaction believes an
+// endpoint's refusal over a card's figure (internal/session's TrustedWindowFor)
+// — whereas "the longest reply this endpoint has actually finished for us, this
+// hour" is a measurement, and velocity.go is already keeping it. The wall is that figure times [streamWallFactor], clamped between
 // [streamWallFloor] and [streamWallCeiling].
 const (
 	// streamWallFactor is how many times the longest reply a lane has COMPLETED
@@ -133,16 +153,37 @@ const (
 	// range a reply that is never going to end lives in. Two would cut real
 	// answers; fifty would be no wall at all.
 	streamWallFactor = 5
-	// streamWallFloor is the wall a lane with no history gets, and the least any
-	// lane ever gets.
+	// streamWallFloor is the wall a lane WITH NO HISTORY gets, and it is the
+	// outer bound of this whole file: the answer to "how long may a request run
+	// when this process has measured nothing at all about who is serving it".
 	//
 	// It is five minutes because that is already this adapter's argued answer to
 	// the same question asked about the same work delivered in one piece:
 	// adaptiveCompletionTimeout's floor. A non-streamed call gets at least five
 	// minutes in total, so a streamed one gets at least five minutes of
-	// generation — and it gets that even on the very first request of a cold
-	// process, where there is nothing measured to multiply.
+	// generation — and it gets that on the very first request of a cold process,
+	// where there is nothing measured to multiply.
+	//
+	// IT IS NO LONGER THE FLOOR UNDER A MEASURED LANE, and that is the fix. A
+	// floor that outranked the measurement made the measurement pointless: a
+	// lane whose longest finished reply was twenty-four seconds still got five
+	// whole minutes, so "derived from the lane's own history" was true of the
+	// arithmetic and false of every fast endpoint in practice. Two streams in
+	// the dogfood run of 2026-08-31 hung for exactly this figure, on lanes that
+	// were demonstrably sustaining between 83 and 270 tokens a second. A lane
+	// this process HAS measured is bounded by [streamWallMeasuredFloor] instead.
 	streamWallFloor = 5 * time.Minute
+	// streamWallMeasuredFloor is the least a lane whose history we hold may be
+	// given, and it is [bufferedQuietBound] rather than a number of its own.
+	//
+	// The two bound the same thing from opposite sides and must not disagree.
+	// A stream may legitimately go quiet for the buffered cap while its endpoint
+	// assembles an answer server-side; a wall shorter than that cap would cut a
+	// stream the silence bounds were still being patient with, which is a
+	// guaranteed failure on exactly the deliveries the buffered cap was measured
+	// to protect. So the shortest honest wall is the longest honest silence, and
+	// it is written as that constant rather than as a second copy of its value.
+	streamWallMeasuredFloor = bufferedQuietBound
 	// streamWallCeiling is where a request ends whatever its lane's history
 	// claims.
 	//
@@ -168,7 +209,9 @@ var (
 	stallGapBound      = midStreamGapBound
 	stallBufferedBound = bufferedQuietBound
 	stallWallFloor     = streamWallFloor
+	stallWallMeasured  = streamWallMeasuredFloor
 	stallWallCeiling   = streamWallCeiling
+	stallGapLumpTokens = streamGapLumpTokens
 )
 
 // wallFor turns the longest reply a lane has COMPLETED into the wall its next
@@ -176,14 +219,54 @@ var (
 // whose first request this is, or a session with `routing off` — passes zero
 // and gets the floor, which is the whole of what the floor is for.
 func wallFor(longest time.Duration) time.Duration {
+	// A LANE NOTHING IS KNOWN ABOUT GETS THE OUTER BOUND AND NOT A DERIVATION.
+	// There is no measurement to be in proportion to, and five minutes is this
+	// file's stated answer to that case; every other lane is bounded by what it
+	// has actually done.
+	if longest <= 0 {
+		return stallWallFloor
+	}
 	wall := longest * streamWallFactor
-	if wall < stallWallFloor {
-		wall = stallWallFloor
+	if wall < stallWallMeasured {
+		wall = stallWallMeasured
 	}
 	if wall > stallWallCeiling {
 		wall = stallWallCeiling
 	}
 	return wall
+}
+
+// gapFor turns a lane's MEASURED OUTPUT RATE, in tokens per second, into how
+// long a stream it is serving may go quiet between two tokens.
+//
+// It is the silence half of the same law the wall is the duration half of: a
+// bound stated in what the lane itself does rather than in a figure invented for
+// every lane at once. [midStreamGapBound] is what a stranger gets and it is also
+// the ceiling here, because this may only ever TIGHTEN patience — the flat bound
+// was argued against the slowest healthy endpoint this adapter has seen, and a
+// derivation that loosened it would be re-opening a question that is settled.
+//
+// The floor is [LagGap]. Below that figure the lag law itself still calls a
+// quiet stretch streaming rather than buffering (velocity.go states the
+// measurement: every endpoint that streamed stayed under four seconds between
+// deltas, every one that buffered sat at twelve or worse), so cutting there
+// would be cutting a stream that the layer next door is still describing as
+// healthy — two bounds in one process disagreeing about the same silence.
+//
+// A rate of zero is a lane this process has not rated: it gets the flat bound,
+// which is what it always got.
+func gapFor(rate float64) time.Duration {
+	if rate <= 0 {
+		return stallGapBound
+	}
+	gap := time.Duration(float64(stallGapLumpTokens) / rate * float64(time.Second))
+	if gap < LagGap {
+		gap = LagGap
+	}
+	if gap > stallGapBound {
+		gap = stallGapBound
+	}
+	return gap
 }
 
 // CutReason says which of the two things went wrong, and it is the only thing
@@ -210,6 +293,29 @@ const (
 	// the stream that carried it was. See [MachineryLeak].
 	CutMachinery
 )
+
+// word is the short machine-readable name of a cut: what the lane's belief
+// records as the reason its answer could not be used, and what a log row spells
+// when it says why.
+//
+// IT IS NOT A SENTENCE A PERSON READS. [StreamCut.Error] composes those, and the
+// two must not become one thing — a word short enough to key a ledger on is too
+// short to explain anything, and a sentence is too long to be a key.
+func (r CutReason) word() string {
+	switch r {
+	case CutSilent:
+		return "silent"
+	case CutStalled:
+		return "stalled"
+	case CutBabble:
+		return "babble"
+	case CutOverrun:
+		return "overrun"
+	case CutMachinery:
+		return "machinery"
+	}
+	return "cut"
+}
 
 // StreamCut is the error a guarded stream fails with. It is a distinct type
 // rather than a message because the decision upstream — retry, and how many
@@ -400,6 +506,14 @@ type stallWatch struct {
 	wallTimer *time.Timer
 	walled    time.Duration
 	rewalled  bool
+	// gap is the mid-stream silence bound in force. It opens at the flat bound
+	// every stranger gets and narrows once the stream names its lane, to what
+	// that lane's measured rate says a gap should be ([gapFor], [regap]).
+	gap time.Duration
+	// regapped says the gap has already been narrowed once, for [rewall]'s
+	// reason exactly: a bound that could be moved repeatedly by chunks would
+	// not be a bound.
+	regapped bool
 }
 
 // newStallWatch starts both clocks: the silence timer, and the wall.
@@ -412,6 +526,7 @@ func newStallWatch(cancel context.CancelFunc, wall time.Duration) *stallWatch {
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled = wall
+	watch.gap = stallGapBound
 	watch.timer = time.AfterFunc(stallFirstBound, func() { watch.fire() })
 	watch.wallTimer = time.AfterFunc(wall, func() { watch.overran() })
 	return watch
@@ -449,6 +564,42 @@ func (w *stallWatch) rewall(wall time.Duration) {
 	w.wallTimer.Reset(left)
 }
 
+// regap re-derives the mid-stream silence bound now that the stream has said WHO
+// IS SERVING IT, and it is [stallWatch.rewall]'s twin in every respect: the same
+// seam, the same once-only rule, the same reason.
+//
+// The stream opens on the flat bound because nothing is known about the lane
+// before the first chunk names it. From that moment the bound is what THIS lane's
+// measured rate says a gap should be, which on a fast endpoint is a small
+// fraction of the flat figure — and a small fraction of it is the whole point:
+// sixty seconds of nothing from an endpoint sustaining two hundred and fifty
+// tokens a second is a dead stream, not a patient one.
+//
+// It only ever narrows ([gapFor] caps at the flat bound), and it re-arms the
+// timer from when the stream last WROTE rather than from now, so narrowing is
+// real: a lane whose new bound is already spent is cut immediately instead of
+// being given the whole of it again.
+func (w *stallWatch) regap(gap time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.tripped != nil || w.regapped || gap <= 0 || gap >= w.gap {
+		return
+	}
+	w.regapped = true
+	w.gap = gap
+	// The first-token bound is a different question with a different answer and
+	// is not this bound's business: a request that has not been answered at all
+	// is judged by [firstDeltaBound] until it is.
+	if !w.spoken {
+		return
+	}
+	left := w.quietSince.Add(gap).Sub(w.clock())
+	if left < 0 {
+		left = 0
+	}
+	w.timer.Reset(left)
+}
+
 // overran is the wall firing: the endpoint is writing, it has been writing for
 // longer than anything of its own has ever taken to finish, and it is not going
 // to stop. It is the same cut every other reason makes — cancel the request,
@@ -482,7 +633,7 @@ func (w *stallWatch) progress() {
 	}
 	w.spoken = true
 	w.quietSince = w.clock()
-	w.timer.Reset(stallGapBound)
+	w.timer.Reset(w.gap)
 }
 
 // alive says the endpoint spoke without answering — a keepalive line. It only
@@ -525,8 +676,17 @@ func (w *stallWatch) verdict() context.CancelFunc {
 	}
 	now := w.clock()
 	bound := stallFirstBound
+	// speaking is the window a keepalive has to land inside to buy the stream
+	// more patience, and IT IS THE FLAT BOUND EVEN WHEN THE SILENCE BOUND HAS
+	// NARROWED. Whether an endpoint is still on the line is a question about the
+	// connection; how fast the model behind it writes is a question about the
+	// lane, and narrowing the second must not quietly answer the first. A
+	// buffering endpoint sending a comment every twenty seconds is alive at any
+	// rate it has ever been measured at, and the cap above is what bounds it.
+	speaking := stallFirstBound
 	if w.spoken {
-		bound = stallGapBound
+		bound = w.gap
+		speaking = stallGapBound
 	}
 	// THE EXTENSION, and its two conditions. The endpoint must still be
 	// speaking — a keepalive inside the bound that just elapsed — and the
@@ -535,7 +695,7 @@ func (w *stallWatch) verdict() context.CancelFunc {
 	// either false, the cut below is the answer. The re-arm happens with the
 	// lock held and the timer already fired, so it cannot race a second fire.
 	allowance := w.quietSince.Add(stallBufferedBound).Sub(now)
-	if now.Sub(w.lastAlive) <= bound && allowance > 0 {
+	if now.Sub(w.lastAlive) <= speaking && allowance > 0 {
 		wait := bound
 		if allowance < wait {
 			wait = allowance

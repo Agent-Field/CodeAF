@@ -1915,7 +1915,11 @@ func (a *app) telemetry(width int) []hudPart {
 	if width >= hudWide {
 		add(segDelta, a.deltaSegment())
 	}
-	add(segCost, dollars(a.cost))
+	// THE BILL IS THE WHOLE TREE'S and not the conversation's own half of it: the
+	// work this conversation started is spending its money, and a segment that
+	// waited for each task to close said `$2.53` for two hours over a family
+	// burning $51.05 (treespend.go's [app.spendShown]).
+	add(segCost, dollars(a.spendShown()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark
@@ -2257,7 +2261,7 @@ func (a *app) ctxSpark() string {
 	if a.pal.ascii || a.linear {
 		return ""
 	}
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
@@ -2377,7 +2381,7 @@ func (a *app) etaSegment() string {
 const etaHorizon = 5
 
 func (a *app) compactionETA() (int, bool) {
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || len(a.ctxRing) < 2 || a.ctxTokens <= 0 {
 		return 0, false
 	}

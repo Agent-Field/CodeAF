@@ -37,12 +37,26 @@ func clockApp(t *testing.T, agent Agent, rung string) (*app, func(time.Duration)
 // openTurn is an agent whose turn sends NOTHING on its own: the test delivers
 // the turn's events itself, so the clock can move between the question and the
 // answer the way it does on a real turn.
+// IT OPENS HAVING SPENT NOTHING, which is what a fresh conversation reports and
+// what this fixture used not to say: it claimed four cents before anybody had
+// typed. That was harmless while the surface only ever learned the total from a
+// turn ending, and is not now that it reads the agent's own figure on the first
+// frame (app.go's newApp) — an agent already holding four cents is a RESUMED
+// conversation with four cents on it, and the receipt draws a turn's OWN spend,
+// so a turn that added none of it would rightly say nothing about money.
+// [turnSpent] is how a turn's money arrives.
 func openTurn() *fakeAgent {
 	return &fakeAgent{
 		model: "openai/gpt-4.1-mini",
-		usage: session.Usage{CostUSD: 0.04},
 		turns: [][]session.Event{{}, {}, {}},
 	}
+}
+
+// turnSpent moves the session's running total, the way it moves for real: what
+// the agent answers is CUMULATIVE, so a turn's own price is the difference this
+// call makes and a turn that adds nothing leaves it where it was.
+func turnSpent(agent *fakeAgent, usd float64) {
+	agent.usage = session.Usage{CostUSD: usd}
 }
 
 // finishTurn delivers one turn's events at whatever the clock now says.
@@ -64,6 +78,7 @@ func TestAFinishedTurnLeavesItsReceipt(t *testing.T) {
 
 	typeLine(t, a, "what does load.go do?")
 	advance(2*time.Minute + 12*time.Second)
+	turnSpent(agent, 0.04)
 	finishTurn(t, a, agent,
 		toolBegin("read", "etc/load.go"),
 		toolEnd("read", ""),
@@ -96,11 +111,14 @@ func TestAReceiptCarriesTheTurnsOwnSpendAndNotTheSessions(t *testing.T) {
 
 	typeLine(t, a, "first")
 	advance(time.Minute)
+	turnSpent(agent, 0.04)
 	finishTurn(t, a, agent, text(session.EventTextDelta, "done."))
 
 	advance(time.Minute)
 	typeLine(t, a, "second")
 	advance(time.Minute)
+	// The total does not move, which is what a turn that spent nothing looks
+	// like from here.
 	finishTurn(t, a, agent, text(session.EventTextDelta, "done again."))
 
 	first := findRow(t, a, "· 14:01 ·")

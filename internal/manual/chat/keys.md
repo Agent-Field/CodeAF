@@ -1286,9 +1286,11 @@ else — and says so by not being there: no card, and the legend above the box d
 it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
 / commands`, dropping clauses from the left as the frame narrows.
 
-**Eight conversations is the cap** on what one terminal holds at once. Taking a ninth row
-says `8 open is as many as aforge holds — /quit closes this one` and leaves you where you
-were.
+**There is no cap** on what one terminal holds at once: taking a row is never refused for
+having too many open. The card draws the first twelve rows and hands a digit to the first
+nine; past that the cursor is the way, and home is the page that shows every conversation
+you have. Nothing closes one for you — `/quit` closes the one in front, `ctrl+w` here closes
+the one under the cursor.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1388,7 +1390,9 @@ says `that is the only conversation open — /quit closes aforge`.
 `that one is not open here — enter opens it`. There is nothing to close: this terminal is
 not holding it.
 
-Eight is the cap on how many one terminal holds. `ctrl+w` is how you make room.
+Nothing caps how many one terminal holds, so `ctrl+w` is never about making room. It is
+about ending something you are done with: a conversation left open goes on running, holding
+its transcript's lock and its share of this window's memory, until you close it.
 
 ## `tab` still goes straight to the last one
 
@@ -1646,11 +1650,21 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
-`w` widens the column and narrows it again. Its hint reads exactly
-`↑↓ move · →← tree · enter open · w wide · esc`. On a row whose work is still running or
+`alt+w` widens the column and narrows it again. Its hint reads exactly
+`↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
 still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
 moves that task's thinking rung; a finished row does not offer it, because a finished
 task's rung is a fact about what happened.
+
+**Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
+before the message box: a sentence typed while the roster still held the keyboard came out
+as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
+modal page with no message box, or an answer to a question drawn on screen, pressed over an
+empty box — and widening a column is neither, so it took a chord. The bare `w` still works
+on the **full-frame roster** (`ctrl+t` under about 100 columns, where the roster is drawn
+over the whole frame and there is no message box on screen). The column's own footer says
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and dragging or clicking the
+seam does the same thing with the pointer.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's
@@ -1798,9 +1812,17 @@ the work.
 
 **Inside the task's room the same four keys need no selection.** The room is the task, so
 `a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
-at the foot of the page where `task finished — esc to return` would otherwise be, and the
-hint slot reads `a accept · l look again · n not right` while the question stands. The room
-and the card are one question: answer in either and both show the receipt.
+at the foot of the page where `this task has finished — say it to main` would otherwise be,
+and the hint slot reads `a accept · l look again · n not right` while the question stands.
+The room and the card are one question: answer in either and both show the receipt.
+
+**And the roster's row answers them too.** With the roster holding the keyboard (`ctrl+t`)
+and the cursor on a row that **needs your look**, the hint slot reads
+`a accept · l look again · n not right · esc` in place of the move keys, and those three
+letters answer that row's landing without opening its room. Same card, same answers, same
+receipt — the column, the card and the room cannot disagree, because there is one card
+behind all three. `d` works there too and is left off the hint for the room's own reason:
+it is a preference and not an answer to the question in front of you.
 
 ## The mouse: what you can click
 
@@ -2289,24 +2311,57 @@ answers, not the thinking.
 
 The chat loop watches for a model that keeps calling tools without putting any visible
 words between the calls. After **6 consecutive tool-using replies with no visible assistant
-text**, it adds a note beginning `[silent]`. If the silence continues, stronger notes arrive
-at **12** and **24** replies, and the third is the last — one silent run is mentioned three
-times and no more. Each note asks the model to write what it has learned, what it will
-check next, and why before making another call.
+text**, it adds a note beginning `[silent]`. If the silence continues, a stronger note
+arrives at **12**, and that one is the last — one silent run is mentioned twice and no more.
+Each note asks the model to write what it has learned, what it will check next, and why
+before making another call.
 
-**A `[silent]` note never stops anything, and it is not an accusation of being stuck.** It
-is about the record rather than the work: it says the reasoning between steps is being
-lost. The work goes on either way, and no number of them will end a turn.
+**A `[silent]` note is not an accusation of being stuck.** It is about the record rather
+than the work: it says the reasoning between steps is being lost. It spends none of the
+loop guard's warning limit, and no number of `[silent]` notes will end a turn.
+
+**The first note is advice; the second says the tools are about to be held**, and the
+section below says what that means.
 
 That request matters for reasoning models because their streamed thinking is shown on the
 screen but is not put into the next request. Of the model's prose, only visible assistant
 text becomes part of the conversation the following step can read.
 
-Three things reset the count: a visible note, a successful `edit` or `write`, and a
-successful shell command that left the working folder different from how it found it. That
-last one is why a commit-and-push run is not scolded for being quiet — landing work is
-work, whatever verb it is spelled with. Each rung is issued once in one silent stretch;
-after a reset, a later silent stretch begins again at 6.
+Three things reset the count — and with it the hold, if one was on: a visible note, a
+successful `edit` or `write`, and a successful shell command that left the working folder
+different from how it found it. That last one is why a commit-and-push run is not scolded
+for being quiet — landing work is work, whatever verb it is spelled with. Each rung is
+issued once in one silent stretch; after a reset, a later silent stretch begins again at 6.
+
+## Why did aforge stop running tool calls, and what is a [held] answer?
+
+Because the note it asked for twice was never written. The `[silent]` note at 6 replies is
+advice. The one at 12 is the last, and it says outright `from here your tool calls are
+held`. From that point the loop stops running a reply that carries **only** tool calls: each
+call is answered with `[held] Nothing was run this step…` in place of its result, nothing
+reaches your files or your shell, and the answer says what to write and that the next call
+runs as soon as it is there.
+
+**A rule the loop can enforce is not a suggestion.** The reasoning between steps is not
+saved anywhere — a task's room, its checker, its parent and you all read what was written
+down — so past a certain amount of silence aforge stops asking and starts holding.
+
+**Writing anything visible clears it immediately** and the loop is back to normal, at the
+first rung again. A reply that carries both a note and tool calls was never held in the
+first place, so a model that writes as it works never sees any of this.
+
+**After 3 held replies the turn stops.** If it keeps sending only tool calls, the turn ends
+with this line rather than arguing forever:
+
+`stopped here · would not write its notes down, so what this turn worked out is not on the record`
+
+Nothing is handed to a task — the same model under the same rule would be as quiet — and
+whatever the turn had already saved is on disk where it left it.
+
+**When the turn that stopped belongs to a task worker, the task says so.** Its row on the
+rail reads `would not write its notes down — branch kept`, it wears the `!` that asks you to
+pick it up rather than the cross that reports a fault, and the branch is kept. How tasks run
+has it under "What the words and the ! exclamation mark under a stopped task mean".
 
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
@@ -2327,7 +2382,9 @@ for example inside a task or without a consent surface — it ends the turn with
 `this turn is going in circles · stopping here with anything remaining left undone`.
 
 Two things soften that limit. **`[silent]` notes spend none of it**, so a quiet turn cannot
-be ended for being quiet. And **getting something done gives one spent note back**: a batch
+be ended for being quiet; being held for not writing its notes down is a separate road with
+its own ending, described in the section above. And **getting something done gives one
+spent note back**: a batch
 that wrote a file, or ran a shell command that changed the working folder, steps the count
 down by one — unless it was the very call the turn has already been warned about, because
 writing the same file seven times is the loop and not the way out of it. It is a step down

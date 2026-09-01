@@ -353,3 +353,54 @@ func TestTheReasoningProfileIsReadFromTheRowAndSurvivesTheCache(t *testing.T) {
 		t.Fatalf("cached profile = %+v known %t, want the fetched answer", cached, known)
 	}
 }
+
+const levelledPayload = `{"data":[
+  {"id":"vendor/thinker","name":"Thinker","context_length":262144,"architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"pricing":{"prompt":"0.00000045","completion":"0.0000032"},"supported_parameters":["max_tokens","reasoning"]}
+]}`
+
+// A THINKING LEVEL IS NOT PART OF A MODEL ID, and this table is where that costs
+// something when it is forgotten.
+//
+// `moonshotai/kimi-k3:low` is how a tier row — and now, since the crew reaches
+// every headless run (config.ResolveSeats), the default plan seat — says "that
+// model, thinking a little". Looked up whole it matched no row, and every caller
+// took the fallback for a model nobody has heard of: zero context, so a planner
+// sized its material from a literal instead of the window; no published price,
+// so a receipt said nothing; and "cannot say" about reasoning, so the adapter
+// sent no knob at all. One normalization, so no caller has to know.
+func TestALevelledValueResolvesAsItsOwnModel(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, levelledPayload, nil),
+	})
+	want := c.ContextLength("vendor/thinker")
+	if want != 262144 {
+		t.Fatalf("the bare id reads a window of %d, so this test is about nothing", want)
+	}
+	for _, id := range []string{"vendor/thinker:low", "vendor/thinker:medium", "~vendor/thinker:high"} {
+		if got := c.ContextLength(id); got != want {
+			t.Errorf("%s reads a window of %d, want %d", id, got, want)
+		}
+		if _, ok := c.Model(id); !ok {
+			t.Errorf("%s found no row", id)
+		}
+		if _, _, known := c.PriceNow(id); !known {
+			t.Errorf("%s has no published price", id)
+		}
+		if supported, known := c.SupportsParameter(id, "reasoning"); !supported || !known {
+			t.Errorf("%s reasoning = %t known %t, want both", id, supported, known)
+		}
+		if !c.Supports(id, "input", "image") {
+			t.Errorf("%s lost its vision row", id)
+		}
+		if got := c.Identity(id); got != c.Identity("vendor/thinker") {
+			t.Errorf("%s is a second identity (%q), which would split its measured history", id, got)
+		}
+	}
+	// And a suffix that is NOT a level is part of the id: OpenRouter's own
+	// variants (`:free`, `:nitro`) name different rows, and eating one would
+	// answer about a model nobody asked for.
+	if _, ok := c.Model("vendor/thinker:free"); ok {
+		t.Fatal("a variant suffix was eaten and answered about the base model")
+	}
+}
