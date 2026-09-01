@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
@@ -728,6 +729,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the task named the first few words of what I typed", "tasks"},
 		{"the name on the task changed by itself a few seconds later", "tasks"},
 		{"can I give a task a short name", "tasks"},
+		// V6: The proposal hold and bare-no wording are retrievable in the exact
+		// words a person uses after an unwanted auto-start.
+		{"the task started before I could say no", "tasks"},
+		{"I typed no and it started anyway", "tasks"},
+		{"how do I stop a proposed task from starting", "tasks"},
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
@@ -1535,5 +1541,18 @@ func TestTheCompactionPageQuotesTheContextLawsOwnNumbers(t *testing.T) {
 	if ctxbudget.DefaultCompletionReserveTokens != 65536 {
 		t.Fatalf("the completion reserve is now %d; the page still says 65,536",
 			ctxbudget.DefaultCompletionReserveTokens)
+	}
+}
+
+// V1: The manual's stated proposal window follows the same default the config
+// resolver and settings panel use.
+func TestTheTasksPageQuotesTheTaskCountdownDefault(t *testing.T) {
+	page, ok := Chat().Page("tasks")
+	if !ok {
+		t.Fatal("the chat corpus lost tasks")
+	}
+	want := strconv.Itoa(config.DefaultTaskAutoApprove) + " seconds"
+	if !strings.Contains(page, "The default window is "+want) {
+		t.Fatalf("tasks does not state the configured default as %q", want)
 	}
 }

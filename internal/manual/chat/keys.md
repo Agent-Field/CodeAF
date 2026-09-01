@@ -1108,9 +1108,16 @@ second press within 1.5 seconds quits. On the second beat of
 "always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
 
 **A task proposal** is not modal — the message box stays live as a redirect lane.
-Always available: `enter` answers the focused option, `esc` says no, and `ctrl+e`
-opens the brief over an empty box. Over an **empty box only**: `left`/`right` move
-the focus, `y` yes, `r` redirect, `n` no, and `1`–`4` pick the model.
+Always available: `enter` submits a typed answer or takes the focused option over
+an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
+an **empty box only**: `left`/`right` move the focus, `r` asks for the redirect
+lane, and `1`–`4` pick the model. `n` and `y` are ordinary answer text, not
+immediate shortcuts. Typing the first character stops the countdown and changes
+the meter to `waiting on you`; deleting the draft does not restart it. On
+`enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
+while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
+redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
+box; only `enter` interprets the typed answer.
 
 **A connect offer:** `enter` or `y` yes · `esc` or `n` no. While its key box is open,
 every key goes into that box except `enter`, which submits, and `esc`, which
