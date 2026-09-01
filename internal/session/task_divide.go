@@ -162,7 +162,7 @@ func init() {
 // request of every turn a divided worker takes, so it says each rule once and
 // leaves the teaching to the field it governs — the evidence field says what
 // evidence is, and this preamble no longer says it a second time.
-var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in its own copy of the repository, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, no shared file two of them edit — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a copy of the repository, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
+var divideDescription = "Hand the parts of THIS work out when the material turns out wider than one worker's share. Each part becomes a worker of its own under this task, in its own copy of the repository, and you stay to make one deliverable out of their reports. ONLY FOR GENUINE WIDTH: the parts must be independent — nothing half-finished passing between them, and no file two of them name, which is refused outright — and this is refused unless your evidence names at least " + strconv.Itoa(splitgate.Floor) + " separate items, below which doing them in order beats paying for a copy of the repository, a check and a wait per part. Sequential work is never divided. Up to " + strconv.Itoa(taskFanLimit) + " parts. Grade each part for the way it could go wrong: leave `grade` out for ordinary work, set it to `" + gradeCareful + "` for a part that could look finished and be quietly wrong. If the answer is no, carry on in your own hands; nothing is cancelled and nothing is lost."
 
 // divideSchemaJSON is the wire schema. It is deliberately the SAME vocabulary
 // the resident's `request_split` uses — parts, each with a title, a summary and
@@ -542,7 +542,8 @@ func (a *Agent) judgedDivisible(text string) bool {
 // THE GATE IS NAMED IN THE REFUSAL and not merely the fact of one, because the
 // refusals are different findings about the same work: `floor` says the material
 // does not enumerate enough to pay for parts, `lane` says nobody was free to pick
-// them up, `review` says a mastermind read the parts together and saw one job,
+// them up, `scope` says two parts claimed the same path, `review` says a
+// mastermind read the parts together and saw one job,
 // and `nobody` says it read them and saw work no worker can do at all. A record
 // that spelled them all "refused" could not tell a road that is working from a
 // road that is switched off by a busy machine, and could not tell either of
@@ -562,6 +563,13 @@ const (
 	divisionRefusedLane       = "refused:lane"
 	divisionRefusedCap        = "refused:cap"
 	divisionRefusedReview     = "refused:review"
+	// divisionRefusedScope is two parts claiming the same path
+	// (task_divide_scope.go). It is its own word because it is the one refusal
+	// here that says the division was RIGHT and its boundaries were wrong: a
+	// bench counting `refused:review` beside it can tell a road that read the
+	// work as one job from a road that would have handed it out happily if the
+	// briefs had drawn the line anywhere.
+	divisionRefusedScope = "refused:scope"
 	// divisionRefusedNobody is the reviewer saying the remainder is not work for
 	// any worker — the approving review only a person may give, the credential
 	// nobody here holds, the decision that is the person's to make. It is a
@@ -772,6 +780,19 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		return refusal.said, "", false
 	}
 	parsed.Parts = parts
+
+	// AND NO TWO PARTS MAY OWN THE SAME PATH. This is the floor under the
+	// reviewer rather than a second reading of the same question: overlapping
+	// scope is not untidy, it is work that disappears — the ledger is what ships
+	// and a path written by two parts is staged once, one version silently over
+	// the other (task_divide_scope.go states the whole of it). It stands HERE,
+	// on the reviewer's settled parts rather than the worker's asked-for ones,
+	// so a boundary the reviewer fixed is a boundary that counts; and above the
+	// claims, so a refused division costs nothing and holds no hand.
+	if shared := scopeCollisions(parsed.Parts, a.config.Workspace); len(shared) > 0 {
+		line.Decision = divisionRefusedScope
+		return divisionScopesOverlap(shared), "", false
+	}
 
 	// THE SLOTS ARE TAKEN FOR THE WHOLE DIVISION BEFORE ANY OF IT IS ADMITTED.
 	// A division is ONE decision: three parts admitted and a fourth refused by
@@ -987,9 +1008,9 @@ Each part becomes a worker of its own, in its own copy of the repository. It nev
 
 READ THE PARTS TOGETHER, WHICH IS THE ONE THING THEIR AUTHOR COULD NOT DO:
 
-  - two parts that would edit the same file, or whose scopes overlap. Fix the boundary in both briefs, or merge them into one part.
+  - two parts that would edit the same file, or whose scopes overlap. Fix the boundary in both briefs, or merge them into one part. An overlap you leave standing is not a rough edge: a division whose parts still name the same file when you are done is REFUSED OUTRIGHT and nothing is handed out, because everything the parts write goes into one deliverable and the file would be kept once, one part's work quietly over the other's.
   - a part that cannot start until another has finished. That is a stage and not a part: merge it into the part it waits on.
-  - a brief that assumes what its author knew. Name the files, the symbols, the conventions, and what NOT to touch because another part owns it.
+  - a brief that assumes what its author knew. Name the files, the symbols and the conventions THIS part works in. Where something nearby belongs to a sibling, say whose it is — "the report itself is another part's" — rather than listing its files under this one, so that no two briefs read as claiming the same thing.
   - a done-condition somebody else could not check without taking the part's own word for it.
 
 Answer with ONE JSON object and nothing else — no prose, no code fence:

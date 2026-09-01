@@ -1830,3 +1830,132 @@ func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
 		t.Error("prompts/divide.md does not teach the grade the schema asks for")
 	}
 }
+
+// ── NO TWO PARTS OWN THE SAME PATH ──────────────────────────────────────────
+
+// divideScopedArgs is one well-formed call whose parts carry the briefs named,
+// which is where a part says what it owns.
+func divideScopedArgs(evidence string, briefs ...string) json.RawMessage {
+	parts := make([]string, 0, len(briefs))
+	for i, brief := range briefs {
+		parts = append(parts, fmt.Sprintf(
+			`{"title":"part %d","summary":"s","brief":%q,"acceptance":"a"}`, i+1, brief))
+	}
+	return json.RawMessage(fmt.Sprintf(`{"evidence":%q,"parts":[%s]}`,
+		evidence, strings.Join(parts, ",")))
+}
+
+// THE MEASURED DATA-LOSS CASE. The ledger is the contract of what ships and it
+// is staged once, so two parts writing one file is one version silently over the
+// other — with no conflict for anybody to notice. It is refused where it is still
+// free: before a part exists.
+func TestTwoPartsClaimingOneFileAreRefusedBeforeAnyPartExists(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	answer := nest.divide(t, divideScopedArgs(wideEvidence,
+		"write the northern figures into report.md",
+		"write the southern figures into report.md"))
+
+	if !strings.HasPrefix(answer, "not split:") {
+		t.Fatalf("the worker was told %q, want the division refused", answer)
+	}
+	// IT NAMES THE PATH, because one edit is what the worker does next and a
+	// refusal it cannot act on sends it back to re-read four briefs.
+	if !strings.Contains(answer, "report.md") {
+		t.Fatalf("the refusal never says which file: %q", answer)
+	}
+	// THE VOCABULARY LAW holds here as on every other ending.
+	for _, banned := range []string{"gate", "collision", "scope", "ledger", "normalis"} {
+		if strings.Contains(strings.ToLower(answer), banned) {
+			t.Fatalf("the refusal says %q, which is machinery: %q", banned, answer)
+		}
+	}
+
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts exist after a refusal, want none admitted", len(kids))
+	}
+	// AND NOTHING IS HELD: a hand claimed for a part that was never born would
+	// be a lane nobody could use again.
+	if nest.graph.freeHands() <= 0 {
+		t.Fatal("the refused division is still holding a lane")
+	}
+
+	divisions := journaledDivisions(t, nest.journal)
+	if len(divisions) != 1 {
+		t.Fatalf("the record holds %d divisions, want the one that was put", len(divisions))
+	}
+	if divisions[0].Decision != divisionRefusedScope {
+		t.Fatalf("the record says %q, want %q", divisions[0].Decision, divisionRefusedScope)
+	}
+	if divisions[0].Admitted != 0 {
+		t.Fatalf("the record says %d parts were admitted, want none", divisions[0].Admitted)
+	}
+}
+
+// AND THE CHECK IS DELIBERATELY DIM. Parts that share a directory and nothing
+// else are exactly what a division of wide work looks like, and refusing them
+// would shut the road on its own best case.
+func TestPartsThatShareADirectoryButNoFileAreAdmitted(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	// The directory has to be there for a name in prose to read as a path at
+	// all ([groundHolds]), which is the same reading the ground ladder makes.
+	if err := os.MkdirAll(filepath.Join(nest.node.config.Workspace, "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	answer := nest.divide(t, divideScopedArgs(wideEvidence,
+		"write the northern figures into reports/a.md",
+		"write the southern figures into reports/b.md"))
+
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want the division taken", answer)
+	}
+	if kids := nest.graph.children(nest.parent.id); len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+}
+
+// THE READING IS OF PATHS AND NOT OF WORDS, so one file named two ways is one
+// file — and a word that is nobody's file is nobody's claim.
+func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tree, "reports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		parts []dividePart
+		want  []string
+	}{
+		{"the same file spelled relative and absolute", []dividePart{
+			{Brief: "own reports/a.md"},
+			{Brief: "own " + filepath.Join(tree, "reports", "a.md")},
+		}, []string{filepath.Join(tree, "reports", "a.md")}},
+		{"one part naming its own file twice", []dividePart{
+			{Brief: "own reports/a.md", Acceptance: "reports/a.md holds the figures"},
+			{Brief: "own reports/b.md"},
+		}, nil},
+		{"words that are nobody's file", []dividePart{
+			{Brief: "decide whether the northern regions belong together."},
+			{Brief: "decide whether the southern regions belong together."},
+		}, nil},
+		{"a file outside the family tree is not this division's to own", []dividePart{
+			{Brief: "read /usr/bin/python3 for the version"},
+			{Brief: "read /usr/bin/python3 for the version"},
+		}, nil},
+		{"the done-condition claims too", []dividePart{
+			{Brief: "write the northern figures", Acceptance: "reports/a.md holds them"},
+			{Brief: "write the southern figures", Acceptance: "reports/a.md holds them"},
+		}, []string{"reports/a.md"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := scopeCollisions(test.parts, tree)
+			if len(got) != len(test.want) {
+				t.Fatalf("the parts collide on %v, want %v", got, test.want)
+			}
+			for i, want := range test.want {
+				if got[i] != want {
+					t.Fatalf("the parts collide on %v, want %v", got, test.want)
+				}
+			}
+		})
+	}
+}
