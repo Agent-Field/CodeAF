@@ -74,9 +74,9 @@ func TestASweepOverTheBodyCopiesItsRowsAndClicksNothing(t *testing.T) {
 	from := screenRowWith(t, a, "how do I print?")
 	to := screenRowWith(t, a, "Use fmt.Println.")
 
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
-	model, cmd := a.Update(tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 0, Y: from, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseMotionMsg{X: 79, Y: to, Button: tea.MouseLeft})
+	model, cmd := a.Update(tea.MouseReleaseMsg{X: 79, Y: to, Button: tea.MouseLeft})
 	a = model.(*app)
 
 	copied := rawPayload(t, runCmd(cmd))
@@ -241,13 +241,13 @@ func TestAClickAndASweepRideTheScrollOfAStreamingBody(t *testing.T) {
 	// has to be a sweep a hand could not have made by accident.
 	from := screenRowWith(t, a, "the person wants fmt")
 	to := screenRowWith(t, a, "a later line")
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: from, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseMotionMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 0, Y: from, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseMotionMsg{X: 79, Y: to, Button: tea.MouseLeft})
 	for i := 0; i < 3; i++ {
 		a.entries = append(a.entries, entry{kind: entryAssistant, settled: true, text: "still later"})
 	}
 	a.touch()
-	model, cmd := a.Update(tea.MouseReleaseMsg{X: 4, Y: to, Button: tea.MouseLeft})
+	model, cmd := a.Update(tea.MouseReleaseMsg{X: 79, Y: to, Button: tea.MouseLeft})
 	a = model.(*app)
 	copied := rawPayload(t, runCmd(cmd))
 	for _, want := range []string{"the person wants fmt", "Use fmt.Println.", "a later line"} {

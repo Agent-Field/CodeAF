@@ -1924,15 +1924,27 @@ the fullscreen roster is up.
 
 ## Selecting text with your mouse — drag to copy
 
-**Just drag.** Sweep the pointer over the conversation (or a task's room, or a run's
-page) with the left button down: the rows under the sweep highlight, and the moment
-you release, their text is **on your clipboard** — stripped of colours and the drawn
-left rails, exactly as copy mode strips a yank. There is nothing further to press:
-no ctrl+c, no key at all — releasing the button IS the copy. The highlight stays lit
-for the few seconds the status line says `copied · 12 lines`, so you can see exactly
-what landed. The write goes over OSC 52, so it works over ssh and through tmux. The
-selection is by rows — whole lines, not characters — and what is highlighted is
-exactly what is copied.
+**Just drag.** Put the pointer on a character, sweep to another with the left button
+down, and the cells between them highlight — from where you pressed to the end of
+that line, every line between in full, and the last line up to where you are, exactly
+as your terminal would select it. The moment you release, that text is **on your
+clipboard** — stripped of colours and the drawn left rails, exactly as copy mode
+strips a yank. There is nothing further to press: no ctrl+c, no key at all —
+releasing the button IS the copy. The highlight stays lit for the few seconds the
+status line says what landed — `copied · 14 chars` for a span inside one line,
+`copied · 3 lines` across several — so you can see exactly what you got. The write
+goes over OSC 52, so it works over ssh and through tmux. What is highlighted is
+exactly what is copied, to the character.
+
+**Double-click takes the word, triple-click takes the line.** A word is what a
+person means by one: a path, a hash, a flag, `go.mod` and a URL are each one word, a
+bracket or a quote ends one, and the full stop closing a sentence is left behind.
+The status line says `copied · 1 word` or `copied · 1 line`. Two quick clicks on a
+tool call or a fold are still two clicks — open, then shut — because a button acts on
+every click; only text is taken by a double-click.
+
+**A wide glyph is never split.** A sweep that starts or ends inside a CJK character
+or an emoji takes the whole glyph, and the highlight covers both of its cells.
 
 The sweep is drawn in **the same background copy mode's selection wears** — the strongest
 of the three this screen draws, a shade above the one under the pointer. It is the same
@@ -1997,7 +2009,7 @@ permanently. `/select` then says `your terminal already has the pointer — drag
 
 **Your click drifted.** A press that moves more than two columns or more than one row
 before you release is a **sweep**, not a click: it copies the rows it crossed and the
-status line says `copied · N lines` instead of opening anything. See "selecting text with
+status line says what was copied instead of opening anything. See "selecting text with
 your mouse" above.
 
 **There is nothing under the pointer.** A click on empty space does nothing anywhere on
