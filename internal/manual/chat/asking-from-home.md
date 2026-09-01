@@ -82,6 +82,38 @@ line of the command, `read` shows the path, `stand` shows what it is doing
 (`stand · proposing remind me at 6 to leave`). A call that came back with nothing to say
 says nothing.
 
+## Why is the answer from home showing asterisks and hashes — the ask here pane formats markdown
+
+Yes. A settled answer in the `ask here` pane goes through **the same markdown renderer the
+conversation uses** — one parser, one set of colours, one answer to what your terminal can
+draw. You never see `**bold**`, a leading `##`, or backticks around `aforge status`; you see
+bold, a heading and a code span.
+
+```
+Two reminders
+
+You have two of them. Run aforge status to see them:
+
+· one at 6
+· one at 9
+```
+
+**While the reply is still arriving it is plain wrapped text**, and that is the transcript's
+behaviour rather than a difference: formatting a half-written sentence re-flows it under
+your eye. The whole block formats the instant the turn is over. In a conversation the same
+thing happens in two steps, because an answer there is long enough to be worth catching up
+every 1500ms; the pane's answers are short, so the block simply settles.
+
+The pane is under sixty columns, which is the **phone tier** of the renderer: a fenced code
+block wraps rather than being cut, with a dim `↳ ` on each continued row, and a table stacks
+as one `key: value` line per cell instead of being squeezed. That is the only difference
+between an answer read here and the same answer read in the conversation.
+
+What it does not do is give you the affordances that hang off a rendered answer in the
+conversation — the offer to open a wide table, task references becoming links, an image.
+Those are the conversation's screen; take the exchange there with `continue as a
+conversation` if you need them.
+
 ## Why did my reminder card disappear when I opened another chat — it does not any more
 
 It used to, and that was a defect. The exchange lived on the home screen, so closing home —
@@ -312,10 +344,10 @@ than moving it a second time.
   goes to a chat you have open in that project, or waits under the project on home. Nothing
   is ever written only into the exchange's own folder, which no screen reads.
 - **It will not run the full conversation surface in the pane.** The right pane is forty
-  cells wide, so it draws a reduced reading: what you said, what came back, one line per
-  tool call, the live strip, and the card. Slash commands, the task column, `/rewind`,
-  images and the approval card are all the conversation's own screen — take the exchange
-  there with `continue as a conversation` if you need them.
+  cells wide, so it draws a reduced reading: what you said, what came back **rendered as
+  markdown**, one line per tool call, the live strip, and the card. Slash commands, the task
+  column, `/rewind`, images and the approval card are all the conversation's own screen —
+  take the exchange there with `continue as a conversation` if you need them.
 - **It will not create anything without the card.** Typing a sentence at home does not arm
   a reminder; a card does, and only after you press `1`.
 - **It will not end an errand because you looked away.** Closing home, opening another

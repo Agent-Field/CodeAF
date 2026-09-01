@@ -1008,7 +1008,10 @@ aforge to use what was built.
 ## Markdown: what aforge renders
 
 The model's reply is rendered as markdown, parsed with goldmark and painted through
-aforge's own token layer — there is no HTML renderer involved. What is supported:
+aforge's own token layer — there is no HTML renderer involved. **Every place on this
+surface that draws an answer draws it through this one renderer**, including the `ask here`
+pane on home, so the same words never read as prose in one place and as `**source**` in
+another. What is supported:
 
 - **Headings** — promoted by tier, never by size. h1 is primary ink and bold, h2 is
   primary, h3 and below step back down the grey ramp. Loudness is position on the ramp
@@ -1072,6 +1075,10 @@ whole block is rendered at once.
 The offer to open a wide table is only drawn on the settled render. A half-arrived table
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
+
+An `ask here` answer on home keeps the same law with one step instead of two: it is plain
+while it arrives and formats when the turn ends. There is no 1500ms promotion there, because
+the pane's answers are short enough that the settle is the catch-up.
 
 ## The reply dims when it finishes — brighter while streaming, calmer when done
 

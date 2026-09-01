@@ -220,6 +220,11 @@ type exchangeRow struct {
 	// here spends a glyph on — the conversation's own rule, where a call that
 	// succeeded says so by saying nothing (toolview.go's [app.mark]).
 	failed bool
+	// settled says a reply row has stopped growing, and it is [entry.settled]
+	// said about this pane's rows: a block nobody is writing any more is a
+	// finished document, so it renders as one. It is flipped at the BOUNDARY and
+	// never by looking at the text ([homeExchange.closeReply]).
+	settled bool
 	// began is when a tool row's call started and took is how long it ran, so
 	// the row can carry a clock while it is alive and its own figure after. They
 	// are the pane's reduced reading of what a tool line in the conversation
@@ -359,6 +364,26 @@ func (ex *homeExchange) over() bool { return !ex.working && !ex.asking() }
 // that they have moved off it.
 func (ex *homeExchange) spent() bool { return ex.over() && ex.seen }
 
+// closeReply ends the reply row being streamed into, and it is this pane's
+// [app.closeLive] — the same law, one column narrower.
+//
+// SETTLING IS A PROPERTY OF THE BOUNDARY AND NOT OF THE EVENT THAT FIRED. A
+// reply stops growing for five different reasons — a call starts under it, a
+// card arrives, the turn is done, the stream closes behind the turn, or the
+// person says something else — and every one of those already had to put the
+// live index back. So they all come through here instead, and a block cannot
+// end up permanently unsettled because it finished down a lane somebody forgot
+// to teach. That is exactly the shape of the defect #178 closed in the
+// transcript, and it is why this is one function rather than five assignments.
+//
+// It is idempotent, so a turn that ends twice settles once.
+func (ex *homeExchange) closeReply() {
+	if ex.live >= 0 && ex.live < len(ex.rows) {
+		ex.rows[ex.live].settled = true
+	}
+	ex.live = -1
+}
+
 // exchangeRank is the triage order of the rows: what wants you, then what is
 // moving, then what is done. It is [homeState]'s law at the scale of one
 // errand, and the ties under it are settled by when the exchange began.
@@ -450,7 +475,7 @@ func (a *app) errandUpdate(msg errandMsg) tea.Cmd {
 		return tea.Batch(cmd, errandWait(ex, m.ch))
 	case errandClosedMsg:
 		ex.working = false
-		ex.live = -1
+		ex.closeReply()
 	}
 	return nil
 }
@@ -512,7 +537,7 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 		ex.rows[ex.live].text += ev.Text
 
 	case session.EventToolBegin:
-		ex.live = -1
+		ex.closeReply()
 		ex.rows = append(ex.rows, exchangeRow{
 			kind: exchangeTool, text: exchangeToolLine(ev), began: a.now(),
 		})
@@ -531,11 +556,11 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 		}
 
 	case session.EventError:
-		ex.live = -1
+		ex.closeReply()
 		ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: errText(ev.Err)})
 
 	case session.EventTurnDone:
-		ex.live = -1
+		ex.closeReply()
 		ex.working = false
 	}
 	return nil
@@ -559,7 +584,8 @@ func (a *app) exchangeProposal(ex *homeExchange, notice session.StandingNotice) 
 		}
 	}
 	kept := notice
-	ex.card, ex.changing, ex.live = &kept, false, -1
+	ex.card, ex.changing = &kept, false
+	ex.closeReply()
 	// THE VIEW IS BUILT HERE AND NOT AT DRAW TIME. Whether the three digits
 	// belong to the card is a question the keyboard asks before any frame has
 	// been painted, and a view that only existed once something had been drawn
@@ -1262,7 +1288,8 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 // state word, the clock and the strip all hang off these three fields, so they
 // are set the moment the words leave the box.
 func (ex *homeExchange) startTurn(now time.Time) {
-	ex.working, ex.live = true, -1
+	ex.working = true
+	ex.closeReply()
 	ex.turnBegan, ex.turnAt = now, len(ex.rows)
 	// A row settled by the last turn has been seen; a new turn is a new thing to
 	// see, and an exchange swept while it is answering would be the pane going
@@ -1527,6 +1554,35 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 // and plain, and what it DID is indented and dim — which is THE INDENT LAW the
 // conversation's own renderer keeps (render.go), kept here at one column
 // instead of two because the pane has forty cells and not a hundred.
+//
+// ── AND THE ANSWER IS MARKDOWN, THROUGH THE SURFACE'S ONE RENDERER ──────────
+//
+// A model answers in markdown whether or not anyone asked it to, so a settled
+// reply drawn as wrapped plain text is a pane showing `**bold**`, `## heading`
+// and backticks to a person who asked a question from home — the same output
+// that reads as prose two keystrokes away in a conversation. So it goes through
+// [app.renderMarkdown], which is the door render.go's [app.settledMarkdown]
+// opens for the transcript: one parser, one styler, one measure, one answer to
+// what a sixteen-colour terminal may draw. Adapting it costs a line; a second
+// renderer here would be a second heading ladder drifting from the first
+// (markdown.go's own header says why).
+//
+// THE NARROW COLUMN IS ALREADY ANSWERED BY THAT DOOR. The pane is thirty to
+// fifty cells, which is [tierPhone], and [phoneMarkdown] is the tier that wraps
+// a fence instead of cutting it and stacks a table instead of fitting it —
+// written for exactly this case, a reader with no horizontal scroll.
+//
+// A REPLY STILL ARRIVING STAYS PLAIN, and that is the transcript's behaviour
+// rather than a shortcut: render.go's [app.liveTail] wraps the growing edge
+// without parsing it, because markdown of a half-written sentence re-flows
+// under the reader's eye. This pane has no promotion throttle — the head that
+// chat promotes every [markdownThrottle] is a few hundred bytes here, and the
+// whole block formats the instant the boundary settles it.
+//
+// It memoizes nothing, for [renderMarkdown]'s own reason: the pane redraws on a
+// growing reply, and a cache keyed on text that is still growing is wrong at
+// exactly the moment somebody is reading it. The one exchange under the cursor
+// is the only one drawn ([app.paneExchange]), so the cost is bounded by a pane.
 func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string {
 	var out []string
 	switch row.kind {
@@ -1539,6 +1595,12 @@ func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string
 			out = append(out, pal.muted(mark)+pal.ink(wrapped))
 		}
 	case exchangeReply:
+		if row.settled {
+			// prose paints its own rows, body ink included, so nothing here may
+			// wrap them in a second foreground.
+			out = append(out, trimBlanks(a.renderMarkdown(row.text, width))...)
+			break
+		}
 		for _, wrapped := range wrap(row.text, width) {
 			out = append(out, pal.ink(wrapped))
 		}
