@@ -36,15 +36,18 @@ import (
 //   - A ROW THAT IS PAID OFF IS DELETED. A function that has come down to the
 //     ceiling has no debt to name, and an entry that outlived its function is a
 //     lie that rots exactly as a stale exception ledger anywhere else does.
-//   - AND A ROW THAT MERELY FELL SHOULD BE LOWERED IN THE SAME CHANGE. Nothing
-//     fails on that today, because a ratchet that punished improvement would be
-//     read as a reason not to improve; the entry simply stops being true until
-//     somebody writes the number they measured.
+//   - AND A ROW THAT FELL IS LOWERED IN THE SAME CHANGE, which is the half that
+//     makes the ratchet turn rather than merely hold. A row left at the old
+//     number is slack: it would let the very next change put back everything the
+//     one before it took out, with the gate green throughout. So the row IS the
+//     measured number, and the failure hands the author the figure to write.
 //
 // The count is gocyclo's, because it is the number everybody quotes: one, plus
-// every `if`, `for`, `range`, `case`, comm clause, `&&` and `||`. It is computed
+// every `if`, `for`, `range`, named `case`, named comm clause, `&&` and `||` —
+// a `default` decides nothing and gocyclo does not count one. It is computed
 // here over `go/ast` rather than shelled out to the tool, so the gate is `go
-// test` and the repository gains no dependency to run it.
+// test` and the repository gains no dependency to run it: anybody who wants a
+// second opinion can run gocyclo over the same files and read the same numbers.
 
 // theCeiling is how many decisions one function may hold. Fifteen is the number
 // the repository's own quality bar already states (CLAUDE.md: no function over
@@ -58,16 +61,16 @@ const theCeiling = 15
 // a number nobody can pay off.
 //
 // Measured on 2026-09-01, after #260's extractions. `runTaskChild` was the worst
-// of them at 56 and is not here: it is [childRun] now (task_child_run.go), and
+// of them at 55 and is not here: it is [childRun] now (task_child_run.go), and
 // every one of its phases is under the ceiling.
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
-	"TaskGraph.rehydrate":   24,
+	"TaskGraph.rehydrate":   22,
 	"TaskGraph.runFrontier": 22,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
 	"taskNote":              18,
-	"auditDoor.admitsFile":  17,
+	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
 }
 
@@ -159,6 +162,13 @@ func judgeComplexity(measured map[string]measuredFunction, ledger map[string]int
 				"complexityDebt is a ratchet: a road that is already too long may not get "+
 				"longer while it is being paid off. Put the new ending in a function of its "+
 				"own, or take an old one out first.")
+		case found.at < row:
+			complaints = append(complaints, name+" ("+found.file+") is down from "+
+				strconv.Itoa(row)+" to "+strconv.Itoa(found.at)+" — write "+strconv.Itoa(found.at)+
+				" into its complexityDebt row.\n"+
+				"This is not a complaint about the change; it is how the ratchet turns. A row "+
+				"left at the old number is room the next change may spend without anything "+
+				"noticing, which would put back exactly what this one took out.")
 		}
 	}
 	var gone []string
@@ -250,8 +260,18 @@ func cyclomatic(body *ast.BlockStmt) int {
 	decisions := 1
 	ast.Inspect(body, func(node ast.Node) bool {
 		switch typed := node.(type) {
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.CaseClause, *ast.CommClause:
+		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
 			decisions++
+		case *ast.CaseClause:
+			// A `default` decides nothing — it is where a value that matched no
+			// arm was always going to end up — and gocyclo does not count one.
+			if typed.List != nil {
+				decisions++
+			}
+		case *ast.CommClause:
+			if typed.Comm != nil {
+				decisions++
+			}
 		case *ast.BinaryExpr:
 			if typed.Op == token.LAND || typed.Op == token.LOR {
 				decisions++
@@ -301,13 +321,14 @@ func TestTheRatchetRefusesADebtThatGrew(t *testing.T) {
 	if len(held) != 0 {
 		t.Fatalf("a debt that held its number was refused: %v", held)
 	}
-	// AND SHRINKING IS ALLOWED, because a ratchet that punished improvement
-	// would be read as a reason not to improve.
+	// AND A DEBT THAT SHRANK IS TOLD TO WRITE ITS NEW NUMBER DOWN, which is the
+	// half that makes the ratchet turn: a row left at the old figure is room the
+	// next change may spend with the gate green throughout.
 	shrank := judgeComplexity(map[string]measuredFunction{
 		"Agent.oldRoad": {file: "task_old.go", at: 17},
 	}, ledger)
-	if len(shrank) != 0 {
-		t.Fatalf("a debt that shrank was refused: %v", shrank)
+	if len(shrank) != 1 || !strings.Contains(shrank[0], "down from 20 to 17") {
+		t.Fatalf("a debt that shrank was not asked to lower its row: %v", shrank)
 	}
 }
 
@@ -362,11 +383,12 @@ func closes(events chan int) {
 		t.Fatalf("parsing: %v", err)
 	}
 	// straight: nothing but the one.
-	// branches: 1 + if + && + for + three case clauses + the loop's own condition
-	//           carries no operator = 7.
+	// branches: 1 + if + && + for + the two NAMED case clauses = 6. The
+	//           `default` is not counted and the loop's own condition carries no
+	//           operator.
 	// closes:   1 + range + if = 3, and it is 3 only because the walk goes into
 	//           the closure.
-	want := map[string]int{"straight": 1, "branches": 7, "closes": 3}
+	want := map[string]int{"straight": 1, "branches": 6, "closes": 3}
 	for _, declaration := range file.Decls {
 		function, ok := declaration.(*ast.FuncDecl)
 		if !ok {

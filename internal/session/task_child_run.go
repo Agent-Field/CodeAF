@@ -203,11 +203,16 @@ func (r *childRun) open(instruction string) error {
 // carrying on means only "keep going on what you already have". A finding
 // that handed out another two hundred steps would be a spin buying itself
 // room, which is the opposite of what noticing it is for.
-func (r *childRun) checkpoint(threshold string, renew bool) bool {
+//
+// IT ANSWERS NOTHING, because there is nothing left for a caller to decide: what
+// it settles it settles on the run itself — [childRun.stopped] and the cancel it
+// hangs off — and a returned yes-or-no would be a second copy of that, free to
+// disagree with it.
+func (r *childRun) checkpoint(threshold string, renew bool) {
 	if r.node == nil {
 		r.stopped = "stopped at " + threshold
 		r.stop()
-		return false
+		return
 	}
 	owner := r.node.owner
 	if owner == nil {
@@ -216,7 +221,7 @@ func (r *childRun) checkpoint(threshold string, renew bool) bool {
 	if owner == nil {
 		r.stopped = "stopped at " + threshold
 		r.stop()
-		return false
+		return
 	}
 	// THE FACT GOES IN FRONT OF THE STORY. A reader handed twenty lines of
 	// successful calls has to infer repetition from them and will not; handed
@@ -234,20 +239,19 @@ func (r *childRun) checkpoint(threshold string, renew bool) bool {
 		// model call per step for as long as the node keeps going.
 		r.effects.pardon()
 		fmt.Fprintf(r.log, "checkpoint: working — carrying on\n")
-		return true
+		return
 	}
 	if working && r.extensions < taskMaxExtensions {
 		r.extensions++
 		r.deadline = r.deadline.Add(r.limits.deadline)
 		fmt.Fprintf(r.log, "checkpoint: working — renewed %d of %d\n", r.extensions, taskMaxExtensions)
-		return true
+		return
 	}
 	if working {
 		reason = "the work used all 4 extensions"
 	}
 	r.stopped = fmt.Sprintf("stopped at %s: %s", threshold, strings.TrimSpace(reason))
 	r.stop()
-	return false
 }
 
 // drain consumes one stream of the child's own events: it publishes every one of

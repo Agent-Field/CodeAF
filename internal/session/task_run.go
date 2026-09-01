@@ -3222,6 +3222,10 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 // briefMatchesItsWorld is ── THE HANDOFF CONTRACT, ANSWERED BEFORE ANY OF THE
 // MONEY ──
 //
+// It hangs off nobody: the brief, the world and the log are the whole of what
+// this reads, which is the same reason [landHome] and [keepHome] are functions
+// rather than methods.
+//
 // The brief says what this work assumes about its world; the world has just
 // been made. This is the one moment the two can be held up against each
 // other for nothing, and it is BEFORE the first worker is built rather than
@@ -3232,7 +3236,7 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 // goes on; a contract that did not is the node's whole report, and it names
 // every expectation that failed rather than the first, because a brief
 // written against a world one commit behind fails several at once.
-func (a *Agent) briefMatchesItsWorld(node *TaskNode, tree taskTree, log io.Writer) bool {
+func briefMatchesItsWorld(node *TaskNode, tree taskTree, log io.Writer) bool {
 	expects := node.expectations()
 	if len(expects) == 0 {
 		return true
@@ -3310,7 +3314,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if !ok {
 		return TaskFailed
 	}
-	if !a.briefMatchesItsWorld(node, tree, log) {
+	if !briefMatchesItsWorld(node, tree, log) {
 		return TaskFailed
 	}
 
