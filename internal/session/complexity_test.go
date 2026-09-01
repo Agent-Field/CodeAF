@@ -64,23 +64,35 @@ import (
 // drift apart.
 const theCeiling = 15
 
-// complexityDebt is every function in `task_*.go` that was already over
+// complexityDebt is every function in `task*.go` that was already over
 // [theCeiling] when this gate was fitted, the number it measured at, and one
 // line saying what the debt IS — because a number with no account of itself is
 // a number nobody can pay off.
 //
-// Measured on 2026-09-01, after #260's extractions. `runTaskChild` was the worst
-// of them at 55 and is not here: it is [childRun] now (task_child_run.go), and
-// every one of its phases is under the ceiling.
+// Measured on 2026-09-01, on top of #277, after #260's extractions.
+// `runTaskChild` was the worst of them at 56 and is not here: it is [childRun]
+// now (task_child_run.go), and every one of its phases is under the ceiling.
+//
+// THE NUMBERS ARE THE ONES MEASURED WHERE THE GATE WAS FITTED, which is why
+// `taskNote` reads 19 here and 18 in #260's own table: #277 gave it the arm for
+// a landing that saved nothing, before this test existed to have an opinion. A
+// ledger cannot refuse the debt it was built to hold; it can only refuse the
+// next one.
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
+	"taskSegments":          26,
 	"TaskGraph.rehydrate":   22,
 	"TaskGraph.runFrontier": 22,
 	"Agent.workTaskNode":    21,
 	"declaredInvalidations": 21,
+	"groundLint":            21,
+	"pathTokens":            21,
 	"taskNote":              19,
+	"Agent.proposeTask":     16,
 	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
+	"gitOnlyReads":          16,
+	"refusedGitVerb":        16,
 }
 
 // whyTheDebtIsStillThere is the sentence each row above owes. It is a map of its
@@ -106,6 +118,27 @@ var whyTheDebtIsStillThere = map[string]string{
 		"question with that many separate answers.",
 	"copyOriginal": "the original of a file fetched for a check, from whichever of the " +
 		"several places it may still exist in (task_audit.go).",
+
+	// ── AND THE SIX THE `task*.go` WIDENING BROUGHT IN ──
+	//
+	// None of these is #260's debt. They are what was already standing in the
+	// engine's other files, ledgered so that the gate covers the whole of it
+	// rather than the half whose names happen to carry an underscore.
+	"taskSegments": "a shell command taken apart into the commands it really runs " +
+		"(taskoutside.go) — quotes, substitutions, separators. It is a lexer, and a lexer's " +
+		"decisions ARE its character classes; splitting it would move them rather than " +
+		"reduce them.",
+	"groundLint": "every reason a stand may not be the ground somebody meant " +
+		"(taskstands.go), read in an order that is itself the policy.",
+	"pathTokens": "one reading of what in a sentence is a path (taskstands.go). Twenty " +
+		"lines, and most of its number is the single `FieldsFunc` predicate naming every " +
+		"character that ends a token.",
+	"Agent.proposeTask": "the door work comes in through (task.go): every field checked " +
+		"before anybody is asked anything, each refusal naming its own fix.",
+	"gitOnlyReads": "whether one git verb, with its flags, only looks (taskoutside.go). " +
+		"The answer is per verb and the flags are what decide it.",
+	"refusedGitVerb": "the verbs a task may not run and the sentence each is refused " +
+		"with (taskgit.go) — a table that answers in different words per reason.",
 }
 
 // TestNoRoadInTheTaskEngineHasMoreEndingsThanItsLedgerRow is the ratchet.
@@ -190,12 +223,12 @@ func judgeComplexity(measured map[string]measuredFunction, ledger map[string]int
 	sort.Strings(gone)
 	for _, name := range gone {
 		complaints = append(complaints, "complexityDebt names "+name+
-			" and no such function is in task_*.go any more — remove the row.")
+			" and no such function is in task*.go any more — remove the row.")
 	}
 	return complaints
 }
 
-// measureTaskComplexity walks this package's own `task_*.go` sources and answers
+// measureTaskComplexity walks this package's own `task*.go` sources and answers
 // what every function in them measures.
 //
 // IT IS THE TASK ENGINE AND NOT THE PACKAGE, because that is where the debt was
@@ -203,13 +236,21 @@ func judgeComplexity(measured map[string]measuredFunction, ledger map[string]int
 // `internal/session` is a bigger bargain than #260 struck, and striking it in
 // passing would mean a ledger nobody had read written by whoever ran the test
 // next.
+//
+// AND THE ENGINE IS EVERY `task*.go`, NOT THE ONES WHOSE NAMES CARRY AN
+// UNDERSCORE. #260 wrote `task_*.go`, and that boundary is filename punctuation
+// rather than anything anybody chose: `task.go` holds the door work comes in
+// through, `taskstands.go` the ground reading, `taskoutside.go` the command
+// parser, `taskgit.go` the verbs a task may not run. A road written over the
+// ceiling in any of them would have been invisible to a gate that read only
+// their siblings, which is the one thing this is for.
 func measureTaskComplexity(t *testing.T) map[string]measuredFunction {
 	t.Helper()
 	measured := map[string]measuredFunction{}
 	files := 0
 	forEachPackageFile(t, func(path string, file *ast.File, _ *token.FileSet) {
 		base := filepath.Base(path)
-		if !strings.HasPrefix(base, "task_") {
+		if !strings.HasPrefix(base, "task") {
 			return
 		}
 		files++
@@ -218,14 +259,24 @@ func measureTaskComplexity(t *testing.T) map[string]measuredFunction {
 			if !ok || function.Body == nil {
 				continue
 			}
-			measured[functionName(function)] = measuredFunction{file: base, at: cyclomatic(function.Body)}
+			name := functionName(function)
+			found := measuredFunction{file: base, at: cyclomatic(function.Body)}
+			// AND WHERE A NAME IS NOT UNIQUE, THE WORST OF THEM IS WHAT THE LEDGER
+			// ANSWERS FOR. Go allows a package many `init`s and this engine has four,
+			// so a map keyed by name alone would have measured one of them and let
+			// the other three past unread. Keeping the highest can only refuse too
+			// much, never too little, which is the safe direction for a gate.
+			if seen, already := measured[name]; already && seen.at >= found.at {
+				continue
+			}
+			measured[name] = found
 		}
 	})
 	// The floor guards against a walk that quietly stops finding anything — a
 	// renamed file, a moved package — which would turn the ratchet into a test
 	// that always passes.
 	if files < 20 {
-		t.Fatalf("only %d task_*.go files were scanned; the engine holds far more, so the walk is broken rather than clean", files)
+		t.Fatalf("only %d task*.go files were scanned; the engine holds far more, so the walk is broken rather than clean", files)
 	}
 	return measured
 }
