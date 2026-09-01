@@ -168,6 +168,36 @@ func TestAFolderThatAlreadyHoldsTheFamilysWorkLandsAgainQuietly(t *testing.T) {
 	}
 }
 
+// A LEDGER PATH THAT NAMES A WHOLE DIRECTORY IS MEASURED AS ONE, because that is
+// how it is laid: the target is removed and the tree copied over it, so a file
+// the person put inside it is a file the landing would take away.
+func TestADirectoryInTheLedgerIsMeasuredAsAWhole(t *testing.T) {
+	ground := t.TempDir()
+	writeFile(t, filepath.Join(ground, "under", "kept.md"), "what was there before\n")
+	tree := aMirrorOn(t, ground)
+	writeFile(t, filepath.Join(tree.dir, "under", "written.md"), "what the task wrote\n")
+
+	// Untouched, the whole directory lands.
+	node := loneTestNode(t, "write the section")
+	if _, merge, detail := landHome(node, tree, []string{"under"}); merge != mergeInPlace || detail != "" {
+		t.Fatalf("merge = %q, detail = %q, want the directory to land", merge, detail)
+	}
+	if got := readFile(t, filepath.Join(ground, "under", "written.md")); got != "what the task wrote\n" {
+		t.Fatalf("under/written.md in the person's folder is %q", got)
+	}
+
+	// And a note the person drops into it afterwards is inside what the next
+	// landing would remove, so the next landing stands back and names it.
+	writeFile(t, filepath.Join(ground, "under", "theirs.md"), "the line the person typed\n")
+	if _, merge, detail := landHome(node, tree, []string{"under"}); merge != mergeConflicted ||
+		!strings.Contains(detail, "under changed there while this ran") {
+		t.Fatalf("merge = %q, detail = %q, want the directory refused", merge, detail)
+	}
+	if got := readFile(t, filepath.Join(ground, "under", "theirs.md")); got != "the line the person typed\n" {
+		t.Fatalf("the person's own note inside the directory is %q", got)
+	}
+}
+
 // A FOLDER WITH NO RECORD LANDS EXACTLY AS IT LANDED BEFORE THIS EXISTED. It is
 // a family carried across an upgrade, or one whose folder could not be read in
 // full, and absence is ordinary rather than a reason to need somebody's look.
