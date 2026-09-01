@@ -1948,7 +1948,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// growing a job, not resource failure, and the journal that bounds growth
 	// could not tell the two apart while one borrowed the other's whole path.
 	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
-		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap, Records: records,
+		dailyBudgetUSD, resident.Growth{Reason: resident.GrowGap, Records: records,
 			// A finding that names a file of the record is a reading of the
 			// world, so the first round it buys is not the coverage question's
 			// to refuse. See resident.GrowRequest.Grounded.
@@ -2106,171 +2106,6 @@ func outOfWall(ctx context.Context, node store.Node) string {
 	return "there is not enough time left on the run to finish it"
 }
 
-// ── who takes the next attempt ───────────────────────────────────────────────
-//
-// Two judgements in this file already read a leaf that did not get there: the
-// one that decides whether an exhausted leaf left work behind, and — from this
-// wave — the one that decides who retries a failed one. Both used to answer with
-// a stronger model or a continuation and nothing else, because a stronger model
-// was the only other place a leaf could go.
-//
-// The menu is injected into both rather than a third mechanism being built,
-// because there is no third question. "This failed; what now" already has a
-// judge; what changes is that the answer may name a different kind of worker.
-// And the menu is the registry's, so a build with only the generalist renders
-// nothing, no prompt gains a byte, and no call is made that was not made before.
-//
-// The headless scheduler's escalation (internal/exec/schedule.go's Escalations)
-// is deliberately left mechanical. Nothing judges there: a verdict that says
-// "a stronger model might fix this" puts the node back to pending and the
-// ordinary launch path picks it up, and there is no model in that loop to hand a
-// menu to. Adding one would be a second dispatch policy in the surface that has
-// no conversation to explain itself in — the two-surface covenant says every
-// worker is REACHABLE from both surfaces, which it is, not that every judgement
-// is made on both. Retries are judged where retries are judged: on the surface
-// with a head. A headless run reaches a specialist the way it always has, by the
-// planner choosing one at sizing time.
-
-// WorkerChoiceBrief renders the menu into a judgement that may name a worker,
-// or nothing at all when there is nothing to choose between.
-func WorkerChoiceBrief(menu string) string {
-	if strings.TrimSpace(menu) == "" {
-		return ""
-	}
-	return "\n\n" + menu + "\nReturn the choice as \"worker\":\"<name>\". " +
-		"Omit it, or leave it empty, for the default worker."
-}
-
-// retryWorkerPrompt asks whether the second attempt should go somewhere
-// different in kind, not merely somewhere stronger.
-//
-// The default answer is stated as the default and the specialist as the
-// exception, in the compiler's own words, because this is the same choice the
-// compiler makes and a leaf that reaches here has already been judged once. The
-// difference is the evidence: a failure is in front of this judge and was not in
-// front of that one. What must not follow from that evidence is "it failed, so
-// try something else" — most failures are answered by a stronger model doing the
-// same thing, and a judge that reads failure as a reason to change worker would
-// route every hard prose leaf into a coding pipeline.
-const retryWorkerPrompt = `A worker was given one assignment, worked on it, and did not finish it. The same assignment is about to be attempted once more.
-
-By default that second attempt goes to the same kind of worker, on a stronger model. You decide one thing only: whether the essence of this assignment is the thing a specialist below exists for, in which case the attempt goes to that specialist instead.
-
-The failure itself is not a reason to change the kind of worker. Most work that fails once is finished by the same kind of worker trying again with more capacity behind it. Change the kind only when the assignment's essence — what the work fundamentally is — matches a specialist's purpose, in which case the first attempt was on the wrong sort of worker from the beginning.
-
-Return exactly one JSON object, nothing else.`
-
-var retryWorkerSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "worker": {"type": "string"}
-  },
-  "required": ["worker"],
-  "additionalProperties": false
-}`)
-
-// judgeRetryWorker names the worker for one retry, or nothing for the default.
-//
-// Everything about it fails toward the behavior that existed before it did: no
-// menu means no call at all, an unparseable answer means the default worker, and
-// a name that reaches no registered worker means the default worker. The retry
-// happens either way — this decides who gets it, never whether there is one.
-func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.Client,
-	node store.Node, task exec.Task, outcome *exec.Outcome, failure error,
-	menu, workerModel string, options ...Option) string {
-	if strings.TrimSpace(menu) == "" || client == nil {
-		return ""
-	}
-	budget := newBounds(options).budget(retryWorkerPrompt)
-	// A leaf the node watchdog abandoned lands with an error and no outcome at
-	// all, and it reaches this judge now that a retry no longer requires one. An
-	// absent outcome is an absent outcome: nothing was produced and nothing is
-	// claimed about how it ended beyond what the failure itself says.
-	if outcome == nil {
-		outcome = &exec.Outcome{}
-	}
-	var body strings.Builder
-	body.WriteString("The assignment:\n" + task.Brief)
-	if produced := strings.TrimSpace(outcome.Text); produced != "" {
-		body.WriteString("\n\nWhat the first attempt had produced when it stopped:\n" +
-			boundedDelivery(produced, budget))
-	}
-	if failure != nil {
-		body.WriteString("\n\nHow it ended: " + firstLine(failure.Error()))
-	} else {
-		body.WriteString("\n\nHow it ended: " + string(outcome.Verdict))
-	}
-	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "retry-worker")
-	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
-	// "gate", not the routing class's own "audit": the class pools this call
-	// with the planner's audits because they rate alike, and the model-call log
-	// is read by a person who wants to know which of them refused a deliverable.
-	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
-	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	// The menu rides the end of the user message, not the system one. It reads
-	// as law — here are the workers, here is how to choose between them — but it
-	// carries each specialist's measured line, and those are run counts and a
-	// four-decimal average cost that move every time a leaf of that worker
-	// finishes. Sent as part of the system message it rewrote, mid-session, the
-	// one string in this call that could have been identical from job to job.
-	// Position by volatility: what churns sinks (12.4.1, and the same fix
-	// internal/head/compiler.go took for the same block).
-	var reply struct {
-		Worker string `json:"worker"`
-	}
-	if _, err := askVerdict(judgeCtx, client, []ai.Message{
-		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: retryWorkerPrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text",
-			Text: body.String() + WorkerChoiceBrief(menu)}}},
-	}, retryWorkerSchema, &reply); err != nil {
-		// Every failure of this one judgement means the same thing and it is not
-		// a fault: the answer it gives most of the time, and the one it is told
-		// to give when in doubt, is the default worker. A run does not stop
-		// because nobody had an opinion about which specialist to try next.
-		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return ""
-	}
-	chosen := knownWorker(reply.Worker)
-	if chosen == "" {
-		// Not a failure: "the default worker" is the answer this judge gives
-		// most of the time and the one it is told to give when in doubt.
-		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-		return ""
-	}
-	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return chosen
-}
-
-// DecodeWorkerChoice reads a worker out of a judgement's reply, keeping only a
-// name that reaches a worker this build can actually construct. It is the same
-// degradation head.Compiler.normalizeSubharness makes on the compile path, for
-// the same reason: a hallucinated worker costs a retry its specialist and
-// nothing else.
-func DecodeWorkerChoice(text string) string {
-	var reply struct {
-		Worker string `json:"worker"`
-	}
-	// One extractor, the same one every structured reply in the system goes
-	// through. It used to scan first brace to last brace by hand, which reads a
-	// sentence written after the object as part of it.
-	if provider.DecodeJSONObject(text, &reply) != nil {
-		return ""
-	}
-	return knownWorker(reply.Worker)
-}
-
-// knownWorker keeps only a name this build can actually construct. A
-// hallucinated worker costs a retry its specialist and nothing else, which is
-// the same degradation head.Compiler.normalizeSubharness makes on the compile
-// path for the same reason.
-func knownWorker(chosen string) string {
-	chosen = strings.TrimSpace(chosen)
-	if !exec.KnownSubharness(chosen) {
-		return ""
-	}
-	return chosen
-}
-
 // remainderPrompt asks the one question the overrun path used to assume
 // an answer to. Running out of budget while landing a finished result is
 // common — the executor grants a landing reserve for exactly that — so
@@ -2300,42 +2135,17 @@ type Remainder struct {
 	Done      bool
 	Remaining string
 	Checked   bool
-	// Worker is the specialist the same judge named for the work that is left,
-	// when it named one. Empty is the default worker and is the answer in every
-	// build without a specialist, because the question is never asked there.
-	Worker string
 }
-
-// remainderWorkerSchema is the remainder schema with the worker field.
-// Two constants rather than one built at runtime: a prompt's schema is part of
-// the prompt, and the baseline one has to be readable as the thing that has not
-// changed.
-var remainderWorkerSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "done": {"type": "boolean"},
-    "remaining": {"type": "string"},
-    "worker": {"type": "string"}
-  },
-  "required": ["done"],
-  "additionalProperties": false
-}`)
 
 // judgeRemainder decides whether an exhausted leaf actually left work behind.
 // Failures fail toward "not done" with Checked false: the continuation still
 // runs, now bounded by the overrun governors, rather than a judge outage
 // silently shipping genuinely cut-off work as finished.
-// The menu is the caller's: it is the registry's text with the leaf's own
-// worker excluded — a continuation of work this worker ran out of resources on
-// belongs with it by default and needs no naming, and the interesting answer is
-// the other one. Who was promised this leaf is read by the dispatch path, which
-// is the one owner of that question, so it arrives here already answered.
-//
 // It takes no Option: nothing in this prompt is clipped here, so there is no
 // window-derived bound for one to move. What it does share with the other two is
 // the completion cap and the empty-reply retry, both of which are facts about
 // the reply rather than about the window.
-func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, produced, menu, workerModel string) Remainder {
+func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, produced, workerModel string) Remainder {
 	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
@@ -2345,17 +2155,9 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	judgeCtx = provider.WithCallTag(judgeCtx, "gate")
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	schema := remainderSchema
-	if menu != "" {
-		schema = remainderWorkerSchema
-	}
-	// The menu sits at the end of the user message for the reason the retry
-	// judgement's does: it is measured, it moves within a session, and the
-	// system prompt above it is a constant this build never rewrites.
 	var verdict struct {
 		Done      bool   `json:"done"`
 		Remaining string `json:"remaining"`
-		Worker    string `json:"worker"`
 	}
 	// This used to read its own reply first brace to last brace, which is
 	// tolerant in the same direction as the shared extractor and wrong in one: a
@@ -2364,8 +2166,8 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	// seam now, which also means a cut answer is continued rather than lost.
 	if _, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
-		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
-	}, schema, &verdict); err != nil {
+		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
+	}, remainderSchema, &verdict); err != nil {
 		// FAILURES FAIL TOWARD "NOT DONE" WITH Checked FALSE, unchanged: the
 		// continuation still runs, bounded by the overrun governors, rather than
 		// a judge outage silently shipping genuinely cut-off work as finished.
@@ -2387,8 +2189,7 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		return Remainder{}
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
-	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true,
-		Worker: knownWorker(verdict.Worker)}
+	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true}
 }
 
 // deliveryPartialBytes is what the partial handed to a judgement is bounded to

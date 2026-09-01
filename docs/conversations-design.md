@@ -1319,9 +1319,8 @@ rebuild, and tell the other lanes to rebase.
 
 **The suite.** `go test ./internal/tui3/` takes ~150 s; budget it. These fail on a
 clean tree and are **not** this work's: `cmd/aforge TestHarnessEntriesFromStore`,
-`internal/tui TestSettingsSheetIsOneCalmColumnAtEveryWidth`, `internal/plan`, and
-four `internal/swepro` packages. Confirm with a stash-and-rerun before chasing
-anything in that list.
+`internal/tui TestSettingsSheetIsOneCalmColumnAtEveryWidth` and `internal/plan`.
+Confirm with a stash-and-rerun before chasing anything in that list.
 
 **Eight.** The cap is a judgement, not a measurement. If it is ever hit in practice
 by somebody who was not testing it, that is evidence the number is wrong, not that

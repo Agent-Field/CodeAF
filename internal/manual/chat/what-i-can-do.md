@@ -185,8 +185,8 @@ carries on straight away rather than waiting.
 
 So a fifteen-minute `make` behind a ten-minute ceiling costs nothing. Nothing is
 thrown away and nothing is run twice. The old behaviour — the process group
-killed and `Command timed out after N seconds` — is what a bare subharness leaf
-still does; the chat does not.
+killed and `Command timed out after N seconds` — is what a plain shell tool
+with no session behind it still does; the chat does not.
 
 Two things it does **not** do:
 

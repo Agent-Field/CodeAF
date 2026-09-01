@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -92,12 +91,6 @@ type Compiled struct {
 
 	// ModelNote is the one calm receipt line about that choice.
 	ModelNote string
-
-	// Subharness is the specialist worker this whole job was judged to be for.
-	// It rides the splice as provenance, exactly as WorkModel does, so the
-	// leaves that run it are held to what was chosen when the ask was read
-	// rather than to whatever the process has registered an hour later.
-	Subharness string
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -261,10 +254,6 @@ type Reconciler struct {
 	// this reconciler will apply is one errand, run once, with nobody who could
 	// answer a question about it.
 	oneShotErrand bool
-	// forcedSubharness overrides every compiler judgement about who runs this
-	// job. It exists for measurement: comparing two workers on the same corpus
-	// means taking the choice away from the model that would otherwise vary it.
-	forcedSubharness string
 	// modelsInForce answers, at the moment a job is admitted, which model would
 	// structure it and which would work it if the job named neither. It is a
 	// question only the surface can answer — the slots live there — and it is
@@ -471,16 +460,6 @@ func (r *Reconciler) WithOneShotErrands() *Reconciler {
 	return r
 }
 
-// WithSubharness forces every job this reconciler admits onto one worker,
-// whatever the compiler thought. It is a benchmarking instrument and is named
-// as one: a run that is comparing workers cannot let the choice be the variable
-// it is trying to measure. Empty restores the ordinary path, where the choice
-// is the compiler's and is usually the generalist.
-func (r *Reconciler) WithSubharness(subharness string) *Reconciler {
-	r.forcedSubharness = strings.TrimSpace(subharness)
-	return r
-}
-
 // WithModelsInForce teaches the resident the surface's two model slots, read at
 // splice time: the one that structures and the one that works. Without it a job
 // records nothing about who planned it, which is exactly what every embedding
@@ -515,63 +494,6 @@ func (r *Reconciler) splitModelSlots(pinnedWork string) (plan, run string) {
 		return "", ""
 	}
 	return plan, work
-}
-
-// chosenSubharness is the one place the two sources of the choice meet.
-func (r *Reconciler) chosenSubharness(compiled Compiled) string {
-	if r != nil && r.forcedSubharness != "" {
-		return r.forcedSubharness
-	}
-	return strings.TrimSpace(compiled.Subharness)
-}
-
-// cheapFirstOnSubtree resolves the inheritance of the compiler's specialist
-// choice before the store's own fill does. A node that made no choice of its
-// own inherits the splice's worker at admission, and when that worker is a
-// specialist the inheritance is a pre-evidence guess: the compiler judged the
-// ask's SHAPE — "this is coding work" — before anything was sized, and the
-// ladder's rule is that envelope choices wait for evidence. So an unjudged
-// node of a specialist-named job starts on the cheap whole-taker (bare when
-// it is registered, the generalist otherwise), and the specialist's own entry
-// points move to the two places evidence exists: the sizing pass's oversized
-// verdict, and continuation escalation. The compiler's choice itself is
-// untouched — it rides the splice's provenance as the record of the shape
-// judgment, and the escalation ladder reads it back from there.
-func (r *Reconciler) cheapFirstOnSubtree(subtree store.Subtree, compiled Compiled) store.Subtree {
-	choice := strings.TrimSpace(compiled.Subharness)
-	if choice == "" || exec.GeneralistSubharness(choice) || !exec.KnownSubharness(choice) {
-		return subtree
-	}
-	target := exec.LinearSubharness
-	if exec.KnownSubharness(exec.BareSubharness) {
-		target = exec.BareSubharness
-	}
-	for index := range subtree.Nodes {
-		if strings.TrimSpace(subtree.Nodes[index].Subharness) == "" {
-			subtree.Nodes[index].Subharness = target
-		}
-	}
-	return subtree
-}
-
-// forceWorkerOnSubtree writes the forced worker onto every node as well as onto
-// the splice, and it exists because provenance alone is not forcing.
-//
-// A node inherits the splice's worker only when it named none of its own, so a
-// provenance-only force was a force over exactly the nodes nobody had an
-// opinion about. That was invisible while the only thing anyone forced was a
-// specialist — the sizing pass's own specialist verdicts named the same worker
-// — and it is the whole story for the arm that forces the generalist: those
-// nodes name a worker, the flag did not reach them, and the run measured the
-// specialist it was told not to use.
-func (r *Reconciler) forceWorkerOnSubtree(subtree store.Subtree) store.Subtree {
-	if r == nil || r.forcedSubharness == "" {
-		return subtree
-	}
-	for index := range subtree.Nodes {
-		subtree.Nodes[index].Subharness = r.forcedSubharness
-	}
-	return subtree
 }
 
 // WithStandingWatch enables the one-time unattended-presence offer after the
@@ -1557,8 +1479,6 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 	subtree = anchorSubtreeWorkingDecisions(subtree, compiled.Assumptions)
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
-	subtree = r.forceWorkerOnSubtree(subtree)
-	subtree = r.cheapFirstOnSubtree(subtree, compiled)
 	r.titleSubtree(ctx, &subtree, compiled)
 
 	planModel, runModel := r.splitModelSlots(compiled.WorkModel)
@@ -1573,7 +1493,6 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		RunModel:      runModel,
 		Attachments:   append([]string(nil), command.Attachments...),
 		Craft:         use.reference,
-		Subharness:    r.chosenSubharness(compiled),
 	}
 	if err := r.store.Splice(store.RootID, subtree, provenance); err != nil {
 		if r.plan != nil || !r.defaultSpliceExists(command, compiled) {

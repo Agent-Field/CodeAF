@@ -2,14 +2,12 @@
 // form the session-end machine verification floor, runs one of them, and reads
 // the failing test names out of what it printed.
 //
-// It lived under internal/swepro/internal/session/fullverification until
-// 2026-08-29, where Go's own visibility rule made it reachable by exactly one
-// worker. That is the WHY of the move, and it is a law about laws: A LAW ABOUT
-// A PROJECT'S OWN VERIFICATION THAT ONLY ONE WORKER CAN REACH IS A LAW THE
-// OTHER WORKERS SILENTLY DO WITHOUT. The bare and linear workers — the only
-// workers `aforge do` uses on the plain path — could not import this, so they
-// never photographed the repository, never compared two readings of it, and
-// shipped patches that deleted attributes the repository already had while
+// It sits here, in its own package, on purpose, and the reason is a law about
+// laws: A LAW ABOUT A PROJECT'S OWN VERIFICATION THAT ONLY ONE CALLER CAN REACH
+// IS A LAW EVERY OTHER CALLER SILENTLY DOES WITHOUT. When this code was
+// unexported inside a package the plain `aforge do` path could not import, the
+// repository was never photographed, two readings of it were never compared,
+// and patches shipped that deleted attributes the repository already had while
 // their own narrow tests stayed green (docs/design/gate/SETTLEMENT.md §4).
 //
 // Nothing here knows what language the workspace is in, and nothing here is a

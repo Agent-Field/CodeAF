@@ -94,7 +94,6 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		config.KeyTaskMaxLoad:      tabTasks,
 		config.KeyTaskMinFreeMB:    tabTasks,
 		config.KeyTaskModel:        tabTasks,
-		config.KeyWorkers:          tabTasks,
 		config.KeyDailyBudget:      tabSpending,
 		config.KeyPlanConsent:      tabSpending,
 		config.KeyPracticeBudget:   tabSpending,

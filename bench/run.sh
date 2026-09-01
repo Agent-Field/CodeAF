@@ -27,32 +27,25 @@ CELL_TIMEOUT="${CELL_TIMEOUT:-40m}"
 # (2026-08-02, merge of PR #18): the last commit with all four issues open.
 BASE_COMMIT="${BASE_COMMIT:-}"
 
-# aforge shape. Four values, and the first three are the comparison this file
-# exists for — the same issue taken three ways, against the same recorded pi and
-# opencode rows:
+# aforge shape. Four values, against the same recorded pi and opencode rows:
 #
-#   node     one leaf on the default worker. The executor measured alone, and
-#            the drift control: byte for byte the invocation the recorded aforge
-#            numbers came from, so a re-run that moves says the harness moved.
-#   swe      the same one-node graph with the leaf handed to the swe worker.
-#            The specialist forced, to measure it rather than to trust it.
-#   select   `aforge do` with nothing forced. The shipping claim: whatever the
-#            compiler picks is what gets measured, including picking linear.
+#   node     one leaf, one graph. The executor measured alone, and the drift
+#            control: byte for byte the invocation the recorded aforge numbers
+#            came from, so a re-run that moves says the harness moved.
+#   do       `aforge do "<issue text>"` with no graph written for it. The
+#            shipping claim: the compiler decides how the work is shaped and
+#            that shape is what gets measured. It used to be called `select`,
+#            for the worker it also chose; there is one worker now, so what it
+#            still decides is the shape and nothing else.
 #   pipeline plan the graph first, then run it. The parallel shape, and what the
 #            PR-review comparison used.
 #   chat     `aforge chat --once` — the chat surface's brain, one turn, nobody
-#            watching. NOT a fifth way to run an errand: it compiles no graph,
-#            so there is no delivery gate, no replan, no done.json and no worker
-#            column. It is here to answer a different question than the other
-#            four — what a person typing into chat would have got — and it is
-#            structurally the closest shape to `node`, not to `select`.
+#            watching. NOT a fourth way to run an errand: it compiles no graph,
+#            so there is no delivery gate, no replan and no done.json. It is
+#            here to answer a different question than the other three — what a
+#            person typing into chat would have got.
 AFORGE_MODE="${AFORGE_MODE:-node}"
 AFORGE_BIN="${AFORGE_BIN:-aforge}"
-
-# The worker AFORGE_MODE=swe forces. It is a variable because the point of the
-# mode is measuring one named worker against the default, and the second
-# specialist will want the same cell with a different name in it.
-AFORGE_SUBHARNESS="${AFORGE_SUBHARNESS:-swe}"
 
 # BENCH_DRY_RUN composes every invocation and runs none of them. It clones
 # nothing, builds no venv, calls no model, and prints the exact argv each mode
@@ -83,11 +76,6 @@ for tool in git python3 gh; do
   command -v "$tool" >/dev/null || { echo "need $tool" >&2; exit 1; }
 done
 
-# sqlite3 is optional and only the select mode wants it: it is how the store
-# says which worker the compiler chose. Without it that one column reads
-# "unknown" and nothing else in the run changes.
-SQLITE_BIN="$(command -v sqlite3 || true)"
-
 # The engine needs the same key the rest of aforge runs on, and a cell that
 # starts without it burns a clone and a venv before finding out. Nothing is
 # invented here — this only makes sure what the shell already has reaches the
@@ -104,10 +92,11 @@ esac
 
 mkdir -p "$RESULTS"
 CSV="$RESULTS/results.csv"
-# The two new columns are appended, never inserted. A reader that indexes the
-# old nine by position still reads the old nine; a reader that goes by header
-# gets the new two; and a CSV written before this change is still a CSV.
-echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,subharness_chosen,nodes_failed" > "$CSV"
+# Columns are appended, never inserted, so a reader that indexes the first nine
+# by position still reads the first nine and a CSV written before a column
+# arrived is still a CSV. `subharness_chosen` was dropped in #227, when the last
+# thing that could have chosen anything went: every leaf runs the one worker.
+echo "harness,issue,seconds,exit,changed_files,passed,failed,cost_usd,cost_source,aforge_mode,nodes_failed" > "$CSV"
 
 SLUG="$(basename "$REPO" .git)"
 OWNER_REPO="$(echo "$REPO" | sed -E 's#^.*github.com[:/]##; s#\.git$##')"
@@ -161,32 +150,27 @@ setup_python() {
 # Substitution goes through python rather than sed because an issue body
 # contains quotes and newlines that would otherwise produce invalid JSON.
 #
-# The fourth argument is the worker this node is handed to, and it is the whole
-# difference between the node and swe cells: same template, same invocation,
-# same one leaf, one field. An empty name writes no field at all, so the graph
-# the node mode renders is byte-identical to the one it rendered before this
-# mode existed — which is the only way it can still be the drift control.
+# What it writes is byte-identical to what it wrote when the recorded aforge
+# numbers were taken, which is the only way this shape can still be the drift
+# control.
 render_graph() {
-  local prompt="$1" title="$2" out="$3" subharness="${4:-}"
-  TEMPLATE="$TEMPLATE" PROMPT="$prompt" TITLE="$title" OUT="$out" SUBHARNESS="$subharness" python3 - <<'PY'
+  local prompt="$1" title="$2" out="$3"
+  TEMPLATE="$TEMPLATE" PROMPT="$prompt" TITLE="$title" OUT="$out" python3 - <<'PY'
 import json, os
 raw = json.load(open(os.environ["TEMPLATE"]))
 prompt, title = os.environ["PROMPT"], os.environ["TITLE"]
-subharness = os.environ.get("SUBHARNESS", "").strip()
 raw["goal"] = title
 for node in raw["nodes"]:
     node["title"] = title[:60]
     node["summary"] = title
     node["brief"] = prompt
-    if subharness:
-        node["subharness"] = subharness
 json.dump(raw, open(os.environ["OUT"], "w"), indent=2)
 PY
 }
 
 # seconds_of turns a timeout(1) duration into the plain seconds `aforge do`
-# wants. The two walls have to be the same wall: a select cell held to do's
-# fifteen-minute default while node and swe get forty is not the same cell.
+# wants. The two walls have to be the same wall: a `do` cell held to do's
+# fifteen-minute default while the graph shapes get forty is not the same cell.
 seconds_of() {
   local spec="$1" count="${1%[smh]}"
   case "$spec" in
@@ -216,11 +200,12 @@ compose_aforge() {
       AFORGE_PRE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" plan "$prompt" --brief -model "$MODEL" -o "$cell/graph.json")
       AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" run "$cell/graph.json" -w "$dir" -model "$MODEL" -o "$cell/done.json")
       ;;
-    select)
-      # No graph and no forcing: the compiler decides both the shape and the
-      # worker, which is the thing being measured. -w is what keeps the writes
-      # in the clone, so the diff afterwards is this run's diff; --keep leaves
-      # the private store behind, which is where the choice is legible.
+    do)
+      # No graph written and nothing pinned: the compiler decides the shape,
+      # which is the thing being measured. -w is what keeps the writes in the
+      # clone, so the diff afterwards is this run's diff; --keep leaves the
+      # private store behind, which is where the model audit reads what actually
+      # served each node.
       AFORGE_ARGV=("$TIMEOUT_BIN" "$CELL_TIMEOUT" "$AFORGE_BIN" "do" "$prompt" \
         -w "$dir" -keep -model "$MODEL" -timeout "$(seconds_of "$CELL_TIMEOUT")")
       ;;
@@ -262,19 +247,18 @@ print(sum(1 for n in nodes if n.get("state") == "failed"))
 PY
 }
 
-# render_cell_graph writes the graph the node and swe shapes execute. It costs
-# nothing and calls no model, so the dry run does it too — a rendered graph with
-# the right worker in it is most of what there is to check.
+# render_cell_graph writes the graph the node shape executes. It costs nothing
+# and calls no model, so the dry run does it too — a rendered graph is most of
+# what there is to check.
 render_cell_graph() {
   local prompt="$1" cell="$2"
   case "$AFORGE_MODE" in
-    # None of these three execute a file. Rendering one anyway would leave a
+    # None of these executes a file. Rendering one anyway would leave a
     # graph.json beside the evidence that nothing in the cell ever read, which
     # is worse than no file: the next person to open the directory reads it as
     # what ran.
-    pipeline|select|chat) return 0 ;;
-    swe) render_graph "$prompt" "$(echo "$prompt" | head -1)" "$cell/graph.json" "$AFORGE_SUBHARNESS" ;;
-    *)   render_graph "$prompt" "$(echo "$prompt" | head -1)" "$cell/graph.json" ;;
+    pipeline|do|chat) return 0 ;;
+    *) render_graph "$prompt" "$(echo "$prompt" | head -1)" "$cell/graph.json" ;;
   esac
 }
 
@@ -315,10 +299,7 @@ run_harness() {
 }
 
 # harness_cost reads the run's own accounting. For aforge that is the $ figure
-# on the run summary line — the same line in all three shapes: `run` ends with
-# it, and `do` ends with "<elapsed> · <n> nodes · $<spend>". A swe leaf's spend
-# arrives from the engine's terminal event and is summed into that figure like
-# any other leaf's, so nothing here has to know which worker ran. For pi and
+# on the run summary line, which every graph shape ends with. For pi and
 # opencode there is nothing to read, and the account-level delta is not a
 # substitute — see bench/README.md.
 harness_cost() {
@@ -364,68 +345,9 @@ PY
   echo "${cost:-0},self-reported"
 }
 
-# graph_subharness reads the worker off the graph the run finished with. For
-# the node and swe shapes that is the whole answer, because the field was
-# written before the run and the completed graph carries it back out.
-#
-# One thing it cannot see: a build with no swe worker registered degrades the
-# leaf to the default one and says nothing on either stream, so a swe cell on
-# such a build is a linear cell wearing the name. The check for that is out of
-# band — `aforge run --subharness <name>` on a build without it prints "no
-# subharness named" — and it is a gap this column inherits, recorded in
-# bench/README.md rather than papered over here.
-graph_subharness() {
-  local finished="$1" requested="$2"
-  local found=""
-  if [ -f "$finished" ]; then
-    found="$(GRAPH="$finished" python3 - <<'PY'
-import json, os
-try:
-    raw = json.load(open(os.environ["GRAPH"]))
-except Exception:
-    raise SystemExit(0)
-names = []
-for node in raw.get("nodes", []):
-    name = (node.get("subharness") or "").strip()
-    if name and name not in names:
-        names.append(name)
-print("+".join(names))
-PY
-)"
-  fi
-  if [ -n "$found" ]; then
-    echo "$found"
-  elif [ -n "$requested" ]; then
-    # Asked for and not in the graph that came back: the run did not get far
-    # enough to write one, so what was asked for is the honest record.
-    echo "$requested"
-  else
-    echo "linear"
-  fi
-}
-
-# store_subharness reads what the compiler chose, which is the only mode where
-# the answer is not known in advance. `do --keep` prints where it left its
-# private store; the node row in that store carries the settled choice, which is
-# the same durable field the graph shapes set by hand.
-store_subharness() {
-  local log="$1"
-  local home database chosen
-  home="$(grep -oE '^store kept at .*' "$log" | tail -1 | sed -E 's#^store kept at ##')"
-  database="$home/graph.db"
-  if [ -z "$home" ] || [ ! -f "$database" ] || [ -z "$SQLITE_BIN" ]; then
-    echo "unknown"
-    return
-  fi
-  chosen="$("$SQLITE_BIN" "$database" \
-    "SELECT DISTINCT COALESCE(NULLIF(subharness,''), NULLIF(splice_subharness,'')) AS worker
-       FROM nodes WHERE worker IS NOT NULL AND worker != '';" 2>/dev/null | paste -sd+ -)"
-  echo "${chosen:-linear}"
-}
-
-# stow_store moves the kept store next to the rest of the cell's evidence. A
-# select cell's store is the record of what was chosen and why there was a
-# choice, and leaving it in the system temp directory is how it gets swept.
+# stow_store moves the kept store next to the rest of the cell's evidence. It is
+# the cell's record of which models actually served it, and leaving it in the
+# system temp directory is how it gets swept.
 stow_store() {
   local log="$1" cell="$2"
   local home
@@ -434,25 +356,6 @@ stow_store() {
     rm -rf "$cell/store"
     mv "$home" "$cell/store" 2>/dev/null || true
   fi
-}
-
-# subharness_chosen is what actually took the leaf. Forced shapes know it before
-# they start and it is read back rather than assumed; the select shape is told
-# by the store afterwards.
-subharness_chosen() {
-  local harness="$1" cell="$2" log="$3"
-  if [ "$harness" != "aforge" ]; then
-    echo "n/a"
-    return
-  fi
-  case "$AFORGE_MODE" in
-    select) store_subharness "$log" ;;
-    # One conversational turn compiles no graph and keeps no store, so there is
-    # no worker to read. n/a, not "linear": absence of a choice, not a choice.
-    chat)   echo "n/a" ;;
-    swe)    graph_subharness "$cell/done.json" "$AFORGE_SUBHARNESS" ;;
-    *)      graph_subharness "$cell/done.json" "" ;;
-  esac
 }
 
 # changed_files counts what the harness actually did to the working tree. A
@@ -521,10 +424,9 @@ dry_cell() {
   fi
   quote_argv "${AFORGE_ARGV[@]}"
   case "$AFORGE_MODE" in
-    pipeline|select|chat) ;;
+    pipeline|do|chat) ;;
     *)
-      [ -f "$cell/graph.json" ] && printf '          graph:   %s (worker: %s)\n' \
-        "$cell/graph.json" "$(graph_subharness "$cell/graph.json" "")"
+      [ -f "$cell/graph.json" ] && printf '          graph:   %s\n' "$cell/graph.json"
       ;;
   esac
 }
@@ -580,13 +482,12 @@ Work in this repository. Implement the change and make the existing test suite p
     changed="$(changed_files "$dir")"
     counts="$(run_suite "$dir" "$cell/pytest.log")"
     cost="$(harness_cost "$harness" "$cell/harness.log" "$cell")"
-    worker="$(subharness_chosen "$harness" "$cell" "$cell/harness.log")"
     failed_nodes="$(nodes_failed "$harness" "$cell")"
     stow_store "$cell/harness.log" "$cell"
 
-    echo "$harness,$issue,$seconds,$code,$changed,$counts,$cost,$(mode_of "$harness"),$worker,$failed_nodes" >> "$CSV"
-    printf '%4ss  exit %-3s %2s files  %s passed/failed  %s  %s%s\n' \
-      "$seconds" "$code" "$changed" "${counts/,/ + }" "${cost%%,*}" "$worker" \
+    echo "$harness,$issue,$seconds,$code,$changed,$counts,$cost,$(mode_of "$harness"),$failed_nodes" >> "$CSV"
+    printf '%4ss  exit %-3s %2s files  %s passed/failed  %s%s\n' \
+      "$seconds" "$code" "$changed" "${counts/,/ + }" "${cost%%,*}" \
       "$([ "$failed_nodes" != "n/a" ] && [ "$failed_nodes" != "0" ] && echo "  ⚠ $failed_nodes node(s) failed")"
   done
 done

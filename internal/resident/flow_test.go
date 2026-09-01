@@ -100,13 +100,10 @@ func TestIndependentJobsRunSideBySide(t *testing.T) {
 	}
 
 	runner, spans := recordingRunner(t, graph, hold, 8)
-	// The host is reported ten times over its ceiling on purpose, and it is
-	// now supposed to make no difference at all: these leaves are goroutines
-	// parked on sockets, and somebody else's compile is not a reason to make a
-	// person's three jobs take turns.
-	runner.WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
-		return executor.GovernorLoadCeiling * 10, true
-	}))
+	// The real gate, not a stub: how loaded this machine happens to be is not
+	// part of the decision, so a test that ran on a busy laptop and a test that
+	// ran on an idle one must dispatch identically.
+	runner.WithGovernor(executor.NewGovernor())
 
 	wall := time.Now()
 	if _, err := runner.Tick(context.Background()); err != nil {
@@ -186,25 +183,19 @@ func TestAJobsOwnDependenciesStillRunInOrder(t *testing.T) {
 	}
 }
 
-// The dispatch loop must survive a store that answers badly once. It used to
-// return on the first error, which killed claiming for the life of the process
-// while everything else — the reconciler, the board, the lease — carried on
-// looking healthy. The field signature was a compiled leaf sitting pending with
-// an empty started_at for fifteen minutes.
+// The dispatch loop must survive a pass that faults once. It used to return on
+// the first error, which killed claiming for the life of the process while
+// everything else — the reconciler, the board, the lease — carried on looking
+// healthy. The field signature was a compiled leaf sitting pending with an
+// empty started_at for fifteen minutes.
 func TestATransientClaimFailureDoesNotEndDispatchForever(t *testing.T) {
 	graph := openRunnerStore(t)
-	// swe leaves, one more than the starvation floor. The host reading is the
-	// fault this test injects, and the host is only ever asked on behalf of
-	// leaves that actually load it — and only once the floor is full, since
-	// below the floor no answer it could give would change the decision. So
-	// the fault lands mid-pass, on the claim of the last leaf, after the ones
-	// ahead of it have already been dispatched.
-	leaves := executor.GovernorLocalFloor + 1
+	const leaves = 4
 	nodes := []store.NodeSpec{{ID: "survivors", Brief: "the work nobody claimed", Stage: 0}}
 	for index := range leaves {
 		nodes = append(nodes, store.NodeSpec{
 			ID: fmt.Sprintf("survivor-%d", index), Parent: "survivors",
-			Brief: "the work nobody claimed", Stage: 1, Subharness: "swe",
+			Brief: "the work nobody claimed", Stage: 1,
 		})
 	}
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes},
@@ -213,17 +204,26 @@ func TestATransientClaimFailureDoesNotEndDispatchForever(t *testing.T) {
 	}
 	runner, spans := recordingRunner(t, graph, time.Millisecond, leaves+1)
 
-	// One pass faults where it decides whether to claim. tickGuarded records it
-	// and the loop must keep its nerve; the next pass reads the same durable
-	// graph and the leaf that fault stranded runs.
+	// One pass faults after the claim is taken and before the leaf is handed to
+	// a worker — the window dispatchOne's own recovery exists for. The fault is
+	// aimed at one named leaf so it lands mid-pass, with leaves already
+	// dispatched ahead of it. tickGuarded records it and the loop must keep its
+	// nerve; the next pass reads the same durable graph and the leaf that fault
+	// stranded runs.
+	var faultMu sync.Mutex
 	faulted := false
-	runner.WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
-		if !faulted {
+	runner.WithExpand(func(_ context.Context, node store.Node) (int, bool) {
+		faultMu.Lock()
+		first := node.ID == "survivor-3" && !faulted
+		if first {
 			faulted = true
-			panic("the host reading blew up")
 		}
-		return governorCalmLoad, true
-	}))
+		faultMu.Unlock()
+		if first {
+			panic("the claim-time division blew up")
+		}
+		return 0, false
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -240,7 +240,10 @@ func TestATransientClaimFailureDoesNotEndDispatchForever(t *testing.T) {
 	if got := len(spans()); got < leaves {
 		t.Fatalf("%d of %d leaves ran: a single faulting pass ended claiming for good", got, leaves)
 	}
-	if !faulted {
+	faultMu.Lock()
+	fired := faulted
+	faultMu.Unlock()
+	if !fired {
 		t.Fatal("the fault never fired — this test proved nothing")
 	}
 	cancel()

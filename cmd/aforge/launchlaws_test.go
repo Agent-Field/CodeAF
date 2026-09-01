@@ -37,13 +37,11 @@ func deadCatalogEndpoint(t *testing.T) {
 
 // v3SubharnessBlockingReads is what wiring one conversation's subharness
 // registry is allowed to ask the catalog through the waiting door, and the
-// whole of it is ONE call that does not belong to this surface:
-// [leafExecutors]'s linear constructor in subharness.go, which asks
-// ContextLength to size a leaf. That file is shared with `aforge exec`,
-// `aforge run` and `aforge subharness` — headless doors where waiting for a
-// catalog is correct — and it is the KNOWN RESIDUAL on this path, recorded here
-// rather than asserted away. Registering the swe and bare doors, which `run()`
-// does and a test does not, adds two more through engineModelID.
+// whole of it is ONE call that does not belong to this surface: [buildLinear]
+// in subharness.go, which asks ContextLength to size a leaf. That file is
+// shared with `aforge exec`, `aforge run` and `aforge subharness` — headless
+// doors where waiting for a catalog is correct — and it is the KNOWN RESIDUAL
+// on this path, recorded here rather than asserted away.
 //
 // Everything chatv3_subharness.go asks for itself is zero, and that is the law
 // the perf wave landed: the context window it configures the runner with comes
@@ -63,7 +61,7 @@ func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
 
 	if asked != v3SubharnessBlockingReads {
 		t.Fatalf("wiring a conversation's subharnesses asked the catalog %d blocking questions, and the law is %d.\n"+
-			"The one that is allowed is subharness.go's linear constructor, shared with the headless doors.\n"+
+			"The one that is allowed is subharness.go's buildLinear, shared with the headless doors.\n"+
 			"If you added a question: ask it through catalog.ModelsNow() instead, which answers nil while the\n"+
 			"catalog is still warming — that is the honest answer and it costs no frame. If you REMOVED the\n"+
 			"residual, lower the constant here and in PERF.md in the same commit.", asked, v3SubharnessBlockingReads)
@@ -76,7 +74,7 @@ func TestTheSubharnessWiringAsksTheCatalogNothingThatWaits(t *testing.T) {
 //
 // The sixteen are two families:
 //
-//   - ONE from subharness.go's linear constructor, described above.
+//   - ONE from subharness.go's [buildLinear], described above.
 //   - FIFTEEN from [v3RunHarness] (chatv3.go's harness seam), which builds the
 //     harness tool bridge EAGERLY at launch. [session.HarnessBelt] arms the
 //     media hands, each of those asks [v3MediaModel] which model would draw,

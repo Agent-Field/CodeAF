@@ -27,8 +27,7 @@ func narrationFixture(t *testing.T) (*store.Store, *settlementWatch, *strings.Bu
 		t.Fatal(err)
 	}
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "task-1", Title: "fix the failing test", Brief: "fix the failing test",
-			Stage: 0, Subharness: "bare"},
+		{ID: "task-1", Title: "fix the failing test", Brief: "fix the failing test", Stage: 0},
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: session,
 		Intent: "fix the failing test"}); err != nil {
 		t.Fatal(err)
@@ -64,8 +63,8 @@ func narrated(t *testing.T, watcher *settlementWatch, said *strings.Builder) str
 func TestThePrinterSaysTheFactsAStatusColumnCannot(t *testing.T) {
 	graph, watcher, said := narrationFixture(t)
 
-	// A caught fault. The leaf did not fail — it faulted, and two seconds later
-	// it was escalated — so nothing about the node's status says this happened.
+	// A caught fault. The leaf did not fail — it faulted, and the recovery ran on
+	// for minutes — so nothing about the node's status says this happened.
 	if err := graph.RecordNodeFault("task-1", "leaf",
 		"internal fault in chat/leaf executor: runtime error: index out of range [0] with length 0\nand a stack nobody reads here"); err != nil {
 		t.Fatal(err)
@@ -78,22 +77,26 @@ func TestThePrinterSaysTheFactsAStatusColumnCannot(t *testing.T) {
 		t.Fatalf("the fault line carried more than its first line:\n%s", line)
 	}
 
-	// A change of worker. This is the fact that explains why everything after it
-	// looks nothing like everything before it.
-	if _, err := graph.SetNodeSubharness("task-1", "swe",
-		"escalated from bare after a failed attempt"); err != nil {
-		t.Fatal(err)
+	// A change of worker, out of a journal written when a run could have one.
+	// Nothing writes this event any more — this build has one worker — but every
+	// graph.db that carries it still has to read, so the event is handed to the
+	// printer the way the journal hands it over.
+	said.Reset()
+	watcher.narrateOne(store.Event{
+		Kind: store.EventNodeWorkerChanged, NodeID: "task-1",
+		Payload: []byte(`{"subharness":"second","previous":"first",` +
+			`"reason":"escalated from first after a failed attempt"}`),
+	}, store.Node{ID: "task-1", Title: "fix the failing test"}, nil)
+	line = said.String()
+	if !strings.Contains(line, "↻") || !strings.Contains(line, "escalated first → second") {
+		t.Fatalf("an older journal's worker change was not said:\n%s", line)
 	}
-	line = narrated(t, watcher, said)
-	if !strings.Contains(line, "↻") || !strings.Contains(line, "escalated bare → swe") {
-		t.Fatalf("the worker change was not said:\n%s", line)
-	}
-	if !strings.Contains(line, "escalated from bare after a failed attempt") {
+	if !strings.Contains(line, "escalated from first after a failed attempt") {
 		t.Fatalf("the worker change did not say why:\n%s", line)
 	}
 
-	// A subharness phase. The seven minutes of silence in the incident were one
-	// of these, and the hint is what stops somebody killing it at minute four.
+	// A phase. The seven minutes of silence in the incident were one of these,
+	// and the hint is what stops somebody killing it at minute four.
 	if _, err := graph.PostMessage(store.Message{
 		SessionID: watcher.session, Role: store.RoleSystem, NodeID: "task-1",
 		Body:     "baseline",
@@ -102,8 +105,8 @@ func TestThePrinterSaysTheFactsAStatusColumnCannot(t *testing.T) {
 		t.Fatal(err)
 	}
 	line = narrated(t, watcher, said)
-	if !strings.Contains(line, "swe: baseline") {
-		t.Fatalf("the phase was not said, or not said with its worker:\n%s", line)
+	if !strings.Contains(line, "baseline") {
+		t.Fatalf("the phase was not said:\n%s", line)
 	}
 	if !strings.Contains(line, "this can take minutes") {
 		t.Fatalf("the phase did not say what to expect of it:\n%s", line)
@@ -155,7 +158,7 @@ func TestStillWaitingStandsDownForAFactThatJustArrived(t *testing.T) {
 
 	// And now a fact arrives. The quiet line has something better to report than
 	// silence, so it does not report silence.
-	if _, err := graph.SetNodeSubharness("task-1", "swe", "escalated from bare"); err != nil {
+	if err := graph.RecordNodeFault("task-1", "leaf", "runtime error: index out of range [0]"); err != nil {
 		t.Fatal(err)
 	}
 	watcher.lastMoved, watcher.lastSaid = time.Now().Add(-time.Minute), time.Now().Add(-time.Minute)

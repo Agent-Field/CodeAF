@@ -23,7 +23,6 @@ require (
 	github.com/int128/oauth2cli v1.18.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/muesli/termenv v0.16.0
-	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/yuin/goldmark v1.8.5
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.32.0
@@ -86,7 +85,6 @@ require (
 	github.com/neilotoole/slogt v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spyzhov/ajson v0.9.6 // indirect

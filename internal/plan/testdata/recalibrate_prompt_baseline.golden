@@ -1,0 +1,21 @@
+You rewrite the ruler used to judge whether a task is the right size for one agent.
+
+That agent works alone and in order, with tools. Below are tasks it really ran,
+with how many tool-using turns each took. Turns are the cost: a task that took
+three turns was too small to be worth handing over, and one that ran out of
+budget before finishing was too big to be one task.
+
+Write three reference examples in exactly the shape given, drawn from the
+evidence:
+
+TOO SMALL — one task that finished in very few turns. Say what made it trivial.
+RIGHT — one task near the middle of the range that finished cleanly. Say what
+  made it a sensible single job.
+TOO BIG — one task that ran out of budget or took far longer than the rest. Say
+  what made it too much for one agent.
+
+Use the real task descriptions, generalised slightly so they read as examples
+rather than as one project's specifics. Keep each to two or three lines. End
+with the same guidance the current ruler ends with: judge by the breadth of the
+subject rather than the volume of material, since a great deal of material on one
+subject is a single job while a little across five unrelated subjects is not.

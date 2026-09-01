@@ -62,18 +62,18 @@ type tracer struct {
 	// over a run's shoulder, and useless afterwards — it is not addressable by
 	// node, it is not there when somebody asks a week later, and a continuation
 	// cannot be seeded from it. The store's transcript is the durable half, and
-	// until this it had exactly one writer in the whole tree, in the bare belt
-	// (see exec/transcript.go). So the GENERALIST — the worker every unrouted
-	// node gets — recorded nothing durable at all: the ink run of 2026-08-29
-	// ran three leaves on it and left a store with zero transcript rows, so
-	// BankedRun found nothing, every continuation started cold, and the
-	// resumption the lease lane had built could never fire.
+	// until this it had exactly one writer in the whole tree, and not this one
+	// (see exec/transcript.go). So the leaf belt — the belt every node gets —
+	// recorded nothing durable at all: the ink run of 2026-08-29 ran three
+	// leaves on it and left a store with zero transcript rows, so BankedRun
+	// found nothing, every continuation started cold, and the resumption the
+	// lease lane had built could never fire.
 	//
-	// It is wired HERE rather than in each loop because every turn of the
-	// generalist and every harness note already passes through this one object
-	// — turn() has the response, the calls and the results in hand, and note()
-	// has the machinery's own account of itself. One seam, and the swe belt
-	// gets it in the same change because it builds a tracer too.
+	// It is wired HERE rather than in the loop because every turn the worker
+	// takes and every harness note already passes through this one object —
+	// turn() has the response, the calls and the results in hand, and note() has
+	// the machinery's own account of itself. One seam, and anything else that
+	// builds a tracer gets it in the same change.
 	sink TranscriptSink
 	// turnOf is the turn number a note belongs to, kept because note() is
 	// called between turns and a note filed under turn zero is a note an
@@ -414,10 +414,10 @@ func (t *tracer) setTurn(turn int) {
 // recordTurn is the durable half of turn(): what the model said, what it asked
 // for, and what came back, in the order it happened.
 //
-// The order matters and it is the bare loop's order, deliberately — a reader of
-// two belts' transcripts must not have to learn two shapes. The assistant's
-// words go down before the calls they explain, because a turn whose tools hang
-// is otherwise a turn nobody can see the reasoning for.
+// The order matters and it is one order deliberately — a reader of two belts'
+// transcripts must not have to learn two shapes. The assistant's words go down
+// before the calls they explain, because a turn whose tools hang is otherwise a
+// turn nobody can see the reasoning for.
 func (t *tracer) recordTurn(turn int, response *ai.Response, calls []ai.ToolCall, results []Result, note string) {
 	if t.sink == nil {
 		return

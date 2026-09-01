@@ -25,7 +25,7 @@ func TestAHeadlessErrandKeepsTheSubmittedAskAsItsGoalAndChatStillCompilesOne(t *
 		return Compiled{
 			Goal:  reworded,
 			Scale: "task", Parts: []string{"read both files", "compare them"},
-			Subharness: "linear", Title: "Ledger reconciliation",
+			Title:       "Ledger reconciliation",
 			Assumptions: []string{"assumed CSV headers on row one"},
 		}, nil
 	}
