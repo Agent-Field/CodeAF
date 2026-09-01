@@ -248,7 +248,6 @@ var tuiWords = map[string]tuiWord{
 	},
 	"spendTodayResets": {
 		screen: " · resets at midnight",
-		source: " · resets at midnight",
 		why:    "the Spending tab's `today` reading, the row the money segment's door lands above",
 	},
 	"spendThisOneWord": {
