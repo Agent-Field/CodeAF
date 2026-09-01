@@ -218,6 +218,44 @@ func TestTheGuardStillProtectsWhenNoRescueIsPossible(t *testing.T) {
 	}
 }
 
+// TestAWaitNothingCanEndIsSaidOutLoud is the visible half of [control.Report],
+// proved through the wire rather than through the phase clock alone.
+//
+// SILENCE WAS THE OLD BEHAVIOUR AND IT IS THE ONE THING THAT IS NEVER RIGHT. A
+// request with nowhere better to go still reaches its ceiling, and what it does
+// there is say so: the phase moves to [PhaseAllSlow] and the surface draws `all
+// lanes slow · still waiting`. The clock does not restart, because nothing about
+// the wait did — what changed is that this build has now weighed the
+// alternatives and found none.
+func TestAWaitNothingCanEndIsSaidOutLoud(t *testing.T) {
+	told := listen(t)
+	rig := newLaneRig(t, "phase/allslow",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 40,
+			StallAfter: 4, StallFor: 400 * time.Millisecond,
+		}},
+	)
+	rig.believes("A", 2, 2000)
+	rig.patience(t, 100*time.Millisecond)
+
+	ctx := WithLaneChoice(talking(), alone(choiceFor(rig.model, 12*time.Millisecond)))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	said, reported := told.find(PhaseAllSlow)
+	if !reported {
+		t.Fatalf("a wait with nowhere to go told the person %v", told.story())
+	}
+	// AND THE COUNT-UP IS THE WAIT'S OWN. A report that restarted the clock
+	// would draw a fresh nought under a stall that had already run.
+	if writing, ok := told.find(PhaseWriting); ok && said.Since.After(writing.Since) {
+		t.Fatalf("the report restarted the clock at %v, past the wait it is about (%v)", said.Since, writing.Since)
+	}
+	if said.Then != "" || !said.Deadline.IsZero() {
+		t.Fatalf("a wait nothing can end promised %q at %v", said.Then, said.Deadline)
+	}
+}
+
 func TestAHiddenErrandNamesItselfSoTheSurfaceCanIgnoreIt(t *testing.T) {
 	told := listen(t)
 	rig := newLaneRig(t, "phase/hidden",
