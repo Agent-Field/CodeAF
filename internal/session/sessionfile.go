@@ -1737,22 +1737,59 @@ func (s *sessionFile) appendReasonedMessage(message ai.Message, reasoning provid
 	s.appendWithReasoning(message, false, nil, reasoning)
 }
 
-// messageRef names the most recent journal line carrying message. Compaction
-// uses it when the store is off, so a fold marker points at an exact range in
-// the append-only record instead of merely saying that a record exists.
-func (s *sessionFile) messageRef(message ai.Message) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// journalPath is the file this journal is writing — the real filesystem path,
+// empty when there is no file. Compaction interpolates the fold marker from
+// this rather than inventing a second location: it is the path the model can
+// grep or read.
+func (s *sessionFile) journalPath() string {
 	if s.closed || s.file == nil {
 		return ""
 	}
-	content, err := os.ReadFile(s.file.Name())
-	if err != nil {
+	name := s.file.Name()
+	if name == "" {
 		return ""
 	}
-	want := chatRefKey(message)
+	if filepath.IsAbs(name) {
+		return name
+	}
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		// A relative name is still the file we are writing, and pointing at it
+		// beats a fold marker that pretends there is no journal.
+		return name
+	}
+	return abs
+}
+
+// messageLines names the journal this session is writing and the most recent
+// line carrying each of first and last, so a fold marker can point at a range
+// in a file the model can grep or read rather than at a store id neither tool
+// can open. A line is 0 when that message never reached the file, and the path
+// then stands on its own, which is still somewhere to look.
+//
+// ONE PASS FOR BOTH ENDS. The record is read whole and parsed line by line, so
+// asking for the two ends separately would read and parse the whole of a long
+// conversation twice to learn two numbers.
+func (s *sessionFile) messageLines(first, last ai.Message) (journal string, fromLine, toLine int) {
+	if s == nil {
+		return "", 0, 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	journal = s.journalPath()
+	if journal == "" {
+		return "", 0, 0
+	}
+	content, err := os.ReadFile(journal)
+	if err != nil {
+		// The path still stands: this journal holds the file OPEN, so it is
+		// there to grep whatever went wrong with this one read. What is not
+		// known is which lines, and the marker says the file alone rather
+		// than a line number nothing verified.
+		return journal, 0, 0
+	}
+	wantFirst, wantLast := chatRefKey(first), chatRefKey(last)
 	lineNumber := 0
-	found := 0
 	for _, line := range bytes.Split(content, []byte{'\n'}) {
 		lineNumber++
 		if len(bytes.TrimSpace(line)) == 0 {
@@ -1764,14 +1801,18 @@ func (s *sessionFile) messageRef(message ai.Message) string {
 		}
 		candidate := ai.Message{Role: entry.Role, ToolCallID: entry.ToolCallID,
 			Content: []ai.ContentPart{{Type: "text", Text: entry.Content}}, ToolCalls: entry.ToolCalls}
-		if chatRefKey(candidate) == want {
-			found = lineNumber
+		// Both ends are asked separately rather than in a switch, because a
+		// run of one message has the same key at both ends and a fold of one
+		// message still knows the line it sat on.
+		key := chatRefKey(candidate)
+		if key == wantFirst {
+			fromLine = lineNumber
+		}
+		if key == wantLast {
+			toLine = lineNumber
 		}
 	}
-	if found == 0 {
-		return ""
-	}
-	return fmt.Sprintf("journal:line-%d", found)
+	return journal, fromLine, toLine
 }
 
 // appendNote is appendMessage for a line the SESSION wrote (see

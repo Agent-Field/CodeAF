@@ -21,7 +21,8 @@ back over. That is what the headroom ends.
 
 What does not change with the headroom: every message you typed survives every pass, the
 system prompt and the verbatim tail (20,000 tokens, at most a quarter of the window) are
-never folded, and the full record stays readable in the store or the session journal.
+never folded, and the full record stays readable in the session journal — the fold marker
+names that file, and `grep` or `read` opens it (see *Where did the folded messages go*).
 
 ## Why is it compacting at a hundred thousand tokens when my model holds a million
 
@@ -104,3 +105,25 @@ foldable material above the target. The pass still succeeds with what it took, a
 `compacted · …` line reports the real counts; the next step's check may then fire again,
 honestly, because there was nothing more to take. That is the one case where two passes
 in quick succession are not a defect.
+
+## Where did the folded messages go — how do I get the compacted text back, what happened to the earlier messages
+
+They are still on disk. A fold replaces the oldest assistant work in the model's window with
+one line such as
+
+```
+[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
+```
+
+The path is this conversation's own journal — a real file, the one the session is writing —
+and the marker names the two tools that open it, so aforge can go back for the words without
+being told to. The path is its own word and the lines are said after it, because a
+`path:12..40` token is not something either tool takes. The original lines stay above the
+compaction marker in that file, and 12 to 40 is the span the folded run sits on.
+
+A session with no journal file names no path: it says `full record in the store` where a
+store is keeping one, and `full record in the session journal` where the record is only
+ever the journal. Neither invents a file to open.
+
+Scrolling up above the fold on the screen also still shows the words; what shrank is the
+model's copy, not yours. The fold is not unrecoverable.

@@ -437,7 +437,7 @@ func TestTheEntryCountAgreesWithTheShaping(t *testing.T) {
 		"a folded transcript": {
 			textMessage("system", "you are aforge"),
 			textMessage("user", "the first question"),
-			textMessage("user", foldMarker(9, "", "", false)),
+			textMessage("user", foldMarker(9, "", 0, 0, false)),
 			call("c1"), result("c1"),
 			textMessage("user", "the newest question"),
 		},

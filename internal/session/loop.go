@@ -3042,7 +3042,7 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()
 	if a.estimateTokensLocked() > a.compactThreshold() {
-		pass.folded, pass.marker = a.foldLocked(pass.stored)
+		pass.folded, pass.marker = a.foldLocked()
 	}
 	a.compacting = false
 
@@ -3156,7 +3156,7 @@ func compactionHint(pass compactionPass, before, after int) string {
 // (see compactTarget for the run that proved it). A walk that runs out of
 // foldable material before it gets there still succeeds with what it took —
 // the target is how far to go, never a condition on the pass.
-func (a *Agent) foldLocked(stored bool) (int, string) {
+func (a *Agent) foldLocked() (int, string) {
 	a.alignReasoningLocked()
 	limit := a.cutPointLocked()
 	target := a.compactTargetTokens() * bytesPerToken
@@ -3211,14 +3211,14 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 		return 0, ""
 	}
 
-	from, to := a.chatlog.ref(a.messages[first]), a.chatlog.ref(a.messages[last])
-	if from == "" && a.file != nil {
-		from = a.file.messageRef(a.messages[first])
-	}
-	if to == "" && a.file != nil {
-		to = a.file.messageRef(a.messages[last])
-	}
-	marker := foldMarker(len(folded), from, to, stored)
+	// The journal path is the required affordance: store:N is not a path grep
+	// or read can open, and the original lines stay above the compaction
+	// marker in the JSONL whether the store is on or not.
+	journal, from, to := a.file.messageLines(a.messages[first], a.messages[last])
+	// With no file to name, the store is the record that is left — but only
+	// when this run actually reached it, since a post can fail and a fold that
+	// sends the model to a store holding nothing is the dead pointer again.
+	marker := foldMarker(len(folded), journal, from, to, a.chatlog.ref(a.messages[first]) != "")
 	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
 	rebuiltReasoning := make([]provider.MessageReasoning, 0, cap(rebuilt))
 	rebuilt = append(rebuilt, a.messages[0])
@@ -3265,25 +3265,51 @@ func (a *Agent) foldLocked(stored bool) (int, string) {
 const foldMarkerPrefix = "[folded "
 
 // foldMarker is the line that stands in for what went. It names the count and
-// the range, because a person reading their own transcript back has to be able
-// to find the part that is not there any more.
+// the journal path the model can grep or read — a pointer it cannot follow is
+// a dead one. The original lines stay above the compaction marker in that
+// file; the path is the recovery floor.
 //
-//	[folded 31 messages · store:104..store:189]
+//	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl, lines 12..40]
+//	[folded 31 messages · grep or read /home/x/.aforge/v3/sessions/abc.jsonl]
+//	[folded 31 messages · full record in the store]
 //	[folded 31 messages · full record in the session journal]
-func foldMarker(count int, from, to string, stored bool) string {
+//
+// THE PATH IS ITS OWN WORD, with the lines said after it in prose, because a
+// `path:12..40` token is what neither `read` nor `grep` takes: one wants the
+// file and an offset, the other wants the file. A pointer that has to be
+// edited before it can be followed is most of the way back to no pointer.
+//
+// A session with no journal file names no path rather than inventing one: it
+// says the store where the store is confirmed to hold the run, and the weaker
+// true thing where nothing is confirmed at all.
+func foldMarker(count int, journal string, from, to int, inStore bool) string {
 	where := "full record in the session journal"
 	switch {
-	case from != "" && to != "" && from != to:
-		where = from + ".." + to
-	case from != "":
-		where = from
-	case stored:
-		// The store is on but these particular lines never reached it — a post
-		// that failed, or a message recorded before the log opened. Say the
-		// weaker true thing rather than the stronger one.
-		where = "full record in the session journal"
+	case journal != "":
+		where = "grep or read " + journal + foldLineSpan(from, to)
+	case inStore:
+		// No file to name, and the store is holding this run. Saying the
+		// journal here would send the model to a path that is not there.
+		where = "full record in the store"
 	}
 	return fmt.Sprintf("%s%d message%s · %s]", foldMarkerPrefix, count, plural(count), where)
+}
+
+// foldLineSpan is what a fold marker says after its path when the journal can
+// name the lines the folded run sits on, and nothing when it cannot — the path
+// alone is still a file to grep, and a made-up line number is not.
+//
+// BOTH ENDS OR NEITHER. One end on its own would print as the location of the
+// whole run, sending the model to read a line where a hundred of them went;
+// the file without a span costs it one wider grep and tells it no lies.
+func foldLineSpan(from, to int) string {
+	switch {
+	case from > 0 && to > 0 && from != to:
+		return fmt.Sprintf(", lines %d..%d", from, to)
+	case from > 0 && from == to:
+		return fmt.Sprintf(", line %d", from)
+	}
+	return ""
 }
 
 // cutPointLocked walks back from the tail until the keep-recent budget is
