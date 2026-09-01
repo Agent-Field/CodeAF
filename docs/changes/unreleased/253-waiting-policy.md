@@ -12,6 +12,7 @@ invalidates:
   - "A strict lane pin sent `Only` and carried no candidate set, so the offer a stalled pin raises had nowhere to point and the wait was reported instead. A strict pin now carries the frontier — computed exactly as for any other call, sent to nobody — which is what makes `coreweave is slow · switch to auto? (y)` answerable."
   - "The transport's stall bounds were flat: 90s to the first delta, 45s mid-stream, 150s buffered. They pre-empted the 30s and 60s ceilings of `leaf.unattended`, `memory`, `auxiliary`, `standing`, `judge` and `design`, so for most of this build's calls the first thing to act on a stall was the one act that throws the whole attempt away. They are scaled by the role's `Patience` now and floored at twice its ceiling; `docs/ARCHITECTURE.md` Decision 10 rows 10–12 say so, and a law walks every role at every rate."
   - "`lane.Chain.Survival` took the flat `lane.SpreadFloor` as its floor and every caller passed it, so one figure stood under every lane. It takes that lane's OWN published dispersion — `lane.Hierarchy.Draw(id)`, the distance between the sheet's p50 and p90 for the pair — and `lane.SpreadFloor` is now only the prior for a pair nothing has been published about. A ledger that answers `lane.Hierarchy` has one more method to answer."
+  - "A sheet row was folded into `b[model]` and `e[model, lane]` at each level's Kalman gain, so a pair whose only evidence was one published row was believed BETWEEN the world's pace and the published one — a lane the sheet put at 430 ms read back as about 1.2 s. A row is an offset, so `e[model, lane]` takes the whole difference from its parents and the prediction lands on the published number; `b[model]` is no longer moved by a row at all. The variances still shrink by each level's own gain: a half-hour aggregate says where a lane sits, not how sure to be."
   - "`lane.SetController` returned nothing, so a caller that swapped it put back nil and left the process with no waiting policy. It returns the previous factory, the way `provider.OnPhase` does."
   - "The store was one file merged last-writer-wins. It is `lanes.json` plus an append-only `lanes.log`: `Store.Load` is the compacted half and the journal is replayed over it, so two processes sharing a ledger no longer discard each other's afternoon."
   - "`internal/session` spelled `PhaseAsking` and `PhaseAllSlow` as its own string constants. They are `provider.PhaseAsking` and `provider.PhaseAllSlow` — one closed vocabulary — and `session.SetOfferAnswerer` is wired to `provider.AnswerOffer` at agent construction, so the `y` key reaches the request that asked."
@@ -59,11 +60,20 @@ reads the silence a person is waiting through and the clock that guards the wire
 reads the time since the endpoint last wrote anything at all — so a lane that
 has written three words and is now reasoning is no longer read as a stall.
 
-Measured, on the shipped door: false hedges fall from 5.3% to 2.3% of healthy
-requests and the spend overhead from 5.5% to 4.5% of the bill, against
-thresholds of 2% and 3%. `REPORT.md` carries the frontier — every candidate
-against all four gates — and the residue: it is concentrated in one row, and its
-cause is not the floor but a chain that predicts mostly the world's own pace for
-a pair whose only evidence is one sheet row at a quarter of a sighting's weight.
-That is a number the design fixes as a prior and the ruling on it is the
+**And a sheet row is an offset.** It was shared out among the levels it may move
+at each one's Kalman gain, and `μ` holds most of the variance and may not move,
+so a pair whose only evidence was one published row was believed between the
+world's pace and the published one: a lane the sheet put at 430 ms read back as
+about 1.2 s. `e[model, lane]` takes the whole difference now and the prediction
+lands where the sheet put it.
+
+Measured, on the shipped door: false hedges fall from 5.3% to 2.9% of healthy
+requests and the spend overhead from 5.5% to 4.8% of the bill, against
+thresholds of 2% and 3%. Neither gate closes. `REPORT.md` carries the frontier —
+every candidate against all four gates — and where the residue is: one row of
+the five, and the remaining cause is `SheetWeight` itself. One row now centres a
+belief on the published number and still says nothing about how sure to be of
+it, so the spread a fresh pair is waited against is the four level priors summed
+and the lane's own dispersion does not become the floor until the pair has been
+measured. That is a number §C fixes as a prior and the ruling on it is the
 owner's.

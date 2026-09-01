@@ -315,9 +315,24 @@ not about machines, and nothing learns them:
 ### The sheet is a prior, and it is also the only measurement of a tail
 
 The endpoints sheet enters as a pseudo-observation at `R = k·σ₀²` with
-`k = SheetWeight = 4`, into `b[model]` and `e[model, lane]` — never into `μ` or
-`a[lane]`, because a sheet is published per model and folding it into the
-world's pace would let one refresh move every belief this process holds.
+`k = SheetWeight = 4`, into `e[model, lane]` — never into `μ` or `a[lane]`,
+because a sheet is published per model and folding it into the world's pace
+would let one refresh move every belief this process holds.
+
+**And it enters as an OFFSET, which means the pair's own level takes the whole
+of it.** A row is an absolute first token and a belief is a sum, so what is left
+to learn from a row is this deployment's distance from what its parents already
+say. Shared out as a Kalman gain it was not learnt at all: `μ` holds most of the
+variance and may not move, so the level that may took about a sixth of the
+difference and a lane the sheet published at 430 ms was believed at 1.2 s.
+`e[model, lane]` carries the difference in full and `Chain.Predict` comes back
+on the published number. The variances still shrink by each level's own gain,
+because how much a row TEACHES is a different question from where it puts the
+median: a half-hour aggregate at `SheetWeight` teaches little, so the belief is
+centred on the sheet and honestly unsure of it. **`b[model]` is no longer moved
+by a row** — an offset that landed there too would be re-aimed by the next row
+of the same sheet, leaving every pair but the last centred somewhere nobody
+published.
 
 **Its spread is floored and it is never a certainty.** Today `derivedDeadline`
 reads `TTFT.Quantile(1.2816)` raw, which is the variance of the *estimate* — it

@@ -1319,7 +1319,7 @@ the same world. Five more that belong to these rows alone:
 (7/9/11), 150 requests a row a seed, both doors — **9m 7s** wall, 4,500 trials.
 This section answers Finding 2 above, and it also corrects this lab.*
 
-### What was changed, and what each of the three was worth
+### What was changed, and what each of the four was worth
 
 **The rule.** `lane.SpreadFloor` was one figure under every lane. It is now the
 **prior for a pair nothing has been published about**, and what stands under a
@@ -1341,6 +1341,17 @@ thinking phase's liveness clock already read the wire; the WRITING phase's drift
 clock did not, so a lane that had written three words and then reasoned was read
 as a stall. It is one line in `internal/lane/control/hazard.go` and
 `TestReasoningAfterAWordIsWritingAndNotDrift` fails without it.
+
+**The offset.** A sheet row is an ABSOLUTE first token and a belief is a SUM,
+so what a row leaves to learn is the deployment's own distance from what its
+parents already say. It was shared out as a Kalman gain instead, and `μ` holds
+most of the variance and may not move — so the level that may took about a sixth
+of the difference and a lane the sheet published at 430 ms was believed at
+1.2 s. `e[model, lane]` carries the whole offset now and the prediction lands on
+the published number; `b[model]` is no longer moved by a row, because an offset
+that landed there too would be re-aimed by the next row of the same sheet. The
+variances are untouched by the change: a half-hour aggregate at `SheetWeight`
+says where a lane sits and not how sure to be.
 
 **And a correction that belongs to this lab.** `proof.go` folded
 **time-to-action** back into the ledger as the first-token wait. That is a
@@ -1364,7 +1375,8 @@ with a maximum of 10.00 s on every row of this table; no candidate moved it.*
 | 2 | flat 1.0 floor, instrument corrected | 4.09% | 5.01% | — | 2/4 |
 | 3 | **per-lane floor**, instrument corrected | **2.31%** | **4.52%** | 97.62% of 126 | 2/4 |
 | 4 | per-lane floor + a crossing that must LAST one margin | 2.22% | 4.39% | 97.35% of 151 | 2/4 |
-| 5 | **per-lane floor + two silences** — what this branch carries | **2.58%** | **4.71%** | 95.52% of 134 | **2/4** |
+| 5 | per-lane floor + two silences | 2.58% | 4.71% | 95.52% of 134 | 2/4 |
+| 6 | **+ a sheet row folded as an offset** — what this branch carries | **2.93%** | **4.75%** | 97.33% of 150 | **2/4** |
 
 - **Row 1 is why the floor is a floor and not a term.** Adding one draw's
   variance to the estimate's is the honest composition where both are known, and
@@ -1394,10 +1406,10 @@ between 64 and 151. Differences under about half a point are this instrument.
 
 ### The two gates still fail, and the residue is not the floor
 
-**It is one row.** Of the 29 healthy arms in row 5, **21 are the `thinking
+**It is one row.** Of the 33 healthy arms in row 6, **21 are the `thinking
 model` row** (9.33% of its healthy half) and the other four rows contribute
-eight between them — two of the five fire none at all. Spend follows it: that
-row's overhead is 8.67% against 5.5–6.8% on the other two that arm at all.
+twelve between them — two of the five fire none at all. Spend follows it: that
+row's overhead is 8.23% against 5.9–6.6% on the other two that arm at all.
 
 **And its cause is measured.** Traced with `-trace`, that row's healthy acts
 carry `W` of 1.5 to 3.5 s against an `A` of about 0.9 s, on lanes whose first
@@ -1409,9 +1421,31 @@ sheet publishes at 430 ms is believed at about 1.0–1.2 s, exactly as Finding 1
 own after-table records. Seventeen lanes over 150 requests is thin per pair, so
 that prior is what most requests are waited against.
 
-**Which is a ruling about a number this design fixes as a prior**, not about the
-floor: `SheetWeight`, or which levels a published row may absorb into. Both are
-§C's, and this lane does not take them. What it can say is what it measured:
-with the floor per lane and the silences separated, the design's own inequality
-still asks for an arm on roughly one healthy request in forty, and the purse is
-what holds the bill down.
+**That was then taken, and row 6 is what it measured.** Which levels a published
+row absorbs into was the half of it a lane could take without moving a prior: a
+row is an ABSOLUTE and a belief is a SUM, so `e[model, lane]` now carries the
+whole difference between the row and what its parents say, and a pair the sheet
+published at 430 ms reads back at 430 ms rather than at 1.2 s.
+`TestASheetPrimedPairIsBelievedAtThePaceItWasPublishedAt` pins it and
+`TestASheetRowIsAnOffsetAndTheBeliefLandsOnIt` pins that nothing wider moved.
+
+**It closed the gap it was aimed at and it did not close a gate.** False hedges
+2.58% → 2.93%, spend 4.71% → 4.75%, long think 95.52% → 97.33% — every one of
+them inside this instrument's own run-to-run spread. The reason is the OTHER
+half, which is the prior this lane did not take: one row at
+`R = SheetWeight·σ²` says where a lane sits and not how sure to be, so the
+predictive spread after priming is still the four level priors summed — about
+1.7 nats — and the lane's own 0.577 does not become the floor until the pair has
+been *measured* a few times. With a median of 0.43 s and a spread of 1.7,
+`W(0.7 s)` is 3.5 s against a cost of acting near 1 s, and the controller is
+right to want an arm. **Seventeen lanes over 150 requests is thin per pair**, so
+most of these rows are waited against exactly that state.
+
+**So the remaining ruling is `SheetWeight`, and it is §C's.** A sheet row is a
+half-hour aggregate over thousands of requests and this build weighs it at a
+quarter of one of our own sightings. What §K's cost criteria are asking for is
+either a heavier sheet — a belief that is *centred* on the published number and
+*certain enough of it* to stop the tail dominating — or an acceptance that with
+seventeen lanes and Thompson sampling the design's own inequality asks for an
+arm on roughly one healthy request in forty, and the purse is what holds the
+bill down.

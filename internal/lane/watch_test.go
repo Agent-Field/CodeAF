@@ -155,6 +155,50 @@ func TestTheSpreadIsFlooredAtTheLanesOwnVariability(t *testing.T) {
 // ever asked to be.
 func near(got, want float64) bool { return math.Abs(got-want) < 1e-3 }
 
+// TestASheetPrimedPairIsBelievedAtThePaceItWasPublishedAt is the door the
+// transport asks, asked about a pair whose only evidence is one sheet row.
+//
+// THAT IS THE STEADY STATE AND IT HAS TO READ BACK. A published row is an
+// absolute and a belief is a sum, so the deployment's own level carries the
+// whole offset from what the parents say and the prediction lands where the
+// sheet put it. Believed between the world's pace and the published one — which
+// is what a shared gain left — a lane published at 430ms read as about 1.2s,
+// and a controller told a lane was fast wanted a second request on it anyway.
+func TestASheetPrimedPairIsBelievedAtThePaceItWasPublishedAt(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Cleanup(Default().Reset)
+	Default().Reset()
+
+	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	published := ID{Model: "vendor/model", Lane: "published"}
+	unheard := ID{Model: "vendor/model", Lane: "not-on-the-sheet"}
+	Default().Ledger().Prime(Row{ID: published, At: at,
+		TTFTp50: 430, TTFTp90: 900, Ratep50: 60, Ratep90: 90}, SheetWeight)
+
+	pace := PaceFor(published, at)
+	if !pace.First.Known() {
+		t.Fatal("a pair the sheet published had nothing to wait against")
+	}
+	if got := math.Exp(pace.First.Mu); math.Abs(got-0.430) > 0.005 {
+		t.Errorf("the sheet published 430ms and the plan waits against %.0fms", got*1000)
+	}
+	if got := math.Exp(-pace.Gap.Mu); math.Abs(got-60) > 0.5 {
+		t.Errorf("the sheet published 60 tokens a second and the plan waits against %.1f", got)
+	}
+	// One row says WHERE a lane sits and not how sure to be about it, so the
+	// spread is still the parents' and the lane's own dispersion is only the
+	// floor under it.
+	if pace.First.Sigma < math.Log(900.0/430.0)/z90 {
+		t.Errorf("one published row made the belief tighter than the lane's own variability: %.3f", pace.First.Sigma)
+	}
+	// And a pair the same sheet did not publish is where it was: the world's
+	// own pace, which is what cold start is.
+	blind := PaceFor(unheard, at)
+	if got := math.Exp(blind.First.Mu); math.Abs(got-1.2) > 0.01 {
+		t.Errorf("a row about one deployment moved another to %.0fms", got*1000)
+	}
+}
+
 // TestAMeasuredLaneIsWaitedAgainstItsOwnSpreadAndAnUnpublishedOneAgainstThePrior
 // is the rule the false-hedge rate turns on, said about the door the transport
 // asks.

@@ -167,36 +167,47 @@ func TestAChangePointResetsTheLeafAndNotItsParents(t *testing.T) {
 	}
 }
 
-// TestASheetRowMovesTheModelAndTheDeploymentAndNothingWider is the borrowing
-// rule the design is most careful about.
+// TestASheetRowIsAnOffsetAndTheBeliefLandsOnIt is the borrowing rule the design
+// is most careful about, and the arithmetic that makes a published number
+// readable back.
 //
-// The endpoints sheet is published PER MODEL. Folding it into μ or a[lane]
-// would let one refresh move every belief this process holds — including its
-// opinion of providers the sheet was not about — and the sheet refreshes on a
-// beat, for ever.
-func TestASheetRowMovesTheModelAndTheDeploymentAndNothingWider(t *testing.T) {
+// The endpoints sheet is published PER MODEL and a row names one deployment.
+// Folding it into μ or a[lane] would let one refresh move every belief this
+// process holds — including its opinion of providers the sheet was not about —
+// and the sheet refreshes on a beat, for ever.
+//
+// AND WHAT IT PREDICTS AFTERWARDS IS THE NUMBER IT WAS PUBLISHED WITH. A row is
+// an ABSOLUTE first token and a belief is a SUM, so what the deployment's own
+// level takes is the OFFSET from what the parents already say — the whole of
+// it, not a share. Sharing it left the lane the sheet published at 768ms
+// believed at about 1.2s, because μ holds most of the variance and may not
+// move; a controller reading that wanted a second request on a lane it had just
+// been told was fast.
+func TestASheetRowIsAnOffsetAndTheBeliefLandsOnIt(t *testing.T) {
 	held := waitChains()
 	id := ID{Model: scriptedModel, Lane: "Cloudflare"}
 	held.fold(modelOf(id), publishedLevels, math.Log(768), 0.22*SheetWeight, noon)
-	if held.World.P != 0 || len(held.Lane) != 0 {
-		t.Fatalf("a sheet row moved the world's pace or a provider: world %+v, lanes %v", held.World, held.Lane)
+	if held.World.P != 0 || len(held.Lane) != 0 || len(held.Model) != 0 {
+		t.Fatalf("a sheet row moved something wider than the deployment it names: world %+v, lanes %v, models %v",
+			held.World, held.Lane, held.Model)
 	}
-	if len(held.Model) != 1 || len(held.Pair) != 1 {
-		t.Fatalf("a sheet row did not reach the model and the deployment: %v / %v", held.Model, held.Pair)
+	if len(held.Pair) != 1 {
+		t.Fatalf("a sheet row did not reach the deployment it names: %v", held.Pair)
 	}
-	// AND WHAT IT PREDICTS AFTERWARDS IS THE NUMBER IT WAS PUBLISHED WITH.
-	//
-	// A row is an ABSOLUTE first token and a belief is a SUM. Folding the whole
-	// absolute into the two levels a published row may move — while predicting
-	// from those two alone — puts the world's own pace into them as well, and
-	// [Chain.Predict] then adds it a second time. The lane the sheet published
-	// at 768ms was believed to take eight seconds, which is a controller that
-	// would wait out a person's whole patience on the fastest machine it knows.
-	// The innovation is against the whole belief now, so the two levels that may
-	// move carry the OFFSET from it and the sum comes back where it started.
-	predicted, _ := held.look(pairOf(id), noon).Predict()
-	if got := math.Exp(predicted); got < 500 || got > 1400 {
+	predicted, variance := held.look(pairOf(id), noon).Predict()
+	if got := math.Exp(predicted); math.Abs(got-768) > 1 {
 		t.Fatalf("the sheet published 768ms and the belief predicts %.0fms", got)
+	}
+	// AND IT IS CENTRED THERE WITHOUT BEING SURE OF IT. A half-hour aggregate at
+	// a quarter of a sighting's weight says where a lane sits and not how
+	// certain to be, so the spread is still the parents'.
+	if variance <= levelVariance(LevelWorld) {
+		t.Fatalf("one published row left the belief as certain as a measurement: variance %.3f", variance)
+	}
+	// A pair the sheet did not publish is untouched by one that it did.
+	other, _ := held.look(pairOf(ID{Model: scriptedModel, Lane: "somebody-else"}), noon).Predict()
+	if math.Abs(math.Exp(other)-1200) > 1 {
+		t.Fatalf("a row about one deployment moved another to %.0fms", math.Exp(other))
 	}
 }
 

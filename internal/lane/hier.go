@@ -119,19 +119,56 @@ type subject [Levels]string
 //
 // So the innovation is against the WHOLE belief, exactly as the design's own
 // equations write it — ŷ = Σ X over the levels, S = Σ P + R over the same — and
-// the constraint is applied where it belongs: to the gains. A level that may not
-// move still explains its share of the surprise, so the levels that may move
-// absorb less, which is the honest reading of "we are not sure whether this is
-// the model or the world".
-type absorbs [Levels]bool
+// the constraint is applied where it belongs: to the gains.
+//
+// ── AND A PUBLISHED ROW IS AN OFFSET, WHICH IS THE OTHER HALF ───────────────
+//
+// Which levels may move is one question and HOW MUCH OF THE DIFFERENCE they
+// take is another. One of our own sightings is evidence about all four levels
+// and each takes its own share, which is the Kalman gain and is right: we do
+// not know whether a slow answer means a slow world, a slow provider or a slow
+// deployment.
+//
+// A SHEET ROW IS NOT THAT KIND OF EVIDENCE. It names one pair and states where
+// that pair sits, so what is left to learn from it is not "how much of this is
+// the world" — it is this deployment's own offset from what the parents already
+// say. Sharing it out left the pair believed BETWEEN the world's pace and the
+// published one: a lane the sheet published at 430 ms predicted about 1.2 s,
+// because μ holds most of the variance and may not move, so the level that may
+// took a sixth of the difference. `bench/lanelab` measured what that cost — the
+// controller wanted a second request on a lane it had been told was fast.
+//
+// So a published row's levels take the WHOLE difference between the row and
+// what the parents say, and the prediction lands exactly where the sheet put
+// it. The variances still shrink by each level's own gain, because how much a
+// row TEACHES is a separate question from where it puts the median, and a
+// half-hour aggregate at [SheetWeight] teaches little: the belief is centred on
+// the sheet and honestly unsure of it, which is what a prior with an honest
+// floor was always supposed to mean.
+type absorbs struct {
+	// Levels is which of a subject's levels this observation may move.
+	Levels [Levels]bool
+	// Whole says the named levels carry the ENTIRE difference between what was
+	// observed and what was believed, rather than each level's share of it.
+	Whole bool
+}
 
 // everyLevel is the ordinary case: an observation about one deployment is
-// evidence about the world, the provider, the model and the deployment.
-var everyLevel = absorbs{true, true, true, true}
+// evidence about the world, the provider, the model and the deployment, and
+// each of them takes its own share of the surprise.
+var everyLevel = absorbs{Levels: [Levels]bool{true, true, true, true}}
 
-// publishedLevels is what a sheet row may move: the model it is published for
-// and the deployment it names, and nothing wider.
-var publishedLevels = absorbs{LevelModel: true, LevelPair: true}
+// publishedLevels is what a sheet row may move: the deployment it names, and
+// nothing wider — and it moves it the whole way.
+//
+// IT IS THE PAIR ALONE AND THAT IS WHAT MAKES A SHEET READABLE. A row carries
+// an offset now rather than a share, and an offset that landed in b[model] as
+// well would be re-aimed by the next row of the same sheet: seventeen lanes of
+// one model, folded in turn, would leave every pair but the last centred
+// somewhere nobody published. e[model, lane] is where a deployment's own offset
+// belongs, it is the only level a row is unambiguously about, and a pair the
+// sheet has not published is untouched by one that it has.
+var publishedLevels = absorbs{Levels: [Levels]bool{LevelPair: true}, Whole: true}
 
 // pairOf is the subject of a timing observation: the world, the provider, the
 // model, and the deployment.
@@ -318,12 +355,32 @@ func (c *chains) fold(of subject, take absorbs, z, R float64, now time.Time) flo
 		return 0
 	}
 	surprise := z - predicted
+	// carried is what the levels that may move hold between them, and it is the
+	// denominator of an OFFSET: each of them takes its share of the whole
+	// difference rather than its share of the belief. For an ordinary sighting
+	// it is zero and the gain is the denominator, which is the Kalman update.
+	carried := 0.0
+	if take.Whole {
+		for level, name := range of {
+			if name != "" && take.Levels[level] {
+				carried += held[level].P
+			}
+		}
+	}
 	for level, name := range of {
-		if name == "" || !take[level] {
+		if name == "" || !take.Levels[level] {
 			continue
 		}
+		// HOW MUCH THIS LEVEL EXPLAINS AND HOW MUCH IT CARRIES ARE TWO
+		// QUESTIONS. What it explains is what its variance shrinks by; what it
+		// carries is how far its estimate moves. They are the same number for a
+		// sighting and they are not for a published row. See [absorbs].
 		gain := held[level].P / total
-		held[level].X += gain * surprise
+		moved := gain
+		if carried > 0 {
+			moved = held[level].P / carried
+		}
+		held[level].X += moved * surprise
 		held[level].P *= 1 - gain
 		held[level].At = now
 		c.put(Level(level), name, held[level])
