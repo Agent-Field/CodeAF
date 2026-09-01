@@ -577,6 +577,23 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 // itself, and it fires while the agent's own lock is held by the lane that sent
 // it — the last place to be applying an answer to a question that lane is in the
 // middle of raising.
+//
+// ── AND ONE DOORSTEP IS LOOKED AT FASTER THAN THE OTHERS ────────────────────
+//
+// A TAKEOVER REQUEST RODE THE HEARTBEAT AND A PERSON WAS WATCHING IT. Every
+// other thing this loop does is a courtesy to a reader that is not standing
+// there — a presence refresh nobody has asked for, an answer typed in another
+// window minutes ago. A takeover request is the opposite: somebody pressed
+// enter one room away and is looking at a line that says the conversation is
+// coming. On the five-second heartbeat an IDLE window took up to five seconds
+// to so much as notice the request, which is the whole of why moving a
+// conversation felt slow when there was nothing at all to wait for.
+//
+// So the request has a beat of its own ([takeoverDoorstep]) and the heartbeat
+// keeps everything else. Answers deliberately stay on the slow beat: draining
+// them is a directory walk and a parse per look, where a takeover look is one
+// open of a path that is almost always absent — and nobody is watching a line
+// for an answer they left in another window.
 func (d *presenceDesk) beat() {
 	defer close(d.done)
 	every := d.every
@@ -585,6 +602,8 @@ func (d *presenceDesk) beat() {
 	}
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
+	doorstep := time.NewTicker(takeoverDoorstep)
+	defer doorstep.Stop()
 	// The first write happens before the first tick so a session announces
 	// itself the moment it opens rather than a heartbeat later.
 	d.write()
@@ -595,6 +614,12 @@ func (d *presenceDesk) beat() {
 			return
 		case <-d.nudge:
 			d.write()
+		case <-doorstep.C:
+			// NOTHING IS WRITTEN HERE. This beat exists to pick a request up
+			// quickly and nothing else; a presence refresh four times a second
+			// would be this fix paying for itself in the one cost the heartbeat
+			// was tuned to avoid.
+			d.agent.drainTakeover()
 		case <-ticker.C:
 			d.agent.drainAnswers()
 			d.agent.drainTakeover()

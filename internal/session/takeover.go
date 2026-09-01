@@ -49,12 +49,36 @@ import (
 // takeoverName is the request, inside one session's folder, beside presence.json.
 const takeoverName = "takeover.json"
 
-// takeoverStale is how old a request may be and still be answered. A window that
+// takeoverDoorstep is how often a live session looks for a request, and it is
+// deliberately NOT [presenceHeartbeat] (taskpresence.go's [presenceDesk.beat]
+// says why at length).
+//
+// THE COST IS ONE OPEN OF A PATH THAT IS NOT THERE. [takeoverAsked] reads one
+// file in the session's own folder, and on every session on the machine except
+// the one being asked for, that read fails at the first syscall — which is
+// cheaper per second than the two-hundred-byte temp-write-and-rename the
+// heartbeat already does every five seconds. What it buys is the difference
+// between a conversation that arrives when you press enter and one that arrives
+// a few seconds later for no reason a person can see.
+//
+// IT IS THE ASKING WINDOW'S BEAT, TO WITHIN A GLANCE. The window waiting looks
+// at the flock five times a second (internal/tui3's takeover.go); a doorstep
+// slower than that would make the flock beat pointlessly fine, and a doorstep
+// faster would be this side polling harder than anybody is watching.
+const takeoverDoorstep = 250 * time.Millisecond
+
+// TakeoverStale is how old a request may be and still be answered. A window that
 // asked and was closed removes its request ([CancelTakeover]); one that was
 // killed cannot, and this is what stops its ask outliving it by a week. It is
 // generous because a holder mid-reply waits for the turn to end before it looks
 // again, and a long reply is minutes, not seconds.
-const takeoverStale = 10 * time.Minute
+//
+// IT IS EXPORTED BECAUSE THE ASKING WINDOW HAS TO KNOW IT. Past this age no
+// holder will ever answer — [takeoverAsked] deletes the request unread — so a
+// surface still waiting on the flock past it is waiting for something that
+// cannot happen, and the one number that says so has to be the same number on
+// both sides of the exchange (ONE SOURCE OF TRUTH).
+const TakeoverStale = 10 * time.Minute
 
 // TakeoverWord is the one sentence a surface says about a conversation another
 // window took, and the engine spells it so the event and the surface agree.
@@ -124,7 +148,7 @@ func CancelTakeover(sessionDir string) {
 }
 
 // takeoverAsked reports whether a live request is waiting for the session in
-// dir, WITHOUT taking it. A request older than [takeoverStale] is a window that
+// dir, WITHOUT taking it. A request older than [TakeoverStale] is a window that
 // died asking, and it is removed here so it is never answered.
 func takeoverAsked(sessionDir string, now time.Time) bool {
 	if strings.TrimSpace(sessionDir) == "" {
@@ -136,7 +160,7 @@ func takeoverAsked(sessionDir string, now time.Time) bool {
 		return false
 	}
 	var request takeoverRequest
-	if err := json.Unmarshal(raw, &request); err != nil || request.At.IsZero() || now.Sub(request.At) > takeoverStale {
+	if err := json.Unmarshal(raw, &request); err != nil || request.At.IsZero() || now.Sub(request.At) > TakeoverStale {
 		_ = os.Remove(path)
 		return false
 	}

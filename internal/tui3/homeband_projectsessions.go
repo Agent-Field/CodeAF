@@ -53,7 +53,11 @@ func drawProjectSessionsBand(a *app, ctx bandContext) []string {
 	groups := make([][]string, 0, len(project.Sessions))
 	for _, row := range project.Sessions {
 		label := homeGlyph(row, ctx.pal.ascii) + " " + homeName(row)
-		note := homeNote(row, a.homeHeld(row), a.homeMark(row),
+		// THE CARD'S OWN LIST KEEPS THE SHORT WORD. These rows have no cursor
+		// on them — they are what a PROJECT's card says it holds — so there is
+		// no row here that `enter brings it here` would be true of
+		// (takeovervoice.go's [takeoverHeldDoorWord]).
+		note := homeNote(row, a.homeHeld(row), "", a.takeoverRowWord(row), a.homeMark(row),
 			a.homeRowGone(row), a.homeFresh(row), ctx.now)
 		groups = append(groups, projectCardRows(label, note, ctx.width, ctx.pal))
 	}

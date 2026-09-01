@@ -67,18 +67,33 @@ func takeoverArmedWord(holding string) string {
 	return holding + " — enter again to move it here (it moves when that window's reply ends; its tasks resume here)"
 }
 
-// takeoverWaitWord is the line while the request is on disk and the flock is
-// still held.
-const takeoverWaitWord = "moving it here — waiting for the other window…"
+// takeoverWaitWord is the foot's ECHO while the claim is out, and it is short
+// on purpose.
+//
+// THE FOOT IS NO LONGER WHERE THIS DOOR LIVES (takeovervoice.go). The row under
+// the cursor and the card beside it carry the state, the reason and the clock;
+// what is left down here is for the one case those cannot cover — the cursor
+// has walked off the claimed row, and the card is about something else. So it
+// says the two things that are true wherever the cursor went: it is moving, and
+// esc stops it.
+const takeoverWaitWord = "moving it here — esc stops waiting"
 
-// takeoverStillWord replaces it once the wait has gone on long enough to want
-// explaining. The first sentence is not wrong for four seconds and is worrying
-// for thirty, so the line grows a reason and the key that ends it.
-const takeoverStillWord = "still waiting — the other window finishes its reply first · esc stops waiting"
+// takeoverStillWord is that echo with the reason in it, and it is said only
+// where there is NO CARD to say it better — below [homeCardMin] the frame is one
+// column and this line is the whole of what this window can tell somebody.
+//
+// IT IS TRIGGERED BY THE FAR WINDOW BEING MID-REPLY AND NOT BY A CLOCK. The old
+// line grew this reason after fifteen seconds whether or not it was true, which
+// made it a guess that happened to be right most of the time; the presence file
+// beside the conversation says which it is (takeovervoice.go's
+// [app.takeoverHeldUp]).
+const takeoverStillWord = "moving it here — that window finishes its reply first · esc stops waiting"
 
-// takeoverPatience is when the line above takes over. It is not a timeout: this
-// wait has no deadline at all, because the thing it is waiting for is somebody
-// else's reply finishing and that is allowed to take minutes.
+// takeoverPatience is when a wait stops being ordinary. It is not a timeout:
+// this wait has no deadline of its own, because the thing it is waiting for is
+// somebody else's reply finishing and that is allowed to take minutes. What it
+// changes is what the card says — past it, a move with nothing to wait for owes
+// a person the fact that nothing has answered ([takeoverQuietWord]).
 const takeoverPatience = 15 * time.Second
 
 // takeoverBeatEvery is how often the flock is asked. One open-and-flock on a file
@@ -103,10 +118,39 @@ type takeoverWait struct {
 	dir  string
 	file string
 	line homeLine
-	// since is when the ask went out, and the only thing the line reads it for
-	// is whether to grow its explanation ([takeoverPatience]).
+	// since is when the ask went out. The card reads it for the clock it draws
+	// and for whether a quiet wait has gone on long enough to say so.
 	since time.Time
+	// outcome and about are HOW THE LAST CLAIM ENDED and which conversation it
+	// was for, and they outlive the wait itself.
+	//
+	// A WAIT THAT ENDS IN NOTHING BEING SAID IS THE DEFECT THIS FIELD EXISTS
+	// FOR. Two of the three endings put the person in the conversation and say
+	// so by being there; the other two — a request that died of old age, and a
+	// conversation that came free while somebody was on another page — used to
+	// clear this struct and leave the screen exactly as it was before the key
+	// was pressed. The card reads these and says what happened
+	// (takeovervoice.go).
+	outcome takeoverOutcome
+	about   string
 }
+
+// takeoverOutcome is how a claim ended, for the two endings that are not simply
+// "and then the conversation opened".
+type takeoverOutcome int
+
+const (
+	takeoverEndedNothing takeoverOutcome = iota
+	// takeoverEndedUnanswered is a request that reached [session.TakeoverStale]
+	// with nobody answering it. Past that age the holder deletes it unread, so
+	// waiting on the flock any longer is waiting for something that cannot now
+	// happen — which is what this window used to do, silently, for ever.
+	takeoverEndedUnanswered
+	// takeoverEndedFree is the conversation letting go while this window was
+	// not on home. Nothing is opened under somebody who walked away, so the
+	// news keeps until they come back.
+	takeoverEndedFree
+)
 
 // takeoverTickMsg is one look at the flock, on its way back to the loop.
 type takeoverTickMsg struct{ gen int }
@@ -114,18 +158,78 @@ type takeoverTickMsg struct{ gen int }
 // waiting reports that this window has a request out.
 func (a *app) waitingToTakeOver() bool { return a.takeover.file != "" }
 
-// takeoverLine is what the foot says while the wait is on, and "" when it is
-// not. Home clears its own line on every keystroke ([app.homeKey]), which is
-// right for a refusal and wrong for a condition that is still true, so this is
-// re-said rather than remembered.
+// takeoverLine is the foot's echo while the wait is on, and "" when it is not.
+// Home clears its own line on every keystroke ([app.homeKey]), which is right
+// for a refusal and wrong for a condition that is still true, so this is re-said
+// rather than remembered.
 func (a *app) takeoverLine() string {
-	if !a.waitingToTakeOver() {
+	if !a.waitingToTakeOver() || a.takeoverCarded(a.takeover.file) {
 		return ""
 	}
-	if a.now().Sub(a.takeover.since) >= takeoverPatience {
+	if a.takeoverHeldUp(a.takeoverSubject()) {
 		return takeoverStillWord
 	}
 	return takeoverWaitWord
+}
+
+// takeoverSubject is the claimed row as the LAST reading of the world saw it,
+// and the row the ask was made against when the list no longer carries one.
+//
+// THE FROZEN ROW IS THE WRONG THING TO READ A LIVE STATE OFF. [takeoverWait]
+// keeps the line it was asked for on purpose — the conversation stops being
+// `open in another window` at the exact moment the wait succeeds, so a second
+// lookup would race the change it is waiting for — but what the far window is
+// DOING changes underneath that, every three seconds, and a sentence about a
+// reply that ended a minute ago is a sentence that is simply wrong.
+func (a *app) takeoverSubject() session.SessionRow {
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Transcript == a.takeover.file {
+			return line.row
+		}
+	}
+	return a.takeover.line.row
+}
+
+// takeoverCarded reports that the card beside the list is already telling this
+// conversation's story, which is the whole of when the foot stays quiet.
+//
+// ONE FACT IS SAID IN ONE PLACE. The card says the state, the reason, the clock
+// and the key, three cells from the row it is about; a foot line repeating any
+// of that while the card is up is the same sentence twice on one screen, and the
+// second copy is the one nobody was looking at. The echo is for the case the
+// card genuinely cannot cover — the cursor walked off the claimed row, or the
+// frame is too narrow for a card at all ([homeColumns]).
+func (a *app) takeoverCarded(file string) bool {
+	if file == "" || !a.at(pageHome) || a.home.phone {
+		// The phone tier draws one column and no card at all (homephone.go), so
+		// there is nothing up there for the foot to be an echo of.
+		return false
+	}
+	if _, card := homeColumns(a.width); card <= 0 {
+		return false
+	}
+	line, ok := a.home.previewLine()
+	return ok && line.kind == homeSession && line.row.Transcript == file
+}
+
+// takeoverSpins is the row the ONE SPINNER belongs to while a claim is out, and
+// "" when there is none.
+//
+// IT IS KEPT ON THE VIEW RATHER THAN ASKED OF THE APP, because the choice of
+// which row moves is settled once with the lines themselves and read thirty
+// times a second after that (homespinner.go's [homeView.spinAt]). The three
+// places that change the wait call this, and it is the whole of the bookkeeping.
+func (a *app) syncHomeClaim() {
+	if a.home.claim == a.takeover.file {
+		return
+	}
+	a.home.claim = a.takeover.file
+	// AND THE COLUMN IS BUILT AGAIN, because the claim is one of the facts the
+	// reading paints a row from ([switcherHere.coming]) and the reading is
+	// settled with the lines rather than at the draw. It opens nothing and stats
+	// nothing (place_home.go's [homeView.buildSwitch]), which is what makes it
+	// safe on a keystroke.
+	a.home.build()
 }
 
 // homeTakeoverEnter is enter on a row another window is holding, and it is the
@@ -144,6 +248,13 @@ func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 	if a.waitingToTakeOver() && a.takeover.file == line.row.Transcript {
 		h.say(a.takeoverLine(), "")
 		return nil
+	}
+	// A CLAIM THAT ENDED UNANSWERED IS RE-ARMED BY THE KEY THE CARD NAMES.
+	// [takeoverRetryWord] says `enter asks again`, and a row still wearing that
+	// state has already been through the two-key door once — so the press that
+	// follows the sentence is the one that asks, not one that arms.
+	if a.takeover.about == line.row.Transcript && a.takeover.outcome == takeoverEndedUnanswered {
+		h.armed = line.row.Transcript
 	}
 	if h.armed != line.row.Transcript || line.row.Transcript == "" {
 		h.armed = line.row.Transcript
@@ -173,7 +284,11 @@ func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 		line:  line,
 		since: a.now(),
 	}
-	h.say(takeoverWaitWord, "")
+	// THE LAST CLAIM'S ENDING IS DROPPED HERE AND NOWHERE ELSE. `that window
+	// did not answer` is true until somebody asks again, and asking again is
+	// exactly this keystroke.
+	a.syncHomeClaim()
+	h.say(a.takeoverLine(), "")
 	return a.takeoverBeat()
 }
 
@@ -192,17 +307,30 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 		return nil
 	}
 	if session.InUse(a.takeover.file) {
+		// A REQUEST NOBODY CAN ANSWER ANY MORE ENDS THE WAIT. Past
+		// [session.TakeoverStale] the holder deletes the request unread, so
+		// every beat after that is this window watching a lock that will never
+		// free for a reason it asked for. It used to beat for ever and say
+		// nothing; now it stops and the card says what is true — the
+		// conversation is still in the other window.
+		if a.now().Sub(a.takeover.since) >= session.TakeoverStale {
+			return a.giveUpTakeover()
+		}
 		if a.at(pageHome) {
 			a.home.say(a.takeoverLine(), "")
 		}
 		return a.takeoverBeat()
 	}
-	line := a.takeover.line
+	line, about := a.takeover.line, a.takeover.file
 	a.takeover = takeoverWait{gen: a.takeover.gen}
+	a.syncHomeClaim()
 	if !a.at(pageHome) {
-		// The person walked away from home while this was in the air. The
-		// conversation is free and nothing is holding it; nothing is opened
-		// under them, and home's row will simply be openable when they go back.
+		// The person walked away from home while this was in the air. Nothing
+		// is opened under them — but the ending is REMEMBERED rather than
+		// dropped, so home says the conversation came free when they come back
+		// to it ([takeoverFreeWord]) instead of looking as though the key they
+		// pressed did nothing at all.
+		a.takeover.outcome, a.takeover.about = takeoverEndedFree, about
 		return nil
 	}
 	a.home.say("", "")
@@ -213,6 +341,24 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 	// since the check above — all three of those are already answered there, in
 	// this screen's own words.
 	return a.homeOpenDoor(line)
+}
+
+// giveUpTakeover ends a wait for a request that has aged out, and leaves the
+// state on the card rather than reverting in silence.
+//
+// IT WITHDRAWS THE REQUEST ON THE WAY OUT even though the holder would ignore
+// it: a stale file in a session folder is a question nobody asked lying where
+// the next window to open that conversation will find it, and the one thing
+// this window still knows is that nobody is listening for the answer.
+func (a *app) giveUpTakeover() tea.Cmd {
+	about := a.takeover.file
+	session.CancelTakeover(a.takeover.dir)
+	a.takeover = takeoverWait{gen: a.takeover.gen + 1, outcome: takeoverEndedUnanswered, about: about}
+	a.syncHomeClaim()
+	if a.at(pageHome) && !a.takeoverCarded(about) {
+		a.home.say(takeoverUnansweredWord, "")
+	}
+	return nil
 }
 
 // cancelTakeover is esc while waiting: the request comes off the disk so the
@@ -226,7 +372,11 @@ func (a *app) cancelTakeover() bool {
 		return false
 	}
 	session.CancelTakeover(a.takeover.dir)
+	// ESC LEAVES NO STATE BEHIND, and that is the one ending that is right to
+	// say nothing about: the person withdrew the question themselves, so the
+	// screen going back to how it was IS the answer.
 	a.takeover = takeoverWait{gen: a.takeover.gen + 1}
+	a.syncHomeClaim()
 	a.home.say("", "")
 	return true
 }

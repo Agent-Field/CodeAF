@@ -80,7 +80,7 @@ func TestAWithdrawnOrStaleTakeoverIsIgnored(t *testing.T) {
 	if agent.TakeoverAsked() {
 		t.Fatal("a withdrawn request was answered")
 	}
-	stale := `{"at":"` + time.Now().Add(-2*takeoverStale).Format(time.RFC3339Nano) + `"}` + "\n"
+	stale := `{"at":"` + time.Now().Add(-2*TakeoverStale).Format(time.RFC3339Nano) + `"}` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, takeoverName), []byte(stale), 0o600); err != nil {
 		t.Fatal(err)
 	}
