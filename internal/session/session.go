@@ -1846,6 +1846,11 @@ type Agent struct {
 	// written from the step boundary while a turn holds mu for its own state.
 	processRules ruleLedger
 
+	// ruleStop is WHY THE LAST TURN ENDED when one of those rules ended it
+	// (processrule.go). It is a turn-shaped fact rather than a conversation's,
+	// and a task node's landing is its one reader.
+	ruleStop ruleStopWitness
+
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there

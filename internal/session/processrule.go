@@ -159,6 +159,18 @@ type processRule interface {
 	// stopped is the honest line the turn lands on when the rule is never met.
 	// It says what happened in a person's words and promises nothing.
 	stopped() string
+
+	// ending is how a TASK WORKER stopped by this rule is written up: the one
+	// word under its row that tells a person why it stopped (task_contract.go's
+	// [TaskEnding]).
+	//
+	// THE RULE NAMES IT AND NOT THE RUNNER. A worker's row has to say which rule
+	// it would not follow — "would not write its notes down" is a different
+	// piece of news from "went in circles" and asks a different thing of the
+	// person — so a second rule in this registry brings its own ending with it
+	// rather than being folded into this one's words. A rule enforced in a
+	// person's own conversation has no node and nobody reads this.
+	ending() TaskEnding
 }
 
 // enforceableProcessRules is every rule the loop enforces, in the order it asks
@@ -166,6 +178,26 @@ type processRule interface {
 // the value here is the SHAPE, so that the second one is a line in this slice
 // and not a second escalation.
 var enforceableProcessRules = []processRule{writeNotesRule{}}
+
+// stoppedByProcessRule reports whether an ending is one a rule in that registry
+// wrote, which is the whole of what anybody outside this file needs to know
+// about a node that ended here.
+//
+// IT WALKS THE REGISTRY RATHER THAN NAMING AN ENDING, so that the second rule's
+// ending is answered for by adding the rule and nothing else — the drift the
+// one-source-of-truth law forbids is a second list of these endings kept
+// somewhere that has to be remembered (taskgrade.go is the reader).
+func stoppedByProcessRule(ending TaskEnding) bool {
+	if ending == "" {
+		return false
+	}
+	for _, rule := range enforceableProcessRules {
+		if rule.ending() == ending {
+			return true
+		}
+	}
+	return false
+}
 
 // ── the first tenant ────────────────────────────────────────────────────────
 
@@ -217,6 +249,12 @@ func (writeNotesRule) demand() string {
 func (writeNotesRule) stopped() string {
 	return "stopped here · would not write its notes down, so what this turn worked out is not on the record"
 }
+
+// ending writes the same thing on a worker's row, in the rail's own half-line
+// vocabulary. It is DELIBERATELY THE SENTENCE ABOVE CUT DOWN rather than a
+// second wording of it: a person who reads the row and then opens the room must
+// meet one claim in two lengths, not two claims.
+func (writeNotesRule) ending() TaskEnding { return TaskEndingNotes }
 
 // ── the turn's enforcement state ────────────────────────────────────────────
 
@@ -288,7 +326,17 @@ type processRuleGuard struct{}
 
 func (processRuleGuard) Name() string { return "process-rules" }
 
-func (processRuleGuard) EpisodeInit(ep *episode) { ep.rules = newRuleWatch() }
+// EpisodeInit opens the turn's enforcement state, and CLOSES THE LAST TURN'S
+// VERDICT ON IT: the witness below is about the turn that is starting, so a new
+// one begins with nothing written on it. That is what keeps a worker which was
+// held once, wrote its note and then finished from settling under an ending
+// earned three turns ago.
+func (processRuleGuard) EpisodeInit(ep *episode) {
+	ep.rules = newRuleWatch()
+	if ep.agent != nil {
+		ep.agent.ruleStop.open()
+	}
+}
 
 // holdSubmission reports whether the loop must answer this submission with a
 // rule's demand instead of running it. An episode built before this citizen
@@ -298,6 +346,62 @@ func (ep *episode) holdSubmission(sub submission) (ruleHold, bool) {
 		return ruleHold{}, false
 	}
 	return ep.rules.hold(ep.watch, sub)
+}
+
+// ── the fact a landing reads ────────────────────────────────────────────────
+
+// ruleStopWitness is WHY THE LAST TURN ENDED, when a process rule ended it: the
+// ending that rule names, and "" for every turn that ended any other way.
+//
+// IT EXISTS BECAUSE A FACT MUST NOT BE RECOVERED FROM A SENTENCE. The task
+// runner has to know whether its worker was stopped here, and the only evidence
+// it had was the landing line sitting in the transcript as the worker's last
+// words — so it either matched that prose or said nothing. Prose a person is
+// meant to read is prose somebody will one day improve, and a reader that greps
+// it is a reader that breaks silently on the day they do. The loop knows the
+// answer at the moment it stops the turn; this is where it writes it down.
+//
+// IT IS ABOUT ONE TURN AND NOT ONE CONVERSATION, which is why it is cleared at
+// every `episode-init` and not only set. A worker held once that then wrote its
+// note and worked on is a worker that complied, and a latch nobody cleared would
+// hang the ending on its landing hours later.
+//
+// It sits outside the Agent's mutex holding its own, for [ruleLedger]'s reason:
+// it is written from the step boundary while a turn holds mu for its own state.
+type ruleStopWitness struct {
+	mu     sync.Mutex
+	ending TaskEnding
+}
+
+// open forgets the last turn's answer.
+func (w *ruleStopWitness) open() {
+	w.mu.Lock()
+	w.ending = ""
+	w.mu.Unlock()
+}
+
+// stopped writes down which rule ended this turn.
+func (w *ruleStopWitness) stopped(rule processRule) {
+	w.mu.Lock()
+	w.ending = rule.ending()
+	w.mu.Unlock()
+}
+
+// reading is that answer, and "" on every turn no rule ended.
+func (w *ruleStopWitness) reading() TaskEnding {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ending
+}
+
+// stoppedOnProcessRule is how a node's landing asks its worker why it stopped
+// (task_run.go's [endingOfClaim]). An agent that finished, was cut off by the
+// wire, or ran out of steps answers "".
+func (a *Agent) stoppedOnProcessRule() TaskEnding {
+	if a == nil {
+		return ""
+	}
+	return a.ruleStop.reading()
 }
 
 // ── what the loop does with a hold ──────────────────────────────────────────
@@ -343,6 +447,10 @@ func (a *Agent) withholdSubmission(hub *eventHub, calls []ai.ToolCall, hold rule
 // the same silence, and the honest thing to say is that the work stopped.
 func (a *Agent) stopForProcessRule(ctx context.Context, hub *eventHub, calls []ai.ToolCall, hold ruleHold, turn *Usage, started time.Time, model string) bool {
 	landing := hold.rule.stopped()
+	// SAID AS A FACT BEFORE IT IS SAID AS A SENTENCE. Whatever is reading this
+	// turn from outside — a task node settling on its own row above all — gets
+	// the answer from the rule itself rather than from the prose below it.
+	a.ruleStop.stopped(hold.rule)
 	for _, call := range calls {
 		a.record(ai.Message{
 			Role:       "tool",

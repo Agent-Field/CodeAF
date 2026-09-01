@@ -16,9 +16,10 @@ import "github.com/Agent-Field/aforge-v2/internal/session"
 // The engine now says why (session's TaskNotice.Ending), and this file is the
 // three kinds of news it draws them as. A PERSON STOPPED IT: the ⊘ and the old
 // sentence, because nothing is wrong. IT WAS HALTED — the wire, a threshold, a
-// loop, another task's copy: nothing is known to be wrong and the work can go on
-// from its branch, so it wears the ! that asks for a steer rather than the cross
-// that reports a fault. IT WAS REFUSED, OR BROKE: the cross, and the report says
+// loop, another task's copy, a worker that would not write down what it was
+// doing: nothing is known to be wrong and the work can go on from its branch, so
+// it wears the ! that asks for a steer rather than the cross that reports a
+// fault. IT WAS REFUSED, OR BROKE: the cross, and the report says
 // what was found.
 
 // The words under a row for each ending, in a person's vocabulary and never
@@ -28,6 +29,7 @@ const (
 	endingWordCircling = "went in circles"
 	endingWordBlocked  = "blocked by another task"
 	endingWordSteps    = "out of steps"
+	endingWordNotes    = "would not write its notes down"
 	endingWordRefused  = "not accepted"
 	endingWordStale    = "its world did not match"
 	endingWordError    = "ended with an error"
@@ -48,6 +50,8 @@ func endingWord(ending session.TaskEnding) string {
 		return endingWordBlocked
 	case session.TaskEndingSteps:
 		return endingWordSteps
+	case session.TaskEndingNotes:
+		return endingWordNotes
 	case session.TaskEndingRefused:
 		return endingWordRefused
 	case session.TaskEndingStale:
@@ -72,10 +76,12 @@ func endingKept(ending session.TaskEnding) string {
 
 // halted says this ending is the middle kind of news: the run did not finish,
 // nothing was found wrong with the work, and a person can pick it up from its
-// branch — the wire, a threshold, a loop, another task's copy.
+// branch — the wire, a threshold, a loop, another task's copy, a rule the worker
+// would not follow.
 func halted(ending session.TaskEnding) bool {
 	switch ending {
-	case session.TaskEndingWire, session.TaskEndingCircling, session.TaskEndingBlocked, session.TaskEndingSteps:
+	case session.TaskEndingWire, session.TaskEndingCircling, session.TaskEndingBlocked,
+		session.TaskEndingSteps, session.TaskEndingNotes:
 		return true
 	}
 	return false
