@@ -51,7 +51,7 @@ was wrong, the answer is to propose the work again.
 You can keep working while a task runs. aforge tells you not to wait for it: its report
 arrives in the conversation when it lands.
 
-**One other thing on the roster is a task, and it is not work in a worktree.** A sub-harness
+**One other thing on the roster is a task, and it is not work in a copy of its own.** A sub-harness
 being designed runs as a task too — same row, same room, same `x` — with its own phases
 (`designing`, then `awaiting your look`) in place of the states below, and no branch, no
 changed files and no merge, because it writes none. It is admitted without a countdown,
@@ -900,9 +900,14 @@ After the name the card carries the span, the file count, and how the branch cam
 `merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
 `branch kept · <branch>`.
 
-Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`,
-`worktree`, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
+Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
+branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
 selected card opens the task's room instead. Each long field caps at 20 rows.
+
+The branch row is labelled with **where the work was done**, in plain words rather than in
+git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
+the same labels the settled card uses, listed under *Does a task touch my working copy?* in
+*how tasks run*. A landing whose copy aforge has no record of falls back to `branch`.
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✗ N tasks landed`; any
@@ -1808,7 +1813,7 @@ What opens is a full-screen card over the same page, with the list still underne
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
- worktree · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
+ a branch of your repository · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
  transcript · ~/.aforge/v3/projects/-tmp-alpha/aaaa…/tasks/20260819-120133_7.jsonl
 
  what it said at the end
@@ -1827,11 +1832,15 @@ sentence.
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
   has no clock. Nothing here appears as a zero.
+- **The first address is labelled with what that directory was**, in plain words and never
+  in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
+  or `where` when aforge's record does not say. *Does a task touch my working copy?* in
+  *how tasks run* says what each one means.
 - **The two addresses are clickable where they still exist.** The transcript is a real file
-  on this disk and opens in your editor on a click; a worktree that has since been merged
-  and pruned is printed as plain text, because a link that opens nothing is worse than no
-  link. A task whose worktree is gone says `branch` and the branch name instead — that is a
-  name inside your repository, not a place on the disk, so it is never a link.
+  on this disk and opens in your editor on a click; a working copy that has since been
+  merged and swept away is printed as plain text, because a link that opens nothing is worse
+  than no link. A task whose working copy is gone says `branch` and the branch name instead
+  — that is a name inside your repository, not a place on the disk, so it is never a link.
 - **`esc` backs out to the list**, one layer at a time, with the cursor still on the row you
   came in on. A second `esc` closes the page. `ctrl+.` closes the whole page from inside.
 - **`↑`/`↓` scroll the card**, `pgup`/`pgdown` a screenful, `home`/`end` the ends. A long
@@ -2317,7 +2326,7 @@ half-finished passing between them — it proposes each part as a task of its ow
 the coordination for itself. The parts run at the same time instead of one after another.
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
-how a person redirects work, and there is nobody inside a worktree to show one to, so a
+how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
 
 Where they show up:

@@ -374,8 +374,8 @@ Each node is a child agent working in your workspace, and two bounds are put on 
   deliberately not covered — a shell command's effects are whatever it did, and a guard that
   pattern-matched commands would be claiming a guarantee it cannot keep. A node with no
   scope is told it is read-only work.
-- **A worktree, sometimes.** When the planner judges a node needs isolation, it runs in a
-  worktree of its own under the session folder. If there is nowhere to put one, the node
+- **A working copy of its own, sometimes.** When the planner judges a node needs isolation,
+  it runs in a copy of its own under the session folder. If there is nowhere to put one, the node
   shares the workspace instead and is told so. It degrades; it never fails for this.
 
 A node sees its prerequisites' **digests** — eight lines or so each, plus what they wrote —

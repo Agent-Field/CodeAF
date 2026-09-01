@@ -1158,7 +1158,7 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part aforge wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own git worktree, so `internal/tui3/app.go`
+  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
   on one of those rows means THAT tree's copy and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and

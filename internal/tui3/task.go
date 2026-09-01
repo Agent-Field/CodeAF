@@ -228,6 +228,18 @@ type taskNode struct {
 	// unpublished price (session's task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
+	// rung is WHICH COPY OF THE GROUND this node worked in and mode is what was
+	// promised about it (session's TaskNotice.Rung and .Mode). They are held for
+	// one reason: the landing note has to name the place the work was left, and
+	// only the engine knows whether that place was a branch of the person's
+	// repository or a copy of their folder ([session.GroundWord] holds the
+	// words, one per rung).
+	//
+	// BOTH ARE KEPT AND NEVER UNSET, on the rule the branch and the model are
+	// kept by: the world a node worked in was settled before its first step and
+	// an update quiet about it has not moved it.
+	rung session.GroundRung
+	mode session.TaskMode
 	// transcript is the node journal named by a far world's task row. Local
 	// nodes ask their agent for this path; hosted record rows have no local agent
 	// door, so the URI is the only honest address the room can hand back.
@@ -5311,6 +5323,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if where := strings.TrimSpace(notice.Where); where != "" {
 		node.where = where
+	}
+	// AND WHAT THAT DIRECTORY IS, kept on the same rule as the branch above: the
+	// ground ladder settled it before the node's first step, and an update quiet
+	// about it has not turned a fork back into a worktree.
+	if notice.Rung != "" {
+		node.rung = notice.Rung
+	}
+	if notice.Mode != "" {
+		node.mode = notice.Mode
 	}
 	// WHO ENDED IT IS KEPT AND NEVER UNSET, on the rule the branch and the price
 	// are kept by: a person stopping this node is a fact about the work, and an

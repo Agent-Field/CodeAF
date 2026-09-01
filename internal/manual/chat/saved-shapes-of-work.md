@@ -692,7 +692,7 @@ the design did not finish before aforge closed; nothing was saved
 
 That is the literal truth rather than a soft ending. Nothing reaches the harness registry
 until you approve the card, and a design cut off while still writing left nothing behind
-to continue from — no page, no half-saved entry, no worktree, no branch. The design room
+to continue from — no page, no half-saved entry, no working copy, no branch. The design room
 and its thread stay on disk and are still readable; there is just nothing in the registry.
 
 That case shows on the recovered-graph line as:

@@ -374,6 +374,17 @@ type TaskNotice struct {
 	// resolved one has nothing to say about it.
 	Ground string
 	Mode   TaskMode
+	// Rung is WHICH COPY OF THE GROUND the work is being done in — the rung of
+	// the ground ladder that made this node's world (groundladder.go). Where and
+	// Ground say which directory and which project; this says what that directory
+	// IS, which is the fact a surface needs before it can name the place in a
+	// person's words ([GroundWord] holds the table).
+	//
+	// IT IS EMPTY UNTIL THERE IS A WORLD TO DESCRIBE. A proposal has not been
+	// carved yet and a node given a folder of its own on the reference promise
+	// climbed no rung at all, so both leave it unset — the emptiness law, and not
+	// a claim that the work happened nowhere.
+	Rung GroundRung
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64

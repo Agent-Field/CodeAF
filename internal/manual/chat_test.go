@@ -212,6 +212,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
 		{"can a task work in a different repo", "how-tasks-run"},
 		{"my task worked in the wrong project", "how-tasks-run"},
+		// AND WHAT THE CARD CALLS THAT PLACE. The settled card used to label the
+		// directory `worktree`; it says `a branch of your repository` or `its own
+		// copy of the folder` now, from the rung that made the world (#194), and
+		// somebody reading either phrase for the first time asks this.
+		{"where does my task work", "how-tasks-run"},
+		{"what does its own copy of the folder mean on the task card", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.

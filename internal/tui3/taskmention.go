@@ -194,6 +194,11 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		node.report, node.changed = strings.TrimSpace(row.Outcome), append([]string(nil), row.Files...)
 		node.transcript = strings.TrimSpace(row.TranscriptURI)
 		node.kind = row.Kind
+		// AND WHICH COPY OF THE GROUND THE WORK HAPPENED IN, so that a node this
+		// session met only as a row of the project's record names the place its
+		// work was left in the same words a node it watched land would
+		// (session's [session.GroundWord]).
+		node.rung, node.mode = row.Rung, row.Mode
 	}
 }
 

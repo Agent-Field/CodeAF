@@ -217,7 +217,7 @@ When a conversation says `aforge` because it opened with no project, type `/work
 <path>` to make the repository or folder at that path its project. The path may begin with
 `~`; a path inside a Git repository resolves to the repository root. The place line changes,
 the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
-and future tasks cut their worktrees from that repository rather than from the
+and future tasks cut their working copies from that repository rather than from the
 conversation's own workspace.
 
 The model has the conditional `workspace` tool for the same move when you name a repository

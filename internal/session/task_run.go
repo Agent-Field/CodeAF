@@ -2211,8 +2211,12 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
 		// and only the node knows the answer.
-		Ground:    n.Ground,
-		Mode:      n.Mode,
+		Ground: n.Ground,
+		Mode:   n.Mode,
+		// AND WHAT THAT DIRECTORY IS, which the surface cannot work out for
+		// itself: the same ladder makes a worktree for one node and a fork for
+		// the next, and only the node knows which it got (groundladder.go).
+		Rung:      n.Rung,
 		DependsOn: n.dependsOn,
 		Parent:    n.parent,
 		State:     n.state,
