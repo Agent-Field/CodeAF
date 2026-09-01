@@ -10,6 +10,7 @@ package main
 // ./bench/lanelab/gosim -proof`, and REPORT.md carries what it said.
 
 import (
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -109,7 +110,7 @@ func TestAStalledLaneIsActedOnInsideTheCeiling(t *testing.T) {
 		t.Fatalf("no scenario called %q", proofScenario)
 	}
 	const requests = 8
-	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped)
+	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold)
 	if len(got) != requests {
 		t.Fatalf("got %d trials, want %d", len(got), requests)
 	}
@@ -128,4 +129,83 @@ func TestAStalledLaneIsActedOnInsideTheCeiling(t *testing.T) {
 	if acted == 0 {
 		t.Fatal("a lane that went quiet for 30 seconds was never acted on")
 	}
+}
+
+// TestAWarmedStoreLearnsItsPaceThroughTheObservationDoor is the load-bearing
+// claim of the warmed arm, checked rather than asserted in prose: a store this
+// program warmed knows each pair's pace because it WATCHED it, through
+// [lane.Ledger.Note], and what it believes lands where the world really is.
+//
+// It also pins the reason the sheet's timing is not withheld from that arm. A
+// lane's DRAW is published and never observed, so a store primed from the
+// sheet's facts alone waits every lane against [lane.SpreadFloor] however many
+// answers it has seen — which is the state [storeSeen] stages and the reason it
+// is a diagnostic rather than a gate.
+//
+// THE TWO HALVES GET A HOME EACH. A ledger persists what it was taught and
+// restores it on the next Reset, so a second store staged in the first one's
+// home would be the first one wearing a different name.
+func TestAWarmedStoreLearnsItsPaceThroughTheObservationDoor(t *testing.T) {
+	w := sheetFixture(t)
+	scen, ok := scenarioNamed(proofScenario)
+	if !ok {
+		t.Fatalf("no scenario called %q", proofScenario)
+	}
+	// The stalled row, which is the ordinary staging: the sheet, and a history.
+	kase := proofCases[1]
+
+	t.Run("the sheet and a history", func(t *testing.T) {
+		t.Setenv(home.EnvVar, t.TempDir())
+		lane.Default().Reset()
+		defer lane.Default().Reset()
+		warm(lane.Default().Ledger(), w, scen, kase, 7, true)
+
+		tight := 0
+		for _, l := range w.lanes {
+			pace := lane.PaceFor(lane.ID{Model: w.model, Lane: l.name}, theMoment)
+			if !pace.First.Known() {
+				t.Fatalf("%s: a warmed store believes nothing about a pair it watched %d answers of",
+					l.name, warmSightings)
+			}
+			// The world's own median, in milliseconds, against what the chain
+			// came back with. THE TOLERANCE IS THE LANE'S OWN SPREAD, never a
+			// flat factor: a hierarchy shrinks a pair whose every answer is
+			// noisy toward what its parents say, which is the whole point of
+			// having one, and CoreWeave — p50 587 ms, p90 5,247 ms — really is
+			// believed at about half its median for that reason.
+			_, spread := fit(l.ttft[0], l.ttft[2])
+			slack := math.Max(2, math.Exp(spread))
+			believed, truth := math.Exp(pace.First.Mu)*1000, math.Exp(l.ttftMu)
+			if believed < truth/slack || believed > truth*slack {
+				t.Errorf("%s: believed %.0f ms, the world's own median is %.0f ms, and one draw's "+
+					"own spread is %.2f nats", l.name, believed, truth, spread)
+			}
+			if spread >= lane.SpreadFloor {
+				continue
+			}
+			tight++
+			if pace.First.Sigma >= lane.SpreadFloor {
+				t.Errorf("%s: waited against %.3f nats where the sheet publishes %.3f and the pair "+
+					"has been measured %d times", l.name, pace.First.Sigma, spread, warmSightings)
+			}
+		}
+		if tight == 0 {
+			t.Fatal("no lane on the fixture publishes a spread under the floor, so this proves nothing")
+		}
+	})
+
+	t.Run("a history, and no published percentile", func(t *testing.T) {
+		t.Setenv(home.EnvVar, t.TempDir())
+		lane.Default().Reset()
+		defer lane.Default().Reset()
+		warm(lane.Default().Ledger(), w, scen, kase, 7, false)
+		for _, l := range w.lanes {
+			pace := lane.PaceFor(lane.ID{Model: w.model, Lane: l.name}, theMoment)
+			if pace.First.Sigma < lane.SpreadFloor {
+				t.Fatalf("%s: a pair nobody published a percentile about was waited against %.3f "+
+					"nats, under the %.3f floor — the draw has found a source this bench does not "+
+					"know about", l.name, pace.First.Sigma, lane.SpreadFloor)
+			}
+		}
+	})
 }
