@@ -1017,6 +1017,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"that window did not answer", "home"},
 		{"I pressed enter to move a chat and nothing happened", "home"},
 		{"how do I cancel moving a conversation here", "home"},
+		// And the resting row's own words, which is where somebody looking at
+		// `another window` starts: they are staring at a margin, not at a card.
+		{"the row says another window, how do I get it back", "home"},
+		{"how do I bring a conversation back to this window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},

@@ -120,7 +120,7 @@ func (h *homeView) buildSwitch() {
 	// written to close.
 	world := h.world
 	world.Projects = h.everyProject()
-	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket, coming: h.claim}, h.gone, h.seen, h.world.Read,
+	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}, h.gone, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in

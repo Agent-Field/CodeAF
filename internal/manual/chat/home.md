@@ -929,6 +929,20 @@ A conversation another terminal has open is a **door**, and pressing `enter` on 
 it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
 in this one, with its work and its half-typed sentence.
 
+**The row itself says so, on the line you are standing on.** Move the cursor onto a held
+conversation and its right margin grows from `another window` into the whole door:
+
+```
+○ The Other Terminal                        alpha another window · enter brings it here
+○ A Third Window                                              alpha another window
+```
+
+Only the row under the cursor says it — the others keep the short word, because seven rows
+repeating one instruction is noise and the instruction is only true of the row `enter` would
+act on. On a terminal too narrow to hold the sentence beside the conversation's whole name
+the row hands it back and says `another window` again, rather than cutting it in half; the
+card beside the row carries `enter brings it here` at every width.
+
 **It takes two enters, and the first one only offers.** The first press arms the row. The
 card beside it says `enter again moves it here`, then `its reply finishes first · its tasks
 come here`, and the foot line says the whole of it once more:

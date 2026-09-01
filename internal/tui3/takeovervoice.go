@@ -20,7 +20,11 @@ package tui3
 //	            `coming here` while the claim is out. And the row takes THE ONE
 //	            SPINNER (homespinner.go) — a claim is by construction the most
 //	            recent thing anybody did on this machine, which is that law's
-//	            own rule for which row moves, not an exception to it.
+//	            own rule for which row moves, not an exception to it. On the ONE
+//	            ROW THE CURSOR IS ON the resting word grows into the whole door,
+//	            `another window · enter brings it here`, and gives that clause
+//	            back to the width before it would cut a word in half
+//	            ([takeoverHeldDoorWord]).
 //	the card    the sentences. What the far window is doing, why the wait is a
 //	            wait, how long it has been, and the key that ends it.
 //	the foot    an echo and no more: the short line, for the case the card
@@ -59,6 +63,26 @@ const (
 	// advertised its own confirmation step would be spending the calm state's
 	// one line on machinery.
 	takeoverDoorWord = "enter brings it here"
+	// takeoverHeldDoorWord is the whole right margin of the held row THE CURSOR
+	// IS ON: where the conversation is, and the way to bring it back, in one dim
+	// sentence on the line the eye is already reading.
+	//
+	// IT IS THE SAME COMPLAINT THIS FILE WAS WRITTEN FOR, ONE STATE EARLIER. The
+	// live states were moved onto the row and the resting one was left behind:
+	// `another window` is a fact with no door in it, and the door was told only
+	// on the card three cells away and on the foot line thirty rows down. The
+	// cursor is on the row; so is the sentence.
+	//
+	// It is BUILT out of the two spellings that already exist rather than
+	// written a third time, so the row and the card cannot drift apart — the
+	// margin's own word for where it is, then the card's own word for the door.
+	//
+	// ONLY THE ROW UNDER THE CURSOR GROWS IT, for two reasons that agree. Seven
+	// held rows each carrying the same instruction is not seven answers, it is
+	// noise; and the instruction is only TRUE of the row enter would act on,
+	// which is the cursor's row and never the pointer's — the card follows a
+	// hovered row without moving the cursor (home.go's [homeView.previewLine]).
+	takeoverHeldDoorWord = homeHeldShort + " · " + takeoverDoorWord
 	// takeoverAgainWord is that door once the row is armed. The card says this
 	// where the row is, and the foot says the longer [takeoverArmedWord] — the
 	// one moment the two places carry the same fact, because the second enter
@@ -194,11 +218,13 @@ func (a *app) claiming(row session.SessionRow) bool {
 // takeoverRowWord is what the right margin says, and "" for every row this door
 // is not the news on.
 //
-// ONLY THE LIVE STATE TAKES THE MARGIN. `another window` is already the rest
-// state's word and homeNote spells it ([homeHeldShort]); the failure states say
-// nothing here at all, because `open in another window` remains true of a
-// conversation nobody let go of and a second word for it in the width the NAME
-// needed would be the row spending cells to repeat itself.
+// ONLY THE LIVE STATE TAKES THE MARGIN AWAY FROM THE ROW'S OWN WORD. At rest
+// the margin is the row's to spell — `another window`, and on the cursor's row
+// the whole door ([takeoverHeldDoorWord], drawn by home.go's [app.homeRowNote]
+// and by switcher.go's paint). The failure states say nothing here at all,
+// because `open in another window` remains true of a conversation nobody let go
+// of and a second word for it in the width the NAME needed would be the row
+// spending cells to repeat itself.
 func (a *app) takeoverRowWord(row session.SessionRow) string {
 	if a.claiming(row) {
 		return takeoverComingWord
