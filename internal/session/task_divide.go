@@ -812,13 +812,37 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// a family nobody could account for afterwards.
 	model := a.resolveTaskModel("").model
 	careful := a.carefulModel(model)
+	// AND THE STORE IS ASKED BEFORE THE GRADE IS BELIEVED. A worker's `grade` is
+	// a reading made from inside the material and it is the only reading there
+	// was; what it cannot know is what has already HAPPENED to work of this shape
+	// on this model here. The ratings store knows, because every settled node
+	// writes its check's answer into it (taskgrade.go) — so a kind whose cheap
+	// attempts keep being turned down earns the careful tier on evidence, and
+	// "mechanical" stops being a guess a prompt taught and becomes a fact
+	// somebody measured. It is READ ONCE for the whole division, beside the two
+	// models, for the reason they are: a division whose third part was decided
+	// against a store that moved under it is a family nobody can account for
+	// afterwards.
+	grades := graph.grades
 	request := a.taskRequest()
 	ids := make([]uint64, 0, len(parsed.Parts))
 	titles := make([]string, 0, len(parsed.Parts))
 	for _, part := range parsed.Parts {
 		partModel := model
-		if part.careful() {
+		switch {
+		case part.careful():
 			partModel = careful
+		case careful != model && grades.saysCareful(model, taskKindOf(part.Title)):
+			// THE EVIDENCE OVERRULES THE WORD, and only in this direction. A part
+			// the worker called careful is never demoted by a store — the worker
+			// read the material and this did not — while a part it called ordinary
+			// is lifted where the record says ordinary is not what happens to work
+			// of this shape. The lift is skipped entirely where the careful tier
+			// resolves to the model the task is already on, because then there is
+			// nothing to lift it to and the record would claim a decision nobody
+			// made.
+			partModel = careful
+			line.Lifted = append(line.Lifted, part.Title)
 		}
 		spec := taskSpec{
 			title: part.Title,

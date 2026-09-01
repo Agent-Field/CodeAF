@@ -84,7 +84,21 @@ func runModels(args []string) error {
 			"run a plan or a graph with AFORGE_MODELS set.")
 		return nil
 	}
-	fmt.Printf("\n  %-22s %-38s %7s %7s %6s\n", "class", "model", "rating", "p(pass)", "n")
+	// THE CLASS COLUMN IS AS WIDE AS THE CLASSES ARE. It used to be a constant
+	// 22, which fitted every class the router itself writes — they are all short
+	// names like `plan.spine`. A settled task node is filed under its own KIND,
+	// in the words the work was named with (internal/session's taskgrade.go), so
+	// `task.node/tests for the rail` is longer than that and every row after the
+	// first long one stepped sideways. The width is measured instead, and capped
+	// so that one absurd name cannot push the numbers off a narrow terminal.
+	const classCap = 40
+	classWidth := len("class")
+	for _, entry := range entries {
+		if width := len(clip(string(entry.Class), classCap)); width > classWidth {
+			classWidth = width
+		}
+	}
+	fmt.Printf("\n  %-*s %-38s %7s %7s %6s\n", classWidth, "class", "model", "rating", "p(pass)", "n")
 	for _, entry := range entries {
 		// Whether a rating is being *used* is a different question from what it
 		// says, and it is the one worth seeing: under the gate the ordering reads
@@ -95,8 +109,9 @@ func runModels(args []string) error {
 		if entry.Count < router.MinGraded {
 			gate = fmt.Sprintf("  under the gate — ordering uses the prior until n=%d", router.MinGraded)
 		}
-		fmt.Printf("  %-22s %-38s %+7.2f %7.2f %6d%s\n",
-			entry.Class, clip(entry.Model, 38), entry.Rating, router.Ability(entry.Rating), entry.Count, gate)
+		fmt.Printf("  %-*s %-38s %+7.2f %7.2f %6d%s\n",
+			classWidth, clip(string(entry.Class), classCap), clip(entry.Model, 38),
+			entry.Rating, router.Ability(entry.Rating), entry.Count, gate)
 	}
 	// Said once, at the bottom, because it is the thing most likely to be
 	// misread: these are relative abilities within one class, on a logit scale,

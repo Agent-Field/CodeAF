@@ -497,6 +497,33 @@ Two things worth knowing:
   named nothing. (There is no such sentence for an **adaptive run**: a conversation cannot
   start one at all — see *adaptive runs* — so a run's models are whatever started it.)
 
+## Does aforge learn which model is good at which kind of work — aforge models, ratings, why a part ran on the careful model by itself
+
+Yes, from the checks it was already running. **Every task that settles is written down**:
+the model it ran on, the name the work was given, how it ended in plain words — `landed`,
+`not accepted`, `needs your look`, `stopped` — how many times the work was handed back, what
+it cost and how long it took. The check at the end of a task had already read the work and
+said whether it holds, so that answer *is* the grade: **nothing extra is spent, and no
+second model is asked to judge anything.** Work nobody could check teaches nothing, which
+is the honest answer rather than a guess.
+
+`aforge models` in a terminal is where you read it back. It prints a row per model per
+kind of work, with the rating, the chance of it holding, and how many settled tasks stand
+behind the number — that last column matters, because a rating with two behind it and one
+with two hundred are different claims. Until something has settled it says
+`nothing measured yet. Ratings appear once calls have been graded.`
+
+**What aforge does with it** is one thing only: when a task splits itself, a part the
+worker called ordinary work is minted on your **careful work** model instead if work
+named like it has been turned down twice or more on the model the task is on. That is the
+whole of it — no model is ever swapped out from under you, your chat model is untouched,
+and an install with no crew classes set never lifts anything, because there is nowhere
+dearer to lift it to. *Tasks*, under *When a task turns out to be too wide for one
+worker*, has the rest.
+
+The record lives with your settings, in `router-ledger.json` and `router-events.jsonl`.
+Several aforge windows write to it at once and it is kept across restarts.
+
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 
 The calls aforge makes on its own — the session's name, the two or three words a task is
