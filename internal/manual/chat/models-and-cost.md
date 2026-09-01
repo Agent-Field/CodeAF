@@ -203,32 +203,44 @@ the summary a compaction keeps, the safety gate, the check on finished task work
 look before a task starts itself, the reading of a task's parts before they are handed out,
 the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
 looking at an image. Each of those is a
-**role**, and every role sits on one of four **classes** — the **crew** — which you set in
+**role**, and every role sits on one of five **classes** — the **crew** — which you set in
 `/settings` → Providers, or in one word with `/crew`:
 
 - **reflex** — near-free · reads every turn — memory, titles, safety.
-- **small work** — cheap · does the bulk work — run nodes, digests.
+- **small work** — cheap · the small calls — names, digests, the safety gate.
+- **worker** — does the work · every task you hand off, the parts it divides into, every
+  node of an adaptive run. Most of what a task costs is spent here.
 - **careful work** — careful · checks what must not be wrong — audits, compaction, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
-**All four arrive with a model already in them**, and the four together are the `balanced`
+**All five arrive with a model already in them**, and the five together are the `balanced`
 preset:
 
 | class | as shipped |
 | --- | --- |
 | reflex | `mistralai/mistral-nemo` |
-| small work | `deepseek/deepseek-v4-flash` |
+| small work | `deepseek/deepseek-v4-flash-0731` |
+| worker | `z-ai/glm-5.3-flash` |
 | careful work | `qwen/qwen3.8-27b` |
-| mastermind | `moonshotai/kimi-k3:low` |
+| mastermind | `z-ai/glm-5.3:high` |
 
-They are all open-source models, and none of them is the model you are talking to. A crew
+They are all open-weight models, and none of them is the model you are talking to. A crew
 that followed your conversation would put the most expensive model in the build on the
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
-agreed to.
+agreed to. Closed models that are cheaper on their own vendor's platform than through the
+router are deliberately not in any preset; you can still pin one on any row.
 
-The careful class's `qwen/qwen3.8-27b` is vision-capable, so the shipped crew can fund the
-vision role as well as text checks. Its OpenRouter rates are $0.45/M input tokens and
-$3.20/M output tokens, with a 262k-token context window.
+**Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
+OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
+— against blended price, open weights only. The worker seat is the dial: `glm-5.3-flash`
+scores 58 on the agentic index and 72 on coding at about $0.12 per million tokens blended,
+one point under `glm-5.3` at a twentieth of its price, and it can see images. The
+mastermind buys the thinking rung rather than a bigger model, because its calls are few.
+The careful class is always a different vendor from the worker and always sees images:
+`qwen/qwen3.8-27b` scores 68 on coding at $0.42/M input and $2.55/M output with a 1M-token
+window. The small-work row is pinned to the July build of DeepSeek V4 Flash on purpose —
+the bare `deepseek/deepseek-v4-flash` id resolves to the April build, and the July build at
+the same price scores thirteen coding points higher.
 
 **Clearing a row is still an answer.** A class you empty on purpose reads
 `follows the conversation`, and every role on it runs on the model you are talking to. That
@@ -240,28 +252,37 @@ say rather than the default.
 | | frugal | balanced | max |
 | --- | --- | --- | --- |
 | reflex | `mistral-nemo` | `mistral-nemo` | `mistral-nemo` |
-| small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
-| careful work | `qwen3.8-27b` | `qwen3.8-27b` | `kimi-k3` |
-| mastermind | `qwen3.8-27b` | `kimi-k3:low` | `kimi-k3:high` |
+| small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
+| worker | `deepseek-v4-flash-0731` | `glm-5.3-flash` | `glm-5.3` |
+| careful work | `glm-5.3-flash` | `qwen3.8-27b` | `kimi-k3` |
+| mastermind | `glm-5.3-flash:high` | `glm-5.3:high` | `kimi-k3:high` |
 
-- **frugal** — qwen handles careful work · pennies a day
-- **balanced** — kimi-k3 thinks, qwen checks
-- **max** — kimi-k3 everywhere, thinks longer
+- **frugal** — deepseek works, glm-flash thinks · pennies a day
+- **balanced** — glm-flash works, glm-5.3 thinks, qwen checks
+- **max** — glm-5.3 works, kimi-k3 thinks and checks
 
-`/crew` opens all three as a chooser with yours marked, under a scope line — `the four
+The worker column climbs the open-weight front one step per preset, because it is the seat
+that pays most of a task's bill. The reflex and small-work columns never vary — they are the
+same near-free models in all three — so `/crew` never names them: the confirmation and
+`/status` say **brain**, **hands** and **checks**, which are the mastermind, the worker and
+the careful class.
+
+`/crew` opens all three as a chooser with yours marked, under a scope line — `the five
 models aforge uses on its own behalf — not the one you chat with` — and a `you talk to ·
 <model>` line naming the seat the presets do not touch. ↑ / ctrl+p and ↓ / ctrl+n move;
-enter applies and esc cancels. If the four classes make a custom crew, no row is marked and
-the chooser says picking one puts all four back. `/crew max` still sets it directly and
+enter applies and esc cancels. If the five classes make a custom crew, no row is marked and
+the chooser says picking one puts all five back. `/crew max` still sets it directly and
 confirms in one line, which ends `· you are still talking to deepseek-v4-flash — /model
 changes that` — naming the conversation's own model by id, because the crew changes
 nothing about it and the model segment on the status line goes on saying what it said before.
 The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
 frugal → balanced → max.
 
-**The crew row is not stored — it is worked out from the four.** Answer any one of the four
+**The crew row is not stored — it is worked out from the five.** Answer any one of the five
 rows yourself and the crew row reads `custom`, because that is what is true. `/crew balanced`
-puts all four back in one write.
+puts all five back in one write. A profile that applied a crew before the worker row
+existed reads `custom` until a preset is applied again, because its four old rows and the
+new fifth are not any of the three.
 
 ### The roles under each class
 
@@ -272,7 +293,7 @@ under the class answering it, saying which model comes out. As shipped:
 | --- | --- | --- |
 | `reflex` | reflex | reads every turn for memory — routing and keeping |
 | `title` | small work | the name a session gives itself |
-| `worker` | small work | one node of an adaptive run |
+| `worker` | worker | one node of an adaptive run, and the worker of every task |
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
@@ -327,31 +348,53 @@ only thing that moves it is `/model`, the model row in `/settings`, or naming on
 `· you are still talking to deepseek-v4-flash — /model changes that`, and the status line
 now carries `crew max` beside the model so the two dials read as two.
 
-The crew is a different dial: the four **classes** aforge makes its own calls on — reflex,
-small work, careful work, mastermind — used for titles, memory, the safety gate, checks on
-finished work, compaction summaries, adaptive-run planners and their nodes, harness pages,
-and looking at an image. Setting it writes all four class rows in one write, and **it is
-live from that moment**: the next call aforge makes on its own uses the new crew, with no
-relaunch and no new session.
+The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
+small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
+the work inside every task, checks on finished work, compaction summaries, adaptive-run
+planners and their nodes, harness pages, and looking at an image. Setting it writes all
+five class rows in one write, and **it is live from that moment**: the next call aforge
+makes on its own uses the new crew, with no relaunch and no new session. A task already
+running keeps the model it was admitted on.
 
 **Where to read the crew back:**
 
 - `/status` prints a `crew` line directly under `model`:
-  `crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3`. The word is
-  the preset, or `custom` when the four classes are your own arrangement.
-- `/settings` → Providers has the **crew** row above the four class rows.
+  `crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3`. The word is
+  the preset, or `custom` when the five classes are your own arrangement. **brain** is the
+  mastermind, **hands** is the worker, **checks** is the careful class.
+- `/settings` → Providers has the **crew** row above the five class rows.
 - Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
   line naming the seat they do not touch.
 - The live status line says `crew max` at the head of the telemetry, across the gap from
-  the model segment — the same word `/status` prints, read from the same four rows.
+  the model segment — the same word `/status` prints, read from the same five rows.
 - The hint line under the model picker says `crew max` beside its keys, so the picker you
   opened looking for the change tells you the crew is a separate thing.
 
-**Tasks do not follow the crew either.** A plain task runs on the `task.model` row, or on
-the conversation's model when that row is empty. Only an **adaptive run** uses the classes:
-its planner takes the **mastermind** class and every node under it takes **small work**.
-Those ids are settled once, when the run starts, so changing the crew — or `/model` — half
-way through does not move a run already going.
+**Tasks DO follow the crew, through its worker seat.** A plain task runs on the
+`task.model` row if you set one, otherwise on the crew's **worker** class, and only when
+that row is blank on the conversation's model. An **adaptive run** uses the classes the
+same way: its planner takes the **mastermind** class and every node under it takes the
+**worker** class. Those ids are settled once, when the task or run is admitted, so changing
+the crew — or `/model` — half way through does not move work already going.
+
+## Which model does a task run on — why did my task run on glm-5.3-flash and not my chat model
+
+**The crew's worker seat**, unless you said otherwise. The ladder, first answer wins:
+
+1. a model named in the ask — "do this on deepseek" — or picked on the proposal's chips;
+2. the `task model` row under `/settings` → Tasks, when you have set one;
+3. the crew's **worker** class — `hands` in the `/crew` confirmation and the `/status`
+   crew line;
+4. the model you are talking to, only when the worker row is blank.
+
+So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever you are
+chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's row on the
+roster, its room's status line and its finished card all name the model it actually ran
+on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
+`aforge do` — one row, every door.
+
+This is new: until the worker seat existed a task rode the model you were talking to, and
+the crew moved everything about a task except its cost.
 
 ## Does my crew reach aforge do, or only this conversation
 
@@ -367,7 +410,7 @@ answers wins:
    planning;
 2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
-   the **small work** class;
+   the **worker** class, the same row a task handed off in conversation rides;
 4. what the build ships with.
 
 So `--model` is one voice of four rather than the only one. This was not always true: until
@@ -377,7 +420,7 @@ was silently lost the moment the same brain ran from a script.
 Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
 
 ```
-models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)
+models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3-flash:high (crew frugal)
 ```
 
 Two details worth knowing. A crew answers only once you have actually set one — a profile
@@ -385,31 +428,32 @@ nobody has touched takes the build's default rather than reading its own shipped
 as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
 the run plans on that model at that level, the same as it does here.
 
-## What are the five models — the one you talk to and the four crew seats
+## What are the six models — the one you talk to and the five crew seats
 
-aforge runs **five model seats**. **Seat one is the model you talk to**: it answers every
+aforge runs **six model seats**. **Seat one is the model you talk to**: it answers every
 message you type, it is the id on the left of the status line, and `/model` is the only thing
-that moves it. The other four are the **crew** — the models aforge uses on its own behalf,
+that moves it. The other five are the **crew** — the models aforge uses on its own behalf,
 for calls you did not type:
 
 | seat | word | what it answers |
 | --- | --- | --- |
 | 1 | you talk to | your messages — set with `/model` |
 | 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
-| 3 | small work | run nodes, digests, task names — cheap |
-| 4 | careful work | checks on finished work, compaction summaries, vision |
-| 5 | mastermind | plans adaptive runs and designs harnesses — thinks |
+| 3 | small work | digests, task names, the safety gate's yes-or-no — cheap |
+| 4 | worker | every task you hand off, its parts, every run node — most of the bill |
+| 5 | careful work | checks on finished work, compaction summaries, vision |
+| 6 | mastermind | plans adaptive runs and designs harnesses — thinks |
 
-`/crew` shows all five and sets seats two to five in one word — `frugal`, `balanced` or
+`/crew` shows all six and sets seats two to six in one word — `frugal`, `balanced` or
 `max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
 presets, so the seat the presets do not touch is on the same page as the ones they do.
-`/settings` → Providers pins any one of the four on its own, which turns the crew word to
+`/settings` → Providers pins any one of the five on its own, which turns the crew word to
 `custom`. The live status line says both dials: the model segment on the left is seat one,
-and `crew max` at the head of the telemetry on the right is the other four.
+and `crew max` at the head of the telemetry on the right is the other five.
 
 ## Does /crew change my chat model — no, and what crew max on the status line means
 
-No. `/crew max` moves the four crew seats and leaves the model you talk to exactly where it
+No. `/crew max` moves the five crew seats and leaves the model you talk to exactly where it
 was. The confirmation names it:
 
 ```
@@ -437,7 +481,8 @@ The level is not part of the model id — it travels as its own request option, 
 the picker's **ctrl+t** effort does — so the id sent to the provider is
 `moonshotai/kimi-k3` and the thinking is asked for separately.
 
-- **Any of the four class rows takes one**, though the mastermind is the one it is for.
+- **Any of the five class rows takes one**, though the mastermind is the one it is for. On
+  the worker row it reaches the one-shot role calls only, never the work inside a task.
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
   provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,
@@ -487,8 +532,8 @@ On a narrow screen (**under 60 columns**) the segment comes off that line and is
 on the first row of the page instead, above the chips. It is moved, not dropped — what the
 header sheds first is the goal, which you can still read in the conversation.
 
-The nodes under the planner run on the `worker` role, which sits on **small work** — a
-different model, and not on this line. `/settings` → Providers lists both.
+The nodes under the planner run on the `worker` role, which sits on the **worker** class —
+a different model, and not on this line. `/settings` → Providers lists both.
 
 ## Pinning one role to its own model, and unpinning it
 
@@ -508,8 +553,8 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence aforge acts on — it looks the row up with `settings` and writes it
-with `change_setting`, into the same `models.roles` row, after asking you. The four class
-rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.high`,
+with `change_setting`, into the same `models.roles` row, after asking you. The five class
+rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`, `models.tiers.high`,
 `models.tiers.mastermind`), the crew word (`models.crew`) and the pins are all writable that
 way; only the role **slots** further down the Providers tab are not, because those are
 bindings the running session holds rather than values in your profile.
@@ -596,7 +641,7 @@ correct behaviour and a surprise to anyone reading a bill, so this is the flag f
 where **one model has to answer for the whole run** — comparing two models against each
 other, timing a benchmark cell, or attributing a cost.
 
-It settles four things on your model: the four crew classes, any role you pinned, the model
+It settles four things on your model: the five crew classes, any role you pinned, the model
 that work leaving the conversation runs on, and the fallback chain aforge would otherwise
 move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
@@ -1229,7 +1274,7 @@ same three-second beat every place runs on, and it draws three things:
   is bound to planning" are opposite facts about the same blank. There is no figure on that
   row: no line in the ledger names a slot, so there is nothing measured to put there.
   **Today only the conversation slot is drawn at all.** A window holds a client for the
-  model you are talking to and for no other; the four crew slots are answered where their
+  model you are talking to and for no other; the five crew slots are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds

@@ -232,13 +232,15 @@ const (
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
-// are deliberately not. Four settings is a decision someone can hold in their
+// are deliberately not. Five settings is a decision someone can hold in their
 // head — a tier per feature is the per-feature knob this package exists to
 // avoid — and each one past the first two was added only because a CALL RHYTHM
 // differs, never because a feature wanted a knob: the reflex tier because a call
 // made twice every turn is a different bill from a call made once a session, the
 // mastermind tier because a call whose answer decides what every other call does
-// is a different bill again.
+// is a different bill again, the worker tier because the seat that does the
+// work is the seat that pays the bill, and a cost dial that cannot reach it is
+// not a cost dial.
 type Tier string
 
 const (
@@ -250,8 +252,20 @@ const (
 	// costing near nothing per call rather than for being good at anything, and
 	// no role that has to REASON belongs on it.
 	TierReflex Tier = "reflex"
-	// TierLow is the cheap, fast model.
+	// TierLow is the cheap, fast model for the SMALL calls: a name, a digest,
+	// the guardian's yes-or-no, the intake form.
 	TierLow Tier = "low"
+	// TierWorker is the model that DOES THE WORK: the worker of every task a
+	// conversation hands off, the ordinary parts that worker divides its work
+	// into, and every node of an adaptive run. It is the seat that pays most of
+	// a task's bill — twenty or thirty tool turns against a handful of one-shot
+	// calls around them — and until it existed no tier governed it: a chat task
+	// rode whatever model the person happened to be talking to, and the crew
+	// dial moved everything about a task except its cost. Its rhythm is the
+	// mastermind's opposite — many turns of ordinary work — so the model here is
+	// chosen for holding a thread through a long agentic run at a price that can
+	// be paid thirty times over.
+	TierWorker Tier = "worker"
 	// TierHigh is the capable, expensive one.
 	TierHigh Tier = "high"
 	// TierMastermind is the one tier that is not an economy at all. What every
@@ -273,7 +287,7 @@ const (
 )
 
 // Tiers lists every tier, cheapest first, for a settings surface to render.
-var Tiers = []Tier{TierReflex, TierLow, TierHigh, TierMastermind}
+var Tiers = []Tier{TierReflex, TierLow, TierWorker, TierHigh, TierMastermind}
 
 // known reports whether a tier is one this package has. It reads [Tiers] rather
 // than a switch, so a fifth tier is one line in that list and not a second list
@@ -308,7 +322,7 @@ var DefaultAssignment = map[Role]Tier{
 	RoleCompaction: TierHigh,
 	RolePlanner:    TierMastermind,
 	RoleDesigner:   TierMastermind,
-	RoleWorker:     TierLow,
+	RoleWorker:     TierWorker,
 	RoleRouter:     TierLow,
 	RoleReflex:     TierReflex,
 }
