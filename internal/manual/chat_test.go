@@ -530,6 +530,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what aforge may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		// Issue #168: a fork's hands were on the machine's day figure twice, and
+		// the person who notices is the one asking what their hands are costing.
+		{"does the money on the status line include what my hands are spending", "models-and-cost"},
+		{"is a hand's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},

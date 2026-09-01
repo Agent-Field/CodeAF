@@ -479,9 +479,15 @@ type SubjectSpend struct {
 	// the name off the task index, the standing store or the session it is
 	// already holding.
 	ID string
-	// Session is the conversation a task's work was journaled under, so a page
-	// with an ID and a Session can find the task index row that names it. It is
-	// the same value as ID on a conversation row.
+	// Session is the journal the calls were made under — which for a piece of
+	// work is THE NODE'S OWN transcript and not the conversation that asked for
+	// it, exactly as [UsageLine.Session] is. It is the same value as ID on a
+	// conversation row.
+	//
+	// It said "the conversation a task's work was journaled under" until issue
+	// #168, which was never true of a node and misled nobody only because
+	// nothing joins on it: a page holding an ID finds the task index row by that
+	// ID alone. The conversation a piece of work belongs to is [UsageLine.Root].
 	Session string
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
@@ -505,6 +511,15 @@ type SubjectSpend struct {
 // a conversation, for the same reason — the work is the thing that was asked
 // for.
 //
+// AND WORK WITH NO ID OF ITS OWN BELONGS TO THE CONVERSATION IT WAS ROOTED IN.
+// A fork's hand, and the check that reads what a node left, are whole agents
+// with no row anywhere: a hand keeps no journal at all, so its lines name the
+// stand-in `unfiled`, and a check's name its own transcript. Grouped on that
+// name they drew a row headed by an id nothing in the product can put a title
+// on, beside a conversation row missing exactly that money. [UsageLine.Root]
+// says whose the work was, so the row it belongs on is the conversation's own —
+// which is also where the fold puts the money in that conversation's books.
+//
 // Ties break the way [UsageByModel]'s do, so the table is stable.
 func UsageBySubject(lines []UsageLine) []SubjectSpend {
 	type key struct{ kind, id, session string }
@@ -516,8 +531,17 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 			kind, id = SubjectStanding, strings.TrimSpace(line.Standing)
 		case strings.TrimSpace(line.Task) != "":
 			kind, id = SubjectTask, strings.TrimSpace(line.Task)
+		case strings.TrimSpace(line.Root) != "":
+			id = strings.TrimSpace(line.Root)
 		}
 		at := key{kind, id, strings.TrimSpace(line.Session)}
+		if kind == SubjectConversation {
+			// A CONVERSATION ROW'S SESSION IS ITS ID, which is what
+			// [SubjectSpend.Session] promises — and it is what merges the work
+			// above into the conversation rather than leaving it beside it under
+			// the journal it happened to run in.
+			at.session = id
+		}
 		if kind == SubjectStanding {
 			// A promise fires in a new folder every time, so grouping a standing
 			// row by the session it happened in would draw one row per firing —
@@ -590,9 +614,12 @@ type TreeSpend struct {
 	// the auxiliary calls made on its behalf.
 	ConversationUSD float64
 	// TasksUSD is every call made inside work this conversation started, at any
-	// depth, including the checks and the repair rounds. It is what the
-	// conversation's own books will eventually hold as each node closes, and it
-	// is here now.
+	// depth, including the checks and the repair rounds — and the hands a turn
+	// forked, which are the conversation's own answer being worked on in parallel
+	// rather than a task, and are counted here because they are money the
+	// conversation's books do not hold until they come home. It is what those
+	// books will eventually hold as each piece of work closes, and it is here
+	// now.
 	TasksUSD float64
 	// Calls is the whole tree's requests, on [TreeSpend.TotalUSD]'s terms: the
 	// denominator the total is the sum over.

@@ -3323,8 +3323,26 @@ func (a *Agent) addEmptyReflexUsage(response *ai.Response, model string) {
 // work it started, and would be the same money counted twice in a file whose
 // whole purpose is "what did this machine spend". So the session's counters and
 // the session's journal move exactly as before, and the ledger hears nothing.
+//
+// EVERY CHILD AGENT'S TALLY COMES HOME THROUGH THIS DOOR OR THROUGH THE ONE
+// BELOW IT, and the test of which door a fold belongs to is whether the child
+// wrote the machine's ledger itself: a task node, a fork's hand
+// ([Agent.foldHandUsage]) and an adaptive run's worker
+// ([orchestrateExec.spend]) all do, so all three fold silently. The auxiliary
+// door is for a call THIS agent made and nobody else journaled.
 func (a *Agent) addFoldedUsage(response *ai.Response, model string, calls int) {
-	a.addUsageAs(response, model, calls, "", false, false)
+	a.addFoldedUsageAs(response, model, calls, "")
+}
+
+// addFoldedUsageAs is [Agent.addFoldedUsage] with the role named, and it is
+// [Agent.addAuxiliaryUsageAs]'s reason again one door along: a fold whose share
+// of a turn's bill somebody has to be able to pick out afterwards says so here.
+// A fork's hands are the case it exists for — their money rides inside the
+// caller's own turn, so without the word `hand` on the journal line there is no
+// reading of that transcript that separates what the hands spent from what the
+// caller spent.
+func (a *Agent) addFoldedUsageAs(response *ai.Response, model string, calls int, role string) {
+	a.addUsageAs(response, model, calls, role, false, false)
 }
 
 // The roles an auxiliary line can name. A line is journaled with the role that
@@ -3348,6 +3366,11 @@ const (
 	// the same books, so without the tag there is no way to read a session's
 	// journal and say which of a turn's tokens the hands spent and which the
 	// caller did.
+	//
+	// IT IS THE ONE ROLE THAT REACHES THE JOURNAL AND NOT THE LEDGER. The hand
+	// journals its own calls, so the fold that carries this word writes no ledger
+	// line ([Agent.addFoldedUsageAs]) — the tag is for the transcript, where the
+	// question "which of this turn's tokens were the hands'" is asked.
 	auxRoleHand = "hand"
 	// auxRoleHandoff is the fifth, and it is the one that names REAL MONEY ON THE
 	// MASTERMIND TIER. The brief a handed-over turn gives its worker is written by

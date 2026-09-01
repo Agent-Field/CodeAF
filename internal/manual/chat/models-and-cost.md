@@ -1055,7 +1055,7 @@ what, into the conversation. Up to six aligned lines:
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished |
+| `tasks` | what the work it started has cost, running or finished — tasks, the hands a reply forked, and the nodes of an adaptive run |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -1066,11 +1066,15 @@ what, into the conversation. Up to six aligned lines:
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
 
-## Does the status line's money include what my tasks are spending — yes, live
+## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
 
 **The `$` on the status line is the whole tree: this conversation and every task it
 started, at every depth, while they are still running.** It is one figure, not two, and it
 is the same figure `/cost` leads with.
+
+**Hands and adaptive runs are in it too.** A reply that splits itself into hands, and a
+node of an adaptive run, are both work this conversation started: their money is on the
+row while they are still working, under `tasks` when you ask `/cost` for the halves.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -1081,8 +1085,8 @@ Where the figure comes from: every model call writes one line into the spending 
 where the call was made, and a task's line names the conversation the work belongs to. The
 status line adds that up on the same clock the rest of the telemetry moves on — so a
 number is on the row within a second or two of being spent, not at the end of the task.
-Nothing is counted twice: closing a task moves its tally into the conversation's books and
-writes **no** new ledger line.
+Nothing is counted twice: a task finishing, a hand coming home, a run's node ending — each
+moves its tally into the conversation's books and writes **no** new ledger line.
 
 Two things follow that are worth knowing:
 
@@ -1172,7 +1176,11 @@ Three things are worth knowing about it:
   nothing for an unpriced call rather than calling it free.
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
-  not written here, or the same money would be counted twice.
+  not written here, or the same money would be counted twice. **That holds for every kind of
+  work, not only tasks** — the hands a reply forks and the nodes of an adaptive run each
+  record their own requests and are added up afterwards the same way. Until this was fixed
+  both were on this file twice, so a day that included a fork or a run read high, and the
+  daily limit was reached before that much had actually been spent.
 
 `/cost` and the status line are unchanged and are still rebuilt from **this conversation's**
 own transcript. The spend place is the whole machine; `/cost` is this conversation. They
@@ -1206,7 +1214,9 @@ same three-second beat every place runs on, and it draws three things:
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **what it was for** — the three things money is ever spent on, because the ledger holds
   three ids: a piece of work, a standing promise, or a conversation. The dearest three are
-  shown and the rest fold into one line.
+  shown and the rest fold into one line. Work with **no id of its own** — the hands a reply
+  forks, the check that reads what a piece of work left — is on the row of the conversation
+  it belongs to, because that is the only name it has.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
 already reading — the project's own index of what it ran, and the standing store — to put a
