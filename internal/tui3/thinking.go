@@ -77,7 +77,7 @@ func (a *app) appendThought(text string) {
 			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
 			// [app.settledTurn]). The boundary that would have closed it has
 			// already gone by, and a thought block left open would stay expanded
-			// over the next turn — the very thing [app.collapseThought] runs at
+			// over the next turn — the very thing [feed.collapseThought] runs at
 			// the settle to prevent.
 			settled: a.settledTurn > 0 && a.turn == a.settledTurn,
 		})
@@ -90,57 +90,6 @@ func (a *app) appendThought(text string) {
 	e.ended = time.Now()
 	e.stale = true
 	a.follow()
-}
-
-// settleThought collapses the streaming block WITHOUT letting go of it. It is
-// what a text delta does to the reasoning above it: the block folds to its one
-// row the moment the answer starts, but the turn is not done thinking just
-// because it has started talking — some providers put reasoning and answer on
-// the wire INTERLEAVED, a few tokens of each at a time, and a surface that
-// treated every one of those hand-offs as a new phase sawed a single sentence
-// into a stack of two-token blocks with `thought for 0s` rows between them,
-// splitting words in half ("thre" / "ad gets saved"). So the pointer is kept:
-// the next reasoning delta grows THIS block's count on its settled row, and the
-// answer below streams on unbroken. Only a real boundary — a tool call, the
-// turn settling — seals the block ([app.collapseThought]) so that a genuinely
-// new stretch of thinking gets a row of its own.
-func (a *app) settleThought() {
-	if a.think < 0 || a.think >= len(a.entries) || a.entries[a.think].kind != entryThinking {
-		return
-	}
-	e := &a.entries[a.think]
-	if !e.settled {
-		e.settled, e.stale = true, true
-		if !e.latched {
-			e.open = false
-		}
-		a.touch()
-	}
-}
-
-// collapseThought closes the streaming block. It is called by the event pump for
-// the turn's first non-reasoning event, and again when the turn settles — a turn
-// that streamed nothing else still has to leave a closed block behind.
-//
-// IT DOES NOT CLOSE A BLOCK THE PERSON OPENED. That is the whole of the latch
-// (see [entry.latched]): the automatic collapse is this surface's opinion about
-// a block nobody has said anything about, and it stops being anybody's opinion
-// the moment somebody presses ctrl+e. A block opened mid-stream stays open
-// through the settle, through every later delta of the turn, and until the same
-// person closes it again.
-func (a *app) collapseThought() {
-	if a.think < 0 {
-		return
-	}
-	if a.think < len(a.entries) && a.entries[a.think].kind == entryThinking {
-		e := &a.entries[a.think]
-		e.settled, e.stale = true, true
-		if !e.latched {
-			e.open = false
-		}
-	}
-	a.think = -1
-	a.touch()
 }
 
 // toggleThought opens or closes one block, streaming or settled, and LATCHES

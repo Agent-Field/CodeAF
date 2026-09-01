@@ -272,7 +272,7 @@ func (a *app) askLeft() (time.Duration, bool) {
 // banking a standing rule for another.
 //
 // The walk by NAME below is what is left for a provider that streams no ids —
-// oldest still-running row of that tool, the same rule [app.closeTool] uses,
+// oldest still-running row of that tool, the same rule [feed.closeTool] uses,
 // because the first call begun is the one a person watching the column expects
 // to be asked about first. It is a convention rather than a fact, which is why
 // it is second (session's loop.go makes the same argument for the announcement).

@@ -1044,7 +1044,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // that arrived since the last promotion, the one thing on this screen that is
 // actually moving, and therefore the one thing THE ACCENT BUDGET (styles.go)
 // says may lead. When the turn settles, [entry.settled] flips, the row cache is
-// dropped with it (see [app.closeLive] and [app.entryRows]) and the same words
+// dropped with it (see [feed.closeLive] and [app.entryRows]) and the same words
 // come back through [app.settledMarkdown] at the calm body tier. The eye is
 // drawn to the edge while it grows and history recedes on its own — no spinner
 // is added and no checkmark, so the emptiness law is kept THROUGH the
