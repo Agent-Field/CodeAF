@@ -38,7 +38,7 @@ to the general agent instead of erroring.
 
 | | today | fate under this PRD |
 | --- | --- | --- |
-| `internal/exec` | Go executor kinds (`linear`, `swe`, `bare`) behind `Executor` (`internal/exec/executor.go:530`) and `SubharnessInfo` (`internal/exec/subharness.go:66`) | **absorbed** — these become the first Go-native subharnesses under the new contract |
+| `internal/exec` | the one Go executor — the generalist — behind `Executor` (`internal/exec/executor.go:530`) and `SubharnessInfo` (`internal/exec/subharness.go:66`) | **absorbed** — it becomes the Go-native runner under the new contract, the one nothing has to name |
 | `internal/subharness` | LLM-designed JSON DAGs over ten node kinds, walked with one string of state (`internal/subharness/run.go:113`, `exec.go:184`) | **superseded** — the JS runtime replaces the DAG program form. The store layout, the design-task UX, the usage fold, and the salvage philosophy survive (§7, §11, §13); the node-kind language does not |
 | `internal/orchestrate` | emergent frontier, no designed program | **untouched** — it answers the opposite question (one-off unknown-shape work). Subharnesses are for *recurring* work; recurrence is what makes a designed program worth having |
 
@@ -76,7 +76,8 @@ Runner
 
 - **Go runner**: implements the interface natively, registered at compile time.
   The owner has custom Go-built subharnesses; they register here, first-class,
-  zero porting. `linear` and `swe` are re-fronted through this registry.
+  zero porting. The generalist is fronted through this registry too, and is the
+  one runner never listed on it: it is what a leaf gets when nothing is named.
 - **JS runner**: ONE generic Go runner (the goja host, §5) parameterized by a
   bundle loaded from the store. The bundle carries the manifest.
 - **Future runners** (subprocess, WASM): the contract permits them; do not build
@@ -394,8 +395,8 @@ All from `CLAUDE.md` and the tree; the gates are real and fail the build.
 
 ## 14. Phases and acceptance
 
-**Phase 1 — the spine.** Unified registry + manifest (Go runners: `linear`,
-`swe`, plus the owner's custom Go subharnesses); goja runtime with the five host
+**Phase 1 — the spine.** Unified registry + manifest (Go runners: the
+generalist, plus the owner's custom Go subharnesses); goja runtime with the five host
 calls, journal, fuel, usage fold; bundle store (home layer only); typed I/O;
 intake card; `/subharness` list + card; auto-propose behind the consent card;
 run-as-task-node; headless `aforge run subharness`; deopt-to-linear on guard or

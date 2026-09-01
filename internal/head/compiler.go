@@ -195,14 +195,6 @@ type Brief struct {
 	// ModelNote is the one calm receipt line about that choice — which model
 	// runs the job, or why the name they used did not land.
 	ModelNote string `json:"model_note,omitempty"`
-
-	// Subharness is the specialist worker the compiler judged this whole job
-	// to be for. Empty is the default worker and is the answer for nearly every
-	// job — including every job in a process where no specialist is registered,
-	// because then the field is never mentioned to the model at all. A name
-	// that reaches no registered worker is dropped here rather than carried:
-	// mis-selection degrades to the baseline, it never fails a compile.
-	Subharness string `json:"subharness,omitempty"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -211,8 +203,6 @@ type Compiler struct {
 	client       Client
 	resolveModel ModelResolver
 	oneShot      bool
-	menu         func() string
-	knownWorker  func(string) bool
 }
 
 // NewCompiler returns an intent compiler backed by client.
@@ -250,58 +240,6 @@ const oneShotErrandBrief = "\n\nSurface: this instruction arrived as a single he
 	"start to finish, with nobody at a keyboard. It is never a standing rule, a schedule, a watch or a " +
 	"recurring routine, however recurrent its wording sounds; compile it as work to be done once, now. " +
 	"Never ask a question that only a person could answer: there is no one to answer it."
-
-// WithSubharnessMenu supplies the workers this process actually has, following
-// the WithSelfKnowledge precedent: nil, and a menu that comes back empty,
-// preserve the compiler prompt exactly — which is the whole additive law, since
-// a process with one worker has nothing to choose between.
-//
-// It takes two functions rather than one because a menu is a claim and a name
-// coming back is a claim to check. The text teaches the choice; known settles
-// whether the answer reached anything real. Both are the registry's to answer,
-// and this package is not the registry's — that is the seam.
-func (c *Compiler) WithSubharnessMenu(menu func() string, known func(string) bool) *Compiler {
-	c.menu = menu
-	c.knownWorker = known
-	return c
-}
-
-// subharnessBrief is the menu as it appears in the prompt, or nothing at all.
-// The field is named to the model here rather than in the JSON shape line at
-// the top of the prompt, because that line is the prompt every process has and
-// adding an unusable field to it would break the byte-identical baseline for a
-// choice that does not exist.
-//
-// It rides the user message rather than the system one. Position by volatility,
-// not by semantic category: this reads as law — here are the workers, here is
-// how to choose between them — and law belongs with the law. But the menu
-// carries each specialist's measured line, and those are run counts and a
-// four-decimal average cost that move every time a leaf of that worker
-// finishes. Sent as part of the system message it rewrote, mid-session, the one
-// string in the whole compile that could have been identical from job to job.
-func (c *Compiler) subharnessBrief() string {
-	if c == nil || c.menu == nil {
-		return ""
-	}
-	menu := strings.TrimSpace(c.menu())
-	if menu == "" {
-		return ""
-	}
-	return "\n\n" + menu + "\nReturn the choice as \"subharness\":\"<name>\" in the same JSON object. " +
-		"Omit it, or leave it empty, for the default worker."
-}
-
-// normalizeSubharness drops a name that reaches no registered worker. It is
-// degradation rather than validation: a compile is the cheapest call in the job
-// and the only one whose loss forfeits everything after it, so a hallucinated
-// worker costs the job its specialist and nothing else.
-func (c *Compiler) normalizeSubharness(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" || c == nil || c.knownWorker == nil || !c.knownWorker(name) {
-		return ""
-	}
-	return name
-}
 
 // WithModelResolver installs the surface's catalog-backed reading of model
 // words. Without it the compiler still recognizes them and still says nothing
@@ -342,12 +280,11 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 			choice = settleAnsweredAmbiguity(choice)
 		}
 	}
-	// Assembled stable-first, and the menu is last for the same reason the head's
-	// spend line is: it is the fastest-moving thing said here, so it sits where
-	// there is nothing left behind it to invalidate.
+	// Assembled stable-first: the slowest-moving context leads, so what is said
+	// here is a prefix a later call can still match.
 	user := "Current graph context:\n" + graphContext +
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
-		settledQuestionBrief(instruction) + c.surfaceBrief() + c.subharnessBrief()
+		settledQuestionBrief(instruction) + c.surfaceBrief()
 	// What this call is FOR, for the model-call log (provider.WithCallTag). It is
 	// set once rather than at each send below, because a repair is the same call
 	// asked again and a reader chasing a lost compile wants every row under one
@@ -390,7 +327,6 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		brief.Question = question
 		brief.QuestionOptions = normalizeQuestionOptions(brief.QuestionOptions)
 		brief.ServiceIntent = serviceIntent
-		brief.Subharness = c.normalizeSubharness(brief.Subharness)
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
@@ -403,7 +339,6 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 	brief.BuildsOn = normalizeBuildsOn(brief.BuildsOn)
 	brief.TrialOf = normalizeTrialOf(graphContext, brief.TrialOf)
 	brief.ServiceIntent = serviceIntent
-	brief.Subharness = c.normalizeSubharness(brief.Subharness)
 	brief.WorkModel = strings.TrimSpace(choice.Model)
 	if wanted {
 		brief.ModelNote = modelReceiptNote(words, choice)

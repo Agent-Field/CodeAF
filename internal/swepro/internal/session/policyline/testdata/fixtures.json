@@ -1,404 +1,0 @@
-{"name":"pl/undefined-description","fn":"policyLine","args_json":"[null,\"file_scope\"]","out_json":"null"}
-{"name":"pl/empty-description","fn":"policyLine","args_json":"[\"\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/basic","fn":"policyLine","args_json":"[\"file_scope: src/**\",\"file_scope\"]","out_json":"\"src/**\""}
-{"name":"pl/key-uppercase-in-text","fn":"policyLine","args_json":"[\"FILE_SCOPE: src/**\",\"file_scope\"]","out_json":"\"src/**\""}
-{"name":"pl/key-uppercase-in-arg","fn":"policyLine","args_json":"[\"file_scope: src/**\",\"FILE_SCOPE\"]","out_json":"\"src/**\""}
-{"name":"pl/key-mixed-both","fn":"policyLine","args_json":"[\"FiLe_ScOpE: src/**\",\"fIlE_sCoPe\"]","out_json":"\"src/**\""}
-{"name":"pl/leading-space-blocks-anchor","fn":"policyLine","args_json":"[\"  file_scope: a\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/mid-line-blocks-anchor","fn":"policyLine","args_json":"[\"x file_scope: a\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/second-line-after-lf","fn":"policyLine","args_json":"[\"intro\\nfile_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/anchor-after-cr","fn":"policyLine","args_json":"[\"intro\\rfile_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/anchor-after-u2028","fn":"policyLine","args_json":"[\"intro file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/anchor-after-u2029","fn":"policyLine","args_json":"[\"intro file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/crlf-value-strips-cr","fn":"policyLine","args_json":"[\"file_scope: a\\r\\nnext line\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/dot-stops-at-u2028","fn":"policyLine","args_json":"[\"file_scope: a b\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/dot-stops-at-u2029","fn":"policyLine","args_json":"[\"file_scope: a b\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/space-star-crosses-newline","fn":"policyLine","args_json":"[\"file_scope:\\n  a\\nb\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/space-star-eats-following-key-line","fn":"policyLine","args_json":"[\"file_scope:\\nfile_scope: b\",\"file_scope\"]","out_json":"\"file_scope: b\""}
-{"name":"pl/no-space-after-colon","fn":"policyLine","args_json":"[\"file_scope:src/**\",\"file_scope\"]","out_json":"\"src/**\""}
-{"name":"pl/colon-then-only-spaces","fn":"policyLine","args_json":"[\"file_scope:   \",\"file_scope\"]","out_json":"\"\""}
-{"name":"pl/colon-then-tab","fn":"policyLine","args_json":"[\"file_scope:\\tvalue\",\"file_scope\"]","out_json":"\"value\""}
-{"name":"pl/colon-then-nothing","fn":"policyLine","args_json":"[\"file_scope:\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/colon-then-eol","fn":"policyLine","args_json":"[\"file_scope:\\nnext\",\"file_scope\"]","out_json":"\"next\""}
-{"name":"pl/nbsp-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/bom-after-colon","fn":"policyLine","args_json":"[\"file_scope:﻿a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/ogham-space-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/en-quad-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/hair-space-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/nnbsp-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/mmsp-after-colon","fn":"policyLine","args_json":"[\"file_scope: a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/ideographic-space-after-colon","fn":"policyLine","args_json":"[\"file_scope:　a\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/vtab-ff-after-colon","fn":"policyLine","args_json":"[\"file_scope:\\u000b\\fa\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/value-keeps-internal-spaces","fn":"policyLine","args_json":"[\"file_scope: a b   c\",\"file_scope\"]","out_json":"\"a b   c\""}
-{"name":"pl/value-trailing-space-trimmed","fn":"policyLine","args_json":"[\"file_scope: a b   \",\"file_scope\"]","out_json":"\"a b\""}
-{"name":"pl/value-trailing-bom-trimmed","fn":"policyLine","args_json":"[\"file_scope: a﻿\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/first-match-wins","fn":"policyLine","args_json":"[\"file_scope: a\\nfile_scope: b\",\"file_scope\"]","out_json":"\"a\""}
-{"name":"pl/key-absent","fn":"policyLine","args_json":"[\"task_role: implementation\\naccess: rw\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/realistic-task-role","fn":"policyLine","args_json":"[\"title\\n\\ntask_role: implementation\\nfile_scope: src/a.ts, src/b.ts\\naccess: write\",\"task_role\"]","out_json":"\"implementation\""}
-{"name":"pl/realistic-file-scope","fn":"policyLine","args_json":"[\"title\\n\\ntask_role: implementation\\nfile_scope: src/a.ts, src/b.ts\\naccess: write\",\"file_scope\"]","out_json":"\"src/a.ts, src/b.ts\""}
-{"name":"pl/realistic-access","fn":"policyLine","args_json":"[\"title\\n\\ntask_role: implementation\\nfile_scope: src/a.ts, src/b.ts\\naccess: write\",\"access\"]","out_json":"\"write\""}
-{"name":"pl/empty-key","fn":"policyLine","args_json":"[\": bare\",\"\"]","out_json":"\"bare\""}
-{"name":"pl/key-dot-metachar-matches-any","fn":"policyLine","args_json":"[\"axc: 1\",\"a.c\"]","out_json":"\"1\""}
-{"name":"pl/key-dot-metachar-literal-too","fn":"policyLine","args_json":"[\"a.c: 1\",\"a.c\"]","out_json":"\"1\""}
-{"name":"pl/key-capture-group-returns-group","fn":"policyLine","args_json":"[\"a: 1\",\"(a|b)\"]","out_json":"\"a\""}
-{"name":"pl/key-capture-group-no-match","fn":"policyLine","args_json":"[\"ab: 1\",\"(a|b)\"]","out_json":"null"}
-{"name":"pl/key-alternation-group1-undefined","fn":"policyLine","args_json":"[\"a: 1\\nb: 2\",\"a|b\"]","out_json":"null"}
-{"name":"pl/key-alternation-second-branch","fn":"policyLine","args_json":"[\"b: 2\\na: 1\",\"a|b\"]","out_json":"\"2\""}
-{"name":"pl/key-charclass","fn":"policyLine","args_json":"[\"a1: v\",\"[a-z][0-9]\"]","out_json":"\"v\""}
-{"name":"pl/fold-trap-long-s","fn":"policyLine","args_json":"[\"file_ſcope: a\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fold-trap-kelvin","fn":"policyLine","args_json":"[\"Key: a\",\"key\"]","out_json":"null"}
-{"name":"pl/fold-trap-sharp-s","fn":"policyLine","args_json":"[\"große: a\",\"groẞe\"]","out_json":"null"}
-{"name":"pl/unicode-value","fn":"policyLine","args_json":"[\"file_scope: src/日本/**\",\"file_scope\"]","out_json":"\"src/日本/**\""}
-{"name":"pl/unicode-key","fn":"policyLine","args_json":"[\"ファイル: v\",\"ファイル\"]","out_json":"\"v\""}
-{"name":"pl/emoji-value","fn":"policyLine","args_json":"[\"file_scope: 🚀 rocket\",\"file_scope\"]","out_json":"\"🚀 rocket\""}
-{"name":"pl/adjacency-ids","fn":"policyLine","args_json":"[\"file_scope: t-1/a-b.c_d, t-1/a_b.c-d\",\"file_scope\"]","out_json":"\"t-1/a-b.c_d, t-1/a_b.c-d\""}
-{"name":"pl/sentinel-value","fn":"policyLine","args_json":"[\"file_scope: unknown until probe\",\"file_scope\"]","out_json":"\"unknown until probe\""}
-{"name":"pl/only-terminators","fn":"policyLine","args_json":"[\"\\n\\r  \",\"file_scope\"]","out_json":"null"}
-{"name":"pl/description-is-only-key","fn":"policyLine","args_json":"[\"file_scope\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/colon-in-value","fn":"policyLine","args_json":"[\"file_scope: a:b:c\",\"file_scope\"]","out_json":"\"a:b:c\""}
-{"name":"pl/key-with-colon-suffix","fn":"policyLine","args_json":"[\"file_scope:: a\",\"file_scope\"]","out_json":"\": a\""}
-{"name":"pl/last-line-no-terminator","fn":"policyLine","args_json":"[\"a\\nb\\nfile_scope: z\",\"file_scope\"]","out_json":"\"z\""}
-{"name":"pfs/undefined","fn":"parseFileScope","args_json":"[null]","out_json":"null"}
-{"name":"pfs/empty-string","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/only-spaces","fn":"parseFileScope","args_json":"[\"   \"]","out_json":"null"}
-{"name":"pfs/only-nbsp","fn":"parseFileScope","args_json":"[\" \"]","out_json":"null"}
-{"name":"pfs/only-bom","fn":"parseFileScope","args_json":"[\"﻿\"]","out_json":"null"}
-{"name":"pfs/sentinel","fn":"parseFileScope","args_json":"[\"unknown until probe\"]","out_json":"null"}
-{"name":"pfs/sentinel-padded","fn":"parseFileScope","args_json":"[\"  unknown until probe  \"]","out_json":"null"}
-{"name":"pfs/sentinel-wrong-case","fn":"parseFileScope","args_json":"[\"Unknown Until Probe\"]","out_json":"[\"Unknown Until Probe\"]"}
-{"name":"pfs/sentinel-with-extra","fn":"parseFileScope","args_json":"[\"unknown until probe, x\"]","out_json":"[\"unknown until probe\",\"x\"]"}
-{"name":"pfs/single","fn":"parseFileScope","args_json":"[\"src/**\"]","out_json":"[\"src/**\"]"}
-{"name":"pfs/comma-separated","fn":"parseFileScope","args_json":"[\"a, b, c\"]","out_json":"[\"a\",\"b\",\"c\"]"}
-{"name":"pfs/newline-separated","fn":"parseFileScope","args_json":"[\"a\\nb\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/comma-newline-mixed","fn":"parseFileScope","args_json":"[\"a,\\nb\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/empty-parts-dropped","fn":"parseFileScope","args_json":"[\"a,,b\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/all-empty","fn":"parseFileScope","args_json":"[\",,,\"]","out_json":"[]"}
-{"name":"pfs/only-comma","fn":"parseFileScope","args_json":"[\",\"]","out_json":"[]"}
-{"name":"pfs/double-quoted","fn":"parseFileScope","args_json":"[\"\\\"a\\\"\"]","out_json":"[\"a\"]"}
-{"name":"pfs/single-quoted","fn":"parseFileScope","args_json":"[\"'a'\"]","out_json":"[\"a\"]"}
-{"name":"pfs/lone-double-quote","fn":"parseFileScope","args_json":"[\"\\\"\"]","out_json":"[]"}
-{"name":"pfs/lone-single-quote","fn":"parseFileScope","args_json":"[\"'\"]","out_json":"[]"}
-{"name":"pfs/empty-double-quotes","fn":"parseFileScope","args_json":"[\"\\\"\\\"\"]","out_json":"[]"}
-{"name":"pfs/empty-single-quotes","fn":"parseFileScope","args_json":"[\"''\"]","out_json":"[]"}
-{"name":"pfs/nested-quotes","fn":"parseFileScope","args_json":"[\"\\\"'a'\\\"\"]","out_json":"[\"'a'\"]"}
-{"name":"pfs/trailing-quote-only","fn":"parseFileScope","args_json":"[\"a\\\"\"]","out_json":"[\"a\"]"}
-{"name":"pfs/leading-quote-only","fn":"parseFileScope","args_json":"[\"\\\"a\"]","out_json":"[\"a\"]"}
-{"name":"pfs/mismatched-quotes","fn":"parseFileScope","args_json":"[\"'a\\\"\"]","out_json":"[\"a\"]"}
-{"name":"pfs/quoted-space-survives","fn":"parseFileScope","args_json":"[\"\\\" \\\"\"]","out_json":"[\" \"]"}
-{"name":"pfs/quote-then-comma","fn":"parseFileScope","args_json":"[\"\\\",x\"]","out_json":"[\"x\"]"}
-{"name":"pfs/crlf-separated","fn":"parseFileScope","args_json":"[\"a\\r\\nb\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/cr-not-a-separator","fn":"parseFileScope","args_json":"[\"a\\rb\"]","out_json":"[\"a\\rb\"]"}
-{"name":"pfs/cr-before-comma","fn":"parseFileScope","args_json":"[\"a\\r,b\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/bom-trimmed","fn":"parseFileScope","args_json":"[\"﻿a\"]","out_json":"[\"a\"]"}
-{"name":"pfs/tabs-around-parts","fn":"parseFileScope","args_json":"[\"\\ta\\t,\\tb\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/inner-spaces-kept","fn":"parseFileScope","args_json":"[\"  a b  ,  c d  \"]","out_json":"[\"a b\",\"c d\"]"}
-{"name":"pfs/quote-splits-before-strip","fn":"parseFileScope","args_json":"[\"\\\"a,b\\\"\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/unicode-globs","fn":"parseFileScope","args_json":"[\"src/日本/**, docs/*.md\"]","out_json":"[\"src/日本/**\",\"docs/*.md\"]"}
-{"name":"pfs/adjacency-ids","fn":"parseFileScope","args_json":"[\"t-1/a-b.c_d, t_2/a.b-c_d, t.3/a_b-c.d\"]","out_json":"[\"t-1/a-b.c_d\",\"t_2/a.b-c_d\",\"t.3/a_b-c.d\"]"}
-{"name":"pfs/glob-metachars","fn":"parseFileScope","args_json":"[\"src/**/*.{ts,tsx}\"]","out_json":"[\"src/**/*.{ts\",\"tsx}\"]"}
-{"name":"pfs/many-newlines","fn":"parseFileScope","args_json":"[\"a\\n\\n\\nb\"]","out_json":"[\"a\",\"b\"]"}
-{"name":"pfs/trailing-comma","fn":"parseFileScope","args_json":"[\"a,\"]","out_json":"[\"a\"]"}
-{"name":"pfs/leading-comma","fn":"parseFileScope","args_json":"[\",a\"]","out_json":"[\"a\"]"}
-{"name":"pfs/u2028-is-not-a-separator-edge","fn":"parseFileScope","args_json":"[\"a \"]","out_json":"[\"a\"]"}
-{"name":"pfs/emoji","fn":"parseFileScope","args_json":"[\"🚀, 🌍\"]","out_json":"[\"🚀\",\"🌍\"]"}
-{"name":"pfs/long-quoted-path","fn":"parseFileScope","args_json":"[\"'src/very/deep/path/with spaces/file.ts'\"]","out_json":"[\"src/very/deep/path/with spaces/file.ts\"]"}
-{"name":"pl/fuzz-0","fn":"policyLine","args_json":"[\"untiltask_role: .probe} docs\\f   \",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-1","fn":"policyLine","args_json":"[\"unknownFILE_SCOPE:FILE_SCOPE:b srcfile_scope:_{\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-2","fn":"policyLine","args_json":"[\" task_role:}FILE_SCOPE: 1　1a﻿b \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-3","fn":"policyLine","args_json":"[\":.FILE_SCOPE:until} .\\r　1probe\\n./FILE_SCOPE:task_role:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-4","fn":"policyLine","args_json":"[\" 1unknownfile_scope  file_scopeFile_Scope: file_scopeFILE_SCOPE:docstask_role_*　\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-5","fn":"policyLine","args_json":"[\"File_Scope:z-File_Scope:.File_Scope:\",\"file_scope\"]","out_json":"\"z-File_Scope:.File_Scope:\""}
-{"name":"pl/fuzz-6","fn":"policyLine","args_json":"[\"aaccess:access:   /,﻿access:File_Scope: \",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-7","fn":"policyLine","args_json":"[\" File_Scope:\\n﻿ 0file_scope1.probe\\runknown\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-8","fn":"policyLine","args_json":"[\" \",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-9","fn":"policyLine","args_json":"[\"\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-10","fn":"policyLine","args_json":"[\"\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-11","fn":"policyLine","args_json":"[\"FILE_SCOPE:*_ /\\t \\f zuntil0-\\u000b\",\"File_Scope\"]","out_json":"\"*_ /\""}
-{"name":"pl/fuzz-12","fn":"policyLine","args_json":"[\"* .task_role:task_role: '\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-13","fn":"policyLine","args_json":"[\"accessFile_Scope:FILE_SCOPE:_File_Scope: FILE_SCOPE:\\u000bba{\",\"FILE_SCOPE\"]","out_json":"\"ba{\""}
-{"name":"pl/fuzz-14","fn":"policyLine","args_json":"[\"\\t /FILE_SCOPE:atask_role:probe_*\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-15","fn":"policyLine","args_json":"[\" 1 probe FILE_SCOPE:}task_role:\",\"FILE_SCOPE\"]","out_json":"\"}task_role:\""}
-{"name":"pl/fuzz-16","fn":"policyLine","args_json":"[\"access\\t\\u000b{file_scopeunknown0probeFile_Scope:probeaccess: \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-17","fn":"policyLine","args_json":"[\"z  task_rolezuntil　\\t\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-18","fn":"policyLine","args_json":"[\" accessFILE_SCOPE:'b{access:file_scope:access:\\u000b_FILE_SCOPE:﻿ \\ndocs\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-19","fn":"policyLine","args_json":"[\"docs1'file_scope:}　unknownuntilFILE_SCOPE:-\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-20","fn":"policyLine","args_json":"[\"0.　task_roleb\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-21","fn":"policyLine","args_json":"[\"*access:0docs\\rFile_Scope: \\na{\",\"File_Scope\"]","out_json":"\"a{\""}
-{"name":"pl/fuzz-22","fn":"policyLine","args_json":"[\"FILE_SCOPE: probe}1 :* /access: file_scope:access:\",\"File_Scope\"]","out_json":"\"probe}1 :* /access: file_scope:access:\""}
-{"name":"pl/fuzz-23","fn":"policyLine","args_json":"[\"\\t file_scope:task_roleprobe FILE_SCOPE:\\u000b unknown\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-24","fn":"policyLine","args_json":"[\"\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-25","fn":"policyLine","args_json":"[\" / src' }\\taccessaccess:   \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-26","fn":"policyLine","args_json":"[\"﻿ until file_scope:z\\fz, file_scope:file_scope}._\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-27","fn":"policyLine","args_json":"[\"\\\"a  task_role:file_scope:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-28","fn":"policyLine","args_json":"[\"probefile_scope:\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-29","fn":"policyLine","args_json":"[\"*/:　\\\"task_role:File_Scope:task_role:zFILE_SCOPE: 11FILE_SCOPE:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-30","fn":"policyLine","args_json":"[\" 0task_role: FILE_SCOPE:z\",\"file_scope\"]","out_json":"\"z\""}
-{"name":"pl/fuzz-31","fn":"policyLine","args_json":"[\"\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-32","fn":"policyLine","args_json":"[\".task_role:FILE_SCOPE: /FILE_SCOPE:\\\"\\fFile_Scope:z \",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-33","fn":"policyLine","args_json":"[\"\\r﻿access:docs  {{{aunknown\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-34","fn":"policyLine","args_json":"[\" \\\" -\\f\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-35","fn":"policyLine","args_json":"[\" }file_scope:file_scope}FILE_SCOPE:*\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-36","fn":"policyLine","args_json":"[\"\\r docs*\\r  b  }﻿probeunknownuntilfile_scope \",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-37","fn":"policyLine","args_json":"[\"aFile_Scope:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-38","fn":"policyLine","args_json":"[\"*file_scope::access unknown\\ftask_role ,.\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-39","fn":"policyLine","args_json":"[\"file_scope:atask_role﻿file_scopeFile_Scope:　 \\tabFile_Scope:srcFile_Scope:,File_Scope: \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-40","fn":"policyLine","args_json":"[\"_file_scope: . ﻿file_scope   \\t{FILE_SCOPE:until \",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-41","fn":"policyLine","args_json":"[\" /probeunknown  /\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-42","fn":"policyLine","args_json":"[\",　.﻿src ' -file_scope:}\\u000b\\f\\t}\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-43","fn":"policyLine","args_json":"[\"unknown0task_role:*'aa}  :} {﻿\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-44","fn":"policyLine","args_json":"[\".\\f z zbuntilzaccessFile_Scope:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-45","fn":"policyLine","args_json":"[\"src\\u000bFILE_SCOPE:{\\fFile_Scope::task_role  src\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-46","fn":"policyLine","args_json":"[\"\\t\\t ﻿File_Scope:docsaccess:\\r\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-47","fn":"policyLine","args_json":"[\" b FILE_SCOPE: '﻿\\n 　}  :\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-48","fn":"policyLine","args_json":"[\"﻿ srcuntil\\t  \",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-49","fn":"policyLine","args_json":"[\"_'\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-50","fn":"policyLine","args_json":"[\"until\\u000bsrc  0 docs File_Scope:b\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-51","fn":"policyLine","args_json":"[\"\\u000btask_roletask_role:\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-52","fn":"policyLine","args_json":"[\"task_role:_\\faccess:access:﻿ task_role:/　file_scope:file_scope:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-53","fn":"policyLine","args_json":"[\"b\\naccess:probeaFILE_SCOPE:/:\",\"access\"]","out_json":"\"probeaFILE_SCOPE:/:\""}
-{"name":"pl/fuzz-54","fn":"policyLine","args_json":"[\"FILE_SCOPE:aa} ﻿.file_scope:file_scope\\rdocs﻿src　\\r1a\",\"File_Scope\"]","out_json":"\"aa} ﻿.file_scope:file_scope\""}
-{"name":"pl/fuzz-55","fn":"policyLine","args_json":"[\"-file_scope:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-56","fn":"policyLine","args_json":"[\" 　file_scope:　 b\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-57","fn":"policyLine","args_json":"[\"\\t﻿probe\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-58","fn":"policyLine","args_json":"[\"file_scope:a\",\"FILE_SCOPE\"]","out_json":"\"a\""}
-{"name":"pl/fuzz-59","fn":"policyLine","args_json":"[\" \\nFILE_SCOPE:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-60","fn":"policyLine","args_json":"[\" docs\\t\\t\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-61","fn":"policyLine","args_json":"[\"unknownbtask_role:\\n'File_Scope: ,File_Scope: 　 task_role:probe\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-62","fn":"policyLine","args_json":"[\"1src\\\"_task_role: \\nFile_Scope:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-63","fn":"policyLine","args_json":"[\"unknown- task_role: probeFILE_SCOPE:probeFile_Scope: .task_role:access:  \",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-64","fn":"policyLine","args_json":"[\"\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-65","fn":"policyLine","args_json":"[\" task_rolebfile_scope:*access:access:_\\tunknowndocstask_role:,probez\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-66","fn":"policyLine","args_json":"[\"\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-67","fn":"policyLine","args_json":"[\". ﻿-a0 \\t\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-68","fn":"policyLine","args_json":"[\" file_scope:\\f file_scope: ,task_roleaccess　, access: File_Scope:_\",\"FILE_SCOPE\"]","out_json":"\"file_scope: ,task_roleaccess　, access:\""}
-{"name":"pl/fuzz-69","fn":"policyLine","args_json":"[\"docs access:z\\tFile_Scope:-FILE_SCOPE:a1\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-70","fn":"policyLine","args_json":"[\"\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-71","fn":"policyLine","args_json":"[\"\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-72","fn":"policyLine","args_json":"[\"access:access:\\nunknownaccess\",\"access\"]","out_json":"\"access:\""}
-{"name":"pl/fuzz-73","fn":"policyLine","args_json":"[\"task_role:FILE_SCOPE::, FILE_SCOPE:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-74","fn":"policyLine","args_json":"[\"{ \\n  file_scope:task_roletask_role:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-75","fn":"policyLine","args_json":"[\"file_scope:access:probetask_role:\\nFile_Scope:/file_scope:a\\\"\\n\",\"file_scope\"]","out_json":"\"access:probetask_role:\""}
-{"name":"pl/fuzz-76","fn":"policyLine","args_json":"[\"z 1probe\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-77","fn":"policyLine","args_json":"[\"bfile_scope:﻿\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-78","fn":"policyLine","args_json":"[\"file_scope::\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-79","fn":"policyLine","args_json":"[\"file_scope:file_scope:﻿unknown accessaccess::probe:btask_role:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-80","fn":"policyLine","args_json":"[\"aa\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-81","fn":"policyLine","args_json":"[\"*: /*\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-82","fn":"policyLine","args_json":"[\"FILE_SCOPE:   File_Scope:0\",\"FILE_SCOPE\"]","out_json":"\"File_Scope:0\""}
-{"name":"pl/fuzz-83","fn":"policyLine","args_json":"[\" access:\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-84","fn":"policyLine","args_json":"[\"unknown﻿access:until\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-85","fn":"policyLine","args_json":"[\"access:b \",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-86","fn":"policyLine","args_json":"[\"/  file_scope:_\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-87","fn":"policyLine","args_json":"[\"{FILE_SCOPE:\\f \\\":\\f'\\ftask_role:_1\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-88","fn":"policyLine","args_json":"[\"access:'\\t'FILE_SCOPE:\\t\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-89","fn":"policyLine","args_json":"[\".\\n/\\t _file_scope z　\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-90","fn":"policyLine","args_json":"[\" task_role0   \\\"\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-91","fn":"policyLine","args_json":"[\"file_scope:\\u000b \\f\\n0FILE_SCOPE:File_Scope:_docs \",\"FILE_SCOPE\"]","out_json":"\"0FILE_SCOPE:File_Scope:_docs\""}
-{"name":"pl/fuzz-92","fn":"policyLine","args_json":"[\" :.task_role_\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-93","fn":"policyLine","args_json":"[\",bFILE_SCOPE:file_scope:task_role*﻿' \\t\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-94","fn":"policyLine","args_json":"[\"{\\n/abprobe\\n\\n,a \",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-95","fn":"policyLine","args_json":"[\"-　,\\nuntil　-file_scope:File_Scope:zb﻿unknown  \",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-96","fn":"policyLine","args_json":"[\"/access \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-97","fn":"policyLine","args_json":"[\" a/\\n1  a\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-98","fn":"policyLine","args_json":"[\"z - task_role0  \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-99","fn":"policyLine","args_json":"[\"task_role:\\\" 0\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-100","fn":"policyLine","args_json":"[\"File_Scope:- untiltask_role:. \",\"File_Scope\"]","out_json":"\"-\""}
-{"name":"pl/fuzz-101","fn":"policyLine","args_json":"[\"{file_scope}File_Scope:File_Scope:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-102","fn":"policyLine","args_json":"[\"  \\t\\n\\u000baccess:file_scope:﻿  '\\\"\\f} docs﻿\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-103","fn":"policyLine","args_json":"[\"untilFILE_SCOPE:\\r}untilFILE_SCOPE:\\nFILE_SCOPE:FILE_SCOPE:access'\",\"File_Scope\"]","out_json":"\"FILE_SCOPE:access'\""}
-{"name":"pl/fuzz-104","fn":"policyLine","args_json":"[\"probetask_role:_docs task_role.zuntil file_scope:a File_Scope: \",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-105","fn":"policyLine","args_json":"[\"//task_role:   file_scope:File_Scope:task_role: \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-106","fn":"policyLine","args_json":"[\"0file_scope: unknown\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-107","fn":"policyLine","args_json":"[\"{\\ttask_role:docs  _a:\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-108","fn":"policyLine","args_json":"[\"\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-109","fn":"policyLine","args_json":"[\"File_Scope:probe　\\r-\",\"FILE_SCOPE\"]","out_json":"\"probe\""}
-{"name":"pl/fuzz-110","fn":"policyLine","args_json":"[\" :\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-111","fn":"policyLine","args_json":"[\"file_scopeaccess:access \",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-112","fn":"policyLine","args_json":"[\"access: \\n,unknownfile_scope:﻿unknownFILE_SCOPE:unknown/file_scope:access:\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-113","fn":"policyLine","args_json":"[\"file_scope-\\\"probe/\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-114","fn":"policyLine","args_json":"[\"1\\t *docs,access:\\\" ,task_roleFile_Scope:\\\" _\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-115","fn":"policyLine","args_json":"[\" 　 file_scope:-a  \\u000bsrc  File_Scope: ' \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-116","fn":"policyLine","args_json":"[\"_ \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-117","fn":"policyLine","args_json":"[\"\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-118","fn":"policyLine","args_json":"[\"\\nuntil  .\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-119","fn":"policyLine","args_json":"[\"task_role:probeFile_Scope:-\\u000buntiluntilfile_scope file_scope:0until }src{1\",\"task_role\"]","out_json":"\"probeFile_Scope:-\\u000buntiluntilfile_scope\""}
-{"name":"pl/fuzz-120","fn":"policyLine","args_json":"[\" until \\f1FILE_SCOPE: File_Scope:zsrcfile_scope:File_Scope:FILE_SCOPE:\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-121","fn":"policyLine","args_json":"[\"probetask_role:probe.aFILE_SCOPE:1:\\ntask_role:bfile_scope:﻿bfile_scope: \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-122","fn":"policyLine","args_json":"[\" file_scope:0}/ FILE_SCOPE:1task_roleaccess:﻿access\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-123","fn":"policyLine","args_json":"[\"until\\f　_bfile_scopefile_scope:\\u000b:\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-124","fn":"policyLine","args_json":"[\"1task_role: \\u000b {{\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-125","fn":"policyLine","args_json":"[\"File_Scope:file_scope:\\tbFILE_SCOPE:,task_role:_FILE_SCOPE:\",\"File_Scope\"]","out_json":"\"file_scope:\\tbFILE_SCOPE:,task_role:_FILE_SCOPE:\""}
-{"name":"pl/fuzz-126","fn":"policyLine","args_json":"[\"FILE_SCOPE:\\t\\u000b'zunknownFile_Scope:-File_Scope:\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-127","fn":"policyLine","args_json":"[\"\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-128","fn":"policyLine","args_json":"[\",\\r 'file_scope 　\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-129","fn":"policyLine","args_json":"[\"z:FILE_SCOPE:file_scopeFILE_SCOPE:file_scope:File_Scope:\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-130","fn":"policyLine","args_json":"[\"/0access\\rtask_role:File_Scope:/\\raccess:0 task_role:task_role:File_Scope:﻿access:\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-131","fn":"policyLine","args_json":"[\"　_-ztask_rolefile_scope:*\\t　File_Scope:/  \",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-132","fn":"policyLine","args_json":"[\" access: task_role:1a1\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-133","fn":"policyLine","args_json":"[\"\\r\\taccesstask_role/unknowntask_role: \\t}　\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-134","fn":"policyLine","args_json":"[\",FILE_SCOPE:\\\"file_scope/a\",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-135","fn":"policyLine","args_json":"[\"{File_Scope:probe \",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-136","fn":"policyLine","args_json":"[\" \",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-137","fn":"policyLine","args_json":"[\"access File_Scope: z { src accesstask_role'  unknown\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-138","fn":"policyLine","args_json":"[\" \\n{z docs\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-139","fn":"policyLine","args_json":"[\"  task_role\\u000bdocs: access/ docs\",\"File_Scope\"]","out_json":"null"}
-{"name":"pl/fuzz-140","fn":"policyLine","args_json":"[\"file_scope1\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-141","fn":"policyLine","args_json":"[\"srcaFILE_SCOPE:access:'unknown:1File_Scope:1}FILE_SCOPE:_\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-142","fn":"policyLine","args_json":"[\" \\\"1　 /unknowndocs_\\n\\u000bb'﻿}\",\"file_scope\"]","out_json":"null"}
-{"name":"pl/fuzz-143","fn":"policyLine","args_json":"[\"﻿probe src　﻿unknown src\\f: \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-144","fn":"policyLine","args_json":"[\" src   z\\nz\\u000b\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-145","fn":"policyLine","args_json":"[\" File_Scope:　a1﻿docsa\",\"task_role\"]","out_json":"null"}
-{"name":"pl/fuzz-146","fn":"policyLine","args_json":"[\" probeaccess:  access:aunknown\\u000bfile_scope access:file_scope:* \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-147","fn":"policyLine","args_json":"[\"src\",\"FILE_SCOPE\"]","out_json":"null"}
-{"name":"pl/fuzz-148","fn":"policyLine","args_json":"[\"zfile_scope: \\n {　 \",\"access\"]","out_json":"null"}
-{"name":"pl/fuzz-149","fn":"policyLine","args_json":"[\"\\f.FILE_SCOPE:FILE_SCOPE:0　file_scope　file_scope\",\"task_role\"]","out_json":"null"}
-{"name":"pfs/fuzz-0","fn":"parseFileScope","args_json":"[\" :\"]","out_json":"[\":\"]"}
-{"name":"pfs/fuzz-1","fn":"parseFileScope","args_json":"[\"-\\u000b\"]","out_json":"[\"-\"]"}
-{"name":"pfs/fuzz-2","fn":"parseFileScope","args_json":"[\"zunknown. \\t/0﻿,file_scope}task_role\\n\"]","out_json":"[\"zunknown. \\t/0\",\"file_scope}task_role\"]"}
-{"name":"pfs/fuzz-3","fn":"parseFileScope","args_json":"[\"\\t\\\" \\f\"]","out_json":"[]"}
-{"name":"pfs/fuzz-4","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-5","fn":"parseFileScope","args_json":"[\"unknown\\t- 1* \\f \\u000b\\f'1\"]","out_json":"[\"unknown\\t- 1* \\f \\u000b\\f'1\"]"}
-{"name":"pfs/fuzz-6","fn":"parseFileScope","args_json":"[\"\\\" \\f-unknownunknown\\rzfile_scope \"]","out_json":"[\" \\f-unknownunknown\\rzfile_scope\"]"}
-{"name":"pfs/fuzz-7","fn":"parseFileScope","args_json":"[\"a  .accessprobe\"]","out_json":"[\"a  .accessprobe\"]"}
-{"name":"pfs/fuzz-8","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-9","fn":"parseFileScope","args_json":"[\"﻿\\n\\ntask_role0docs\"]","out_json":"[\"task_role0docs\"]"}
-{"name":"pfs/fuzz-10","fn":"parseFileScope","args_json":"[\"\\r﻿\\n:-z.\\tdocs-task_role\\u000bz\"]","out_json":"[\":-z.\\tdocs-task_role\\u000bz\"]"}
-{"name":"pfs/fuzz-11","fn":"parseFileScope","args_json":"[\"\\runknown \"]","out_json":"[\"unknown\"]"}
-{"name":"pfs/fuzz-12","fn":"parseFileScope","args_json":"[\"  probe\"]","out_json":"[\"probe\"]"}
-{"name":"pfs/fuzz-13","fn":"parseFileScope","args_json":"[\"baccess\\f\\u000b.'access0srcuntil1\\f\\t\"]","out_json":"[\"baccess\\f\\u000b.'access0srcuntil1\"]"}
-{"name":"pfs/fuzz-14","fn":"parseFileScope","args_json":"[\" \\n} 1*\"]","out_json":"[\"} 1*\"]"}
-{"name":"pfs/fuzz-15","fn":"parseFileScope","args_json":"[\" task_roleaccess'file_scope﻿ task_rolesrc \"]","out_json":"[\"task_roleaccess'file_scope﻿ task_rolesrc\"]"}
-{"name":"pfs/fuzz-16","fn":"parseFileScope","args_json":"[\"task_role\"]","out_json":"[\"task_role\"]"}
-{"name":"pfs/fuzz-17","fn":"parseFileScope","args_json":"[\"\\\"\"]","out_json":"[]"}
-{"name":"pfs/fuzz-18","fn":"parseFileScope","args_json":"[\"until_   zunknownz :\"]","out_json":"[\"until_   zunknownz :\"]"}
-{"name":"pfs/fuzz-19","fn":"parseFileScope","args_json":"[\" a:/ /\\u000b}\"]","out_json":"[\"a:/ /\\u000b}\"]"}
-{"name":"pfs/fuzz-20","fn":"parseFileScope","args_json":"[\"task_rolefile_scope\"]","out_json":"[\"task_rolefile_scope\"]"}
-{"name":"pfs/fuzz-21","fn":"parseFileScope","args_json":"[\"unknown1 \\r\\f\"]","out_json":"[\"unknown1\"]"}
-{"name":"pfs/fuzz-22","fn":"parseFileScope","args_json":"[\" \"]","out_json":"null"}
-{"name":"pfs/fuzz-23","fn":"parseFileScope","args_json":"[\"probe: : task_role\"]","out_json":"[\"probe: : task_role\"]"}
-{"name":"pfs/fuzz-24","fn":"parseFileScope","args_json":"[\" \\r,src/0/-1\\\"\"]","out_json":"[\"src/0/-1\"]"}
-{"name":"pfs/fuzz-25","fn":"parseFileScope","args_json":"[\"{,:*\"]","out_json":"[\"{\",\":*\"]"}
-{"name":"pfs/fuzz-26","fn":"parseFileScope","args_json":"[\"﻿\"]","out_json":"null"}
-{"name":"pfs/fuzz-27","fn":"parseFileScope","args_json":"[\"\\n } \\r_:a\\t*\"]","out_json":"[\"} \\r_:a\\t*\"]"}
-{"name":"pfs/fuzz-28","fn":"parseFileScope","args_json":"[\"_ \\fsrctask_role {until{_\"]","out_json":"[\"_ \\fsrctask_role {until{_\"]"}
-{"name":"pfs/fuzz-29","fn":"parseFileScope","args_json":"[\" \"]","out_json":"null"}
-{"name":"pfs/fuzz-30","fn":"parseFileScope","args_json":"[\",\\f　z-srcb'\\f:docs\"]","out_json":"[\"z-srcb'\\f:docs\"]"}
-{"name":"pfs/fuzz-31","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-32","fn":"parseFileScope","args_json":"[\"\\r:\"]","out_json":"[\":\"]"}
-{"name":"pfs/fuzz-33","fn":"parseFileScope","args_json":"[\"01  :_\"]","out_json":"[\"01  :_\"]"}
-{"name":"pfs/fuzz-34","fn":"parseFileScope","args_json":"[\" file_scopeunknownaccess\\f\"]","out_json":"[\"file_scopeunknownaccess\"]"}
-{"name":"pfs/fuzz-35","fn":"parseFileScope","args_json":"[\"\\f　.\\r\\nzdocs\\t\\f\"]","out_json":"[\".\",\"zdocs\"]"}
-{"name":"pfs/fuzz-36","fn":"parseFileScope","args_json":"[\"docs{\\nb_0  \\f file_scope \"]","out_json":"[\"docs{\",\"b_0  \\f file_scope\"]"}
-{"name":"pfs/fuzz-37","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-38","fn":"parseFileScope","args_json":"[\":unknown  } \"]","out_json":"[\":unknown  }\"]"}
-{"name":"pfs/fuzz-39","fn":"parseFileScope","args_json":"[\"until docs/src ﻿\\\"﻿{\"]","out_json":"[\"until docs/src ﻿\\\"﻿{\"]"}
-{"name":"pfs/fuzz-40","fn":"parseFileScope","args_json":"[\"\\n\\\"0- *,docs 　\"]","out_json":"[\"0- *\",\"docs\"]"}
-{"name":"pfs/fuzz-41","fn":"parseFileScope","args_json":"[\"1\"]","out_json":"[\"1\"]"}
-{"name":"pfs/fuzz-42","fn":"parseFileScope","args_json":"[\" 0/\"]","out_json":"[\"0/\"]"}
-{"name":"pfs/fuzz-43","fn":"parseFileScope","args_json":"[\" docsprobe ﻿}\\f　probe\\f\"]","out_json":"[\"docsprobe ﻿}\\f　probe\"]"}
-{"name":"pfs/fuzz-44","fn":"parseFileScope","args_json":"[\"':accesstask_role:　unknown\"]","out_json":"[\":accesstask_role:　unknown\"]"}
-{"name":"pfs/fuzz-45","fn":"parseFileScope","args_json":"[\"b} 1src z\"]","out_json":"[\"b} 1src z\"]"}
-{"name":"pfs/fuzz-46","fn":"parseFileScope","args_json":"[\"　task_role -  task_roleaccess }/probe\"]","out_json":"[\"task_role -  task_roleaccess }/probe\"]"}
-{"name":"pfs/fuzz-47","fn":"parseFileScope","args_json":"[\"unknown* \\ndocs zz\\u000b src\"]","out_json":"[\"unknown*\",\"docs zz\\u000b src\"]"}
-{"name":"pfs/fuzz-48","fn":"parseFileScope","args_json":"[\"_ .\"]","out_json":"[\"_ .\"]"}
-{"name":"pfs/fuzz-49","fn":"parseFileScope","args_json":"[\"bdocsdocsprobe0{task_role\\\" zz \\\"\"]","out_json":"[\"bdocsdocsprobe0{task_role\\\" zz \"]"}
-{"name":"pfs/fuzz-50","fn":"parseFileScope","args_json":"[\",,\"]","out_json":"[]"}
-{"name":"pfs/fuzz-51","fn":"parseFileScope","args_json":"[\"aa\"]","out_json":"[\"aa\"]"}
-{"name":"pfs/fuzz-52","fn":"parseFileScope","args_json":"[\"\\u000b_*/accessprobe \\n -\"]","out_json":"[\"_*/accessprobe\",\"-\"]"}
-{"name":"pfs/fuzz-53","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-54","fn":"parseFileScope","args_json":"[\"_task_role '_\\\"unknown,\\u000b\"]","out_json":"[\"_task_role '_\\\"unknown\"]"}
-{"name":"pfs/fuzz-55","fn":"parseFileScope","args_json":"[\"1　 docs   \\n0\"]","out_json":"[\"1　 docs\",\"0\"]"}
-{"name":"pfs/fuzz-56","fn":"parseFileScope","args_json":"[\"　 {0'file_scope, \\na  a\"]","out_json":"[\"{0'file_scope\",\"a  a\"]"}
-{"name":"pfs/fuzz-57","fn":"parseFileScope","args_json":"[\"probeuntil \"]","out_json":"[\"probeuntil\"]"}
-{"name":"pfs/fuzz-58","fn":"parseFileScope","args_json":"[\"\\f0unknown'until_, 　1\"]","out_json":"[\"0unknown'until_\",\"1\"]"}
-{"name":"pfs/fuzz-59","fn":"parseFileScope","args_json":"[\"z0 _ *\\n:_docs: \"]","out_json":"[\"z0 _ *\",\":_docs:\"]"}
-{"name":"pfs/fuzz-60","fn":"parseFileScope","args_json":"[\"docs\\t\"]","out_json":"[\"docs\"]"}
-{"name":"pfs/fuzz-61","fn":"parseFileScope","args_json":"[\"ba-.-, '{src{ \"]","out_json":"[\"ba-.-\",\"{src{\"]"}
-{"name":"pfs/fuzz-62","fn":"parseFileScope","args_json":"[\"\\u000b {probe\"]","out_json":"[\"{probe\"]"}
-{"name":"pfs/fuzz-63","fn":"parseFileScope","args_json":"[\"_1_\"]","out_json":"[\"_1_\"]"}
-{"name":"pfs/fuzz-64","fn":"parseFileScope","args_json":"[\"  \\\" task_role 1\"]","out_json":"[\" task_role 1\"]"}
-{"name":"pfs/fuzz-65","fn":"parseFileScope","args_json":"[\"{*file_scope\"]","out_json":"[\"{*file_scope\"]"}
-{"name":"pfs/fuzz-66","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-67","fn":"parseFileScope","args_json":"[\"/{*docs-\\f\"]","out_json":"[\"/{*docs-\"]"}
-{"name":"pfs/fuzz-68","fn":"parseFileScope","args_json":"[\"access﻿0'file_scope task_role _src\"]","out_json":"[\"access﻿0'file_scope task_role _src\"]"}
-{"name":"pfs/fuzz-69","fn":"parseFileScope","args_json":"[\":-  unknown0\"]","out_json":"[\":-  unknown0\"]"}
-{"name":"pfs/fuzz-70","fn":"parseFileScope","args_json":"[\"docs\"]","out_json":"[\"docs\"]"}
-{"name":"pfs/fuzz-71","fn":"parseFileScope","args_json":"[\"probe　unknown\\tzz\"]","out_json":"[\"probe　unknown\\tzz\"]"}
-{"name":"pfs/fuzz-72","fn":"parseFileScope","args_json":"[\" until_\\fb' untilsrc\\u000bprobe\"]","out_json":"[\"until_\\fb' untilsrc\\u000bprobe\"]"}
-{"name":"pfs/fuzz-73","fn":"parseFileScope","args_json":"[\"/　. {'\\n*_ \"]","out_json":"[\"/　. {\",\"*_\"]"}
-{"name":"pfs/fuzz-74","fn":"parseFileScope","args_json":"[\" \\n*{\\u000bzprobesrc_　\"]","out_json":"[\"*{\\u000bzprobesrc_\"]"}
-{"name":"pfs/fuzz-75","fn":"parseFileScope","args_json":"[\"_\\n,0 file_scopefile_scopeuntil　unknown\\f﻿\"]","out_json":"[\"_\",\"0 file_scopefile_scopeuntil　unknown\"]"}
-{"name":"pfs/fuzz-76","fn":"parseFileScope","args_json":"[\"0a *docsdocs'*\\u000b﻿\"]","out_json":"[\"0a *docsdocs'*\"]"}
-{"name":"pfs/fuzz-77","fn":"parseFileScope","args_json":"[\"\\\" :_1-0\"]","out_json":"[\" :_1-0\"]"}
-{"name":"pfs/fuzz-78","fn":"parseFileScope","args_json":"[\"unknown   \"]","out_json":"[\"unknown\"]"}
-{"name":"pfs/fuzz-79","fn":"parseFileScope","args_json":"[\" \\r src1}-\"]","out_json":"[\"src1}-\"]"}
-{"name":"pfs/fuzz-80","fn":"parseFileScope","args_json":"[\"\\f　 \"]","out_json":"null"}
-{"name":"pfs/fuzz-81","fn":"parseFileScope","args_json":"[\"-src{{zaccess﻿unknown\\t src \"]","out_json":"[\"-src{{zaccess﻿unknown\\t src\"]"}
-{"name":"pfs/fuzz-82","fn":"parseFileScope","args_json":"[\"src\"]","out_json":"[\"src\"]"}
-{"name":"pfs/fuzz-83","fn":"parseFileScope","args_json":"[\"task_role*\\u000b\\t\"]","out_json":"[\"task_role*\"]"}
-{"name":"pfs/fuzz-84","fn":"parseFileScope","args_json":"[\"until _'{file_scope \\r until:unknown/\"]","out_json":"[\"until _'{file_scope \\r until:unknown/\"]"}
-{"name":"pfs/fuzz-85","fn":"parseFileScope","args_json":"[\"\\t, file_scope \\t_z}probedocs\"]","out_json":"[\"file_scope \\t_z}probedocs\"]"}
-{"name":"pfs/fuzz-86","fn":"parseFileScope","args_json":"[\"docsfile_scope 1,bsrc{ \\t\"]","out_json":"[\"docsfile_scope 1\",\"bsrc{\"]"}
-{"name":"pfs/fuzz-87","fn":"parseFileScope","args_json":"[\":\\faatask_role\\na\\r\\f\"]","out_json":"[\":\\faatask_role\",\"a\"]"}
-{"name":"pfs/fuzz-88","fn":"parseFileScope","args_json":"[\" }:a\\\" probea task_role\"]","out_json":"[\"}:a\\\" probea task_role\"]"}
-{"name":"pfs/fuzz-89","fn":"parseFileScope","args_json":"[\",untiltask_roleaccess\"]","out_json":"[\"untiltask_roleaccess\"]"}
-{"name":"pfs/fuzz-90","fn":"parseFileScope","args_json":"[\"task_role \\t\\rz\\n\\\" \\\"-:\"]","out_json":"[\"task_role \\t\\rz\",\" \\\"-:\"]"}
-{"name":"pfs/fuzz-91","fn":"parseFileScope","args_json":"[\" .  \\r,\\n\"]","out_json":"[\".\"]"}
-{"name":"pfs/fuzz-92","fn":"parseFileScope","args_json":"[\"0file_scope'\"]","out_json":"[\"0file_scope\"]"}
-{"name":"pfs/fuzz-93","fn":"parseFileScope","args_json":"[\"a*/ 1unknown}{\"]","out_json":"[\"a*/ 1unknown}{\"]"}
-{"name":"pfs/fuzz-94","fn":"parseFileScope","args_json":"[\" \\u000b0}task_rolez file_scope1b access,\"]","out_json":"[\"0}task_rolez file_scope1b access\"]"}
-{"name":"pfs/fuzz-95","fn":"parseFileScope","args_json":"[\"' \\nb *docs\"]","out_json":"[\"b *docs\"]"}
-{"name":"pfs/fuzz-96","fn":"parseFileScope","args_json":"[\"access\\u000bb﻿10/{\"]","out_json":"[\"access\\u000bb﻿10/{\"]"}
-{"name":"pfs/fuzz-97","fn":"parseFileScope","args_json":"[\"z\\f:\"]","out_json":"[\"z\\f:\"]"}
-{"name":"pfs/fuzz-98","fn":"parseFileScope","args_json":"[\"\\n\\u000b *{za\\f\"]","out_json":"[\"*{za\"]"}
-{"name":"pfs/fuzz-99","fn":"parseFileScope","args_json":"[\".﻿src /** access}\"]","out_json":"[\".﻿src /** access}\"]"}
-{"name":"pfs/fuzz-100","fn":"parseFileScope","args_json":"[\",z:/}\"]","out_json":"[\"z:/}\"]"}
-{"name":"pfs/fuzz-101","fn":"parseFileScope","args_json":"[\"'btask_roledocsz*: - ﻿\"]","out_json":"[\"btask_roledocsz*: -\"]"}
-{"name":"pfs/fuzz-102","fn":"parseFileScope","args_json":"[\"baccess\\\"z.probeunknown until: \"]","out_json":"[\"baccess\\\"z.probeunknown until:\"]"}
-{"name":"pfs/fuzz-103","fn":"parseFileScope","args_json":"[\"docsdocsasrc/ task_role\"]","out_json":"[\"docsdocsasrc/ task_role\"]"}
-{"name":"pfs/fuzz-104","fn":"parseFileScope","args_json":"[\"file_scope-src\\u000b  src'\"]","out_json":"[\"file_scope-src\\u000b  src\"]"}
-{"name":"pfs/fuzz-105","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-106","fn":"parseFileScope","args_json":"[\"0\\t\\r\\u000b\\\" _\"]","out_json":"[\"0\\t\\r\\u000b\\\" _\"]"}
-{"name":"pfs/fuzz-107","fn":"parseFileScope","args_json":"[\"docs{﻿\"]","out_json":"[\"docs{\"]"}
-{"name":"pfs/fuzz-108","fn":"parseFileScope","args_json":"[\"a  probesrcaccess {\"]","out_json":"[\"a  probesrcaccess {\"]"}
-{"name":"pfs/fuzz-109","fn":"parseFileScope","args_json":"[\"bz}file_scope\\f\"]","out_json":"[\"bz}file_scope\"]"}
-{"name":"pfs/fuzz-110","fn":"parseFileScope","args_json":"[\" ztask_roleunknown\"]","out_json":"[\"ztask_roleunknown\"]"}
-{"name":"pfs/fuzz-111","fn":"parseFileScope","args_json":"[\"　\"]","out_json":"null"}
-{"name":"pfs/fuzz-112","fn":"parseFileScope","args_json":"[\"     src\\u000b\"]","out_json":"[\"src\"]"}
-{"name":"pfs/fuzz-113","fn":"parseFileScope","args_json":"[\"\\t_probe\"]","out_json":"[\"_probe\"]"}
-{"name":"pfs/fuzz-114","fn":"parseFileScope","args_json":"[\" \\n:\\\"src \\u000b}\"]","out_json":"[\":\\\"src \\u000b}\"]"}
-{"name":"pfs/fuzz-115","fn":"parseFileScope","args_json":"[\"{:. _probe\"]","out_json":"[\"{:. _probe\"]"}
-{"name":"pfs/fuzz-116","fn":"parseFileScope","args_json":"[\"access\"]","out_json":"[\"access\"]"}
-{"name":"pfs/fuzz-117","fn":"parseFileScope","args_json":"[\"\\u000b *unknown -\\fprobeuntil-/\"]","out_json":"[\"*unknown -\\fprobeuntil-/\"]"}
-{"name":"pfs/fuzz-118","fn":"parseFileScope","args_json":"[\" \"]","out_json":"null"}
-{"name":"pfs/fuzz-119","fn":"parseFileScope","args_json":"[\"*, '/ \\u000b  src ﻿\"]","out_json":"[\"*\",\"/ \\u000b  src\"]"}
-{"name":"pfs/fuzz-120","fn":"parseFileScope","args_json":"[\"src1b\"]","out_json":"[\"src1b\"]"}
-{"name":"pfs/fuzz-121","fn":"parseFileScope","args_json":"[\"until-}file_scope\\t task_roledocs\"]","out_json":"[\"until-}file_scope\\t task_roledocs\"]"}
-{"name":"pfs/fuzz-122","fn":"parseFileScope","args_json":"[\" 1 \"]","out_json":"[\"1\"]"}
-{"name":"pfs/fuzz-123","fn":"parseFileScope","args_json":"[\"\"]","out_json":"null"}
-{"name":"pfs/fuzz-124","fn":"parseFileScope","args_json":"[\"0 \\u000b\"]","out_json":"[\"0\"]"}
-{"name":"pfs/fuzz-125","fn":"parseFileScope","args_json":"[\" '  \"]","out_json":"[]"}
-{"name":"pfs/fuzz-126","fn":"parseFileScope","args_json":"[\"0file_scope unknown \"]","out_json":"[\"0file_scope unknown\"]"}
-{"name":"pfs/fuzz-127","fn":"parseFileScope","args_json":"[\"probe*\\\"a\\r'0:\\f\"]","out_json":"[\"probe*\\\"a\\r'0:\"]"}
-{"name":"pfs/fuzz-128","fn":"parseFileScope","args_json":"[\"　 probe' \\u000b access task_role,\\f \"]","out_json":"[\"probe' \\u000b access task_role\"]"}
-{"name":"pfs/fuzz-129","fn":"parseFileScope","args_json":"[\", _\"]","out_json":"[\"_\"]"}
-{"name":"pfs/fuzz-130","fn":"parseFileScope","args_json":"[\"\\t 0'}\"]","out_json":"[\"0'}\"]"}
-{"name":"pfs/fuzz-131","fn":"parseFileScope","args_json":"[\"﻿unknown,a \"]","out_json":"[\"unknown\",\"a\"]"}
-{"name":"pfs/fuzz-132","fn":"parseFileScope","args_json":"[\"z﻿*  ,\"]","out_json":"[\"z﻿*\"]"}
-{"name":"pfs/fuzz-133","fn":"parseFileScope","args_json":"[\"bsrc 1\\funknownsrca  access\"]","out_json":"[\"bsrc 1\\funknownsrca  access\"]"}
-{"name":"pfs/fuzz-134","fn":"parseFileScope","args_json":"[\"file_scope: ._\\n0 \"]","out_json":"[\"file_scope: ._\",\"0\"]"}
-{"name":"pfs/fuzz-135","fn":"parseFileScope","args_json":"[\"\\f.docs\\t unknown_,/src\"]","out_json":"[\".docs\\t unknown_\",\"/src\"]"}
-{"name":"pfs/fuzz-136","fn":"parseFileScope","args_json":"[\":task_role,\\f\\r1\"]","out_json":"[\":task_role\",\"1\"]"}
-{"name":"pfs/fuzz-137","fn":"parseFileScope","args_json":"[\"1 btask_role}\"]","out_json":"[\"1 btask_role}\"]"}
-{"name":"pfs/fuzz-138","fn":"parseFileScope","args_json":"[\"\\t\\t\\u000b z  _ until\"]","out_json":"[\"z  _ until\"]"}
-{"name":"pfs/fuzz-139","fn":"parseFileScope","args_json":"[\"_\\r*{ .\"]","out_json":"[\"_\\r*{ .\"]"}
-{"name":"pfs/fuzz-140","fn":"parseFileScope","args_json":"[\"untilfile_scopeauntil 1file_scope/: \"]","out_json":"[\"untilfile_scopeauntil 1file_scope/:\"]"}
-{"name":"pfs/fuzz-141","fn":"parseFileScope","args_json":"[\"﻿1'-,a  access\\ndocs\"]","out_json":"[\"1'-\",\"a  access\",\"docs\"]"}
-{"name":"pfs/fuzz-142","fn":"parseFileScope","args_json":"[\"_file_scope{.' *\"]","out_json":"[\"_file_scope{.' *\"]"}
-{"name":"pfs/fuzz-143","fn":"parseFileScope","args_json":"[\"z.ba\"]","out_json":"[\"z.ba\"]"}
-{"name":"pfs/fuzz-144","fn":"parseFileScope","args_json":"[\"file_scope\\\"{  access　file_scope'\"]","out_json":"[\"file_scope\\\"{  access　file_scope\"]"}
-{"name":"pfs/fuzz-145","fn":"parseFileScope","args_json":"[\" *  \\\" task_role*{\\\": \"]","out_json":"[\"*  \\\" task_role*{\\\":\"]"}
-{"name":"pfs/fuzz-146","fn":"parseFileScope","args_json":"[\"probe\\u000b *unknown'\\funtil　  /\"]","out_json":"[\"probe\\u000b *unknown'\\funtil　  /\"]"}
-{"name":"pfs/fuzz-147","fn":"parseFileScope","args_json":"[\"until \\f}\\f﻿unknown\\r'access  src\"]","out_json":"[\"until \\f}\\f﻿unknown\\r'access  src\"]"}
-{"name":"pfs/fuzz-148","fn":"parseFileScope","args_json":"[\",unknown\"]","out_json":"[\"unknown\"]"}
-{"name":"pfs/fuzz-149","fn":"parseFileScope","args_json":"[\"_ \\r, ﻿:probe\"]","out_json":"[\"_\",\":probe\"]"}

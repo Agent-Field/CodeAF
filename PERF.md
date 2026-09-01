@@ -78,6 +78,34 @@ against the sha256 in `internal/furrowbin/pin.json` and never committed, so a
 clone stays the size it was. And only the platform being built for is staged, so
 the binary carries one furrow rather than four.
 
+It was reset a fourth time on 2026-09-01, and this is the first reset that moves
+the number DOWN. #227 left one worker: the imported engine and the second leaf
+engine beside it are gone, and the dependencies they alone pulled in went with
+them. A removal nobody weighs is a removal that quietly leaves the budget where
+it was — the ratchet is only worth what it measures, so the figure follows the
+code in both directions. The measurement:
+
+| | bytes |
+| --- | --- |
+| the branch before #227 | 55,574,793 |
+| the same tree with one worker | 48,627,977 |
+| what the removal gave back | 6,946,816 |
+
+That pair is linux/arm64, Go 1.26.5, the machine the removal was built on.
+The budget is set on the LARGEST platform, not the one at hand, because the
+ratchet has to hold wherever `make size` runs — so the same tree was built for
+all four, each with its own furrow artifact staged:
+
+| platform | bytes |
+| --- | --- |
+| linux/arm64 | 48,627,977 |
+| darwin/arm64 | 49,539,282 |
+| linux/amd64 | 52,707,490 |
+| darwin/amd64 | 53,530,544 |
+
+The budget is 54,600,000, two percent above darwin/amd64, the same headroom
+every figure in this section was given, now over a smaller binary.
+
 ## The flush ceiling
 
 `FlushUsage` waits at most **2 seconds** (`usageFlushLimit`, `internal/session/usage_ledger.go`)
@@ -90,53 +118,6 @@ is written to prevent, moved off the turn path and onto the exit. The bargain is
 the file's own: a spending record is worth less than the turn that earned it, and
 less than the exit as well. Pinned by `TestFlushingUsageGivesUpOnAStalledLedger`.
 
-## The worktree fingerprint's budget
-
-The coding engine's post-audit gate compares two observations of the worktree to
-decide whether the phases that run after an audit changed the work it passed.
-That measurement has exactly **one** budget, and it is a deadline:
-**2 seconds** (`worktreeFingerprintTimeout`, `internal/swepro/codeaf/pipeline.go`).
-
-It is derived from what it guards. A fingerprint is taken at most three times
-around one full project verification, whose own ceiling is
-`fullVerificationTimeoutMS` — ten minutes. Two seconds is a three-hundredth of
-that, so the whole measurement costs under one percent of the cheapest single
-thing it measures.
-
-**There is no file-count budget and no byte budget, and adding one back is a
-regression.** There used to be two — 4,096 files and 8 MiB — spent hashing every
-tracked or unignored file in the repository. aforge's own tree is 3,746 files and
-75 MB, nine times that allowance, and one tracked file in it exceeds the byte
-half on its own. So on this repository every fingerprint came back over budget,
-and over budget answered with a **fresh nonce**: no two observations of an
-untouched tree could agree, the stabilisation loop could never converge, and five
-leaves across two measured runs were failed for "post-audit verification is
-self-mutating or exceeded the fingerprint budget" having mutated nothing.
-
-Two rules replace those numbers, and they are the reason no size budget is
-needed:
-
-- **The fingerprint photographs the change, not the repository.** git is asked
-  what differs from HEAD (`git status --porcelain=v1 -z -uall`) and only those
-  paths are hashed, so the cost is the size of the leaf's own change set rather
-  than the size of somebody's checkout.
-- **A measurement that cannot be taken is not a measurement that came back
-  different.** The snapshot answers with a third state, and the gate resolves it
-  from the world instead — it re-runs the project's own verification and keeps
-  the pass when that is green.
-
-The digest is taken over content and mode. Modification times are the cache key
-only: a formatter that rewrites a file with byte-identical bytes has changed the
-clock and not the tree. `TestAFingerprintOfATreeTooBigForTheOldBudgetIsStableRatherThanAlwaysChanged`
-and `TestAFingerprintReadsContentRatherThanTheClock` pin both.
-
-`maxStableReverifications` (**2**) survives and is not a detector. The detector
-is the comparison across a verification: the leaf is finished, nothing but the
-verification is running, so a tree that differs across it was changed by it. Two
-is how many chances a settling tree gets to settle — one verification that writes
-a file and then reuses it settles on the second, and a tree still moving on the
-third moves every time.
-
 ## The workspace snapshot's budget
 
 What a run left behind is answered by reading the tree, not by asking the clock.
@@ -147,8 +128,8 @@ landing) and the single tool call (`RecordProducedSince`, `internal/exec/produce
 It replaces a mtime-versus-a-wall-clock-mark test that misfiled three ordinary
 cases: a write landing inside the filesystem's own timestamp granularity, a tool
 that preserves the timestamp it copied (`cp -p`, `git checkout`, `tar`), and a
-rewrite whose bytes are identical. It is the same conclusion the worktree
-fingerprint above reached from the other end.
+rewrite whose bytes are identical. Content and mode decide; the clock is a cache
+key and never an answer.
 
 The cost of that honesty is a second walk: **two bounded snapshots per tool call**
 rather than one sweep afterwards. Three budgets bound it, and all three are in
@@ -165,7 +146,7 @@ six thousand files just under the per-file limit is six gigabytes on the leaf's
 critical path, twice per tool call. Against the real case — a workspace holding a
 report, a chart and a script — the whole snapshot is a handful of stats and a few
 kilobytes of reading, which is why no third budget (a deadline) is needed here the
-way it is for a repository-sized fingerprint.
+way it would be for a walk sized by somebody's whole checkout.
 
 **What degrades past the budget is only the rewrite case.** Created and deleted
 files are decided by whether the tree holds the path at all, which reads no bytes
@@ -185,10 +166,9 @@ time get consulted at all, and that is the one place a clock is still trusted.
 ## The verification photograph's budget
 
 Running a project's own test suite twice — once before a leaf works and once
-after — is the most expensive thing on the bare worker's path. The swe worker's
-equivalent baseline `go test` was measured at seven minutes, and it was
-invisible enough in the headless stream that an operator read it as a hang and
-killed the run. So this measurement is bounded three ways, and the bound is
+after — is the most expensive thing on a leaf's path. A baseline `go test` on a
+repository this size was measured at seven minutes, and it was invisible enough
+in the headless stream that an operator read it as a hang and killed the run. So this measurement is bounded three ways, and the bound is
 **derived from the leaf's own wall** rather than typed as a duration.
 
 | number | value | where |
@@ -216,11 +196,11 @@ stub into nine, and four settles that as well as forty. The subtraction it comes
 out of costs one pass over each roster and one map of them, which is what the
 subtraction already cost.
 
-The two share constants moved out of `internal/exec/bare` on 2026-08-29. Two
-things read them now — the worker that photographs before the work, and the
-delivery gate, which takes the reading of the tree it is about to judge when
-nobody else did — and two copies of one cap is how a number in this repository
-drifts.
+The two share constants live in `internal/verify` (`verify.ReadingBudget`),
+where every reader can reach them. Two things read them — the belt that
+photographs before the work (`internal/exec/photograph.go`), and the delivery
+gate, which takes the reading of the tree it is about to judge when nobody else
+did — and two copies of one cap is how a number in this repository drifts.
 
 The arithmetic is one line: **one reading may spend `deadline / 8`, and a
 reading worth less than a minute is not taken at all.** A ninety-minute leaf
@@ -284,7 +264,7 @@ the job's first change and inherited by every continuation
 (`verify.BaselineFor`), so the second and later rounds of a job spend their
 eighth of the wall only on the after reading. The REFUSAL is remembered the same
 way: why a reading could not be taken is a fact about the tree, the project and
-the wall, and none of them move between rounds. Measured: textual s6's bare leaf
+the wall, and none of them move between rounds. Measured: textual s6's leaf
 spent 5m27s on a suite killed at its ceiling — its whole suite is 3,422 tests and
 takes 793s in that image, measured — and without this every
 continuation of that job would spend the same 5m27s to learn the same thing. `verify.rememberedTrees` is **16**,
@@ -429,8 +409,8 @@ cannot move. So the after reading's file set is the structural adjacency UNION
 every check file in the record of what the run left behind — `verify.OwnChecks`
 over `Outcome.Artifacts`/`Evidence.Artifacts`, filtered by the runner's own
 test-file convention and by `os.Stat`, joined on by `Strategy.WithOwnChecks` at
-both seams that take a second reading (`internal/exec/bare` and
-`revision.measureFinalTree`). It is read from the WORLD's record of the tree and
+both seams that take a second reading (`exec.PhotographAfter` in
+`internal/exec/photograph.go`, and `revision.measureFinalTree`). It is read from the WORLD's record of the tree and
 never from the worker's account of what it tested, which is the claim this whole
 gate exists not to weigh. It costs no extra reading: the same command, a longer
 file list. Two invariants make it safe. The comparison is by COVERING rather
@@ -448,22 +428,25 @@ retake can take them: igel s8's new file sorts after every check the repository
 already had, and a selection ordered by name alone hands exactly the run's own
 work to the cut.
 
-**The gate takes the job's reading when no worker did.** Not every worker
-photographs — only `internal/exec/bare` does — and textual s7 ran every node
-under the generalist and reached its gates with no reading in the store at all.
+**The gate takes the job's reading when nobody else did.** The photograph used
+to sit beside one belt, where only that belt could reach it, and textual s7 ran
+every node under the generalist and reached its gates with no reading in the
+store at all. It is `internal/exec/photograph.go` now — every belt takes it —
+but a gate can still arrive at a job nobody photographed: an old store, a
+workspace the gate does not hold.
 `revision.jobReading` reads the job's remembered baseline first (free), and takes
 one itself on `ReadingBudget(time until the gate's own deadline)` only when
 nothing anywhere has looked, remembering it against the job so it costs one
 reading per job rather than one per round.
 
 **And whatever the gate does about a reading, it journals.** The photograph used
-to be journaled by exactly one reader — `internal/exec/bare` — so the record of a
-run's own verification was a fact about WHICH WORKER THE RULER PICKED rather than
-about the project. igel s9 and ink s9 put every node on the generalist and
+to be journaled by exactly one belt, so the record of a run's own verification
+was a fact about WHICH BELT A NODE HAPPENED TO RUN ON rather than about the
+project. igel s9 and ink s9 put every node on the generalist and
 finished with **zero** `verification` events between them: not a reading, not a
 refusal, not a row, while the gate had in fact taken a reading of the tree it was
 judging. ofetch s9, on the identical binary, journaled **four**, because one of
-its nodes happened to run under `bare`. `revision.journalGateReading` writes the
+its nodes happened to run on the belt that had the reading. `revision.journalGateReading` writes the
 same event the belt writes, with `when: on the tree the gate is judging`, on
 every path: the reading it took, the job baseline it inherited, and each refusal
 — no workspace, and no deadline to size a budget against. It costs one row and no
@@ -633,8 +616,8 @@ assignment`.
 already takes — a name in both readings whose declaration DIGEST differs — and
 costs nothing beyond the digest itself, which is an FNV hash over the
 declaration's own non-blank lines on the same walk that decides the name is
-public. It needs no diff, which is what makes it exist at all: `Account.Patch` is
-the SWE belt's and the belts a headless run uses set it nowhere.
+public. It needs no diff, which is what makes it exist at all: nothing on the
+belt a headless run carries records one.
 `verify.Consumers` then walks the project ONCE for every name at the same time,
 because the walk is what this costs and a settlement weighing eight definitions
 must not read the tree eight times.
@@ -938,10 +921,10 @@ else:
 | billed tokens | `maxTokens - spent(outcome)` | `Linear.maxTokens` |
 | wall | `time.Until(deadline) - landingReserve` | the leaf's own lease, less the reserve it already keeps back to land in |
 
-A meter a belt does not have is not a meter that ran out: the bare loop passes
-zero for turns and tokens and `exec.NoWall` when it has no deadline, and a
-non-positive grant reads as *this belt does not bound that*. A leaf whose figures
-are all fine but whose `Exhausted` is set — a straggler hand-back, a deadline
+A meter a belt does not have is not a meter that ran out: a belt with no turn
+cap and no token ceiling passes zero for both, and `exec.NoWall` when it has no
+deadline, and a non-positive grant reads as *this belt does not bound that*. A
+leaf whose figures are all fine but whose `Exhausted` is set — a deadline
 reserve it entered — has no room either, because it was told to land.
 
 **What a close costs is one extra reading of the finished tree**, on the same
@@ -1394,10 +1377,10 @@ described.
 
 | Law | Where it is pinned |
 | --- | --- |
-| **Ordinary typing arms no timer and asks the disk nothing.** A sentence of prose costs two integer comparisons a character and nothing else. | `internal/tui3/dropkeys_test.go` |
+| **Prose whose first token is not path-shaped arms no timer and asks the disk nothing.** A sentence of ordinary prose costs two integer comparisons a character and nothing else; a sentence that begins with a real path pays the bounded per-reading cost the next row states. | `internal/tui3/dropkeys_test.go` |
 | **Typing a slash command costs the same.** A dropped path is told from a command by a SEPARATOR INSIDE IT — `/var/folders` has one, `/help` does not — which is string work on runes already in memory. | `internal/tui3/dropkeys_test.go` |
 | **A burst arms ONE wakeup**, however many characters it holds, and the one in flight re-arms itself while characters are still arriving rather than a second one being asked for. It is `pointerFold.settling`'s shape exactly. | `internal/tui3/dropkeys_test.go` |
-| **A settled burst asks the disk at most once per word it holds**, and only after the string gate above has passed. | `internal/tui3/dropkeys_test.go` |
+| **A settled burst asks the disk at most once per candidate in at most four readings of the run**, and only after the string gate above has passed. | `internal/tui3/dropkeys_test.go` |
 | **A burst that names nothing builds no frame.** It provably mutated nothing `app.View` reads — the characters were already in the draft, put there by the keys that carried them — so it declares the frame before it, exactly as a folded motion does. | `internal/tui3/dropkeys_test.go` |
 
 `dropQuiet` is two `frameInterval`s and it is a QUIET WINDOW rather than a
@@ -1455,7 +1438,7 @@ and the run met none of them.
 | **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallMeasuredFloor`…`streamWallCeiling`. A lane with NO history gets `streamWallFloor`, 5m, and that figure is now the outer bound for a stranger rather than the floor under everybody: it used to outrank the derivation, so a lane whose longest finished reply was twenty-four seconds still waited out five whole minutes, and two streams in the dogfood run of 2026-08-31 did exactly that on endpoints sustaining 83–270 tok/s. `streamWallMeasuredFloor` is `bufferedQuietBound` rather than a number of its own: the shortest honest wall is the longest honest silence, or the wall would cut a stream the silence bounds are still being patient with. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
 | **An endpoint whose ANSWERS cannot be used loses standing, and wins it back by serving.** A guard cut — silence, stall, overrun, soup, unparsed tool grammar — and an answer with nothing in it are reported to the lane belief as outcomes that were not accepted; every answer that survives every guard is reported as one that was. The belief decays toward the lane's prior over `lane.QualityHalfLife` and the frontier gate reads it against the role's own `QualityNeed`. | No new number: `lane.Outcome` and `Ledger.NoteOutcome` have existed since the routing wave and had no production caller until this. The decay, the recovery and the gate are all `internal/lane`'s own. | `internal/provider/lanequality_test.go`, `internal/lane/garbage_test.go` |
 | **An endpoint that STALLS is treated exactly like one that REFUSES**: its lane is struck, memoized for `ignoreCooldown`, and every request encoded afterwards routes around it. | `velocityLedger.pace`, per model, sourced from the endpoint the wire itself named. | `internal/provider/unwatched_test.go` |
-| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/exec/bare/loop.go` |
+| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/session/loop.go` |
 
 ### The claim reaper is the backstop, not the detector
 
@@ -1541,53 +1524,6 @@ window its successor was handed.
 Whether a claim resumed is journaled (`store.EventLeafResumed`, with the turn
 count and the files) rather than assumed, because this section asserted it for a
 day while it was not true.
-
-### A tool call's room, which is measured and never picked
-
-`internal/exec/bare`'s belt had **no per-command bound at all**: pi's `bash`
-schema says "no default timeout", so a command the model did not think to bound
-inherited the leaf's whole envelope. The ink run of 2026-08-29 (s8) ended on
-`npx ava test/grid.tsx` with fifteen minutes of leaf to spend, the command was
-SIGKILLed when the leaf's context expired, and three separate things went wrong
-in the same instant: the cut was tested for `context.Canceled` and a deadline is
-`DeadlineExceeded`, so a killed command reported a clean success with truncated
-output; the loop's next turn-boundary check found a dead context and stopped, so
-the output never reached the model that had asked for it; and the node watchdog
-two minutes above was already counting, so a leaf that had been working for
-seventeen minutes was recorded as one that never came back.
-
-**There is no per-command timeout constant, and adding one back is a
-regression.** A figure picked here is wrong on every machine it was not picked
-on — these leaves run in amd64 containers under qemu where everything is five to
-ten times slower than the wall-derived arithmetic assumes — and "does this
-command fit a number" is not the question anyway. The question is whether the
-leaf can afford it and still land.
-
-| what | the bound, and where it comes from |
-| --- | --- |
-| one tool batch | `time.Until(deadline) − pace.reserve()`, in `loopState.toolRoom` |
-| **the landing reserve** | `pace.reserve()` = the slowest model call THIS leaf has completed **plus** the slowest transcript flush THIS leaf has taken |
-| the landing itself | one call with no tools on the wire, which is the same shape the reserve was measured as |
-
-Both halves are read rather than chosen. Landing is exactly those two things
-happening once more — one call in which the leaf says where it got to, one write
-that puts it on disk — so a leaf on a slow machine measures a slow machine and
-reserves accordingly, with nothing to configure. The reserve holds the WORST
-observation of each rather than a mean, because the honest answer to "will there
-be enough time" is the worst this leaf has seen; a mean would under-reserve
-exactly on the run where the machine is getting slower. It is zero until the
-first call and the first flush have happened, which is correct: a tool call can
-only be asked for by a model that has already answered once.
-
-A cut command returns `cut after 9m12s; output so far: …` with everything the
-accumulator had — the output is streamed as the command writes it
-(`newOutputAccumulator`, `StreamingShell`), so a runner cut at nine minutes still
-names every check it reached. The duration leads because it is the fact the model
-acts on: "this command is too big for this leaf on this machine" is an
-instruction to scope it, where "aborted" invites the same command again. The
-process GROUP is killed, so a cut leaves no runaway child.
-
-Pinned by `internal/exec/bare/room_test.go`.
 
 ### A node watchdog that reads evidence of life
 
@@ -1697,8 +1633,8 @@ absence that means five things at once. Pinned by
 
 ## The generalist leaves a record
 
-`exec.TranscriptFrom` had **one reader in the tree** — `internal/exec/bare` — so
-the default worker every unrouted node gets recorded nothing durable at all. ink
+`exec.TranscriptFrom` had **one reader in the tree**, and it was not the leaf
+belt — so the worker every unrouted node gets recorded nothing durable at all. ink
 s9 ran three leaves on it and left a store with zero transcript rows, which is
 why `resident.BankedRun` found nothing, why every continuation started cold, and
 why the resumption the lease lane built could never fire on the belt that

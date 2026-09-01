@@ -905,9 +905,10 @@ stay true.
 **Drag a picture onto the terminal, or paste one you copied as a file, and aforge
 attaches it.** What the terminal actually hands over is the file's *path* as pasted
 text — `/var/folders/.../Screenshot 2026-08-21 at 5.21.40 PM.png`, usually with its
-spaces backslashed, sometimes quoted, sometimes as a `file://` URL. aforge reads all
-three shapes, and reads several files dropped at once, separated by spaces or by
-newlines.
+spaces backslashed, sometimes quoted, sometimes as a `file://` URL, and sometimes with
+raw spaces or `%20` escapes. aforge reads every shape, including the narrow no-break
+space in a macOS screenshot name, and reads several files dropped at once, separated by
+spaces or by newlines.
 
 **Your sentence gets `[image #1]`, not the path.** The picture goes on the tray and a
 short token takes its place in the message box, numbered in the order the pictures
@@ -921,10 +922,10 @@ first picture in the message, so the number you read is the picture it is lookin
 to the end of your sentence when you press `enter`, so "image 2" means the same thing
 whichever way the picture got there.
 
-**It is all or nothing, on purpose.** A paste is treated as pictures only when *every*
-word in it names one of the five picture types **and that file exists on this machine**.
-A sentence that mentions a `.png`, a diff, a stack trace, a log — all of it goes into
-the message box as the text it plainly is, which is what pasting has always done.
+**It is all or nothing, on purpose.** A paste is treated as attachments only when one
+complete terminal reading of it names real files **on this machine**. A sentence that
+mentions a `.png`, a diff, a stack trace, a log — all of it goes into the message box as
+the text it plainly is, which is what pasting has always done.
 A paste over a line that starts with `/` is left as text too, so `/image ` and
 `/export ` still take a path.
 
@@ -947,7 +948,9 @@ a file first, then drag that in, or use `/image <path>`.
 A dragged or pasted picture is measured **at the moment you drop it**, and one over the
 ceiling is refused there rather than attached and refused later. Nothing is lost when
 that happens: the path stays in your message box as the text it arrived as, so you can
-still ask aforge to look at the file where it lies.
+still ask aforge to look at the file where it lies. Pressing `enter` on that retained
+absolute path repeats the attachment refusal; it is not treated as an unknown slash
+command and the path remains in the box.
 
 A picture that is dragged in but **does not exist on this machine** is not refused at
 all — the paste was never a picture, so the text goes into the message box unchanged
@@ -971,11 +974,27 @@ words, which is why the path is rooted on your **local** machine even on a remot
 session. If the model you are talking to cannot see, the picture is shown to a model
 that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
 can see, the message is refused before anything is sent and your pictures stay on the
-tray. The tray is not rendered as a picture — a terminal cell is not a place to show
-one.
+tray. Once the message is sent, the transcript keeps the numbered marker and draws a
+small thumbnail of each picture under your line.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.
+
+## Do I see my own screenshot in the conversation?
+
+Yes. After you send a message with pictures, each one is drawn under your line in tray
+order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
+`[image #1]` and still clickable as the file door.
+
+Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
+border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
+the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
+screen-reader display, a very narrow row, or when the file is missing or unreadable, no
+thumbnail is added and the marker remains exactly as it was.
+
+This applies to a live message, a resumed conversation while the referenced file is
+available, and a task room's journal. A waiting message in the parked block remains its
+words and markers; its picture appears after that message is actually sent.
 
 ## Completing a path with `@`
 

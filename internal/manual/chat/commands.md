@@ -1465,12 +1465,8 @@ every row and every door onto them.
 after", "task countdown", "who settles work that needs a look".
 
 **Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
-work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task model",
-"workers".
-
-**"workers"** is which workers this install may hand a piece of work to, separated by
-commas — blank is all of them, which is the default. It is how you turn a specialist off;
-*How work on its own actually runs* has the whole of it.
+work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task
+model".
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "task column", "hints" — the one-line tips above the

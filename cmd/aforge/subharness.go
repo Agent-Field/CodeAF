@@ -15,111 +15,24 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
-	barepkg "github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/swepro/codeaf"
 )
 
-// This is the surface's half of the subharness contract: which workers this
-// build has, and how one is constructed for a particular leaf.
+// This is the surface's half of the leaf contract: how the worker is
+// constructed for a particular leaf.
 //
-// The description of a worker — its purpose, its ruler, its budget shape — is a
-// fact about the process and lives in exec. What lives here is the wiring a
-// worker needs to actually run: a provider client, the job's workspace, the
-// store it reports through. Those are the surface's, and no two surfaces build
-// them the same way, which is exactly why the table is a table of constructors
-// and not a table of executors.
-//
-// Wave one shipped one entry, and that was the point: the seam had to be
-// load-bearing before the second worker existed, or the second worker would
-// have arrived as a rewrite of every dispatch path instead of a registration.
-// swe is the proof — it is two lines here and one file beside this one.
+// The description of the worker — its ruler, its budget shape — is a fact about
+// the process and lives in exec. What lives here is the wiring it needs to
+// actually run: a provider client, the job's workspace, the store it reports
+// through. Those are the surface's, and no two surfaces build them the same
+// way, which is why this is a constructor and not an executor.
 
-// buildWorkers is every worker this binary can construct, in the order it
-// declares them. It is the ONE list: [installSubharnesses] registers from it,
-// the roster row's receipt reports it, and the roster is filtered against it —
-// so adding a worker is still a line here and a line in leafExecutors, and the
-// new worker is on every profile's roster the day it is declared.
-func buildWorkers() []exec.SubharnessInfo {
-	return []exec.SubharnessInfo{sweInfo(), bareInfo()}
-}
-
-// installSubharnesses declares this build's workers to the whole process. It is
-// called once, before any command runs, so every surface — chat, do, run, wake
-// — sees the same menu and the same rulers.
-//
-// IT REGISTERS THE ROSTER AND NOT THE BUILD. A profile that names a subset gets
-// that subset registered and nothing else, and the absence does the rest with no
-// help from anybody: an unregistered worker is off exec.MenuText, so the
-// compiler never sees it; exec.KnownSubharness says no, so the resident's
-// escalation ladder cannot climb to it and executorFor degrades to the
-// generalist; and `--subharness <name>` answers with the flag's own
-// not-in-this-build sentence. A capability that cannot work is absent, not
-// broken, and this is that law applied to a whole worker.
-func installSubharnesses() {
-	installWorkerRoster(config.WorkersAt(os.Getenv("AFORGE_PROFILE_DIR")), os.Stderr)
-}
-
-// installWorkerRoster is [installSubharnesses] with its two inputs named, so a
-// test can hand it a roster without writing a profile or the environment.
-//
-// The catalog hook is seated FIRST and from the whole build rather than from the
-// roster: the settings row exists so somebody can see which worker they turned
-// off and turn it back on, and a row that could only list what is already
-// installed would be a row that hides the name a person needs.
-func installWorkerRoster(roster string, stderr io.Writer) {
-	workers := buildWorkers()
-	config.UseInstalledWorkers(func() []string { return workerNames(buildWorkers()) })
-
-	// The generalist is a name the roster may say and never a worker the roster
-	// installs: it is not a registered subharness at all (internal/plan's
-	// size.go — the baseline every node is judged against, never an entry on a
-	// menu), so it is always there whatever this line says. It is on the known
-	// list only so that a person who writes "linear" is answered with the
-	// generalist rather than with a note about a name nobody recognises.
-	known := append([]string{exec.LinearSubharness}, workerNames(workers)...)
-	kept, unknown := config.WorkerRoster(roster, known)
-	if len(unknown) > 0 && stderr != nil {
-		fmt.Fprintf(stderr, "note: no worker named %s — this build has: %s\n",
-			strings.Join(quoteAll(unknown), ", "), strings.Join(workerNames(workers), ", "))
-	}
-
-	install := map[string]bool{}
-	for _, name := range kept {
-		install[name] = true
-	}
-	for _, info := range workers {
-		if install[info.Name] {
-			exec.RegisterSubharness(info)
-		}
-	}
-}
-
-// workerNames is the build's workers as the names a person writes.
-func workerNames(workers []exec.SubharnessInfo) []string {
-	names := make([]string, 0, len(workers))
-	for _, info := range workers {
-		names = append(names, info.Name)
-	}
-	return names
-}
-
-// quoteAll puts a person's own spelling in quotes, so a roster line with a
-// stray word reads back as the word rather than dissolving into the sentence.
-func quoteAll(names []string) []string {
-	quoted := make([]string, 0, len(names))
-	for _, name := range names {
-		quoted = append(quoted, fmt.Sprintf("%q", name))
-	}
-	return quoted
-}
-
-// leafBuild is everything a worker needs to be constructed for one leaf. It is
-// the linear executor's own argument list, named, because that list is the
-// definition of what a leaf's worker is given and a second worker is given no
-// less.
+// leafBuild is everything the worker needs to be constructed for one leaf. It
+// is the executor's own argument list, named, because that list is the
+// definition of what a leaf's worker is given, and every surface has to hand
+// over the same one.
 type leafBuild struct {
 	settings  config.Config
 	client    exec.Completer
@@ -130,16 +43,13 @@ type leafBuild struct {
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
-	// model names what this leaf runs on, in aforge's spelling. The generalist
-	// never needed it — its client already is that model — but a worker that
-	// drives a separate process has to be able to say the name out loud, and a
-	// specialist quietly substituting its own vendor defaults would make the
-	// router's ledger a record of models nobody chose.
+	// model names what this leaf runs on, in aforge's spelling. It is what the
+	// router's ledger is keyed on, so it travels with the build rather than
+	// being read back off the client.
 	model string
-	// models is the provider's own catalog, carried for one question: what
-	// concrete model a floating alias stands for. Only a worker that hands the
-	// name to another process needs the answer, and only the surface has the
-	// catalog, so it is threaded rather than looked up in exec.
+	// models is the provider's own catalog, carried for one question: how large
+	// this leaf's window is. Only the surface has the catalog, so it is threaded
+	// rather than looked up in exec.
 	models *catalog.Catalog
 	// fanIn is what actually landed into this leaf, measured once at claim time.
 	// Zero is the honest value for a leaf nothing fed, and it is what every
@@ -152,11 +62,12 @@ type leafBuild struct {
 	// building the leaf can actually act on what the leaf asks for.
 	//
 	// Only the resident settles leaves through the path that grows the graph
-	// from a split request. The one-shot headless runner reaches this same
-	// table — that is the covenant, and it is what stops a worker existing on
-	// one surface and not the other — but its settlement has no cooperative
-	// arm, so a leaf armed there would be handed a verb whose answer is
-	// silence. A capability that cannot work is absent, not broken.
+	// from a split request. The one-shot headless runner builds its leaves from
+	// this same struct — that is the covenant, and it is what stops a leaf
+	// behaving differently on one surface than on the other — but its
+	// settlement has no cooperative arm, so a leaf armed there would be handed
+	// a verb whose answer is silence. A capability that cannot work is absent,
+	// not broken.
 	swarm bool
 }
 
@@ -297,126 +208,35 @@ func foldGrant(window, turns, pushed, ceiling int) (int, int) {
 	return turns, tokens
 }
 
-// leafExecutors is name-to-constructor: what a surface calls when a node says
-// it wants a particular worker. Linear's entry builds exactly what every leaf
-// has always been built with, so routing through the table changes nothing for
-// the leaf that takes the default.
-var leafExecutors = map[string]func(leafBuild) exec.Executor{
-	exec.LinearSubharness: func(build leafBuild) exec.Executor {
-		// The catalog is already here for the specialist's sake, and it answers
-		// one more question the generalist needs: how much this leaf's model can
-		// hold, which is what its observation window is sized from. Threaded
-		// rather than looked up in exec, for the same reason the model name is —
-		// the surface owns the catalog, and the loop is handed facts.
-		return exec.NewLinear(build.client, build.workspace, build.web,
-			build.maxTurns, build.maxTokens, build.deadline).
-			WithStore(build.graph).WithMedia(build.media).
-			WithAttribution(config.AttributionAt(build.settings.ProfileDir)).
-			// The cooperative division verb: on when the person turned the mode
-			// on AND the surface holding this leaf can act on what it asks for.
-			// See leafBuild.swarm.
-			WithSwarm(build.swarm && build.settings.Swarm).
-			WithContextLength(build.models.ContextLength(build.model))
-	},
-	// The coding pipeline takes none of the leaf loop's wiring, because it
-	// shares none of it: no provider client (it opens its own connections from
-	// the key), no toolbox, no store. What it needs is the workspace, the
-	// model this leaf was promised, the credentials to reach it, and a clock.
-	exec.SWESubharness: func(build leafBuild) exec.Executor {
-		return exec.NewSWE(build.workspace, engineModelID(build.models, build.model),
-			build.settings.APIKey, build.settings.BaseURL, build.deadline).
-			WithMaxCost(sweMaxCost(os.Getenv)).
-			WithAttribution(config.AttributionAt(build.settings.ProfileDir))
-	},
-	// The bare worker takes the same workspace, model, key, and clock the
-	// coding pipeline takes, because it opens its own provider client from
-	// them. It is the cheapest whole-taker: the same four tools, a lighter
-	// prompt, no aforge contract or cache key. The model is resolved through
-	// the same engineModelID path so the name a second process would look up
-	// is the one the provider actually serves.
-	//
-	// It carries no attribution wiring, and needs none: the client it opens
-	// stamps the app onto every OpenRouter request from the constants in
-	// internal/provider, so a worker that builds its own client cannot spend
-	// tokens under no app — which is exactly what this one did while the
-	// attribution travelled as three copied config fields.
-	barepkg.BareSubharness: func(build leafBuild) exec.Executor {
-		// The journal, so the readings this worker takes of the project's own
-		// checks leave a row an autopsy can read. It is the one piece of
-		// graph-level wiring the bare worker takes, and it changes nothing
-		// about what it does: a fail-safe that leaves no record cannot be
-		// autopsied (docs/design/failsafe/FAILSAFE.md clause 4).
-		return barepkg.New(build.workspace, engineModelID(build.models, build.model),
-			build.settings.APIKey, build.settings.BaseURL, build.deadline).
-			WithStore(build.graph)
-	},
+// buildLinear constructs the worker for one leaf. It is a function of leafBuild
+// rather than an open-coded call at each dispatch site because every surface has
+// to build the leaf's executor from the same argument list, or the two surfaces
+// drift apart one field at a time.
+func buildLinear(build leafBuild) exec.Executor {
+	// The catalog answers the one question the loop needs and cannot look up
+	// itself: how much this leaf's model can hold, which is what its
+	// observation window is sized from. Threaded rather than read in exec, for
+	// the same reason the model name is — the surface owns the catalog, and the
+	// loop is handed facts.
+	return exec.NewLinear(build.client, build.workspace, build.web,
+		build.maxTurns, build.maxTokens, build.deadline).
+		WithStore(build.graph).WithMedia(build.media).
+		WithAttribution(config.AttributionAt(build.settings.ProfileDir)).
+		// The cooperative division verb: on when the person turned the mode
+		// on AND the surface holding this leaf can act on what it asks for.
+		// See leafBuild.swarm.
+		WithSwarm(build.swarm && build.settings.Swarm).
+		WithContextLength(build.models.ContextLength(build.model))
 }
 
-// engineModelID is the leaf's model in the spelling a second process can look
-// up, and it exists because of one live failure that cost nothing and told us
-// everything: `models.dev: model "deepseek/deepseek-v4-flash-latest" not found
-// for provider "openrouter"` — the engine dead at startup, $0 spent, on the
-// default model of every aforge install.
-//
-// A floating alias is a real OpenRouter id, which is why every linear leaf in
-// the product runs on one without noticing. It is not a models.dev id, and the
-// engine prices its calls from models.dev. The alias has to be resolved on this
-// side of the process boundary, where the catalog that knows about aliases
-// lives; exec stays generic and is handed a name.
-//
-// Resolution that fails passes the name through untouched. A model nobody chose
-// must never enter the pools, so the failure mode is the engine's own error
-// message about the id it was actually given — not a quiet substitution of some
-// near neighbour that happens to be in a catalog.
-//
-// The engine's catalog is asked, one id at a time, which spelling it actually
-// has (sweModelResolver). Translating blind is how this broke a second time:
-// the dated canonical slug OpenRouter publishes for a model is, for models.dev,
-// a name nobody has ever heard of, so the translation that was supposed to
-// rescue the alias killed the plain id instead. A substitution now has to be
-// confirmed by the catalog it is being made for.
-func engineModelID(models *catalog.Catalog, model string) string {
-	model = strings.TrimSpace(model)
-	if models == nil || model == "" {
-		return model
-	}
-	resolver, _ := sweModelResolver()
-	return models.Concrete(model, resolver)
-}
-
-// sweModelProbeTimeout bounds the one catalog read a translation may cost. At
-// steady state models.dev is a file the engine already refreshed and this is
-// microseconds; on a cold install it is a fetch, and a leaf must not wait on a
-// diagnostic longer than it would wait to be told the model is fine.
-const sweModelProbeTimeout = 5 * time.Second
-
-// sweModelResolver is the engine's own catalog, asked from this side of the
-// process boundary. It returns nil and an error when the catalog cannot be
-// reached at all, which Concrete reads as "nobody can say" rather than "the
-// model is missing" — the difference between forwarding what a person chose and
-// substituting a spelling nothing has confirmed.
-//
-// It is a variable for the same reason loadChatPrefs is: a test has to be able
-// to answer for the engine without the engine, and without the network.
-var sweModelResolver = func() (catalog.Resolves, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), sweModelProbeTimeout)
-	defer cancel()
-	resolver, err := codeaf.ModelResolver(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return catalog.Resolves(resolver), nil
-}
-
-// executorFor builds the worker one leaf was promised, degrading to the
-// generalist for a name this build cannot construct. The degradation is the
-// same one Registry.For makes and is made here for the same reason: a node that
-// names a worker we do not have should still get its work done.
+// executorFor builds the worker one leaf was promised. There is one worker, so
+// the answer never depends on the name — but the name still arrives, out of
+// stores written when it could, and this is the door that resolves it. The
+// degradation is the same one Registry.For makes and is made here for the same
+// reason: a node that names a worker we do not have should still get its work
+// done.
 func executorFor(subharness string, build leafBuild) exec.Executor {
-	if construct, ok := leafExecutors[strings.TrimSpace(subharness)]; ok && exec.KnownSubharness(subharness) {
-		return construct(build)
-	}
-	return leafExecutors[exec.LinearSubharness](build)
+	return buildLinear(build)
 }
 
 // runningWorker is THE SEAM. It builds the worker one node will actually be run
@@ -425,13 +245,12 @@ func executorFor(subharness string, build leafBuild) exec.Executor {
 // node, and the executor the resolution above just settled on.
 //
 // It exists because the two facts were never the same column and one of them
-// was never written at all. `nodes.subharness` is an ASSIGNMENT — what the
-// compiler asked for — and the compiler asks for nothing on the great majority
-// of nodes, so an autopsy of a run where nobody routed anything reads a table
-// of blanks. Every node of the s9 sweep's ink and igel stores said exactly that,
-// and the sweep's diagnosis cost a day to a question the store could not answer:
-// WHO DID THE WORK. It answers it now, here, and the generalist answers "linear"
-// rather than leaving the blank that also means "nobody ran this".
+// was never written at all. `nodes.subharness` is an ASSIGNMENT and nothing
+// writes one, so an autopsy of a run read a table of blanks. Every node of the
+// s9 sweep's ink and igel stores said exactly that, and the sweep's diagnosis
+// cost a day to a question the store could not answer: WHO DID THE WORK. It
+// answers it now, here, and it answers "linear" rather than leaving the blank
+// that also means "nobody ran this".
 //
 // [executorFor] stays the pure resolution it always was, and after this it has
 // one caller in the surface. That is a law and not a convenience: a dispatch
@@ -446,7 +265,7 @@ func runningWorker(nodeID, promised string, build leafBuild, reason string) exec
 		// somebody has to know to open. A benchmark cell that silently became a
 		// default cell is a measurement of the wrong thing, and this is the row
 		// that tells whoever reads the store afterwards which of the two it was.
-		reason = "promised " + strings.TrimSpace(promised) + "; this build has no such worker"
+		reason = "promised " + strings.TrimSpace(promised) + "; ran linear, and this build has one worker"
 	}
 	recordRunningWorker(build.graph, nodeID, ran, reason)
 	return worker
@@ -464,75 +283,55 @@ func recordRunningWorker(graph *store.Store, nodeID, subharness, reason string) 
 	}
 }
 
-// registerLeafExecutors fills a scheduler's registry with every worker this
-// build can construct for the run in hand. The headless scheduler resolves a
-// node's choice through the registry rather than through executorFor, so this
-// is the same table reaching the other dispatch path — the two-surface covenant
-// in one function.
+// registerLeafExecutors gives a scheduler's registry the worker this build
+// constructs for the run in hand. The headless scheduler resolves a node's leaf
+// through the registry rather than through executorFor, so this is the same
+// constructor reaching the other dispatch path — the two-surface covenant in
+// one function.
 func registerLeafExecutors(registry *exec.Registry, build leafBuild) {
-	for _, info := range exec.Subharnesses() {
-		construct, ok := leafExecutors[info.Name]
-		if !ok {
-			// Described but not constructible on this surface. Nothing is
-			// registered, so Registry.For hands its leaves to the generalist.
-			continue
-		}
-		// Each worker gets its own budget shape, here as well as in the
-		// resident, because a headless registry is built once for a whole run:
-		// the generalist's fifteen-minute hang backstop applied to a coding
-		// pipeline is not a backstop, it is a guillotine at the first merge.
-		shaped := build
-		shaped.deadline = info.Deadline(build.maxTokens)
-		registry.Register(construct(shaped))
-	}
+	// The budget shape belongs to the worker rather than to the leaf, and it is
+	// applied here as well as in the resident because a headless registry is
+	// built once for a whole run.
+	shaped := build
+	shaped.deadline = exec.SubharnessFor(exec.LinearSubharness).Deadline(build.maxTokens)
+	registry.Register(buildLinear(shaped))
 	registerSubharnessRunners(registry, build)
 }
 
-// registerSubharnessRunners is the same table reaching the SUBHARNESS half of
-// the registry: every worker this build can construct, fronted as a typed
-// program under the contract in docs/SUBHARNESS-CONTRACT.md.
+// registerSubharnessRunners is the same constructor reaching the SUBHARNESS half
+// of the registry: the worker this build constructs, fronted as a typed program
+// under the contract in docs/SUBHARNESS-CONTRACT.md.
 //
-// IT IS THE SAME TABLE AND THE SAME CONSTRUCTORS, deliberately. A worker fronted
-// here and the worker a leaf gets from [executorFor] are built from one line of
-// code, so `linear` reached by name from `/subharness` is the same generalist a
-// node with no worker is handed — which is what makes the deoptimization path
-// honest, because falling back to the long way has to mean falling back to the
-// worker the person would otherwise have had.
+// IT IS THE SAME CONSTRUCTOR, deliberately. The worker fronted here and the
+// worker a leaf gets from [executorFor] are built from one line of code, so
+// `linear` reached by name is the same worker a node with no name is handed —
+// which is what makes the deoptimization path honest, because falling back to
+// the long way has to mean falling back to the worker the person would
+// otherwise have had.
 //
-// THE GENERALIST IS REGISTERED TOO, and it is the one entry [exec.Subharnesses]
-// deliberately does not list — a menu with one entry is no menu, and linear is
-// never on one. But it is a NAME the deopt path resolves and the headless runner
-// may be pointed at, so the lookup has to reach it. It stays off every list a
-// person reads, which is the list's business rather than the registry's.
+// THE GENERALIST IS NEVER ON A LIST. It is a NAME the deopt path resolves and
+// the headless runner may be pointed at, so the lookup has to reach it, and it
+// stays off every list a person reads — which is the list's business rather
+// than the registry's.
 //
-// A worker that cannot be fronted is skipped in silence, the same way one that
-// cannot be constructed already is: nothing is registered, and the name simply
-// is not a subharness on this surface.
+// A worker that cannot be fronted is skipped in silence: nothing is registered,
+// and the name simply is not a subharness on this surface.
 func registerSubharnessRunners(registry *exec.Registry, build leafBuild) {
-	front := func(info exec.SubharnessInfo) {
-		construct, ok := leafExecutors[info.Name]
-		if !ok {
-			return
-		}
-		shaped := build
-		shaped.deadline = info.Deadline(build.maxTokens)
-		runner, err := exec.FrontExecutor(construct(shaped), exec.LeafManifest(info))
-		if err != nil {
-			return
-		}
-		_ = registry.RegisterRunner(runner)
+	info := exec.SubharnessFor(exec.LinearSubharness)
+	shaped := build
+	shaped.deadline = info.Deadline(build.maxTokens)
+	runner, err := exec.FrontExecutor(buildLinear(shaped), exec.LeafManifest(info))
+	if err != nil {
+		return
 	}
-	front(exec.SubharnessFor(exec.LinearSubharness))
-	for _, info := range exec.Subharnesses() {
-		front(info)
-	}
+	_ = registry.RegisterRunner(runner)
 }
 
-// installMeasuredRulers seats every worker's ruler from that worker's own
-// measured history, and hands back the generalist's profile because that is the
-// one every caller goes on to read for prices and spreads.
+// installMeasuredRulers seats the ruler from the worker's own measured history,
+// and hands back its profile because that is the one every caller goes on to
+// read for prices and spreads.
 //
-// A worker with no file yet keeps the prior it registered with, which is what
+// A machine with no file yet keeps the prior it registered with, which is what
 // an empty Anchors already means everywhere else.
 //
 // It is also where model identity is seated, and that is not a coincidence: this
@@ -543,16 +342,8 @@ func registerSubharnessRunners(registry *exec.Registry, build leafBuild) {
 // function exists to prevent one file at a time.
 func installMeasuredRulers(settings config.Config, model string) *profile.Profile {
 	profile.UseIdentity(sharedCatalog(settings).Identity)
-	profileDir := settings.ProfileDir
-	measured, _ := profile.Load(profileDir, model, exec.LinearSubharness)
+	measured, _ := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
 	plan.UseAnchors(measured.Anchors)
-	for _, info := range exec.Subharnesses() {
-		specialist, err := profile.Load(profileDir, model, info.Name)
-		if err != nil {
-			continue
-		}
-		plan.UseAnchorsFor(info.Name, specialist.Anchors)
-	}
 	return measured
 }
 
@@ -576,54 +367,6 @@ var sharedCatalog = func() func(config.Config) *catalog.Catalog {
 		return resolved
 	}
 }()
-
-// profileSubharness is the file a measurement belongs in. Every measurement
-// belongs in exactly one, and an unregistered name belongs in the generalist's:
-// the leaf did run on the generalist, because that is what Registry.For handed
-// it, and a record has to describe what happened rather than what was asked
-// for. Reflex and direct buckets stay linear-only for the same reason — those
-// rungs have no specialist to be measured against.
-func profileSubharness(name string) string {
-	if exec.KnownSubharness(name) {
-		return strings.TrimSpace(name)
-	}
-	return exec.LinearSubharness
-}
-
-// withBoundaryEvidence is the one comparison no single worker can make about
-// itself: what this run cost against what the generalist's ordinary leaf costs.
-//
-// A specialist knows whether a job sat inside its own envelope — it says so in
-// Outcome.Calibration — but "inside my envelope" and "cheaper than the ordinary
-// worker's median leaf" are different claims, and only the second one says the
-// boundary between the two rulers is in the wrong place. A specialist run that
-// came in under the generalist's median is a specialist that was reached for
-// when the generalist would have done, and that is the boundary-too-low half of
-// the evidence the recalibration call needs to move the seam in both directions.
-//
-// It is written generically and it has to be: the comparison is "any worker that
-// is not the baseline, against the baseline", which is a fact about the registry
-// and not about any worker's name. Nothing here may ask which specialist this is
-// — the grep law is not decoration, it is what keeps the next specialist a
-// registration instead of a rewrite.
-func withBoundaryEvidence(settings config.Config, model, worker string, record profile.Record) profile.Record {
-	if worker == exec.LinearSubharness || record.Cost <= 0 {
-		return record
-	}
-	generalist, err := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
-	if err != nil {
-		return record
-	}
-	median := medianProfileCost(generalist)
-	if median <= 0 || record.Cost >= median {
-		return record
-	}
-	record.Calibration = append(record.Calibration, fmt.Sprintf(
-		"it cost $%.4f, under the default worker's median leaf at $%.4f — "+
-			"work this cheap may not have needed a specialist, and the boundary may sit too high",
-		record.Cost, median))
-	return record
-}
 
 // promisedWorker is the node's own answer to "who runs this", read in the order
 // admission settled it: the row's worker where there is one, the subtree's
@@ -713,51 +456,17 @@ func degradedWorker(worker string) bool {
 	return worker != "" && worker != exec.LinearSubharness && !exec.KnownSubharness(worker)
 }
 
-// noteUnavailableWorker is the one sentence a build owes a node whose promised
-// worker it does not have. The work still gets done on the generalist — the
-// registry's promise is degradation, never failure — but silent degradation is
-// how a measurement of the specialist becomes a measurement of the default
-// wearing its name. The registry, the store and exec stay quiet by law; saying
-// it is the surface's job, and this is the surface's sentence.
+// noteUnavailableWorker is the one sentence a build owes a node whose stored
+// row names a worker it does not have. Such rows exist: a graph written before
+// this build resumes in it, and its nodes still carry the name they were given.
+// The work gets done — the registry's promise is degradation, never failure —
+// but silent degradation is a run reading as something it was not. The
+// registry, the store and exec stay quiet by law; saying it is the surface's
+// job, and this is the surface's sentence.
 func noteUnavailableWorker(stderr io.Writer, worker string) {
 	if stderr == nil {
 		return
 	}
-	fmt.Fprintf(stderr, "note: worker %q not in this build; ran linear\n", strings.TrimSpace(worker))
-}
-
-// resolveSubharnessFlag reads what a person typed on the command line. An
-// unknown name is a note on stderr and the default worker, never a refusal: the
-// flag exists for measurement runs, and a benchmark that dies at argument
-// parsing because a build shipped without one worker has wasted more than the
-// measurement was worth.
-//
-// An empty flag is the only "nothing was forced". `--subharness linear` is a
-// forcing like any other, and it returns the generalist's name rather than
-// nothing at all — the arm of a benchmark that measures the default worker is
-// the arm that has to be able to insist on it. While the two were both the
-// empty string, that arm did not exist: the compiler read a coding-shaped ask,
-// chose the coding pipeline, and the flag that was supposed to hold the worker
-// fixed was the one variable it could not hold.
-func resolveSubharnessFlag(name string, stderr io.Writer) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	if exec.GeneralistSubharness(name) {
-		return exec.LinearSubharness
-	}
-	if exec.KnownSubharness(name) {
-		return name
-	}
-	available := "none are registered in this build"
-	if registered := exec.Subharnesses(); len(registered) > 0 {
-		names := make([]string, 0, len(registered))
-		for _, info := range registered {
-			names = append(names, info.Name)
-		}
-		available = "this build has: " + strings.Join(names, ", ")
-	}
-	fmt.Fprintf(stderr, "no subharness named %q — %s; running on the default worker\n", name, available)
-	return ""
+	fmt.Fprintf(stderr, "note: %q is not a worker; ran linear, and this build has one worker\n",
+		strings.TrimSpace(worker))
 }

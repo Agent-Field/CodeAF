@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed furrow test test-packed-manual test-swepro test-remote vet check size clean \
+.PHONY: all build debug demo-home embed furrow test test-packed-manual test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -20,24 +20,13 @@ BUILDINFO := github.com/Agent-Field/aforge-v2/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
 MANUAL_TAG := aforge_packed_manual
 
-# The imported swe-pro engine (internal/swepro) arrived with fifteen tests
-# already failing on macOS in a clean upstream checkout — /var-vs-/private/var,
-# a case-insensitive filesystem, JS float-rounding parity — and fixing them was
-# not on the way in. Until they are fixed they are not aforge's end-of-change
-# ritual. The exclusion is only this narrow: `go build ./...` and
-# `go vet ./...` still cover internal/swepro and both are green, and the
-# embedding's own divergences are covered from outside the tree by
-# cmd/aforge/swepro_test.go, which drives the real binary. This is a to-do,
-# not a policy — see internal/swepro/EMBEDDING.md.
-AFORGE_PKGS = $(shell go list ./... | grep -v '/internal/swepro/')
-
-# The packed corpora — the two manuals, the baked agent roster, the engine's
-# prompt assets. Each folder is the source of truth and the archive beside it is
-# generated from it (internal/packed says why), so a build that skipped this
-# could ship yesterday's manual. The manual archives are ignored build products
-# because one committed binary edited by every manual change conflicts on every
-# merge. The other archives remain tracked and their tests catch drift.
-PACKED_PKGS = ./internal/manual ./internal/swepro/internal/baked ./internal/swepro/internal/assets
+# The packed corpora — the two manuals. Each folder is the source of truth and
+# the archive beside it is generated from it (internal/packed says why), so a
+# build that skipped this could ship yesterday's manual. The packer is a pure
+# function of the folder, so regenerating on every build rewrites identical
+# bytes and leaves the tree clean — cheaper to trust than a freshness check, and
+# the test beside each corpus asserts the same thing for `make test`.
+PACKED_PKGS = ./internal/manual
 
 all: build
 
@@ -84,11 +73,11 @@ furrow:
 # -trimpath drops the build machine's absolute paths out of the binary. The
 # build stamp deliberately gives separate builds separate bytes, but neither
 # carries the machine-specific repository root. What trimming costs is
-# compiled-in repository roots — runtime.Caller in
-# internal/swepro's furrow and weave lookups walks up from its own source file
-# to find vendor/bin/<tool>. There is no vendor/ in this repository, and a
-# shipped binary's compiled-in root never exists on the machine running it, so
-# both lookups already fell through to the cwd copy and then to PATH.
+# compiled-in repository roots: a lookup that walks up from its own source file
+# with runtime.Caller can no longer find a tool checked in beside the tree. A
+# shipped binary's compiled-in root never exists on the machine running it
+# anyway, so any such lookup has to fall through to the copy beside the cwd and
+# then to PATH — which is what it does here.
 build: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
@@ -96,7 +85,7 @@ debug: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
 test:
-	go test $(AFORGE_PKGS)
+	go test ./...
 
 # Exercise the source mode the shipped binary uses. Ordinary Go commands embed
 # the Markdown directly so a clean checkout compiles without generated files;
@@ -104,11 +93,6 @@ test:
 test-packed-manual: embed
 	go test -tags=$(MANUAL_TAG) ./internal/manual
 
-# The engine's own suite. Run it when you change internal/swepro, and compare
-# against `go test ./...` in a clean upstream checkout: at import, the two
-# failure sets were equal, which is what proved the import changed nothing.
-test-swepro:
-	go test ./internal/swepro/...
 
 # TWO MACHINES, ACTUALLY TWO. Three containers on one network — a scripted
 # model, an engine with sshd, and a surface — sharing no path, no home and no

@@ -284,21 +284,6 @@ type Growth struct {
 	// plans a remainder; the cooperative path needs it to plan a division, and
 	// those are different questions asked of the same call.
 	Goal string
-
-	// KeepEnvelope leaves the worker choice exactly as the caller made it,
-	// instead of climbing the generalist ladder from the envelope that just
-	// ended. False — every caller that existed before the cooperative path —
-	// keeps escalateContinuation, which is what a continuation of an exhausted
-	// leaf needs.
-	//
-	// The ladder's premise is that an exhaustion is evidence the sitting was
-	// bigger than the envelope, so repeating the envelope pays to learn the
-	// same lesson twice. A cooperative split is the opposite evidence: nothing
-	// ran out, the leaf handed its grant back, and each part is smaller than
-	// what the leaf was holding. Escalating those would provision every part of
-	// a division against a failure that did not happen — and it would overwrite
-	// the envelope the division's own sizing pass chose for each part.
-	KeepEnvelope bool
 }
 
 func (g Growth) reason() string {

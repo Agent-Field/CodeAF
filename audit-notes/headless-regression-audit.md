@@ -1,5 +1,8 @@
 # Headless regression audit — `chat-v2` vs trunk
 
+> Superseded by #227: there is one worker; `--subharness`, `swe` and `bare` no
+> longer exist.
+
 Investigation only. No fixes landed. Working tree untouched.
 
 - Window audited: `subharness-m1` (5d64d88) → `chat-v2` (61923d7), 209 commits.

@@ -305,13 +305,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why were the files my task saved called unverified", "how-tasks-run"},
 		// And the other half: a fork whose hands declared their files in full and
 		// were refused every single write.
-		// The worker roster, asked the four ways somebody meets it: the two
-		// sentences the person who wanted it actually said, the config line
-		// they went looking for, and the note a typo in that line prints.
-		{"only use the normal workers", "how-tasks-run"},
-		{"turn off the specialist worker", "how-tasks-run"},
-		{"stop it using swe", "how-tasks-run"},
-		{"which workers are installed", "how-tasks-run"},
 		{"how do I say which files each hand may write", "tasks"},
 		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
@@ -437,6 +430,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
+		{"do I see my own screenshot in the conversation", "keys"},
 		// The wave that made a dropped file attach: the words people use for it
 		// are "drag", "drop" and the token they then find in their own sentence.
 		{"can I drag and drop an image into the message box", "keys"},
@@ -737,6 +731,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The proposal's own forming card is a different block from `/task`'s
+		// shaping line. Its still head mark is deliberate; the row below must move.
+		{"the proposal card is frozen", "tasks"},
+		{"the forming card is not moving", "tasks"},
 		// The wait a person can now see into: the preview row under the phase
 		// row, asked the three ways somebody meets it — wanting it, describing
 		// it, and asking what the extra line is.
@@ -1262,6 +1260,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I dropped a file and it said unknown command", "attaching-files"},
 		{"drag and drop shows the path as text", "attaching-files"},
 		{"why is the path of my screenshot in the message box", "attaching-files"},
+		{"my screenshot path has spaces and stays text", "attaching-files"},
 		{"my terminal types the drop instead of pasting it", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},

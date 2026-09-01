@@ -612,10 +612,10 @@ func TestMemoryWorksForASubharnessWithNoBundleOnDisk(t *testing.T) {
 	if _, err := os.Stat(store.Dir()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("asking created %s", store.Dir())
 	}
-	if err := store.Memory("swe").Remember(t.Context(), "this repository builds with make"); err != nil {
+	if err := store.Memory("linear").Remember(t.Context(), "this repository builds with make"); err != nil {
 		t.Fatalf("a compiled-in subharness could not remember: %v", err)
 	}
-	notes, err = store.Memory("swe").Recall(t.Context(), "make")
+	notes, err = store.Memory("linear").Recall(t.Context(), "make")
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("got %v: %v", notes, err)
 	}

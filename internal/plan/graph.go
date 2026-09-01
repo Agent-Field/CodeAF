@@ -113,14 +113,13 @@ type Node struct {
 	Kind  Kind   `json:"kind"`
 	Brief string `json:"brief,omitempty"`
 
-	// Subharness names the worker that takes this node whole. It is decided
-	// where size is decided — a node oversized for one agent working alone can
-	// be one job for a specialist — and it travels with the node from that
-	// judgment to the executor that runs it, through the file the graph is
-	// persisted to and through the splice that admits it to the store.
+	// Subharness names the worker that takes this node whole. There is one, so
+	// a node built by this harness carries "linear" or nothing; the column
+	// stays because a graph written by an older build names what it named, and
+	// it travels with the node from the file the graph is persisted to through
+	// the splice that admits it to the store.
 	//
-	// "linear" is the generalist, chosen, and is what nearly every judged node
-	// carries. Empty is the different fact that nobody judged this node at all,
+	// Empty is a different fact from "linear": nobody wrote this column at all,
 	// and only that fact lets a reader downstream supply an answer of its own.
 	Subharness string `json:"subharness,omitempty"`
 
@@ -180,14 +179,11 @@ type Node struct {
 	// number the join price was mistakenly read off for as long as it existed.
 	FanIn *int `json:"fan_in,omitempty"`
 
-	// Calibration is what the worker said about its own fit for this node, and
-	// EscalatedFrom names the worker that tried it first and could not finish.
-	// Both are carried for one reader: the profile record this node becomes when
-	// the run lands, and through it the call that rewrites the ruler. Empty on
-	// every node the generalist takes first and finishes, which is nearly all of
-	// them and every one of them in a build with no specialist.
-	Calibration   []string `json:"calibration,omitempty"`
-	EscalatedFrom string   `json:"escalated_from,omitempty"`
+	// Calibration is what the worker said about its own fit for this node. It is
+	// carried for one reader: the profile record this node becomes when the run
+	// lands, and through it the call that rewrites the ruler. Empty on every
+	// node that said nothing about its own fit, which is nearly all of them.
+	Calibration []string `json:"calibration,omitempty"`
 
 	// Checked is what this node's own worker ran to check itself, and what each
 	// one found — one clause, already composed by whoever observed it.

@@ -217,11 +217,6 @@ var funnelExemptTrees = map[string]string{
 	"bench":     "a measuring rig, not a send path",
 	"test":      "container stubs for the remote-access suite",
 	"harnesses": "harness fixtures, run by the harness and not by this build",
-	// internal/swepro is VENDORED from github.com/Agent-Field/swe-pro-go (see
-	// its UPSTREAM file and revendor.sh, which replace the tree wholesale). It
-	// carries its own engine and its own transport, and holding it to this
-	// repo's laws would mean editing a directory the next revendor overwrites.
-	"internal/swepro": "vendored upstream, replaced wholesale by revendor.sh",
 }
 
 // funnelKnownSecondTransports are the two files that DO reach an endpoint from

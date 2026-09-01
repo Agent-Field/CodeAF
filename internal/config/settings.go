@@ -412,24 +412,6 @@ const (
 	// to both of them — this row changes who is asked first, and nothing else.
 	KeyTaskSettle = "task.settle"
 
-	// KeyWorkers is WHICH LEAF WORKERS ARE INSTALLED IN THIS PROFILE — the
-	// roster (internal/config's workers.go states the law, cmd/aforge's
-	// subharness.go applies it at registration).
-	//
-	// It is named under `work.` rather than `task.` because it is not about the
-	// work you hand off from a conversation: a worker is what actually takes a
-	// leaf, on every surface there is — a task, an adaptive run's node, a
-	// headless `aforge run`, and the resident's continuation ladder. The `task.`
-	// rows above are about one road onto that; this is about who is standing at
-	// the end of all of them.
-	//
-	// A comma-separated set of worker names, and BLANK IS EVERY WORKER THIS
-	// BUILD HAS — the default, and byte for byte the behaviour every profile had
-	// before the row existed. Names this build does not know are said once on
-	// stderr and ignored; a line that places no worker at all leaves the
-	// generalist, which is never on the roster because it is never registered.
-	KeyWorkers = "work.workers"
-
 	// The web-search rows. They are four rather than one because they answer
 	// four separable questions: WHERE a lookup goes, and the three credentials
 	// that change what "where" can mean. A person with no key still searches —
@@ -957,18 +939,6 @@ var OperatorEnvPins = []string{
 	"AFORGE_RTK",
 	"AFORGE_RTK_BIN",
 	"AFORGE_PREAUTHORIZE_SPEND",
-	// AFORGE_SWE_MAX_COST is the dollar ceiling one coding-pipeline leaf may
-	// spend inside the vendored engine. It is plumbing rather than a setting
-	// for the same reason the node budget is: it is a number handed to a
-	// subprocess, not a preference the product has an opinion about, and the
-	// preference that governs spending is the daily rail.
-	"AFORGE_SWE_MAX_COST",
-	// AFORGE_SWEPRO is not a setting anybody would ever want to turn on: it
-	// tells the binary, before it has read anything else, that this process
-	// is not aforge at all but the vendored swe engine (cmd/aforge/swepro.go).
-	// The subharness sets it on the children it spawns; a user who set it
-	// would simply lose their own program.
-	"AFORGE_SWEPRO",
 	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,
@@ -979,8 +949,8 @@ var OperatorEnvPins = []string{
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
-	// plumbing for the reason AFORGE_SWEPRO is — a wave's escape hatch, not a
-	// preference — and it has the same lifetime: it disappears once the gate
+	// plumbing rather than a preference — a wave's escape hatch — and it has
+	// the same lifetime a persisted setting must not have: it disappears once the gate
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
@@ -989,9 +959,9 @@ var OperatorEnvPins = []string{
 	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
 	// task's worker carries divide_work, and the sizing judgments read measured
 	// overrun base rates. Set it to 0 and the tree is byte-identical to before
-	// the wave. It is plumbing for the reason AFORGE_SWEPRO is — it decides
-	// which decomposition doctrine the binary runs, not a preference the
-	// product has an opinion about — and it has the same lifetime: it
+	// the wave. It is plumbing rather than a preference — it decides which
+	// decomposition doctrine the binary runs, not something the product has an
+	// opinion about — and it has the same lifetime: it
 	// disappears when nobody has a reason to turn the default off any more,
 	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
@@ -1635,29 +1605,6 @@ func (s *Settings) build() []Setting {
 				"off. A change lands the next time aforge starts.",
 			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
-		},
-
-		// WHICH HANDS THIS INSTALL HAS: the workers this install may hand a piece
-		// of work to at all. It is a TASK row and not a money one — it was filed
-		// under spending because specialists are the expensive way of taking a
-		// job, which is a reason to think about it and not a reason to look for
-		// it there. A person on the spending tab is asking what may be spent, and
-		// a roster of workers is not an answer to that.
-		//
-		// Its receipt names the build's own workers rather than the hint, because
-		// the hint is written once and the workers are whatever the binary ships
-		// — a sentence listing them here would be the copy that goes stale.
-		Setting{
-			Key: KeyWorkers, Category: CategoryTasks, Kind: SettingText,
-			Label: "workers", EmptyLabel: "every worker installed", Env: EnvWorkers,
-			Hint: "which workers this install may hand a piece of work to, separated by " +
-				"commas. Blank is all of them, which is the default. The general-purpose " +
-				"worker is never on the list and is never off it — it is what takes the work " +
-				"when nothing else is named, so a roster that names nothing runs everything " +
-				"the ordinary way.",
-			read:    func() string { return WorkersAt(dir) },
-			write:   func(raw string) error { return writeText(dir, KeyWorkers, raw) },
-			receipt: workersReceipt,
 		},
 
 		// The two consent rows sit with spending because they answer the same

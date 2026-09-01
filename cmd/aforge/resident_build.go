@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -37,11 +36,7 @@ import (
 func newResidentReconciler(settings config.Config, graph *store.Store,
 	chatClient, taskClient, planClient *liveClient, plans *jobPlans, terrainRoot string,
 	resolveModel func(head.ModelWords) head.WorkModelChoice, oneShotErrand bool) *resident.Reconciler {
-	compiler := head.NewCompiler(chatClient).
-		// The menu, and the check on what comes back from it. Both answer from
-		// the registry, so a build with one worker installs a menu that renders
-		// empty and a compile that sends the prompt it always sent.
-		WithSubharnessMenu(exec.MenuText, exec.KnownSubharness)
+	compiler := head.NewCompiler(chatClient)
 	if resolveModel != nil {
 		compiler = compiler.WithModelResolver(resolveModel)
 	}
@@ -162,7 +157,6 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 			ServiceIntent:   brief.ServiceIntent,
 			WorkModel:       brief.WorkModel,
 			ModelNote:       brief.ModelNote,
-			Subharness:      brief.Subharness,
 		}, nil
 	}
 }

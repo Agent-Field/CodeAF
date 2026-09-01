@@ -12,11 +12,11 @@ import (
 
 // A GATE THAT FAILS THE WORDS MUST NOT BUY THE WORK AGAIN.
 //
-// The measured failure: a coding leaf landed its change, its own suite went
-// green, and the delivery gate failed the deliverable's PROSE. The one revision
-// round that bought re-ran the entire engine into a tree where the fix was
-// already in — 23 model calls, zero edits, 80% of the leaf's bill — and then its
-// empty outcome replaced the pass that had done the work.
+// The measured failure: a leaf that changes the workspace landed its change, the
+// project's own suite went green, and the delivery gate failed the deliverable's
+// PROSE. The one revision round that bought re-ran the whole leaf into a tree
+// where the fix was already in — 23 model calls, zero edits, 80% of the leaf's
+// bill — and then its empty outcome replaced the pass that had done the work.
 //
 // The decision that stops it is three structural facts and no reading of the
 // critique's words, which is what makes it a mechanism rather than a judgement
@@ -24,7 +24,7 @@ import (
 
 type mutatingWorker struct{ exec.Executor }
 
-func (mutatingWorker) Subharness() string { return "swe" }
+func (mutatingWorker) Subharness() string { return "digger" }
 func (mutatingWorker) Mutates() bool      { return true }
 
 type prosaicWorker struct{ exec.Executor }

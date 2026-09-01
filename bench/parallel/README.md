@@ -10,7 +10,7 @@ These two launchers run one `run.sh` per issue, concurrently, each with its own
 `RESULTS` directory:
 
 ```bash
-bash bench/parallel/bench-par.sh      "$(pwd)/bench-results/select-$(date +%s)"   # aforge do
+bash bench/parallel/bench-par.sh      "$(pwd)/bench-results/do-$(date +%s)"       # aforge do
 bash bench/parallel/bench-par-chat.sh "$(pwd)/bench-results/chat-$(date +%s)"     # aforge chat --once
 python3 bench/parallel/bench-rank.py  # merge the CSVs, rank, audit the models
 ```
