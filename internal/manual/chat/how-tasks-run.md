@@ -1223,7 +1223,7 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
-## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line, I sent a message to a task and nothing happened, steered a task and got no reply
 
 A task has several lives and one state. Its worker writes the work; a reading decides
 whether the work is handed out in parts; a second look reads what the worker left; a round
@@ -1258,6 +1258,13 @@ not done — go test ./... reports no test files
 
 That line is the reason the work is being done again. It takes the row the clock and the
 spend would have had, because the clock is true every second and this is not.
+
+**You cannot steer into the check.** The worker has finished reading, so a line typed into
+the task's room while it says `checking what it left` is refused with the reason —
+`task 3 is being checked — nobody is in there to read your line until the check lands` —
+and the steer guard opens over your words instead of pretending they were delivered: `r`
+revive and send, `m` send to main, `esc` keep them in the box. If the check finds gaps, a
+round opens with a fresh worker and `enter` steers that worker as usual.
 
 **How long it can take.** Both are full model runs on your work, so minutes each is
 normal — a check on a large change has been four minutes, and a round is a second worker

@@ -212,6 +212,20 @@ func (b *taskBeat) phase(name string) func() {
 	}
 }
 
+// phaseNow answers which of the words the node is under right now, and "" for a
+// node with no pulse. It exists for the door that must be honest about a window
+// the state cannot see: the node is TaskRunning across the worker, the check and
+// every repair round, and a door deciding whether anybody is in there to read a
+// person's line needs the word, not the state (task_room.go's [Agent.SteerTask]).
+func (b *taskBeat) phaseNow() string {
+	if b == nil {
+		return ""
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.row.Phase
+}
+
 // stop takes the file away. The node has landed and the checkpoint's own row is
 // the authority from here.
 func (b *taskBeat) stop() {

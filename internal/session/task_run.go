@@ -4242,7 +4242,24 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		owed, working := child.taskNewsStanding()
 		held := child.steeringHeld()
 		if owed == 0 && !held && !working {
-			break
+			// ── THE DOOR SHUTS BEFORE THE LOOP LEAVES ──
+			//
+			// From here the child never reads again — the check and the landing
+			// are other hands — but it stays OPEN until [runTaskNode]'s retire,
+			// which on a checked node is minutes away. A line steered in during
+			// that window would still be TAKEN ([Agent.enqueueSteeredLine]
+			// answers whether the agent is closed, not whether anybody will
+			// drain it), echoed by the room as said, and then closed over: the
+			// exact swallow the speaker's clearing at close exists to prevent
+			// (task_room.go's [taskRoom.speaker]), happening in the gap before
+			// close. So the speaker is withdrawn HERE, at the moment "nobody is
+			// in there to read it" becomes true, and the queue is asked once
+			// more: a line that raced the withdrawal is answered by one more
+			// turn instead of dying with the worker (#273).
+			room.speaking(nil)
+			if !child.steeringHeld() {
+				break
+			}
 		}
 		// ── WAITING IS NOT WORKING, AND IT IS NOT ASKED FOR EITHER ──
 		//

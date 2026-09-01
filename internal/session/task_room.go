@@ -141,6 +141,18 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	if state := node.stateNow(); state != TaskRunning {
 		return false, fmt.Errorf("task %d is %s, not running", id, state)
 	}
+	// THE CHECK HAS NO READER. The node is TaskRunning across the worker, the
+	// check and every repair round — the state is honest about the node, never
+	// about who is inside it — and during the check the worker agent is still
+	// open while its reading is over, so a line enqueued now would be taken with
+	// a receipt and read by nobody (#273: the room drew the person's question as
+	// said while the gate was reading the tree, and the words died with the
+	// worker). The runner withdraws the speaker on its way out (task_run.go's
+	// [runTaskChild]); this is the same refusal said from the phase's side, so
+	// the two cannot disagree in the instant between them.
+	if node.beat.phaseNow() == taskBeatChecking {
+		return false, fmt.Errorf("task %d is being checked — nobody is in there to read your line until the check lands", id)
+	}
 	child := node.openRoom().speaker()
 	if child == nil {
 		// Running, but the child is not up yet (its worktree is still being
