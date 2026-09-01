@@ -89,6 +89,40 @@ func TestTheRoomOfANodeThatNeedsALookAsks(t *testing.T) {
 	}
 }
 
+// AND A NESTED ONE ASKS EXACTLY THE SAME (issue #268). The room reads the card
+// through [app.doneCardFor], and while the card was root-only this page said
+// "finished" over work nobody had decided about — the third of the three
+// surfaces that had no door for a nested gate.
+func TestTheRoomOfANestedDecisionAsks(t *testing.T) {
+	base, fake, _ := roomApp(t)
+	agent := &roomSettleFake{roomFake: fake}
+	base.agent = agent
+	base.profileDir = t.TempDir()
+	drive(t, base, streamEventMsg{gen: base.gen, ev: update(1, "Rebuild the index",
+		session.TaskRunning, session.TaskNotice{})})
+	notice := unverifiedNotice("finished, but needs your look — nobody could check it in 5m0s")
+	notice.Parent = 1
+	drive(t, base, streamEventMsg{gen: base.gen,
+		ev: update(7, "Port the parser", session.TaskUnverified, notice)})
+	base.openRoom(7, "Port the parser")
+	drive(t, base, roomClosedMsg{gen: base.room.gen})
+
+	if card := base.roomSettleCard(); card == nil || card.id != 7 {
+		t.Fatalf("the room of a nested decision offers nothing: %+v", card)
+	}
+	page := roomText(base)
+	for _, want := range []string{settleAskWord, settleTakeKey + settleTakeWord} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the room is missing %q:\n%s", want, page)
+		}
+	}
+	drive(t, base, key("a"))
+	if len(agent.resolved) != 1 || agent.resolved[0].id != 7 ||
+		agent.resolved[0].answer != session.TaskAccept {
+		t.Fatalf("the accept reached the engine as %+v", agent.resolved)
+	}
+}
+
 // AND AN ORDINARY LANDING KEEPS THE FOOT IT HAS. Only the unverified case
 // changes: a done node's room still says finished, and offers nothing.
 func TestADoneNodeRoomKeepsThePlainFoot(t *testing.T) {

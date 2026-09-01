@@ -3008,26 +3008,26 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 // is not, which is exactly the routing [Agent.deliverTaskNote] already does for
 // the PARENT's own news.
 //
-// It re-uses the child's own landing note rather than inventing a second
-// sentence, and leads it with why it is being said again: a person reading two
-// identical lines an hour apart has no way to tell which one is the one that
-// still needs them.
+// AND IT RE-ADDRESSES THE ROW RATHER THAN RE-DELIVERING IT (pending.go). It used
+// to paste the child's whole landing note into the conversation a second time,
+// an hour after the first, because that note was THE ONLY PLACE THE DEMAND EVER
+// APPEARED: no surface drew an answers row for a nested node at all, so a
+// sentence to the model was the whole of the gate. It is not any more — every
+// node that needs a look is on [Agent.PendingDecisions] from the moment it
+// finishes, at any depth, and every surface draws it. What is owed here is one
+// sentence saying the question has changed hands, said once for all of them
+// rather than once per child.
 func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
+	var waiting []*TaskNode
 	for _, kid := range node.graph.children(node.id) {
-		if kid.stateNow() != TaskUnverified {
-			continue
+		if kid.stateNow() == TaskUnverified {
+			waiting = append(waiting, kid)
 		}
-		notice := kid.notice()
-		note := orphanLead(node) + "\n" +
-			taskNote(notice, taskURI(kid.journalPath()), a.settlePolicy(), a.quietAddress())
-		a.deliverTaskNote(node, note)
 	}
-}
-
-// orphanLead says why a landing that was already reported is being reported
-// again, in the plain words the rest of these notes are written in.
-func orphanLead(parent *TaskNode) string {
-	return "task " + strconv.FormatUint(parent.id, 10) + " has finished, and a piece of work it handed out is still waiting on somebody to decide:"
+	if len(waiting) == 0 {
+		return
+	}
+	a.deliverTaskNote(node, readdressedLead(node, waiting))
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed

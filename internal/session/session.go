@@ -936,6 +936,14 @@ type Config struct {
 	// without a lock.
 	ApprovalPolicy *approval.Policy
 
+	// auditWindow overrides how long a second look at finished work gets, and it
+	// is UNEXPORTED AND FOR TESTS ONLY (pending.go's [Agent.auditWindowFor]). The
+	// product's answer is the door's own, which turns on whether there is a check
+	// to run and on nothing else; this exists so that a test can prove what a
+	// person reads when the window runs out without waiting five real minutes for
+	// it.
+	auditWindow time.Duration
+
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].
 	//

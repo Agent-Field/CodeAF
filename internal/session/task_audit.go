@@ -567,6 +567,21 @@ func (v auditVerdict) report() string {
 	return lead + "\n" + strings.Join(v.evidence[1:], "\n")
 }
 
+// checkerRanOut is what a person reads when the second look ran out of its
+// window, and it is A FACT ABOUT THE CHECKER and nothing else.
+//
+// It used to read "no answer in 5m0s, so nothing was accepted", and every clause
+// of that was doing damage. A person reading it takes the five minutes for THEIR
+// five minutes — a window they were given and missed — when in truth nobody ever
+// asked them anything; and "nothing was accepted" is a sentence about a
+// decision, said by a clock that made none. A timer may expire only into a state
+// that says UNANSWERED (pending.go states the law), so this says who could not
+// answer and how long they had, and stops there. Whether the work is accepted is
+// still entirely open, and still entirely the person's.
+func checkerRanOut(window time.Duration) string {
+	return "nobody could check it in " + window.String()
+}
+
 // noVerdict is the answer to everything that went wrong before a verdict could
 // be reached: the auditor would not start, the turn failed, the reply was not a
 // verdict. Every one of them is a REFUSAL to call the work done — nothing
@@ -751,7 +766,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// check takes; an audit whose only remaining move is a refused command gets
 	// the time reading takes, because it is never going to run anything and
 	// waiting out the rest is the measured failure ([auditDoor.window]).
-	window := door.window()
+	window := a.auditWindowFor(door)
 	auditCtx, done := context.WithTimeout(ctx, window)
 	defer done()
 
@@ -779,7 +794,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", window), said), false
+		return noVerdict(checkerRanOut(window), said), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
