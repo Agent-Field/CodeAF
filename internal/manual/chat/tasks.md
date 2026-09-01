@@ -51,7 +51,7 @@ was wrong, the answer is to propose the work again.
 You can keep working while a task runs. aforge tells you not to wait for it: its report
 arrives in the conversation when it lands.
 
-**One other thing on the roster is a task, and it is not work in a worktree.** A sub-harness
+**One other thing on the roster is a task, and it is not work in a copy of its own.** A sub-harness
 being designed runs as a task too — same row, same room, same `x` — with its own phases
 (`designing`, then `awaiting your look`) in place of the states below, and no branch, no
 changed files and no merge, because it writes none. It is admitted without a countdown,
@@ -920,9 +920,14 @@ After the name the card carries the span, the file count, and how the branch cam
 `merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
 `branch kept · <branch>`.
 
-Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`,
-`worktree`, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
+Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
+branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
 selected card opens the task's room instead. Each long field caps at 20 rows.
+
+The branch row is labelled with **where the work was done**, in plain words rather than in
+git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
+the same labels the settled card uses, listed under *Does a task touch my working copy?* in
+*how tasks run*. A landing whose copy aforge has no record of falls back to `branch`.
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✗ N tasks landed`; any
@@ -1132,9 +1137,9 @@ Three things a job's row deliberately does **not** have, because a job has none 
   transcript to read, so `enter` on the row opens a page that carries what a job actually
   leaves behind: the same `job 3 · log /path/…` line, and under it the **end of that log**
   — the last 200 lines, newest at the bottom, re-read four times a second while the job
-  runs, with a foot reading `this log grows as the job works — esc to return`. When the job
+  runs, with a foot reading `this log grows as the job works — say it to main`. When the job
   ends the page takes one last reading, so the process's final lines are on it, and the foot
-  becomes `task finished — esc to return`. A job that has written nothing yet says
+  becomes `this task has finished — say it to main`. A job that has written nothing yet says
   `a background job keeps a log, not a transcript` instead, and never an error. What that
   page never shows is a chat — there was never one to show, and `enter` inside it steers
   nothing, because there is nobody in a job to read a line. (On a job that has ended, `→` on
@@ -1380,7 +1385,7 @@ rest state, so a person who starts typing is typing, not navigating.
 | `→` | open a folded family, or step to the first child |
 | `←` | fold an open family, or jump to the parent row |
 | `enter` | open the task's room |
-| `w` | toggle the wider 46-column tree |
+| `alt+w` | toggle the wider 46-column tree (bare `w` only on the full-frame roster) |
 | `esc` or `ctrl+t` | give the keyboard back |
 | `ctrl+g` | close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
@@ -1828,7 +1833,7 @@ What opens is a full-screen card over the same page, with the list still underne
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
- worktree · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
+ a branch of your repository · ~/.aforge/v3/projects/-tmp-alpha/trees/fix-the-nil-map-crash
  transcript · ~/.aforge/v3/projects/-tmp-alpha/aaaa…/tasks/20260819-120133_7.jsonl
 
  what it said at the end
@@ -1847,11 +1852,15 @@ sentence.
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
   has no clock. Nothing here appears as a zero.
+- **The first address is labelled with what that directory was**, in plain words and never
+  in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
+  or `where` when aforge's record does not say. *Does a task touch my working copy?* in
+  *how tasks run* says what each one means.
 - **The two addresses are clickable where they still exist.** The transcript is a real file
-  on this disk and opens in your editor on a click; a worktree that has since been merged
-  and pruned is printed as plain text, because a link that opens nothing is worse than no
-  link. A task whose worktree is gone says `branch` and the branch name instead — that is a
-  name inside your repository, not a place on the disk, so it is never a link.
+  on this disk and opens in your editor on a click; a working copy that has since been
+  merged and swept away is printed as plain text, because a link that opens nothing is worse
+  than no link. A task whose working copy is gone says `branch` and the branch name instead
+  — that is a name inside your repository, not a place on the disk, so it is never a link.
 - **`esc` backs out to the list**, one layer at a time, with the cursor still on the row you
   came in on. A second `esc` closes the page. `ctrl+.` closes the whole page from inside.
 - **`↑`/`↓` scroll the card**, `pgup`/`pgdown` a screenful, `home`/`end` the ends. A long
@@ -2093,9 +2102,12 @@ Inside a task's room the page is built from the same blocks the conversation is 
 a tool call expands to its diff or output, a reply renders as markdown, and anything you
 steered wears your own hue. History comes off the task's journal, capped at the last 120
 blocks; a missing or unreadable journal is not an error — the room opens on the live edge
-instead. When the task has landed, a foot line reads `task finished — esc to return`, and
-a landed room with no journal to read says `this task's transcript is not here any more`
-above it. A finished task's room replays its whole transcript after a restart as well —
+instead. When the task has landed, a foot line reads `this task has finished — say it to main` —
+and `this task has finished — say it to main, or open its parent, Ship the port` where the
+task was spawned under another one — and a landed room with no journal to read says
+`this task's transcript is not here any more` above it. The foot names a door rather than a
+key: `esc` is already on the legend and the header, and what a person whose steering was
+just refused needs to know is where the words can go instead. A finished task's room replays its whole transcript after a restart as well —
 see *A task's room after a restart*.
 
 `pgup`/`pgdown` scroll a page, the mouse wheel scrolls, and reaching the bottom re-sticks
@@ -2334,7 +2346,7 @@ half-finished passing between them — it proposes each part as a task of its ow
 the coordination for itself. The parts run at the same time instead of one after another.
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
-how a person redirects work, and there is nobody inside a worktree to show one to, so a
+how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
 
 Where they show up:
@@ -2465,6 +2477,20 @@ the check at the end of a task uses. The mastermind that reads the plan can prom
 careful too. If you have not set the four class rows at all, every part runs where its task
 runs and the grade costs you nothing; *Models and cost* has the rows and the `/crew` word
 that writes all four.
+
+**And the grade is not the last word — what has actually happened here is.** Every task
+that settles writes down what the check said about it, against the model it ran on and
+the name the work was given: `aforge models` is where those rows show up. When a part is
+about to be handed out as ordinary work, aforge looks that record up first. If work
+named like this one has been turned down by the check **twice or more** on the model the
+task is on, and the balance of those answers is against it, the part is minted on your
+**careful work** model instead — even though the worker called it ordinary. Two names
+count as the same kind of work when they share half their words or more, so *tests for
+the rail* and *tests for the composer* are one thing and *the eleven adapters* is not.
+Nothing is spent to work any of this out: the check had already read the work and said
+so, and no extra model call is made to grade it. A part the worker itself graded careful
+is never moved back down, and an install with no class rows set never moves anything,
+because there is nowhere dearer to move it to.
 
 **A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens

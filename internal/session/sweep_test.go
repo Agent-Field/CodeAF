@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/furrow"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -403,4 +404,160 @@ func stampTree(t *testing.T, dir string, at time.Time) {
 	if err != nil {
 		t.Fatalf("stamp %s: %v", dir, err)
 	}
+}
+
+// ── the forks of a session nobody landed (issue #195) ───────────────────────
+
+// A SWEPT SESSION'S FORKS ARE FORGOTTEN, NOT JUST DELETED. A task that came home
+// dropped its own record on the way past; a session killed mid-run never got the
+// chance, so what was left in `furrow forks` was a line describing a directory
+// the sweep had already removed — a dangling record in the person's own project,
+// which is exactly the litter [reapSession] exists to prevent.
+//
+// The claim is asserted through furrow's own listing rather than through
+// anything the sweep says, because "the record is gone" is the whole promise and
+// a drop that was merely ASKED FOR is not it.
+func TestTheSweepTellsFurrowToForgetASweptSessionsForks(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "projects")
+	now := time.Now()
+	repo := dirtyRepo(t)
+	installFakeFurrow(t)
+
+	litter, tree := newSweptUniverseSession(t, root, "dddd1111dddd1111", repo, now)
+	if names := forkNames(t, repo); len(names) != 1 || names[0] != tree.universe {
+		t.Fatalf("before the sweep furrow holds %v, want the one fork %q", names, tree.universe)
+	}
+
+	var said []string
+	SweepPlaces(root, now, func(line string) { said = append(said, line) })
+
+	if _, err := os.Stat(litter); !os.IsNotExist(err) {
+		t.Fatalf("the litter session is still there (%v)", err)
+	}
+	if names := forkNames(t, repo); len(names) != 0 {
+		t.Fatalf("furrow still holds a record of %v, pointing at a directory the sweep removed", names)
+	}
+	// AND THE LOG NAMES WHAT WENT. After this pass nothing on the machine knows
+	// the fork's name, so a line that did not carry it would leave an operator
+	// with no way to tell a drop from a miss.
+	if !saidSomethingAbout(said, tree.universe) {
+		t.Fatalf("the sweep said %q and never named the fork it dropped", said)
+	}
+}
+
+// AND A DROP IT CANNOT MAKE IS A LINE IN THE LOG AND NEVER A HELD-UP REMOVAL.
+// furrow gone from the machine is the ordinary way this happens — the ground
+// deleted or detached is the same shape — and the session folder is litter
+// either way, so the reap goes through and the miss is written down.
+func TestASweptSessionIsReapedEvenWhenFurrowCannotForgetItsFork(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "projects")
+	now := time.Now()
+	repo := dirtyRepo(t)
+	installFakeFurrow(t)
+
+	litter, tree := newSweptUniverseSession(t, root, "dddd2222dddd2222", repo, now)
+	// furrow leaves the machine between the run and the sweep: the record it is
+	// keeping is now out of reach from here, whatever it says.
+	t.Setenv(furrow.BinaryEnvVar, filepath.Join(t.TempDir(), "no-furrow-here"))
+	furrow.Forget()
+
+	var said []string
+	SweepPlaces(root, now, func(line string) { said = append(said, line) })
+
+	if _, err := os.Stat(litter); !os.IsNotExist(err) {
+		t.Fatalf("a fork that could not be forgotten held up the reap (%v)", err)
+	}
+	if !saidSomethingAbout(said, tree.universe) {
+		t.Fatalf("the sweep said %q and swallowed the miss", said)
+	}
+}
+
+// THE SAME PROMISE AGAINST THE PROGRAM ITSELF, gated exactly as the ground
+// ladder's own real-furrow test is (groundladder_test.go's [realFurrowEnvVar]):
+// this package's TestMain forbids answers that depend on what a machine has
+// installed, so the fake carries the claim everywhere and this carries the one
+// thing a fake cannot — that furrow really does forget the fork.
+//
+//	AFORGE_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
+func TestARealFurrowForgetsASweptSessionsFork(t *testing.T) {
+	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
+	if binary == "" {
+		t.Skip("set " + realFurrowEnvVar + " to a furrow binary to run this against the real program")
+	}
+	root := filepath.Join(t.TempDir(), "projects")
+	now := time.Now()
+	repo := dirtyRepo(t)
+	t.Setenv(furrow.BinaryEnvVar, binary)
+	furrow.Forget()
+	t.Cleanup(furrow.Forget)
+
+	litter, tree := newSweptUniverseSession(t, root, "dddd3333dddd3333", repo, now)
+	if names := forkNames(t, repo); len(names) == 0 {
+		t.Fatalf("the real furrow reports no fork of %s at all, so there is nothing to forget", repo)
+	}
+
+	SweepPlaces(root, now, func(line string) { t.Logf("sweep said: %s", line) })
+
+	if _, err := os.Stat(litter); !os.IsNotExist(err) {
+		t.Fatalf("the litter session is still there (%v)", err)
+	}
+	for _, name := range forkNames(t, repo) {
+		if name == tree.universe {
+			t.Fatalf("the real furrow still holds a record of %q", name)
+		}
+	}
+}
+
+// newSweptUniverseSession is a session with one universe-grounded node, KILLED
+// MID-RUN: the ladder really carves the world, and the checkpoint left on disk
+// is the one a process that died would have left — a node still running, and the
+// four ground fields [TaskNode.setTree] writes onto it.
+//
+// It is seeded rather than run because the defect is about what SURVIVES a run
+// that nobody finished, and a landing would have dropped the record itself.
+func newSweptUniverseSession(t *testing.T, root, id, repo string, now time.Time) (string, taskTree) {
+	t.Helper()
+	dir := newSweptSession(t, root, "-tmp-scratch", id, Meta{
+		ID:         id,
+		Workspace:  repo,
+		LaunchDir:  filepath.Join(os.TempDir(), "scratch"),
+		LastUserAt: now.Add(-30 * 24 * time.Hour),
+	})
+	tree, err := prepareTaskTree(Place{Dir: dir}, repo, id, 1, "work in a world of its own")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	if tree.rung != GroundRungUniverse || strings.TrimSpace(tree.universe) == "" {
+		t.Fatalf("rung = %q with universe %q, want a fork to reap", tree.rung, tree.universe)
+	}
+	writeCheckpoint(t, (Place{Dir: dir}).Tasks(), taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID:         1,
+			Title:      "work in a world of its own",
+			Brief:      "do the thing in the fork",
+			Acceptance: "the thing is done",
+			State:      TaskRunning,
+			Ground:     tree.ground,
+			Mode:       tree.mode,
+			Rung:       tree.rung,
+			Seal:       tree.seal,
+			Base:       tree.base,
+			Universe:   tree.universe,
+			Worktree:   tree.dir,
+			Branch:     tree.branch,
+		}},
+	})
+	return dir, tree
+}
+
+// saidSomethingAbout reports that one of the sweep's lines named a thing. The
+// wording of a log line is nobody's contract; that it carries the name is.
+func saidSomethingAbout(said []string, name string) bool {
+	for _, line := range said {
+		if strings.Contains(line, name) {
+			return true
+		}
+	}
+	return false
 }

@@ -45,7 +45,7 @@ func TestATaskRoomWalksItsWholeLifeWithoutAStaleWord(t *testing.T) {
 			t.Fatalf("a queued page does not say %q:\n%s", want, page)
 		}
 	}
-	for _, banned := range []string{roomFinishedWord, roomGoneWord, taskCheckingWord} {
+	for _, banned := range []string{roomFinishedRefusal.what, roomGoneWord, taskCheckingWord} {
 		if strings.Contains(page, banned) {
 			t.Fatalf("a queued page says %q:\n%s", banned, page)
 		}
@@ -113,7 +113,7 @@ func TestATaskRoomWalksItsWholeLifeWithoutAStaleWord(t *testing.T) {
 		session.TaskDone, session.TaskNotice{})})
 	drive(t, a, roomClosedMsg{gen: a.room.gen})
 	page = roomLifeSays(a)
-	if !strings.Contains(page, roomFinishedWord) {
+	if !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("a landed page never took its foot:\n%s", page)
 	}
 	for _, banned := range []string{roomQueuedWord, roomYetWord, taskCheckingWord, taskClosingWord} {

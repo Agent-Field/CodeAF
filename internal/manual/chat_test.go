@@ -1,10 +1,12 @@
 package manual
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -196,6 +198,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// What a task inherits that git cannot see, asked the four ways people
+		// ask it: the file they are worried about, the folder they do not want
+		// reinstalled, and the general form of the question.
+		{"does my task see my .env", "how-tasks-run"},
+		{"does a task get node_modules", "how-tasks-run"},
+		{"can a task run my tests without installing dependencies", "how-tasks-run"},
+		{"do tasks get the files git ignores", "how-tasks-run"},
 		// WHICH PROJECT THE WORK IS ABOUT, asked the four ways people meet it: the
 		// plain question, the conversation opened in the wrong place, the wish to
 		// send work somewhere else, and the complaint after it went wrong.
@@ -203,6 +212,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I opened aforge in my home folder where will the task work", "how-tasks-run"},
 		{"can a task work in a different repo", "how-tasks-run"},
 		{"my task worked in the wrong project", "how-tasks-run"},
+		// AND WHAT THE CARD CALLS THAT PLACE. The settled card used to label the
+		// directory `worktree`; it says `a branch of your repository` or `its own
+		// copy of the folder` now, from the rung that made the world (#194), and
+		// somebody reading either phrase for the first time asks this.
+		{"where does my task work", "how-tasks-run"},
+		{"what does its own copy of the folder mean on the task card", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.
@@ -306,6 +321,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does it keep compacting", "compacting-over-and-over"},
 		{"it compacts after every step", "compacting-over-and-over"},
 		{"compacting over and over", "compacting-over-and-over"},
+		// And the knob for it, asked the four ways somebody reaches for it: the
+		// flag, the settings row's own words, and the two things they want it to
+		// do.
+		{"what does --context-fill do", "compacting-over-and-over"},
+		{"context fill setting", "compacting-over-and-over"},
+		{"make it compact sooner", "compacting-over-and-over"},
+		{"stop it compacting so early", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
@@ -446,6 +468,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch to my other chat", "home"},
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
+		// HOW MANY CAN BE OPEN AT ONCE, asked by somebody who remembers being
+		// refused at eight and by somebody who has never heard of the cap and
+		// simply wants to know where the ceiling is. There is no ceiling, and the
+		// page that answers is the one that says what an open conversation costs.
+		{"how many conversations can I have open at once", "home"},
+		{"is there a limit on how many chats I can open", "home"},
+		{"why can I not open another conversation", "home"},
 		// WHAT A ROW SAYS WHEN ITS CONVERSATION IS ABOUT SOMEWHERE ELSE, and the
 		// search that finds it. The first is somebody reading a word off their
 		// own screen; the rest are somebody looking for a conversation they know
@@ -523,6 +552,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what aforge may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		// Issue #168: a fork's hands were on the machine's day figure twice, and
+		// the person who notices is the one asking what their hands are costing.
+		{"does the money on the status line include what my hands are spending", "models-and-cost"},
+		{"is a hand's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
@@ -1413,5 +1446,41 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
+	}
+}
+
+// ONE SOURCE OF TRUTH, ACROSS A MEDIUM THAT CANNOT INTERPOLATE. A number that
+// appears in two places drifts, and the manual is the second place for two of
+// the context law's own figures: the shipped fill percentage and the room every
+// call keeps for its answer. Markdown cannot read a Go constant, so this test
+// is the interpolation — move either constant and the page that quotes it goes
+// red, naming the figure it is now wrong about.
+//
+// `propose_task`'s schema said the step default was 40 while the executor
+// applied 200, and every model that read it reasoned from the wrong figure.
+// This is that lesson applied to the pages the model reads about compaction.
+func TestTheCompactionPageQuotesTheContextLawsOwnNumbers(t *testing.T) {
+	page, ok := Chat().Page("compacting-over-and-over")
+	if !ok {
+		t.Fatal("the chat corpus lost compacting-over-and-over")
+	}
+	for _, one := range []struct {
+		what  string
+		spelt string
+	}{
+		{"the shipped context fill", strconv.Itoa(ctxbudget.DefaultFillPercent)},
+		{"the answer room", "65,536"},
+	} {
+		if !strings.Contains(page, one.spelt) {
+			t.Fatalf("compacting-over-and-over does not say %s as %q — the constant moved and the page did not",
+				one.what, one.spelt)
+		}
+	}
+	// The answer room is spelled with a thousands separator on the page, which
+	// is how a person reads it and not how Go writes it, so the check above is
+	// only honest while this holds.
+	if ctxbudget.DefaultCompletionReserveTokens != 65536 {
+		t.Fatalf("the completion reserve is now %d; the page still says 65,536",
+			ctxbudget.DefaultCompletionReserveTokens)
 	}
 }

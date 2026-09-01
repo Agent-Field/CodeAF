@@ -155,10 +155,12 @@ const (
 // where you are", rather than being a circle with no beginning.
 const hopHereWord = "you are here"
 
-// hopShown is how many rows the card holds. TWELVE, because the card is a card:
-// eight is the cap on what can be open at once ([convCap]) and four more is a
-// glance at what else is on the machine — a person who wants the whole list
-// wants home, which is a page and has the room to be one.
+// hopShown is how many rows the card holds. TWELVE, because the card is a card
+// and not a page: it is a glance at the handful of conversations somebody is
+// moving between, and a person who wants the whole list wants home, which is a
+// page and has the room to be one. Nothing caps how many conversations a window
+// holds (keeper.go), so a window with more of them than this has rows this card
+// does not draw — home draws every one.
 const hopShown = 12
 
 // hopDigits is how many rows wear a number: nine, because `1`…`9` is every digit
@@ -773,8 +775,9 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.hopClose()
 		return nil, false
 	}
-	// A DIGIT TAKES ITS ROW OUTRIGHT. Eight is the cap (keeper.go's [convCap]),
-	// so every row this card can hold has a digit, and the digit is drawn on it.
+	// A DIGIT TAKES ITS ROW OUTRIGHT, for the first nine rows — every digit a
+	// single keystroke can be ([hopDigits]) — and the digit is drawn on the rows
+	// that have one. The rows past it are reached with the cursor.
 	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
 		if at := int(key[0] - '1'); at < len(a.hop.rows) && at < hopDigits {
 			a.hop.at = at
@@ -930,9 +933,10 @@ func (a *app) hopTake() tea.Cmd {
 const hopGoneWord = "that conversation is no longer open"
 
 // hopStart opens a conversation this process was NOT holding, and it makes
-// exactly the three checks home's `enter` makes, in the same order (home.go's
-// [app.homeOpenDoor]): is the folder still there, is there room for another, and
-// does the door itself refuse.
+// exactly the two checks home's `enter` makes, in the same order (home.go's
+// [app.homeOpenDoor]): is the folder still there, and does the door itself
+// refuse. Nothing asks how many are already open — a window holds as many
+// conversations as somebody opens (keeper.go).
 //
 // IT SAYS THE REFUSAL WHERE THE PERSON IS. The card is already down by the time
 // this runs, so the sentence goes on the entry line of the conversation they are
@@ -940,10 +944,6 @@ const hopGoneWord = "that conversation is no longer open"
 func (a *app) hopStart(row hopRow) tea.Cmd {
 	if !homeFolderThere(row.where) {
 		a.note(WorkspaceGoneWord + " · " + row.where)
-		return nil
-	}
-	if word, room := a.roomForAnother(); !room {
-		a.note(word)
 		return nil
 	}
 	cmd, refusal := a.openBeside(row.where, row.file)

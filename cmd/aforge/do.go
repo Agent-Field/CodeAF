@@ -127,6 +127,22 @@ type headlessOutcome struct {
 	// failure and why. An ephemeral store evaporates on exit, and these lines
 	// are the one piece of what the run understood that would die with it.
 	Learned []string `json:"learned,omitempty"`
+	// Model and PlanModel are the two seats this errand ran on, and the two
+	// Source fields name the rung that chose each — `--model`, `AFORGE_MODEL`,
+	// `crew frugal`, `default` (config.ResolveSeats). They are here because the
+	// defect that produced them was invisible from outside: a campaign that
+	// believed its profile's crew was in force had no way to read back that the
+	// run had resolved its models somewhere else entirely (#166). A caller
+	// comparing two cells can now assert what actually ran instead of trusting
+	// the shell it launched them from.
+	//
+	// PlanModel is empty on a run whose planning rode the work model, which is
+	// the ordinary shape; the field is always present, because an absent key is
+	// indistinguishable from an older binary.
+	Model           string `json:"model"`
+	PlanModel       string `json:"plan_model"`
+	ModelSource     string `json:"model_source"`
+	PlanModelSource string `json:"plan_model_source"`
 	// Subharness is the worker that took the deliverable, read back from the
 	// durable row rather than from what was asked for. It is always present and
 	// never empty — "linear" is the generalist, and a caller comparing workers
@@ -163,8 +179,8 @@ func runDo(args []string) error {
 			"the exit code says whether it worked, blocked_on carries a question nobody was here to answer, "+
 			"and error carries the sentence when the run could not start at all")
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
-	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
+	planModel := flags.String("plan-model", "", planModelFlagHelp)
 	subharness := flags.String("subharness", "", "force this errand onto one worker, for measuring workers against each other (default: let the compiler choose)")
 	contextFill := flags.Int("context-fill", 0,
 		"how full a model's context window may get before it is compacted, in percent (default 60, clamped 10-90); "+
@@ -276,13 +292,19 @@ func applyContextLaw(fillPercent, completionReserve int) error {
 // and never wanted one.
 func doErrand(request doRequest) error {
 	started := time.Now()
-	outcome, err := errandRun(request, started)
+	// The two seats, resolved before anything is opened or built, so the run
+	// says which models it is about to use and on whose authority — and says it
+	// even on a run that dies before it reaches a provider.
+	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
+	fmt.Fprintln(request.stderr, seats.Line())
+	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {
 			return err
 		}
-		return reportErrand(request, failedErrand(err, started))
+		outcome = failedErrand(err, started)
 	}
+	outcome.seated(seats)
 	return reportErrand(request, outcome)
 }
 
@@ -300,11 +322,22 @@ func failedErrand(err error, started time.Time) headlessOutcome {
 	}
 }
 
+// seated writes the run's two seats onto the outcome --json prints. It is one
+// place rather than beside every return, because the seats are decided once,
+// before the errand starts, and belong on the object whether it ends in an
+// answer or in a sentence about why there is none.
+func (o *headlessOutcome) seated(seats config.Seats) {
+	o.Model = seats.Work.Model
+	o.PlanModel = seats.Plan.Model
+	o.ModelSource = seats.Work.Rung()
+	o.PlanModelSource = seats.Plan.Rung()
+}
+
 // errandRun is the errand itself: everything from opening a store to composing
 // what came of it. It reports nothing and decides no exit code — both belong to
 // doErrand, so that a failure anywhere in here reaches the caller through the
 // same door as an answer.
-func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
+func errandRun(request doRequest, seats config.Seats, started time.Time) (headlessOutcome, error) {
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
 		return headlessOutcome{}, err
 	}
@@ -375,7 +408,7 @@ func errandRun(request doRequest, started time.Time) (headlessOutcome, error) {
 	// this process handed to a resident that already holds the store — that work
 	// happens in another process, and the watcher falls back to prose there.
 	produced := &errandRegistry{}
-	brain, release, deferredTo, err := headlessBrain(window, session, request, consent, ephemeral, produced)
+	brain, release, deferredTo, err := headlessBrain(window, session, request, seats, consent, ephemeral, produced)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -457,7 +490,7 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 // only ever allowed to be that on the strength of a resident that is actually
 // serving this store: heldBy is handed back so the caller can hold the wait to
 // a short bound and say who it is waiting for.
-func headlessBrain(window *chatWindow, session string, request doRequest,
+func headlessBrain(window *chatWindow, session string, request doRequest, seats config.Seats,
 	consent func(store.Node, planEstimate) bool, ephemeral bool,
 	produced *errandRegistry) (*chatBrain, func(), *lease.Resident, error) {
 	releaseLease, heldBy, err := lease.AcquireResident(window.path, headlessSurface)
@@ -486,6 +519,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
+		seats:      &seats,
 		subharness: request.subharness,
 		consent:    consent, newClient: request.newClient,
 		produced: produced,

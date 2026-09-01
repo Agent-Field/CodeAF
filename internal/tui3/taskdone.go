@@ -73,8 +73,16 @@ type taskDone struct {
 	added, removed    int
 	branch, merge     string
 	brief, acceptance string
+	// rung is which copy of the ground the work happened in and mode what was
+	// promised about it, frozen off the node at landing with everything else on
+	// this card (session's TaskNotice.Rung). They are here so the row naming the
+	// branch can be labelled with the place that branch came home FROM, in the
+	// engine's own words ([app.doneGroundLabel]) — a card that spelled its own
+	// would be a second answer to a question the record card answers next week.
+	rung session.GroundRung
+	mode session.TaskMode
 	// model is whose hands did the work, frozen with the rest of it. It is
-	// inside the card rather than on its head for the reason the worktree is:
+	// inside the card rather than on its head for the reason the working copy is:
 	// the head is what happened, and this is a fact somebody opens the card to
 	// check.
 	model string
@@ -145,12 +153,23 @@ const (
 	// aligned by nothing: a two-column table of six short facts is furniture
 	// around a paragraph.
 	doneChangedLabel = "changed · "
-	doneBranchLabel  = "worktree · "
-	doneAcceptLabel  = "done when · "
-	doneBriefLabel   = "brief · "
-	doneSpanLabel    = "ran · "
-	doneModelLabel   = "model · "
-	doneCostLabel    = "cost · "
+	// doneBranchLabel is the LAST RESORT for the row naming the branch the work
+	// was left on, and it is used only when nothing knows what the working copy
+	// was. The label that row usually wears is the ground ladder's word for the
+	// rung that made the node's world ([app.doneGroundLabel]).
+	//
+	// IT SAID `worktree` UNTIL 2026-09-01, and that was wrong in both directions
+	// at once: it is the machinery's own vocabulary, which this house bans in
+	// anything a person reads, and it named a mechanism nobody had checked was in
+	// use — a repository task is grounded in a fork whenever furrow can make one
+	// (internal/session's groundladder.go), and the row was telling people their
+	// work had been in a git worktree it never went near.
+	doneBranchLabel = "branch · "
+	doneAcceptLabel = "done when · "
+	doneBriefLabel  = "brief · "
+	doneSpanLabel   = "ran · "
+	doneModelLabel  = "model · "
+	doneCostLabel   = "cost · "
 )
 
 // doneWindow caps the two long fields inside an open card — the report and the
@@ -183,6 +202,8 @@ func (a *app) landedCard(node *taskNode) {
 		changed:    node.changed,
 		branch:     node.branch,
 		merge:      node.merge,
+		rung:       node.rung,
+		mode:       node.mode,
 		brief:      node.brief,
 		acceptance: node.acceptance,
 		model:      node.model,
@@ -439,6 +460,29 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 	return a.pal.dim("  " + said + tail)
 }
 
+// doneGroundLabel labels the row naming the branch a landed node's work is on,
+// with the words the ground ladder keeps for the rung that made that node's
+// world (internal/session's groundladder.go).
+//
+// THE ROW ANSWERS "WHERE WAS THIS WORK LEFT", and the branch is only half of
+// that answer: the same branch name means a checkout registered in the person's
+// own repository on one rung and a branch fetched home out of a fork on
+// another. The label is the half that says which, and it is the ENGINE'S phrase
+// rather than this package's for the reason the settled card reads the same
+// table (taskrecord.go's [taskCardGroundWord]): the two are read minutes apart
+// about one node, and two wordings of one place is one place too many.
+//
+// THE FALLBACK NAMES THE BRANCH AND NOTHING ELSE. A node whose rung nobody
+// recorded — a graph a test scripted, a checkpoint written before the ladder —
+// still has a branch, and `branch · ` is true of it without claiming what the
+// directory was.
+func (a *app) doneGroundLabel(card *taskDone) string {
+	if word := session.GroundWord(card.rung, card.mode); word != "" {
+		return word + " · "
+	}
+	return doneBranchLabel
+}
+
 // doneHasDetail reports whether there is anything behind the card at all. A
 // node that landed with no report, no files, no branch and no brief has already
 // said everything it has to say, and offering a key that opens nothing is worse
@@ -456,7 +500,7 @@ func (a *app) doneHasDetail(card *taskDone) bool {
 // THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. Which batch a node
 // belonged to is still not on the wire, so no row claims it. The model and the
 // PRICE both are now (session's TaskNotice.Model and CostUSD), and they arrived
-// exactly where this comment said they would — beside the worktree, with
+// exactly where this comment said they would — beside the working copy, with
 // nothing else moved — each drawn only when there is one to draw.
 //
 // WHAT IS STILL NOT HERE IS THE DIFFSTAT'S LINES. The head counts the files a
@@ -486,7 +530,7 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 		if card.merge != "" {
 			branch += " · " + card.merge
 		}
-		say(fit(doneBranchLabel+branch, room))
+		say(fit(a.doneGroundLabel(card)+branch, room))
 	}
 	if card.model != "" {
 		say(fit(doneModelLabel+card.model, room))

@@ -111,29 +111,24 @@ func TestTwoSpellingsOfOneTranscriptAreOneConversation(t *testing.T) {
 	}
 }
 
-// At the cap the surface refuses in home's own voice, and the count in the
-// sentence is the constant rather than a second spelling of it.
-func TestTheCapRefusesInHomesOwnVoice(t *testing.T) {
+// A window holds as many conversations as somebody opens: the keeper counts them
+// and never refuses one, and the count on the status line keeps counting past
+// the eight that used to be the cap.
+func TestTheKeeperRefusesNothingHoweverManyAreOpen(t *testing.T) {
 	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
 	a.stirs = make(chan string, stirDepth)
 	a.behind = map[string]*kept{}
-	// Six behind plus the one in front is seven open, which leaves room for one.
-	for i := 0; i < convCap-2; i++ {
+	for i := 0; i < 20; i++ {
 		key := "/tmp/lab/" + itoa(i) + "/transcript.jsonl"
 		a.behind[key] = &kept{conv: Conversation{SessionFile: key}, side: &aside{}}
 	}
-	if word, ok := a.roomForAnother(); !ok {
-		t.Fatalf("room was refused one short of the cap: %s", word)
+	// Twenty in the keeper plus the one in front, and every one of them is still
+	// held and still counted.
+	if got := a.openCount(); got != 21 {
+		t.Fatalf("this process holds %d conversations", got)
 	}
-	// And the eighth fills it.
-	a.behind["/tmp/lab/last/transcript.jsonl"] = &kept{
-		conv: Conversation{SessionFile: "/tmp/lab/last/transcript.jsonl"}, side: &aside{}}
-	word, ok := a.roomForAnother()
-	if ok {
-		t.Fatal("a ninth conversation was allowed")
-	}
-	if want := "8 open is as many as aforge holds — /quit closes this one"; word != want {
-		t.Fatalf("the refusal reads %q", word)
+	if got := a.waitingCount(); got != 0 {
+		t.Fatalf("%d of them said they were waiting on somebody", got)
 	}
 }
 

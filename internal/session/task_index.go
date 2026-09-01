@@ -168,6 +168,22 @@ type TaskIndexEntry struct {
 	// draws nothing rather than assuming the session's own folder.
 	Ground string   `json:"ground,omitempty"`
 	Mode   TaskMode `json:"groundMode,omitempty"`
+	// Rung is which copy of the ground the work happened in — the rung of the
+	// ground ladder that made this node's world (groundladder.go). Mode above is
+	// the PROMISE, settled before anything was carved; this is what was actually
+	// made to keep it, and the two are not the same fact: one repository task
+	// gets a worktree and the next a whole fork, and both were promised a branch.
+	//
+	// IT IS HERE BECAUSE A CARD CANNOT GUESS IT. The settled card names the
+	// directory the work was left in, and until this field existed the only word
+	// it had for that directory was the one the surface had hardcoded — which was
+	// right for one rung and wrong for the rest ([GroundWord] holds the words).
+	//
+	// ADDITIVE, AND ABSENCE IS UNKNOWN, like Files and Ground beside it: a row
+	// written before it existed says nothing about its rung, and the promise is
+	// what a reader falls back to rather than assuming the rung that was ordinary
+	// on the day the row was written.
+	Rung GroundRung `json:"groundRung,omitempty"`
 	// Status is the node's final state — "done", "failed", "unverified" — or its
 	// live one ("running", "queued") on a row merged in from a graph that is
 	// still turning.
@@ -695,9 +711,14 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		// ever disagreeing about one piece of work.
 		Kind:  n.kind,
 		Where: strings.TrimSpace(n.worktree),
-		// The node's own ground and mode, settled before it ran and never moved.
+		// The node's own ground and mode, settled before it ran and never moved,
+		// and the rung the ladder actually climbed to keep that promise — which
+		// is what tells a card reading this row a year later whether the
+		// directory it names was a branch of the person's repository or a copy
+		// of their folder (groundladder.go's [GroundWord]).
 		Ground:       strings.TrimSpace(n.Ground),
 		Mode:         n.Mode,
+		Rung:         n.Rung,
 		Status:       string(n.state),
 		Outcome:      taskOutcome(n.report),
 		FilesChanged: wrote,

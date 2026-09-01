@@ -479,9 +479,15 @@ type SubjectSpend struct {
 	// the name off the task index, the standing store or the session it is
 	// already holding.
 	ID string
-	// Session is the conversation a task's work was journaled under, so a page
-	// with an ID and a Session can find the task index row that names it. It is
-	// the same value as ID on a conversation row.
+	// Session is the journal the calls were made under — which for a piece of
+	// work is THE NODE'S OWN transcript and not the conversation that asked for
+	// it, exactly as [UsageLine.Session] is. It is the same value as ID on a
+	// conversation row.
+	//
+	// It said "the conversation a task's work was journaled under" until issue
+	// #168, which was never true of a node and misled nobody only because
+	// nothing joins on it: a page holding an ID finds the task index row by that
+	// ID alone. The conversation a piece of work belongs to is [UsageLine.Root].
 	Session string
 	// Workspace is the project the money was spent against, and empty where the
 	// line named none.
@@ -505,6 +511,15 @@ type SubjectSpend struct {
 // a conversation, for the same reason — the work is the thing that was asked
 // for.
 //
+// AND WORK WITH NO ID OF ITS OWN BELONGS TO THE CONVERSATION IT WAS ROOTED IN.
+// A fork's hand, and the check that reads what a node left, are whole agents
+// with no row anywhere: a hand keeps no journal at all, so its lines name the
+// stand-in `unfiled`, and a check's name its own transcript. Grouped on that
+// name they drew a row headed by an id nothing in the product can put a title
+// on, beside a conversation row missing exactly that money. [UsageLine.Root]
+// says whose the work was, so the row it belongs on is the conversation's own —
+// which is also where the fold puts the money in that conversation's books.
+//
 // Ties break the way [UsageByModel]'s do, so the table is stable.
 func UsageBySubject(lines []UsageLine) []SubjectSpend {
 	type key struct{ kind, id, session string }
@@ -516,8 +531,17 @@ func UsageBySubject(lines []UsageLine) []SubjectSpend {
 			kind, id = SubjectStanding, strings.TrimSpace(line.Standing)
 		case strings.TrimSpace(line.Task) != "":
 			kind, id = SubjectTask, strings.TrimSpace(line.Task)
+		case strings.TrimSpace(line.Root) != "":
+			id = strings.TrimSpace(line.Root)
 		}
 		at := key{kind, id, strings.TrimSpace(line.Session)}
+		if kind == SubjectConversation {
+			// A CONVERSATION ROW'S SESSION IS ITS ID, which is what
+			// [SubjectSpend.Session] promises — and it is what merges the work
+			// above into the conversation rather than leaving it beside it under
+			// the journal it happened to run in.
+			at.session = id
+		}
 		if kind == SubjectStanding {
 			// A promise fires in a new folder every time, so grouping a standing
 			// row by the session it happened in would draw one row per firing —
@@ -572,4 +596,74 @@ func UsageSubjectWord(kind string) string {
 		return "a conversation"
 	}
 	return ""
+}
+
+// ── one conversation and everything it started ──────────────────────────────
+
+// TreeSpend is what a conversation has cost WITH the work it started, split
+// into the two halves so that a surface can say which is which.
+//
+// THE SPLIT IS THE POINT AND THE TOTAL IS THE HEADLINE. The defect this answers
+// (issue #145) is a conversation whose ambient figure read $2.53 while the tasks
+// it had started were spending $51.05 — the smaller number, alone, for two
+// hours, because a node's money only reaches the conversation's own books when
+// the node closes. The total here is the honest one; the halves are what makes
+// it auditable rather than a figure that jumped.
+type TreeSpend struct {
+	// ConversationUSD is what the conversation's OWN calls cost — its turns and
+	// the auxiliary calls made on its behalf.
+	ConversationUSD float64
+	// TasksUSD is every call made inside work this conversation started, at any
+	// depth, including the checks and the repair rounds — and the hands a turn
+	// forked, which are the conversation's own answer being worked on in parallel
+	// rather than a task, and are counted here because they are money the
+	// conversation's books do not hold until they come home. It is what those
+	// books will eventually hold as each piece of work closes, and it is here
+	// now.
+	TasksUSD float64
+	// Calls is the whole tree's requests, on [TreeSpend.TotalUSD]'s terms: the
+	// denominator the total is the sum over.
+	Calls int
+}
+
+// TotalUSD is the tree: the conversation and its work.
+func (s TreeSpend) TotalUSD() float64 { return s.ConversationUSD + s.TasksUSD }
+
+// UsageTree sums the ledger around one conversation: what it spent itself, and
+// what the work it started spent.
+//
+// IT IS EACH CALL ONCE, which is the whole reason it reads the ledger rather
+// than adding a running total of its own. A fold writes no ledger line
+// ([Agent.addFoldedUsage]), so a node's calls are here under the node that made
+// them whether the node is still running or closed an hour ago — and a reader
+// that added this to a conversation's own books would count a closed node
+// twice. The books and this are two readings of the same money, not two
+// quantities to add.
+//
+// A LINE BELONGS TO THE WORK WHENEVER IT NAMES A ROOT, and to the conversation
+// only when it names the conversation itself. That ordering matters at exactly
+// one point: a conversation whose journal id somehow appeared as a root would
+// otherwise be counted in both halves.
+//
+// An empty conversation id matches nothing at all rather than everything, which
+// is the honest answer for a surface that does not know which conversation it
+// is in.
+func UsageTree(lines []UsageLine, conversation string) TreeSpend {
+	var tree TreeSpend
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		return tree
+	}
+	for _, line := range lines {
+		switch {
+		case strings.TrimSpace(line.Root) == conversation:
+			tree.TasksUSD += line.USD
+		case strings.TrimSpace(line.Session) == conversation:
+			tree.ConversationUSD += line.USD
+		default:
+			continue
+		}
+		tree.Calls += line.Calls
+	}
+	return tree
 }

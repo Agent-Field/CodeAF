@@ -150,6 +150,17 @@ type brainOptions struct {
 	// environment and the persisted picker, because a flag is the most recent
 	// thing the person said.
 	model, planModel string
+	// seats is a headless door's answer from the one resolution ladder — flag,
+	// environment, crew, default (config.ResolveSeats) — handed down rather
+	// than resolved again here, so the models the door printed on its receipt
+	// are the models this brain builds clients for.
+	//
+	// Nil is a window, which keeps the order it has always kept: the flag, then
+	// the picker the person last used, then what config.Load resolved. The crew
+	// reaches a window through the roles ladder instead, live, on every
+	// auxiliary call — a window that folded its crew into the session model
+	// would be answering the conversation on the work class.
+	seats *config.Seats
 	// subharness forces every job this brain admits onto one worker. It is a
 	// benchmarking instrument: a run comparing two workers on the same corpus
 	// cannot let the choice be the variable it is measuring. Empty is the
@@ -220,7 +231,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
-	applyModelFlags(&settings, opts.model, opts.planModel)
+	if opts.seats != nil {
+		applySeats(&settings, *opts.seats)
+	} else {
+		applyModelFlags(&settings, opts.model, opts.planModel)
+	}
 	prefs := loadChatPrefs(filepath.Dir(path))
 	if strings.TrimSpace(prefs.VoiceModel) == "" {
 		prefs.VoiceModel = settings.VoiceModel
@@ -308,7 +323,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		return nil, brain.abandon(err)
 	}
 	brain.closing(planClient.Close)
-	installRoleLadder(graph, talkModel, planModel, workModel, settings.PlanModel, opts.planModel)
+	// Who named the plan model, for the seed's own record: the flag if one was
+	// typed, the rung the ladder climbed to when a headless door resolved the
+	// seats, and otherwise the variable that has always seeded it.
+	planOrigin := config.PlanModelEnv
+	if strings.TrimSpace(opts.planModel) != "" {
+		planOrigin = "--plan-model"
+	}
+	if opts.seats != nil {
+		planOrigin = opts.seats.Plan.Rung()
+	}
+	installRoleLadder(graph, talkModel, planModel, workModel, settings.PlanModel, planOrigin)
 	boostClients := newMessageClientPool(settings)
 	brain.closing(boostClients.Close)
 	// The ruler stays keyed to the work model even when a different model

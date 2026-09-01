@@ -249,12 +249,17 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
 		{"y yes · r redirect · n no", []string{"y", "r", "n"}},
 		// `0 or esc, no` names two keys for one answer, and the comma after the
-		// second is punctuation rather than part of it.
-		{standProposalHint, []string{"1", "2", "3", "0", "esc"}},
+		// second is punctuation rather than part of it. The line is built from
+		// the chips a card drew rather than written down (standing.go's
+		// [standHintFields]), so this asks for the full row's spelling of it.
+		{standAskHint(nil), []string{"1", "2", "3", "0", "esc"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
-		{"↑↓ move · →← tree · enter open · w wide · esc",
-			[]string{"↑↓", "→←", "enter", "w", "esc"}},
+		{"↑↓ move · →← tree · enter open · alt+w wide · esc",
+			[]string{"↑↓", "→←", "enter", "alt+w", "esc"}},
+		// The roster's hold hint on a row that needs your look (tasksettle.go's
+		// [roomSettleHint]): three letters, each lifted out of its own word.
+		{roomSettleHint + " · esc", []string{"a", "l", "n", "esc"}},
 		{"esc stops and sends", []string{"esc"}},
 		{"space space home · tab last · / commands",
 			[]string{"space", "space", "tab", "/"}},

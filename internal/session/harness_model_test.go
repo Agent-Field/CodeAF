@@ -336,6 +336,18 @@ func TestTheDesignStartedEventNamesTheResolvedModel(t *testing.T) {
 	if started.Model != "test/brain-model" {
 		t.Fatalf("the design started on %q, want the designer role's model", started.Model)
 	}
+	// AND THE DESIGN IS SEEN OUT BEFORE THIS TEST RETURNS. The claim above is
+	// about the FIRST line on the lane, so the assertion is finished here — but
+	// the design behind it is a task on a goroutine of its own that outlives the
+	// turn which asked for it (harness_task.go), and a test that walks away from
+	// one leaves a whole agent still writing into the t.TempDir() the cleanup is
+	// about to remove. That is the "TempDir RemoveAll cleanup: directory not
+	// empty" this test used to fail with on a busy machine, where the design took
+	// longer than the assertion did. Reading the card and declining it is the
+	// SIGNAL that the work is over; nothing here waits on a clock.
+	card := designDone(t, lane)
+	agent.ResolveHarness(card.ID, false, "")
+	designOutcome(t, agent)
 }
 
 // AN INSTALL THAT CONFIGURED NOTHING DESIGNS AS IT ALWAYS DID: the ladder's

@@ -347,8 +347,8 @@ func runPlan(args []string) error {
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
 	ensemble := flags.Int("ensemble", plan.EnsembleAuto, "0 decide from the goal, -1 never, N>=2 force N independent passes and merge them")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
-	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
+	planModel := flags.String("plan-model", "", planModelFlagHelp)
 	// The same -w that run takes, and it means the same directory. Plan runs
 	// before run in the headless pipeline, so there is no workspace yet unless
 	// the person naming the goal also names the material it is about — which is
@@ -366,7 +366,8 @@ func runPlan(args []string) error {
 	if err != nil {
 		return err
 	}
-	applyModelFlags(&settings, *model, *planModel)
+	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
 		return err
@@ -385,6 +386,7 @@ func runPlan(args []string) error {
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
+		fmt.Println(seats.Line())
 		if settings.PlanSplit() {
 			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
 		}
@@ -455,8 +457,8 @@ func runRevise(args []string) error {
 	output := flags.String("o", "", "write the revised graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	done := flags.String("done", "", "mark these node ids finished before revising")
-	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
-	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model (default AFORGE_PLAN_MODEL)")
+	model := flags.String("model", "", modelFlagHelp)
+	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model ("+planLadderHelp+")")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
@@ -486,7 +488,8 @@ func runRevise(args []string) error {
 	if err != nil {
 		return err
 	}
-	applyModelFlags(&settings, *model, *planModel)
+	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
 		return err
@@ -500,7 +503,8 @@ func runRevise(args []string) error {
 	ctx := settings.Context(context.Background(), graph.Goal)
 
 	if !*asJSON {
-		fmt.Printf("goal:   %s\nevent:  %s\n\n", graph.Goal, event)
+		fmt.Printf("goal:   %s\nevent:  %s\n", graph.Goal, event)
+		fmt.Printf("%s\n\n", seats.Line())
 	}
 	start := time.Now()
 	operations, usage, err := plan.Revise(ctx, client, graph, event)
@@ -693,6 +697,34 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 	if trimmed := strings.TrimSpace(planModel); trimmed != "" {
 		settings.PlanModel = trimmed
 	}
+}
+
+// THE TWO MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
+//
+// The wording they replaced was `(default AFORGE_MODEL)`, which named one rung
+// of four and hid the two that decide most runs: a profile's crew, and this
+// build's own default when nobody has said anything at all. A help string that
+// names the whole ladder is the shortest place a person can learn that their
+// crew reaches this command (config.ResolveSeats).
+const (
+	workLadderHelp    = "flag › AFORGE_MODEL › crew › default"
+	planLadderHelp    = "flag › AFORGE_PLAN_MODEL › crew mastermind › the work model"
+	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
+	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
+)
+
+// applySeats puts the ladder's answer where the rest of the process reads its
+// two models.
+//
+// It is applyModelFlags' successor for the headless doors: the same two fields,
+// filled from the WHOLE ladder — flag, environment, crew, default
+// (config.ResolveSeats) — rather than from the flags alone with config.Load's
+// environment reading underneath. One assignment per seat, so the models a
+// door's receipt names and the clients it then builds cannot be different
+// models.
+func applySeats(settings *config.Config, seats config.Seats) {
+	settings.Model = seats.Work.Model
+	settings.PlanModel = seats.Plan.Model
 }
 
 // planningClient returns the client planning-class calls run on. With no plan

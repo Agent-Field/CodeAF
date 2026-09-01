@@ -520,7 +520,8 @@ func TestTheRecordCardDrawsOnlyTheFactsItHas(t *testing.T) {
 	drive(t, a, key("down"))
 	drive(t, a, key("enter"))
 	card = taskSheetText(a)
-	for _, never := range []string{"$0.00", "0 tok", "0 files changed", taskCardBranchWord, taskCardTreeWord} {
+	for _, never := range []string{"$0.00", "0 tok", "0 files changed", taskCardBranchWord,
+		session.GroundWord(session.GroundRungSnapshot, ""), session.GroundWord(session.GroundRungCopy, "")} {
 		if strings.Contains(card, never) {
 			t.Fatalf("the card wrote %q about a task nothing is known about:\n%s", never, card)
 		}
@@ -528,7 +529,7 @@ func TestTheRecordCardDrawsOnlyTheFactsItHas(t *testing.T) {
 }
 
 // The resolved placement is a separate fact only when it is not already the
-// surviving worktree. Showing the same path twice makes `where` look like a
+// surviving working copy. Showing the same path twice makes `where` look like a
 // second directory rather than the answer to where the task ran.
 func TestTheRecordCardShowsAResolvedWhereOnce(t *testing.T) {
 	a, _, _ := taskApp(t)
@@ -536,6 +537,9 @@ func TestTheRecordCardShowsAResolvedWhereOnce(t *testing.T) {
 	entry := pastTask("9", "port-the-parser", "Port the parser", time.Hour)
 	entry.ArtifactURI = "file://" + dir
 	entry.Where = dir
+	// The rung is on the row, so the working copy wears the ladder's own word for
+	// it and `where` is left for a place this card can say nothing else about.
+	entry.Rung = session.GroundRungSnapshot
 	a.comp.tasks = []session.TaskIndexEntry{entry}
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the page refused to open")
@@ -546,7 +550,7 @@ func TestTheRecordCardShowsAResolvedWhereOnce(t *testing.T) {
 		t.Fatalf("the resolved task directory is not shown exactly once:\n%s", card)
 	}
 	if strings.Contains(card, taskCardPlaceWord+railSep) {
-		t.Fatalf("the worktree path was repeated as a second where row:\n%s", card)
+		t.Fatalf("the working copy path was repeated as a second where row:\n%s", card)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PHONE'S STATUS DECK ─────────────────────────────────────────────────
@@ -233,7 +235,11 @@ func (a *app) deckSpend() (string, string) {
 	if a.statusQuiet() {
 		return "", ""
 	}
-	if cost := dollars(a.cost); cost != "" {
+	// The wide row's own figure, which is the whole tree's ([app.spendShown]).
+	// The phone keeps this segment because it is one a person cannot recover by
+	// looking at anything else, and that is truer still of a number the work
+	// under the conversation is moving.
+	if cost := dollars(a.spendShown()); cost != "" {
 		parts = append(parts, hudPart{kind: segCost, text: cost})
 	}
 	if pct, ok := a.ctxPercent(); ok {
@@ -449,6 +455,18 @@ func (a *app) deckItems() []deckItem {
 		if int(part.kind) < len(deckSegWords) {
 			add(deckSegWords[part.kind], part.text, deckActNone)
 		}
+		// AND DIRECTLY UNDER THE METER, THE LINE THE METER IS MEASURED AGAINST.
+		// The context row says how full the conversation is; this one says how
+		// full it is allowed to get and which of the two rules decided that, so
+		// somebody who has just watched it fold can tell whether it followed their
+		// own pin or the window (compactionRuleWord). It rides the context
+		// segment rather than standing on its own so that a session with no
+		// window to speak of grows no line at all — a threshold against an
+		// unknown window is a figure that means nothing, which is the silence
+		// [app.contextSegment] already keeps.
+		if part.kind == segCtx {
+			add(compactsAtLabel, a.compactionRuleWord(), deckActNone)
+		}
 	}
 	add("tasks", a.deckTaskWord(), deckActNone)
 	// phone lane: AND WHETHER ANYTHING IS KEEPING WATCH WITH NO WINDOW OPEN. It
@@ -508,6 +526,50 @@ var deckSegWords = [segCount]string{
 	// this file's header).
 	segLink:  "connection",
 	segState: "state",
+}
+
+// compactsAtLabel is the label on the line above, and it is deliberately not
+// [deckSegWords]`[segETA]`'s word: that row is the FORECAST — "compaction in ~3
+// turns", a thing about to happen — and this one is the RULE, which is true all
+// session whether anything is about to happen or not. Two rows called
+// "compaction" on one page would be a page where a person has to work out which
+// one they are reading.
+const compactsAtLabel = "compacts at"
+
+// compactionRuleWord is where this conversation folds, and which of the two
+// rules put the line there:
+//
+//	85% of 1.3M (derived)     the window decided, which is nearly every session
+//	60% of 1M (pinned)        a person decided, with --context-fill or the
+//	                          `context fill` row in the settings sheet
+//
+// THE FIGURE IS THE TRIGGER'S OWN and not a second reading of it: the tokens
+// come from session.CompactThresholdFor, which is the function the fold itself
+// fires on, and the rule from session.ContextFillPinned, which is the question
+// that function asks before it picks a law. A surface that worked the percentage
+// out from the fill setting would be right until the day either clamp bit and
+// wrong from then on without anybody noticing.
+//
+// The window it is stated against is the TRUSTED one — the claim, less anything
+// an endpoint has actually refused to serve — for the same reason: it is the
+// window the threshold was taken of. On the ordinary session the two are the
+// same figure and this reads exactly like the meter above it; on a model that
+// has been refused, the meter says what the card claims and this says what
+// aforge now believes, which is the difference a person is owed.
+func (a *app) compactionRuleWord() string {
+	window := session.TrustedWindowFor(a.model, a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
+	if window <= 0 || threshold <= 0 {
+		return ""
+	}
+	rule := "derived"
+	if _, pinned := session.ContextFillPinned(); pinned {
+		rule = "pinned"
+	}
+	// Nearest whole percent, the rounding [app.ctxPercent] uses on the meter
+	// this line sits under, so the two figures round the same way.
+	percent := (threshold*200/window + 1) / 2
+	return itoa(percent) + "% of " + tokenWord(window) + " (" + rule + ")"
 }
 
 // deckTaskWord is the roster in one line: what is running, what is waiting, and

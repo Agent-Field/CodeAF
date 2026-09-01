@@ -988,6 +988,14 @@ so `enter` on one of its recent rows hits the fresh-and-empty test: the empty
 conversation is closed and the resumed one takes its place. No orphan, no cap spent
 on a conversation nobody typed in.
 
+*Superseded 2026-08-31: **there is no cap**. The owner hit eight in a day of
+ordinary use and ruled the limit pointless, so `convCap`, `convCapWord`,
+`roomForAnother` and `roomToRenew` are all gone and no door counts what is open.
+What survives is the ordering — canonicalisation and the keeper lookup before any
+door is opened — and the cost table above, which is now a description of what a
+window spends rather than the reasoning behind a number. The rest of this section
+is kept as the record of what was built.*
+
 **The cap is eight**, checked **after** canonicalisation and **after** the keeper
 lookup, in that order: attaching something already open is never capped, and a path
 that canonicalises to a transcript already open is an attach, not a second

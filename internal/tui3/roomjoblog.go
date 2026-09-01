@@ -40,16 +40,15 @@ import (
 )
 
 const (
-	// roomJobRunningWord is the foot under a job that is STILL WRITING, and it is
-	// the running half of the sentence [roomFinishedWord] says about work that is
-	// over. Both name esc, because the foot is the row a person's eye lands on
-	// when they wonder what happens next, and for both the answer to "what
-	// happens next" is the same key.
+	// THE FOOT UNDER A JOB THAT IS STILL WRITING is roomrefusal.go's
+	// [roomJobRefusal], which is the running half of the sentence
+	// [roomFinishedRefusal] says about work that is over. Neither names esc any
+	// more — the legend and the focus header both carry it for the whole of a
+	// room's life — and both name where the words in the box can go instead.
 	//
 	// It says THE LOG rather than the job, because the log is what the page is:
 	// a job has nobody in it to narrate, and "the process is running" is the one
 	// thing the header's own clock has been saying all along.
-	roomJobRunningWord = "this log grows as the job works — esc to return"
 	// jobReportLogSep is how a job's report joins its handle to its path
 	// (session's jobrow.go mints `job 3 · log /…/3.log`). It is a constant rather
 	// than three literals because two readers already cut on it — the hosted

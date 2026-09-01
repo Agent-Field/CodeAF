@@ -165,10 +165,16 @@ func (a *app) liveTags() []segment {
 // editTags carries demotions through an edit. An edit before a tag shifts its
 // range; an edit that overlaps or enters the word dissolves it, allowing the
 // scanner to recognize the resulting spelling afresh.
-func (a *app) editTags(from, to, inserted int) {
+func (a *app) editTags(from, to, inserted int) { a.input.editTags(from, to, inserted) }
+
+// editTags is that shift on ANY box, because the drop door now writes tokens
+// into home's line and the errand pane's as well as into the draft
+// (imagepaste.go's [app.pasteFilesInto]), and a demotion is a fact about the box
+// it was made in.
+func (e *editor) editTags(from, to, inserted int) {
 	delta := inserted - (to - from)
-	out := a.input.demotedTags[:0]
-	for _, s := range a.input.demotedTags {
+	out := e.demotedTags[:0]
+	for _, s := range e.demotedTags {
 		if to <= s.from {
 			s.from += delta
 			s.to += delta
@@ -181,7 +187,7 @@ func (a *app) editTags(from, to, inserted int) {
 		}
 		// The edit touched the annotation, so plainness is no longer banked.
 	}
-	a.input.demotedTags = out
+	e.demotedTags = out
 }
 
 func (a *app) demoteTagBehindCaret() bool {

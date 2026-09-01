@@ -77,7 +77,8 @@ Inside its room you see the program's own progress lines and every call it makes
 model call, each tool call, each question. Its row on the roster carries whatever it last
 said about itself, so you can tell what it is doing without going in.
 
-A run does **not** have a branch or a worktree. It works where the conversation works, so
+A run does **not** have a branch or a working copy of its own. It works where the
+conversation works, so
 there is nothing to merge and nothing to check out afterwards.
 
 ## Stopping a run, and what is kept
@@ -193,6 +194,9 @@ aforge run subharness <name> --input -          # read the input from a pipe
 
 Optional: `-w <dir>` for the directory to work in, `--model <slug>` for the work model,
 `--journal <path>` to append every call the run makes to a file, one JSON object per line.
+
+With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
+and it opens by saying which model it took and what chose it.
 
 There is no task surface and no card here. What comes back:
 

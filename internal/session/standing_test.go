@@ -1499,7 +1499,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	gone := time.Date(2026, 8, 21, 5, 42, 0, 0, time.Local)
 	var parsed standArguments
 	parsed.Rails.Expires = gone.Format("2006-01-02T15:04:05")
-	rails, problem := standingRails(parsed, standing.WhenAt, now)
+	rails, problem := standingRails(parsed, standing.When{Kind: standing.WhenAt}, now)
 	want := "Invalid arguments: rails.expires " + standingClock(gone) +
 		" has already passed — it is now " + standingClock(now) +
 		" (Friday 2026-08-21). Work it out from that time, or leave it out for something that never expires."
@@ -1511,11 +1511,159 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 	}
 	// And one in the future is untouched.
 	parsed.Rails.Expires = now.Add(time.Hour).Format("2006-01-02T15:04:05")
-	if rails, problem = standingRails(parsed, standing.WhenAt, now); problem != "" {
+	if rails, problem = standingRails(parsed, standing.When{Kind: standing.WhenAt}, now); problem != "" {
 		t.Fatalf("a future expiry was refused: %q", problem)
 	}
 	if !rails.Expires.Equal(now.Add(time.Hour)) {
 		t.Fatalf("expires = %s", rails.Expires.Format(time.RFC3339))
+	}
+}
+
+// AN EXPIRY THAT STANDS BEFORE THE ITEM'S OWN MOMENT IS THE SAME DEFECT, and
+// until issue #188 it was accepted: the clock was the only thing an end was
+// measured against, so an end still in the future but earlier than the reminder
+// it was attached to stood up an item the pass could only ever retire.
+//
+// The receipt this pins is the one from that issue, to the second. The model
+// wrote "in 1 minute — 23:11" for the words and took 23:11 for the end out of
+// the same words, while the engine resolved the moment to 23:11:11 — so the
+// item was born eleven seconds past its own end, ran zero times, and was retired
+// as `expired` by rail one of the pass (internal/standing/tick.go).
+func TestAnExpiryBeforeTheItemsOwnMomentIsRefused(t *testing.T) {
+	now := time.Date(2026, 8, 31, 23, 10, 11, 0, time.Local)
+	due := time.Date(2026, 8, 31, 23, 11, 11, 0, time.Local)
+	end := time.Date(2026, 8, 31, 23, 11, 0, 0, time.Local)
+	var parsed standArguments
+	parsed.Rails.Expires = end.Format("2006-01-02T15:04:05")
+	rails, problem := standingRails(parsed, standing.When{Kind: standing.WhenAt, At: due}, now)
+	want := "Invalid arguments: rails.expires " + standingClockExact(end) +
+		" is not after when.at " + standingClockExact(due) +
+		", so it would retire before it ever fired. " +
+		"Put it after that moment, or leave it out — a one-off retires as it fires and needs no end at all."
+	if problem != want {
+		t.Fatalf("the refusal is\n%q\nwant\n%q", problem, want)
+	}
+	if !rails.Expires.IsZero() {
+		t.Fatal("a refused expiry was kept anyway")
+	}
+	// AND THE REFUSAL IS LEGIBLE, which is the whole reason it is spelled to the
+	// second: at the minute both stamps read 23:11 and the sentence would say a
+	// moment is not after itself.
+	if strings.Count(problem, "23:11:") != 2 {
+		t.Fatalf("the refusal does not name both moments to the second: %q", problem)
+	}
+}
+
+// THE EDGE IS THE MOMENT ITSELF, because the pass asks about the end before it
+// asks whether anything is due: an end at exactly when.at retires the item in
+// the same instant it becomes deliverable, so it is refused with everything
+// earlier, and one second later is an ordinary end and is kept.
+func TestTheEndHasToBeLaterThanTheMomentItOutlives(t *testing.T) {
+	now := time.Date(2026, 8, 31, 23, 10, 11, 0, time.Local)
+	due := time.Date(2026, 8, 31, 23, 11, 11, 0, time.Local)
+	for _, probe := range []struct {
+		name    string
+		end     time.Time
+		refused bool
+	}{
+		{name: "eleven seconds before the moment", end: due.Add(-11 * time.Second), refused: true},
+		{name: "one second before the moment", end: due.Add(-time.Second), refused: true},
+		{name: "the moment itself", end: due, refused: true},
+		{name: "one second after the moment", end: due.Add(time.Second)},
+		{name: "an hour after the moment", end: due.Add(time.Hour)},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var parsed standArguments
+			parsed.Rails.Expires = probe.end.Format("2006-01-02T15:04:05")
+			rails, problem := standingRails(parsed, standing.When{Kind: standing.WhenAt, At: due}, now)
+			if probe.refused {
+				if !strings.Contains(problem, "so it would retire before it ever fired") {
+					t.Fatalf("an end at %s was taken: problem = %q", probe.end.Format(time.RFC3339), problem)
+				}
+				return
+			}
+			if problem != "" {
+				t.Fatalf("an end at %s was refused: %q", probe.end.Format(time.RFC3339), problem)
+			}
+			if !rails.Expires.Equal(probe.end) {
+				t.Fatalf("expires = %s, want %s", rails.Expires.Format(time.RFC3339), probe.end.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
+// A RHYTHM IS THE SAME LAW WITH THE FIRST FIRING IN PLACE OF THE MOMENT: an end
+// before the rhythm's first due is a routine that could never run once. The
+// refusal names it as `its first firing` rather than as a field, because there
+// is no field to go and edit — the model has to move the end or widen the
+// rhythm.
+//
+// AND THE SHAPES WHOSE WAKING IS THE WORLD'S BUSINESS ARE LEFT ALONE. A file
+// watch, an idle watch and a probe may wake in a second or never, so an end in
+// the future is the only thing that can honestly be asked of them; a hold never
+// wakes at all and an end on one is what keeps it.
+func TestARhythmsEndHasToOutliveItsFirstFiring(t *testing.T) {
+	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.Local)
+	var parsed standArguments
+	parsed.Rails.Expires = now.Add(10 * time.Minute).Format("2006-01-02T15:04:05")
+	rhythm := standing.When{Kind: standing.WhenEvery, Every: "1h"}
+	_, problem := standingRails(parsed, rhythm, now)
+	want := "Invalid arguments: rails.expires " + standingClockExact(now.Add(10*time.Minute)) +
+		" is not after its first firing " + standingClockExact(now.Add(time.Hour)) +
+		", so it would retire before it ever fired. " +
+		"Put it after that moment, or leave it out for something that never expires."
+	if problem != want {
+		t.Fatalf("the refusal is\n%q\nwant\n%q", problem, want)
+	}
+	// Past the first firing it is an ordinary end.
+	parsed.Rails.Expires = now.Add(90 * time.Minute).Format("2006-01-02T15:04:05")
+	rails, problem := standingRails(parsed, rhythm, now)
+	if problem != "" {
+		t.Fatalf("an end after the first firing was refused: %q", problem)
+	}
+	if !rails.Expires.Equal(now.Add(90 * time.Minute)) {
+		t.Fatalf("expires = %s", rails.Expires.Format(time.RFC3339))
+	}
+	// A watch on the world keeps whatever end it was given, since nothing here
+	// knows when it would first wake.
+	for _, when := range []standing.When{
+		{Kind: standing.WhenFile, Glob: "*.go"},
+		{Kind: standing.WhenIdle, IdleFor: time.Hour},
+		{Kind: standing.WhenProbe, Probe: standing.Probe{Command: "true"}},
+		{Kind: standing.WhenHold},
+	} {
+		parsed.Rails.Expires = now.Add(time.Minute).Format("2006-01-02T15:04:05")
+		rails, problem := standingRails(parsed, when, now)
+		if problem != "" {
+			t.Fatalf("a %s was refused an end a minute out: %q", when.Kind, problem)
+		}
+		if !rails.Expires.Equal(now.Add(time.Minute)) {
+			t.Fatalf("a %s lost its end", when.Kind)
+		}
+	}
+}
+
+// AND THE REFUSAL REACHES THE MODEL BEFORE ANYBODY IS ASKED, which is the whole
+// point of it: the person never sees a card for a reminder that was already
+// dead, so no item lands with `runs: 0` and `retiredWhy: expired` for them to
+// find in a log a week later.
+func TestProposingAReminderThatEndsBeforeItFiresNeverDrawsACard(t *testing.T) {
+	store := newFakeStanding(t)
+	agent := standingAgent(t, &scriptedCompleter{}, store, nil)
+	due := time.Now().Add(time.Minute).Round(time.Second)
+	body := `{"op":"propose","words":"remind me in 1 minute to drink water",` +
+		`"when":{"kind":"at","at":"` + due.Format("2006-01-02T15:04:05") + `"},` +
+		`"does":{"kind":"say","say":"time to drink water"},` +
+		`"rails":{"expires":"` + due.Add(-11*time.Second).Format("2006-01-02T15:04:05") + `"}}`
+	text, isError, err := agent.standTool(context.Background(), json.RawMessage(body))
+	if err != nil {
+		t.Fatalf("standTool: %v", err)
+	}
+	if !isError || !strings.Contains(text, "so it would retire before it ever fired") {
+		t.Fatalf("a reminder that ends before it fires was taken: %q (isError=%v)", text, isError)
+	}
+	if len(store.created) != 0 {
+		t.Fatalf("something stood that could only ever be retired: %+v", store.created)
 	}
 }
 

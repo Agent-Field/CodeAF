@@ -26,6 +26,15 @@ type errandAgent struct {
 	fakeAgent
 	answered []session.StandingAnswer
 	answerID []uint64
+	// images is what an errand carrying a picture was handed, which is the only
+	// way to assert the bytes crossed rather than the path (homeexchange.go's
+	// [errandSend]).
+	images []session.Image
+}
+
+func (e *errandAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
+	e.images = append(e.images, images...)
+	return e.Submit(ctx, text)
 }
 
 func (e *errandAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -396,6 +405,99 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	}
 	if strings.Contains(settled, "[ 1 "+standYesWord+" ]") {
 		t.Fatalf("the settled card is still drawing its chips:\n%s", settled)
+	}
+}
+
+// standingProposalNarrowed is one EventStandingProposal carrying the answers the
+// ENGINE narrowed this item to ([session.StandingOptions]), which is what every
+// real proposal carries and what decides how many chips the card draws.
+//
+// [standingProposal] deliberately carries none, which is the field's other
+// reading — a notice that narrowed nothing is the kind's full row — so the two
+// helpers between them cover both roads a card's chips arrive by.
+func standingProposalNarrowed(id uint64, item standing.Item) session.Event {
+	return session.Event{
+		Kind: session.EventStandingProposal,
+		Standing: &session.StandingNotice{
+			ID:        id,
+			Item:      item,
+			WhenWords: item.When.Words,
+			CostWords: "about $0.02, once",
+			Options:   session.StandingOptions(item),
+		},
+	}
+}
+
+// THE PANE'S HINT NAMES EXACTLY THE CHIPS THE CARD DREW AND NEVER A DIGIT MORE.
+//
+// It used to be a third hardcoded copy of a line standing.go already kept two
+// correct spellings of, so a one-off reminder — whose card correctly draws no
+// `just once`, because doing that action "now" is meaningless — was offered `3
+// just once` in the sentence under it, and nothing at all answered to the `3`
+// (#189). The line is read off [standingCard.row] now, which is the very row
+// the chips are painted from ([standHintFields]), so an answer the card did not
+// draw cannot be named: it is not in the list the sentence walks.
+func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		item  standing.Item
+		want  string
+		chips int
+	}{
+		// A one-off reminder. "Do it once, now" says the wrong thing at the
+		// wrong moment for a line that was meant for six o'clock, so the card
+		// draws two numbered chips and the hint may name two digits.
+		{"a one-off reminder", standReminder(), "1 yes · 2 change when or where · 0 no", 2},
+		// A watch is a thing a person may reasonably want done once, now — the
+		// third chip is drawn, so the third digit is named.
+		{"a watch", standItem(), "1 yes · 2 change when or where · 3 just once · 0 no", 3},
+	} {
+		lab := newErrandLab(t)
+		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
+		a := lab.app(mine, []session.Event{
+			text(session.EventTextDelta, "Here is what I will do."),
+			standingProposalNarrowed(7, c.item),
+			{Kind: session.EventTurnDone},
+		})
+		besideTheList(a)
+		a.openHome()
+		typeHome(a, c.item.Words)
+		drive(t, a, key("up"), key("enter"))
+
+		ex := theExchange(a)
+		if ex == nil || ex.view == nil {
+			t.Fatalf("%s never put a card in the pane", c.what)
+		}
+		if got := len(ex.view.chips()); got != c.chips {
+			t.Fatalf("%s drew %d numbered chips, want %d", c.what, got, c.chips)
+		}
+		// THE SENTENCE ITSELF, spelled out rather than derived, because a hint
+		// built from the chips would agree with a derivation of itself however
+		// wrong both were. This is what a person reads.
+		hint := exchangeHint(ex)
+		if !strings.HasPrefix(hint, c.want+" · ") {
+			t.Fatalf("%s is offered %q, want it to open with %q", c.what, hint, c.want)
+		}
+		// AND THE FRAME DRAWS IT, so this is a claim about the screen and not
+		// only about a function nobody may be calling.
+		frame := homeText(a)
+		if !strings.Contains(frame, c.want) {
+			t.Fatalf("the foot under %s does not offer %q:\n%s", c.what, c.want, frame)
+		}
+		// AND NOTHING NAMES AN ANSWER THAT IS NOT ON THE ROW. The reminder's
+		// card has no `3`, so neither the chips nor the line under them may say
+		// one.
+		if c.chips < 3 && strings.Contains(frame, standOnceWord) {
+			t.Fatalf("%s was offered %q by a card that drew no such chip:\n%s", c.what, standOnceWord, frame)
+		}
+		// EVERY CHIP THAT WAS DRAWN IS NAMED, which is the other half of
+		// "exactly": a hint that quietly dropped an answer would pass every
+		// assertion above.
+		for at, word := range ex.view.chips() {
+			if !strings.Contains(hint, itoa(at+1)+" "+standHintWord(word)) {
+				t.Fatalf("%s drew %q as chip %d and the hint %q does not name it", c.what, word, at+1, hint)
+			}
+		}
 	}
 }
 

@@ -693,7 +693,7 @@ func TestTheJudgesDoneConditionIsWhatTheWorkIsFinishedAgainst(t *testing.T) {
 	// is judged against and the whole of what it is shown about the goal
 	// (task_audit.go), so the question it is actually asked is where this is
 	// worth asserting.
-	if question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, nil, ""); !strings.Contains(question, done) {
+	if question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil); !strings.Contains(question, done) {
 		t.Fatalf("the checker was asked %q, want the judge's done-condition in it", question)
 	}
 }
@@ -744,7 +744,7 @@ func TestAnAutoStartedTaskWithNoDoneConditionIsFinishedAgainstThePersonsWords(t 
 		}
 	}
 	// AND IT REACHES THE CHECKER, which is the whole point of writing one.
-	if question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, nil, ""); !strings.Contains(question, routeAsk) {
+	if question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, landingFiles{}, "", nil); !strings.Contains(question, routeAsk) {
 		t.Fatalf("the checker was asked %q, want the person's own words in it", question)
 	}
 	// AND THE GENERIC LINE IS THE LAST RUNG AND NOT THE SECOND. It is what a door
