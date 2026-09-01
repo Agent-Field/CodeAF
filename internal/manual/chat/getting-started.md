@@ -7,30 +7,42 @@ an empty prompt and a provider error. It opens on one centred screen, in the cha
 that asks for three things one at a time — under a minute, no borders, nothing else on
 the frame:
 
-1. **your openrouter key** — a masked paste box
+1. **connect openrouter** — `enter` signs in in your browser; pasting an existing key also works
 2. **the crew** — `frugal`, `balanced` or `max`, the same three rows `/crew` draws
 3. **the limits** — one screen with three rows on it: `per day`, `per plan`, `per
    conversation`
 
-`enter` accepts each step's default and goes on. `esc` skips the whole thing. When it is
-done, or skipped, the ordinary empty conversation appears — the wordmark box and the
-prompt — and the screen never comes back.
+`enter` accepts each step's default and goes on. On the OpenRouter step it starts the
+browser connection; `esc` says not now. When it is done, or skipped, the ordinary empty
+conversation appears — the wordmark box and the prompt. The crew and limit questions
+never come back. If OpenRouter is still not connected, its one-step screen returns on the
+next local interactive launch because the model cannot work without it.
 
 The line over the question reads `setting up · 1 of 3`; with only one thing missing it
 reads `setting up`. The foot says what `enter` does right now — `enter takes balanced`,
-`enter keeps $500`, `enter goes on without a key` — and that `esc skips setup`.
+`enter keeps $500`, `enter connects in browser` — and what `esc` does now.
 
 ## Set up my api key — the openrouter key step, and what happens with no key
 
-The first step is a masked paste box under the words *your openrouter key*, with one
-line of context: *aforge talks to models through openrouter, on your key and your card.
-nothing is sent until you do.* Where to get one is written on the screen:
-`https://openrouter.ai/settings/keys`.
+On a local interactive launch using aforge's built-in model endpoint, the first step reads
+*connect openrouter*. Press `enter`: aforge opens OpenRouter in your browser, waits on a
+random return address bound only to `127.0.0.1`, and uses an S256 proof key for the trip.
+After you sign in and approve it, OpenRouter makes a user-controlled API key for this
+profile and sends the browser back to aforge. The browser says it is connected, the screen
+continues, and the running conversation can use the key immediately. No prompt is sent and
+no model is called during the connection.
 
-Paste it (or type it) and press `enter`. It is checked for **shape only** — it has to
-start with `sk-` and hold no spaces — and never against the network, because the setup
-runs before you have agreed to spend anything. One that fails the shape check leaves
-this line under the box and stays on the step:
+The address is also written on the waiting screen. If the browser cannot be opened, select
+or click that address yourself. `esc` while waiting cancels the return listener and leaves
+you on the OpenRouter step; another `enter` tries again.
+
+## Paste an existing OpenRouter API key instead of connecting in the browser
+
+Already have a key? Paste it on the same first screen instead of pressing `enter` on an
+empty box. The key is masked while it is typed, and the manual-key address remains on the
+screen: `https://openrouter.ai/settings/keys`. A pasted key is checked for **shape only** —
+it has to start with `sk-` and hold no spaces. One that fails the shape check leaves this
+line under the box and stays on the step:
 `not the shape of an openrouter key — they start with sk-or-`.
 
 What it writes: the `api_key` field of your profile's `config.json` (under `~/.aforge`),
@@ -38,12 +50,21 @@ owner-readable only. That is the same field the **openrouter key** row on the se
 panel's Providers tab writes, and the one every later launch reads. The running
 conversation takes it at once — the next message rides it, no restart.
 
-`enter` on an empty box goes on without one. The empty conversation then says one dim
-line — `no openrouter key yet · paste one into /settings, or export OPENROUTER_API_KEY` —
-and the first message you send is refused until one of those has happened. That refusal
-is not a fault in the message; it is the setup's `esc` having been honoured. Paste into
-`/settings` (Providers tab, **openrouter key**) and send again, no restart, or export the
-variable and start aforge again. The setup itself does not return.
+## Skip OpenRouter, retry later, and keep the message I typed
+
+`esc` on the idle step says not now. The conversation then says one dim line:
+`openrouter is not connected · enter on your message connects in a browser, or export
+OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it normally and
+press `enter`, and the one-step connection opens over the conversation before the draft is
+cleared. Connect, then press `enter` again to send those same words.
+
+This provider step also opens over an existing or resumed conversation and over a profile
+whose first-run setup was already shown. It appears whenever all of these are true: the
+launch is local and interactive, the built-in OpenRouter endpoint is still the model
+provider, and neither the shell nor the profile holds a key. A custom `AFORGE_BASE_URL`, a
+`--host` session, and a headless `--once` run are not offered an OpenRouter browser trip.
+For a headless run, start bare `aforge` once to connect in a terminal, or export
+`OPENROUTER_API_KEY` (or `OPENAI_API_KEY`) before running it.
 
 **If `OPENROUTER_API_KEY` is already set in your shell, this step is not shown at all.**
 The environment outranks the file, always; the setup only asks for what nothing else has
@@ -108,31 +129,36 @@ profile's `config.json` — through **the same settings rows** the Spending tab 
 `AFORGE_DAILY_BUDGET` is set in your shell, this step is not shown — the variable outranks
 the file.
 
-It shows **once, ever**, like the rest of the setup.
+The rails show **once, ever**. The OpenRouter prerequisite above is the only step that may
+return.
 
-## It only appears once — when the setup is and is not shown
+## What appears once — and why the OpenRouter step can return
 
-The setup is shown **once per profile, ever**. When it closes — finished or skipped —
-`setup_seen_at` is written into `config.json` with the time, and no later launch opens
-it. Skipping with `esc` counts as shown. Nothing on the surface brings it back: there is
-no command for it, and the only follow-up it ever leaves is the one dim line about the
-missing credential described above.
+The **crew and spending questions** are shown once per profile. When the first-run screen
+closes — finished or skipped — `setup_seen_at` is written into `config.json` with the time,
+and no later launch asks those preference questions again. Skipping with `esc` counts as
+shown.
 
-It is **never shown** when:
+The **OpenRouter connection is a prerequisite, not a preference**, and is not suppressed by
+that marker. It returns as a one-step screen on a later eligible launch while the key is
+still missing. It can also return in the same launch when an unsent model message reaches
+`enter`; the draft stays in the box.
 
-- `OPENROUTER_API_KEY` is in your shell **and** the crew and the day's limit are already
-  in your profile — there is nothing to ask, and the marker is written silently;
-- the launch is `--once`, `--host`, `--session <path>`, or `aforge resume`;
-- stdin is not a terminal — a pipe, a script, a headless frame;
-- the conversation it would open over has anything in it, or was resumed;
-- the profile has already been shown it.
+The once-only crew and spending questions stay away from `--session <path>`, `aforge
+resume`, `--once`, `--host`, pipes, existing conversations, and profiles that have already
+seen them. If every answer already exists, the marker is written silently.
+
+The OpenRouter prerequisite follows a narrower rule of its own. A missing connection is
+shown for local interactive `--session <path>` and `aforge resume` launches too, because
+those conversations still need a model. It stays away from `--once`, `--host`, pipes,
+custom endpoints, and profiles whose shell or profile already supplies a key.
 
 A person who has **some** of the three configured sees only the missing steps, and the
 count in the title is the count of those.
 
 While it is up it is the whole screen: every keystroke belongs to it except `ctrl+c`,
-which is still the door (twice, as always), and the mouse does nothing. Nothing you type
-is lost to it — it opens only on a launch where nothing has been typed yet.
+which is still the door (twice, as always), and the mouse does nothing. The returning
+provider step may open after you type, but the draft is held untouched underneath it.
 
 ## Change what I picked during setup — where each answer lives afterwards
 
@@ -140,7 +166,7 @@ Every answer went through a settings row, so every answer has a door:
 
 | What you answered | Where to change it later |
 | --- | --- |
-| the openrouter key | `/settings`, Providers tab, the **openrouter key** row — masked, `enter` to paste a new one, empty to clear |
+| the openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
 | the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
 | the limits | `/budget` (also `/limits`), or `/settings` → **Spending** — `per day`, `per plan`, `per conversation`. `AFORGE_DAILY_BUDGET` in your shell outranks the day's row |
 | the model you talk to | `/model` — this was never part of the setup |

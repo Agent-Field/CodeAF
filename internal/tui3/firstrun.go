@@ -10,8 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
-// THE FIRST-RUN SETUP: the first minute of aforge for somebody with nothing
-// configured, and the last time they see it.
+// THE FIRST-RUN SETUP, AND THE MODEL DOOR THAT MAY COME BACK.
 //
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
@@ -31,18 +30,21 @@ import (
 //
 // Four rules, and each is a thing the person is protected from:
 //
-//   - IT SHOWS ONCE, EVER. A marker in the profile says it was shown
-//     (internal/config's firstrun.go), and skipping counts as shown — a screen
-//     that came back would be a screen a person has to dismiss twice.
+//   - THE CREW AND RAILS SHOW ONCE. A marker in the profile says they were shown
+//     (internal/config's firstrun.go), and skipping counts as shown. The key is
+//     different because it is not a preference: with no key the default model
+//     provider cannot work, so its one-step connection returns on a later local
+//     interactive launch until it is answered.
 //   - IT ASKS ONLY WHAT IS MISSING. A key in the shell, a crew already chosen,
 //     a ceiling already written — each drops its step. A person who has some of
 //     it configured sees only the rest, and one who has all of it sees nothing.
-//   - IT STEALS NO KEYSTROKE FROM A CONVERSATION. It opens only on an empty,
-//     un-resumed conversation the door said was a person at a terminal
-//     ([Options.Setup]), before anything has been typed. Once it is gone
-//     nothing brings it back, so no key ever lands here by surprise.
-//   - IT SPENDS NOTHING. The key is checked for shape, never against the
-//     network; the setup runs before a person has agreed to spend anything.
+//   - IT STEALS NO KEYSTROKE FROM A CONVERSATION. The first-run questions open
+//     only before anything has been typed. A returning key door may stand over
+//     an existing conversation, but an attempted send opens it before the draft
+//     is cleared, so connecting and pressing enter again sends the same words.
+//   - IT SPENDS NOTHING. A pasted key is checked only for shape. The browser
+//     exchange creates a key but makes no model call, so no prompt is sent and
+//     no model charge can be made during setup.
 //
 // IT PRECEDES THE WELCOME BOX. The box is what an empty conversation shows; this
 // is what it shows before that, and the box's arrival animation starts fresh the
@@ -101,6 +103,13 @@ type setupFlow struct {
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string
+	// auth is the default provider's browser trip. Starting covers the short
+	// interval before its listener is handed back; flow and link cover the wait
+	// after that. id names the attempt so a late answer after esc is dropped.
+	authStarting bool
+	authFlow     OpenRouterFlow
+	authLink     string
+	authID       uint64
 	// skipped says esc ended it, which is the difference between a profile
 	// that was answered and one that was declined — the note at the end reads
 	// the profile rather than this, but the marker is written either way.
@@ -125,17 +134,13 @@ func setupStepsFor(profileDir string) []setupStep {
 	return steps
 }
 
-// openSetup decides, once, whether this launch gets the screen. It is called
-// from [newApp] after everything else on the first frame has been decided, so
-// it can see what it is opening over.
-//
-// The door's own conditions are folded into [Options.Setup] (a TTY, no --once,
-// no --host, no named session, no picker). What is left to check here is the
-// profile — has it been shown, is anything missing — and the conversation: a
-// resumed one, or one with anything in it, is a person coming back to work and
-// not a person arriving.
+// openSetup decides whether this launch gets the screen. The first-run half is
+// still once-only and limited to an empty new conversation. The provider half
+// is a prerequisite rather than a greeting: on a local interactive launch
+// using the default OpenRouter endpoint, no key opens the one-step connection
+// even when the profile has met setup before or the conversation was resumed.
 func (a *app) openSetup(allowed bool) {
-	if !allowed || a.resumed || len(a.entries) > 0 || a.hosted() {
+	if a.hosted() {
 		return
 	}
 	dir := strings.TrimSpace(a.profileDir)
@@ -144,14 +149,27 @@ func (a *app) openSetup(allowed bool) {
 		// and a setup whose enter lands nothing would be a form that lies.
 		return
 	}
-	if !config.SetupSeenAt(dir).IsZero() {
+	providerMissing := a.routerConnect != nil && !config.APIKeyConfigured(dir)
+	firstRun := allowed && !a.resumed && len(a.entries) == 0 && config.SetupSeenAt(dir).IsZero()
+	if !providerMissing && !firstRun {
 		return
 	}
-	steps := setupStepsFor(dir)
+	steps := make([]setupStep, 0, 3)
+	if providerMissing {
+		steps = append(steps, setupKey)
+	}
+	if firstRun {
+		for _, step := range setupStepsFor(dir) {
+			if step == setupKey && providerMissing {
+				continue
+			}
+			steps = append(steps, step)
+		}
+	}
 	if len(steps) == 0 {
 		// Nothing to ask. The marker is still written, so the next launch is one
-		// read instead of three, and so a fact unset LATER — a key taken out of
-		// the shell — is met by the settings row and not by a greeting.
+		// read instead of three. A key taken out of the shell later is not one of
+		// these preference questions: the provider prerequisite above catches it.
 		_ = config.MarkSetupSeen(dir, a.now())
 		return
 	}
@@ -163,15 +181,15 @@ func (a *app) openSetup(allowed bool) {
 // setupNow is the step on screen.
 func (s *setupFlow) step() setupStep { return s.steps[s.at] }
 
-// endSetup puts the screen away for good: the marker is written, whatever
-// state the screen held is dropped, and the welcome box — decided before this
-// screen and held behind it — starts its arrival from the first frame, which
-// is what "precedes the box" means in practice.
+// endSetup puts this showing away: the marker is written, whatever state the
+// screen held is dropped, and the welcome box — decided before this screen and
+// held behind it — starts its arrival from the first frame. The first-run
+// questions are gone for good; a still-missing provider may open its key-only
+// form later.
 //
-// AND THE NOTES THIS SCREEN MAY LEAVE. A person who skipped, or who pressed
-// enter through the key step with nothing in it, is about to meet the first
-// turn's refusal with no key behind it, so one dim line points at the row that
-// takes one; a profile with a key says nothing. On a Mac a SECOND line follows
+// AND THE NOTES THIS SCREEN MAY LEAVE. A person who skipped with no key gets
+// one dim line naming the next direct road; a profile with a key says nothing.
+// On a Mac a SECOND line follows
 // it about the option key, for the reason written over it below — so a test
 // that means the key's line asks for the note that names it rather than for the
 // last note on the pile.
@@ -181,9 +199,18 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	}
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
+	a.cancelSetupAuth()
 	a.setup = setupFlow{skipped: skipped}
 	if !config.APIKeyConfigured(dir) {
-		a.noteFacts(setupNoKeyWord, "/settings")
+		word := setupNoKeyWord
+		facts := []string{config.APIKeyEnv}
+		if a.routerConnect != nil {
+			word = setupNoKeyConnectWord
+			facts = append([]string{"enter"}, facts...)
+		} else {
+			facts = append([]string{"/settings"}, facts...)
+		}
+		a.noteFacts(word, facts...)
 	}
 	// AND THE ONE LINE A MAC IS OWED BEFORE IT COSTS ANYBODY ANYTHING. Every
 	// chord this surface binds is `⌥`, and most macOS terminals send Option as an
@@ -213,6 +240,11 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 // rest in its own words.
 const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or export " + config.APIKeyEnv
 
+// setupNoKeyConnectWord is the local default-provider form. It points at the
+// next ordinary act rather than at a buried settings row: the draft is kept,
+// and enter brings the browser connection back before anything is submitted.
+const setupNoKeyConnectWord = "openrouter is not connected · enter on your message connects in a browser, or export " + config.APIKeyEnv
+
 // ── the keyboard ────────────────────────────────────────────────────────────
 
 // setupKeyPress is the screen's whole claim on the keyboard, and it is the
@@ -228,6 +260,14 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	s := &a.setup
 	name := msg.String()
+	if s.step() == setupKey && (s.authStarting || s.authFlow != nil) {
+		if name == "esc" {
+			a.cancelSetupAuth()
+			s.refusal = setupConnectCancelledWord
+			a.touch()
+		}
+		return nil, true
+	}
 	if name != "enter" {
 		s.refusal = ""
 	}
@@ -235,17 +275,14 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "esc":
 		return a.endSetup(true), true
 	case "enter":
+		if s.step() == setupKey && strings.TrimSpace(s.text) == "" && a.routerConnect != nil {
+			return a.beginOpenRouter(), true
+		}
 		if !a.setupCommit() {
 			a.touch()
 			return nil, true
 		}
-		s.at++
-		s.text = ""
-		if s.at >= len(s.steps) {
-			return a.endSetup(false), true
-		}
-		a.touch()
-		return nil, true
+		return a.advanceSetup(), true
 	case "up", "ctrl+p":
 		if s.step() == setupCrew {
 			s.crew.move(-1)
@@ -281,6 +318,21 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
+// advanceSetup moves past one answered step and closes the screen after the
+// last. It is shared by a key pasted here and a key returning from the browser,
+// so those two roads cannot disagree about which question follows.
+func (a *app) advanceSetup() tea.Cmd {
+	s := &a.setup
+	s.at++
+	s.text = ""
+	s.refusal = ""
+	if s.at >= len(s.steps) {
+		return a.endSetup(false)
+	}
+	a.touch()
+	return nil
+}
+
 // setupPaste is a paste while the screen is up — which, on the key step, is the
 // ordinary way the key arrives. Whitespace around it is the terminal's; inside
 // it is a paste that picked up a line break, and the shape check refuses that
@@ -288,6 +340,9 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (a *app) setupPaste(text string) bool {
 	if !a.setup.open {
 		return false
+	}
+	if a.setup.authStarting || a.setup.authFlow != nil {
+		return true
 	}
 	if a.setup.step() != setupCrew {
 		a.setup.text += strings.TrimSpace(text)
@@ -297,13 +352,129 @@ func (a *app) setupPaste(text string) bool {
 	return true
 }
 
+// beginOpenRouter starts the default provider's local browser connection off
+// the update loop. The screen moves first, so even the small wait for a
+// loopback listener has words on it rather than looking like a swallowed enter.
+func (a *app) beginOpenRouter() tea.Cmd {
+	if a.routerConnect == nil {
+		return nil
+	}
+	a.authSerial++
+	id := a.authSerial
+	a.setup.authID = id
+	a.setup.authStarting = true
+	a.setup.authLink = ""
+	a.setup.refusal = ""
+	a.touch()
+	connect, ctx := a.routerConnect, a.ctx
+	return func() tea.Msg {
+		flow, err := connect(ctx)
+		return openRouterFlowMsg{id: id, flow: flow, err: err}
+	}
+}
+
+// adoptOpenRouterFlow opens the address only after the listener behind it is
+// standing, then waits off-loop for the browser to return. A stale attempt is
+// cancelled immediately: esc owns the fact that the person left it.
+func (a *app) adoptOpenRouterFlow(msg openRouterFlowMsg) tea.Cmd {
+	if !a.setup.open || a.setup.step() != setupKey || a.setup.authID != msg.id {
+		if msg.flow != nil {
+			msg.flow.Cancel()
+		}
+		return nil
+	}
+	a.setup.authStarting = false
+	if msg.err != nil {
+		a.setup.refusal = msg.err.Error()
+		a.setup.authID = 0
+		a.touch()
+		return nil
+	}
+	if msg.flow == nil {
+		a.setup.refusal = "openrouter did not start a browser connection"
+		a.setup.authID = 0
+		a.touch()
+		return nil
+	}
+	a.setup.authFlow = msg.flow
+	a.setup.authLink = strings.TrimSpace(msg.flow.URL())
+	if a.setup.authLink == "" {
+		msg.flow.Cancel()
+		a.setup.authFlow = nil
+		a.setup.authID = 0
+		a.setup.refusal = "openrouter returned no browser address"
+		a.touch()
+		return nil
+	}
+	if err := processOpener(a.setup.authLink); err != nil {
+		a.setup.refusal = err.Error() + " · open the link above"
+	}
+	a.touch()
+	flow, ctx := msg.flow, a.ctx
+	return func() tea.Msg {
+		key, err := flow.Wait(ctx)
+		return openRouterKeyMsg{id: msg.id, key: key, err: err}
+	}
+}
+
+// adoptOpenRouterKey lands the browser-created key through the very same
+// settings row a paste uses, which gives it the same 0600 file and the same
+// live handover to every conversation in this process.
+func (a *app) adoptOpenRouterKey(msg openRouterKeyMsg) tea.Cmd {
+	if !a.setup.open || a.setup.step() != setupKey || a.setup.authID != msg.id {
+		return nil
+	}
+	a.setup.authStarting = false
+	a.setup.authFlow = nil
+	a.setup.authLink = ""
+	a.setup.authID = 0
+	if msg.err != nil {
+		a.setup.refusal = msg.err.Error()
+		a.touch()
+		return nil
+	}
+	key := strings.TrimSpace(msg.key)
+	if !config.LooksLikeAPIKey(key) {
+		a.setup.refusal = "openrouter returned no usable key"
+		a.touch()
+		return nil
+	}
+	row, ok := a.registry().Row(config.KeyAPIKey)
+	if !ok {
+		a.setup.refusal = "this profile has nowhere to save the openrouter key"
+		a.touch()
+		return nil
+	}
+	if err := row.Apply(key); err != nil {
+		a.setup.refusal = err.Error()
+		a.touch()
+		return nil
+	}
+	return a.advanceSetup()
+}
+
+// cancelSetupAuth releases whichever half of the browser trip exists. Setting
+// authID to zero also invalidates a Begin command still on its way back; its
+// adoption closes the listener as soon as it arrives.
+func (a *app) cancelSetupAuth() {
+	if a.setup.authFlow != nil {
+		a.setup.authFlow.Cancel()
+	}
+	a.setup.authStarting = false
+	a.setup.authFlow = nil
+	a.setup.authLink = ""
+	a.setup.authID = 0
+}
+
+const setupConnectCancelledWord = "openrouter connection cancelled · enter tries again or paste a key"
+
 // setupCommit is enter on the step on screen: the answer is written through
 // its settings row, or the refusal is put under the box and the step stays.
 // It reports whether the step is answered.
 //
-// A KEY STEP LEFT EMPTY IS A STEP SKIPPED, not a refusal. There is no default
-// key to accept, and a person who has none yet is told where one goes by the
-// note at the end rather than held here.
+// A KEY STEP LEFT EMPTY IS SKIPPED only when no browser connection is wired —
+// the custom-endpoint and test path. On the local default provider, keypress
+// routing catches that enter first and begins OpenRouter instead.
 func (a *app) setupCommit() bool {
 	s := &a.setup
 	registry := a.registry()
@@ -468,16 +639,41 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 
 	switch s.step() {
 	case setupKey:
-		add(pal.ink("your openrouter key"))
-		for _, line := range wrap(setupKeyWord, inner) {
-			add(pal.dim(line))
+		switch {
+		case s.authStarting:
+			add(pal.ink("connecting openrouter"))
+			for _, line := range wrap(setupConnectStartingWord, inner) {
+				add(pal.dim(line))
+			}
+		case s.authFlow != nil:
+			add(pal.ink("finish connecting openrouter"))
+			for _, line := range wrap(setupConnectWaitingWord, inner) {
+				add(pal.dim(line))
+			}
+			if s.authLink != "" {
+				add("")
+				for _, line := range wrap(s.authLink, inner) {
+					add(pal.dim(linkify(line, s.authLink)))
+				}
+			}
+		default:
+			heading := "your openrouter key"
+			word := setupKeyWord
+			if a.routerConnect != nil {
+				heading = "connect openrouter"
+				word = setupConnectWord
+			}
+			add(pal.ink(heading))
+			for _, line := range wrap(word, inner) {
+				add(pal.dim(line))
+			}
+			add(pal.dim("or get a key at ") + pal.ink(linkify(setupKeyURL, setupKeyURL)))
+			add("")
+			caretRow = len(body)
+			shown := maskTyped(s.text)
+			caretX = len(setupLead) + ansi.StringWidth(shown)
+			add(pal.accent(setupLead) + pal.ink(shown))
 		}
-		add(pal.dim("get one at ") + pal.ink(setupKeyURL))
-		add("")
-		caretRow = len(body)
-		shown := maskTyped(s.text)
-		caretX = len(setupLead) + ansi.StringWidth(shown)
-		add(pal.accent(setupLead) + pal.ink(shown))
 	case setupCrew:
 		add(pal.ink("the crew"))
 		for _, line := range wrap(setupCrewWord, inner) {
@@ -580,7 +776,11 @@ func setupTitle(s *setupFlow) string {
 const (
 	setupKeyWord = "aforge talks to models through openrouter, on your key and your card. " +
 		"nothing is sent until you do."
-	setupKeyURL = "https://openrouter.ai/settings/keys"
+	setupKeyURL      = "https://openrouter.ai/settings/keys"
+	setupConnectWord = "sign in once in your browser. openrouter makes a key for this profile; " +
+		"aforge stores it on this machine. no prompt is sent and no model is called."
+	setupConnectStartingWord = "opening a private return address on this machine…"
+	setupConnectWaitingWord  = "finish signing in in your browser. this page will continue when openrouter sends you back."
 	// THE CREW STEP SAYS WHAT IT IS NOT. People conflate the crew with the model
 	// they talk to, and /crew's own confirmation already has to say the same
 	// thing after the fact (crew.go's applyCrew). Here it is said before.
@@ -641,7 +841,13 @@ func (a *app) setupKeysWord() string {
 	s := &a.setup
 	switch s.step() {
 	case setupKey:
+		if s.authStarting || s.authFlow != nil {
+			return "esc cancels"
+		}
 		if strings.TrimSpace(s.text) == "" {
+			if a.routerConnect != nil {
+				return "enter connects in browser · paste a key · esc not now"
+			}
 			return "enter goes on without a key · esc skips setup"
 		}
 		return "enter saves it · esc skips setup"

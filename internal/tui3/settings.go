@@ -444,11 +444,12 @@ var settingUI = map[string]settingMeta{
 			"reach and falls back to one that needs none.",
 	},
 	// THE KEY EVERY CALL RIDES sits on the Providers tab above the two search
-	// keys: it is the credential a person comes looking for when the first
-	// turn refused, and it is the one the first-run screen writes (firstrun.go).
+	// keys: it is the credential the browser connection or a manual paste writes
+	// (firstrun.go), and remains the replacement door after that.
 	config.KeyAPIKey: {
 		tab: tabProviders, label: "openrouter key", widget: widgetText,
-		about: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+		about: "the key aforge talks to models with. A missing default key opens " +
+			"connect openrouter in your browser; paste a replacement here if needed. " +
 			"A change lands on this conversation at once.",
 	},
 	config.KeyExaKey: {

@@ -1517,10 +1517,10 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
 		},
-		// THE KEY EVERY MODEL CALL RIDES. It is a row for the reason the first-run
-		// setup exists: a person with no key in their shell has to be able to
-		// hand one over somewhere, and "export it and start again" is not a
-		// somewhere. It masks like every credential, the environment outranks
+		// THE KEY EVERY MODEL CALL RIDES. The default local door normally creates
+		// one through the browser (tui3's firstrun.go); this row remains the place
+		// to paste a replacement or to use a custom endpoint's credential. It masks
+		// like every credential, the environment outranks
 		// it as it always has (apikey.go's resolution order), and a write lands
 		// on the RUNNING session through the surface's Applied hook rather than
 		// waiting for the next launch — the row this was modelled on says "on the
@@ -1528,7 +1528,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
-			Hint: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+			Hint: "the key aforge talks to models with. With the default provider, a missing key " +
+				"opens connect openrouter in your browser; paste a replacement here if needed. " +
 				"Set in the shell it outranks this row. A change lands on this conversation at once.",
 			read:  func() string { return maskCredential(APIKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyAPIKey, raw, APIKeyAt(dir)) },
