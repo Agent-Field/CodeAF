@@ -4286,8 +4286,7 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// ([app.homeTrue]).
 	row := a.homeTrue(line.row)
 	label := a.homeRowGlyph(row, a.homeSpins(at)) + " " + homeName(row)
-	note := homeNote(row, a.homeHeld(row), a.takeoverRowWord(row), a.homeMark(row),
-		a.homeRowGone(row), a.homeFresh(row), h.world.Read)
+	note := a.homeRowNote(row, at == h.cursor, label, width)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -4490,7 +4489,12 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held bool, claim string, mark rowMark, gone bool, fresh int, now time.Time) string {
+// door is the clause a HELD row adds after `another window` when there is a
+// cursor on it and room for it ([takeoverHeldDoorWord]), and "" everywhere else.
+// It is a parameter rather than a condition in here because whether it fits is a
+// question about a width this function is never told
+// ([app.homeRowNote] asks it).
+func homeNote(row session.SessionRow, held bool, door, claim string, mark rowMark, gone bool, fresh int, now time.Time) string {
 	var parts []string
 	// A CONVERSATION ON ITS WAY HERE OUTRANKS EVERY OTHER WORD IN THIS RUNG
 	// except a folder that is not there, and it is the one word here that is
@@ -4552,6 +4556,13 @@ func homeNote(row session.SessionRow, held bool, claim string, mark rowMark, gon
 		parts = append(parts, itoa(row.Tasks.Incomplete)+" incomplete")
 	case held:
 		parts = append(parts, homeHeldShort)
+		// AND THE DOOR OUT OF IT, on the one row a person is standing on. The
+		// clause is a part of its own so it takes the rung's own ` · ` and lands
+		// BEFORE the age — where it is is the question, the way back is the
+		// answer, and how long ago somebody spoke is neither (takeovervoice.go).
+		if door != "" {
+			parts = append(parts, door)
+		}
 	case mark == markOurs:
 		// A CONVERSATION THIS TERMINAL IS HOLDING. It goes where `another window`
 		// goes and never instead of it — the two are different facts about
@@ -4568,6 +4579,40 @@ func homeNote(row session.SessionRow, held bool, claim string, mark rowMark, gon
 	}
 	parts = append(parts, homeNoteTail(row, now)...)
 	return strings.Join(parts, " · ")
+}
+
+// homeRowNote is [homeNote] with the ONE clause that depends on how much room
+// the row has — the door out of `another window` — and it is the whole of that
+// decision for the lists that draw rows one line high.
+//
+// IT GIVES WAY BY COMPOSING BOTH AND CHOOSING, never by cutting. A margin that
+// fitted `another window · enter brings i` would be worse than the short word it
+// grew out of: the row would have spent the name's cells on half an instruction.
+// So the long note is measured against the cells LEFT OVER beside the whole
+// label — which is stricter than the budget [overlayNoteRoom] would allow it,
+// and deliberately: that budget lets a long note eat into a label, and this
+// list's job is choosing between conversations by name. A width that cannot hold
+// the whole sentence gets the short one back whole, and the card carries the
+// door at every width (takeovervoice.go's [app.takeoverCard]).
+func (a *app) homeRowNote(row session.SessionRow, selected bool, label string, width int) string {
+	h := &a.home
+	note := homeNote(row, a.homeHeld(row), "", a.takeoverRowWord(row), a.homeMark(row),
+		a.homeRowGone(row), a.homeFresh(row), h.world.Read)
+	// AT REST AND UNDER THE CURSOR, AND IN NO OTHER STATE. An armed row, a claim
+	// that is out and a claim that ended each have their own word for this
+	// margin and their own sentences on the card; a door offered under any of
+	// them would be the surface answering a question nobody is still asking
+	// ([app.takeoverPhaseOf] is the one place that decides which state a row is
+	// in, so this cannot disagree with the card).
+	if !selected || a.takeoverPhaseOf(row) != takeoverRest {
+		return note
+	}
+	grown := homeNote(row, a.homeHeld(row), takeoverDoorWord, a.takeoverRowWord(row), a.homeMark(row),
+		a.homeRowGone(row), a.homeFresh(row), h.world.Read)
+	if ansi.StringWidth(grown) > width-2-rowGutter-ansi.StringWidth(label) {
+		return note
+	}
+	return grown
 }
 
 // homeNoteTail is the part of a row's dim tail that does not depend on the

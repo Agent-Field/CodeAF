@@ -98,7 +98,16 @@ type switcherRow struct {
 	// it OUTRANKS [switcherRow.held] on the margin: `another window` is where it
 	// is, and a person who has just pressed enter is asking whether it is on its
 	// way (takeovervoice.go).
-	coming   bool
+	coming bool
+	// door is whether enter on this row would ASK for the conversation, which
+	// is the one thing that decides if the margin may name the door
+	// (takeovervoice.go's [takeoverHeldDoorWord]). It is narrower than
+	// [switcherRow.held]: over --host the holder is a window on this laptop and
+	// the journal is on the far machine, and a conversation with no folder of
+	// its own has nowhere to leave a request — both are held, and neither has a
+	// door. A row that promised a key it would then refuse is the worst thing a
+	// word on a margin can do, which is the rule `here` is already written to.
+	door     bool
 	gone     bool
 	fold     bool
 	foldWord string
@@ -142,6 +151,11 @@ type switcherHere struct {
 	// rather than about the world, which is why it travels with the two
 	// addresses above rather than being read off any row.
 	coming string
+	// hosted is this window looking at ANOTHER MACHINE's home over --host, in
+	// which case no row has a door out of `another window`: the window holding
+	// the conversation is on this laptop and the journal is over there, so there
+	// is nobody here to ask (takeover.go's header states the rule).
+	hosted bool
 }
 
 // switcherGone is which project folders were NOT on the disk when the world was
@@ -180,6 +194,7 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 				options = append(options, row.Presence.Question.Options...)
 			}
 			coming := !atHere && here.coming != "" && strings.TrimSpace(row.Transcript) == here.coming
+			held := !atHere && row.Open && strings.TrimSpace(row.Transcript) != ""
 			all = append(all, switcherRow{
 				kind: switcherConversation, session: row, project: project.Name,
 				title: homeName(row), note: switcherConversationNote(row, seen), age: sinceAt(row.At, now),
@@ -194,7 +209,8 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 				// conversation saying what it is doing, which the note already
 				// carries and which would put `another window` on the margin of
 				// every row that is asking anything.
-				held:   !atHere && row.Open && strings.TrimSpace(row.Transcript) != "",
+				held:   held,
+				door:   held && !here.hosted && strings.TrimSpace(row.Dir) != "",
 				coming: coming,
 				// AND A CONVERSATION ON ITS WAY HERE IS MOVING, whatever else is
 				// or is not running in it. The one spinner belongs to the thing
@@ -765,6 +781,34 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 			continue
 		}
 		break
+	}
+	// AND THEN THE ROW UNDER THE CURSOR GROWS `another window` INTO THE DOOR, if
+	// what is left of the width will take the whole clause (takeovervoice.go's
+	// [takeoverHeldDoorWord]).
+	//
+	// IT IS ASKED AFTER THE DROPS AND NEVER BEFORE THEM, which is the whole of
+	// giving way gracefully here. This row's facts are ranked — the note goes
+	// first, then the project tag, then the margin itself — and a clause that
+	// bid for cells in that auction would win them off the note it was standing
+	// beside. So it spends only what nothing else wanted, and a width that will
+	// not hold it hands back the short word WHOLE rather than half a sentence:
+	// `another window · enter brings i` would be the row spending the name's
+	// cells on an instruction nobody can follow.
+	//
+	// AND THE NAME IS WHAT IT MAY NOT SPEND. The test is the whole title fitting
+	// beside the grown tail — not the eight-cell floor the drops above settle
+	// for — because this list's job is choosing between conversations, and a
+	// door sentence that cost `The Other Terminal` its last four letters would
+	// have taken the one fact the row exists to carry.
+	//
+	// THE CURSOR AND NOT THE POINTER. `p.hover` paints the same band, but enter
+	// goes to the cursor's row — a promise about a key on a row the key would
+	// not act on is a lie the band makes look true.
+	if row.door && p.sel && parts[2] == homeHeldShort {
+		grown := []string{parts[0], parts[1], takeoverHeldDoorWord}
+		if ansi.StringWidth(glyph)+1+switcherTailWidth(grown)+ansi.StringWidth(row.title) <= width {
+			parts = grown
+		}
 	}
 	tail := switcherTailWidth(parts)
 	room := max(0, width-ansi.StringWidth(glyph)-1-tail)

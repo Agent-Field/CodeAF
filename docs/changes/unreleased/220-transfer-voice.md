@@ -9,6 +9,7 @@ invalidates:
   - "A takeover request expires after ten minutes (`session.TakeoverStale`, now exported) and the holder deletes it unread. The asking window used to go on beating at the flock for ever, silently. It now stops and says `that window did not answer — it still has it`, with `enter asks again`."
   - "A conversation that came free while nobody was on home used to arrive as nothing at all. The ending is kept and home says `it came free — enter opens it` when the person comes back."
   - "`Agent.drainTakeover` rode the presence desk's five-second heartbeat, so an IDLE window took up to five seconds to notice a request. It has its own 250ms beat now (`takeoverDoorstep`); measured on two real windows sharing one home, pickup went from 2.99–4.84s to 0.21–0.25s. Presence writes and `drainAnswers` still ride the heartbeat."
+  - "A held row's margin said only `another window` — where the conversation is, and nothing about the way back — so the door was told only on the card and on the foot. The row the CURSOR is on now says `another window · enter brings it here`; every other held row keeps the short word, and a width that cannot hold the whole clause beside the conversation's whole name hands the short word back rather than cutting the sentence. The card still carries the door at every width."
   - "The chat manual said `enter` on a row marked `another window` \"will not open a second copy — one conversation, one writer. Go to that terminal, or start a new conversation here\". That denial stopped being true when the move shipped and is removed."
 ---
 
@@ -18,3 +19,8 @@ indistinguishable from a key that did not work. Both halves of that are the same
 mistake — a surface going quiet at the exact moment somebody is waiting on it —
 and the latency underneath was mechanical rather than a fact about the far
 window's reply.
+
+The resting state was the same defect one step earlier: the live states moved
+onto the row and `another window` was left standing there as a fact with no
+door in it. It grows into the door on the one row the eye is on, and gives the
+clause back to the width before it would cut a word in half.

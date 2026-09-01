@@ -196,7 +196,7 @@ func TestTheClaimedRowSaysItIsComingAndTakesTheOneSpinner(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	a.home.point(theirs)
-	if row, ok := a.home.focusedLine(); !ok || homeNote(row.row, a.homeHeld(row.row), a.takeoverRowWord(row.row),
+	if row, ok := a.home.focusedLine(); !ok || homeNote(row.row, a.homeHeld(row.row), "", a.takeoverRowWord(row.row),
 		a.homeMark(row.row), false, 0, now) == "" {
 		t.Fatal("the held row carries no note at all")
 	}
@@ -698,5 +698,144 @@ func TestAKeptConversationIsLetGoOfOnItsStir(t *testing.T) {
 	}
 	if a.file != free {
 		t.Fatalf("letting go of a kept conversation moved the window to %q", a.file)
+	}
+}
+
+// ── THE DOOR ON THE ROW THE CURSOR IS ON ────────────────────────────────────
+
+// homeRowFor is the one drawn line of home's list that names this title, with
+// the colour taken off it. The tests below are about the RIGHT MARGIN of one
+// row, so they need that row and not the whole screen: `another window` appears
+// on every held row and the assertions are about which of them grew.
+func homeRowFor(t *testing.T, a *app, title string) string {
+	t.Helper()
+	for _, line := range strings.Split(homeText(a), "\n") {
+		if strings.Contains(line, title) {
+			return line
+		}
+	}
+	t.Fatalf("no row named %q on the screen:\n%s", title, homeText(a))
+	return ""
+}
+
+// THE HELD ROW UNDER THE CURSOR SAYS HOW TO GET IT BACK, AND ITS SIBLINGS DO
+// NOT. This is the whole of the report: `another window` names where a
+// conversation is and nothing at all about the way back, and the way back was
+// told only on the card three cells away and on the foot line thirty rows down.
+//
+// The margin grows on ONE row because the eye is on one row — and because the
+// sentence is only true of the row enter would act on. Seven held rows each
+// repeating the same instruction is not seven answers.
+func TestTheHeldRowUnderTheCursorNamesTheDoorAndItsSiblingsDoNot(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	third := lab.session("-tmp-alpha", "aaaa000000000003", "a third window", where, now.Add(-2*time.Hour))
+	lab.hold(theirs)
+	lab.hold(third)
+
+	a := lab.app(mine)
+	a.width, a.height = homeSwitchFull, 30
+	a.openHome()
+	a.home.point(theirs)
+
+	if got := homeRowFor(t, a, "The Other Terminal"); !strings.Contains(got, takeoverHeldDoorWord) {
+		t.Fatalf("the held row under the cursor is %q, want it to name the door", strings.TrimSpace(got))
+	}
+	other := homeRowFor(t, a, "A Third Window")
+	if !strings.Contains(other, homeHeldShort) {
+		t.Fatalf("a held row lost its own word: %q", strings.TrimSpace(other))
+	}
+	if strings.Contains(other, takeoverDoorWord) {
+		t.Fatalf("a held row nobody is standing on offered the door: %q", strings.TrimSpace(other))
+	}
+	// AND THE SENTENCE FOLLOWS THE CURSOR rather than sticking to the row it
+	// was first drawn on.
+	a.home.point(third)
+	if got := homeRowFor(t, a, "A Third Window"); !strings.Contains(got, takeoverHeldDoorWord) {
+		t.Fatalf("the door did not follow the cursor: %q", strings.TrimSpace(got))
+	}
+	if got := homeRowFor(t, a, "The Other Terminal"); strings.Contains(got, takeoverDoorWord) {
+		t.Fatalf("the row the cursor left kept the door: %q", strings.TrimSpace(got))
+	}
+}
+
+// AND A ROW WITH NO ROOM FOR THE SENTENCE HANDS IT BACK WHOLE. Giving way is
+// dropping the clause, never cutting it: `another window · enter brings i` costs
+// the name its cells and buys an instruction nobody can follow.
+//
+// The name is what the clause may not spend. This list's job is choosing between
+// conversations, so the growth is offered only where the whole title still fits
+// beside it — and the card carries the door at every width, which is what makes
+// the row's silence affordable.
+func TestTheDoorOnTheMarginGivesWayToTheNameRatherThanCutAWord(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.workspace("alpha")
+	long := "a conversation whose name is long enough to want every cell this row has to give"
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", long, where, now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	a.width, a.height = homeCardMin, 30
+	a.openHome()
+	a.home.point(theirs)
+
+	row := homeRowFor(t, a, "Long Enough")
+	if !strings.Contains(row, homeHeldShort) {
+		t.Fatalf("the narrow row lost where the conversation is: %q", strings.TrimSpace(row))
+	}
+	if strings.Contains(row, takeoverDoorWord) {
+		t.Fatalf("the row grew a sentence it had no room for: %q", strings.TrimSpace(row))
+	}
+	// NOTHING HALF-SAID. A row that cut the clause would leave a prefix of it
+	// behind, and that is the failure this test is actually about.
+	for _, half := range []string{"enter bring", "brings it", "· enter"} {
+		if strings.Contains(row, half) {
+			t.Fatalf("the margin was cut mid-sentence at %q: %q", half, strings.TrimSpace(row))
+		}
+	}
+	// AND THE CARD STILL CARRIES IT, which is why the row may go quiet.
+	if card := homeCardFor(t, a, theirs); !cardSays(card, takeoverDoorWord) {
+		t.Fatalf("the card lost the door the row gave up:\n%s", strings.Join(card, "\n"))
+	}
+}
+
+// A ROW WITH NO DOOR IS NEVER OFFERED ONE. Over --host the window holding the
+// conversation is on this laptop and the journal is on the far machine, so there
+// is nobody to ask; a conversation with no folder of its own has nowhere to
+// leave a request. Both are `another window` and neither has a way back, and a
+// margin that named a key it would then refuse is the worst thing a word on a
+// door can do.
+func TestNoDoorOnTheMarginWhereEnterWouldRefuse(t *testing.T) {
+	now := time.Date(2026, time.September, 1, 13, 0, 0, 0, time.UTC)
+	held := session.SessionRow{ID: "held", Dir: "/state/alpha/held", Transcript: "/state/alpha/held/t.jsonl",
+		Project: "alpha", Title: "Held chat", At: now.Add(-time.Hour), Open: true}
+	flat := session.SessionRow{ID: "flat", Transcript: "/old/flat.jsonl",
+		Project: "alpha", Title: "Flat chat", At: now.Add(-time.Hour), Open: true}
+	world := session.World{Read: now, Projects: []session.Project{
+		{Bucket: "alpha", Dir: "/state/alpha", Path: "/work/alpha", Name: "alpha",
+			Sessions: []session.SessionRow{held, flat}}}}
+
+	local := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	for _, row := range switcherStops(local) {
+		if !row.held {
+			t.Fatalf("%q is not held and this test needs it to be", row.title)
+		}
+		if row.session.ID == "flat" && row.door {
+			t.Fatal("a conversation with no folder of its own was offered a move")
+		}
+		if row.session.ID == "held" && !row.door {
+			t.Fatal("an ordinary held conversation lost its door")
+		}
+	}
+	far := readSwitcher(world, nil, switcherHere{hosted: true}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	for _, row := range switcherStops(far) {
+		if row.door {
+			t.Fatalf("%q was offered a move on another machine's home", row.title)
+		}
 	}
 }

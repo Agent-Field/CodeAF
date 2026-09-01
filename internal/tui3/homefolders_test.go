@@ -47,7 +47,7 @@ func TestARowSaysWhatItsConversationIsAlsoAbout(t *testing.T) {
 		At:     now.Add(-2 * time.Hour),
 		Places: []session.PlaceRef{{Path: "/home/p/code/wisp", Arrival: session.PlaceSaid}},
 	}
-	note := homeNote(row, false, "", markNone, false, 0, now)
+	note := homeNote(row, false, "", "", markNone, false, 0, now)
 	if !strings.Contains(note, "also about wisp") {
 		t.Fatalf("the row's tail is %q, want the folder it is also about", note)
 	}
@@ -60,7 +60,7 @@ func TestARowSaysWhatItsConversationIsAlsoAbout(t *testing.T) {
 	row.Places = append(row.Places,
 		session.PlaceRef{Path: "/home/p/notes"},
 		session.PlaceRef{Path: "/home/p/code/lantern"})
-	if note := homeNote(row, false, "", markNone, false, 0, now); !strings.Contains(note, "also about wisp +2") {
+	if note := homeNote(row, false, "", "", markNone, false, 0, now); !strings.Contains(note, "also about wisp +2") {
 		t.Fatalf("the row's tail is %q, want one name and a count", note)
 	}
 }
@@ -87,7 +87,7 @@ func TestARowAboutWhereItStandsSaysNothingExtra(t *testing.T) {
 			return row
 		}(),
 	} {
-		if note := homeNote(row, false, "", markNone, false, 0, now); strings.Contains(note, homeAlsoWord) {
+		if note := homeNote(row, false, "", "", markNone, false, 0, now); strings.Contains(note, homeAlsoWord) {
 			t.Fatalf("%s drew %q", name, note)
 		}
 	}
