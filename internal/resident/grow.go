@@ -671,7 +671,13 @@ func growJob(ctx context.Context, graph *store.Store, ask Satisfier, req GrowReq
 				// checks in it is the measurement this row exists to record, and
 				// a run that skipped the question would have nothing to show for
 				// it but a round that quietly happened.
-				if standing := StandingEvidence(graph, jobRoot); len(standing) > 0 {
+				//
+				// AND THE FINDING IN THE HAND COUNTS BEFORE THE JOURNAL DOES.
+				// req.Finding was taken from the context above, which is where
+				// the gate that is raising it right now put it — one event
+				// before it writes the row this journal is read from. See
+				// standingAgainst.
+				if standing := standingAgainst(graph, jobRoot, req.Finding); len(standing) > 0 {
 					covered = standing
 					break
 				}
@@ -937,6 +943,15 @@ func GovernorStanding(graph *store.Store, jobRoot string) (string, bool) {
 			return findingStoodWords(rounds, index), true
 		case CauseOutOfWall:
 			return "no time left for another round of work", true
+		case CauseCovered:
+			// A GOVERNOR DECLINING TO FUND WHAT A REVIEW ASKED FOR IS NEWS. It
+			// is not arithmetic — no cap was reached — it is one reading of the
+			// job answering that there was nothing left to buy, and a person
+			// handed a run that stopped there is owed the reason rather than
+			// "nothing further was started". It never acquits anything: the
+			// finding it declined to fund is still on the delivery, named, and
+			// the run is still short. See revision.coverageRefused.
+			return "a reading of what this job is judged on found nothing left to add", true
 		}
 	}
 	return "", false

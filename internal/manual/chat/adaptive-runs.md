@@ -528,6 +528,23 @@ carries on regardless of what the coverage reading said — and it makes no diff
 whether the round is a repair, a continuation of work that ran out, or a reaction to a
 result that contradicted the plan.
 
+**And it never wins over a review that is raising a finding right now.** A round bought to
+close a finding carries that finding with it, so the reading cannot decline to fund the one
+thing a review just said was missing. It used to be able to, and when it did the finding was
+written off as wrong — the delivery said "the job's own reading of what it is judged on
+found nothing left uncovered, so the review's finding is what was wrong" and the run
+finished at exit 0 over a feature that did not work. **Nothing that refuses a round may
+settle a finding.** Where the reading does decline — no review was raising anything — the
+run says so on its last line and stays partial:
+
+```
+partial — a reading of what this job is judged on found nothing left to add
+```
+
+The only things that can settle a review's finding are evidence: the file it says is
+missing is on disk, everything it names is in the answer you are about to read, or you say
+so yourself.
+
 What still stops the work is the rest of it: the round cap, a job that has stopped changing
 anything, one finding worked on twice, and the wall.
 
@@ -932,14 +949,21 @@ project's **own** verification command printed when it ran. A sentence in the an
 claiming every check passes is weighed as prose: those are checks the same worker wrote,
 and counting them proves nothing about what you asked for.
 
-A behaviour nothing exercises is a finding, and it reads:
+A behaviour nothing exercises is a finding, and it reads — counting the behaviours first,
+because that count is what the closing line of a partial run quotes back to you:
 
 ```
-The request asks for behaviours that no check exercises. Nothing in this project's own verification would fail if each of these were absent or wrong, so nothing that has been run says whether the work does them:
+2 behaviours the request states have no check that exercises them. Nothing in this project's own verification would fail if each of these were absent or wrong, so nothing that has been run says whether the work does them:
 no check exercises: A half-open probe holds its slot across internal retries
 no check exercises: A parse or hook failure is not retried by status-based retry logic
 Write the check for each, and make it pass.
 ```
+
+**The count is one per behaviour on the checklist, never one per line you wrote.** Several
+behaviours read out of a single sentence of yours are gathered into one thing to go and
+check — that is how the list is written out, so a repair round is aimed at a sentence rather
+than at four halves of one — but the number in front of them is the number of behaviours.
+A one-line request whose two behaviours nothing exercises says "2 behaviours", not "1".
 
 Like a broken check, nothing is weighed about where it came from — it is a measurement of
 the repository rather than a reading of your words — so it buys the repair round straight
