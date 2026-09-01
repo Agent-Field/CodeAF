@@ -250,7 +250,13 @@ instrument for it.
 
 ## 4. The subharness grid — 2026-08-09
 
-The first measurement of the swe subharness (docs/SUBHARNESSES.md): the same
+> **The feature measured here no longer exists.** #227 left one worker: `swe`,
+> the `bare` worker and the whole choice surface were removed, and nothing in
+> the build can be forced onto or routed to a second executor. The grid stays as
+> the record of what was measured on 2026-08-09 and why the second worker was
+> not kept.
+
+The first measurement of the swe subharness: the same
 four issues, three aforge shapes, every cell pinned to base `6c978ff` — the
 last commit with all four issues open, because the repository has since merged
 fixes for #23 and #21 and an unpinned clone passes the suite before any

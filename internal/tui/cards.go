@@ -59,12 +59,11 @@ type jobCard struct {
 	// reply instead of being discarded at the seam.
 	QuestionSeq int64
 	Outcome     string
-	// Subharness, WorkModel, RunModel and PlanModel are the job's non-default
+	// WorkModel, RunModel and PlanModel are the job's non-default model
 	// choices, read from the durable row rather than from anything the head
 	// promised in the thread. Every one of them is empty on nearly every job,
 	// and empty is what keeps the card silent. RunModel and PlanModel arrive
 	// together or not at all: they are the two halves of one split.
-	Subharness  string
 	WorkModel   string
 	RunModel    string
 	PlanModel   string
@@ -237,24 +236,20 @@ func deriveJobCards(
 		}
 		nodes := nodesByRoot[root.ID]
 		card := jobCard{
-			ID:      root.ID,
-			RootID:  root.ID,
-			State:   cardWorking,
-			Title:   nodeLabel(root, root),
-			Ask:     strings.TrimSpace(root.Provenance.Intent),
-			Reading: strings.TrimSpace(root.Brief),
-			// What was chosen for this job, as the store settled it. The node's
-			// own worker where admission resolved one, the splice's otherwise —
-			// the same order every dispatch path reads it in.
-			Subharness: settledWorker(root),
-			WorkModel:  strings.TrimSpace(root.Provenance.WorkModel),
-			RunModel:   strings.TrimSpace(root.Provenance.RunModel),
-			PlanModel:  strings.TrimSpace(root.Provenance.PlanModel),
-			BirthSeq:   root.CreatedSeq,
-			Usage:      usage[root.ID],
-			Messages:   append([]store.Message(nil), messagesByRoot[root.ID]...),
-			Failed:     root.Status == store.Failed || root.Status == store.Cancelled,
-			StartedAt:  root.StartedAt,
+			ID:        root.ID,
+			RootID:    root.ID,
+			State:     cardWorking,
+			Title:     nodeLabel(root, root),
+			Ask:       strings.TrimSpace(root.Provenance.Intent),
+			Reading:   strings.TrimSpace(root.Brief),
+			WorkModel: strings.TrimSpace(root.Provenance.WorkModel),
+			RunModel:  strings.TrimSpace(root.Provenance.RunModel),
+			PlanModel: strings.TrimSpace(root.Provenance.PlanModel),
+			BirthSeq:  root.CreatedSeq,
+			Usage:     usage[root.ID],
+			Messages:  append([]store.Message(nil), messagesByRoot[root.ID]...),
+			Failed:    root.Status == store.Failed || root.Status == store.Cancelled,
+			StartedAt: root.StartedAt,
 		}
 		if card.Ask == "" {
 			card.Ask = card.Reading
@@ -1888,32 +1883,15 @@ func (m *Model) cardMeta(card jobCard, now time.Time) string {
 	return strings.Join(parts, " · ")
 }
 
-// settledWorker is the node's own answer to "who runs this", in the order every
-// dispatch path already reads it: the worker admission settled on the row, the
-// subtree's choice otherwise. Whatever string is there is rendered verbatim —
-// this surface never learns one worker's name, because a surface that branched
-// on a name would have to be edited every time a worker is added.
-func settledWorker(node store.Node) string {
-	if settled := strings.TrimSpace(node.Subharness); settled != "" {
-		return settled
-	}
-	return strings.TrimSpace(node.Provenance.Subharness)
-}
-
 // cardChoiceReceipt is the proof that a choice was respected, and it is proof
 // precisely because it is read from the durable row the work will run from
-// rather than from the reply that promised it. Three facts at most — the worker
-// this job was given, the model the user named for it, and the split between
-// the model that structured it and the model that worked it — and every one of
-// them is absent on an ordinary job. An ordinary job gets no line at all:
-// silence is what makes the line mean something on the job that has one.
+// rather than from the reply that promised it. Two facts at most — the model
+// the user named for this job, and the split between the model that structured
+// it and the model that worked it — and both are absent on an ordinary job. An
+// ordinary job gets no line at all: silence is what makes the line mean
+// something on the job that has one.
 func cardChoiceReceipt(card jobCard) string {
-	parts := make([]string, 0, 3)
-	if worker := strings.TrimSpace(card.Subharness); worker != "" {
-		parts = append(parts, worker)
-	}
-	return strings.Join(append(parts,
-		modelFacts(card.WorkModel, card.RunModel, card.PlanModel, true)...), " · ")
+	return strings.Join(modelFacts(card.WorkModel, card.RunModel, card.PlanModel, true), " · ")
 }
 
 // modelFacts is the model half of the receipt: the model the person named for
@@ -1950,30 +1928,22 @@ func modelFacts(pinned, ran, planned string, short bool) []string {
 	return append(facts, "planned by "+spell(planned))
 }
 
-// nodeChoiceReceipt is the same three facts one rung further down the ladder,
+// nodeChoiceReceipt is the same facts one rung further down the ladder,
 // spelled in full. The card trades the vendor path for the width; the flight
 // recorder is where a person goes to check exactly which build ran their work,
 // and an id shortened there would be the one place the truth is not available.
 func nodeChoiceReceipt(node store.Node) string {
-	parts := make([]string, 0, 3)
-	if worker := settledWorker(node); worker != "" {
-		parts = append(parts, worker)
-	}
-	return strings.Join(append(parts, modelFacts(node.Provenance.WorkModel,
-		node.Provenance.RunModel, node.Provenance.PlanModel, false)...), " · ")
+	return strings.Join(modelFacts(node.Provenance.WorkModel,
+		node.Provenance.RunModel, node.Provenance.PlanModel, false), " · ")
 }
 
 // nodeChoiceReceiptShort is the glance version of the same facts, for the one
-// line of the drill-down that never scrolls away. Same three facts, same
-// silence on a job that chose nothing, model ids in their short spelling —
-// the title line has room for a badge, not for a vendor path.
+// line of the drill-down that never scrolls away. Same facts, same silence on a
+// job that chose nothing, model ids in their short spelling — the title line
+// has room for a badge, not for a vendor path.
 func nodeChoiceReceiptShort(node store.Node) string {
-	parts := make([]string, 0, 3)
-	if worker := settledWorker(node); worker != "" {
-		parts = append(parts, worker)
-	}
-	return strings.Join(append(parts, modelFacts(node.Provenance.WorkModel,
-		node.Provenance.RunModel, node.Provenance.PlanModel, true)...), " · ")
+	return strings.Join(modelFacts(node.Provenance.WorkModel,
+		node.Provenance.RunModel, node.Provenance.PlanModel, true), " · ")
 }
 
 func cardAssumptions(receipt string) []string {

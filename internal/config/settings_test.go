@@ -1170,7 +1170,6 @@ func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
 		KeyTaskAudit:        CategoryTasks,
 		KeyTaskParallel:     CategoryTasks,
 		KeyTaskModel:        CategoryTasks,
-		KeyWorkers:          CategoryTasks,
 	}
 	for key, category := range want {
 		if got := mustRow(t, rows, key).Category; got != category {

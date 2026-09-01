@@ -240,21 +240,21 @@ The machinery for this exists and is unreachable. `fullverification.Discover`
 found the project's own build and test entrypoints from `package.json` scripts,
 `Makefile` targets, CI workflow files, `go.mod`, `Cargo.toml`, `pyproject`;
 `codeaf`'s baseline photographed them before the work and named the tests that
-had gone from green to red. Both lived under `internal/swepro/internal/`, which
-by Go's own rule no worker outside `internal/swepro` may import, so the bare and
-linear workers — the only workers `aforge do` uses on the plain path — could not
-have it. `internal/exec/bare/bare.go:67` never sets `Outcome.Baseline`, and an
-empty `Baseline` reads downstream as *no claim*, not as *nobody looked*.
+had gone from green to red. Both lived inside the imported engine's own
+`internal/` tree, which by Go's own rule nothing outside it may import, so the
+worker `aforge do` uses on the plain path could not have it. That path never set
+`Outcome.Baseline`, and an empty `Baseline` reads downstream as *no claim*, not
+as *nobody looked*.
 
 > **A check that passed before the work and fails after it is a finding the gate
 > raises itself, and it is admitted without any citation.**
 
 The law moves to `internal/verify`, one package, reachable by everyone: discover
 the project's own entrypoints, run one, read the failing test names out of its
-output, and name the ones that are new. `internal/swepro/codeaf` keeps its
-pipeline and now reads the law from there rather than owning a second copy of it.
-The bare worker photographs the project's own verification before its first turn
-and again after its last, and carries what it finds on the outcome.
+output, and name the ones that are new. One package owns it, so nobody keeps a
+second copy. A worker photographs the project's own verification before its
+first turn and again after its last and carries what it finds on the outcome;
+where none did, the delivery gate takes the reading itself.
 
 Grounding does not apply to this finding and must not. A regression is not a
 reading of the request — it is a measurement of the world, which is FAILSAFE

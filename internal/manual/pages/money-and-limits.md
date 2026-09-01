@@ -209,18 +209,21 @@ calls, capacity climbs back one slot at a time, up to 64 in flight. There is no
 fixed concurrency setting to tune — under pressure the fleet converges on the
 rate the provider will actually sustain instead of failing.
 
-## The host load governor: why it slows when your machine is busy
+## Why your machine's load does not slow the resident down
 
-Aforge will not fight you for your own laptop. Before starting another parallel
-worker it reads the machine's one-minute load average per CPU core:
+A worker is a goroutine parked on a socket waiting for a model, so the resource
+it costs belongs to the provider and not to your laptop. The resident therefore
+does **not** read your machine's load average before starting one: a heavy build
+of yours is not a reason to make your work take turns, and the provider's own
+rate limiter is what adapts to pressure that is real.
 
-- above **1.5** it stops starting new workers,
-- below **1.2** it starts again.
+The one ceiling left is a backstop about handles and goroutines rather than
+about speed: at most **64** leaves exist at once. You will never see it — it is
+far above the number of pieces a job is cut into.
 
-That is all machine work, not just aforge's — so a heavy build of yours slows it
-down too. Nothing running is cancelled, nothing is delayed once claimed, and
-there is at least one worker admitted no matter how loaded you are. You will see
-things start more slowly; you will not see an error, because none happened.
+What DOES read your machine is the chat surface's own task rows on the Tasks tab
+of `/settings` — "busy machine" and "memory floor" — which hold a task's workers
+back while the machine is loaded or short of memory. Those are yours to set.
 
 ## Background shells yield the machine
 

@@ -10,8 +10,8 @@ import (
 )
 
 // measuredCents is the shape of the measured self-knowledge block the compiler
-// is given: one line per specialist, each with its own history, each ending in
-// the per-run cost that block actually writes.
+// is given: one line per measured population, each with a history of its own,
+// each ending in the per-run cost that block actually writes.
 func measuredCents(costs ...float64) string {
 	lines := make([]string, 0, len(costs))
 	for index, cost := range costs {
@@ -88,8 +88,8 @@ func TestAnUnmeasuredProposalSaysItIsUnmeasured(t *testing.T) {
 	}
 }
 
-// One line per specialist means several measurements, and reading only the
-// first meant the price of every standing rule was set by whichever worker
+// One line per measured population means several measurements, and reading only
+// the first meant the price of every standing rule was set by whichever line
 // sorted first. The middle one is the honest answer to "what does one run
 // cost here".
 func TestTheMeasuredRateIsTheMiddleOfEveryMeasurement(t *testing.T) {

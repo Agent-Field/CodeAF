@@ -61,7 +61,7 @@ func TestTheBundleFieldRejectsTwoPartsThatWouldReturnTheSameThing(t *testing.T) 
 
 // House law, scoped to what W6 wrote: the guidance is general or it is not
 // guidance. No authored example, no domain, no invented figure — everything
-// evidential comes from the measured lines the menu carries.
+// evidential comes from the measured lines the self-knowledge block carries.
 func TestTheW6CompilerRulesNameNoDomainAndInventNoFigures(t *testing.T) {
 	for _, rule := range []string{
 		"- WIDTH IS FREE TO COORDINATE",

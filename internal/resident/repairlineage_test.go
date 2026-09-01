@@ -58,7 +58,7 @@ func TestGateRepairConsumesTheFinishedSiblings(t *testing.T) {
 		}}, nil
 	}
 	spliced, sink, err := ReplanOverrunAs(context.Background(), graph, root,
-		"two of twelve", "the other ten profiles are missing", nil, 0, "",
+		"two of twelve", "the other ten profiles are missing", nil, 0,
 		Growth{Reason: GrowGap}, planned)
 	if err != nil || spliced != 1 {
 		t.Fatalf("replan: spliced=%d sink=%q err=%v", spliced, sink, err)
