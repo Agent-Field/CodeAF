@@ -526,3 +526,42 @@ func TestWithNoProfileTheLoopIsAbsentRatherThanBroken(t *testing.T) {
 		t.Fatalf("a store nobody has read %+v", reading)
 	}
 }
+
+// A WORKER THE NOTES RULE STOPPED IS `stopped` IN THE RECORD, NOT `did not
+// finish`. The two words are read by somebody deciding whether this model can be
+// trusted with this kind of work, and they say different things: "did not
+// finish" is a run that ran out, while this run was ended from outside by a rule
+// the worker would not follow (processrule.go). Grading it as the first would
+// quietly count a refusal to write notes as evidence about the work.
+func TestAWorkerStoppedForItsNotesIsGradedStoppedRatherThanUnfinished(t *testing.T) {
+	nest := newGradeNest(t, &scriptedCompleter{})
+
+	nest.settleWith(t, "tests for the rail", "cheap/model", "", 0, TaskFailed,
+		func(node *TaskNode) { node.ending = TaskEndingNotes })
+
+	rows := nest.rows(t)
+	if len(rows) != 1 {
+		t.Fatalf("a settled node wrote %d diary rows, want 1", len(rows))
+	}
+	if rows[0].Outcome != "stopped" {
+		t.Fatalf("the outcome reads %q, want %q", rows[0].Outcome, "stopped")
+	}
+	// AND THE OTHER ENDINGS ARE UNMOVED. A halted run that genuinely ran out is
+	// still the run that ran out.
+	for ending, want := range map[TaskEnding]string{
+		TaskEndingNotes:    "stopped",
+		TaskEndingSteps:    "did not finish",
+		TaskEndingCircling: "did not finish",
+		TaskEndingRefused:  "not accepted",
+	} {
+		if got := taskGradeOutcome(TaskFailed, ending, false); got != want {
+			t.Errorf("%q graded %q, want %q", ending, got, want)
+		}
+	}
+	// AND A NODE THAT LANDED IS NEVER STOPPED, however its worker behaved on the
+	// way there: a worker held once that then wrote its note and finished is a
+	// worker that complied.
+	if got := taskGradeOutcome(TaskDone, TaskEndingNotes, false); got != "landed" {
+		t.Errorf("a finished node graded %q, want landed", got)
+	}
+}

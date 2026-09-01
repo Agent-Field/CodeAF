@@ -2326,6 +2326,11 @@ with this line rather than arguing forever:
 Nothing is handed to a task — the same model under the same rule would be as quiet — and
 whatever the turn had already saved is on disk where it left it.
 
+**When the turn that stopped belongs to a task worker, the task says so.** Its row on the
+rail reads `would not write its notes down — branch kept`, it wears the `!` that asks you to
+pick it up rather than the cross that reports a fault, and the branch is kept. How tasks run
+has it under "What the words and the ! exclamation mark under a stopped task mean".
+
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`
 note says: `the last 5 rounds read nothing new; what you are looking for is already in the

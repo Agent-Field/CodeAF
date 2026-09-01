@@ -322,6 +322,7 @@ func TestEveryEnforceableProcessRuleAnswersItsOwnQuestions(t *testing.T) {
 		t.Fatal("the registry is empty; the loop enforces nothing")
 	}
 	seen := make(map[string]bool, len(enforceableProcessRules))
+	endings := make(map[TaskEnding]bool, len(enforceableProcessRules))
 	for _, rule := range enforceableProcessRules {
 		slug := rule.slug()
 		if strings.TrimSpace(slug) == "" {
@@ -336,6 +337,20 @@ func TestEveryEnforceableProcessRuleAnswersItsOwnQuestions(t *testing.T) {
 		}
 		if len(rule.stopped()) < 20 {
 			t.Fatalf("%s has no honest landing: %q", slug, rule.stopped())
+		}
+		// AND IT NAMES THE ENDING A WORKER IT STOPS WEARS, or a task the rule
+		// ended settles as an ordinary failure and its row says nothing about
+		// why (task_contract.go's [TaskEnding]).
+		ending := rule.ending()
+		if ending == "" {
+			t.Fatalf("%s names no ending; a worker it stops would settle unexplained", slug)
+		}
+		if endings[ending] {
+			t.Fatalf("two rules end a worker as %q; one row would be two pieces of news", ending)
+		}
+		endings[ending] = true
+		if !stoppedByProcessRule(ending) {
+			t.Fatalf("%s names the ending %q and the registry does not answer for it", slug, ending)
 		}
 		// A rule that holds a turn on a watch that has said nothing would hold
 		// every turn this program runs.
@@ -352,6 +367,13 @@ func TestEveryEnforceableProcessRuleAnswersItsOwnQuestions(t *testing.T) {
 					t.Fatalf("%s says %q to a person: %q", slug, banned, said)
 				}
 			}
+		}
+	}
+	// AND NOTHING THE REGISTRY DID NOT WRITE IS READ AS ITS WORK. The grading
+	// record asks this question about every ending a node can wear.
+	for _, ending := range []TaskEnding{"", TaskEndingCircling, TaskEndingSteps, TaskEndingRefused, TaskEndingStopped} {
+		if stoppedByProcessRule(ending) {
+			t.Fatalf("%q reads as a rule's own ending", ending)
 		}
 	}
 }
@@ -419,6 +441,39 @@ func TestTheManualSpellsTheEnforcedRungsOwnNumbers(t *testing.T) {
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the keys page does not say %q", want)
+		}
+	}
+}
+
+// ── the manual matches the code ─────────────────────────────────────────────
+
+// THE PAGE THAT SAID THIS STOP IS NOT WRITTEN UP HAS TO STOP SAYING IT. The
+// manual is the only account of this program the model has, so a page carrying a
+// denial of something that now happens is a page it will talk over the top of
+// (CLAUDE.md's manual law). The removed sentence is greped for by its own words,
+// because the gates only check that a name is mentioned.
+func TestTheManualSaysAStoppedWorkerGetsItsOwnRowAndNoLongerDeniesIt(t *testing.T) {
+	page, ok := manual.Chat().Page("how-tasks-run")
+	if !ok {
+		t.Fatal("the how-tasks-run page is missing from the chat corpus")
+	}
+	for _, want := range []string{
+		// The row, in the words tui3 draws it in.
+		"would not write its notes down — branch kept",
+		// The landing note, in the words taskNote writes it in.
+		"task 7 would not write its notes down: <title>",
+		// The graded record's own word.
+		"says it was `stopped`",
+		// And the loop's line, still verbatim.
+		(writeNotesRule{}).stopped(),
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the how-tasks-run page does not say %q", want)
+		}
+	}
+	for _, gone := range []string{"is never written up as it"} {
+		if strings.Contains(page, gone) {
+			t.Fatalf("the page still says %q, which stopped being true", gone)
 		}
 	}
 }

@@ -410,6 +410,12 @@ func taskKindWordSet(kind string) map[string]bool {
 // worker that would not start, a connection that dropped is `did not finish` —
 // and a record that called the second one `not accepted` would be reading a
 // judgement into a fault nobody judged.
+//
+// AND A WORKER THE LOOP STOPPED IS `stopped`, the same word a person's own stop
+// earns (processrule.go's [stoppedByProcessRule]). Both are a decision to end
+// the run taken from outside the work, and neither is a reading of what the work
+// was worth: `did not finish` would tell somebody the run ran out, which is
+// exactly what did not happen.
 func taskGradeOutcome(state TaskState, ending TaskEnding, stopped bool) string {
 	switch {
 	case stopped:
@@ -420,6 +426,8 @@ func taskGradeOutcome(state TaskState, ending TaskEnding, stopped bool) string {
 		return "needs your look"
 	case state == TaskFailed && ending == TaskEndingRefused:
 		return "not accepted"
+	case state == TaskFailed && stoppedByProcessRule(ending):
+		return "stopped"
 	case state == TaskFailed:
 		return "did not finish"
 	default:
