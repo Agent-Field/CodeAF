@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
@@ -50,7 +51,11 @@ func ModelCostHint(panel router.Panel, models *catalog.Catalog, slug string) str
 // router.Catalog.Entry does: the panel and the configured slot are written by
 // different hands and one of them usually carries it.
 func panelTierWord(panel router.Panel, slug string) string {
-	want := strings.TrimPrefix(slug, "~")
+	// A thinking level comes off for the same reason the tilde does: it is how a
+	// tier row says how hard to ask, not which model, and a panel spec is
+	// written without one (roles.SplitEffort, and catalog's own normalizeID).
+	bare, _ := roles.SplitEffort(slug)
+	want := strings.TrimPrefix(bare, "~")
 	for _, spec := range panel.Models {
 		if strings.TrimPrefix(strings.TrimSpace(spec.Slug), "~") != want {
 			continue
