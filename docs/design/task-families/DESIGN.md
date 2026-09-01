@@ -1,430 +1,491 @@
-# Task families
+# Task families: one isolation and one landing, on a repository and on a folder
 
-*Written 2026-09-01 and rewritten the same day against `origin/dev` at `a5877146`,
-when the whole wave had landed. Tracking root #228. Status: landed — every lane
-under #228 is on `dev`, and this page says what IS true. It is the record of the
-decisions, not a changelog; `docs/changes/unreleased/` is that, and the entries
-for #236, #237, #239, #240, #262 and #270 are the wording each decision shipped
-under.*
+*Written 2026-09-01 against `dev @ a5877146`, after the whole wave landed. Tracking
+root #228. Every symbol named below was grepped at that commit; the roadmap this
+page opened with is now the record at the end of it. This is the memory of the
+decisions, not a changelog — `docs/changes/unreleased/` is that, one entry per
+pull request.*
 
 A task family is one node that handed work out and the parts under it.
-`divide_work` is the mid-run verb (`internal/session/task_divide.go`);
-`propose_task` is the groom that names parts up front. Both mint into the same
-graph. The lanes under #228 were one redesign of how those parts share a world,
-a ledger, and a brief, and the redesign is now the code.
+`divide_work` is the mid-run verb (`internal/session/task_divide.go`'s
+`divideOnce`); `divideFromSketch` is the harness's own road, drawing parts out of
+a division a groom already named. Both mint into the same graph and, since #240,
+through the same door.
 
-## What was true before
+The six lanes under #228 were one redesign of how those parts share a world, a
+ledger and a brief. All six are on `dev`. Two more defects the same audit turned
+up — a folder landing writing over the person's own edits (#258) and the prompt
+strings that still promised something that had stopped being true (#251) — landed
+with them.
 
-On the base this page was first written against, a landing carried the
-**ledger** — the paths the node wrote — and nothing else, meaning the node's own
-worker's paths. `stageTaskWork` staged that list on a repository ground and
-`landMirror` laid it back over a folder one by name. On a repository ground git
-closed the hole underneath, because a part's work arrives as commits on the tree
-the parent merges. On a folder ground nothing closed it: the mirror held every
-file the family made, the parent's ledger named its own, the person's folder got
-that one, and the task said done because the check had been run against the
-mirror that DID hold everything.
+## The two laws
 
-A parent whose ground was a plain folder got a copied directory and stopped
-there. A part of that parent fell through `groundLadder` to the parent's own
-directory and worked in it beside its siblings: no isolation, no merge, no
-conflict detection — while `prompts/task.md` and `prompts/divide.md` both
-promised each part `a copy of the repository taken from yours`.
+> **THE LEDGER IS THE CONTRACT OF WHAT SHIPS; THE TREE IS ONLY THE MEDIUM.**
+>
+> **ISOLATION IS ALWAYS A WORKING COPY OF THE FAMILY TREE.**
 
-Overlap was only advised against, in a prompt sentence and in the reviewer's
-brief. Both were soft, and the ledger stages once, so one version silently
-destroyed the other before git ever saw a conflict.
+Both are stated in the code they govern: the first at the head of
+`task_ledger.go`, the second at the head of `task_tree_mirror.go`. Everything on
+this page is one of them applied to a ground that did not have it.
 
-What a part was told depended on which road minted it. A part drawn out of a
-sketch got the parent's brief and its sibling boundary composed around it
-(`sketchBrief`); a part a worker wrote with `divide_work` got only the per-part
-prose that worker typed — the weakest world on the road a cheap crew drives.
+## What was true
 
-Parts were cut from a HEAD holding none of the parent's mid-run work, each
-sealing the parent's directory independently at the moment its own worktree was
-prepared, so siblings prepared minutes apart stood in different worlds.
+Four cracks, all measured, all in the same place: the seam where a node that
+handed work out meets a ground that is not a git repository.
 
-And a folder landing laid its ledger over the person's directory with a remove
-and a copy, against a folder nothing had ever measured, so an edit somebody made
-while the work ran was overwritten without a word.
+**A landing carried the node's own ledger and nothing else.** `stageTaskWork`
+stages that list on a repository ground; `taskTree.landMirror` lays it back over
+a folder one by name. A node that divided had a hole in that list: its parts
+worked in ITS tree and wrote their paths onto THEIR OWN ledgers. On a repository
+ground git closed the hole underneath, because a part's work arrives as commits on
+the very tree the parent merges. On a folder ground nothing closed it — the mirror
+held all three files, the parent's ledger named one, and the person's folder got
+one. The task said done, and the check passed, because the check ran against the
+mirror that DID hold everything. Silent data loss (#229).
 
-## The ledger composes (#229, PR #237, `c1776b76`)
+**Non-git nesting had no isolation and no landing.** For a parent whose ground was
+a plain folder, `prepareTaskTreeOn`'s mirror arm handed the node a directory and
+stopped there. A part of that parent fell through the ground ladder to
+`dir: workspace` — the parent's own directory — and worked in it beside its
+siblings, concurrently, with no copy, no merge and no conflict detection. That is
+the largest class of general work: research folders, document sweeps, data
+directories, a report with a section per region (#230).
 
-A node's ledger absorbs every landed part's paths before it lands.
-`absorbedLedger` (`internal/session/task_ledger.go`) is
-`landingFilesFor(node, changed).all()` — the same two halves the checker's packet
-keeps apart, read as one list — so the emptiness law and the landed-only law come
-from the one existing source of truth (`landingFilesFor`, `task_claims.go`). A
-part that wrote nothing absorbs nothing; a part that never landed is not on the
-ledger at all. Because a node settles holding what it absorbed, the fold is
-recursive by construction: what a part settles with is what its parent ships.
-The call is idempotent, so a road that runs after a landing may ask again
+**Overlap was advised against and never refused.** `prompts/divide.md` said
+`Two parts that edit the same file are not independent.` The reviewer's brief said
+it too. Both are soft, and the ledger stages once — so one version silently
+destroyed the other before git was ever asked to notice a conflict (#231).
+
+**Parts branched from a HEAD holding none of the parent's work.** Workers are told
+never to commit; the harness commits once, at the landing (`commitTaskWork`). So a
+parent that divided mid-run handed out parts whose working copies had none of the
+repro it had built, the failing test it had written, or the material it had
+gathered. Underneath that, a second hole: a part's working copy is prepared lazily
+when the frontier starts it, while the parent keeps working — so siblings cut
+minutes apart each inherited whatever the directory held at that instant, and the
+division that drew their boundaries had described neither world (#232).
+
+And one more, which is a context defect rather than an isolation one: **what a part
+was told depended on which road minted it.** A part drawn out of a sketch got the
+parent's brief and its sibling boundary composed around it; a part a worker wrote
+with `divide_work` got only the per-part prose that worker typed. The weakest world
+was handed out on the road a cheap crew actually drives (#233).
+
+## The ledger composes — #229, landed as PR #237
+
+`absorbedLedger` (`internal/session/task_ledger.go`) folds every landed part's
+paths into the node's own **at the landing**. `taskTree.comeHome` keeps reading
+exactly one list; `stageTaskWork` and `landMirror` did not change. What changed is
+that the list is complete.
+
+The fold is recursive by construction, because a node settles holding what it
+absorbed: what a part settles with is what its parent ships. `absorbedLedger` is
+`landingFilesFor(node, changed).all()`, so the emptiness law and the landed-only
+law come from the one existing source of truth — a part that wrote nothing absorbs
+nothing, and a part that never landed is not on the ledger at all. It is
+idempotent, which is what lets a road that runs after a landing call it again
 without knowing whether an earlier one already did.
 
-**`landHome` and `keepHome` are the one landing road.** They live beside
-`absorbedLedger` in `task_ledger.go`: `landHome` finalizes the ledger and merges,
-`keepHome` finalizes it and keeps the branch for a node that settles without
-merging. Every road goes through one of them — the ordinary finishing line, the
-threshold's `landStopped`, the gate's refusals, a ground that moved under the
-work, a person's `accept`, and a late verdict. `comeHome` and `landMirror` still
-read exactly one list and neither changed; what changed is that the list is
-complete, and that the SAME list is what `TaskNode.finish` writes onto the node
-under every one of those roads.
+It is folded **after** the check and never before. The checker's packet has to keep
+the two halves apart: `Files it wrote:` stays a true claim about this node, and
+`And the parts it handed out wrote, into the same tree:` is the parts' own sentence
+(`task_audit.go`'s `auditQuestion`).
 
-It is folded **after** the check and never before. `Files it wrote:` stays a true
-claim about this node and `And the parts it handed out wrote, into the same
-tree:` is the parts' own sentence (`task_audit.go`'s `auditQuestion`). A path
-both a node and a part wrote is filed under the parts, because the second reading
-of a folded ledger cannot tell them apart and an attribution that drifts with
-every re-audit is worse than one that is stable.
+**And there is one landing road.** `comeHome` and `keptWork` were called from a
+dozen places, each holding its own list. Every road now goes through `landHome` or
+`keepHome` — finalize the ledger, then land it or keep it — and each answers the
+finalized list so that the `finish` under it writes the SAME ledger onto the node.
+That last half is not a convenience: a node's ledger outlives its run. A family
+that lands unverified is settled by somebody typing `accept` the next morning, and
+that road has nothing to read but what the first landing wrote down.
 
-**`TaskNode.workingCopy` carries the ground and the mode.** A tree rebuilt for a
-node with no branch used to come back as `{dir, in place}`. A MIRROR has no
-branch either, so `comeHome` read the rebuilt tree as an in-place task and
-returned having done nothing: an accepted or re-audited folder family laid
+The same PR repaired the ground fix underneath it. `TaskNode.workingCopy` rebuilt
+the tree for a node with no branch as `{dir, in place}` — no ground, no mode. A
+MIRROR has no branch either, so `comeHome` read the rebuilt tree as an in-place
+task and returned having done nothing: an accepted or re-audited folder family laid
 NOTHING back over the person's folder, and the check on one restored an empty
-world. The rebuilt tree now carries the recorded ground and mode, so a late
-accept lands exactly what the run would have. Every other mode still lands in
-place.
+world. The rebuilt tree carries the recorded ground and mode.
 
-`Agent.groundShift` folds the family's ledger itself, so the question — has
-anything else landed in these files while this ran — is asked about what would
-actually ship.
-
-## The family tree of a folder family is a repository (#230, PR #239, `0a82c43c`)
+## The folder family's tree is a repository — #230, landed as PR #239
 
 `openFamilyTree` (`internal/session/task_tree_mirror.go`) opens the mirror as a
-repository of its own at the moment it is carved: `git init`, `add --all
---force` minus the two machinery corners `sealGroundWork` also excludes, one
-`--allow-empty` baseline commit. `familyTreeIsOpen` is what stops a second
-baseline being laid over work already in it — and it asks whether this directory
-is the top of its OWN repository, because under the legacy layout a mirror sits
-beneath the conversation's workspace and a bare `repositoryRoot` would answer
-with the person's repository.
+repository of its own at the moment it is carved: `git init`, `add --all --force`
+minus the two machinery corners `sealGroundWork` also excludes, one `--allow-empty`
+baseline commit. One call site, in `prepareTaskTreeOn`'s `TaskModeMirror` arm.
+`familyTreeIsOpen` makes it idempotent for a resumed node, and it asks the right
+question — the directory must be the top of ITS OWN repository, because under the
+legacy layout a mirror sits inside the person's checkout and a bare
+`repositoryRoot` would answer with theirs.
 
-That is the whole change, because every road a part needs already existed and all
-of them lead through it. The part's workspace is the mirror, so `groundLadder`
-resolves it to the repository it is standing in and the mode falls out as
-`TaskModeWorktree`; `prepareTaskTreeOn` cuts a real worktree off that tree at the
-part's own `taskOwnFolder` path through the ordinary `cutTaskWorktree` road; and
-`taskTree.comeHome` commits the part's ledger and merges that branch back into
-the mirror exactly as a repository part merges into the person's checkout. **No
-second merge path was written.** A part has a branch, so `restoreFromBranch`
-judges it; the parent is still judged by `restoreFromFolder` against the folder
-with the ledger laid over it.
+That is the whole change, because everything else already existed. The part's
+workspace IS the mirror, so `groundLadder` — which holds a part to where its parent
+stands — resolves it to the repository it is standing in, and the mode falls out as
+`TaskModeWorktree`. `prepareTaskTreeOn` cuts a real worktree at `taskOwnFolder` off
+the mirror's HEAD. `taskTree.comeHome` commits the part's ledger and merges that
+branch into the mirror through the same machinery a repository part lands through.
+**No second merge path was written.** The audit reaches it too: a part has a branch,
+so `restoreFromBranch` judges it, and the parent is still judged by
+`restoreFromFolder` against the untouched folder.
 
-Degradation is loud, never silent. A tree that could not be opened — no git, a
-read-only disk — still runs the work and carries one sentence
-(`sharedFamilyTreeNote`), in the job log and in the parent's own brief, saying
-its parts will be working in this same folder beside it. A resumed family
-revalidates its tree through that same one call: a mirror already open is left
-alone, one that was never opened gets the second chance a restart is, and the
-sentence is recomputed rather than persisted, because a remembered one would be
-an answer about a machine that has since rebooted.
+The baseline commit is not a baseline for the check. It exists for exactly two
+jobs: to give a part something to cut a worktree from, and to give that part's
+branch something to merge into.
 
-`in place` and `folder` families are out of scope by ruling. The person said
-`here`, so nothing initialises a `.git` in their directory, and their parts go on
-sharing it — which is what `here` already meant. The prompt lie `a copy of the
-repository taken from yours` is gone; the wording everywhere is `a copy of its
-own` / `a working copy`, scrubbed across the prompts, the tool strings and four
-manual pages by PR #251 (`eb10e4c1`).
+**Degradation is loud, never silent.** A tree that could not be opened — no git, a
+read-only disk, a folder somebody moved — still runs the work, and comes back
+carrying one sentence (`sharedFamilyTreeNote`) that the job log prints and the
+parent's own brief carries: its parts will be working in this same folder beside
+it, so hand out only parts that write different files.
 
-## No two parts of one division own the same path (#231, PR #236)
+**`in place` and `folder` families are out of scope by ruling.** The person said
+`here`, so the family tree IS their directory and nothing initialises a `.git` in
+it. A test pins that the person's folder never gains one.
 
-`scopeCollisions` and `scopeRefusal` (`internal/session/task_divide_scope.go`)
-refuse a division whose parts claim the same path. `scopeCollisions(parts, tree)`
-reads each part's own scope with `pathTokens`, keeps only tokens that
-`groundHolds` says land under the family tree, normalises with `resolvePath`, and
-collides on the exact same normalised path claimed by two parts. One pass with a
-set.
+## Scope ownership at admission — #231, landed as PR #236 (into `dev` inside #239)
 
-**It is asked twice, through one function.** Once in `divideOnce` above the line
-that spends anything — on the parts the worker wrote, which are the only parts
-that exist yet, so the commonest overlap costs nothing and the refusal may
-honestly say so (`scopeSpentNothing`). Once again after the paid review and above
-the claims — because a sharpened brief can land on a file its sibling already
-owns, and a rule enforced only on the asked-for shape is a rule the settled shape
-walks around. That second refusal says nothing about spend
-(`scopeSpentTheRead`), because the reading is paid for by the time it runs.
+`internal/session/task_divide_scope.go`. `scopeCollisions(parts, tree)` reads each
+part's own scope with `pathTokens`, keeps only tokens that `groundHolds` says land
+under the family tree, normalises with `resolvePath`, and collides on the exact
+same normalised path claimed by two parts. One pass over the parts with a set, not
+a comparison of every part against every other.
 
-The refusal is the ordinary tool-result road (`divisionScopesOverlap`): the
-colliding path named, nothing admitted, and a worker that can redraw the boundary
-and ask again. It is journalled as `refused:scope` (`divisionRefusedScope`) — the
-eighth decision on that line, and its own word because it is the one refusal
-saying the division was right and its boundaries were wrong.
+**The check is asked twice, and that is the shape.** `Agent.scopeRefusal` is the one
+function; what differs between the two askings is the ending and nothing else,
+because what differs is what has already been spent.
 
-The check is deliberately dim. Only the exact same normalised path collides.
-Parts sharing a directory, or a part owning a folder while another owns a file
-inside it, admit exactly as they always did. What a part **claims** is its own
-scope, not the family context around it: `partScope` cuts to the harness's own
-markers, so the harness-drawn road cannot collide with itself on the first path
-the parent ever mentioned.
+- The **free gate** runs on the parts the worker wrote, above the paid reading:
+  gate three in `divideOnce`, ending `scopeSpentNothing` —
+  `nothing is cancelled and nothing is spent.` A division that was never going to
+  be allowed to stand should not pay for an adjudication to find that out.
+- The **second asking** runs on the parts the reviewer settled, which are not the
+  same list: the reviewer may merge two parts into one, or sharpen a brief onto a
+  file its sibling already owns. Ending `scopeSpentTheRead` —
+  `nothing is cancelled.` A rule enforced only on the asked-for shape is a rule the
+  settled shape can walk around.
 
-`prompts/divide.md` now says the law as the code enforces it — `EVERY PART OWNS
-ITS OWN FILES, AND THIS ONE IS ENFORCED`, the refusal before anything is handed
-out, the free reading, and that two parts in one directory on different files is
-fine and always was. That paragraph is what #241 asked for and it is on `dev`;
-the issue is open as bookkeeping, not as missing work.
+The refusal is the ordinary tool-result road (`divisionScopesOverlap`, in
+`divisionNotAsWritten`'s shape): the colliding path named, nothing admitted, and a
+worker that can redraw the boundary and ask again. Journalled as `refused:scope` —
+its own word because it is the one refusal here saying the division was *right* and
+its boundaries were wrong.
 
-## One composer writes the family's half of a part's brief (#233, PR #240, `e33df6ad`)
+**It is deliberately dim.** Only the exact same normalised path collides. Parts
+sharing a directory, or a part owning a folder while another owns a file inside it,
+are what a good division looks like. `reports/a.md` and `reports/b.md` share a
+directory and share no file.
 
-`internal/session/task_divide_compose.go` is that composer, and `startTheParts`
-is its one call site, above the admission loop. A part's brief is two halves with
-two authors:
+**What a part CLAIMS is its own scope, not the family context around it.**
+`partScope` cuts to the harness's own markers — `divisionThisPart` and
+`divisionOtherParts` — because a composed brief carries the parent's whole brief
+above the scope and the siblings' scopes below it, and reading either as this part's
+claim would make the harness-drawn road collide with itself on the first path the
+parent ever mentioned. A brief a worker wrote itself carries neither marker and is
+its own scope whole.
 
-- **The family's context** — the work being divided and the map of which scopes
-  the other parts own — is identical for every part and is a fact the harness
-  already holds, so the harness writes it. `familyOf(request, brief, parts)`
-  composes it once per division from the **settled** parts list, so it names what
-  actually got handed out; `siblingScope` is how one part is named to its
-  siblings; `partBrief(index, scope)` is what one part is handed.
-- **The scope** — what this one part owns — is the only half the worker in the
-  material could write. `divide_work`'s `brief` field IS the scope now, in the
-  tool schema, in `prompts/divide.md`, in the division review's own brief and in
-  `internal/manual/chat/tasks.md`.
+The prompt and the reviewer say the rule and now say it is enforced:
+`divideDescription` and `prompts/divide.md` carry *EVERY PART OWNS ITS OWN FILES,
+AND THIS ONE IS ENFORCED*, with the explicit note that two parts in one directory on
+different files are fine.
 
-`sketchBrief` is gone. The sketch road writes the scope and nothing else and gets
-its context from the same composer `divide_work` does. What the context is
-composed on is what a part **inherits** — `TaskNode.inheritedBrief`, over
-`TaskGraph.inheritedLocked`, which is the brief the work was admitted with AND
-the reports of whatever ran before it, and which stops short of the standing
-orders the frontier appends to every part in its own right.
+## The parent's world is frozen onto the family branch — #232, landed as PR #262
 
-**One budget.** A part's whole brief is bounded by `taskShapeBriefLimit`, and the
-arithmetic is done once per division against the worst case any part of it can
-present: the boundary's widest form is taken off the top and is never cut, the
-longest scope in the division is reserved next, and the ground takes what
-remains. So the first part and the fifth read the same document, and the ground
-gives way before the boundary or the scope ever does.
+`internal/session/task_divide_wip.go`. Before the first part is admitted, the
+harness stages the parent's ledger and commits it onto **the family's own branch**
+(`wipCheckpointMessage`: `the work so far on <title>, before its parts were handed
+out`), and the commit the family tree then stands at is written onto **every part as
+it is admitted** — `TaskNode.Frozen`, carried on the checkpoint. One world, on a
+branch, shared by every sibling.
 
-The person's ask is untouched and still printed exactly once, by `composeBrief`,
-above all of it; a part composed on a parent brief that IS the person's own
-sentence carries no ground at all rather than saying it twice.
+**The checkpoint IS the freeze.** They are the same commit, which is why a resumed
+part does not reseal: `Frozen` and `Checkpoint` are written together on the journal
+line, and the part carries the freeze through `json.Marshal` → `decodeTasks` →
+`restoreNode`.
 
-## The family's world is frozen once, at the division (#232, PR #262, `a5877146`)
+`startTheParts` is the seam: the freeze and the admission are ONE operation, in
+that order, because `TaskGraph.admit` puts a node on the frontier and the frontier
+STARTS it — a freeze taken after the first admission is a freeze the first part may
+already have raced past. `divideOnce` holds none of the bookkeeping; it got about
+eighty lines shorter, and the fan cap moved into `divisionHands`, a value with one
+`release()` that every road out gives back through.
 
-`startTheParts` (`internal/session/task_divide_wip.go`) is the whole of a
-division coming into existence, and it is one operation for a reason: `admit`
-puts a node on the frontier, which starts it, so a freeze taken after the first
-admission is a freeze the first part may already have raced past, and a freeze
-taken without the parts carrying it is a fact nobody reads.
+Because the world is on a branch, the ground ladder's per-child seal is not asked
+for a part at all: `snapshotRung` carves straight from the freeze, so there is no
+machine commit to rebase back out and a part's landing is an ordinary merge onto a
+shared ancestor — one failure mode fewer. The seal keeps its own job, unchanged, for
+every task that is nobody's part.
 
-`freezeFamilyWorld` stages the parent's ledger and commits it onto the **family
-branch** (`the work so far on <title>, before its parts were handed out`) before
-a single part is admitted. The commit the family tree then stands at rides per
-child: `taskSpec.frozen` at admission, written onto `TaskNode.Frozen`, serialized
-on the checkpoint (`task_store.go`'s `groundFrozen`) and on the division's
-journal line. It is stored per child rather than as one mutable field on the
-parent. Work the parent does after the split reaches no part.
+### The guards
 
-`snapshotRung` (`groundladder.go`) carves from that commit and **never reseals** —
-asking the parent's directory what it holds NOW, minutes later, would hand one
-part a world none of its siblings ever saw. And because the freeze is an ordinary
-commit on the family branch rather than scaffolding, there is no `base` to lift
-back out: `replayOwnWork` exists to remove a machine commit before it comes home,
-and a part's landing is now an ordinary merge onto a shared ancestor. The
-universe rung honours the same freeze its own way — `openForkAt` opens the part's
-branch AT the frozen commit inside the fork and cleans untracked-and-not-ignored
-files, so the tracked world is the freeze exactly and everything git cannot see
-is still there. THE FREEZE IS OVER WHAT GIT CAN SEE, which is the edge the
-ledger, the landing and the mirror all already draw.
+- **Nothing written, nothing committed** — the emptiness law, and the whole of the
+  sketch road's answer. The world is still *pinned* at the family tree's HEAD,
+  because the sibling-divergence half does not need the parent to have written
+  anything: a parent that writes AFTER the division would otherwise reach the parts
+  that start late and not the ones that started early.
+- **The harness may only commit in a tree of its own** — asked structurally by
+  `harnessOwnsThisTree`: the directory must not be the ground *and* must be the top
+  of its own repository. A `.git` is not enough to answer this; the person's own
+  repository has one. A family told to work `here` freezes nothing and its parts go
+  on sharing the directory, which is what `here` already meant.
+- **A checkpoint that ran is not a checkpoint that carried.** `stageTaskWork` steps
+  over a path git refuses, one at a time, which is right for a landing and wrong for
+  a family — a ledger path left on the floor is a part opening on a brief that names
+  a file its disk does not have. `unheldLedgerPaths` asks the tree with one
+  `git status --porcelain -uall -- <ledger>`, and anything still untracked or
+  modified refuses the split.
+- **A freeze that will not go refuses the division** — `divisionWorldNotFrozen`, no
+  part admitted onto a world nobody chose, journalled `refused:freeze`.
 
-**The guards.** `harnessOwnsThisTree(dir, ground)` is asked structurally, not by
-listing modes: the directory must not be the ground (so it is a copy the harness
-made) and it must be the top of its own repository (so HEAD is the family's). A
-family told to work `here` fails the first and a bare folder under somebody's
-repository fails the second; both freeze nothing and commit nothing, and their
-parts go on sharing the directory. An empty ledger still takes the freeze, at
-HEAD as it stands, because a parent that writes AFTER the division would
-otherwise reach the parts that start late and not the ones that started early.
+### The universe fork honours the freeze
 
-**Loud failure.** `sealGroundWork` now answers `(string, error)` instead of
-answering the empty string for both a clean tree and a git failure, and each seal
-gets a git index of its own instead of racing siblings on one shared
-`.git/aforge-ground-index`. `commitTaskWorkAs` answers the paths, the SHA and the
-error. `unheldLedgerPaths` asks the tree whether every ledger path that exists
-and is not ignored really went in, because `stageTaskWork` steps over a path git
-refuses one at a time — right for a landing, wrong for a family. A family whose
-own tree will not take the commit its parts have to start from is refused with
-`refused:freeze` (`divisionRefusedFreeze`, `divisionWorldNotFrozen`): nothing is
-handed out rather than handed out onto a world the parent does not have. And the
-free hands a division holds are one value with one release (`divisionHands`)
-rather than a counter every ending had to remember to decrement.
+`universeBranch` opens the fork **at** the frozen commit (`openForkAt` in
+`groundladder.go`) rather than sealing a second world: the fork is a byte-exact copy
+of the family tree, `.git` and all, so the freeze is an object it already holds and
+opening it costs one checkout. Untracked-and-not-ignored files are cleaned, so a
+part cut late holds no scratch its siblings never saw. **THE FREEZE IS OVER WHAT GIT
+CAN SEE** — the same edge the ledger, the landing and `landMirror` all already draw
+— which is what keeps a part's `node_modules` and `.env` where the rung exists to
+put them.
 
-## A folder landing does not write over an edit made under it (#258, PR #270, `c41545aa`)
+### The seal underneath, repaired where a family walked through it
 
-`internal/session/task_mirror_manners.go`. `rememberGroundBaseline(dir)` writes a
-digest per path of the folder as it stood at the moment of the copy — read off
-the copy itself, which holds the bytes the family was given, so a save made while
-the copy was being taken lands on the refusing side rather than being recorded as
-the original. It sits in the tree's own private corner as `ground-baseline.json`,
-beside `left-behind.json`, so it survives a dead process, an accept the next
-morning and a re-audit, and not a byte of it reaches the checkpoint.
+Two defects in `sealGroundWork`, raised by an independent reviewer on this seam:
 
-`groundChanged(dir, ground, wrote)` is asked at every landing, before anything is
-laid. A file that changed there is NAMED and NOTHING IS LAID: `landMirror`
-answers `conflicted` (`mergeConflicted`) — the mark a merge that would not go
-already wears, which every landing road already routes to a needs-your-look
-settlement. Both versions survive: the person's in their folder as they left it,
-the family's in the directory the refusal sentence names. A deletion counts as an
-edit; a lay that would not change a byte is never a collision, which is what
-keeps an accept over a folder the family has already landed into quiet. A folder
-with no such record — an older build, a folder that could not be read in full —
-lands exactly as it landed before, because absence is ordinary.
+- it staged through **one shared** `.git/aforge-ground-index`, so concurrent
+  siblings raced on the file. Each seal now takes an index of its own
+  (`groundIndexPrefix`), and a test runs eight at once.
+- it turned **every git failure into `""`**, indistinguishable from a clean tree, so
+  a child branched from HEAD without its parent's work and nobody was told. It
+  answers `(string, error)` now, and `groundRung.carve` gained a third return so a
+  rung that *reached* a ground and could not make its world **stops the ladder** with
+  git's own words instead of falling through to a lesser one.
 
-`groundShift` is a different question on a different road: it asks the project
-index and the live claims, which know about other aforge tasks and other windows
-and nothing at all about a person editing their own file in their own editor.
+`commitTaskWorkAs` answers `([]string, string, error)` for the same reason: a commit
+that never ran looked exactly like one that did. `commitTaskWork` and `comeHome` are
+deliberately untouched — what a landing owes a failed commit is #255's seam.
 
-## Proved end to end
+## One composer for a part's brief — #233, landed as PR #240
 
-PR #280 is the real-model lane: `internal/e2e/families_e2e_test.go` behind the
-`e2e` build tag, every model row pinned at one cheap model and the pin checked
-against the machine's own usage ledger. Three scenarios, every assertion on disk
-and none of them on a model's prose — a three-section report on a folder ground
-(the mirror is a repository with a baseline commit, each part in a worktree cut
-off it on its own branch, each merged part's file arriving on its own commit, the
-family's ledger in the person's folder, and the folder never gaining a `.git`), a
-two-part write-up on a repository ground, and two parts claiming one file refused
-at admission with `refused:scope` and zero parts admitted.
+`internal/session/task_divide_compose.go`. The two halves of a part's opening
+message are split **by author, not by road**:
+
+- **The family's context** (harness, identical for every part): the work being
+  divided — what the part INHERITS, through `TaskGraph.inheritedLocked` — then the
+  map of which scopes somebody else owns, built from the **settled** parts list so it
+  names what actually got handed out. `divisionOtherParts` is its marker,
+  `divisionScopeLimit` bounds one sibling's line at 320 bytes because every part
+  carries every other part's.
+- **The scope** (worker, per part): what this one part owns, under
+  `divisionThisPart` — `WHAT THIS PART OWNS`.
+
+`familyOf(request, brief, parts)` computes the context once for the whole division;
+`divisionFamily.partBrief(index, scope)` writes one part's whole world out of it.
+`startTheParts` is the one call site, above the loop, for the reason the models and
+the ratings are resolved there: the parts of one division must read one document,
+not five fittings of it. The parent's brief is fitted to `taskShapeBriefLimit` once,
+against the widest sibling sentence.
+
+`sketchBrief` is gone. The sketch road writes the scope and nothing else and comes
+through the same door. The person's ask is still printed exactly once, by
+`composeBrief`; the composer never carries it, and drops the ground entirely where
+the parent's brief *is* the person's own sentence.
+
+In practice the briefs `divideOnce` hands `scopeCollisions` are never composed: both
+roads put a bare scope into `parsed.Parts`. That is why this lane needed #231's
+`partScope` cut and not the other way around — the collision check must already know
+which half of a string is a claim, for the composed briefs that reach it from
+anywhere else.
+
+## A landing does not write over a file that changed under it — #258, landed as PR #270
+
+Filed off the same audit once the folder ground became real. `layWork` is `RemoveAll`
+and copy, and nothing recorded what the folder held when the copy was made — so an
+edit the person made in their own folder while the work ran was overwritten,
+silently, state `done`, `merge` `inplace`. Since #237 the window is not one run but
+one morning: a family that settled needing a look is laid over the folder when
+somebody types `accept` hours later, from a ledger recorded before lunch.
+
+`internal/session/task_mirror_manners.go`:
+
+- **A baseline is recorded when the mirror is made.** `rememberGroundBaseline` walks
+  the copy once at `prepareTaskTreeOn`'s mirror case and writes a digest per path
+  into the tree's private corner — `.aforge-v3/ground-baseline.json`, beside
+  `leftBehindRecord` and for the same reason. It reads the COPY, not the folder,
+  which is the one reading with no race in it. It is written where the copy is made
+  and nowhere else, so a resumed node keeps the baseline its first run recorded.
+- **`landMirror` compares before it lays.** `groundChanged` asks, for every path in
+  the ledger: what the folder holds now, what the baseline says it held, and what the
+  family would put there. Equal to the baseline (absent-then-absent-now included) →
+  laid. Equal instead to what would be laid → laid, because the lay changes nothing,
+  which is what keeps the accept road idempotent after a landing that already
+  happened. Otherwise → named, and **nothing is laid**.
+- The person reads it in the folder's words, settling `TaskUnverified`:
+  `its work is in <dir> and was not laid over <ground>: notes.md changed there while
+  this ran`.
+- **All five roads, one check**, by construction — the mark is `mergeConflicted`, and
+  every road already reads that one word.
+
+A file the person deleted is refused: deleting is an edit somebody made on purpose,
+and laying the family's version over it would put back the file they had just thrown
+away. A file the *family* wrote and then deleted, untouched in the ground, is still
+removed. A folder with no record lands as it landed before this file existed —
+absence is ordinary, not a refusal, or every family carried across an upgrade would
+need somebody's look. **And the window is narrowed, not closed:** a plain folder has
+nothing to lock, exactly as git reads its index and then writes the working tree.
+
+## The wording — #251
+
+#239 made the copy real, and strings all over the tree still promised
+`a copy of the repository taken from yours`, or named a `worktree` where a folder
+ground is just as possible. `divideDescription`, `divideReviewBrief`,
+`divisionDone`, the task start notice, `prompts/system.md`, `prompts/task.md`,
+`prompts/shape.md`, `tools_standing.go`, `orchestrate.go` and two manual pages say
+*a copy of its own* / *a working copy*. Deliberately left standing: the places that
+spell both grounds in one sentence — `a worktree of a repository or a copy of a
+folder` — which is the wording #240 settled on, and internal comments using
+`worktree` as machinery vocabulary.
 
 ## Rejected alternatives
 
-Each of these was argued in a sibling pull request and is recorded here so it is
-not reopened. The refusals are one decision set; the next section is the same
-list, continued, because a heading that retrieved only half of them would
-re-argue the missing half.
+Each of these was argued in a sibling pull-request body or a file header and is
+recorded here so it is not reopened.
 
-**Walking the directory instead of composing the ledger.** A landing that walked
-its own tree would ship everything a build left in it. `task_landing_test.go`
-exists about this: a measured task landed twenty-six hunks of vendored
-virtualenv and not one line of the change; another committed three thousand files
-of a `.venv_test`. `stageTaskWork` is not `git add -A`, and that is the whole
-point of it. `landMirror` is the audit's own laying (`layWork`) for the same
-reason. `absorbedLedger` composes the existing lists; it does not grow a second
-walker.
+**Walking the directory instead of composing the ledger.** A landing that walked its
+own tree would ship everything a build left in it. `task_landing_test.go` exists
+about this: a measured task landed twenty-six hunks of vendored virtualenv and not
+one line of the change; another committed three thousand files of a `.venv_test`.
+`stageTaskWork` is not `git add -A`, and that is the whole point of it. `landMirror`
+is the audit's own laying (`layWork`) for the same reason. `absorbedLedger` composes
+the existing lists; it does not grow a second walker.
 
 **Prefix-collision rules for scope.** A prefix rule would refuse a part owning a
-folder while another owns a file inside it. That is a good division —
-`reports/a.md` and `reports/b.md` share a directory and share no file.
+folder while another owns a file inside it. That is a good division.
 `scopeCollisions` collides only on the exact same normalised path. Relative and
-absolute spellings of one file are one file. Prose is not a claim. A path outside
-the family tree is not this division's to own.
+absolute spellings of one file are one file. Prose is not a claim. A path outside the
+family tree is not this division's to own. *(#281 argues the dimness is not yet dim
+enough in the other direction; see Still open.)*
 
 **A second merge path for folder families.** Once the mirror is a repository,
-everything already goes through `comeHome`. A part commits its ledger, merges its
-branch into the mirror, and the parent later `landMirror`s the composed list onto
-the person's folder. A second copier would be a second reading of what shipped.
-
-**A dangling `commit-tree` freeze, and a `.git` stat for its guard** (#246's
-shape, closed in favour of #262's). #246 froze the family's world through
-`sealGroundWork`, which writes with `commit-tree` and moves no ref — so the
-parent's mid-run work belonged to no branch, a `git log` of the family branch
-showed none of it, a crash between the division and the landing left it in an
-object nothing referenced, and every part carried a machine commit its landing
-was written to rebase back out. A commit on the family branch makes the same work
-HISTORY instead of scaffolding, and takes one failure mode off every part's
-landing. Its guard was likewise wrong in kind: a directory that is not a
-repository was left alone, which passes a task working in the person's own
-checkout — their folder has a `.git` — so the guard is `harnessOwnsThisTree` and
-is structural. The freeze-once plumbing is #246's and was kept; what it is fed
-changed, and the SHA is stored per child at admission rather than on the parent.
-
-## Rejected alternatives, continued
-
-The first four refusals sit under *Rejected alternatives* above. These are the
-rest of the same decision set.
+everything goes through `comeHome`: a part commits its ledger, merges its branch into
+the mirror, and the parent later lays the composed list onto the person's folder. A
+second copier would be a second reading of what shipped.
 
 **Enforcing overlap only in the prompt.** Soft. The ledger stages once, so one
 version silently destroys the other before git ever sees a conflict. The reviewer
-fails open. A cheap crew's worker wrote both briefs. The refusal sits in
-`divideOnce`, once before anything is spent and once after the parts settle.
-`Two parts that edit the same file are not independent` remains true on the page
-and is no longer the enforcement.
+fails open, and on a cheap crew one worker wrote both briefs. The refusal sits in
+`divideOnce`, twice, and `Two parts that edit the same file are not independent.`
+remains true and is no longer the enforcement.
 
-**Reading the composed family-context as a part's claimed scope.** The harness
-draws the parent's brief and the siblings' scopes around every part. Treating
-that as this part's claim would collide the harness's own markers —
-`divisionThisPart` and `divisionOtherParts` — on the first path the parent ever
-mentioned. `partScope` cuts to those markers, and #233 puts a bare scope into
-`parsed.Parts` so the check never sees a composed document.
+**Reading the composed family-context as a part's claimed scope.** The harness draws
+the parent's brief and the siblings' scopes around every part. Treating that as this
+part's claim collides the harness's own markers on the first path the parent ever
+mentioned. `partScope` cuts to those markers.
 
-**The family tree's baseline commit as the landing's baseline.** It is
-byte-exact and free where it exists, and one source of truth beats two files —
-but it exists only where `git init` succeeded, and the family whose init failed
-is the DEGRADED one whose parts already share a directory and which is the last
-one that should also land without a manners check. A road that covers four
-families out of five is a road somebody has to remember the shape of. It is also
-the dearer reading at the moment it matters: one digest of one ledger path
-against a `git` process per landing. The same argument refuses putting the
-baseline **on the checkpoint**, which is rewritten as the graph moves and has no
-business carrying twenty thousand digests.
+**Testing depth-3 composition.** `taskDepthLimit = 2`, and the manual states it
+outright: `Depth: two levels.` A part cannot hand work out; the tool is absent from
+its belt rather than refusing. The composition law is pinned by folding a nested path
+into a part's own ledger and landing that, not by running a third generation.
+*(#261 asks the owner to rule on whether that stays; see Still open.)*
 
-**Merging the two versions of a changed folder file, or handing the parent the
-resolution.** There is nothing to merge with: the ground is a plain folder and
-neither side is a commit. Naming the file and standing back is the honest answer
-and the one a person can act on — and it is what git already does for a
-repository ground, where a person's own edit to a file the branch touches is
-exactly what makes the merge refuse.
-
-**Standing the universe rung down for every part of a frozen family.** The first
-answer to the freeze did that, and it would have taken a `.env`, an installed
-dependency tree and a dev database away from parts of a family whose parent had
-them. The fork honours the freeze instead (`openForkAt`).
-
-**Initialising a `.git` in the person's own folder.** `in place` and `folder`
-mode are the person saying `here`. The family tree is that directory. Nothing
-initialises a repository in it, and a test pins that the person's folder never
+**Initialising a `.git` in the person's own folder.** `in place` and `folder` mode are
+the person saying `here`. The family tree is that directory. A test pins that it never
 gains a `.git`. Isolation there is a different promise and is not this family.
 
-**Testing a third generation at runtime.** `taskDepthLimit = 2` and depth is
-one-based, so a part has neither `propose_task` nor `divide_work`: a part of a
-part cannot exist, and the recipe in #229 that divides a part again is
-unreachable. The composition law is pinned by folding a nested path into a part's
-own ledger and landing that
-(`task_nest_test.go`'s `TestAnAcceptedFamilyLandsEveryGenerationsWork`), not by
-running a third generation. Whether the bound stays at two is #261's ruling.
+### Decided during the build
+
+**#246's dangling `commit-tree` freeze, in favour of the family-branch checkpoint.**
+PR #246 sealed the parent's world once per division through `sealGroundWork` —
+`sealDivisionWorld`, writing a `commit-tree` object that moves no ref, carried on the
+parent node and rebased back out at each part's landing. The freeze-once *plumbing*
+(`taskStand` → `groundOrder` → `snapshotRung`: cut from it, never re-seal) is that
+PR's idea and shape, and it was kept and re-fed. What changed is what it carries.
+The seal and the checkpoint answer different questions: the seal answers *what world
+does this ONE CHILD stand in* — scaffolding, belonging to no branch, deliberately
+lifted out again so what comes home is the child's own work and not its inheritance.
+The checkpoint answers *what does the FAMILY'S TREE hold* — history, on the family
+branch, made once, and it stays. Leaving the second job to the seal would mean a
+family whose shared material exists only inside each part's private branch, in a
+commit the landing is written to discard, made once per part off whatever the
+directory held at that moment. A `git log` of the family branch would show none of
+it, and a crash between the division and the landing would leave the parent's work in
+an object nothing references. So `sealDivisionWorld`, `divisionCommitMessage`,
+`sealedWorldMessage` and the `.git`-stat guard are **not** in the tree; the freeze is
+stored per child at admission rather than as one mutable field on the parent, and it
+rides the checkpoint so a resumed part does not reseal. #246 is closed in favour of
+#262.
+
+**The #258 baseline living in the tree's private corner, rather than reusing the
+family tree's baseline commit.** Being asked to use that commit is the right
+question — one source of truth beats two files, and `openFamilyRepository` already
+commits the mirror byte-exact the moment it is carved. The accepted reading, written
+into `task_mirror_manners.go`'s header: **that commit exists only where `git init`
+succeeded, and the family whose init failed is the DEGRADED one** — the read-only
+disk, the machine with no git, the folder somebody moved — whose parts already share
+a directory, and which is the last family that should also leave without a manners
+check. A road that covers four families out of five is a road somebody has to
+remember the shape of; this one is asked at every landing and answers for all of
+them. It is also the cheaper reading at the moment it matters: one ledger path costs
+one digest of one file, where the commit would cost a `git` process per landing in a
+directory whose history is the family's medium rather than the person's. And the
+digests must not reach the checkpoint, which is rewritten as the graph moves and has
+no business carrying twenty thousand of them.
+
+## The record
+
+Landed on `dev` in this order. The design's dependency order put #229 first; the
+merge order put #239 first, because #236's commits rode in on it and #237's seam —
+one new file plus three insertions in the landing roads — did not touch
+`prepareTaskTreeOn` or `divideOnce`.
+
+| # | commit | pull request | issue | what landed |
+| --- | --- | --- | --- | --- |
+| 1 | `0a82c43c` | #239 | #230, #231 | folder family tree (`openFamilyTree`), carrying #236's scope-ownership commits (`scopeCollisions`) |
+| 2 | `c1776b76` | #237 | #229 | ledger absorption (`absorbedLedger`), one landing road (`landHome`/`keepHome`), the `workingCopy` ground fix |
+| 3 | `e33df6ad` | #240 | #233 | one part-brief composer (`familyOf`/`partBrief`), `sketchBrief` gone, `system.md` dedup |
+| 4 | `eb10e4c1` | #251 | — | the copy-of-the-repository wording scrub after #239 |
+| 5 | `c41545aa` | #270 | #258 | folder-landing manners (`rememberGroundBaseline`, `groundChanged`, `mergeConflicted`) |
+| 6 | `a5877146` | #262 | #232 | the family-branch checkpoint (`startTheParts`), the universe fork honouring it, the seal repairs |
+
+PR #249 was the `dev`-targeted copy of #236 and was closed once #239 carried the
+same commits. PR #246 was closed in favour of #262 (see above).
 
 ## Still open
 
-- **#255 — a landing that could not save the work merges anyway.** `comeHome`
-  swallows a stage or commit failure. `commitTaskWorkAs` now answers the SHA and
-  the error (#262), but `commitTaskWork` still discards them and `comeHome` is
-  unchanged; what a landing owes a failed commit is this issue's seam. PR #277 is
-  in flight.
-- **#256 — a folder landing that only half happened reports itself as an
-  ordinary one.** Same PR.
-- **#260 — complexity ratchet on the division and landing seams.** No behaviour
-  change: extract the refusal settlement, the child reservation and the admission
-  out of `divideOnce`, and the landing finalisation out of `workTaskNode` — which
-  is written twice today and is precisely the memory #255 and #256 show failing —
-  then pin the ceiling with a ratchet rather than a cliff.
-- **#261 — the depth ruling.** `taskDepthLimit = 2`, the manual says *Depth: two
-  levels*, and #228's own roadmap asked for a grandchild's writes to ship. The
-  tracker is what disagrees. The recommendation on the issue is to keep the bound
-  and fix the words; raising it wants isolation at the third level, the nursery
-  law reaching a grandchild across a resume, a bound on what one ask can become,
-  and a measured answer to the constant's cost claim.
-- **`restoreFromFolder` re-mirrors at check time.** A mirrored node is judged
-  against a fresh copy of the person's folder taken when the check runs
-  (`mirrorGround(tree.ground, dir)`), with the ledger laid over it — not against
-  the folder as it stood when the family was given it. An edit the person makes
-  mid-run therefore reaches the checker's world, which is a different window from
-  the landing's and is not the one `ground-baseline.json` closes. Whether the
-  check should read the baseline instead is unruled.
+- **#231** and **#241** are open on the tracker although the code landed: #231's
+  enforcement is in `task_divide_scope.go` and #241's sentence is in
+  `prompts/divide.md` under *EVERY PART OWNS ITS OWN FILES, AND THIS ONE IS
+  ENFORCED*. What is left on #241 is whether the worker's own page wants more than
+  the clause #236 put there.
+- **#255** — a landing that could not save the work merges anyway and then deletes
+  it. `comeHome` throws `commitTaskWork`'s answer away, merges an empty branch and
+  `releaseLanded` removes the worktree. #262 fixed the divide-time half
+  (`commitTaskWorkAs`) and deliberately left `comeHome` to this lane.
+- **#256** — #255 one road over: `landMirror`'s failing and succeeding roads answer
+  the same outcome, so a lay-back that half happened settles `done` with everything
+  before the failing path already in the person's folder.
+- **#260** — complexity debt on the seams these four defects keep landing in.
+  `runTaskChild` at 56, `workTaskNode` at 35, `divideOnce` at 22 by gocyclo's rule.
+  No behaviour change; extract the endings and ratchet the ceiling.
+- **#261** — the ruling this page's *Testing depth-3 composition* refusal depends on:
+  keep the family two levels deep, or raise it to three? The code and the manual
+  agree with each other; #229's recipe asked for a generation that cannot exist.
+- **#281** — scope ownership is dim on prefixes and not dim enough on reads. A brief
+  is prose: it names what a part will write AND what it should read, and two parts
+  told to read one plan file are currently refused. Measured while building the
+  real-model e2e suite (#280). Ownership is a claim about *writing*; the decision is
+  which of the two conservative shapes takes it.
 
 ## Outside this family
 
-Two issues share a week with the family and are not under #228.
+Two issues share the week and are not under #228.
 
-**#242** — compaction semantic-recovery. A fold marker names a grep-able journal
-path so a compacted transcript can still find what the fold hid. It is a
-journal-and-compaction change and does not move a ledger, a tree, or a brief.
-PR #247 is open.
+**#242** — compaction semantic-recovery: a fold marker naming a grep-able journal
+path so a compacted transcript can still find what the fold hid. It moves no ledger,
+no tree, no brief.
 
-**#243** — worker-prompt dedup of the deliverable-file law, which is stated more
-than once. Prompt hygiene; it does not change `stageTaskWork`, `declaredFiles`,
-or `absorbedLedger`. PR #248 is open.
+**#243** — worker-prompt dedup of the deliverable-file law. `prompts/task.md` states
+more than once that what lands is `WHAT YOU WROTE` and that a command-made file comes
+home on a `files:` line. Prompt hygiene; it does not touch `stageTaskWork`,
+`declaredFiles` or `absorbedLedger`.
 
-A session opening those two does not need this page, and a session opening this
-page does not need those two. The split is the point of recording it.
+A session opening those two does not need this page, and a session opening this page
+does not need those two. The split is the point of recording it.
