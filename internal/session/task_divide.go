@@ -697,6 +697,22 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		return divisionNoLane(len(parsed.Parts), graph.laneLimit()), "", false
 	}
 
+	// GATE THREE: NO TWO PARTS MAY OWN THE SAME PATH, and it is HERE because it
+	// is free (task_divide_scope.go states the law and why the loss it prevents
+	// is silent). Everything below this line costs something — the adjudication
+	// on the next one, the reading on the one after — and a division whose parts
+	// were never going to be allowed to stand should not spend either of them to
+	// find that out. It reads the parts the WORKER wrote, which are the only
+	// parts that exist yet.
+	//
+	// IT IS ASKED AGAIN BELOW, on the parts the reviewer settled, because the
+	// reviewer may rewrite a brief into an overlap the worker never wrote. Two
+	// askings, one rule, one function.
+	if said := a.scopeRefusal(parsed.Parts, scopeSpentNothing); said != "" {
+		line.Decision = divisionRefusedScope
+		return said, "", false
+	}
+
 	// AND THEN THE PLAN IS READ, ONCE, BY THE TIER THAT THINKS. It comes after
 	// both gates because it is the only step here that costs money: a division
 	// nobody is free to pick up, or one the evidence does not support on work no
@@ -781,17 +797,20 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	}
 	parsed.Parts = parts
 
-	// AND NO TWO PARTS MAY OWN THE SAME PATH. This is the floor under the
-	// reviewer rather than a second reading of the same question: overlapping
-	// scope is not untidy, it is work that disappears — the ledger is what ships
-	// and a path written by two parts is staged once, one version silently over
-	// the other (task_divide_scope.go states the whole of it). It stands HERE,
-	// on the reviewer's settled parts rather than the worker's asked-for ones,
-	// so a boundary the reviewer fixed is a boundary that counts; and above the
-	// claims, so a refused division costs nothing and holds no hand.
-	if shared := scopeCollisions(parsed.Parts, a.config.Workspace); len(shared) > 0 {
+	// AND THE SAME RULE OVER THE PARTS THE REVIEWER SETTLED. Gate three above
+	// read the parts the worker wrote; these are the parts that would actually
+	// exist, and they are not the same list — the reviewer may merge two parts
+	// into one, or sharpen a brief onto a file its sibling already owns. A rule
+	// enforced only on the asked-for shape is a rule the settled shape can walk
+	// around, so it is asked once more on the last thing anybody changes.
+	//
+	// IT STANDS ABOVE THE CLAIMS, so a refused division holds no hand. What it
+	// cannot say is that nothing was spent: the reading above is paid for by the
+	// time this line runs, and [scopeSpentTheRead] is that sentence told
+	// honestly.
+	if said := a.scopeRefusal(parsed.Parts, scopeSpentTheRead); said != "" {
 		line.Decision = divisionRefusedScope
-		return divisionScopesOverlap(shared), "", false
+		return said, "", false
 	}
 
 	// THE SLOTS ARE TAKEN FOR THE WHOLE DIVISION BEFORE ANY OF IT IS ADMITTED.
