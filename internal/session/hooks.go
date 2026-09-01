@@ -198,6 +198,13 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	plane := &controlPlane{}
 	plane.register(approvalGate{agent: a})
 	plane.register(&changeLedger{agent: a})
+	// AND THE WRITE SEAM BESIDE IT (writeseam.go), which asks the same question
+	// of the same calls and keeps a different answer: not which files could be
+	// put back, but how much of the person's directory this turn has changed
+	// while nobody was watching it. It is registered next to the ledger because
+	// they share the episode-init/post-feedback shape and neither of them ever
+	// vetoes anything.
+	plane.register(&writeSeam{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
 	plane.register(turnFoldPass{agent: a})

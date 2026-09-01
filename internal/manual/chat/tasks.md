@@ -538,6 +538,44 @@ hours. A line aforge writes to itself that nobody owes an answer for is still le
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.
 
+## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
+
+**Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
+right unit for a reply that is looking things up and the wrong one for a reply that is
+changing your files: forty rounds of reading cost you a wait, and forty rounds of editing are
+unreviewed changes in the folder you are sitting in. So there is a second, much shorter
+count, and it counts only the calls that CHANGE something under the folder this conversation
+is open on.
+
+**The allowance is two files, or five write calls, whichever comes first.** A reply may make
+a small, obvious edit inline — fix the typo, change the one line, write the note beside it —
+and that is the whole point of leaving one at all. The write that would cross the allowance
+is not made in the reply. The answer ends where it is, what is left moves onto one task, and
+the same two dim lines go into the transcript as at the third point above:
+
+```
+this is changing more than a quick edit · moving it to a task that is watched and can split
+this looked like work, so task 4 started: rename the parser
+```
+
+**What counts as a write.** An `edit` or a `write` call naming a path under this folder, a
+saved cut from `edit_video`, and a shell command that names what it would change — `sed -i`,
+`patch`, `mv`, `rm`, `cp`, `mkdir`, `touch`, a `>` redirection, a git command that is not
+just looking. A `cd` inside the command is followed, so a write into somewhere else is
+somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
+`git diff`, running your tests. Neither is a write that FAILED, and neither is anything
+outside this folder — a scratch file in `/tmp` is not your work.
+
+**It can still decide not to move.** The move goes through the same road as the third point,
+which means it can be dropped when the model writing your answer says nothing is left AND the
+second reader agrees — which is exactly the reply that made its one edit and was finishing.
+And it happens **once** in a reply: past it, the three points above are the governor again.
+
+**Why it is there.** A message reading "implement this issue" was answered as an ordinary
+reply for seven minutes and forty-six seconds — forty-eight tool calls, `sed -i` edits in
+somebody's live checkout — before the round ceiling finally moved it. Nothing in between was
+watching what those rounds did to the disk.
+
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
 
 **A reply ends when the model stops calling tools, and that happens for two different

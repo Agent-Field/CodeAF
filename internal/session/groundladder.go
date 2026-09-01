@@ -853,19 +853,27 @@ func (copyRung) carve(ctx context.Context, order groundOrder) (taskTree, bool, e
 //
 // So the node's commits are replayed onto the commit the machine commit was
 // made from, which is the ground's HEAD at the moment the child was carved and
-// an object both this directory and the ground always hold. A replay that will
-// not go is abandoned and NOT reported here: the branch still holds the work,
-// the merge that follows will refuse it, and the one sentence a person reads
-// about a branch that could not come home is [conflictSentence]'s.
-func (t taskTree) replayOwnWork() {
+// an object both this directory and the ground always hold.
+//
+// AND A REPLAY THAT WILL NOT GO IS ANSWERED, WHICH IT USED TO NOT BE. The rebase
+// was abandoned and the outcome was unchanged — no line in the node's journal, no
+// mark on the node, and a branch that now held the person's own uncommitted work
+// underneath the node's with nothing anywhere saying so. The merge that followed
+// then refused for a reason the report could not account for, which is the run
+// #272 was written from. It answers TRUE when the inheritance is still on the
+// branch, and [taskTree.comeHome] is what says so out loud
+// ([strandedGroundSentence]).
+func (t taskTree) replayOwnWork() bool {
 	if strings.TrimSpace(t.base) == "" || strings.TrimSpace(t.dir) == "" {
-		return
+		return false
 	}
 	if _, err := git(t.dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"rebase", "--onto", t.base+"^", t.base); err != nil {
-		_, _ = git(t.dir, "rebase", "--abort")
+		"rebase", "--onto", t.base+"^", t.base); err == nil {
+		return false
 	}
+	_, _ = git(t.dir, "rebase", "--abort")
+	return true
 }
 
 // ownRepository reports that the node's branch lives in A REPOSITORY OF ITS OWN

@@ -2063,7 +2063,12 @@ type Agent struct {
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
-	running      bool
+	// writes is THE RUNNING TURN'S account of what it has changed under the
+	// workspace, and the whole of the write seam's state (writeseam.go). It is
+	// minted at episode-init and read at the step boundary, and it is nil in a
+	// session that has never opened an episode.
+	writes  *writeMeter
+	running bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
