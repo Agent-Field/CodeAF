@@ -568,17 +568,20 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 	}
 	pal := a.pal
 	item := view.Item
-	bands := [][]string{{pal.bold(pal.ink(fit(strings.TrimSpace(item.Words), width)))}}
+	identity := []string{pal.bold(pal.ink(fit(strings.TrimSpace(item.Words), width)))}
 
 	// THE BAND IS A PLACE, SO THE BAND IS A DOOR (pathlink.go) — the same anchor
-	// the conversation card hangs on the same pair of words.
+	// the conversation card hangs on the same pair of words. It is the second
+	// ROW of the identity band and not a band of its own, for the reason
+	// homecardrhythm.go states: an address is the title's second line.
 	place := project
 	if dir != "" && dir != place {
 		place = joinDot(place, dir)
 	}
 	if place != "" {
-		bands = append(bands, []string{pal.dim(a.pathLink(dir, fit(place, width)))})
+		identity = append(identity, pal.dim(a.pathLink(dir, fit(place, width))))
 	}
+	bands := cardBandsOf(cardGroupIdentity, identity)
 
 	var state []string
 	if item.NeedsPerson != "" {
@@ -607,21 +610,23 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 			state = append(state, pal.dim(wrapped))
 		}
 	}
-	bands = append(bands, state)
+	bands = append(bands, cardBandsOf(cardGroupActivity, state)...)
 
 	// THE LIFETIME FIGURES, AND THEN THE WEEK. The first is what the item's own
 	// document remembers about itself for as long as it has existed; the second
 	// is the ledger's last seven days, which is the one a person reads to decide
 	// whether a thing is worth keeping. They are two rows and not one line
 	// because they are two different questions with the same units.
+	var lifetime, week []string
 	if facts := standFacts(item); facts != "" {
-		bands = append(bands, []string{pal.dim(fit(facts, width))})
+		lifetime = []string{pal.dim(fit(facts, width))}
 	}
-	if week := standWeekFacts(a.standWeek(now), []string{item.ID}, true); week != "" {
-		bands = append(bands, []string{pal.dim(fit(week, width))})
+	if weekly := standWeekFacts(a.standWeek(now), []string{item.ID}, true); weekly != "" {
+		week = []string{pal.dim(fit(weekly, width))}
 	}
-	bands = append(bands, []string{pal.dim(fit(homeItemActions, width))})
-	return homeBands(bands, room)
+	bands = append(bands, cardBandsOf(cardGroupEconomics, lifetime, week)...)
+	bands = append(bands, cardBandsOf(cardGroupVerbs, []string{pal.dim(fit(homeItemActions, width))})...)
+	return homeCardStack(bands, room)
 }
 
 // standRunMark is the `●` the card leads its running line with. It is

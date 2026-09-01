@@ -425,6 +425,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// figures at a tool row's right end were cut down to `0…`, and "what
 		// does that mean" is the first thing anyone asks about them.
 		{"what does the time on the right of a tool call mean", "screen"},
+		// And from the screenshot that provoked the one-row clamp: a long bash
+		// command spilling over the frame, asked in the four vocabularies people
+		// actually reach for — wrapping, spilling, taking too many lines, and
+		// wanting the whole command back.
+		{"why does a long bash command wrap onto several lines", "screen"},
+		{"a tool call is running off the edge of the screen", "screen"},
+		{"one tool call is taking up four rows", "screen"},
+		{"how do I see the whole command of a tool call", "screen"},
+		{"why is the colour from go test output missing", "screen"},
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
@@ -1072,6 +1081,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// said whether a second errand was allowed at all.
 		{"why did my reminder card disappear when I opened another chat", "asking-from-home"},
 		{"how do I know ask here is doing something", "asking-from-home"},
+		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
+		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
