@@ -3244,9 +3244,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 		return TaskFailed
 	}
-	// WHAT THE WORKER'S LAST WORDS SAY ABOUT HOW IT ENDED is written before the
-	// gate reads them, so that a check refusing a run that had already given up
-	// does not become the reason on the row ([TaskNode.end]'s first-cause law).
+	// WHY THE RUN ENDED WHEN IT DID NOT CHOOSE TO is written before the gate
+	// reads it, so that a check refusing a run that had already given up does not
+	// become the reason on the row ([TaskNode.end]'s first-cause law). It is the
+	// loop's own answer where the loop has one — a rule the worker would not
+	// follow — and the worker's last words otherwise ([endingOfClaim]).
 	node.end(endingOfClaim(lastSaid(child), node.blockedByNow(), child.stoppedOnProcessRule()))
 
 	// THE GATE. Everything above is the node's own account of itself; what
