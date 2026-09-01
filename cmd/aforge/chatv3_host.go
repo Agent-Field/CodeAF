@@ -537,9 +537,13 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// The engine's own tool-approval posture, so the YOLO badge names the
 		// machine that actually decides whether a tool runs unattended
 		// (internal/tui3's app.approvalPosture).
-		ApprovalMode:  welcome.ApprovalMode,
-		ContextWindow: v3Window(models, welcome.Model),
-		Models:        func() []tui3.Model { return v3Models(models) },
+		ApprovalMode: welcome.ApprovalMode,
+		// The engine's own foreground-command clock, for the same reason. The
+		// laptop's profile may carry a different value and cannot describe the
+		// timer that is already armed around a far process.
+		BashBackgroundAfterSeconds: welcome.BashBackgroundAfterSeconds,
+		ContextWindow:              v3Window(models, welcome.Model),
+		Models:                     func() []tui3.Model { return v3Models(models) },
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),

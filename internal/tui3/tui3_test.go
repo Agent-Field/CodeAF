@@ -244,7 +244,10 @@ func labLedger() string {
 }
 
 func newTestApp(agent Agent) *app {
-	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger()})
+	a := newApp(context.Background(), Options{
+		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
+		BashBackgroundAfterSeconds: config.DefaultBashBackgroundAfter,
+	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	// AND IT PINS THE MULTIPLEXER, for exactly the same reason. [newApp] reads

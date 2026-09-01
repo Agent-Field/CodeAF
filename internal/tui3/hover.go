@@ -52,6 +52,10 @@ const (
 	// hoverEntry is a conversation row that belongs to an entry — a tool call,
 	// its expansion, its "more" foot, a thinking block.
 	hoverEntry
+	// hoverKeep is the `click to background` clause inside one running bash row.
+	// It is narrower than [hoverEntry] because the rest of that row opens the
+	// call, while these words keep its process and must light alone.
+	hoverKeep
 	// hoverFold is the "N earlier tool calls" line, which belongs to a turn
 	// rather than to an entry.
 	hoverFold
@@ -427,6 +431,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// the pointer was forty cells away from it would be claiming to be
 			// something you could press there (mdtable.go).
 			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
+		case r.keep.holds(x):
+			// THE CLAUSE AND NOT THE ROW. The rest of a tool line opens its
+			// expansion; this span keeps the command under the pointer, so it wins
+			// its own columns before the whole-block arm below.
+			return hoverAt{kind: hoverKeep, entry: r.entry}
 		case r.hit == hitSettle:
 			// NARROWER THAN ITS ROW, with four of them on one line: which chip the
 			// pointer is
@@ -597,6 +606,12 @@ func (a *app) dropHover() { a.hot = hoverAt{} }
 // hoveringEntry reports whether the pointer is on this entry's rows.
 func (a *app) hoveringEntry(i int) bool {
 	return a.hot.kind == hoverEntry && a.hot.entry == i
+}
+
+// hoveringKeep reports whether the pointer is on this row's narrow background
+// door rather than on the row that opens its expansion.
+func (a *app) hoveringKeep(i int) bool {
+	return a.hot.kind == hoverKeep && a.hot.entry == i
 }
 
 // hoveringFold reports whether the pointer is on this turn's fold line.

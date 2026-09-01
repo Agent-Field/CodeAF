@@ -2,12 +2,12 @@ package tui3
 
 import (
 	"encoding/json"
-	"github.com/Agent-Field/aforge-v2/internal/session"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -192,7 +192,8 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// the whole of [toolBlock]. Everything that moves is on this row — the
 	// spinner, the count-up, the pointer's own brightness — so it is built fresh
 	// here; what hangs under it is evidence about a payload that arrived once.
-	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hit}}
+	line, keep := a.toolLineLayout(e, i, last, width)
+	out := []row{{text: line, entry: i, hit: hit, keep: keep}}
 	stem := a.pal.railCont()
 	// THE INDENT LAW COSTS THE BLOCK ITS TWO CELLS TOO, and it is subtracted here
 	// for the reason [app.toolLine] subtracts it: render.go's pass shoves every
@@ -396,16 +397,39 @@ func (a *app) moreRow(i int, stem string, more int) row {
 // about a line nobody can read. The target keeps [toolTargetFloor] cells
 // whatever else is on the row.
 func (a *app) toolLine(e *entry, i int, last bool, width int) string {
+	line, _ := a.toolLineLayout(e, i, last, width)
+	return line
+}
+
+// toolLineLayout draws the row and records the narrow background door's
+// columns on the same pass. The plain wrapper above serves places that only
+// need the sentence; transcript rows keep both answers together.
+func (a *app) toolLineLayout(e *entry, i int, last bool, width int) (string, hudSpan) {
+	line, keep := a.toolLineLayoutWithKeep(e, i, last, width, a.keepVisible(e, i))
+	if keep.pressable() || layoutTier(width) == tierPhone || !a.keepEligible(e, i) {
+		return line, keep
+	}
+	// THE HIDDEN DOOR'S COLUMNS ARE LAID OUT BEFORE THE POINTER ARRIVES. A
+	// pointer can cross straight onto the words' future cells in one motion; if
+	// those cells existed only after a whole-row hover, the first frame would
+	// reveal the words under a band that promised the row's other action and no
+	// further motion would correct it. The returned text stays untouched — only
+	// the next frame's hit test gets the geometry it is about to reveal.
+	_, keep = a.toolLineLayoutWithKeep(e, i, last, width, true)
+	return line, keep
+}
+
+func (a *app) toolLineLayoutWithKeep(e *entry, i int, last bool, width int, showKeep bool) (string, hudSpan) {
 	// A CALL STILL ARRIVING IS ITS OWN SENTENCE, at every tier: what is on the
 	// line is how much of the instruction has landed, not what the call did.
 	if e.status == toolForming {
-		return a.formingLine(e, i, last, width)
+		return a.formingLine(e, i, last, width), hudSpan{}
 	}
 	// THE PHONE HAS ITS OWN ROW, and it is a different sentence rather than this
 	// one squeezed (see [app.toolLinePhone]). Every other tier reaches this line
 	// unchanged, which is the whole contract of [layoutTier].
 	if layoutTier(width) == tierPhone {
-		return a.toolLinePhone(e, i, last, width)
+		return a.toolLinePhone(e, i, last, width), hudSpan{}
 	}
 	// THE INDENT LAW COSTS THIS ROW TWO CELLS. Every tool row is drawn two
 	// columns right of the frame's edge (workfold.go's [workIndent], applied by
@@ -431,7 +455,7 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	// room is everything the sentence and the column have between them: the
 	// frame, less the rail, the name, and the single space after the name.
 	room := width - railCells - nameWidth - 1
-	tail, tailWidth := a.toolTail(e, room-toolGap-toolTargetFloor)
+	tail, tailWidth := a.toolTailAt(e, i, room-toolGap-toolTargetFloor, showKeep)
 	// And the target takes everything the column did not, which on a wide frame
 	// is everything: no reservation is held back for machinery that is not on
 	// this row.
@@ -460,7 +484,7 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		used += 1 + targetWidth
 	}
 	if tailWidth == 0 {
-		return line
+		return line, hudSpan{}
 	}
 	// The column is flush against the frame's right edge, and the row adds up to
 	// exactly the width it was given.
@@ -468,7 +492,13 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	if pad < 1 {
 		pad = 1
 	}
-	return line + strings.Repeat(" ", pad) + tail
+	keep := hudSpan{}
+	plainTail := ansi.Strip(tail)
+	if at := strings.Index(plainTail, backgroundKeepWord); at >= 0 {
+		from := used + pad + ansi.StringWidth(plainTail[:at])
+		keep = hudSpan{from: from, to: from + ansi.StringWidth(backgroundKeepWord)}
+	}
+	return line + strings.Repeat(" ", pad) + tail, keep
 }
 
 // toolGap is the space between the sentence and the right column. One cell,
@@ -520,15 +550,22 @@ type tailSeg struct {
 // different column on every row; a state belongs where every other state is,
 // and a person scanning a cluster for the one that broke is scanning one column.
 func (a *app) toolTail(e *entry, budget int) (string, int) {
+	return a.toolTailAt(e, -1, budget, false)
+}
+
+// toolTailAt is the live row's right column. An entry index enables the
+// pointer-only background offer; -1 is the stable column other callers test and
+// reuse without a row under the pointer.
+func (a *app) toolTailAt(e *entry, i, budget int, keep bool) (string, int) {
 	mark := a.mark(e)
 	clockPlain, clockPainted := a.toolClock(e)
-	return a.tailOf(e, tailSeg{text: mark, width: ansi.StringWidth(mark)}, clockPlain, clockPainted, budget)
+	return a.tailOf(e, tailSeg{text: mark, width: ansi.StringWidth(mark)}, clockPlain, clockPainted, budget, i, keep)
 }
 
 // tailOf is the column itself, given what leads it and the clock the row tells
 // time by. The two are handed in rather than read here so the drop order below
 // is stated once and the tier decides nothing about it.
-func (a *app) tailOf(e *entry, head tailSeg, clockPlain, clockPainted string, budget int) (string, int) {
+func (a *app) tailOf(e *entry, head tailSeg, clockPlain, clockPainted string, budget, i int, keep bool) (string, int) {
 	statPlain, statPainted := a.toolStat(e)
 	// What the person answered when this call was asked about (consent.go). It
 	// rides the size segment because it is the same kind of fact — dim, trailing,
@@ -537,12 +574,22 @@ func (a *app) tailOf(e *entry, head tailSeg, clockPlain, clockPainted string, bu
 	if e.decision != "" {
 		statPlain, statPainted = joinFact(statPlain, statPainted, e.decision, a.pal.dim(e.decision))
 	}
-	// And what the person DID to the call while it ran: a foreground command
-	// sent to the background with ctrl+g says which job it became
-	// (background.go). It rides the same segment for the same reason, and it is
-	// last, because it is the most recent thing to have happened to the row.
+	// And what became of the call while it ran: whichever door kept a foreground
+	// command — the clock, its timeout, ctrl+g or the row's pointer — says which
+	// job it became (background.go). It rides the same segment for the same
+	// reason, and it is last because it is the newest fact about the row.
 	if e.bg != "" {
 		statPlain, statPainted = joinFact(statPlain, statPainted, e.bg, a.pal.dim(e.bg))
+	}
+	// A POINTER OVER A PROMOTABLE ROW REVEALS ONE DOOR in the slot the job mark
+	// will occupy. The gesture leads in ink and its verb stays dim; once the
+	// pointer reaches the clause, only the clause takes the accent (hover.go).
+	if keep {
+		painted := a.pal.ink("click") + a.pal.dim(" to background")
+		if a.hoveringKeep(i) {
+			painted = a.pal.accent(backgroundKeepWord)
+		}
+		statPlain, statPainted = joinFact(statPlain, statPainted, backgroundKeepWord, painted)
 	}
 
 	// THE DROP ORDER, WRITTEN DOWN ONCE: what the call came to, then how long it
@@ -564,6 +611,22 @@ func (a *app) tailOf(e *entry, head tailSeg, clockPlain, clockPainted string, bu
 		return head.text, head.width
 	}
 	return "", 0
+}
+
+// keepEligible reports whether this row has a pointer door to reveal. It says
+// nothing about hover; layout needs the answer one frame early so a pointer
+// arriving directly on the future clause can light the clause, not the row.
+func (a *app) keepEligible(e *entry, i int) bool {
+	if i < 0 || i >= len(a.entries) || e != &a.entries[i] {
+		return false
+	}
+	return a.promotableEntry(i)
+}
+
+// keepVisible is the hover half: the ordinary row reveals the clause, and the
+// clause's own hover keeps it visible while changing only its paint.
+func (a *app) keepVisible(e *entry, i int) bool {
+	return a.keepEligible(e, i) && (a.hoveringEntry(i) || a.hoveringKeep(i))
 }
 
 // joinTail lays the column out: the mark, then the figures.
@@ -752,6 +815,12 @@ func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
 	if e.decision != "" {
 		statPlain, statPainted = e.decision, a.pal.dim(e.decision)
 	}
+	// A kept command is the newer fact and takes this one stat slot. The wide
+	// row trails it in the same slot; the phone row replaces because it has room
+	// for exactly one such clause.
+	if e.bg != "" {
+		statPlain, statPainted = e.bg, a.pal.dim(e.bg)
+	}
 	clockPlain, clockPainted := a.phoneClock(e)
 
 	rail := a.pal.rail(last)
@@ -895,7 +964,7 @@ func (a *app) phoneClock(e *entry) (plain, painted string) {
 		a.state != stateWorking {
 		return "", ""
 	}
-	if limit := toolLimit(e); limit > 0 {
+	if limit := a.toolLimit(e); limit > 0 {
 		if left := limit - a.now().Sub(e.began); left <= timeoutNear {
 			word := leftWord(left)
 			if left <= timeoutEdge {
@@ -1244,7 +1313,7 @@ func (a *app) countClock(e *entry) (plain, painted string) {
 		return "", ""
 	}
 	age := countUpWord(a.now().Sub(e.began))
-	limit := toolLimit(e)
+	limit := a.toolLimit(e)
 	if limit <= 0 {
 		// Unbounded: the age alone, or nothing at all in the first second.
 		return age, a.pal.dim(age)
@@ -1291,19 +1360,15 @@ func leftWord(left time.Duration) string {
 //
 // Only bash is bounded on the wire, and only a FOREGROUND bash: the session's
 // wrapper starts a background call as a job and returns, and a job runs until
-// it is done (internal/session's backgroundBash). The number is the model's own
-// when it set one, and the session's ceiling when it did not or when it asked
-// for more — the same law internal/session's wrapper applies to the wire args,
-// restated here from the call's original args so the row agrees with the clock
-// the command is actually bounded by.
-func toolLimit(e *entry) time.Duration {
+// it is done (internal/session's backgroundBash). The foreground bound is the
+// earlier of the command's timeout law and the session's armed background-after
+// clock. [session.BashBoundSeconds] is the one composition, so the row agrees
+// with the clock the session actually armed.
+func (a *app) toolLimit(e *entry) time.Duration {
 	if e.tool != "bash" {
 		return 0
 	}
 	raw := strings.TrimSpace(e.detail.Args)
-	if raw == "" {
-		return session.BashCeilingSeconds * time.Second
-	}
 	var args struct {
 		Background bool `json:"background"`
 	}
@@ -1316,7 +1381,9 @@ func toolLimit(e *entry) time.Duration {
 	// it, and the row must count down against the same figure. A surface that
 	// read the argument for itself drew a bound the engine had not armed, which
 	// is the one number on this row a person cannot check.
-	return time.Duration(session.BashTimeoutSeconds(json.RawMessage(raw)) * float64(time.Second))
+	return time.Duration(session.BashBoundSeconds(
+		json.RawMessage(raw), a.bashBackgroundAfter,
+	) * float64(time.Second))
 }
 
 // countUpWord spells a duration the way a person says one out loud: seconds

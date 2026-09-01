@@ -114,6 +114,7 @@ func TestAWindowWithoutTheKeyboardIsRefusedInWordsAndNotInSilence(t *testing.T) 
 	}{
 		{MethodSubmit, SubmitArgs{Text: "go"}},
 		{MethodFollowUp, SubmitArgs{Text: "and also"}},
+		{MethodSteer, SubmitArgs{Text: "use the other file"}},
 		{MethodSubmitImage, SubmitImageArgs{Text: "look"}},
 		{MethodSubmitFiles, SubmitFilesArgs{Text: "here"}},
 	} {
@@ -162,6 +163,46 @@ func TestTakingTheKeyboardBackMovesItAndTellsTheOtherWindow(t *testing.T) {
 	}
 	if result := away.call(3, MethodSubmit, SubmitArgs{Text: "no"}); result.Error == "" {
 		t.Fatalf("the new watcher was allowed to type")
+	}
+}
+
+// M11: the newly taken keyboard can steer, every watcher receives the steer
+// lifecycle, and no watcher is told that those words opened a fresh turn.
+func TestTheDriverCanSteerWithoutBroadcastingAFreshTurn(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	desk := dialSession(t, sess)
+	desk.hello(Hello{Version: Version, Surface: "macbook"})
+	away := dialSession(t, sess)
+	away.hello(Hello{Version: Version, Surface: "spark"})
+	driverOf(desk)
+
+	desk.ok(1, MethodTake, nil)
+	driverOf(away)
+	ref := decode[StreamRef](t, desk.ok(2, MethodSteer, SubmitArgs{Text: "use staging"}).Payload)
+	if len(agent.steered) != 1 || agent.steered[0] != "use staging" {
+		t.Fatalf("the newly taken keyboard steered %q", agent.steered)
+	}
+	stream := agent.stream(0)
+	stream <- session.Event{Kind: session.EventSteerAccepted, Steer: &session.SteerNote{ID: 7, Words: "use staging"}}
+	stream <- session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: 7, Words: "use staging"}}
+	close(stream)
+
+	var kinds []session.EventKind
+	for len(kinds) < 2 {
+		frame := away.await(func(frame Frame) bool { return frame.Kind == "event" && frame.ID == ref.Stream })
+		kinds = append(kinds, decode[EventWire](t, frame.Payload).Unwire().Kind)
+	}
+	if kinds[0] != session.EventSteerAccepted || kinds[1] != session.EventSteerConsumed {
+		t.Fatalf("the watcher received steer events %v", kinds)
+	}
+	frames := append([]Frame(nil), away.spare...)
+	frames = append(frames, drain(away)...)
+	for _, frame := range frames {
+		if frame.Kind == "turn" {
+			t.Fatal("the steer was broadcast to the watcher as a fresh turn")
+		}
 	}
 }
 

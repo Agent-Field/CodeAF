@@ -47,8 +47,15 @@ const backgroundSentence = " Run long-lived commands (servers, watchers, long bu
 // this codebase's one-source-of-truth law: a number in a description is read by
 // the model as a fact about the machine, and a stale one is a lie it reasons
 // from.
-var timeoutSentence = " bash WAITS for the command. A foreground call runs for as long as your own timeout argument says, up to " +
-	strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. A call that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Its exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
+func timeoutSentence(backgroundAfter int) string {
+	if backgroundAfter <= 0 {
+		return " bash WAITS for the command. A foreground call runs for as long as your own timeout argument says, up to " +
+			strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. A call that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Its exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
+	}
+	return " bash WAITS for the command. A foreground call runs for up to " + strconv.Itoa(backgroundAfter) +
+		" seconds and is then kept running as a background job while you get its output so far and the job id. Its own timeout can move that handoff sooner and is capped at " +
+		strconv.Itoa(BashCeilingSeconds) + " seconds. The job's exit and closing output then arrive on their own, in this conversation, with no call from you: do not poll for them. Background calls never time out."
+}
 
 // BashCeilingSeconds is THE bound on a foreground bash call — one number, read
 // everywhere, typed once.
@@ -64,14 +71,10 @@ var timeoutSentence = " bash WAITS for the command. A foreground call runs for a
 // while a competitor's harness, which simply waited, saw the same score
 // thirty-eight times to our two.
 //
-// A CALL IS NEVER SILENTLY CONVERTED INTO A JOB BEFORE THE MODEL'S OWN TIMEOUT.
-// So the model's figure is honoured up to this ceiling, and a model that named no
-// figure gets the ceiling — because a model that did not ask for a background
-// job did not ask for one at 121 seconds either. Ten minutes is generous on
-// purpose: it is longer than almost every build, test suite and script anybody
-// runs in a turn, and the escape for the things that are longer is
-// `background: true`, which is a decision the model makes rather than one the
-// clock makes for it.
+// THE MODEL'S FIGURE IS HONOURED UP TO THIS CEILING. A session may hand the
+// still-running command to the job registry sooner through its independently
+// configured background-after clock; setting that clock to zero restores the
+// timeout-only posture. Either handoff preserves the same process.
 //
 // The number itself lives with the bare tool (bare.BashCeilingSeconds), which
 // now applies it as its own default too — a headless worker nobody is watching
@@ -111,6 +114,17 @@ func BashTimeoutSeconds(args json.RawMessage) float64 {
 		return BashCeilingSeconds
 	}
 	return seconds
+}
+
+// BashBoundSeconds is the first clock a foreground row will meet. With the
+// background-after clock off it is the command's timeout law unchanged; with
+// it on, the earlier of the two hands the process to the job registry.
+func BashBoundSeconds(args json.RawMessage, backgroundAfter int) float64 {
+	timeout := BashTimeoutSeconds(args)
+	if backgroundAfter <= 0 || timeout <= float64(backgroundAfter) {
+		return timeout
+	}
+	return float64(backgroundAfter)
 }
 
 // withTimeoutLaw returns args with the v3 timeout law applied: the default
@@ -158,7 +172,7 @@ const backgroundProperty = `{"type":"boolean","description":"Spawn the command i
 func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	return bare.Tool{
 		Name:        inner.Name,
-		Description: inner.Description + backgroundSentence + timeoutSentence,
+		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds),
 		Schema:      schemaWithBackground(inner.Schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {

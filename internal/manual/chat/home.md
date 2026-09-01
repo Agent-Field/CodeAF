@@ -843,7 +843,7 @@ Three ways to open it, and all three fold it again:
 **The fold always cuts between tasks**, never through one — you will not find a sentence
 under the fold line with nothing above it saying what it was about.
 
-The project's whole history is somewhere else: `ctrl+g` opens the task page, which is the
+The project's whole history is somewhere else: `ctrl+.` opens the task page, which is the
 record of everything this project has ever run.
 
 ## I clicked a task on home and nothing happened — open a task from the card
@@ -861,7 +861,7 @@ Which rows on the card answer a press:
 - **a file under `made for you`** — opens the file.
 
 The `▸ N more tasks` line at the foot of `work` is **not** one of them. It names the tasks
-place out at the right margin because a card is not the place that holds them; `ctrl+g`, or
+place out at the right margin because a card is not the place that holds them; `ctrl+.`, or
 `tab` onto `tasks`, is the way there.
 
 **Move the mouse over the card and the doors show themselves.** The line under the pointer
@@ -871,7 +871,7 @@ be pressed is to point at it: a task's name row lights, a fold line lights, and 
 headings, the title, the place line, the facts and the `▸ N more tasks` line do not.
 
 The card is only drawn where the frame is genuinely wide — around 160 columns and up. On a
-narrower window there is no card, and the tasks place (`ctrl+g`) is where the work is
+narrower window there is no card, and the tasks place (`ctrl+.`) is where the work is
 listed; `enter` or a click on a row there opens the same record.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
@@ -1457,7 +1457,7 @@ That is the way back to home.
 
 There is no `ctrl+` chord for it: every `ctrl+<letter>` this surface has is already taken,
 and `esc` was not available either — on an idle conversation it already arms rewind and
-already sends a message you parked, and a third meaning on one key is how a surface stops
+already drops a message you parked, and a third meaning on one key is how a surface stops
 being predictable. What was left is the one keystroke that reliably means nothing: a
 message that starts with two spaces is a message nobody meant to send that way.
 

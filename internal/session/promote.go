@@ -23,23 +23,18 @@ package session
 // lane at the next step boundary. Nothing new was invented; one existing
 // capability grew one door.
 //
-// THE BOUND IT HITS IS TEN MINUTES AND IS THE MODEL'S OWN
-// ([BashCeilingSeconds]). That matters to this file's purpose: a promotion is
-// for the command nobody could have predicted, and it stops being a promotion
-// the moment it happens to work that anybody could have. It used to fire at two
-// minutes, which put every ordinary test suite and scoring script through this
-// door and handed the model a background job it had not asked for.
+// THE FIRST ARMED BOUND WINS. The session's background-after clock normally
+// makes the handoff; the command's own timeout may make it sooner. With the
+// session clock off, the timeout-only posture remains exactly as it was.
 //
 // ── WHERE THE SEAM IS, AND WHY THERE ──
 //
 // Two things had to stay where they were.
 //
 // THE TIMEOUT LAW IS ONE READ, and it is [BashTimeoutSeconds]: the wrapper
-// writes it into the wire arguments, bare arms one timer from those arguments,
-// and internal/tui3 counts down against the same function. Moving the clock up
-// here would have made a second authority on when a command dies, and the
-// surface's countdown would have been counting against a number nothing
-// enforced.
+// writes it into the wire arguments and bare arms one timer from those
+// arguments. The session clock is armed here from the one Config value, and
+// [BashBoundSeconds] lets the surface count down against whichever comes first.
 //
 // PROCESS OWNERSHIP IS ONE REGISTRY, and it is [jobRegistry]. bare must not
 // grow a second reaper: everything that decides a process is over — the settle,
@@ -88,6 +83,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
@@ -115,8 +111,15 @@ import (
 // THE ID LEADS. Everything downstream reads this sentence from the front — the
 // surface, the tests, a person's eye — and a tail of build output above it would
 // bury the one fact that says what happened.
+//
+// BashPromotedLead is exported because the surface has to recognize this one
+// result without inventing a second spelling of it. The composer and every
+// reader share the same lead; the job id and the rest of the sentence remain
+// the engine's facts.
+const BashPromotedLead = "still running as job "
+
 func promotedSentence(id int, logPath, sofar string) string {
-	line := fmt.Sprintf("still running as job %d; log at %s", id, logPath)
+	line := fmt.Sprintf("%s%d; log at %s", BashPromotedLead, id, logPath)
 	if strings.TrimSpace(sofar) == "" {
 		return line
 	}
@@ -153,19 +156,43 @@ type bashPromotion struct {
 	callID string
 }
 
-// Started registers the running call as promotable and hands back the
-// forgetting. The registration is what makes gap B possible at all: a key
-// pressed on a row has to find a process, and the process is only reachable
-// while the call is in flight.
+// Started arms the session clock, registers the running call as promotable, and
+// hands back the forgetting for both. The registration is what makes gap B
+// possible at all: a key pressed on a row has to find a process, and the process
+// is only reachable while the call is in flight.
 func (p bashPromotion) Started(call *bare.BashCall) func() {
-	if p.callID == "" {
-		// A call with no provider id — a test driving the belt directly — can
-		// still be promoted by its own timeout; it simply cannot be addressed
-		// by a keypress, because there is nothing to address it BY.
+	var timer *time.Timer
+	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 {
+		wait := time.Duration(seconds)*time.Second - call.RunningFor()
+		if wait < 0 {
+			wait = 0
+		}
+		timer = time.AfterFunc(wait, func() {
+			// THE CLAIM IS QUIET. The process and job id become one fact under
+			// bare's adoption lock; the person-visible row is announced only
+			// after that lock is released, exactly as the steer door does.
+			started, adopted := p.agent.adoptRunningBashAs(call, func(started *job) string {
+				return promotedSentence(started.id, started.logPath, started.sink.text())
+			}, true)
+			if adopted {
+				p.agent.jobs.announceRow(started)
+			}
+		})
+	}
+	if p.callID != "" {
+		p.agent.holdPromotable(p.callID, call)
+	}
+	if timer == nil && p.callID == "" {
 		return nil
 	}
-	p.agent.holdPromotable(p.callID, call)
-	return func() { p.agent.releasePromotable(p.callID) }
+	return func() {
+		if timer != nil {
+			timer.Stop()
+		}
+		if p.callID != "" {
+			p.agent.releasePromotable(p.callID)
+		}
+	}
 }
 
 // TimedOut is the timeout arriving with somebody there to take the process.

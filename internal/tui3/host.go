@@ -86,6 +86,11 @@ import (
 //	                  machine nobody consulted. [app.approvalPosture] is where
 //	                  the two readings — live and local, or carried and remote —
 //	                  meet.
+//	the bash countdown
+//	                  drawn from the FAR machine's armed clock, carried once on
+//	                  the welcome beside the approval posture. Reading this
+//	                  laptop's `background after` row would put a deadline on a
+//	                  process whose timer was built from another profile.
 //	/harness          the registry is the far machine's, and this build has no
 //	                  door onto it, so the door hands none and the command says
 //	                  harnesses are unavailable rather than listing THIS

@@ -415,7 +415,15 @@ registry yet. They name that machine and refuse; they do not report its registry
    change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-## Why is the task roster empty over host, can I start a task, and why did it say no task door?
+## Task says no task door
+
+The current `--host` protocol carries the far engine's task doors. Starting a task,
+listing it on the roster, opening its live room, steering it and stopping it all work on
+the other machine. A surface that answers
+`room unavailable — this session has no task rooms` is not using that current contract;
+update the older aforge so both ends are the same build and reconnect.
+
+## Why is the task roster empty over host, and can I start a task?
 
 The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that

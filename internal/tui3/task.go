@@ -3630,6 +3630,12 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if key == railStowKey {
+		// A RUNNING COMMAND OWNS ctrl+g while it can be kept. The roster is read
+		// before the message box, so standing down here is what lets the command's
+		// door answer; with no such row the column behaves exactly as it always has.
+		if a.promotableRow() >= 0 {
+			return nil, false
+		}
 		// THE ONE KEY THAT ANSWERS WITH THE COLUMN ITSELF. It is read before the
 		// hold below because it is true in both postures — a column that is up goes
 		// away, a column that is away comes back — and it is the only key on this
@@ -4001,12 +4007,11 @@ const railFootMax = 3
 // tree. It reports which of its lines that offer landed on, or -1, because the
 // line is pressable and the press has to know where it was drawn.
 //
-// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). That one is NOT
-// contextual and the difference is worth stating, because the two lines look
-// alike: widening is an offer the column makes about itself when a title is
-// being cut, and hiding is the answer to "I do not want this here", which a
-// person can want at any moment and can find no other way. It is reported the
-// same way and for the same reason — it is pressed as often as it is typed.
+// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). The chevron is always
+// live, while the chord is named only when the column actually owns it: a
+// promotable foreground command takes ctrl+g first. Widening is an offer the
+// column makes about itself when a title is being cut; hiding remains a pointer
+// answer at every moment and a keyboard answer whenever no command can be kept.
 func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	if width < 8 || height < 4 {
 		return nil, -1, -1, -1
@@ -4039,7 +4044,7 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// The chevron and its space are charged for here, because the door is drawn
 	// with them ([app.railDoorLine]) and a width test that measured only the words
 	// would let the mark run off the end of a narrow column.
-	stow := !a.railFull() && ansi.StringWidth(railStowHint)+2 <= width
+	stow := !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
 	// which is the emptiness law applied to an affordance rather than to a figure.
 	// A door on a column that is already showing everything is a row that promises
@@ -4105,14 +4110,14 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 }
 
 // railDoorLine is the standing column's own door as it is drawn: the chevron
-// that closes it, and then the chord that does the same thing.
+// that closes it, and then the chord only while the chord does the same thing.
 //
 // THE CHEVRON IS THE CONTROL AND THE WORDS ARE THE LABEL, which is why they are
-// painted at two weights. `ctrl+g hide` is a sentence telling the hand that
-// types chords what to press, and it stays dim with the rest of the footer; the
-// `❯` is what the hand that does NOT type chords presses, so it takes the ink —
-// the same split the closed edge makes at the other end of the cycle
-// ([app.railGripRows]).
+// painted at two weights. `ctrl+g hide` tells the hand that types chords what to
+// press only while no foreground command owns that key; with one running, the
+// label is simply `hide`. The `❯` is what the hand that does NOT type chords
+// presses either way, so it takes the ink — the same split the closed edge makes
+// at the other end of the cycle ([app.railGripRows]).
 //
 // IT POINTS RIGHT AND ITS TWIN POINTS LEFT, and between them the pointer can go
 // round the whole cycle: `❯` sends the column off the right edge, `❮` brings it
@@ -4124,7 +4129,17 @@ func (a *app) railDoorLine() string {
 	if a.hoveringRailDoor() {
 		ink = a.pal.accent
 	}
-	return ink(mark) + " " + paintHint(railStowHint, a.pal, a.pal.dim)
+	return ink(mark) + " " + paintHint(a.railDoorHint(), a.pal, a.pal.dim)
+}
+
+// railDoorHint names only the keyboard action available on this frame. The
+// pointer's chevron still hides the column while a command owns ctrl+g, so the
+// verb stays and only the unavailable chord comes off the line.
+func (a *app) railDoorHint() string {
+	if a.promotableRow() >= 0 {
+		return "hide"
+	}
+	return railStowHint
 }
 
 // railDoorAt reports whether a pointer is on that line. It is the hover's guard,

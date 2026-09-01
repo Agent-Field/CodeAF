@@ -201,13 +201,9 @@ func TestTheParkedLineTrimsFromTheRightOnANarrowFrame(t *testing.T) {
 	}
 }
 
-// AND THE LINE STOPS OFFERING esc THE MOMENT esc STOPS DOING ANYTHING. The turn
-// has been stopped and is winding down (render.go's [app.windingDown]): the
-// message is still parked, but [app.interrupt] returns at its first line and
-// [app.sendParked] stands down while the stream is open, so for those seconds
-// the key does nothing at all. Both lines on the screen that talk about this
-// queue drop the offer together, and what is left of each is still true.
-func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
+// ESC clears the parked queue at the keypress, before the interrupted stream
+// closes, so there is no inert waiting block left during teardown.
+func TestEscClearsTheParkedBlockWhileTheTurnIsWindingDown(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	parkLine(t, a, "do much more of a deep research please")
 	drive(t, a, frameMsg{})
@@ -227,36 +223,18 @@ func TestTheParkedLineDropsTheStopWhileTheTurnIsWindingDown(t *testing.T) {
 	if !a.windingDown() {
 		t.Fatal("the surface is not winding down after esc")
 	}
-	if len(a.parks) != 1 {
-		t.Fatalf("the message left the queue before the stream closed: %+v", a.parks)
-	}
-	// IT REALLY IS INERT, asked of the road and not only of the words: this is
-	// the fact the two lines below are about.
-	if cmd := a.sendParked(); cmd != nil {
-		t.Fatal("a parked message was sent while the stopped turn was still open")
+	if len(a.parks) != 0 {
+		t.Fatalf("esc left a message parked during teardown: %+v", a.parks)
 	}
 	body := plain(frame(a))
-	if strings.Contains(body, parkedHint[1]) {
-		t.Fatalf("the parked block still offers a key that does nothing:\n%s", body)
-	}
-	if !strings.Contains(body, parkedHint[0]) {
-		t.Fatalf("the parked block dropped the half that is still true:\n%s", body)
-	}
-	if got := a.hintWord(); got == parkedHint[1] {
-		t.Fatalf("the hint slot still offers a key that does nothing: %q", got)
+	if strings.Contains(body, "do much more of a deep research please") || strings.Contains(body, parkedHint[0]) {
+		t.Fatalf("the dropped waiting block is still drawn:\n%s", body)
 	}
 
-	// AND THE OFFER COMES BACK WITH THE NEXT TURN, because the queue drains into
-	// one and the message that follows it is parked against a turn esc can stop.
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen}, frameMsg{})
-	parkLine(t, a, "and the tests too")
-	drive(t, a, frameMsg{})
-	if !a.parking() {
-		t.Fatal("the drained message did not open a turn")
-	}
-	if got := a.hintWord(); got != parkedHint[1] {
-		t.Fatalf("the hint slot did not get the stop back: %q", got)
+	if len(agent.sent) != 1 {
+		t.Fatalf("the stream close sent the message esc dropped: %q", agent.sent)
 	}
 }
 
@@ -315,8 +293,8 @@ func TestParkedMessagesGoOneAtATimeInTheOrderTheyWereTyped(t *testing.T) {
 
 // ── esc ─────────────────────────────────────────────────────────────────────
 
-// ESC WITH A MESSAGE WAITING STOPS THE ANSWER AND SENDS IT.
-func TestEscWithAMessageWaitingStopsTheAnswerAndSendsItNow(t *testing.T) {
+// ESC WITH A MESSAGE WAITING STOPS THE ANSWER AND DROPS IT.
+func TestEscWithAMessageWaitingStopsTheAnswerAndDropsIt(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	parkLine(t, a, "no, the other file")
 
@@ -327,8 +305,30 @@ func TestEscWithAMessageWaitingStopsTheAnswerAndSendsItNow(t *testing.T) {
 	if agent.stops != 1 {
 		t.Fatalf("esc did not stop the answer: %d stops", agent.stops)
 	}
-	if len(agent.sent) != 2 || agent.sent[1] != "no, the other file" {
-		t.Fatalf("esc did not send the waiting message: %q", agent.sent)
+	if len(agent.sent) != 1 {
+		t.Fatalf("esc sent the waiting message it should drop: %q", agent.sent)
+	}
+	if len(a.parks) != 0 {
+		t.Fatalf("esc left the waiting message behind: %+v", a.parks)
+	}
+}
+
+// The issue's verification matrix names both queues. One esc clears the
+// session follow-up mirror and the editable parked queue, and neither stream
+// close may resurrect a turn from either one.
+func TestEscClearsBothWaitingQueuesWithoutAnOrphanedTurn(t *testing.T) {
+	a, agent := streaming(t, "reading the tree. ")
+	parkLine(t, a, "the parked message")
+	a.follows = append(a.follows, queued{text: "the queued follow-up"})
+
+	drive(t, a, key("esc"))
+	if len(a.parks) != 0 || len(a.follows) != 0 {
+		t.Fatalf("esc left queues behind: parked=%+v queued=%+v", a.parks, a.follows)
+	}
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if len(agent.sent) != 1 {
+		t.Fatalf("a cleared queue started an orphaned turn: %q", agent.sent)
 	}
 }
 
@@ -348,15 +348,15 @@ func TestEscWithNothingWaitingIsStillJustTheInterrupt(t *testing.T) {
 	}
 }
 
-// And while something is waiting, the line under the box says what the next esc
-// will do rather than the plain stop it used to promise.
+// H4: the empty running line is the plain interrupt, while a parked message
+// says that esc drops the waiting words as it stops.
 func TestTheHintSaysWhatEscDoesWhileAMessageIsWaiting(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
 	if got := a.hintWord(); got != "esc interrupt" {
 		t.Fatalf("a plain running turn = %q, want the interrupt", got)
 	}
 	parkLine(t, a, "no, the other file")
-	if got := a.hintWord(); got != "esc stops and sends" {
+	if got := a.hintWord(); got != "esc stops and drops" {
 		t.Fatalf("hint = %q, want what esc now does", got)
 	}
 }

@@ -148,6 +148,10 @@ type Engine struct {
 	// what turns the YOLO badge honest again over --host (host.go's approvalPosture,
 	// tui3.go's ApprovalMode option).
 	ApprovalMode string
+	// BashBackgroundAfterSeconds is the foreground-command handoff clock this
+	// engine armed. It travels for ApprovalMode's reason: a remote surface's
+	// profile belongs to another machine, and zero is a meaningful off posture.
+	BashBackgroundAfterSeconds int
 
 	// Fresh builds a replacement agent on the same config with a new session
 	// file, and returns it with that file's path. It is what Session.New calls,
@@ -616,20 +620,21 @@ func (sess *Session) welcomeLocked() Welcome {
 		note += newer
 	}
 	return Welcome{
-		Version:      Version,
-		Workspace:    sess.engine.Workspace,
-		SessionFile:  sess.engine.SessionFile,
-		Resumed:      sess.engine.Resumed,
-		Model:        sess.agent.Model(),
-		Build:        buildinfo.String(),
-		Title:        sess.agent.Title(),
-		Note:         note,
-		ApprovalMode: sess.engine.ApprovalMode,
-		PlacesRoot:   sess.engine.PlacesRoot,
-		Live:         sess.liveLocked(),
-		Held:         sess.held.waiting(),
-		Persistent:   sess.persistent,
-		Facts:        sess.factsLocked(),
+		Version:                    Version,
+		Workspace:                  sess.engine.Workspace,
+		SessionFile:                sess.engine.SessionFile,
+		Resumed:                    sess.engine.Resumed,
+		Model:                      sess.agent.Model(),
+		Build:                      buildinfo.String(),
+		Title:                      sess.agent.Title(),
+		Note:                       note,
+		ApprovalMode:               sess.engine.ApprovalMode,
+		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
+		PlacesRoot:                 sess.engine.PlacesRoot,
+		Live:                       sess.liveLocked(),
+		Held:                       sess.held.waiting(),
+		Persistent:                 sess.persistent,
+		Facts:                      sess.factsLocked(),
 	}
 }
 
@@ -1365,10 +1370,10 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// lives on this side of the wire (internal/session's standing_mark.go).
 		if args.Standing {
 			events, err := agent.SubmitStanding(context.Background(), args.Text)
-			return s.stream(args.Text, events, err)
+			return s.stream(MethodSubmit, args.Text, events, err)
 		}
 		events, err := agent.Submit(context.Background(), args.Text)
-		return s.stream(args.Text, events, err)
+		return s.stream(MethodSubmit, args.Text, events, err)
 
 	case MethodFollowUp:
 		args, err := arg[SubmitArgs](call)
@@ -1376,7 +1381,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		events, err := agent.FollowUp(args.Text)
-		return s.stream(args.Text, events, err)
+		return s.stream(MethodFollowUp, args.Text, events, err)
 
 	case MethodSteer:
 		args, err := arg[SubmitArgs](call)
@@ -1384,7 +1389,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		events, err := agent.Steer(args.Text)
-		return s.stream(args.Text, events, err)
+		return s.stream(MethodSteer, args.Text, events, err)
 
 	case MethodSubmitImage:
 		args, err := arg[SubmitImageArgs](call)
@@ -1396,7 +1401,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		events, err := agent.SubmitImage(context.Background(), args.Text, images)
-		return s.stream(args.Text, events, err)
+		return s.stream(MethodSubmitImage, args.Text, events, err)
 
 	// The other two doors a person's own files come through, both in file.go:
 	// what they attached on the way out, and what they asked for on the way
@@ -1744,7 +1749,7 @@ func arg[T any](call Frame) (T, error) {
 // the result naming it would be events about a stream the surface has never
 // heard of — the one ordering this protocol cannot recover from, and a race that
 // would show up as a lost first token on a fast turn and never in a test.
-func (s *server) stream(said string, events <-chan session.Event, err error) (json.RawMessage, error) {
+func (s *server) stream(method, said string, events <-chan session.Event, err error) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -1757,7 +1762,7 @@ func (s *server) stream(said string, events <-chan session.Event, err error) (js
 		events = empty
 	}
 	id, generation := s.session.mint()
-	s.pending = &pending{id: id, generation: generation, said: said, events: events}
+	s.pending = &pending{id: id, generation: generation, method: method, said: said, events: events}
 	return json.Marshal(StreamRef{Stream: id})
 }
 
@@ -1765,6 +1770,7 @@ func (s *server) stream(said string, events <-chan session.Event, err error) (js
 type pending struct {
 	id         uint64
 	generation uint64
+	method     string
 	// said is the sentence that opened this turn, carried so the rest of the
 	// room can draw it above the reply ([Turn.Said]).
 	said   string
@@ -1788,7 +1794,12 @@ func (s *server) release() {
 	// THE ROOM IS TOLD BEFORE THE FIRST EVENT OF IT MOVES. Every other surface
 	// is about to receive this turn's events and would otherwise have nowhere to
 	// put them, because a surface draws the streams it knows about ([Turn]).
-	sess.tellTurn(Turn{Stream: waiting.id, Said: waiting.said}, s)
+	// A STEER IS WORDS INSIDE THE TURN EVERYBODY ALREADY HAS. Broadcasting it
+	// as a fresh turn makes a watcher draw a second user message and adopt the
+	// same stream twice; its Accepted and Consumed events are the whole account.
+	if waiting.method != MethodSteer {
+		sess.tellTurn(Turn{Stream: waiting.id, Said: waiting.said}, s)
+	}
 	sess.pumps.Add(1)
 	go sess.pump(waiting.id, waiting.generation, waiting.events)
 }

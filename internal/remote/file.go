@@ -102,7 +102,7 @@ func (s *server) submitFiles(call Frame) (json.RawMessage, error) {
 	// so in as many words), so one door answers both shapes of this message.
 	said := AttachedSentence(args.Text, kept)
 	events, err := agent.SubmitImage(context.Background(), said, images)
-	return s.stream(said, events, err)
+	return s.stream(MethodSubmitFiles, said, events, err)
 }
 
 // keep writes every arriving file into this session's attachments and answers

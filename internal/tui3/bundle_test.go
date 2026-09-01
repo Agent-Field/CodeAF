@@ -1253,6 +1253,9 @@ func TestCountUpWordSpellsEveryScale(t *testing.T) {
 func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.state = stateWorking
+	// This test isolates the command's own timeout law; H11 below covers the
+	// earlier session clock.
+	a.bashBackgroundAfter = 0
 	base := time.Now()
 
 	// A sixty-second bash, read at four moments of its life.
@@ -1313,6 +1316,9 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 	}
 }
 
+// H11: the row counts against the earlier session clock when it is on, and the
+// command's timeout law unchanged when that clock is set to zero.
+//
 // THE BOUND ON THE ROW IS THE BOUND THE COMMAND DIES ON. A weak model that
 // spells its optional arguments out — `"timeout": null` — is asking for nothing,
 // and the session writes its ceiling over it (internal/session's withTimeoutLaw
@@ -1327,6 +1333,7 @@ func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 	a.state = stateWorking
 	base := time.Now()
 	a.clock = func() time.Time { return base.Add(20 * time.Second) }
+	a.bashBackgroundAfter = 0
 	ceiling := "20s / " + countUpWord(session.BashCeilingSeconds*time.Second)
 	for _, args := range []string{
 		`{"command":"cd work"}`,
@@ -1351,6 +1358,18 @@ func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
 	if got, _ := a.countClock(&clamped); got != ceiling {
 		t.Fatalf("an ask above the ceiling draws %q, want the ceiling %q", got, ceiling)
 	}
+
+	// With the shipping-shaped threshold armed, that earlier bound is what the
+	// row states — never the ten-minute timeout it will not reach in foreground.
+	a.bashBackgroundAfter = 30
+	a.clock = func() time.Time { return base.Add(15 * time.Second) }
+	threshold := entry{
+		kind: entryTool, tool: "bash", status: toolRunning, began: base,
+		detail: toolDetail{Args: `{"command":"go test ./...","timeout":600}`},
+	}
+	if got, _ := a.countClock(&threshold); got != "15s / 30s" {
+		t.Fatalf("the 30-second session clock draws %q, want %q", got, "15s / 30s")
+	}
 }
 
 // A ROW MEASURES ITS OWN CALL. The calls of one batch run together and their
@@ -1368,6 +1387,7 @@ func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
 		{Kind: session.EventToolFinished, Tool: "bash", Args: quick, Took: 120 * time.Millisecond},
 	}}}
 	a := newTestApp(agent)
+	a.bashBackgroundAfter = 0
 	base := time.Now()
 	a.clock = func() time.Time { return base }
 	typeLine(t, a, "build it")

@@ -233,10 +233,11 @@ func TestTheHintGrammarNeverLiftsAnArticle(t *testing.T) {
 // each of their lines actually lifts, written down so a reworded hint that
 // stopped naming its key fails here rather than going quiet on the frame.
 func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
-	for _, c := range []struct {
+	type hintGrammarCase struct {
 		hint string
 		want []string
-	}{
+	}
+	cases := []hintGrammarCase{
 		{"drag to select · any key ends it", nil},
 		{"ctrl+c again to quit", []string{"ctrl+c"}},
 		{"esc interrupt", []string{"esc"}},
@@ -268,15 +269,40 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"enter open · ctrl+r reveal · ctrl+y copy · esc",
 			[]string{"enter", "ctrl+r", "ctrl+y", "esc"}},
 		{"ctrl+enter keeps this true", []string{"ctrl+enter"}},
-		// TWO KEYS IN ONE LINE, one per segment — the barge-in hint teaches the
-		// safe meaning and the urgent one together, so both have to lift or the
-		// line reads as prose with a chord buried in it (bargein.go).
-		{bargeHint, []string{"enter", bargeKey}},
 		{"ctrl+g tasks", []string{"ctrl+g"}},
 		{"x stop", []string{"x"}},
 		{"nothing to rewind", nil},
 		{"↑ or click to edit", []string{"↑"}},
-	} {
+	}
+	// H6: every sentence the running-turn composer can produce lifts the key at
+	// the head of every clause and leaves the verbs as prose. The five possible
+	// send prefixes combine independently with the background and stop clauses.
+	runPrefixes := []hintGrammarCase{
+		{},
+		{hint: enterWaitHint, want: []string{"enter"}},
+		{hint: enterWaitHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
+		{hint: steerShortHint, want: []string{"enter"}},
+		{hint: steerShortHint + " · " + bargeKey + " " + bargeSendWord, want: []string{"enter", bargeKey}},
+	}
+	for _, prefix := range runPrefixes {
+		for _, background := range []bool{false, true} {
+			for _, stop := range []string{"esc interrupt", parkedHint[1]} {
+				parts := []string{}
+				want := append([]string(nil), prefix.want...)
+				if prefix.hint != "" {
+					parts = append(parts, prefix.hint)
+				}
+				if background {
+					parts = append(parts, "ctrl+g backgrounds")
+					want = append(want, "ctrl+g")
+				}
+				parts = append(parts, stop)
+				want = append(want, "esc")
+				cases = append(cases, hintGrammarCase{hint: strings.Join(parts, hintSegment), want: want})
+			}
+		}
+	}
+	for _, c := range cases {
 		value := []rune(c.hint)
 		var got []string
 		for _, s := range chordSpans(c.hint) {

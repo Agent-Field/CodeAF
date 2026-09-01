@@ -187,7 +187,14 @@ import (
 // an engine that does not know Task.Watch would answer the surface's one
 // subscription with "no such method" and leave the rail permanently empty with
 // nothing on the screen saying so.
-const Version = 8
+//
+// VERSION 9 CARRIES THE FOREGROUND-COMMAND CLOCK IN [Welcome]. The clock is
+// armed from the engine machine's profile, while a hosted surface has a
+// different profile of its own. Leaving the field out would make the row draw
+// a deadline no process on the far machine was following. The number moves
+// because an older same-version engine would otherwise be accepted and answer
+// the new field with zero, which is itself a real and different posture.
+const Version = 9
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
@@ -522,6 +529,11 @@ type Welcome struct {
 	// the surface's own settings would be a safety claim about a machine
 	// nobody consulted.
 	ApprovalMode string `json:"approvalMode,omitempty"`
+	// BashBackgroundAfterSeconds is the foreground-command clock the ENGINE
+	// armed for this session. A HOSTED COUNTDOWN MUST READ THIS MACHINE'S
+	// POSTURE, NOT THE SURFACE'S PROFILE: zero is a real off answer, so absence
+	// cannot be filled from a local default without inventing a deadline.
+	BashBackgroundAfterSeconds int `json:"bashBackgroundAfterSeconds,omitempty"`
 	// Encoding is the one frame payload encoding selected from Hello.Encodings,
 	// or empty when this connection stays on ordinary JSON payloads.
 	Encoding string `json:"encoding,omitempty"`

@@ -34,13 +34,14 @@ func v3Profile(t *testing.T, rows map[string]any) string {
 
 func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 	dir := v3Profile(t, map[string]any{
-		"tools.approvalMode":     "allow",
-		"tools.approval":         "bash:prompt, write:deny",
-		"models.tiers.low":       "cheap/model",
-		"models.tiers.high":      "capable/model",
-		"models.roles":           "title:pinned/model",
-		"session.spendRailUSD":   4.5,
-		"unrelated_other_person": "left alone",
+		"tools.approvalMode":            "allow",
+		"tools.approval":                "bash:prompt, write:deny",
+		"models.tiers.low":              "cheap/model",
+		"models.tiers.high":             "capable/model",
+		"models.roles":                  "title:pinned/model",
+		"session.spendRailUSD":          4.5,
+		"bash.background_after_seconds": 12,
+		"unrelated_other_person":        "left alone",
 	})
 
 	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, dir, false, false)
@@ -88,6 +89,9 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 
 	if cfg.SpendRailUSD != 4.5 {
 		t.Fatalf("the ceiling is %v, want 4.5", cfg.SpendRailUSD)
+	}
+	if cfg.BashBackgroundAfterSeconds != 12 {
+		t.Fatalf("the background-after clock is %d, want 12", cfg.BashBackgroundAfterSeconds)
 	}
 }
 

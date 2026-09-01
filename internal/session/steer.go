@@ -334,8 +334,8 @@ func steerPromotedSentence(id int, command string, elapsed time.Duration) string
 	if command == "" {
 		command = "bash"
 	}
-	return fmt.Sprintf("still running as job %d (`%s`, %s so far); output via jobs output %d; you will be told when it exits",
-		id, command, formatElapsed(elapsed), id)
+	return fmt.Sprintf("%s%d (`%s`, %s so far); output via jobs output %d; you will be told when it exits",
+		BashPromotedLead, id, command, formatElapsed(elapsed), id)
 }
 
 // stopAdoptedBash marks the new job as deliberately stopped before signalling

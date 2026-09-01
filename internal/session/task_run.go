@@ -5292,9 +5292,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// a parent to hand a decision to a person it cannot reach (task_contract.go's
 		// [TaskSettle]).
 		TaskSettle: parent.TaskSettle,
-		tasker:     tasker,
-		taskID:     nodeID,
-		taskDepth:  depth,
+		// The foreground-command clock travels with the worker for the same
+		// reason the task settings above do: a build handed to a node is still
+		// the person's work, and a setting that stopped at the conversation
+		// would mean something different as soon as work was handed out.
+		BashBackgroundAfterSeconds: parent.BashBackgroundAfterSeconds,
+		tasker:                     tasker,
+		taskID:                     nodeID,
+		taskDepth:                  depth,
 		// AND THE ROAD ITSELF, WITHOUT WHICH IT IS OPEN ON PAPER ONLY. Divide is
 		// the person's own setting for whether wide work may hand its parts out
 		// (cmd/aforge's chatv3.go, config's Swarm), and it is set on the

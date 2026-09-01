@@ -39,7 +39,7 @@ func TestTheRestraintRowsAreNotSelfService(t *testing.T) {
 		KeyDailyBudget, KeyPlanConsent, KeyPracticeBudget, KeySpendRail,
 		KeyTaskRepairRounds, KeyWorkingSet, KeyContextReuse,
 		// How hard the machine may be worked.
-		KeyTaskParallel, KeyTaskMaxLoad, KeyTaskMinFreeMB,
+		KeyTaskParallel, KeyTaskMaxLoad, KeyTaskMinFreeMB, KeyBashBackgroundAfter,
 		// Whether the work is checked, and how it is signed.
 		KeyTaskAudit, KeyAttribution,
 		// The credentials.

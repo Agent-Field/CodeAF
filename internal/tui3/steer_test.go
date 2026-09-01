@@ -577,14 +577,13 @@ func TestAnOverlayAboveKeepsBothSteerKeys(t *testing.T) {
 
 // ── the two lines that teach it ─────────────────────────────────────────────
 
-// THE TYPING-TIME HINT NAMES ALL THREE MEANINGS OF enter's NEIGHBOURHOOD, and it
-// names them only where all three are true — which is [app.bargeOffered]'s and
-// [app.steerOffered]'s shared question about the terminal.
+// H2 and H3: the one running-turn line names every deliverable key in its fixed
+// order, and a basic terminal retains plain enter while losing its chords.
 func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing.T) {
 	a, _ := steerableTurn(t, "reading the tree. ")
 	typeInto(t, a, "no, the other file")
 
-	want := "enter " + steerSendWord + " · " + parkKey + " waits · " + bargeKey + " " + bargeSendWord
+	want := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
 	if got := a.hintWord(); got != want {
 		t.Fatalf("the hint slot reads %q, want %q", got, want)
 	}
@@ -593,41 +592,74 @@ func TestTheHintUnderTheBoxTeachesTheSteerWhereTheChordCanBeDelivered(t *testing
 	// because steering does not need a modified-key protocol. The unavailable
 	// secondary chords are the only clauses removed.
 	a.keysDisambiguated = false
-	if got := a.hintWord(); got != steerShortHint {
+	if got := a.hintWord(); got != steerShortHint+" · esc interrupt" {
 		t.Fatalf("a basic terminal lost the plain-enter steer: %q", got)
 	}
 }
 
-// AND THE NARROWEST FRAME THAT HAS A HINT SLOT AT ALL KEEPS TWO KEYS RATHER
-// THAN LOSING THREE. The legend drops the whole hint when the sentence will not
-// fit beside the rule, so a third clause could have taken the other two off
-// narrow frames with it — the shorter form is the rung that stops that
-// (steer.go's [app.hintShorter], render.go's [app.legend]).
-func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
+// H2 and H3 also apply when the draft is only a picture on the tray. The tray
+// is message content, so plain enter waits even though the text box is empty,
+// and the stop-and-send chord appears only on a terminal that can spell it.
+func TestAPictureOnTheTrayKeepsThePlainEnterHint(t *testing.T) {
 	a, _ := steerableTurn(t, "reading the tree. ")
+	a.chips = []chip{{path: "/tmp/shot.png"}}
+
+	want := enterWaitHint + " · " + bargeKey + " " + bargeSendWord + " · esc interrupt"
+	if got := a.hintWord(); got != want {
+		t.Fatalf("the tray-only hint reads %q, want %q", got, want)
+	}
+
+	a.keysDisambiguated = false
+	if got := a.hintWord(); got != enterWaitHint+" · esc interrupt" {
+		t.Fatalf("a basic terminal lost the tray's plain-enter hint: %q", got)
+	}
+}
+
+// H5: the narrow ladder drops one clause from the right on every rung, stops at
+// one clause, and still draws that clause at the 70-column floor.
+func TestANarrowFrameKeepsTheShorterHintRatherThanLosingTheSlot(t *testing.T) {
+	a, agent := steerableTurn(t, "reading the tree. ")
+	a.agent = &promotingAgent{fakeAgent: agent, answer: session.BashPromotedLead + "3"}
+	runningBash(t, a, "c1", "go test ./...")
 	typeInto(t, a, "no, the other file")
 
 	// Wide enough for all three: the line is the whole sentence.
-	a.width = 100
-	if body := plain(frame(a)); !strings.Contains(body, a.typingHint()) {
+	a.width = 120
+	full := a.runHint()
+	whole := full
+	if body := plain(frame(a)); !strings.Contains(body, full) {
 		t.Fatalf("a wide frame did not draw the whole hint:\n%s", body)
 	}
-	// The narrowest frame that carries a hint slot at all. The three-key line
-	// does not fit; the two-key one does, and it is what is drawn.
+
+	want := []string{
+		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord + " · ctrl+g backgrounds",
+		"enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord,
+		steerShortHint,
+		"",
+	}
+	for i, expected := range want {
+		full = a.hintShorter(full)
+		if full != expected {
+			t.Fatalf("ladder rung %d = %q, want %q", i+1, full, expected)
+		}
+	}
+
+	// The narrowest frame that carries a hint slot at all keeps the leftmost
+	// clause rather than dropping the running-turn slot.
 	a.width = hudTight
 	body := plain(frame(a))
-	if strings.Contains(body, parkKey) {
-		t.Fatalf("the three-key line was drawn on a frame too narrow for it:\n%s", body)
-	}
 	if !strings.Contains(body, steerShortHint) {
 		t.Fatalf("the narrow frame lost the whole hint slot:\n%s", body)
+	}
+	if strings.Contains(body, whole) || strings.Contains(body, "esc interrupt") {
+		t.Fatalf("the narrow ladder did not drop from the right:\n%s", body)
 	}
 }
 
 // AND THE WAITING MESSAGE'S OWN LINE CARRIES THE ARROW, unconditionally as far
 // as the terminal is concerned: an arrow key reaches every terminal there is, so
 // there is nothing to gate the clause on but whether the act itself is possible.
-func TestTheStripNamesTheArrowAndDropsItWithTheStop(t *testing.T) {
+func TestTheStripNamesTheArrowAndEscDropsTheWholeWaitingBlock(t *testing.T) {
 	a, agent := steerableTurn(t, "reading the tree. ")
 	a.width = 90
 	parkLine(t, a, "do much more of a deep research please")
@@ -643,18 +675,16 @@ func TestTheStripNamesTheArrowAndDropsItWithTheStop(t *testing.T) {
 		t.Fatalf("the strip did not offer the steer:\n%s", body)
 	}
 
-	// A TURN WINDING DOWN HAS NO BOUNDARY LEFT, so the arrow goes down with the
-	// esc — and what is left of the line is still exactly true.
+	// ESC drops the queue at the keypress, so a winding-down turn has neither a
+	// stale message nor an arrow that claims it can still cross a boundary.
 	drive(t, a, key("esc"), frameMsg{})
 	if !a.windingDown() {
 		t.Fatal("the surface is not winding down after esc")
 	}
 	body = plain(frame(a))
-	if strings.Contains(body, steerArrowWord) {
-		t.Fatalf("the strip still offers a steer into a turn that is ending:\n%s", body)
-	}
-	if !strings.Contains(body, parkedHint[0]) {
-		t.Fatalf("the strip dropped the half that is still true:\n%s", body)
+	if strings.Contains(body, steerArrowWord) || strings.Contains(body, parkedHint[0]) ||
+		strings.Contains(body, "do much more of a deep research please") {
+		t.Fatalf("the dropped waiting block is still on the winding-down frame:\n%s", body)
 	}
 	// And the key is inert with it.
 	drive(t, a, key("right"))

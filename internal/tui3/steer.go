@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -416,57 +417,87 @@ func (a *app) tookSteer(msg steeredMsg) tea.Cmd {
 
 // ── the line that teaches the chord ─────────────────────────────────────────
 
-// typingHint is the hint slot while a turn is running with something in the box.
+// typingHint is the send half of the running-turn hint while there is something
+// in the box or on the tray.
 //
-// It teaches every meaning enter's neighbourhood has in that one state, in the
-// order a person meets them: the key they are about to press, then the two they
-// may not know about. The secondary chords appear only when the terminal says
-// it can distinguish them.
+// It teaches plain enter first, then the stop-and-send chord only when the
+// terminal says it can distinguish it. `cmd+enter waits` remains on the keys
+// page, but this live slot spends its cells on the actions that move now.
 //
-//	enter steers it in · cmd+enter waits · shift+enter stops and sends
-//
-// The slot is the legend's right end, so a frame too narrow for the longer
-// sentence uses [steerShortHint] rather than wrapping it — the legend's own
-// ladder, unchanged (render.go's [app.legend]).
+//	enter steers it in · shift+enter stops and sends
 var steerShortHint = "enter " + steerSendWord
 
+// enterWaitHint is the plain-enter half of the running-turn hint. The tray and
+// the box share this exact clause because either makes plain enter wait.
+const enterWaitHint = "enter waits"
+
 func (a *app) typingHint() string {
-	if !a.steerOffered() {
-		return bargeHint
+	if !a.runSendOffered() {
+		return ""
 	}
-	if !a.keysDisambiguated {
-		return steerShortHint
+	first := enterWaitHint
+	if a.steerOffered() {
+		first = steerShortHint
 	}
-	return "enter " + steerSendWord + " · " + parkKey + " waits" +
-		" · " + bargeKey + " " + bargeSendWord
+	if !a.bargeOffered() {
+		return first
+	}
+	return first + hintSegment + bargeKey + " " + bargeSendWord
 }
 
-// hintShorter is the same slot said in fewer cells, or "" where there is no
-// shorter true form — which is every state but this one.
+// runSendOffered is [app.bargeOffered] without the terminal's chord gate. It is
+// the common truth under both send clauses: there is a message and the
+// conversation's box still owns its keys.
+func (a *app) runSendOffered() bool {
+	if a.state != stateWorking || a.input.empty() && len(a.chips) == 0 {
+		return false
+	}
+	return !a.roomOpen() && !a.copy.on && !a.rew.on && !a.railHold
+}
+
+// runHint is the one line while a turn runs. Its order follows the hand across
+// the box: send, stop-and-send, background, stop. Every conditional clause asks
+// the same predicate as its key, so a word in this line is a working gesture on
+// the frame that drew it.
+func (a *app) runHint() string {
+	parts := make([]string, 0, 4)
+	if send := a.typingHint(); send != "" {
+		parts = append(parts, strings.Split(send, hintSegment)...)
+	}
+	if a.promotableRow() >= 0 {
+		parts = append(parts, "ctrl+g backgrounds")
+	}
+	stop := "esc interrupt"
+	if len(a.parks) > 0 && a.parking() {
+		stop = parkedHint[1]
+	}
+	parts = append(parts, stop)
+	return strings.Join(parts, hintSegment)
+}
+
+// hintShorter is the running slot said in fewer cells, or "" where there is no
+// shorter true form — which is every other state and its one-clause floor.
 //
-// THE SLOT IS ALL OR NOTHING WITHOUT IT. The legend's ladder drops the whole
-// hint when the sentence will not fit beside the rule, so the third clause
-// arriving in this line would have taken the other two off narrow frames with
-// it: a person on a seventy-column terminal would have stopped being told about
-// `shift+enter` because `cmd+enter` had been added. The shorter form is the line
-// as it read before the splice existed — still exactly true, still naming a key
-// that works — and render.go's [app.legend] measures it with the same
-// arithmetic it measures everything else with.
+// THE LADDER DROPS FROM THE RIGHT. That preserves the fixed priority of the
+// full sentence and guarantees forward progress: one clause is the floor and
+// returns nothing, so [app.legend] can never loop on an unshortenable rung.
 func (a *app) hintShorter(slot string) string {
-	// AND THE STANDING CARD HAS ONE TOO, for the same reason and by a different
-	// road. Its line is not written down at all — it is built from the chips the
-	// card drew, each carrying the brief spelling the chip itself uses on a
-	// narrow row (standing.go's [standHintFields]) — so the shorter form here is
-	// the SAME answers said in fewer cells rather than a second sentence, and
-	// the slot keeps naming every key the card offers instead of naming none.
+	// A standing card has its own compact spelling, built from the same answer
+	// chips as its full row. Preserve that road before applying the running
+	// hint's right-to-left ladder below.
 	if a.awaitingStanding() && slot == standAskHint(a.stand) {
 		if short := standAskHintShort(a.stand); short != slot {
 			return short
 		}
 		return ""
 	}
-	if slot == "" || slot != a.typingHint() || slot == steerShortHint || slot == bargeHint {
+	full := a.runHint()
+	if slot == "" || slot != full && !strings.HasPrefix(full, slot+hintSegment) {
 		return ""
 	}
-	return steerShortHint
+	parts := strings.Split(slot, hintSegment)
+	if len(parts) <= 1 {
+		return ""
+	}
+	return strings.Join(parts[:len(parts)-1], hintSegment)
 }
