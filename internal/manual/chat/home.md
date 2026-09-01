@@ -954,8 +954,9 @@ A conversation another terminal has open is a **door**, and pressing `enter` on 
 it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
 in this one, with its work and its half-typed sentence.
 
-**It takes two enters, and the first one only offers.** The first press arms the row and the
-foot line says what the second will do and what it costs:
+**It takes two enters, and the first one only offers.** The first press arms the row. The
+card beside it says `enter again moves it here`, then `its reply finishes first · its tasks
+come here`, and the foot line says the whole of it once more:
 
 ```
 open in another window · working — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
@@ -963,18 +964,6 @@ open in another window · working — enter again to move it here (it moves when
 
 Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
 in the other window knows you looked.
-
-**The second press asks, and then waits**, because a reply is never cut:
-
-```
-moving it here — waiting for the other window…
-```
-
-If that window is in the middle of an answer, it finishes it first and lets go straight
-after. There is **no time limit** on the wait; after fifteen seconds the line explains
-itself — `still waiting — the other window finishes its reply first · esc stops waiting` —
-and `esc` withdraws the request, leaving the other window untouched. The moment it lets go,
-the row opens here.
 
 **What comes with it.** Tasks that were running land `paused — it resumes` and start again
 from their checkpoint in this window. The unsent sentence in the other window's box arrives
@@ -991,6 +980,52 @@ continues where you left off, and `esc` gets on with the new conversation instea
 **The one exception is `--host`.** The holder is a window here and the journal is on the
 other machine, so there is nobody to ask, and the row still says
 `open in another window — go there, or start a new conversation here`.
+
+## Why is moving a conversation slow — it says coming here and nothing happens, how do I cancel the move, that window did not answer
+
+**An idle window lets go in well under a second.** It looks for the request four times a
+second, so `enter` and the conversation arriving are one gesture. It used to ride the
+five-second heartbeat that window writes its presence file on, which is why a move felt slow
+even when there was plainly nothing to wait for. If it is slow now, something is genuinely
+being waited for and the card says which.
+
+**The second press asks, and the row says it is coming.** The right margin stops saying
+`another window` and says `coming here`, the row takes the page's one turning cell, and the
+card carries the state:
+
+```
+coming here · 14s
+that window is mid-reply — it comes the moment the reply ends
+esc stops waiting
+```
+
+If that window has nothing in flight the reason line is absent, because there is nothing to
+explain — it lets go within about a second. Past fifteen seconds with still nothing in
+flight over there, the card says `that window has not answered yet` and stops at that: a
+window wedged on a disk, one whose machine went to sleep and one on an older build all look
+identical from here, so it states the fact and invents no cause. The clock only appears once
+the move has taken longer than two seconds. Below a hundred and sixty columns there is no card at all, and the
+foot line carries it instead: `moving it here — esc stops waiting`, or `moving it here —
+that window finishes its reply first · esc stops waiting`.
+
+There is **no time limit** on a wait for a window that is answering — a long reply is
+minutes — and `esc` withdraws the request, leaving the other window untouched. The moment it
+lets go, the row opens here.
+
+**If nothing ever answers, the wait ends and says so.** A request is only good for ten
+minutes; past that no window will ever pick it up, so this one stops waiting rather than
+beating at a lock for ever, and the card says:
+
+```
+that window did not answer — it still has it
+enter asks again
+```
+
+That is what a window killed with the conversation still open looks like, or one on a build
+too old to hear the question. One `enter` asks again.
+
+**And if it comes free while you are looking at something else**, nothing is opened under
+you. The card says `it came free — enter opens it` when you come back to home.
 
 ## Open another project from home
 

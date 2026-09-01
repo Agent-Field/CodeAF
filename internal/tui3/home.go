@@ -708,6 +708,12 @@ type homeView struct {
 	// spin is the ONE line on this page that animates, and [homeNoLine] when
 	// nothing on it is moving (homespinner.go).
 	spin int
+	// claim is the transcript this window has asked another window to let go
+	// of, and "" when it has asked for nothing. It is here rather than read off
+	// the app because [homeView.spinAt] settles the moving row with the lines
+	// themselves, and [app.syncHomeClaim] is the whole of keeping it in step
+	// (takeovervoice.go).
+	claim string
 
 	// The phone tier's own state (homephone.go, homesheet.go): the sheet over
 	// the inbox, the triage sections somebody folded, the machine's news as the
@@ -807,13 +813,19 @@ func (a *app) raiseHome() tea.Cmd {
 	a.dismissWelcome()
 	world, known := a.readWorldKnown()
 	a.home = homeView{
-		why:       a.homeWhyEmpty(),
-		world:     world,
-		known:     known,
-		far:       a.hosted(),
-		seen:      session.LastLook(a.looksRoot()),
-		bucket:    homeBucketOf(a.file),
-		here:      homeSessionDirOf(a.file),
+		why:    a.homeWhyEmpty(),
+		world:  world,
+		known:  known,
+		far:    a.hosted(),
+		seen:   session.LastLook(a.looksRoot()),
+		bucket: homeBucketOf(a.file),
+		here:   homeSessionDirOf(a.file),
+		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
+		// Raising home builds a fresh [homeView], and a claim that survived
+		// somebody walking to another page and back must survive with it —
+		// otherwise the row goes quiet the moment they return to look at it
+		// (takeovervoice.go).
+		claim:     a.takeover.file,
 		tier:      a.homeTierNow(),
 		hover:     -1,
 		last:      map[string]session.Summary{},
@@ -4274,8 +4286,8 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	// ([app.homeTrue]).
 	row := a.homeTrue(line.row)
 	label := a.homeRowGlyph(row, a.homeSpins(at)) + " " + homeName(row)
-	note := homeNote(row, a.homeHeld(row), a.homeMark(row), a.homeRowGone(row),
-		a.homeFresh(row), h.world.Read)
+	note := homeNote(row, a.homeHeld(row), a.takeoverRowWord(row), a.homeMark(row),
+		a.homeRowGone(row), a.homeFresh(row), h.world.Read)
 	// THE LEFT COLUMN IS AN INDEX AND STAYS CALM. Every row is dim except the
 	// one the cursor is on, which takes the band and the ink — the same
 	// treatment the detail column's title takes across the gutter, so the two
@@ -4478,8 +4490,18 @@ func homeQuietWord(line homeLine, now time.Time) string {
 // tasks says nothing about tasks; one that spent nothing says nothing about
 // spending. A row reading "0 tasks · $0.00 · now" is four facts of which three
 // are the absence of a fact.
-func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh int, now time.Time) string {
+func homeNote(row session.SessionRow, held bool, claim string, mark rowMark, gone bool, fresh int, now time.Time) string {
 	var parts []string
+	// A CONVERSATION ON ITS WAY HERE OUTRANKS EVERY OTHER WORD IN THIS RUNG
+	// except a folder that is not there, and it is the one word here that is
+	// about a keystroke somebody just made rather than about what the world
+	// file says. `waiting on you` and `2 running` are perfectly true of the far
+	// window at that moment and are the wrong answer to the question a person
+	// who just pressed enter is asking, which is whether it is coming
+	// (takeovervoice.go).
+	if claim != "" && !gone {
+		return strings.Join(append([]string{claim}, homeNoteTail(row, now)...), " · ")
+	}
 	// A DOOR THAT IS LOCKED SAYS SO BEFORE IT IS TRIED — but it says so in the
 	// rung BELOW the states, and that ordering is a fact about what the states
 	// already mean rather than a compromise over width.
@@ -4544,6 +4566,19 @@ func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh 
 	case row.Tasks.Total() > 0:
 		parts = append(parts, itoa(row.Tasks.Total())+plural(" task", row.Tasks.Total()))
 	}
+	parts = append(parts, homeNoteTail(row, now)...)
+	return strings.Join(parts, " · ")
+}
+
+// homeNoteTail is the part of a row's dim tail that does not depend on the
+// state word in front of it: how long since somebody spoke, and what the
+// conversation is about beyond where it stands.
+//
+// IT IS ONE FUNCTION BECAUSE TWO RUNGS SPELL IT. The state rung above chooses
+// between a dozen words and then every one of them is followed by exactly this;
+// a second copy would be the row growing two answers to "how old is it".
+func homeNoteTail(row session.SessionRow, now time.Time) []string {
+	var parts []string
 	if age := sinceAt(row.At, now); age != "" {
 		parts = append(parts, age)
 	}
@@ -4556,7 +4591,7 @@ func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh 
 	if also := homeAlsoAbout(row); also != "" {
 		parts = append(parts, also)
 	}
-	return strings.Join(parts, " · ")
+	return parts
 }
 
 // homeRowGlyph is [homeGlyph] with the two facts only the app can add: the
@@ -4568,6 +4603,16 @@ func homeNote(row session.SessionRow, held bool, mark rowMark, gone bool, fresh 
 // and what [homeGlyph] already answers for it — so the law costs this function a
 // condition and no vocabulary (homespinner.go).
 func (a *app) homeRowGlyph(row session.SessionRow, spins bool) string {
+	if spins && a.claiming(row) {
+		// A CONVERSATION ON ITS WAY HERE IS THE ONE THING MOVING ON THIS PAGE,
+		// and the cell says so — the same braille the rail turns for a running
+		// node, because "something is happening this instant" is that
+		// vocabulary's one promise (homespinner.go, takeovervoice.go). It is
+		// answered before `waiting on you`: the far window's question is real
+		// and is about to arrive here with the conversation, and until it does
+		// the news is that the conversation is coming.
+		return a.homeSpinGlyph()
+	}
 	if row.NeedsPerson() {
 		return homeGlyph(row, a.pal.ascii)
 	}
