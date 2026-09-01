@@ -228,7 +228,7 @@ var forkDescription = "Copy yourself into " + strconv.Itoa(forkHandFloor) + "–
 var forkSchemaJSON = `{"type":"object","properties":{` +
 	`"parts":{"type":"array","minItems":` + strconv.Itoa(forkHandFloor) + `,"maxItems":` + strconv.Itoa(forkFanLimit) +
 	`,"description":"The hands, in order.","items":{"type":"object","properties":{` +
-	`"role":{"type":"string","description":"ONE line saying what THIS hand does, written as the DIFFERENCE from its siblings. It has read everything you have read, so never restate the work or the context — say only what is this hand's."},` +
+	`"role":{"type":"string","description":"ONE line saying what THIS hand does, written as the DIFFERENCE from its siblings — never the work or the context, which it has already read."},` +
 	`"scope":{"type":"array","minItems":1,"items":{"type":"string"},"description":"The files and directories this hand may write, workspace-relative. A directory covers everything under it. No two hands may share a path."},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"Leave out for ordinary work. Set to ` + gradeCareful + ` for a hand whose work could look finished and be quietly wrong, which lifts it to the careful tier."}` +
 	`},"required":["role","scope"],"additionalProperties":false}},` +

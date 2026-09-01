@@ -75,6 +75,17 @@ import (
 // follow-up is to say the media law in this file's register (the `read
 // perceives media` line was already cut to a third here), not to raise this
 // number again.
+// THE VIDEO WAVE PAID FOR ITSELF AND FOR #238 (2026-09-01). `edit_video` put
+// 1,873 bytes on the belt and landed the prefix 2,632 over, on top of the 758
+// #238 had been carrying since the merge above. Nothing was raised and no rule
+// was dropped: 3,464 bytes came out of text that stated a law a SECOND time.
+// prompts/system.md lost the media-making essay (the manual's own
+// making-pictures-audio-and-video page teaches all of it, and `manual` is a
+// tool the model can call), the paragraphs restating `bash`, `jobs`, `tasks`,
+// `fork`, `manual`, `build_harness` and `change_setting`'s own descriptions
+// back at the model, and the three-part propose_task contract its own schema
+// fields spell out field by field. It went 23,954 → 20,589; the tool block went
+// 26,678 → 26,579; the prefix is 47,168, which is 832 under.
 const fixedPrefixBudget = 48_000
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
