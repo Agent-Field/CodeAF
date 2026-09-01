@@ -75,6 +75,56 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("narrow_window_ask_here", testNarrow)
 	t.Run("alt_g_groups_the_list_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
+	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
+}
+
+// ── 11 ──────────────────────────────────────────────────────────────────────
+
+// testNestedGate is issue #268's acceptance, on the real screen: a part one
+// level down that nobody could check ASKS, in one frame, and a key answers it.
+//
+// THE MEASURED FAILURE IS WHY IT IS HERE. A nested part landed needing somebody
+// to decide, and a fifteen-second capture of the whole run shows no answers row
+// for it, ever — the card was written for ROOT nodes only, and the roster filed
+// the node under `done` while its parent still ran. So the gate expired without
+// a person ever being able to see it, let alone answer it.
+//
+// AND IT COSTS NOTHING. The family is seeded as the graph the process left
+// behind ([seedDecidedFamily]); the surface replays it on attach. No model is
+// asked anything, so what this subtest measures is the surface and the engine's
+// settle door and nothing else — which is exactly what went wrong.
+func testNestedGate(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "gatews", false)
+	seedDecidedFamily(t, home, ws)
+	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
+
+	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
+	// workspace opens home; one that has the seeded conversation opens straight
+	// into it — both are the product behaving, and esc from the first is the
+	// second.
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
+	r.keys("Escape")
+
+	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
+	// on a person, and the answers row on the card — all on screen at once, which
+	// is the whole of what "answerable" means here.
+	screen := r.waitFor(20*time.Second,
+		say(t, "settleAskWord"), say(t, "settleAccept"),
+		say(t, "taskLookWord"), say(t, "unverifiedGlyph"))
+	t.Logf("a nested landing asking on every surface:\n%s", screen)
+	if !strings.Contains(screen, "Port the parser") {
+		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
+	}
+
+	// AND A KEY ANSWERS IT. The four letters work on the SELECTED card and only
+	// over an empty message box, exactly as `x` does — so ↑ walks to the card the
+	// landing just wrote, and `a` is the accept.
+	r.keys("Up")
+	r.lit("a")
+	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
+	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	r.quit()
 }
 
 // ── 1 ───────────────────────────────────────────────────────────────────────

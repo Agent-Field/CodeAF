@@ -1813,7 +1813,8 @@ stopped run keep.
 ## Deciding about a landed task from the keyboard — accept, look again, not right
 
 A landing that **needs your look** is the one card in the transcript that is still a
-question, and four letters answer it:
+question, and four letters answer it. **Any landing that needs a look, at any depth** — a
+task you asked for, or a part of one it handed out itself:
 
 | Key | What it does |
 | --- | --- |

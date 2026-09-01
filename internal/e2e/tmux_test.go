@@ -463,6 +463,66 @@ func seedProject(t *testing.T, home, name string, id int, ago time.Duration) str
 	return dir
 }
 
+// seedDecidedFamily writes one conversation for a workspace with a FINISHED
+// FAMILY already in it: a parent that came home, and a part one level under it
+// that nobody could check.
+//
+// IT NEEDS NO MODEL AT ALL, and that is the point. The graph survives the
+// process in the folder's tasks.json (session's task_store.go), and a surface
+// that attaches replays one update per node off it (session's
+// [Agent.replayTaskRoster]) — so the whole of what this fixture proves is what
+// the SURFACE does with a nested landing nobody has decided about, driven
+// through the real binary in a real terminal, and settled by a real keystroke
+// against the real engine door.
+func seedDecidedFamily(t *testing.T, home, ws string) string {
+	t.Helper()
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", 0x3000000000000001)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed family: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
+		t.Fatalf("seed family: %v", err)
+	}
+	at := time.Now().Add(-3 * time.Minute)
+	meta := map[string]any{
+		"id": sid, "title": "The nested gate", "workspace": ws,
+		"created":    at.Format(time.RFC3339Nano),
+		"lastUserAt": at.Format(time.RFC3339Nano),
+	}
+	writeJSON(t, filepath.Join(dir, "meta.json"), meta)
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 2,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Rebuild the index", "brief": "rebuild it", "acceptance": "it builds",
+			"state": "done", "report": "the index is rebuilt", "merge": "inplace",
+			"ground": ws, "groundMode": "folder", "elapsed_ms": 61000,
+		}, {
+			"id": 2, "title": "Port the parser", "brief": "port it", "acceptance": "it parses",
+			"parent": 1, "depth": 1, "state": "unverified", "merge": "inplace",
+			"report":  "finished, but needs your look — nobody could check it in 5m0s",
+			"changed": []string{"parser.go"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
+		}},
+	})
+	return dir
+}
+
+// writeJSON is the fixture's one file writer, so a seed that produces invalid
+// JSON fails where it was written rather than as an empty screen ten seconds
+// later.
+func writeJSON(t *testing.T, path string, value any) {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("seed %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("seed %s: %v", path, err)
+	}
+}
+
 // seedNews puts notes in one conversation's inbox — what a firing left when no
 // window was open. It is the [standing.Note] shape, written the way
 // standing.Deliver writes it.

@@ -1439,10 +1439,14 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. The time
-in that third one is the window the check actually had — `5m0s` when it had a command to
-run, `1m0s` when the work named no check and there was nothing for it to run. When two
-tries in a row got nothing, the first line is prefixed
+`nobody could check it in 5m0s`, `the checker answered neither way`. The time
+in that third one is the window **the check** had — `5m0s` when it had a command to
+run, `1m0s` when the work named no check and there was nothing for it to run. It is not
+your window and there is nothing you missed: **a question to you is never on a timer.**
+That sentence used to read `no answer in 5m0s, so nothing was accepted`, which said two
+things a clock is not entitled to say — that you had five minutes, and that a decision had
+been made. Nothing is accepted or refused by a window running out; the work waits for you,
+for as long as that takes. When two tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it
