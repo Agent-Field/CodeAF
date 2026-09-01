@@ -425,6 +425,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// figures at a tool row's right end were cut down to `0…`, and "what
 		// does that mean" is the first thing anyone asks about them.
 		{"what does the time on the right of a tool call mean", "screen"},
+		// And from the screenshot that provoked the one-row clamp: a long bash
+		// command spilling over the frame, asked in the four vocabularies people
+		// actually reach for — wrapping, spilling, taking too many lines, and
+		// wanting the whole command back.
+		{"why does a long bash command wrap onto several lines", "screen"},
+		{"a tool call is running off the edge of the screen", "screen"},
+		{"one tool call is taking up four rows", "screen"},
+		{"how do I see the whole command of a tool call", "screen"},
+		{"why is the colour from go test output missing", "screen"},
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
@@ -1035,6 +1044,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
+		// The transfer wave: every state of a move, asked the way somebody
+		// staring at one asks it. The first is the report's own complaint —
+		// nothing appeared to happen — and the rest are the states that used to
+		// be silent.
+		{"why is moving a conversation so slow", "home"},
+		{"it says coming here and nothing happens", "home"},
+		{"that window did not answer", "home"},
+		{"I pressed enter to move a chat and nothing happened", "home"},
+		{"how do I cancel moving a conversation here", "home"},
+		// And the resting row's own words, which is where somebody looking at
+		// `another window` starts: they are staring at a margin, not at a card.
+		{"the row says another window, how do I get it back", "home"},
+		{"how do I bring a conversation back to this window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
@@ -1073,6 +1095,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// said whether a second errand was allowed at all.
 		{"why did my reminder card disappear when I opened another chat", "asking-from-home"},
 		{"how do I know ask here is doing something", "asking-from-home"},
+		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
+		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
 		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
 		{"why is there no once on my reminder card", "keeping-an-eye"},
@@ -1371,6 +1395,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
+	// V6: The question a person asks retrieves the implemented zero-key ladder
+	// and the exact Firecrawl failure string in one self-contained section.
+	found := Chat().Search("can you search the web", DefaultResults)
+	for _, section := range found {
+		if section.Page != "what-i-can-do" || section.Title != "Can you search the web?" {
+			continue
+		}
+		for _, want := range []string{
+			"Firecrawl: keyless, with a free monthly allowance and no key needed",
+			"DuckDuckGo remains available as an explicit pin",
+			"Search failed (firecrawl): <err>",
+		} {
+			if !strings.Contains(section.Body, want) {
+				t.Errorf("search section does not contain %q:\n%s", want, section.Body)
+			}
+		}
+		return
+	}
+	t.Fatalf("search question did not retrieve its section: %#v", found)
 }
 
 // The two corpora must stay strangers. This is the package-level half of the

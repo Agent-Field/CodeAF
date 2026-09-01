@@ -100,7 +100,11 @@ func (a *app) codeRowsWith(st *tokens.Styler, text, path string, width int) []st
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		fitted := fit(expandTabs(line), width)
+		// A FILE IS SOMEBODY ELSE'S BYTES TOO. A read's result and a write's
+		// content reach here unexamined, so the same tabs, carriage returns and
+		// escapes that lie to the fitter everywhere else lie to it here
+		// (toolview.go's [drawableLine]).
+		fitted := fit(drawableLine(line), width)
 		if strings.TrimSpace(fitted) == "" {
 			// A blank line is still a row — an expansion that dropped them would
 			// close the gaps a person reads the file's structure by — and it is a

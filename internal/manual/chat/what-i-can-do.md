@@ -718,7 +718,7 @@ most**, silently clamped rather than refused. Results come back as
 `1. Title — URL` with the publication date and a snippet of up to 300
 characters under each, and a footer like `5 of 12 results`. Nothing found reads
 `no results`. A failed search names the back end it used:
-`Search failed (duckduckgo): <err>`.
+`Search failed (firecrawl): <err>`.
 
 `web_fetch` takes one absolute `url` with a scheme and returns the page's text
 with the markup stripped, capped at **4000 bytes**, with the overflow announced
@@ -729,8 +729,9 @@ those.
 Which back end answers is decided top-down: a pin in the `search.provider`
 setting wins; otherwise the first keyed service you have a key for (`exa` needs
 an Exa key, `jina-search` needs a Jina key); otherwise the zero-key default,
-which is DuckDuckGo's HTML endpoint and is always available. So keys change
-*which* engine answers, never *whether* the web is reachable.
+which is Firecrawl: keyless, with a free monthly allowance and no key needed.
+DuckDuckGo remains available as an explicit pin. So keys change *which* engine
+answers or raise its ceiling, never *whether* the web is reachable.
 
 This matters more generally: aforge leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a

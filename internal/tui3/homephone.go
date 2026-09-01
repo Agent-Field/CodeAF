@@ -660,7 +660,14 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	switch line.kind {
 	case homeSession:
 		return homeGlyph(line.row, pal.ascii) + " " + homeName(line.row),
-			homeNote(line.row, a.homeHeld(line.row), a.homeMark(line.row),
+			// AND THE PHONE KEEPS THE SHORT WORD, though it is the one tier with
+			// no card to say the door on. Its tail is a SECOND LINE under the
+			// name ([overlayLinesTinted]), so a note that grew on the selected
+			// row would push that row from one line to two and shove the whole
+			// column under it down a row on every press of `↓` — a list that
+			// moves under the cursor is the one thing a stacked column may not
+			// do. The foot is where this tier tells the door (takeover.go).
+			homeNote(line.row, a.homeHeld(line.row), "", a.takeoverRowWord(line.row), a.homeMark(line.row),
 				a.homeRowGone(line.row), a.homeFresh(line.row), h.world.Read),
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
 	case homeItem:

@@ -430,14 +430,15 @@ const (
 	// generalist, which is never on the roster because it is never registered.
 	KeyWorkers = "work.workers"
 
-	// The web-search rows. They are three rather than one because they answer
-	// three separable questions: WHERE a lookup goes, and the two credentials
+	// The web-search rows. They are four rather than one because they answer
+	// four separable questions: WHERE a lookup goes, and the three credentials
 	// that change what "where" can mean. A person with no key still searches —
 	// internal/search's last rung takes none — so the keys are an upgrade and
 	// never a prerequisite, and none of the three has to be answered for the
 	// session to be able to look something up.
 	KeySearchProvider = "search.provider"
 	KeyExaKey         = "search.exaKey"
+	KeyFirecrawlKey   = "search.firecrawlKey"
 	KeyJinaKey        = "search.jinaKey"
 
 	// The two rows that let a person connect their Google account
@@ -892,7 +893,8 @@ const SearchProviderAuto = "auto"
 // answer means the day a plug is renamed or one is added. The cost is that a
 // new plug needs a line here to be pinnable — which is the right cost, because
 // a plug nobody can name in the sheet is still reachable through auto.
-var SearchProviders = []string{SearchProviderAuto, "exa", "duckduckgo"}
+// jina-search is named here too so every registered search plug is pinnable.
+var SearchProviders = []string{SearchProviderAuto, "exa", "firecrawl", "jina-search", "duckduckgo"}
 
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
@@ -1505,7 +1507,7 @@ func (s *Settings) build() []Setting {
 
 		// Searching sits beside looking and reading because it is the third
 		// question of the same shape — which back end answers when aforge has
-		// to go outside the machine — and the two keys sit under it because a
+		// to go outside the machine — and the three keys sit under it because a
 		// key is not a preference on its own: it is the thing that decides
 		// what the row above it can resolve to.
 		Setting{
@@ -1517,10 +1519,10 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
 		},
-		// THE KEY EVERY MODEL CALL RIDES. It is a row for the reason the first-run
-		// setup exists: a person with no key in their shell has to be able to
-		// hand one over somewhere, and "export it and start again" is not a
-		// somewhere. It masks like every credential, the environment outranks
+		// THE KEY EVERY MODEL CALL RIDES. The default local door normally creates
+		// one through the browser (tui3's firstrun.go); this row remains the place
+		// to paste a replacement or to use a custom endpoint's credential. It masks
+		// like every credential, the environment outranks
 		// it as it always has (apikey.go's resolution order), and a write lands
 		// on the RUNNING session through the surface's Applied hook rather than
 		// waiting for the next launch — the row this was modelled on says "on the
@@ -1528,7 +1530,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
-			Hint: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+			Hint: "the key aforge talks to models with. With the default provider, a missing key " +
+				"opens connect openrouter in your browser; paste a replacement here if needed. " +
 				"Set in the shell it outranks this row. A change lands on this conversation at once.",
 			read:  func() string { return maskCredential(APIKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyAPIKey, raw, APIKeyAt(dir)) },
@@ -1540,6 +1543,16 @@ func (s *Settings) build() []Setting {
 				"back end. Optional — search works without it. A change lands on the next session.",
 			read:  func() string { return maskCredential(ExaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyExaKey, raw, ExaKeyAt(dir)) },
+		},
+		Setting{
+			Key: KeyFirecrawlKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "firecrawl key", Env: "FIRECRAWL_API_KEY", EmptyLabel: "not set",
+			Hint: "a firecrawl.dev key, for when the free monthly allowance runs out. " +
+				"Optional — search works without it. A change lands on the next session.",
+			read: func() string { return maskCredential(FirecrawlKeyAt(dir)) },
+			write: func(raw string) error {
+				return writeCredential(dir, KeyFirecrawlKey, raw, FirecrawlKeyAt(dir))
+			},
 		},
 		Setting{
 			Key: KeyJinaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
@@ -2830,13 +2843,14 @@ func InstallPersistedEnv(profileDir string) {
 
 // ── the web-search rows ─────────────────────────────────────────────────────
 //
-// The two key rows ARE environment-pinned, where the v3 rows below are not,
+// The three key rows ARE environment-pinned, where the v3 rows below are not,
 // and the difference is what the variable can do. A pin on the tool gate would
 // be a bypass — a stray export widening what may run without asking. A pin on
-// a credential is the credential itself: EXA_API_KEY and JINA_API_KEY are the
-// vendors' own variable names, already exported in the shells of the people
-// who have keys, and a settings sheet that ignored them would make the same
-// person paste the same secret twice and then wonder which copy was live.
+// a credential is the credential itself: EXA_API_KEY, FIRECRAWL_API_KEY and
+// JINA_API_KEY are the vendors' own variable names, already exported in the
+// shells of the people who have keys, and a settings sheet that ignored them
+// would make the same person paste the same secret twice and then wonder which
+// copy was live.
 //
 // They are the vendors' spellings rather than AFORGE_-prefixed ones for that
 // same reason: the value is not ours, and renaming somebody's key variable to
@@ -2862,6 +2876,11 @@ func SearchProviderAt(profileDir string) string {
 // then empty — and empty is a working configuration, not a fault.
 func ExaKeyAt(profileDir string) string {
 	return credentialAt(profileDir, "EXA_API_KEY", KeyExaKey)
+}
+
+// FirecrawlKeyAt resolves the optional Firecrawl ceiling credential the same way.
+func FirecrawlKeyAt(profileDir string) string {
+	return credentialAt(profileDir, "FIRECRAWL_API_KEY", KeyFirecrawlKey)
 }
 
 // JinaKeyAt resolves the Jina credential the same way.

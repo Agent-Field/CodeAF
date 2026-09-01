@@ -443,18 +443,24 @@ var settingUI = map[string]settingMeta{
 		about: "where a web search goes. auto uses the best back end your keys " +
 			"reach and falls back to one that needs none.",
 	},
-	// THE KEY EVERY CALL RIDES sits on the Providers tab above the two search
-	// keys: it is the credential a person comes looking for when the first
-	// turn refused, and it is the one the first-run screen writes (firstrun.go).
+	// THE KEY EVERY CALL RIDES sits on the Providers tab above the three search
+	// keys: it is the credential the browser connection or a manual paste writes
+	// (firstrun.go), and remains the replacement door after that.
 	config.KeyAPIKey: {
 		tab: tabProviders, label: "openrouter key", widget: widgetText,
-		about: "the key aforge talks to models with, from openrouter.ai/settings/keys. " +
+		about: "the key aforge talks to models with. A missing default key opens " +
+			"connect openrouter in your browser; paste a replacement here if needed. " +
 			"A change lands on this conversation at once.",
 	},
 	config.KeyExaKey: {
 		tab: tabContext, label: "exa key", widget: widgetText,
 		about: "an exa.ai key, which buys better results and page fetches than " +
 			"the free back end. Optional.",
+	},
+	config.KeyFirecrawlKey: {
+		tab: tabContext, label: "firecrawl key", widget: widgetText,
+		about: "a firecrawl.dev key, for when the free monthly allowance runs " +
+			"out. Optional.",
 	},
 	config.KeyJinaKey: {
 		tab: tabContext, label: "jina key", widget: widgetText,

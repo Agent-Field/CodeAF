@@ -949,11 +949,11 @@ func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
 		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
 	}
 	card := homeCardNow(t, a)
-	if len(card) < 3 || !strings.Contains(card[2], filepath.Base(row.Workspace)) ||
-		!strings.HasSuffix(strings.TrimSpace(card[2]), " · "+homeHereWord) {
+	if len(card) <= homeCardPlaceRow || !strings.Contains(card[homeCardPlaceRow], filepath.Base(row.Workspace)) ||
+		!strings.HasSuffix(strings.TrimSpace(card[homeCardPlaceRow]), " · "+homeHereWord) {
 		t.Fatalf("the card's place line is not the conversation's own folder:\n%s", strings.Join(card, "\n"))
 	}
-	if !strings.Contains(homeText(a), strings.TrimSpace(card[2])) {
+	if !strings.Contains(homeText(a), strings.TrimSpace(card[homeCardPlaceRow])) {
 		t.Fatalf("the card is not on the resting frame:\n%s", homeText(a))
 	}
 }
@@ -1903,11 +1903,12 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 	a.width, a.height = 200, 30
 	a.openHome()
 
-	// AT REST: THE CARD'S PLACE LINE, which is line two — title, blank, place —
-	// and never further down, because a short frame drops bands from the bottom
-	// and the address is one of the two lines no band may displace.
+	// AT REST: THE CARD'S PLACE LINE, which is [homeCardPlaceRow] — the title's
+	// own second row — and never further down, because a short frame drops bands
+	// from the bottom and the address is part of the one band no band may
+	// displace.
 	card := homeCardFor(t, a, gone)
-	if at := cardLine(card, WorkspaceGoneWord); at != 2 {
+	if at := cardLine(card, WorkspaceGoneWord); at != homeCardPlaceRow {
 		t.Fatalf("the sentence is on card line %d, want the place line:\n%s", at, strings.Join(card, "\n"))
 	}
 
@@ -3186,7 +3187,7 @@ func TestALockedRowSaysSoOnItsCardAndOnItsRowWhenTyped(t *testing.T) {
 	a.width, a.height = 200, 30
 	a.openHome()
 	card := homeCardFor(t, a, theirs)
-	if at := cardLine(card, homeHeldWord); at != 2 {
+	if at := cardLine(card, homeHeldWord); at != homeCardPlaceRow {
 		t.Fatalf("the card says it on line %d, want the place line:\n%s", at, strings.Join(card, "\n"))
 	}
 	if !strings.Contains(homeText(a), homeHeldWord) {
@@ -3272,8 +3273,8 @@ func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	if !a.waitingToTakeOver() {
 		t.Fatal("three presses left the window waiting for nothing")
 	}
-	if got := strings.Count(homeText(a), "waiting for the other window"); got != 1 {
-		t.Fatalf("the waiting line is on the screen %d times", got)
+	if got := strings.Count(homeText(a), "moving it here"); got != 1 {
+		t.Fatalf("the moving line is on the screen %d times", got)
 	}
 }
 
