@@ -434,6 +434,19 @@ type TaskNode struct {
 	// turn ending and its next report arriving, and it is what keeps a family
 	// from deadlocking against the person's own task.parallel cap.
 	parked bool
+	// parkGen counts the parks this node has taken, and it is what makes ONE
+	// park tellable from the next. `parked` alone cannot: a parent wakes on a
+	// report, reads it, finds a part still outstanding and parks again, and to
+	// anybody watching the flag from outside those are the same true. A waiter
+	// that wants the park AFTER a landing therefore has to name the park it
+	// already saw and wait past it ([TaskNode.parkStanding]), which is a fact
+	// about identity and not about how long to wait — no clock can answer it.
+	//
+	// It only ever goes up, one per park, under the graph's own lock, and it is
+	// never reset: a node that parks and lands and is resumed is still the node
+	// that parked, and a generation that started again would make an old park
+	// look like a new one.
+	parkGen uint64
 	// paced counts this node's calls that are parked on the provider's pacing
 	// (internal/provider's patience.go). A count and not a flag because a node
 	// is an agent and an agent can have more than one call out — a repair round
@@ -2937,6 +2950,10 @@ func (g *TaskGraph) park(node *TaskNode) {
 		return
 	}
 	node.parked = true
+	// THE PARK IS NUMBERED AS IT IS TAKEN, inside the same hold that sets the
+	// flag, so that no reader can ever see the flag of one park beside the
+	// number of another (see [TaskNode.parkGen]).
+	node.parkGen++
 	if g.running > 0 {
 		g.running--
 	}
@@ -3010,12 +3027,28 @@ func (n *TaskNode) unpark() {
 // a step reads the line at its next one, and a node parked here has no step
 // coming until somebody wakes it.
 func (n *TaskNode) waitingOnItsPieces() bool {
+	parked, _ := n.parkStanding()
+	return parked
+}
+
+// parkStanding answers BOTH questions somebody watching a park has to ask, under
+// ONE hold of the graph's lock: whether this node is on its park now, and WHICH
+// park it is on ([TaskNode.parkGen]).
+//
+// THE PAIR IS ONE READING BECAUSE THE TWO FACTS MOVE TOGETHER. A parent woken by
+// one part's report unparks, reads it, finds another part still outstanding and
+// parks again, all in a few microseconds; two separate reads across that window
+// answer with the flag of one park and the number of another, which is a park
+// that never existed. It is the same law [Agent.taskNewsStanding] states for the
+// other pair a parked parent lives by, and it is stated here for the same
+// reason: no order of two reads can hold it.
+func (n *TaskNode) parkStanding() (parked bool, generation uint64) {
 	if n == nil || n.graph == nil {
-		return false
+		return false, 0
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.parked
+	return n.parked, n.parkGen
 }
 
 // stopChildren ends every unsettled node one parent handed out, exactly as
