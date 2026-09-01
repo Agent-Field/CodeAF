@@ -590,10 +590,17 @@ landed task card also refuses to print `$0.00`.
 **A resumed conversation is not a $0.00 conversation.** Reopening a transcript with
 `--session`, `aforge resume` or `/resume` puts what that conversation has already spent on
 the spend segment on its first frame — the sum of every cost line in its file, the
-errands aforge ran beside your turns included — and the work it started is added on top
-as soon as the task column is up, the way it is on any conversation. New turns add to it. If you resume a
+errands aforge ran beside your turns included — and the work it started is on the same
+first frame, read off the spending ledger on the way in rather than waiting for the task
+column to come up. New turns add to it. If you resume a
 session that spent real money and the row still says `$0.00`, the file has no cost lines
 in it (an older build wrote none), not that the money was forgotten.
+
+**And nothing carries over from the conversation you left.** Every figure on the row —
+the money, the tokens, the cache, the context meter — is a fact about one conversation,
+so switching zeroes them all and then asks the arriving conversation for its own. The
+first turn you send after reopening a transcript is charged only what that turn spent:
+its receipt is its own price, not the bill the conversation opened with.
 
 Other honest silences: the context percentage is dropped below 1% rather than shown as
 `0%`; the cache cash half appears only when there is a published price pair, never

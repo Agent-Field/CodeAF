@@ -7144,6 +7144,26 @@ func (a *app) resetMeters() {
 	a.tokens, a.inputTokens, a.outputTokens = 0, 0, 0
 	a.cacheRead, a.cacheWrite = 0, 0
 	a.cacheSaved = 0
+	// AND THE TREE'S TOTAL, which is a fact about one conversation exactly as
+	// a.cost above it is: it is what THIS conversation and the work it started
+	// have spent (treespend.go). It was left standing here until #210, and
+	// because the ledger is re-read only on the frame clock while the task
+	// column is up, the figure of the conversation being LEFT stayed on the row
+	// of the one being taken up — a switch onto a conversation holding $1.11
+	// read $50.00 until something happened to recompute it, and /cost printed
+	// the true figure while the row beside it printed the other one, which is
+	// the surface disagreeing with itself about the only number on it a person
+	// acts on.
+	a.tree = session.TreeSpend{}
+	// THE CACHE UNDER IT IS DELIBERATELY KEPT. It is not a figure about a
+	// conversation but a parse of a file — [session.UsageCache] holds the lines
+	// it has already read off the machine's one ledger and re-derives the tree
+	// from them per conversation, so nothing in it is about the conversation
+	// being left. Dropping it would make the next reading a cold walk of the
+	// whole ledger on the switch frame: measured at 610ms for a ledger at the
+	// cache's own 200,000-line ceiling, against 17µs for the tail read that
+	// keeping it buys. That stall would land on precisely the frame this reset
+	// exists to make right.
 	a.ctxTokens = 0
 	// The HUD's own state is a fact about one conversation too: a sparkline
 	// carried across /new would be a graph of somebody else's context, and an
