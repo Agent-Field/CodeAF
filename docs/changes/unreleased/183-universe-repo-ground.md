@@ -11,6 +11,7 @@ invalidates:
   - "A task's checkpoint recorded its ground and its mode. It records four more, additively: `groundRung`, `groundSeal`, `groundBase` and `groundUniverse`. A landing outlives the run that made the world, so a task accepted an hour later or resumed after a crash now lands by the road that actually made its world."
   - "Attaching a folder to furrow left a `.furrow/` directory sitting in the person's `git status`, and the snapshot rung's machine commit could carry it. The name goes into that repository's `.git/info/exclude` — local to their checkout, never committed — and the machine commit excludes it."
   - "`restoreFromBranch` cut the check's clean copy from the ground repository. It cuts from whichever repository holds the branch (`taskTree.branchHolder`), which until the landing is the fork itself for a universe-grounded node."
+  - "`furrow.Attach` was safe to call from anywhere. It is now serialized per folder, because five `furrow watch` runs started on one folder in the same instant were measured against the real program: one succeeds and four fail outright — which is a task handing five parts out at once and getting one child a universe and four the rung below."
   - "Any folder furrow would take could be forked. A ground whose `.git` is a FILE — a linked worktree — never is: a byte-exact copy carries that file's absolute path, so the fork's commits, branch and HEAD would all be written into the repository it names and would move a checkout somebody is standing in. Such a ground takes the snapshot rung."
 ---
 
