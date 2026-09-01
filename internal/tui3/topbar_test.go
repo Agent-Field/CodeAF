@@ -150,6 +150,8 @@ func roomBarApp(t *testing.T) *app {
 	t.Helper()
 	a, _, _ := roomApp(t)
 	a.dismissWelcome()
+	a.title = "port the lexer"
+	a.branch, a.branchDirty = "chat-v3-task", true
 	a.openRoom(7, "Fix the nil-map crash")
 	if !a.roomOpen() {
 		t.Fatal("the room did not open")
@@ -158,9 +160,17 @@ func roomBarApp(t *testing.T) *app {
 	if node == nil {
 		t.Fatal("the room has no node")
 	}
-	node.cost = 0.42 // the spend trimming
+	node.cost = 0.42            // the spend trimming
+	node.model = "z-ai/glm-4.6" // the node's own model, which the bar names `task glm-4.6`
 	return a
 }
+
+// crumbFolded reports whether the crumb on this bar has given a STEP up, which
+// is not the same question as "is there an … on the row": the ladder's last rung
+// truncates the current title with one too, and by then the right cluster has
+// already been allowed to give way. A fold is an … standing where a step stood,
+// so it is the one with a separator in front of it.
+func crumbFolded(bar string) bool { return strings.Contains(bar, topBarSep+trailEllipsis) }
 
 // barHas reports whether the plain bar carries the word.
 func barHas(bar, word string) bool { return strings.Contains(bar, word) }
@@ -231,11 +241,23 @@ func TestTopBarGiveWayTrimmingsBeforeTheCrumb(t *testing.T) {
 // model, the branch and the back word still stand.
 func TestTopBarGiveWayCrumbBeforeTheRightCluster(t *testing.T) {
 	a := roomBarApp(t)
-	// Find a width where the crumb has folded (the … is on the bar) and check
-	// the right cluster is still whole.
+	// A DEEP TRAIL, because a two-step crumb has no step to fold: the ladder's
+	// first three rungs all need something between the ends of the trail. Node 4
+	// hangs off node 3 which hangs off node 1, so the crumb is
+	// project › chat › Ship the port › Write the tree › Cut the goldens.
+	railRun(a)
+	a.openRoom(4, "Cut the goldens")
+	if node := a.roomNode(); node != nil {
+		node.model = "z-ai/glm-4.6"
+	}
+	if len(a.crumbSegments()) < 5 {
+		t.Fatalf("the fixture's crumb is %d steps, want a trail deep enough to fold", len(a.crumbSegments()))
+	}
+	// Find a width where the crumb has folded a step and check the right cluster
+	// is still whole.
 	for width := 200; width >= 40; width-- {
 		bar := plain(a.topBarWord(width))
-		if barHas(bar, trailEllipsis) {
+		if crumbFolded(bar) {
 			if !barHas(bar, "task glm-4.6") {
 				t.Fatalf("at width %d the model gave way before the crumb finished its ladder: %q", width, bar)
 			}

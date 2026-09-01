@@ -1,15 +1,17 @@
 package tui3
 
-import (
-	tea "charm.land/bubbletea/v2"
-)
-
 // TASKS, REACHED BY A THUMB.
 //
 // The roster and the record were built for a keyboard and they show it at
-// [tierPhone]: the strip is a row of chips three cells apart, the page under
-// `ctrl+t` names its verbs in a dim sentence at the foot, and the card a row
-// opens does the same. None of those is a thing a finger can do.
+// [tierPhone]: the page under `ctrl+t` names its verbs in a dim sentence at the
+// foot, and the card a row opens does the same. Neither is a thing a finger can
+// do.
+//
+// A third surface used to be on this list — the task strip's own phone form, one
+// full-width `▸ 4 tasks · 2 running` door in place of a row of chips a thumb
+// cannot land between. The strip is gone (ISSUE-126) and that door went with it:
+// the deck's rows carry the live set at this width now (statusdeck.go), and the
+// page is `ctrl+t` and the rail.
 //
 // Nothing new is invented here — the three doors already exist and every one of
 // them is reachable with a key. What changes is their SHAPE on a phone:
@@ -83,79 +85,6 @@ func (a *app) taskCardBarPress(x int) bool {
 		return true
 	}
 	return false
-}
-
-// ── THE PHONE STRIP IS ONE DOOR ─────────────────────────────────────────────
-
-// The count word on the door, singular and plural. One task and three tasks
-// reach the roster the same way at this tier, so the door is drawn for either —
-// `▸ 1 task · …` is still a door.
-const (
-	stripDoorTaskWord  = "task"
-	stripDoorTasksWord = "tasks"
-)
-
-// stripPhoneDoor is the strip at [tierPhone]: not a row of chips but a SINGLE
-// full-width door into the roster. It answers the door's text and whether this
-// tier draws one at all.
-//
-// IT REUSES THE STRIP'S OWN NUMBERS AND INVENTS NO STATE. The live set is
-// [app.stripNodes] — the same running, needs-you and idle nodes the chips would
-// be — so "N tasks" is how many chips there would have been and the tail is the
-// most urgent of them in the roster's own word. A frame whose only live thing is
-// a running sub-harness has no task nodes, so this draws nothing and the chip
-// keeps the row: there is a name there a person must still be able to reach.
-func (a *app) stripPhoneDoor(width int) (string, bool) {
-	if layoutTier(width) != tierPhone {
-		return "", false
-	}
-	nodes := a.stripNodes()
-	if len(nodes) == 0 {
-		return "", false
-	}
-	glyph := glyphShut
-	if a.pal.ascii {
-		glyph = glyphShutASCII
-	}
-	word := stripDoorTasksWord
-	if len(nodes) == 1 {
-		word = stripDoorTaskWord
-	}
-	line := a.pal.ink(glyph + " " + itoa(len(nodes)) + " " + word)
-	if state := a.stripPhoneState(); state != "" {
-		line += a.pal.dim(railSep + state)
-	}
-	return fit(line, width), true
-}
-
-// stripPhoneState is the most urgent thing among the live nodes, in the same
-// word the roster heads its sections with — `1 running`, or `2 needs you`, or
-// `3 idle`. It walks [stripOrder], running first, and takes the first group with
-// anyone in it, which is the chip the packed row would have led with.
-func (a *app) stripPhoneState() string {
-	members := a.railMembers()
-	for _, g := range stripOrder {
-		if n := len(members[g]); n > 0 {
-			return itoa(n) + " " + railGroupWords[g]
-		}
-	}
-	return ""
-}
-
-// stripPhonePress is the row's one gesture at [tierPhone]: it opens the roster
-// PAGE and reads the project's record in behind it, exactly the door
-// [app.taskSheetKeyPress] opens on its key. It answers whether it took the press.
-//
-// IT IS THE PAGE AND NOT THE OVERLAY COLUMN. The page is the surface this lane
-// shaped into cards a thumb goes into, with a `‹ back` bar at its foot
-// (taskview.go); the overlay column ([app.railTake]) is a keyboard list under a
-// key legend, and a door that landed there would open the very thing this tier
-// is built to leave behind.
-func (a *app) stripPhonePress(width int) (tea.Cmd, bool) {
-	if layoutTier(width) != tierPhone {
-		return nil, false
-	}
-	return a.showPage(pageTasks), true
 }
 
 // ── THE ROSTER PAGE, AS CARDS ───────────────────────────────────────────────

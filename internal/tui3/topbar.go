@@ -353,10 +353,17 @@ func (a *app) topBarOrchWord(width int, quiet bool) string {
 	if a.roomApprovalHeight() > 0 {
 		accent = a.pal.dim
 	}
-	left := []topBarCell{{text: a.orchHeadWord(width), paint: accent}}
 	right := a.topBarRight(quiet, accent)
-	// The run's own trail gives way to the terms beside it on the same terms the
-	// crumb does ([clampCells]).
+	// THE RUN'S WORD IS ASKED FOR THE COLUMNS IT WILL ACTUALLY GET, and not for
+	// the frame's: its own ladder shortens the trail properly ([fitTrail] again,
+	// wearing the run page's separator), and a word built at the full width would
+	// have been CUT by the clamp below instead — which is the one thing this
+	// file's give-way exists to avoid. The clamp stays as the floor under it.
+	room := width - cellsWidth(right) - hudGap
+	if room < roomHeadFloor {
+		room = roomHeadFloor
+	}
+	left := []topBarCell{{text: a.orchHeadWord(room), paint: accent}}
 	left = clampCells(left, width-cellsWidth(right)-1)
 	a.recordTopSpans(left, right, width)
 	gap := width - cellsWidth(left) - cellsWidth(right)
