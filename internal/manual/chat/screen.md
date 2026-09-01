@@ -1544,6 +1544,48 @@ target is truncated last, because the target is the substance and a figure nobod
 room for is a number about a line nobody can read. The target always keeps at least
 **7** cells: the last few characters of a name and the `…` that says the rest was cut.
 
+## A long tool call is one row — it does not wrap or spill past the frame's edge
+
+**A tool call is exactly one row, however long the command is.** A `gh api` with a
+hundred-and-thirty-character query in it takes the same single row a `read` takes: the
+command is cut to the width you have and the `…` says the rest is there. Nothing about a
+tool call ever wraps onto a second row, and nothing it draws goes past the frame's right
+edge.
+
+That is true of what a call **opens** as well. The command shown whole, the diff, the
+output, the `… N more lines` foot — every one of those rows is cut to the frame too, and
+the two columns the machinery is indented by are subtracted before the cut rather than
+after it. A row laid out to the whole frame and then moved two columns right is two
+columns too wide, and a terminal answers that by folding it onto a second row: one open
+`bash` call could eat four or five rows that way, half of them the tail-ends of the row
+above. It does not any more.
+
+**To see the whole command, open the call**: click the row anywhere along its length, or
+select it with `↑`/`↓` and press `enter`. The same gesture closes it again. That is per
+call — opening one leaves its neighbours alone — and it is different from `ctrl+e`, which
+folds or unfolds a whole turn's worth of work at once. See *Seeing more of a tool call*.
+
+Resizing the terminal re-cuts every row to the new width. Widen the frame past the length
+of the command and the `…` goes away on its own.
+
+## Why a tool's colours, tabs and progress bars do not show
+
+What a command writes back is **somebody else's bytes**, and it is cleaned before it is
+drawn: the colour is stripped, a tab becomes four spaces, and a carriage return or any
+other control byte is dropped. The same cleaning is done to the command itself, and to a
+file's content in a `read` or a `write`.
+
+This is not tidiness. A tab and a carriage return both measure as nothing and draw as
+something, so a row containing either is a row whose fit to the width was a fiction — a
+`go test` line with four tabs in it was laid out to the frame and then wrapped anyway,
+and a progress bar's `\r` sent the cursor back to column one so the end of the line
+overwrote its own beginning. An escape sequence is worse than either: drawn into the
+frame, it repaints rows that belong to this surface. A reply is sanitised for the same
+reason.
+
+The syntax colouring you see on a `read`, a `write` or a `bash` command is **aforge's
+own**, applied after the cleaning — so source still reads as source.
+
 ## What the numbers on the right of a tool row mean
 
 Everything at the right-hand end of a tool row — the spinner, the time, the size — is one
@@ -1652,6 +1694,12 @@ beside its other trailing marks. The full account of both is on what-i-can-do.
 Click the row, or select it with `↑`/`↓` and press `enter`. `ctrl+o` on a capped block
 lifts the cap.
 
+**The whole line is the door** — anywhere along it, from the rail to the frame's right
+edge, and the whole line lights up under the pointer to say so. `↑`/`↓` and `enter` reach
+the same door with no pointer at all, and `enter` again closes the call. This opens **one
+call**; `ctrl+e` folds and unfolds a whole turn's machinery, and `ctrl+o` is the run of
+earlier calls a cluster folded away.
+
 What you get, per tool, each with its own line cap:
 
 | tool | what opens | cap |
@@ -1666,7 +1714,9 @@ What you get, per tool, each with its own line cap:
 | anything else | the arguments, then the output | 30 rows |
 
 Rows truncate rather than wrap — "first 30 lines" has to mean thirty rows on screen or
-it means nothing. The dropped remainder becomes a clickable `… N more lines` row, which
+it means nothing, and that is measured against the frame **after** the machinery's
+two-column indent, so nothing an open call draws overhangs the edge (see *A long tool
+call is one row*). The dropped remainder becomes a clickable `… N more lines` row, which
 is a different click target from the row above it: one lifts the cap, the other closes
 the call. Once you have pressed "more", that call has no window at all. An expansion
 with nothing in it draws a dim `—`.
