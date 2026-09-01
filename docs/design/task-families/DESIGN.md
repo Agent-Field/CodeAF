@@ -497,7 +497,6 @@ where #281 was found. It is still in flight; see *Still open*.
   told to read one plan file are currently refused. Measured while building the
   real-model e2e suite (#280). Ownership is a claim about *writing*; the decision is
   which of the two conservative shapes takes it.
-
 - **`restoreFromFolder` re-mirrors at check time, and nobody has ruled on it.** A
   mirrored node is judged against a fresh copy of the person's folder taken WHEN THE
   CHECK RUNS (`mirrorGround(tree.ground, dir)`, `task_audit.go`), with the ledger laid
