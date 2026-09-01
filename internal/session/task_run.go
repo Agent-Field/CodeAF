@@ -449,6 +449,18 @@ type TaskNode struct {
 	// because a check that refuses a run that had already given up is not the
 	// news — the giving up is.
 	ending TaskEnding
+	// checked is WHAT THE CHECK SAID about this node's work, in the ledger's own
+	// taxonomy, and "" on a node no check ever read — one whose worktree could
+	// not be made, one somebody stopped before the gate, one that ran with the
+	// check turned off. It is the grade a settled node teaches the ratings store
+	// (taskgrade.go), and it is written down at the moment the answer is given
+	// because that is the only moment anybody holds it: by the time the node
+	// settles, the whole of the check is a paragraph of prose in a report.
+	//
+	// repairs is how many times the work was handed back before that answer —
+	// the repair rounds the gate spent (task_audit.go's [Agent.auditWithRepair]).
+	checked provider.Verdict
+	repairs int
 	// blockedBy names the task whose working copy refused this node's writes
 	// (treehold.go's treeClaimGuard), in the words the refusal used, and "" when
 	// nothing ever refused it. It is what turns a "going in circles" ending into
@@ -643,6 +655,14 @@ type TaskGraph struct {
 	// scripted graph in the tests (task_store.go).
 	store *taskStore
 
+	// grades is where a settled node's outcome is written down and where the
+	// divider reads before it decides how much thinking a part is done with
+	// (taskgrade.go). It is nil for a session with no profile directory behind
+	// it — a headless run and every scripted graph in the tests — which grades
+	// nothing and reads nothing, exactly as `store` is nil for a session with no
+	// journal.
+	grades *taskGrades
+
 	// home is the CONVERSATION whose graph this is: the agent that reports every
 	// node to the surface, and the agent that runs the ones nobody else owns. It
 	// is nil in the scripted graphs the tests build, which replace `run` whole.
@@ -749,6 +769,11 @@ func (a *Agent) graph() *TaskGraph {
 		// with no disk behind it rather than a session that refuses to run tasks
 		// (task_store.go).
 		graph.store = newTaskStore(taskCheckpointPath(a.config.SessionFile))
+		// AND THE RATINGS STORE, WHICH IS THE PERSON'S AND NOT THIS SESSION'S.
+		// It lives beside the settings file, it is the same file `aforge models`
+		// reads, and several aforge processes write to it at once — so what is
+		// held here is the path and never a handle (taskgrade.go).
+		graph.grades = newTaskGrades(a.config.ProfileDir)
 		a.tasks = graph
 	}
 	return a.tasks
@@ -1198,6 +1223,7 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	close(node.done)
 
 	g.checkpoint()
+	g.grade(node)
 	g.announce(node)
 	g.runFrontier()
 }
@@ -1220,6 +1246,12 @@ func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Unlock()
 
 	g.checkpoint()
+	// AND THE LESSON IS WRITTEN AGAIN, because the node has ended somewhere
+	// else. A person accepting work nobody could check, or refuting it, is the
+	// answer the first settle did not have — and the store's row for this node
+	// is corrected by appending, which is what an append-only diary means
+	// (taskgrade.go).
+	g.grade(node)
 	g.announce(node)
 	g.runFrontier()
 }

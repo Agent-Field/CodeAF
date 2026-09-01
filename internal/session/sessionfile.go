@@ -563,6 +563,14 @@ type journalDivision struct {
 	// Parts is what was asked for, by title, so a refusal reads against
 	// something and not against a count.
 	Parts []string `json:"parts,omitempty"`
+	// Lifted names the parts the worker graded as ordinary work that were minted
+	// on the careful tier anyway, because the ratings store said work of that
+	// kind keeps being turned down on this model (task_divide.go, taskgrade.go).
+	// It is empty on every division nothing was learned about, which is every
+	// division until the store has seen the same kind of work settle twice — and
+	// it is the one place an autopsy can tell a part that was CALLED careful from
+	// one that EARNED it.
+	Lifted []string `json:"lifted,omitempty"`
 }
 
 // journalUsage is one turn's accounting as the journal holds it.

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -84,7 +86,21 @@ func runModels(args []string) error {
 			"run a plan or a graph with AFORGE_MODELS set.")
 		return nil
 	}
-	fmt.Printf("\n  %-22s %-38s %7s %7s %6s\n", "class", "model", "rating", "p(pass)", "n")
+	// THE CLASS COLUMN IS AS WIDE AS THE CLASSES ARE. It used to be a constant
+	// 22, which fitted every class the router itself writes — they are all short
+	// names like `plan.spine`. A settled task node is filed under its own KIND,
+	// in the words the work was named with (internal/session's taskgrade.go), so
+	// `task.node/tests for the rail` is longer than that and every row after the
+	// first long one stepped sideways. The width is measured instead, and capped
+	// so that one absurd name cannot push the numbers off a narrow terminal.
+	const classCap = 40
+	classWidth := len("class")
+	for _, entry := range entries {
+		if width := len(clip(string(entry.Class), classCap)); width > classWidth {
+			classWidth = width
+		}
+	}
+	fmt.Printf("\n  %-*s %-38s %7s %7s %6s\n", classWidth, "class", "model", "rating", "p(pass)", "n")
 	for _, entry := range entries {
 		// Whether a rating is being *used* is a different question from what it
 		// says, and it is the one worth seeing: under the gate the ordering reads
@@ -92,11 +108,25 @@ func runModels(args []string) error {
 		// not driving anything. Arm B's collapse is what happens when that is
 		// invisible.
 		gate := ""
-		if entry.Count < router.MinGraded {
+		// TWO GATES, AND THE ROW SAYS THE ONE THAT GOVERNS IT. A routed call's
+		// rating has to clear router.MinGraded before an ordering may prefer it
+		// to the cold-start prior; a settled task node's rating governs something
+		// else entirely — whether a part of a division is done a tier up — and
+		// that gate is internal/session's own and much lower. Printing the
+		// router's number over a task node's row said the row was driving
+		// nothing when it may well have been.
+		switch {
+		case strings.HasPrefix(string(entry.Class), string(provider.ClassTaskNode)):
+			if entry.Count < session.TaskGradeEvidence {
+				gate = fmt.Sprintf("  under the gate — a part moves up once %d of this kind have settled",
+					session.TaskGradeEvidence)
+			}
+		case entry.Count < router.MinGraded:
 			gate = fmt.Sprintf("  under the gate — ordering uses the prior until n=%d", router.MinGraded)
 		}
-		fmt.Printf("  %-22s %-38s %+7.2f %7.2f %6d%s\n",
-			entry.Class, clip(entry.Model, 38), entry.Rating, router.Ability(entry.Rating), entry.Count, gate)
+		fmt.Printf("  %-*s %-38s %+7.2f %7.2f %6d%s\n",
+			classWidth, clip(string(entry.Class), classCap), clip(entry.Model, 38),
+			entry.Rating, router.Ability(entry.Rating), entry.Count, gate)
 	}
 	// Said once, at the bottom, because it is the thing most likely to be
 	// misread: these are relative abilities within one class, on a logit scale,

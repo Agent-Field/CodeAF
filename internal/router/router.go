@@ -399,7 +399,7 @@ func (r *Router) leaf(ctx context.Context, call *provider.Call, messages []ai.Me
 	// What is learned about a leaf is keyed on the shape of leaf it was. See
 	// provider.WithCallShape: one global exec.leaf rating let five budget stops
 	// on one task's oversized leaves reroute the leaves of every other task.
-	class := shaped(provider.ClassExecLeaf, call.Shape())
+	class := Shaped(provider.ClassExecLeaf, call.Shape())
 	ladder := r.leafLadder(class)
 	index := min(call.Attempt(), len(ladder)-1)
 	pick := r.rungOf(call.Pin(ladder[index].spec.Slug), ladder[index])
@@ -440,10 +440,17 @@ func (r *Router) leaf(ctx context.Context, call *provider.Call, messages []ai.Me
 	return response, nil
 }
 
-// shaped is the ledger key for a class that is divided into sub-populations. The
+// Shaped is the ledger key for a class that is divided into sub-populations. The
 // class stays readable — `exec.leaf/oversized` — because a ledger nobody can
 // read is a ledger nobody checks.
-func shaped(class provider.CallClass, shape string) provider.CallClass {
+//
+// It is EXPORTED because the router is no longer the only thing that writes into
+// the ledger: the chat engine grades a settled task node under
+// [provider.ClassTaskNode] with the work's own kind as its shape
+// (internal/session's taskgrade.go). Two spellings of "how a shape becomes a key"
+// would be two keys for one population, which is the one fault a ledger cannot
+// recover from — so there is one function and both callers use it.
+func Shaped(class provider.CallClass, shape string) provider.CallClass {
 	if shape == "" {
 		return class
 	}

@@ -152,6 +152,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -878,7 +879,12 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 	// the report that a later verdict must carry forward rather than overwrite,
 	// and by the time one lands there is nothing left to recover it from
 	// (task_run.go's [TaskNode.claim], [Agent.landAudit]).
-	defer func() { node.keepClaim(out.claim) }()
+	// AND THE CHECK'S OWN ANSWER IS WRITTEN ON THE NODE, beside the claim and for
+	// the same reason: this is the only moment anybody holds it. By the time the
+	// node settles the whole of the gate is a paragraph of prose in a report, and
+	// what the ratings store needs is the answer itself — the grade a settled
+	// node teaches, at no extra call (taskgrade.go).
+	defer func() { node.keepClaim(out.claim); node.checkSaid(auditGrade(out.verdict), len(out.gaps)) }()
 	rounds := a.config.TaskRepairRounds
 	for round := 1; ; round++ {
 		out.verdict = a.auditNode(ctx, node, tree, out.changed, out.claim, log)
@@ -2009,6 +2015,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	if err != nil {
 		return err
 	}
+	// A PERSON IS THE CHECK HERE, and the store is told so. Nothing was spent to
+	// learn it and nobody guessed: somebody read the work and said it holds,
+	// which is the same kind of answer the gate gives and belongs in the same
+	// record (taskgrade.go).
+	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
 	report, changed, _, _ := node.leavings()
 	merge, detail := tree.comeHome(node.title(), changed)
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
@@ -2037,6 +2048,9 @@ func (a *Agent) refuteTask(node *TaskNode, why string) error {
 		return err
 	}
 	defer node.releaseSettle()
+	// The same fact in the negative, and it is evidence of exactly the same
+	// weight: a person doing the check's job and finding the work does not hold.
+	node.checkSaid(provider.VerdictSemanticFailure, 0)
 	report, changed, branch, merge := node.leavings()
 	node.end(TaskEndingRefused)
 	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
@@ -2111,6 +2125,9 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 // workTaskNode), and reaches the same three states — the only difference is
 // that this one re-settles a node instead of completing a run.
 func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) {
+	// A LATE VERDICT IS STILL THE CHECK'S VERDICT, so the node carries it into
+	// the settle below exactly as the gate's own road does.
+	node.checkSaid(auditGrade(verdict), 0)
 	report, _, branch, merge := node.leavings()
 	// THE TWO HALVES OF THE CARD, PULLED APART BEFORE EITHER IS REWRITTEN. The
 	// report a landed unverified node carries is the last audit's line with the
