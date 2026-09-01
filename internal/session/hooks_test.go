@@ -96,7 +96,10 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// the process rules the loop enforces are the fourth (processrule.go).
 		// episode-init is the one hook whose order carries no argument: every
 		// citizen there writes its own field on a struct nobody has read yet.
-		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes", "process-rules"}},
+		// The write seam sits beside the change ledger for both of its hooks: it
+		// asks the same question of the same calls and keeps a different answer
+		// (writeseam.go).
+		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "writes", "loop", "fixes", "process-rules"}},
 		{"pre-decision", planeNames(plane.preDecision), []string{"stub", "turn-fold"}},
 		// The write scope and the tree claim are the two citizens that are inert
 		// for an ordinary agent: both are registered on every plane and refuse
@@ -111,7 +114,7 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// directory has to meet the path law first or be refused with a
 		// paragraph that is false about every path in it (taskoutside.go).
 		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "task-ground", "task-git"}},
-		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "loop"}},
+		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "writes", "loop"}},
 	} {
 		if !sameNames(expected.got, expected.want) {
 			t.Errorf("%s citizens = %v, want %v", expected.hook, expected.got, expected.want)
