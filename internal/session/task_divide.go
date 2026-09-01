@@ -823,7 +823,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// models, for the reason they are: a division whose third part was decided
 	// against a store that moved under it is a family nobody can account for
 	// afterwards.
-	grades := graph.grades
+	grades := graph.grades.reader(model)
 	request := a.taskRequest()
 	ids := make([]uint64, 0, len(parsed.Parts))
 	titles := make([]string, 0, len(parsed.Parts))
@@ -832,7 +832,7 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 		switch {
 		case part.careful():
 			partModel = careful
-		case careful != model && grades.saysCareful(model, taskKindOf(part.Title)):
+		case careful != model && grades.saysCareful(taskKindOf(part.Title)):
 			// THE EVIDENCE OVERRULES THE WORD, and only in this direction. A part
 			// the worker called careful is never demoted by a store — the worker
 			// read the material and this did not — while a part it called ordinary

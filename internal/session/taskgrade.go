@@ -232,34 +232,60 @@ type taskGradeReading struct {
 	Rating float64
 }
 
-// reading pools every record of this kind-shaped work for one model.
+// taskGradeReader is the store read ONCE and asked about many kinds.
 //
-// The pooling is count-weighted rather than a plain mean, so a kind with eleven
-// settles behind it is not outvoted by one with a single settle — which is the
-// same reasoning the ledger's own step size is built on.
-func (g *taskGrades) reading(model, kind string) taskGradeReading {
-	if g == nil || strings.TrimSpace(model) == "" || kind == "" {
-		return taskGradeReading{}
+// It exists because a division is one decision. Eight parts asking the file
+// eight questions would be eight reads of it, and — worse — eight readings taken
+// at eight instants, so a division whose last part was decided against a store a
+// concurrent window had moved underneath it would be a family nobody could
+// account for afterwards. One snapshot, one model, and every part of the
+// division weighed against the same one.
+type taskGradeReader struct {
+	entries []router.Entry
+}
+
+// reader takes that snapshot: this model's task-node rows and nothing else.
+func (g *taskGrades) reader(model string) taskGradeReader {
+	if g == nil || strings.TrimSpace(model) == "" {
+		return taskGradeReader{}
 	}
 	ledger, err := router.LoadLedger(g.dir)
 	if err != nil {
-		return taskGradeReading{}
+		return taskGradeReader{}
 	}
 	// The ledger keys on what the provider actually served, so a floating alias
 	// is read through the same map the router reads it through.
 	model = ledger.Resolve(model)
 	prefix := string(provider.ClassTaskNode) + "/"
-	var pooled taskGradeReading
-	var weighted float64
+	var kept []router.Entry
 	for _, entry := range ledger.Entries() {
 		if entry.Model != model || entry.Count <= 0 {
 			continue
 		}
-		class := string(entry.Class)
-		if !strings.HasPrefix(class, prefix) {
+		if !strings.HasPrefix(string(entry.Class), prefix) {
+			// Everything the router itself learned about this model is in here
+			// too, and none of it is about a whole settled piece of work.
 			continue
 		}
-		if !taskKindsMeet(strings.TrimPrefix(class, prefix), kind) {
+		kept = append(kept, entry)
+	}
+	return taskGradeReader{entries: kept}
+}
+
+// reading pools every record of this kind-shaped work.
+//
+// The pooling is count-weighted rather than a plain mean, so a kind with eleven
+// settles behind it is not outvoted by one with a single settle — which is the
+// same reasoning the ledger's own step size is built on.
+func (r taskGradeReader) reading(kind string) taskGradeReading {
+	if kind == "" {
+		return taskGradeReading{}
+	}
+	prefix := string(provider.ClassTaskNode) + "/"
+	var pooled taskGradeReading
+	var weighted float64
+	for _, entry := range r.entries {
+		if !taskKindsMeet(strings.TrimPrefix(string(entry.Class), prefix), kind) {
 			continue
 		}
 		pooled.Count += entry.Count
@@ -280,9 +306,20 @@ func (g *taskGrades) reading(model, kind string) taskGradeReading {
 // this model more often than they went for it. Neither condition mentions a
 // domain, a model id or a word in a title, which is the house law: what counts
 // as mechanical is a learned fact and never a hardcoded one.
-func (g *taskGrades) saysCareful(model, kind string) bool {
-	reading := g.reading(model, kind)
+func (r taskGradeReader) saysCareful(kind string) bool {
+	reading := r.reading(kind)
 	return reading.Count >= taskGradeEvidence && reading.Rating < 0
+}
+
+// reading and saysCareful on the store itself are the one-question form, for a
+// caller with a single kind to ask about. They take a snapshot of their own,
+// which is the same read a division takes once.
+func (g *taskGrades) reading(model, kind string) taskGradeReading {
+	return g.reader(model).reading(kind)
+}
+
+func (g *taskGrades) saysCareful(model, kind string) bool {
+	return g.reader(model).saysCareful(kind)
 }
 
 // ── the kind, and when two of them are one ──────────────────────────────────
