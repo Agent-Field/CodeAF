@@ -3892,8 +3892,8 @@ func (t taskTree) releaseKeptLocked() {
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
 // side of the wall sees the calls they produce. PROGRESS is any of the three
-// halves of the job ([addedSomething]) — a SUCCESSFUL call to a hand that saves
-// a file ([savingTools], on EventToolEnd and never EventToolFailed, because an
+// halves of the job ([addedSomething]) — a SUCCESSFUL call that actually saved a
+// file ([producedAFile], on EventToolEnd and never EventToolFailed, because an
 // edit whose oldText did not match changed nothing and a node repeating it is
 // the exact spin the counter exists to catch), a step that left the worktree
 // different from how it found it ([worktreeMoved]), or a step that TAUGHT the
@@ -4279,7 +4279,11 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 						changed = append(changed, path)
 						node.noteWrote(path)
 					}
-					if savingTools[event.Tool] {
+					// AND THE LANDING SAVED SOMETHING ONLY IF THE CALL DID
+					// ([producedAFile]). The sentence three checks below is
+					// about work nobody looked at, and a landing turn that only
+					// measured a clip produced no work to look at.
+					if producedAFile(event.Tool, event.Args) {
 						savedInLanding = true
 					}
 				}
@@ -4620,10 +4624,11 @@ func (n *TaskNode) reported() bool {
 // ([worktreeMoved]) on any step where it actually left something behind.
 //
 // What is deliberately ABSENT: every hand in [savingTools] (they are counted as
-// the file they saved, one branch up), and note, forget, track, commit and
-// change_setting (a node writing its own memory or its own settings again is
-// not learning anything). bash is absent because it is BOTH, and is handled on
-// its own below.
+// the file they saved, one branch up — except on a call that saved nothing,
+// which is a reading and is admitted as one by [couldHaveTaught]), and note,
+// forget, track, commit and change_setting (a node writing its own memory or its
+// own settings again is not learning anything). bash is absent because it is
+// BOTH, and is handled on its own below.
 var knowledgeTools = map[string]bool{
 	"read":                true,
 	"read_document":       true,
@@ -4693,13 +4698,29 @@ var knowledgeTools = map[string]bool{
 // side of the wall wrote must not be able to make a later, real result look
 // like something the node had already been told.
 func taughtSomething(event Event, ledger *progressLedger) bool {
-	if event.HarnessMade {
-		return false
-	}
-	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
+	if event.HarnessMade || !couldHaveTaught(event) {
 		return false
 	}
 	return freshAnswer(event, ledger)
+}
+
+// couldHaveTaught reports whether one call is even the kind that can bring the
+// world back: a knowledge hand, a bash, or THE READING HALF OF A HAND THAT DOES
+// BOTH.
+//
+// That third clause is edit_video, and it is not a special case — it is the same
+// law as bash's one paragraph up, applied to the other hand that is both. Which
+// half a call was is [producedAFile]'s to say: a `measure` wrote nothing, so
+// what it did was tell the node how long a clip runs, whether it carries sound
+// and how big its frame is, which are the facts a cut is planned from. Without
+// this clause a node that measured its three clips before joining them was three
+// steps nearer being stopped for making no progress — the precise punishment for
+// exploring that [knowledgeTools] was widened to the whole read-only belt to end.
+func couldHaveTaught(event Event) bool {
+	if event.Tool == "bash" || knowledgeTools[event.Tool] {
+		return true
+	}
+	return savingTools[event.Tool] && !producedAFile(event.Tool, event.Args)
 }
 
 // addedSomething is the WHOLE of what resets the no-progress counter, in one
@@ -4709,7 +4730,7 @@ func taughtSomething(event Event, ledger *progressLedger) bool {
 // Three ways a step adds to the run, and the ledger's books are kept as it
 // answers:
 //
-//   - it SAVED a file ([savingTools], on a call that ended rather than failed);
+//   - it SAVED a file ([producedAFile], on a call that ended rather than failed);
 //   - it CHANGED THE WORKTREE ([worktreeMoved]), which is the backstop under
 //     every hand nobody classified;
 //   - it TAUGHT the node something ([taughtSomething] → [progressLedger.read]),
@@ -4862,13 +4883,59 @@ const aforgeDroppings = ".aforge-v3"
 // question asked twice — and reading it off one map is what stops the two
 // answers drifting apart, which is exactly what happened when the landing pass
 // spelled out `write` and `edit` by hand (design-law §ONE SOURCE OF TRUTH).
+//
+// edit_video (tools_editvideo.go) is here for the LANDING half above all, and it
+// is the one name on this list that does not always save: three of its four
+// actions write a file — a joined cut, a saved frame, a scored cut — and
+// `measure` writes nothing. So THIS MAP ANSWERS ONE OF THE TWO QUESTIONS IT USED
+// TO ANSWER. "Which verbs can save something" is the landing belt's question and
+// it is still asked here — a node ordered to land the film it spent its life
+// cutting must be handed the joining verb, which is the precise defect the
+// landing belt was rebuilt to end. "Did THIS call save something" belongs to
+// [producedAFile] and to every reader with a finished call in front of it,
+// because a measure that reported as a landing kept a standing run folder
+// forever and a measure that reported as work moving reset the counter that
+// catches spin.
 var savingTools = map[string]bool{
 	"edit":           true,
 	"write":          true,
+	"edit_video":     true,
 	"generate_image": true,
 	"generate_music": true,
 	"generate_video": true,
 	"speak":          true,
+}
+
+// producedAFile reports whether ONE call actually put something on disk, and it
+// is what every reader of a finished call asks — what a standing firing came to
+// (standing_run.go), whether the work moved (looped.go's [loopWatch.count]),
+// whether a landing turn saved anything, and which file a step changed
+// ([changedPath]).
+//
+// THE HAND'S NAME WAS NOT ENOUGH AND THIS IS WHERE THAT STOPPED BEING TRUE.
+// [savingTools] answers whether a VERB can save, which is the right question for
+// the landing belt and the wrong one here: a wordless standing firing whose only
+// act was `edit_video {"action":"measure"}` reported as landed and its run
+// folder was never reaped, and a node measuring one clip six times had every
+// measurement counted as the work moving.
+//
+// THE CONDITION IS NOT SPELLED HERE. It is [mutatingTools]', which is the one
+// place this build says which CALLS write rather than which verbs can, so the
+// guards, the revert ledger and this counter cannot come to different answers
+// about the same call (recovery.go). A saving hand nobody wrote a condition for
+// saves whenever it succeeds, which is every other name on the list.
+//
+// It reads the call's ARGUMENTS rather than its answer for [changedPath]'s
+// reason: what was asked for is in the arguments, and what came back is a
+// sentence about it.
+func producedAFile(tool, arguments string) bool {
+	if !savingTools[tool] {
+		return false
+	}
+	if writes, conditional := mutatingTools[tool]; conditional {
+		return writes(arguments)
+	}
+	return true
 }
 
 // landsLater are the saving hands whose file arrives AFTER the call returns —
@@ -4932,9 +4999,13 @@ func englishList(names []string) string {
 //
 // It reads the CALL's arguments rather than the result because that is where
 // the path is: the tools answer with a sentence about what they did, and the
-// arguments are the record of what was asked (see [Event.Args]).
+// arguments are the record of what was asked (see [Event.Args]). And it asks
+// [producedAFile] rather than the hand's name, because a call that saved
+// nothing changed no path — an edit_video `measure` that happened to carry a
+// `path` argument the action ignores would otherwise have been reported to the
+// person as a file this step wrote.
 func changedPath(event Event, dir string) (string, bool) {
-	if !savingTools[event.Tool] {
+	if !producedAFile(event.Tool, event.Args) {
 		return "", false
 	}
 	var fields struct {
