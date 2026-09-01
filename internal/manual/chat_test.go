@@ -218,6 +218,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody reading either phrase for the first time asks this.
 		{"where does my task work", "how-tasks-run"},
 		{"what does its own copy of the folder mean on the task card", "how-tasks-run"},
+		// AND WHAT HAPPENS WHEN THE TWO OF YOU WRITE THE SAME FILE. Somebody who
+		// edited a note while a folder task was running asks this in the words of
+		// the thing they are afraid of, not in the harness's (#258).
+		{"the task wrote over my own edit", "how-tasks-run"},
+		{"I changed a file while the task was running", "how-tasks-run"},
 		// Written from a real run: the forming block's spinner and count-up stood
 		// still for the whole shaping call, because nothing had started the frame
 		// clock. These are the words somebody watching that types.
