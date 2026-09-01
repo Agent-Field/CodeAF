@@ -1,14 +1,23 @@
 package lane
 
 import (
+	"go/ast"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 )
 
 // The watch is pure, so every test here states a moment rather than waiting for
 // one: the whole file runs in microseconds and none of it is about the machine
 // it ran on.
+//
+// WHAT IS BEING TESTED HERE IS THE ADAPTER. The arithmetic itself lives in
+// `internal/lane/control` and is tested against its own closed form there; this
+// file is about the translation — a choice and a belief becoming a plan, a
+// stream's totals becoming readings, and the older narrow answer the transport
+// still reads.
 
 func msIn(base time.Time, ms int) time.Time {
 	return base.Add(time.Duration(ms) * time.Millisecond)
@@ -23,227 +32,418 @@ func beliefOf(ttft, rate float64) Belief {
 	}
 }
 
-func TestTheDeadlineIsTheChoicesWhenItNamedOne(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: 1200 * time.Millisecond, Alt: "B"}, beliefOf(400, 50), start)
-	if got := watch.Deadline(); got != 1200*time.Millisecond {
-		t.Fatalf("deadline = %s, want the choice's 1.2s", got)
+// raced is what the chooser hands a request it has an opinion about: A first, B
+// behind it, with the numbers each was scored on.
+func raced() Choice {
+	return Choice{
+		Order: []string{"A", "B"},
+		Frontier: []Scored{
+			{ID: ID{Model: "m", Lane: "A"}, TTFT: 400, Rate: 50, Price: 0.002},
+			{ID: ID{Model: "m", Lane: "B"}, TTFT: 500, Rate: 50, Price: 0.002},
+		},
 	}
 }
 
-func TestADerivedDeadlineIsTheBeliefsNinetiethClampedBothWays(t *testing.T) {
-	start := time.Now()
-	for _, test := range []struct {
-		name string
-		ttft float64
-		want time.Duration
-	}{
-		{"a fast lane hedges at the floor", 400, deadlineFloor},
-		{"a middling lane hedges at its own p90", 2000, 2585 * time.Millisecond},
-		{"a slow lane hedges at the ceiling", 9000, deadlineCeiling},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			watch := NewWatch(Choice{Alt: "B"}, beliefOf(test.ttft, 50), start)
-			got := watch.Deadline()
-			if delta := got - test.want; delta > 5*time.Millisecond || delta < -5*time.Millisecond {
-				t.Fatalf("deadline = %s, want about %s", got, test.want)
+// ── ONE CONTROLLER, INSTALLED ONCE ──────────────────────────────────────────
+
+// TestTheControllerIsInstalledExactlyOnce is the seam's own law.
+//
+// A build with no controller sends every token-generating call into the bare
+// stream loop, which is the defect this wave exists to end. A build with two
+// would be a build where "when does this act" has two answers and the surface's
+// countdown expires at a moment nothing happens at.
+func TestTheControllerIsInstalledExactlyOnce(t *testing.T) {
+	if Controller() == nil {
+		t.Fatal("no controller is installed, so every call falls through to the bare stream loop")
+	}
+	fset, files := sources(t)
+	installs := 0
+	for name, file := range files {
+		if isTest(name) {
+			continue
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
+			if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "SetController" {
+				if name != "waiting.go" {
+					t.Errorf("%s installs the controller; the seam is waiting.go's", fset.Position(call.Pos()))
+				}
+				installs++
+			}
+			return true
 		})
 	}
-}
-
-func TestALaneNothingIsBelievedAboutGetsNoDerivedDeadline(t *testing.T) {
-	watch := NewWatch(Choice{Alt: "B"}, Belief{}, time.Now())
-	if got := watch.Deadline(); got != 0 {
-		t.Fatalf("deadline = %s, want none: a hedge fired on no evidence is a bill for a guess", got)
+	if installs != 1 {
+		t.Fatalf("the controller is installed %d times, want exactly once", installs)
 	}
 }
 
-func TestAFirstTokenPastTheDeadlineIsHedgedExactlyOnce(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: 1200 * time.Millisecond, Alt: "B"}, beliefOf(400, 50), start)
+// ── THE PLAN ────────────────────────────────────────────────────────────────
 
-	if verdict := watch.Silence(msIn(start, 1100)); verdict.Hedge {
-		t.Fatalf("hedged at 1.1s, before the 1.2s deadline")
+// TestThePlanIsTheRolesAndTheFrontiers: the choice says which lane and the role
+// says how long, and neither of them is allowed to say the other.
+func TestThePlanIsTheRolesAndTheFrontiers(t *testing.T) {
+	now := time.Now()
+	plan := PlanFor(raced(), beliefOf(400, 50), RoleStanding, now)
+	if plan.Lane != "A" {
+		t.Errorf("lane = %q, want the head of the order", plan.Lane)
 	}
-	verdict := watch.Silence(msIn(start, 1300))
-	if !verdict.Hedge || verdict.Reason != "first token late" {
-		t.Fatalf("verdict at 1.3s = %+v, want a hedge for a late first token", verdict)
+	if plan.Ceiling != RoleStanding.Ceiling() || plan.Floor != ActionFloor {
+		t.Errorf("bounds = %s/%s, want the role's ceiling and the action floor", plan.Ceiling, plan.Floor)
 	}
-	if again := watch.Silence(msIn(start, 1400)); again.Hedge {
-		t.Fatalf("hedged twice; a request gets one hedge and not a race")
+	if plan.Lambda != RoleStanding.Lambda() {
+		t.Errorf("λ = %g, want the role's %g", plan.Lambda, RoleStanding.Lambda())
 	}
-	if watch.PathFault() {
-		t.Fatalf("a late first token is a slow lane, not a dead path")
+	if len(plan.Alts) != 1 || plan.Alts[0].Lane != "B" {
+		t.Fatalf("alternatives = %+v, want the frontier without the head", plan.Alts)
+	}
+	if got := plan.Alts[0]; got.Rate != 50 || got.Extra != 0.002 {
+		t.Errorf("alternative = %+v, want the numbers the frontier scored it on", got)
+	}
+	// A median read as a mean would price every rescue as cheaper than it is.
+	if got := plan.Alts[0].First.Mean(); math.Abs(got-0.5) > 1e-9 {
+		t.Errorf("the alternative is expected to start in %gs, want the frontier's 0.5", got)
 	}
 }
 
-func TestNoHeartbeatAndNoByteIsAPathFaultTheLaneIsNotChargedFor(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: 2 * time.Second, Alt: "B"}, beliefOf(400, 50), start)
-
-	// Three seconds in, the deadline has passed but the dead-path bound
-	// (2 × 2s) has not, so what fires is the late first token.
-	if verdict := watch.Silence(msIn(start, 3000)); !verdict.Hedge || verdict.Reason != "first token late" {
-		t.Fatalf("verdict at 3s = %+v, want the late first token", verdict)
-	}
-
-	// And on a watch that has not spent its hedge, the same silence past the
-	// dead-path bound is the other claim entirely.
-	quiet := NewWatch(Choice{Deadline: 2 * time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	verdict := quiet.Silence(msIn(start, 4100))
-	if !verdict.Hedge || verdict.Reason != "no heartbeat" {
-		t.Fatalf("verdict at 4.1s = %+v, want a dead path", verdict)
-	}
-	if !quiet.PathFault() {
-		t.Fatalf("PathFault = false; a stream with no sign of life says nothing about the lane")
-	}
-}
-
-func TestAHeartbeatKeepsThePathAliveWhileTheLaneIsStillJudged(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: 2 * time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	for ms := 500; ms <= 4000; ms += 500 {
-		watch.Heartbeat(msIn(start, ms))
-	}
-	verdict := watch.Silence(msIn(start, 4100))
-	if !verdict.Hedge || verdict.Reason != "first token late" {
-		t.Fatalf("verdict = %+v, want the LANE blamed: the router kept saying it was alive", verdict)
-	}
-	if watch.PathFault() {
-		t.Fatalf("PathFault = true on a path that was heartbeating all along")
-	}
-}
-
-func TestOneVeryLongGapAlarmsOnItsOwn(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	watch.Token(1, 1, msIn(start, 500))
-	verdict := watch.Token(2, 2, msIn(start, 500+16_000))
-	if !verdict.Hedge || verdict.Reason != "gap" {
-		t.Fatalf("verdict after a sixteen-second gap = %+v, want a gap alarm", verdict)
-	}
-}
-
-func TestDriftAccumulatesOverGapsThatAreEachOnlySomewhatSlow(t *testing.T) {
-	start := time.Now()
-	// Fifty tokens a second is a gap of twenty milliseconds.
-	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	watch.Token(1, 1, msIn(start, 400))
-
-	// Gaps of two hundred milliseconds: ten times slower than believed, which
-	// is ln(10) − 0.5 ≈ 1.8 nats of surprise each. One is not enough on its
-	// own — a lane is allowed a bad moment — and two are.
-	moment := 400 + 200
-	if verdict := watch.Token(2, 2, msIn(start, moment)); verdict.Hedge {
-		t.Fatalf("hedged on one slow gap; a lane is allowed a bad moment")
-	}
-	moment += 200
-	if verdict := watch.Token(3, 3, msIn(start, moment)); !verdict.Hedge || verdict.Reason != "drift" {
-		t.Fatalf("verdict on the second slow gap = %+v, want a drift alarm", verdict)
-	}
-}
-
-func TestASteadyLaneNeverDrifts(t *testing.T) {
-	start := time.Now()
-	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 50), start)
-	moment := 400
-	watch.Token(1, 1, msIn(start, moment))
-	for token := 2; token <= 200; token++ {
-		moment += 20
-		if verdict := watch.Token(token, token, msIn(start, moment)); verdict.Hedge {
-			t.Fatalf("hedged at token %d on a lane writing exactly as believed", token)
+// TestEveryPlanHasACeilingEvenWithNoChoiceAtAll is the root cause of the
+// reported three-minute wait, said about the type that fixes it.
+func TestEveryPlanHasACeilingEvenWithNoChoiceAtAll(t *testing.T) {
+	for _, role := range Roles() {
+		plan := PlanFor(Choice{}, Belief{}, role, time.Now())
+		if plan.Ceiling != role.Ceiling() || plan.Ceiling <= 0 {
+			t.Errorf("role %q: a request with no opinion about where to go got a ceiling of %s", role, plan.Ceiling)
 		}
 	}
 }
 
-func TestASilenceMidStreamIsJudgedWhileItIsStillHappening(t *testing.T) {
+// TestThePredictiveSpreadIsFloored: a posterior's variance is the variance of
+// the ESTIMATE, and a controller handed it would believe a tail impossible.
+func TestThePredictiveSpreadIsFloored(t *testing.T) {
+	certain := Belief{TTFT: Posterior{X: math.Log(400), P: 1e-6}, Rate: Posterior{X: math.Log(50), P: 1e-6}}
+	first, gap := survivals(certain)
+	if first.Sigma != SpreadFloor || gap.Sigma != SpreadFloor {
+		t.Fatalf("spreads = %g and %g, want the floor of %g", first.Sigma, gap.Sigma, SpreadFloor)
+	}
+	wide := Belief{TTFT: Posterior{X: math.Log(400), P: 4}, Rate: Posterior{X: math.Log(50), P: 4}}
+	if got, _ := survivals(wide); got.Sigma != 2 {
+		t.Fatalf("a genuinely wide belief was narrowed to %g", got.Sigma)
+	}
+	if first, gap := survivals(Belief{}); first.Known() || gap.Known() {
+		t.Fatal("an empty belief invented a distribution")
+	}
+}
+
+// ── ACTING ──────────────────────────────────────────────────────────────────
+
+// TestALaneNothingIsBelievedAboutIsStillBounded is the invariant from zero
+// history: the ceiling exists whether or not a belief does.
+func TestALaneNothingIsBelievedAboutIsStillBounded(t *testing.T) {
 	start := time.Now()
-	watch := NewWatch(Choice{Deadline: time.Second, Alt: "B"}, beliefOf(400, 1000), start)
+	watch := NewWatch(raced(), Belief{}, start)
+	for ms := 0; ms <= 20_000; ms += 50 {
+		if act := watch.Quiet(msIn(start, ms)); act.Kind != control.None {
+			if want := int(RoleTalk.Ceiling() / time.Millisecond); ms != want {
+				t.Fatalf("acted at %dms, want the ceiling at %dms", ms, want)
+			}
+			return
+		}
+	}
+	t.Fatal("a lane nobody has ever measured was never acted on")
+}
+
+// TestAFirstTokenPastTheCrossingIsHedged, and the crossing is the one the
+// arithmetic names rather than a constant in this file.
+func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
+	start := time.Now()
+	choice, belief := raced(), beliefOf(400, 50)
+	plan := PlanFor(choice, belief, RoleTalk, start)
+	cost := plan.Alts[0].First.Mean() + plan.Lambda*plan.Alts[0].Extra + plan.Margin
+
+	crossing := 0
+	for ms := int(ActionFloor / time.Millisecond); ms <= 10_000; ms++ {
+		if plan.First.Remaining(float64(ms)/1000) > cost {
+			crossing = ms
+			break
+		}
+	}
+	if crossing == 0 {
+		t.Fatal("the scripted belief never crosses, so this test proves nothing")
+	}
+
+	watch := NewWatch(choice, belief, start)
+	if verdict := watch.Silence(msIn(start, crossing-10)); verdict.Hedge {
+		t.Fatalf("hedged at %dms, before the crossing at %dms", crossing-10, crossing)
+	}
+	verdict := watch.Silence(msIn(start, crossing))
+	if !verdict.Hedge || verdict.Reason != "first token late" {
+		t.Fatalf("verdict at the crossing = %+v, want a hedge for a late first token", verdict)
+	}
+	if watch.Last().Lane != "B" {
+		t.Fatalf("the rescue went to %q, want the frontier's alternative", watch.Last().Lane)
+	}
+	if watch.PathFault() {
+		t.Fatal("a late first token is a slow lane, not a dead path")
+	}
+	if !watch.Hedged() {
+		t.Fatal("Hedged = false after a hedge went out")
+	}
+}
+
+// TestARequestMayEarnMoreThanOneArm is what retired the once-only boolean: a
+// request gets as many arms as the frontier has lanes and the purse will pay
+// for, and not one hedge because a field said so.
+func TestARequestMayEarnMoreThanOneArm(t *testing.T) {
+	start := time.Now()
+	choice := raced()
+	choice.Order = append(choice.Order, "C")
+	choice.Frontier = append(choice.Frontier, Scored{ID: ID{Model: "m", Lane: "C"}, TTFT: 600, Rate: 50, Price: 0.002})
+	watch := NewWatch(choice, beliefOf(400, 50), start)
+	var arms []string
+	for ms := 0; ms <= 20_000; ms += 20 {
+		if verdict := watch.Silence(msIn(start, ms)); verdict.Hedge {
+			arms = append(arms, watch.Last().Lane)
+		}
+	}
+	if len(arms) != 2 || arms[0] != "B" || arms[1] != "C" {
+		t.Fatalf("arms went to %v, want each alternative once and in the frontier's order", arms)
+	}
+}
+
+// TestNoHeartbeatAndNoByteIsAPathFaultTheLaneIsNotChargedFor.
+func TestNoHeartbeatAndNoByteIsAPathFaultTheLaneIsNotChargedFor(t *testing.T) {
+	start := time.Now()
+	watch := NewWatch(raced(), beliefOf(400, 50), start)
+	acted := 0
+	for ms := 0; ms <= 20_000; ms += 50 {
+		if verdict := watch.Silence(msIn(start, ms)); verdict.Hedge {
+			acted = ms
+			break
+		}
+	}
+	if acted == 0 {
+		t.Fatal("a stream that said nothing at all was never acted on")
+	}
+	if acted < int(deadPathFloor/time.Millisecond) {
+		t.Skipf("the crossing at %dms is inside the dead-path floor, so there is no claim to make", acted)
+	}
+	if !watch.PathFault() {
+		t.Fatal("PathFault = false; a stream with no sign of life says nothing about the lane")
+	}
+	if got := watch.Last().Reason; got != "no heartbeat" {
+		t.Fatalf("reason = %q, want the path blamed", got)
+	}
+}
+
+// TestAHeartbeatKeepsThePathAliveWhileTheLaneIsStillJudged: the comment line is
+// proof about the PATH and about nothing else, so it clears the fault and moves
+// no clock.
+func TestAHeartbeatKeepsThePathAliveWhileTheLaneIsStillJudged(t *testing.T) {
+	start := time.Now()
+	beaten := NewWatch(raced(), beliefOf(400, 50), start)
+	bare := NewWatch(raced(), beliefOf(400, 50), start)
+	for ms := 50; ms <= 20_000; ms += 50 {
+		beaten.Heartbeat(msIn(start, ms))
+		mine, theirs := beaten.Silence(msIn(start, ms)), bare.Silence(msIn(start, ms))
+		if mine != theirs {
+			t.Fatalf("at %dms a heartbeat changed the answer: %+v against %+v", ms, mine, theirs)
+		}
+		if mine.Hedge {
+			if beaten.PathFault() {
+				t.Fatal("PathFault = true on a path that was heartbeating all along")
+			}
+			return
+		}
+	}
+	t.Fatal("a stream that only ever heartbeat was never acted on")
+}
+
+// TestAVisibleTokenStartsTheWaitAgainAndAThoughtDoesNot is the measured defect:
+// a run of reasoning is the endpoint writing where nobody can read.
+func TestAVisibleTokenStartsTheWaitAgainAndAThoughtDoesNot(t *testing.T) {
+	start := time.Now()
+	watch := NewWatch(raced(), beliefOf(400, 50), start)
+	for thought := 1; thought <= 100; thought++ {
+		watch.Token(thought, 0, msIn(start, 4*thought))
+	}
+	if watch.Phase() != control.PhaseThinking {
+		t.Fatalf("phase = %d after a hundred thoughts, want thinking", watch.Phase())
+	}
+	// A hundred thoughts bought no progress at all: the ceiling is still the
+	// one the request went out under.
+	if got := watch.DeadlineAt(); got.After(start.Add(RoleTalk.Ceiling())) {
+		t.Fatalf("the deadline moved to %s past the request; thinking stopped the clock", got.Sub(start))
+	}
+	before := watch.DeadlineAt()
+	watch.Token(101, 1, msIn(start, 500))
+	if watch.Phase() != control.PhaseWriting {
+		t.Fatalf("phase = %d after a word, want writing", watch.Phase())
+	}
+	if got := watch.DeadlineAt(); !got.After(before) {
+		t.Fatalf("a word on the screen left the deadline where the thoughts had it, at %s", before.Sub(start))
+	}
+}
+
+// TestASteadyLaneIsNeverHedged: a lane writing exactly as believed costs
+// nobody a second request.
+func TestASteadyLaneIsNeverHedged(t *testing.T) {
+	start := time.Now()
+	watch := NewWatch(raced(), beliefOf(400, 50), start)
+	moment := 400
+	watch.Token(1, 1, msIn(start, moment))
+	for token := 2; token <= 400; token++ {
+		moment += 20
+		if verdict := watch.Token(token, token, msIn(start, moment)); verdict.Hedge {
+			t.Fatalf("hedged at token %d on a lane writing exactly as believed", token)
+		}
+		if verdict := watch.Silence(msIn(start, moment+10)); verdict.Hedge {
+			t.Fatalf("hedged ten milliseconds into an ordinary gap at token %d", token)
+		}
+	}
+}
+
+// TestAStallMidAnswerIsActedOnWhileItIsStillHappening: a lane that goes quiet
+// delivers no token to notice it with, so the beat is what notices.
+func TestAStallMidAnswerIsActedOnWhileItIsStillHappening(t *testing.T) {
+	start := time.Now()
+	watch := NewWatch(raced(), beliefOf(400, 50), start)
 	watch.Token(1, 1, msIn(start, 400))
-	// A believed gap of one millisecond. The stall is judged from the silence
-	// beat rather than from the token that will eventually end it.
-	if verdict := watch.Silence(msIn(start, 410)); verdict.Hedge {
-		t.Fatalf("hedged ten milliseconds into a stall")
+	acted := 0
+	for ms := 420; ms <= 60_000; ms += 20 {
+		if verdict := watch.Silence(msIn(start, ms)); verdict.Hedge {
+			acted = ms - 400
+			break
+		}
 	}
-	verdict := watch.Silence(msIn(start, 400+60))
-	if !verdict.Hedge || verdict.Reason != "drift" {
-		t.Fatalf("verdict sixty milliseconds into the stall = %+v, want a drift alarm", verdict)
+	if acted == 0 {
+		t.Fatal("a stream that stopped writing was never acted on")
 	}
-}
-
-func TestPastTheCommitmentPointAnAlmostFinishedAnswerIsNotAbandoned(t *testing.T) {
-	start := time.Now()
-	choice := Choice{
-		Deadline: time.Second,
-		Alt:      "B",
-		Frontier: []Scored{{ID: ID{Model: "m", Lane: "B"}, TTFT: 500, Rate: 1000}},
-	}
-	watch := NewWatch(choice, beliefOf(400, 1000), start)
-	watch.SetExpectedTokens(220)
-	moment := 400
-	watch.Token(1, 1, msIn(start, moment))
-	for token := 2; token <= 200; token++ {
-		moment++
-		watch.Token(token, token, msIn(start, moment))
-	}
-	// Twenty tokens from the end, a stall that would alarm anywhere else.
-	if verdict := watch.Silence(msIn(start, moment+20_000)); verdict.Hedge {
-		t.Fatalf("abandoned an answer with twenty tokens to go: %+v", verdict)
-	}
-	if watch.Hedged() {
-		t.Fatalf("Hedged = true on a committed stream")
+	if acted > int(RoleTalk.Ceiling()/time.Millisecond) {
+		t.Fatalf("the stall ran %dms, past a ceiling of %s", acted, RoleTalk.Ceiling())
 	}
 }
 
-func TestBeforeTheCommitmentPointTheSameStallIsHedged(t *testing.T) {
+// TestTheTextOnTheScreenIsWhatBuysCommitment, which is what replaced sixty-four
+// tokens.
+//
+// The rewrite term of the inequality grows with the answer, so an arm that has
+// written a lot is left alone longer than one that has written a little — for
+// the same reason, out of the same arithmetic, and without a constant that is
+// right for one answer length and wrong for another.
+func TestTheTextOnTheScreenIsWhatBuysCommitment(t *testing.T) {
 	start := time.Now()
-	choice := Choice{
-		Deadline: time.Second,
-		Alt:      "B",
-		Frontier: []Scored{{ID: ID{Model: "m", Lane: "B"}, TTFT: 500, Rate: 1000}},
+	// An alternative believed to write slowly, so redoing the answer there is
+	// expensive in proportion to how much of it there is.
+	choice := raced()
+	choice.Frontier[1].Rate = 4
+	// A role with the patience to let the arithmetic answer. On a talk turn the
+	// ten-second ceiling gets there first, which is the invariant doing its job
+	// and not the commitment rule failing to.
+	stall := func(written int) int {
+		plan := PlanFor(choice, beliefOf(400, 50), RoleTalk, start)
+		plan.Ceiling = time.Minute
+		watch := Watching(plan)
+		moment := 400
+		for token := 1; token <= written; token++ {
+			watch.Token(token, token, msIn(start, moment))
+			moment += 20
+		}
+		for ms := moment; ms <= 120_000; ms += 20 {
+			if watch.Silence(msIn(start, ms)).Hedge {
+				return ms - (moment - 20)
+			}
+		}
+		return -1
 	}
-	watch := NewWatch(choice, beliefOf(400, 1000), start)
-	watch.SetExpectedTokens(220)
-	moment := 400
-	watch.Token(1, 1, msIn(start, moment))
-	for token := 2; token <= 30; token++ {
-		moment++
-		watch.Token(token, token, msIn(start, moment))
+	early, late := stall(5), stall(300)
+	if early < 0 || late < 0 {
+		t.Fatalf("a stall was never acted on: %dms and %dms", early, late)
 	}
-	verdict := watch.Silence(msIn(start, moment+20_000))
-	if !verdict.Hedge {
-		t.Fatalf("no hedge thirty tokens in with the answer stalled: %+v", verdict)
+	if late <= early {
+		t.Fatalf("three hundred words bought %dms of patience and five bought %dms", late, early)
 	}
 }
 
-func TestPastTheCommitmentPointAStalledStreamWithMostOfTheAnswerLeftIsStillHedged(t *testing.T) {
+// TestWithNobodyToHedgeToTheWaitIsReportedRatherThanHedged: one lane is a real
+// state and a common one, and silence is not an option.
+func TestWithNobodyToHedgeToTheWaitIsReportedRatherThanHedged(t *testing.T) {
 	start := time.Now()
-	choice := Choice{
-		Deadline: time.Second,
-		Alt:      "B",
-		Frontier: []Scored{{ID: ID{Model: "m", Lane: "B"}, TTFT: 50, Rate: 1000}},
+	only := Choice{Only: []string{"A"}, Frontier: []Scored{{ID: ID{Model: "m", Lane: "A"}, TTFT: 400, Rate: 50}}}
+	watch := NewWatch(only, beliefOf(400, 50), start)
+	if watch.Alt() != "" {
+		t.Fatalf("Alt = %q with nothing on the frontier but the head", watch.Alt())
 	}
-	// A lane believed to write one token a second, with two thousand to go.
-	watch := NewWatch(choice, beliefOf(400, 1), start)
-	watch.SetExpectedTokens(2100)
-	moment := 400
-	watch.Token(1, 1, msIn(start, moment))
-	for token := 2; token <= 100; token++ {
-		moment += 1000
-		watch.Token(token, token, msIn(start, moment))
+	reported := false
+	for ms := 0; ms <= 30_000; ms += 50 {
+		act := watch.Quiet(msIn(start, ms))
+		if act.Kind == control.Hedge {
+			t.Fatalf("hedged at %dms with no alternative named", ms)
+		}
+		reported = reported || act.Kind == control.Report
 	}
-	verdict := watch.Silence(msIn(start, moment+20_000))
-	if !verdict.Hedge {
-		t.Fatalf("stayed on a lane that would take two thousand more seconds: %+v", verdict)
+	if !reported {
+		t.Fatal("a request with nowhere to go said nothing about its own wait")
 	}
 }
 
-func TestAWatchWithNobodyToHedgeToNeverAsks(t *testing.T) {
+// TestAPinnedChoiceAsksRatherThanHedging: a person who named a machine is owed
+// that machine.
+func TestAPinnedChoiceAsksRatherThanHedging(t *testing.T) {
 	start := time.Now()
-	watch := NewWatch(Choice{Deadline: 100 * time.Millisecond}, beliefOf(400, 50), start)
-	if verdict := watch.Silence(msIn(start, 30_000)); verdict.Hedge {
-		t.Fatalf("hedged with no alternative named: %+v", verdict)
+	choice := raced()
+	choice.Only = []string{"A"}
+	plan := PlanFor(choice, beliefOf(400, 50), RoleTalk, start)
+	plan.Pinned = true
+	watch := Watching(plan)
+	for ms := 0; ms <= 30_000; ms += 50 {
+		switch act := watch.Quiet(msIn(start, ms)); act.Kind {
+		case control.None:
+		case control.Ask:
+			if act.Lane != "B" {
+				t.Fatalf("the offer named %q, want the lane the frontier did", act.Lane)
+			}
+			if !watch.Asked() || watch.Hedged() {
+				t.Fatal("a pinned lane was overridden rather than asked")
+			}
+			return
+		default:
+			t.Fatalf("a pinned lane produced %d after %dms", act.Kind, ms)
+		}
+	}
+	t.Fatal("a pinned lane that said nothing at all never raised an offer")
+}
+
+// TestTheDeadlineIsNeverInThePastAndNeverPastTheCeiling.
+func TestTheDeadlineIsNeverInThePastAndNeverPastTheCeiling(t *testing.T) {
+	start := time.Now()
+	for _, test := range []struct {
+		name   string
+		belief Belief
+	}{
+		{"nothing believed", Belief{}},
+		{"an ordinary lane", beliefOf(400, 50)},
+		{"a lane believed to take an hour", beliefOf(3_600_000, 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			watch := NewWatch(raced(), test.belief, start)
+			for ms := 0; ms <= int(RoleTalk.Ceiling()/time.Millisecond); ms += 100 {
+				now := msIn(start, ms)
+				watch.Quiet(now)
+				deadline := watch.DeadlineAt()
+				if deadline.Before(now) {
+					t.Fatalf("at %dms the deadline was %s in the past", ms, now.Sub(deadline))
+				}
+				if deadline.After(start.Add(RoleTalk.Ceiling())) {
+					t.Fatalf("at %dms the deadline was %s, past the ceiling", ms, deadline.Sub(start))
+				}
+			}
+			if got := watch.Deadline(); got <= 0 || got > RoleTalk.Ceiling() {
+				t.Fatalf("Deadline = %s, want a wait inside the ceiling", got)
+			}
+		})
 	}
 }
 

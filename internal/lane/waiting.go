@@ -196,3 +196,11 @@ func Controller() control.Factory {
 	defer controller.mu.RUnlock()
 	return controller.build
 }
+
+// THE CONTROLLER IS INSTALLED HERE AND NOWHERE ELSE. One line, in the file that
+// owns the seam, so that "which controller is this build waiting with" is a
+// question with one answer and one place to read it. A caller that built its
+// own would be a caller with its own idea of when to act, and the surface's
+// countdown and the transport's alarm would be two numbers that agree until the
+// day one of them is fixed.
+func init() { SetController(control.New) }

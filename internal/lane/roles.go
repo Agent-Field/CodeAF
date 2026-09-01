@@ -141,6 +141,27 @@ const VisiblePatience = 10 * time.Second
 // say anything, and the measured floor for that is a few hundred milliseconds.
 const ActionFloor = 700 * time.Millisecond
 
+// SpreadFloor is the smallest per-draw variability the waiting arithmetic will
+// use, in nats of log-spread.
+//
+// IT IS THE DIFFERENCE BETWEEN TWO SPREADS AND THE WHOLE OF WHY IT EXISTS. A
+// posterior's variance is the variance of the ESTIMATE — how well the median is
+// known — and it shrinks toward nothing after a few dozen observations. What a
+// wait is judged against is how variable ONE DRAW is, which never shrinks below
+// the lane's own variability. One nat is the shape the measured sheet published:
+// a p90 about three and a half times the p50 on the worst lanes. A controller
+// handed the estimate's spread instead would believe a tail impossible and would
+// never hedge the lane that has one.
+const SpreadFloor = 1.0
+
+// Hysteresis is how much better acting has to look before it is done.
+//
+// It is the m of the design's one inequality and it is a statement about people
+// rather than about machines, like the two above: a quarter of a second is
+// about the smallest difference in waiting anybody notices, so buying less than
+// that is not a rescue, it is a controller flapping at its own crossing.
+const Hysteresis = 250 * time.Millisecond
+
 // roles is the table. THERE ARE NO NUMBERS OUTSIDE IT.
 var roles = map[Role]RoleFacts{
 	RoleTalk:           {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
