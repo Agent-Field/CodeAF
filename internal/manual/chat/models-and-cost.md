@@ -1237,7 +1237,7 @@ how many requests and how many tokens in and out, what it cost, the conversation
 in, the piece of work or the standing promise it was made for, and the project directory it
 ran against.
 
-Three things are worth knowing about it:
+Four things are worth knowing about it:
 
 - **The figures are the bill, not an estimate.** Until this file existed, "what did opus cost
   me this month" could only be answered by opening every transcript on the machine, and "what
