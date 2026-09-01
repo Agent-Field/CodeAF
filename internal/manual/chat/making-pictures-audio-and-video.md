@@ -73,6 +73,10 @@ the picture is drawn under its row as a thumbnail, at most 12 rows tall (4 at
 phone width). No click, no key. That happens in this conversation and in a
 task's room alike.
 
+Pictures you attach to your own message use that same 12-row thumbnail (4 at phone
+width) under your line after it is sent. Their numbered `[#1 shot.png]` markers remain
+above them, so the picture on screen, the clickable file and `[image #1]` still agree.
+
 **Open the row** — click it, or select it with `↑`/`↓` and press `enter` — for
 the bigger look: the picture again at up to 20 rows, with one dim line under it
 giving the file's whole absolute path, its pixel size and its size on disk. That

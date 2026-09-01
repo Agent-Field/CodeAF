@@ -430,6 +430,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
+		{"do I see my own screenshot in the conversation", "keys"},
 		// The wave that made a dropped file attach: the words people use for it
 		// are "drag", "drop" and the token they then find in their own sentence.
 		{"can I drag and drop an image into the message box", "keys"},
@@ -1259,6 +1260,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I dropped a file and it said unknown command", "attaching-files"},
 		{"drag and drop shows the path as text", "attaching-files"},
 		{"why is the path of my screenshot in the message box", "attaching-files"},
+		{"my screenshot path has spaces and stays text", "attaching-files"},
 		{"my terminal types the drop instead of pasting it", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},

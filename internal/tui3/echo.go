@@ -107,7 +107,7 @@ func (a *app) echoing(token uint64) (int, bool) {
 // echoWithdrawn takes the line back off the page and reports whether it did,
 // so the caller can put the refusal where the line was.
 //
-// THE BLOCK IS TRUNCATED WHEN IT IS LAST AND EMPTIED OTHERWISE, which is
+// THE BLOCK IS TRUNCATED WHEN IT IS LAST AND EMPTIED IN PLACE OTHERWISE — and an emptied block gives up its pictures with its words, which is
 // [app.dropLive]'s rule and it is here for [app.dropLive]'s reason: removing an
 // entry from the middle would move every index after it, and the forming rows,
 // the selection and the thought marker are all held by index. A refused message
@@ -122,7 +122,8 @@ func (a *app) echoWithdrawn(token uint64) bool {
 	if at == len(a.entries)-1 {
 		a.entries = a.entries[:at]
 	} else {
-		a.entries[at].text, a.entries[at].pending, a.entries[at].stale = "", false, true
+		a.entries[at].text, a.entries[at].pictures, a.entries[at].picturesHere,
+			a.entries[at].pending, a.entries[at].stale = "", nil, false, false, true
 	}
 	// AND THE TURN NUMBER GOES BACK WITH IT. [app.submittingShown] opened a turn
 	// for a message that never reached the engine, and a counter left one ahead

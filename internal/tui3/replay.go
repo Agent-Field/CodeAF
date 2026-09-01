@@ -530,7 +530,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			// The pictures are part of what was said, so a message that was only
 			// a picture is still a message: the markers alone are the line, and
 			// only a message with neither words nor attachments is skipped.
-			line := replayUserLine(text, e.ImageRefs, a.pal)
+			line, pictures := replayUserLine(text, e.ImageRefs, a.pal)
 			if line == "" {
 				continue
 			}
@@ -538,7 +538,10 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			// does live: it is what groups a cluster and what ctrl+o folds.
 			turn++
 			turns++
-			blocks = append(blocks, entry{kind: entryUser, text: line, turn: turn})
+			blocks = append(blocks, entry{
+				kind: entryUser, text: line, turn: turn,
+				pictures: pictures, picturesHere: !a.hosted(),
+			})
 
 		case "assistant":
 			if text == "" {
@@ -605,10 +608,10 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 // It is [userLine]'s rule applied to what the journal kept — the same markers,
 // the same hue, the same separator — because a message drawn one way when it is
 // sent and another way when it is resumed is two records of one thing. The paths
-// come from the journal (session's DisplayEntry.ImageRefs); the NAME is what is
-// drawn, for the reason [chipMarkers] states: a terminal cell is not a place to
-// show a picture, and a full path is not a thing anybody reads.
-func replayUserLine(text string, refs []string, pal palette) string {
+// come from the journal (session's DisplayEntry.ImageRefs); their names stay in
+// the marker above the same thumbnail the live message draws, while a full path
+// remains a file identity rather than transcript prose.
+func replayUserLine(text string, refs []string, pal palette) (string, []string) {
 	pictures := make([]chip, 0, len(refs))
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
@@ -619,7 +622,7 @@ func replayUserLine(text string, refs []string, pal palette) string {
 			pictures = append(pictures, chip{path: ref})
 		}
 	}
-	return userLine(text, pictures, pal)
+	return userLine(text, pictures, pal), chipPaths(pictures)
 }
 
 // replayInert reports whether one entry is a tool row with NOTHING behind it:

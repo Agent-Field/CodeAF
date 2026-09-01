@@ -70,6 +70,37 @@ func TestAScreenshotTypedInByTheTerminalBecomesAChip(t *testing.T) {
 	}
 }
 
+// P2: a raw-space picture typed as a burst settles onto the tray.
+func TestARawSpacePictureTypedByTheTerminalBecomesAChip(t *testing.T) {
+	name := "Screen Shot 2026-08-21 at 5.21.40 PM.png"
+	a, dir, tick := dropLab(t, map[string]int{name: 12})
+	typeBurst(a, filepath.Join(dir, name))
+	settleDrop(t, a, tick)
+
+	if got := a.input.String(); got != "[image #1] " {
+		t.Fatalf("the draft is %q, want the raw path replaced by its token", got)
+	}
+	if want := []string{name}; !equalStrings(chipNames(a), want) {
+		t.Fatalf("chips are %v, want %v", chipNames(a), want)
+	}
+}
+
+// P2: enter inside the quiet window sends a raw-space picture without a command refusal.
+func TestARawSpacePictureTypedAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
+	name := "Screen Shot.png"
+	a, dir, _ := dropLab(t, map[string]int{name: 12})
+	typeBurst(a, filepath.Join(dir, name))
+	drive(t, a, key("enter"))
+
+	got := plain(frame(a))
+	if strings.Contains(got, "unknown command") {
+		t.Fatalf("a raw-space picture was refused as a command:\n%s", got)
+	}
+	if !strings.Contains(got, "[#1 "+name+"]") {
+		t.Fatalf("the sent line does not carry the picture marker:\n%s", got)
+	}
+}
+
 // THE OWNER'S SECOND REPORT, and the sentence it must never say again.
 func TestADropTypedInAndEnteredIsNeverAnUnknownCommand(t *testing.T) {
 	a, dir, _ := dropLab(t, map[string]int{"server.log": 12})
@@ -109,6 +140,25 @@ func TestTheEnterDoorCatchesADropTheFoldNeverSaw(t *testing.T) {
 	}
 }
 
+func TestAnOversizeDroppedPictureIsNotAnUnknownCommand(t *testing.T) {
+	name := "huge picture.png"
+	a, dir, _ := dropLab(t, map[string]int{name: maxAttachBytes + 1})
+	path := filepath.Join(dir, name)
+	typeBurst(a, path)
+	drive(t, a, key("enter"))
+
+	got := plain(frame(a))
+	if strings.Contains(got, "unknown command") {
+		t.Fatalf("an oversize picture was routed as a slash command:\n%s", got)
+	}
+	if !strings.Contains(got, name+" is over the 10MB image limit") {
+		t.Fatalf("the attachment refusal was lost:\n%s", got)
+	}
+	if draft := a.input.String(); draft != path {
+		t.Fatalf("the refusal left %q in the box, want %q", draft, path)
+	}
+}
+
 // AND A COMMAND THAT NAMES NOTHING ON THE DISK REFUSES EXACTLY AS IT DID.
 func TestAnUnknownCommandThatNamesNothingStillRefuses(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
@@ -145,6 +195,43 @@ func TestEveryShapeOfATypedDropLandsOnTheTray(t *testing.T) {
 			files: map[string]int{"my report.log": 8},
 			typed: func(dir string) string { return `"` + filepath.Join(dir, "my report.log") + `"` },
 			chips: []string{"my report.log"},
+		},
+		{
+			name:  "raw spaces",
+			files: map[string]int{"my report.log": 8},
+			typed: func(dir string) string { return filepath.Join(dir, "my report.log") },
+			chips: []string{"my report.log"},
+		},
+		{
+			name:  "a macOS narrow no-break space",
+			files: map[string]int{"Screenshot 5.21.40\u202fPM.png": 8},
+			typed: func(dir string) string {
+				return escapeSpaces(filepath.Join(dir, "Screenshot 5.21.40\u202fPM.png"))
+			},
+			chips: []string{"Screenshot 5.21.40\u202fPM.png"},
+			draft: "[image #1] ",
+		},
+		{
+			name:  "a kitty bare percent path",
+			files: map[string]int{"my report.log": 8},
+			typed: func(dir string) string {
+				return strings.ReplaceAll(filepath.Join(dir, "my report.log"), " ", "%20")
+			},
+			chips: []string{"my report.log"},
+		},
+		{
+			name:  "a VTE path with a newline before its quote",
+			files: map[string]int{"my report.log": 8},
+			typed: func(dir string) string { return "'" + filepath.Join(dir, "my report.log") + "\n'" },
+			chips: []string{"my report.log"},
+		},
+		{
+			name:  "a VTE apostrophe spelling",
+			files: map[string]int{"owner's report.log": 8},
+			typed: func(dir string) string {
+				return "'" + strings.ReplaceAll(filepath.Join(dir, "owner's report.log"), "'", `'\''`) + "'"
+			},
+			chips: []string{"owner's report.log"},
 		},
 		{
 			name:  "a file URL",
@@ -282,7 +369,7 @@ func TestARunThatNamesNothingStaysTheTextItWas(t *testing.T) {
 // sentence rather than "unknown command".
 func TestAFolderTypedInIsSilentUntilEnter(t *testing.T) {
 	a, dir, tick := dropLab(t, nil)
-	inner := filepath.Join(dir, "logs")
+	inner := filepath.Join(dir, "raw space logs")
 	if err := os.MkdirAll(inner, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +382,7 @@ func TestAFolderTypedInIsSilentUntilEnter(t *testing.T) {
 		t.Fatalf("the draft is %q, want the folder's path still typed in it", got)
 	}
 	drive(t, a, key("enter"))
-	if got := plain(frame(a)); !strings.Contains(got, "logs is a folder · attach a file") {
+	if got := plain(frame(a)); strings.Count(got, "raw space logs is a folder · attach a file") != 1 {
 		t.Fatalf("a dropped folder was not answered:\n%s", got)
 	}
 }
@@ -398,7 +485,7 @@ func TestASettledBurstThatNamesNothingBuildsNoFrame(t *testing.T) {
 	}
 }
 
-// AND THE DISK IS ASKED ONCE PER WORD AND NEVER PER CHARACTER, even when the
+// AND THE DISK IS ASKED ONCE PER CANDIDATE IN AT MOST FOUR READINGS, NEVER PER CHARACTER, even when the
 // burst holds several files.
 func TestASettledBurstAsksTheDiskOncePerWordItHolds(t *testing.T) {
 	a, dir, tick := dropLab(t, map[string]int{"one.log": 8, "two.log": 8})
@@ -409,6 +496,37 @@ func TestASettledBurstAsksTheDiskOncePerWordItHolds(t *testing.T) {
 	}
 	if a.drop.watched < 20 {
 		t.Fatalf("the fold saw %d characters, want the whole burst", a.drop.watched)
+	}
+}
+
+// A SENTENCE THAT BEGINS WITH A REAL PATH PAYS ONE BOUNDED RESOLVE PER QUIET
+// WINDOW. Raw-space filenames make that shape indistinguishable from a drop at
+// the string gate, so the admitted cost is three candidate stats, never one per
+// character, and no conversion or frame when no complete reading exists.
+func TestAPathFirstSentencePaysOneBoundedResolvePerQuietWindow(t *testing.T) {
+	a, dir, tick := dropLab(t, map[string]int{"server.log": 8})
+	path := filepath.Join(dir, "server.log")
+	first := path + " is full of these errors"
+	typeBurst(a, first)
+	if a.drop.armed != 1 || a.drop.looked != 0 {
+		t.Fatalf("the arriving sentence armed %d wakeups and made %d looks, want 1 and 0", a.drop.armed, a.drop.looked)
+	}
+	settleDrop(t, a, tick)
+	if a.drop.armed != 1 || a.drop.looked != 3 || a.drop.took != 0 {
+		t.Fatalf("the first quiet window left armed=%d looked=%d took=%d, want 1, 3, 0",
+			a.drop.armed, a.drop.looked, a.drop.took)
+	}
+
+	typeBurst(a, " again")
+	if a.drop.armed != 2 {
+		t.Fatalf("the next typing pause armed %d wakeups, want two total", a.drop.armed)
+	}
+	settleDrop(t, a, tick)
+	if a.drop.looked != 6 || a.drop.took != 0 {
+		t.Fatalf("two quiet windows made %d looks and took %d drops, want 6 and 0", a.drop.looked, a.drop.took)
+	}
+	if got, want := a.input.String(), first+" again"; got != want {
+		t.Fatalf("the sentence became %q, want %q", got, want)
 	}
 }
 
@@ -427,6 +545,9 @@ func TestWhatALineHasToLookLikeBeforeTheDiskIsAsked(t *testing.T) {
 		{"~/Desktop/shot.png", true},
 		{"file:///var/folders/x/shot.png", true},
 		{"/a/one.log /a/two.log", true},
+		{"/var/folders/x/Screen Shot.png", true},
+		{"/var/folders/x/Screen Shot 5.21.40\u202fPM.png", true},
+		{"/var/log/syslog is full of these errors", true},
 		{"/help", false},
 		{"/model", false},
 		{"/export ~/chat.md", false},
@@ -436,6 +557,7 @@ func TestWhatALineHasToLookLikeBeforeTheDiskIsAsked(t *testing.T) {
 		{"~/", false},
 		{"file://", false},
 		{"look at /a/b.png", false},
+		{"/notes.md", false},
 		{"", false},
 	} {
 		if got := droppedPathShape(tc.line); got != tc.want {

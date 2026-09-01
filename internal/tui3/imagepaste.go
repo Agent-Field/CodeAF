@@ -10,7 +10,7 @@ import (
 	"unicode"
 )
 
-// DRAGGING A PICTURE IN IS A PICTURE, NOT A SENTENCE.
+// DRAGGING A FILE IN IS A FILE, NOT A SENTENCE.
 //
 // A terminal has no idea what an image is. Drop a screenshot on iTerm2, Ghostty
 // or Terminal.app and what arrives is a BRACKETED PASTE of the file's path —
@@ -25,11 +25,12 @@ import (
 // the string was worth opening. A screenshot path with four spaces in it usually
 // did not survive the guess at all.
 //
-// So a paste that is NOTHING BUT PICTURES is read as pictures:
+// So a paste that is NOTHING BUT PATHS TO REAL FILES is read as attachments:
 //
-//   - each file goes on the attachment tray, where /image and the @ completion
-//     already put them (attach.go), so it travels as bytes;
-//   - and the draft gets `[image #1]` where the path would have been.
+//   - a picture goes on the tray and leaves `[image #1]` in the draft, where
+//     /image and the @ completion already put them (attach.go);
+//   - an ordinary file goes on the same tray without putting its local path in
+//     the sentence, so a hosted send can carry its bytes.
 //
 // The token is the point. It is what the person sees, edits around and can say
 // out loud — "what font is image #1", "compare image #1 with image #2" — and it
@@ -39,11 +40,12 @@ import (
 // message are ONE number, kept in agreement by [app.forgetToken] whenever a chip
 // comes off.
 //
-// IT IS ALL OR NOTHING. A paste substitutes only when every word in it resolves
-// to a picture on this machine; anything else — a sentence that mentions a png,
+// IT IS ALL OR NOTHING. A paste substitutes only when one complete reading of
+// it resolves on this machine; anything else — a sentence that mentions a png,
 // a diff, a stack trace — is inserted as the text it plainly is. That is what
 // keeps this out of the way of the paste the surface sees a thousand times more
-// often.
+// often. The several readings below are terminal spellings of the same gesture,
+// not several ideas of what a file is.
 
 // imageTokenHead is the token's opening, spelled once. It is also the cheap
 // reject that decides whether a draft is worth rewriting at all.
@@ -95,57 +97,38 @@ func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 	if strings.HasPrefix(strings.TrimSpace(box.String()), "/") {
 		return false
 	}
-	words := pastedWords(text)
-	if len(words) == 0 {
-		return false
-	}
-	paths := make([]string, len(words))
-	found := make([]os.FileInfo, len(words))
-	missing, first := 0, ""
-	for i, word := range words {
-		paths[i] = a.resolvePath(pastedPath(word))
-		info, err := os.Stat(paths[i])
-		if err != nil {
-			missing++
-			if first == "" {
-				first = filepath.Base(paths[i])
-			}
-			continue
-		}
-		found[i] = info
-	}
-	// A DROP FROM ANOTHER MACHINE IS SAID OUT LOUD. iTerm2 → ssh → tmux hands a
-	// TUI running on the Linux box a path that means something on the Mac, and
-	// this door used to answer that by silently inserting it — a person watching
-	// their screenshot turn into text with nothing on the screen to explain it.
-	// The sentence is owed only where the paste was PLAINLY a drop
-	// ([droppedPathShape]: every word an absolute path with a separator in it),
-	// so a sentence that merely mentions a file is inserted in silence as before.
-	if missing > 0 {
-		if droppedPathShape(text) {
-			a.trayNote(notOnThisMachine(first, missing))
+	hits, _ := a.pasteResolve(text, false)
+	if hits == nil {
+		// A DROP FROM ANOTHER MACHINE IS SAID OUT LOUD. The richer resolver above
+		// admits raw spaces and terminal escapes; the literal reading is retained
+		// here only to name a missing drop in the same voice the current surface
+		// uses for home, a conversation, and an errand pane.
+		words := pastedWords(text)
+		if len(words) > 0 && droppedPathShape(text) {
+			first := filepath.Base(a.resolvePath(pastedPath(words[0])))
+			a.trayNote(notOnThisMachine(first, len(words)))
 		}
 		return false
 	}
-	for i, info := range found {
+	for _, hit := range hits {
+		candidate, info := hit.path, hit.info
 		if info.IsDir() {
-			a.trayNote(filepath.Base(paths[i]) + " is a folder · attach a file")
+			a.trayNote(filepath.Base(candidate) + " is a folder · attach a file")
 			return true
 		}
-		if isImagePath(paths[i]) {
+		if isImagePath(candidate) {
 			if info.Size() > maxAttachBytes {
-				a.trayNote(oversizeAttachment(chip{path: paths[i]}).Error())
+				a.trayNote(oversizeAttachment(chip{path: candidate}).Error())
 				return false
 			}
-			continue
-		}
-		if info.Size() > maxAttachedFileBytes {
-			a.trayNote(oversizeFile(filepath.Base(paths[i]), info.Size()))
+		} else if a.hosted() && info.Size() > maxAttachedFileBytes {
+			a.trayNote(oversizeFile(filepath.Base(candidate), info.Size()))
 			return false
 		}
 	}
-	marks := make([]string, 0, len(paths))
-	for _, candidate := range paths {
+	marks := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		candidate := hit.path
 		if isImagePath(candidate) {
 			attachChipTo(chips, chip{path: candidate})
 			marks = append(marks, imageToken(chipNumberIn(*chips, candidate)))
@@ -276,7 +259,7 @@ func chipNumberIn(chips []chip, path string) int {
 }
 
 // pastedWords splits a paste the way the terminal that wrote it meant it to be
-// split: on whitespace, EXCEPT the whitespace a drag-and-drop escaped or quoted.
+// split: on ASCII IFS, EXCEPT the separators a drag-and-drop escaped or quoted.
 //
 // This is the whole reason a screenshot's path needs parsing at all. Every
 // terminal that implements the drop writes `Screenshot\ 2026-08-21\ at\ 5.png`
@@ -305,7 +288,10 @@ func pastedWords(text string) []string {
 			// escaping was written for would do with it.
 			i++
 			word.WriteRune(runes[i])
-		case unicode.IsSpace(r):
+		case asciiPasteSpace(r):
+			// A TERMINAL ESCAPES WHAT THE SHELL WOULD SPLIT ON AND NOTHING ELSE.
+			// In particular, the narrow no-break space in a macOS screenshot name
+			// arrives literally and belongs to that name rather than between words.
 			if word.Len() > 0 {
 				out = append(out, word.String())
 				word.Reset()
@@ -318,6 +304,133 @@ func pastedWords(text string) []string {
 		out = append(out, word.String())
 	}
 	return out
+}
+
+// asciiPasteSpaces is the shell whitespace a terminal escapes in a dropped
+// path, named once so the splitter and the literal readings cannot drift.
+const asciiPasteSpaces = " \t\n\r\v\f"
+
+func asciiPasteSpace(r rune) bool {
+	return strings.ContainsRune(asciiPasteSpaces, r)
+}
+
+// pasteReadings returns the terminal spellings one drop may mean, most literal
+// first. The alternatives are admitted only for a path-shaped first token and
+// only where the literal split left evidence that it may not be the whole
+// story, so prose never grows a more permissive reading around a path it names.
+func pasteReadings(text string) [][]string {
+	words := pastedWords(text)
+	if len(words) == 0 {
+		return nil
+	}
+	readings := make([][]string, 0, 4)
+	readings = appendReading(readings, words)
+	if !droppedWordShape(words[0]) ||
+		(len(words) == 1 && !strings.ContainsAny(text, "\n%")) {
+		return readings
+	}
+
+	lines := strings.Split(text, "\n")
+	lineReading := make([]string, 0, len(lines))
+	for _, line := range lines {
+		candidate := literalPastePath(line)
+		if candidate == "" {
+			lineReading = nil
+			break
+		}
+		lineReading = append(lineReading, candidate)
+	}
+	readings = appendReading(readings, lineReading)
+	readings = appendReading(readings, []string{literalPastePath(text)})
+
+	decoded := append([]string(nil), words...)
+	changed := false
+	for i, word := range decoded {
+		if !strings.Contains(word, "%") {
+			continue
+		}
+		if path, err := url.PathUnescape(word); err == nil {
+			decoded[i] = path
+			changed = changed || path != word
+		}
+	}
+	if changed {
+		readings = appendReading(readings, decoded)
+	}
+	return readings
+}
+
+// literalPastePath removes exactly one balanced quote pair because a filename
+// may itself contain quotes, then removes the shell escaping from its spelling.
+func literalPastePath(text string) string {
+	text = strings.Trim(text, asciiPasteSpaces)
+	if len(text) >= 2 && (text[0] == '\'' || text[0] == '"') && text[len(text)-1] == text[0] {
+		text = text[1 : len(text)-1]
+	}
+	var out strings.Builder
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '\\' && i+1 < len(runes) {
+			i++
+		}
+		out.WriteRune(runes[i])
+	}
+	return strings.Trim(out.String(), asciiPasteSpaces)
+}
+
+// appendReading rejects an empty reading and deduplicates equivalent spellings
+// so one path is never stat'ed twice merely because a line is also the whole paste.
+func appendReading(readings [][]string, reading []string) [][]string {
+	if len(reading) == 0 || (len(reading) == 1 && reading[0] == "") {
+		return readings
+	}
+	for _, held := range readings {
+		if sameReading(held, reading) {
+			return readings
+		}
+	}
+	return append(readings, reading)
+}
+
+func sameReading(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type pasteHit struct {
+	path string
+	info os.FileInfo
+}
+
+// pasteResolve walks the admitted readings until every candidate in one exists.
+// It reports the stats it performed without owning the keystroke road's count;
+// that counter belongs to the two callers that promise it to the performance
+// tests. regularOnly is the quiet fold's stricter certainty about real files.
+func (a *app) pasteResolve(text string, regularOnly bool) (hits []pasteHit, looked int) {
+	for _, reading := range pasteReadings(text) {
+		resolved := make([]pasteHit, 0, len(reading))
+		for _, word := range reading {
+			candidate := a.resolvePath(pastedPath(word))
+			info, err := os.Stat(candidate)
+			looked++
+			if err != nil || (regularOnly && !info.Mode().IsRegular()) {
+				resolved = nil
+				break
+			}
+			resolved = append(resolved, pasteHit{path: candidate, info: info})
+		}
+		if resolved != nil {
+			return resolved, looked
+		}
+	}
+	return nil, looked
 }
 
 // pastedPath turns one word of a paste into the path it means. A `file://` URL

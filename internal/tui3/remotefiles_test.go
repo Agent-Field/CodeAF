@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── the fakes ───────────────────────────────────────────────────────────────
@@ -518,6 +520,7 @@ func TestAPictureThatCannotCrossNamesTheMachineHoldingIt(t *testing.T) {
 }
 
 func TestAReplayedHostedPictureStartsItsFetchAtInit(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
 	a, wire, _ := hostedFixture(t)
 	wire.farFile("/srv/app/out/far.png", "image/png", "picture bytes", 1700)
 	a.entries = []entry{{kind: entryTool, tool: "view_image", status: toolOK,
@@ -529,6 +532,245 @@ func TestAReplayedHostedPictureStartsItsFetchAtInit(t *testing.T) {
 	msg, ok := answer.(remotePrefetchedMsg)
 	if !ok || !msg.ok || !msg.required {
 		t.Fatalf("the replay fetch answered %#v", msg)
+	}
+}
+
+// A REPLAY PREFETCH SPENDS ITS THREE SLOTS FROM THE LIVE EDGE. Old user
+// attachments may share the budget, but they must not crowd a later generated
+// picture out before the conversation opens.
+func TestReplayPrefetchSpendsItsBudgetAtTheLiveEdge(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	users := []string{"/srv/app/in/one.png", "/srv/app/in/two.png", "/srv/app/in/three.png"}
+	generated := "/srv/app/out/latest.png"
+	for _, target := range append(append([]string(nil), users...), generated) {
+		wire.farFile(target, "image/png", "picture bytes", 1700)
+	}
+	a.entries = []entry{
+		{kind: entryUser, pictures: []string{users[0]}},
+		{kind: entryUser, pictures: []string{users[1]}},
+		{kind: entryUser, pictures: []string{users[2]}},
+		{kind: entryTool, tool: "view_image", status: toolOK,
+			detail: toolDetail{Args: `{"path":"/srv/app/out/latest.png"}`}},
+	}
+	batch, ok := run(a.prefetchReplayedPictures()).(tea.BatchMsg)
+	if !ok || len(batch) != prefetchAtOnce {
+		t.Fatalf("the replay started %#v, want a batch of %d", batch, prefetchAtOnce)
+	}
+	for _, cmd := range batch {
+		cmd()
+	}
+	fetched := wire.fetched()
+	if !slices.Contains(fetched, generated) {
+		t.Fatalf("the live-edge generated picture was crowded out: %v", fetched)
+	}
+}
+
+// The three-slot limit is a concurrency cap, not a replay cutoff. Every older
+// picture already has a row waiting for it, so each completion starts the next
+// transfer until the visible journal has been mirrored.
+func TestReplayPrefetchContinuesPastTheFirstThreePictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	for i := 0; i < prefetchAtOnce+2; i++ {
+		target := fmt.Sprintf("/srv/app/in/picture-%d.png", i)
+		wire.farFile(target, "image/png", "picture bytes", int64(i+1))
+		a.entries = append(a.entries, entry{
+			kind: entryUser, pictures: []string{target}, picturesHere: false,
+		})
+	}
+
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+	if fetched := wire.fetched(); len(fetched) != prefetchAtOnce+2 {
+		t.Fatalf("replay fetched %d pictures and left older rows blank: %v", len(fetched), fetched)
+	}
+	if len(a.rfiles.replay) != 0 || len(a.rfiles.prefetching) != 0 {
+		t.Fatalf("replay did not drain: queued=%d active=%d", len(a.rfiles.replay), len(a.rfiles.prefetching))
+	}
+}
+
+func drainReplayPrefetches(first tea.Cmd, a *app) {
+	commands := []tea.Cmd{first}
+	for len(commands) > 0 {
+		cmd := commands[0]
+		commands = commands[1:]
+		if cmd == nil {
+			continue
+		}
+		switch msg := cmd().(type) {
+		case tea.BatchMsg:
+			commands = append(commands, msg...)
+		case remotePrefetchedMsg:
+			commands = append(commands, a.remotePrefetched(msg))
+		}
+	}
+}
+
+// A person's accepted picture may be larger than the two-megabyte heuristic
+// for speculative model output. Replay follows the actual ten-megabyte image
+// contract so a valid attachment does not become a permanent blank row.
+func TestReplayPrefetchUsesTheImageLimitForUserPictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	target := "/srv/app/in/large.png"
+	body := strings.Repeat("x", prefetchMax+1)
+	wire.farFile(target, "image/png", body, 1700)
+	a.entries = []entry{{kind: entryUser, pictures: []string{target}, picturesHere: false}}
+
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+	if fetched := wire.fetched(); len(fetched) != 1 || fetched[0] != target {
+		t.Fatalf("a valid replayed image over the speculation heuristic stayed blank: %v", fetched)
+	}
+}
+
+// Task-room journals load after the conversation's Init and keep their own row
+// cache. They therefore need both a fetch trigger and a redraw when it lands.
+func TestAHostedTaskRoomPrefetchesAndRestylesItsPictures(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	target := "/srv/app/in/room.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.room = &taskRoom{entries: []entry{{
+		kind: entryUser, pictures: []string{target}, picturesHere: false,
+	}}}
+
+	cmd := a.prefetchRoomPictures()
+	answer := run(cmd)
+	if batch, ok := answer.(tea.BatchMsg); ok && len(batch) == 1 {
+		answer = run(batch[0])
+	}
+	msg := answer.(remotePrefetchedMsg)
+	a.room.entries[0].stale = false
+	a.room.dirty = false
+	a.remotePrefetched(msg)
+	if !a.room.entries[0].stale || !a.room.dirty {
+		t.Fatal("the mirrored task-room picture did not invalidate the room row cache")
+	}
+}
+
+// A marker shows a basename but opens the full journal identity. Resolving the
+// visible name against the workspace root would point at a different file.
+func TestAHostedPictureMarkerKeepsItsFullRemotePath(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, door := hostedFixture(t)
+	target := "/srv/app/in/nested/chart.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.entries = []entry{{kind: entryUser, text: userLine("look", []chip{{path: target}}, a.pal),
+		pictures: []string{target}, picturesHere: false}}
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+
+	rows := userEntryRows(t, a, 80)
+	if !strings.Contains(strings.Join(rows, "\n"), "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("the replay marker is not a door:\n%s", strings.Join(rows, "\n"))
+	}
+	if len(door.minted) != 1 || door.minted[0] != target {
+		t.Fatalf("the basename marker opened %v, want the full journal path", door.minted)
+	}
+}
+
+// A long marker may wrap through the private mask one fragment at a time. No
+// mask rune reaches the terminal, and every fragment keeps the one exact door.
+func TestAWrappedHostedPictureMarkerRestoresEveryFragment(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, door := hostedFixture(t)
+	target := "/srv/app/in/nested/a-very-long-chart-name.png"
+	wire.farFile(target, "image/png", "picture bytes", 1700)
+	a.entries = []entry{{kind: entryUser, text: userLine("look", []chip{{path: target}}, a.pal),
+		pictures: []string{target}, picturesHere: false}}
+	drainReplayPrefetches(a.prefetchReplayedPictures(), a)
+
+	body := strings.Join(userEntryRows(t, a, 12), "\n")
+	for _, r := range body {
+		if r >= 0xE000 && r <= 0xF8FF {
+			t.Fatalf("a wrapped marker leaked its private mask: %q", body)
+		}
+	}
+	if !strings.Contains(body, "\x1b]8;;http://127.0.0.1:9999/f/1") {
+		t.Fatalf("the wrapped marker fragments are not doors:\n%s", body)
+	}
+	if len(door.minted) != 1 || door.minted[0] != target {
+		t.Fatalf("the wrapped marker opened %v, want the full journal path", door.minted)
+	}
+}
+
+// Q10: a live hosted send records the person's local path and reads it instead
+// of the mirror. This drives the attachment and enter doors that set the flag.
+func TestALiveHostedUserPictureDrawsFromTheLocalDisk(t *testing.T) {
+	a, _, dir := attachLab(t, nil)
+	a.host, a.localRoot = "devbox", dir
+	a.rfiles = newRemoteFilesOver("devbox", newFakeWire())
+	a.pal = newPalette(tokens.TrueColor, false)
+	path := writePicture(t, dir, "local.png", wideTestPicture())
+	a.attach(path)
+	typeLine(t, a, "look")
+	found := false
+	for _, e := range a.entries {
+		if e.kind == entryUser {
+			found = true
+			if !e.picturesHere || len(e.pictures) != 1 || e.pictures[0] != path {
+				t.Fatalf("the live send recorded the wrong disk: %+v", e)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the live send left no user entry")
+	}
+	if rows := userEntryRows(t, a, 80); paintedRows(rows) == 0 {
+		t.Fatal("the live hosted attachment was sent through the empty mirror")
+	}
+}
+
+// Q10: a replayed hosted user picture fetches optionally and appears only after the mirror holds it.
+func TestAReplayedHostedUserPictureFetchesSilentlyIntoTheMirror(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	a, wire, _ := hostedFixture(t)
+	a.pal = newPalette(tokens.TrueColor, false)
+	local := writePicture(t, t.TempDir(), "far.png", tinyPicture())
+	data, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	far := "/srv/app/out/far.png"
+	wire.farFile(far, "image/png", string(data), 1700)
+	a.entries = []entry{{kind: entryUser, text: "look [#1 far.png]",
+		pictures: []string{far}, picturesHere: false}}
+	if rows := userEntryRows(t, a, 80); paintedRows(rows) != 0 {
+		t.Fatal("the replay drew before the mirror held the file")
+	}
+	answer := run(a.prefetchReplayedPictures())
+	if batch, ok := answer.(tea.BatchMsg); ok && len(batch) == 1 {
+		answer = batch[0]()
+	}
+	msg, ok := answer.(remotePrefetchedMsg)
+	if !ok || !msg.ok || msg.required {
+		t.Fatalf("the optional replay fetch answered %#v", answer)
+	}
+	before := len(a.entries)
+	a.remotePrefetched(msg)
+	if len(a.entries) != before {
+		t.Fatal("the user-picture prefetch wrote a note")
+	}
+	if rows := userEntryRows(t, a, 80); paintedRows(rows) == 0 {
+		t.Fatal("the replay did not redraw after the mirror received the file")
+	}
+
+	missing := "/srv/app/out/missing.png"
+	wire.farFile(missing, "image/png", string(data), 1800)
+	wire.fetchErr = errors.New("engine: missing.png moved")
+	a.entries = []entry{{kind: entryUser, text: "look [#1 missing.png]",
+		pictures: []string{missing}, picturesHere: false}}
+	answer = run(a.prefetchReplayedPictures())
+	if batch, ok := answer.(tea.BatchMsg); ok && len(batch) == 1 {
+		answer = batch[0]()
+	}
+	failed, ok := answer.(remotePrefetchedMsg)
+	if !ok || failed.ok || failed.required || failed.err == nil {
+		t.Fatalf("the optional failed fetch answered %#v", answer)
+	}
+	before = len(a.entries)
+	a.remotePrefetched(failed)
+	if len(a.entries) != before {
+		t.Fatal("a failed user-picture prefetch wrote a note")
 	}
 }
 

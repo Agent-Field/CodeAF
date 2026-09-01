@@ -92,14 +92,14 @@ const (
 	// a frame cheap rather than to save memory; past this many it is dropped
 	// whole, because an eviction order is more machinery than the problem has.
 	//
-	// THE NUMBER IS SIZED AGAINST ONE FRAME'S WORKING SET, and that is the only
-	// property it needs. Every visible picture row renders on every paint
-	// ([app.pictureThumb]), so a cache smaller than what one frame asks for would
-	// be wiped mid-frame and re-decoded on the next one, ten times a second,
-	// forever — the one failure mode a cache can have that is worse than no cache
-	// at all. A frame is at most a hundred-odd rows and a thumbnail costs two of
-	// them at the very least, which puts the ceiling on what a single paint can
-	// ask for far under this; the slack above it is what survives a scroll.
+	// THE NUMBER IS SIZED AGAINST ONE FRAME'S UNMEMOIZED WORKING SET. Every visible
+	// tool picture row renders on every paint ([app.pictureThumb]), so a cache
+	// smaller than what one frame asks for would be wiped and decoded again ten
+	// times a second. User thumbnails share this cache but settle behind the
+	// transcript row memo; only a hosted-file restyle asks for that whole
+	// transcript population again. More than this many hosted pictures can make
+	// that uncommon restyle decode them again, which is the accepted trade for not
+	// adding visible-window or eviction machinery to the transcript renderer.
 	pictureCacheMax = 64
 )
 
@@ -137,11 +137,22 @@ func (a *app) drawPicture(e *entry, width, maxRows int) (string, imagePreview, b
 	if !found {
 		return "", imagePreview{}, false
 	}
-	preview, drawn := a.picture(path, width, maxRows)
+	preview, drawn := a.picture(path, false, width, maxRows)
 	if !drawn {
 		return "", imagePreview{}, false
 	}
 	return path, preview, true
+}
+
+// pictureRowsFor is the path-taking door for a picture the person attached.
+// Unlike [app.drawPicture], its caller already knows both the path and which
+// machine owns it; unlike an expansion it adds no path line or other chrome.
+func (a *app) pictureRowsFor(path string, here bool, cols, maxRows int) ([]string, bool) {
+	preview, drawn := a.picture(path, here, cols, maxRows)
+	if !drawn {
+		return nil, false
+	}
+	return preview.rows, true
 }
 
 // pictureThumb is THE PICTURE UNDER A ROW NOBODY OPENED — the same renderer, a
@@ -189,31 +200,16 @@ func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
 // the same reason the column count is: the thumbnail under a row and the bigger
 // look inside it are two renderings of one file, and one must never be served
 // from the other's slot.
-func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
-	readPath := path
-	if a.rfiles != nil {
-		target := a.remoteTarget(path)
-		if target == "" {
-			return imagePreview{}, false
-		}
-		blob, known := a.rfiles.ref(target)
-		if !known {
-			return imagePreview{}, false
-		}
-		store, err := a.rfiles.blobStore()
-		if err != nil {
-			return imagePreview{}, false
-		}
-		readPath, err = store.Path(blob.ref)
-		if err != nil {
-			return imagePreview{}, false
-		}
+func (a *app) picture(path string, here bool, cols, maxRows int) (imagePreview, bool) {
+	readPath, found := a.readPathFor(path, here)
+	if !found {
+		return imagePreview{}, false
 	}
 	info, err := os.Stat(readPath)
 	if err != nil || info.IsDir() {
 		return imagePreview{}, false
 	}
-	key := path + "\x00" + itoa(int(info.ModTime().UnixNano())) +
+	key := path + "\x00" + readPath + "\x00" + itoa(int(info.ModTime().UnixNano())) +
 		"\x00" + itoa(int(info.Size())) + "\x00" + itoa(cols) + "\x00" + itoa(maxRows) +
 		"\x00" + itoa(int(a.pal.profile)) + "\x00" + itoa(int(a.pal.ramp.ink.r))
 	if hit, known := a.previews[key]; known {
@@ -228,6 +224,32 @@ func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
 	}
 	a.previews[key] = preview
 	return preview, preview.ok
+}
+
+// readPathFor answers which disk path can be opened here. A live attachment is
+// already on this machine even during a hosted session; an engine path must be
+// present in the connection's content-addressed mirror before it can be drawn.
+func (a *app) readPathFor(path string, here bool) (string, bool) {
+	if here || a.rfiles == nil {
+		return path, true
+	}
+	target := a.remoteTarget(path)
+	if target == "" {
+		return "", false
+	}
+	blob, known := a.rfiles.ref(target)
+	if !known {
+		return "", false
+	}
+	store, err := a.rfiles.blobStore()
+	if err != nil {
+		return "", false
+	}
+	readPath, err := store.Path(blob.ref)
+	if err != nil {
+		return "", false
+	}
+	return readPath, true
 }
 
 // renderPicture reads one file and draws it, or answers that it could not.
