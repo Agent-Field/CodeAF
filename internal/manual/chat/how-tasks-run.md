@@ -212,7 +212,7 @@ of its own: *Does my task see my .env* below says when it happens and how to tel
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
 
-## Do the parts see the work I had not committed yet — when is the parent's work frozen for its parts, unfinished work at a split
+## Do the parts see the work I had not committed yet — when is the parent's work frozen for its parts, unfinished work the parent still held
 
 **Yes.** When a task splits itself (`divide_work`), the parts start from the parent's folder
 **as it stood at the moment of the split** — the edits the parent had not committed, and

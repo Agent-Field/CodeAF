@@ -2382,7 +2382,7 @@ you type into its room is what wakes it, and it goes back to waiting afterwards 
 task that is waiting on its pieces*). If you stop a parent, its unfinished pieces are
 stopped with it and their branches are kept.
 
-## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task
+## When a task turns out to be too wide for one worker — a task that splits itself, dividing work, parts of a task, what decides whether work gets split
 
 A task is usually one worker. It is not fixed to one.
 
