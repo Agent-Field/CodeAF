@@ -49,9 +49,9 @@ import (
 // of it.
 //
 // WHY THIS ONE. ctrl+g — the obvious reading of "go on and say more" — is spent
-// twice over on this surface already: it backgrounds a running command
-// (background.go) and it brings the task column back (task.go's railStowKey),
-// and the second of those is drawn in this very slot. Of what is left, ctrl+s
+// twice over on this surface already: a running foreground command gets it
+// first (background.go), and with none to keep it closes or restores the task
+// column (task.go's railStowKey). Of what is left, ctrl+s
 // and ctrl+q are flow control on a serial terminal, ctrl+d is end-of-file,
 // ctrl+z is suspend and ctrl+h is what some terminals send for backspace — five
 // chords whose failure mode is doing something the person cannot undo. ctrl+r is

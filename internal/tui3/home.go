@@ -3491,7 +3491,7 @@ const homeDoorWord = "space space home"
 //
 // WHY A GESTURE AND NOT A KEY. Every ctrl+letter is taken. `esc` was the
 // obvious candidate and is not available: on an idle conversation it already
-// arms rewind (the hint slot says `esc again to rewind`) and it already sends a
+// arms rewind (the hint slot says `esc again to rewind`) and it already drops a
 // message parked against a turn that has ended, and a third meaning on one key
 // in that state is how a surface becomes unpredictable. What was left is a
 // gesture, and a leading run of spaces in an empty message is the one keystroke

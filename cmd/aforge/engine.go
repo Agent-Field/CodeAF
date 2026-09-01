@@ -476,6 +476,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// directory to read, which the welcome's omitempty and the badge's
 		// emptiness law both already handle.
 		ApprovalMode: config.ToolApprovalModeAt(launch.Settings.ProfileDir),
+		// The countdown is an engine fact for the same reason: the far surface's
+		// profile is a different machine's, and zero is a meaningful off posture.
+		BashBackgroundAfterSeconds: cfg.BashBackgroundAfterSeconds,
 		// The three doors a remote surface reaches through, and every one of
 		// them is a closure the local surface already has by another name: /new,
 		// the resume picker, and the welcome box's list of recent conversations.

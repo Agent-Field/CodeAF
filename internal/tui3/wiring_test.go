@@ -31,11 +31,12 @@ func (f *fakeAgent) Title() string                                             {
 // a consent resolution, a queued message, and nothing else.
 type wiredAgent struct {
 	*fakeAgent
-	name      string
-	answers   []answered
-	asked     []string
-	follow    chan session.Event
-	followErr error
+	name          string
+	answers       []answered
+	asked         []string
+	follow        chan session.Event
+	followStreams []chan session.Event
+	followErr     error
 }
 
 type answered struct {
@@ -60,7 +61,15 @@ func (w *wiredAgent) FollowUp(text string) (<-chan session.Event, error) {
 		return nil, w.followErr
 	}
 	w.follow = make(chan session.Event, 8)
+	w.followStreams = append(w.followStreams, w.follow)
 	return w.follow, nil
+}
+
+func (w *wiredAgent) Interrupt() {
+	w.fakeAgent.Interrupt()
+	for _, stream := range w.followStreams {
+		close(stream)
+	}
 }
 
 func wired(turns ...[]session.Event) (*wiredAgent, *app) {
@@ -394,6 +403,95 @@ func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	got := plain(frame(a))
 	if !strings.Contains(got, "1 queued message dropped") {
 		t.Fatalf("the surface dropped a message silently:\n%s", got)
+	}
+}
+
+// M9: two ctrl+q follow-ups become fresh turns in FIFO order, and the parked
+// message waits until both session-owned streams have closed.
+func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
+	typeLine(t, a, "the first turn")
+	typeInto(t, a, "first follow-up")
+	drive(t, a, ctrlQ())
+	typeInto(t, a, "second follow-up")
+	drive(t, a, ctrlQ())
+	parkLine(t, a, "the parked message")
+	if got := agent.asked; len(got) != 2 || got[0] != "first follow-up" || got[1] != "second follow-up" {
+		t.Fatalf("the queued follow-ups are %q", got)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("the parked message is %+v", a.parks)
+	}
+	firstTurn := a.turn
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if a.turn != firstTurn+1 || len(a.follows) != 1 || len(a.parks) != 1 {
+		t.Fatalf("after the first close: turn=%d follows=%d parks=%d", a.turn, len(a.follows), len(a.parks))
+	}
+	close(agent.followStreams[0])
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if a.turn != firstTurn+2 || len(a.follows) != 0 || len(a.parks) != 1 {
+		t.Fatalf("after the second close: turn=%d follows=%d parks=%d", a.turn, len(a.follows), len(a.parks))
+	}
+	close(agent.followStreams[1])
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if a.turn != firstTurn+3 || len(a.parks) != 0 {
+		t.Fatalf("the parked turn did not start last: turn=%d parks=%d", a.turn, len(a.parks))
+	}
+
+	var said []string
+	for _, entry := range a.entries {
+		if entry.kind == entryUser {
+			said = append(said, entry.text)
+		}
+	}
+	want := []string{"the first turn", "first follow-up", "second follow-up", "the parked message"}
+	if len(said) != len(want) {
+		t.Fatalf("the fresh-turn order is %q, want %q", said, want)
+	}
+	for i := range want {
+		if said[i] != want[i] {
+			t.Fatalf("the fresh-turn order is %q, want %q", said, want)
+		}
+	}
+	if len(agent.sent) != 2 || agent.sent[1] != "the parked message" {
+		t.Fatalf("the parked message was submitted %q", agent.sent)
+	}
+}
+
+// M10: Esc drops both session-owned queues, closes every follow-up stream, and
+// drops the surface-owned parked queue before the stopped stream ends.
+func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
+	typeLine(t, a, "the first turn")
+	for _, line := range []string{"first follow-up", "second follow-up"} {
+		typeInto(t, a, line)
+		drive(t, a, ctrlQ())
+	}
+	parkLine(t, a, "the parked message")
+	firstTurn := a.turn
+
+	drive(t, a, key("esc"))
+	if len(a.follows) != 0 {
+		t.Fatalf("Esc left %d follow-ups on the surface", len(a.follows))
+	}
+	for index, stream := range agent.followStreams {
+		if _, open := <-stream; open {
+			t.Fatalf("follow-up stream %d remained open after Esc", index)
+		}
+	}
+	if len(agent.sent) != 1 || len(a.parks) != 0 {
+		t.Fatalf("Esc did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if len(agent.sent) != 1 {
+		t.Fatalf("the stream close resurrected a dropped message: %q", agent.sent)
+	}
+	if a.turn != firstTurn || len(a.parks) != 0 {
+		t.Fatalf("the close opened orphaned turn %d with %d parked", a.turn, len(a.parks))
 	}
 }
 

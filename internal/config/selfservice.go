@@ -42,10 +42,10 @@ const (
 	// thing at a finer grain — each is a number that multiplies what one piece of
 	// unattended work costs.
 	guardSpending = "is one of the rails on what may be spent without you being asked"
-	// guardPressure is the pair of ceilings this MACHINE has, plus the count
-	// above them. Widening these does not spend money directly; it puts the
-	// laptop into swap while nobody is watching, which is the same kind of harm
-	// in a different currency.
+	// guardPressure is every brake this MACHINE has on unattended work: the
+	// task ceilings and the foreground-command clock. Widening these does not
+	// spend money directly; it leaves more work holding the machine while nobody
+	// is watching, which is the same kind of harm in a different currency.
 	guardPressure = "is one of the brakes on how much work may run at once on this machine"
 	// guardProof is the auditor. A model that can switch off the check on its own
 	// work can call anything done.
@@ -97,9 +97,10 @@ var selfServiceGuards = map[string]string{
 	KeyContextReuse:     guardSpending,
 
 	// The machine's own ceilings.
-	KeyTaskParallel:  guardPressure,
-	KeyTaskMaxLoad:   guardPressure,
-	KeyTaskMinFreeMB: guardPressure,
+	KeyTaskParallel:        guardPressure,
+	KeyTaskMaxLoad:         guardPressure,
+	KeyTaskMinFreeMB:       guardPressure,
+	KeyBashBackgroundAfter: guardPressure,
 
 	KeyTaskAudit:   guardProof,
 	KeyAttribution: guardSignature,

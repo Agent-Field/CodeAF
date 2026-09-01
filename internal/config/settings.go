@@ -460,7 +460,6 @@ const (
 	KeyContextReuse      = "context_reuse_pct"
 )
 
-
 // ToolApprovalModes are the three answers the tool gate can be set to, in the
 // order they widen: ask about everything, run everything, refuse everything.
 // They are internal/approval's own words — the registry must not invent a
@@ -1662,6 +1661,12 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
 		Setting{
+			Key: KeyBashBackgroundAfter, Category: CategorySafety, Kind: SettingCount,
+			Label: "background after", Hint: BashBackgroundAfterHint,
+			read:  func() string { return strconv.Itoa(BashBackgroundAfterAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyBashBackgroundAfter, raw) },
+		},
+		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
 			Label: "routing", Choices: RoutingModes,
 			Hint: "one model id is served by many endpoints, and they answer at very " +
@@ -2666,7 +2671,6 @@ func AttributionAt(profileDir string) bool {
 	return DefaultAttribution
 }
 
-
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
 // into ~/.aforge/v3/history.jsonl. A malformed pin reads as the default
 // rather than refusing a launch over a recall list.
@@ -2697,8 +2701,6 @@ func DraftPersistAt(profileDir string) bool {
 	}
 	return DefaultDraftPersist
 }
-
-
 
 // TaskColumnAt resolves whether the v3 chat stands its task column up, default
 // on. A row that will not parse reads as the default rather than as off, for
@@ -2742,9 +2744,6 @@ func HintsAt(profileDir string) bool {
 	}
 	return DefaultHints
 }
-
-
-
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {

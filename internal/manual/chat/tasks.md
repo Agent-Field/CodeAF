@@ -991,9 +991,10 @@ the right whatever door started it (see *Background jobs on the column* below). 
 page `/history` opens is the one that has them, and one dim line at the foot of the column,
 `ctrl+. earlier`, is the door onto it. Work finishing never puts the column away, and
 neither does `/new` — that takes this session's tasks with it and leaves the column
-standing, with the door onto the project's record still at its foot. One thing closes it:
-`ctrl+g`, which takes the column off the frame and leaves the work exactly where it was.
-The bottom line of the column says so.
+standing, with the door onto the project's record still at its foot. With no foreground
+command to keep, `ctrl+g` closes it and leaves the work exactly where it was. While a
+command can be kept, that command takes the key instead; the column's `❯` pointer door
+still closes it. The bottom line names whichever keyboard action is available.
 
 The column is permanent: it stands from the session's first keystroke, before any task
 exists, at a frame width of 100 columns or more — 30 columns wide from 120 up, a slim 24
@@ -1006,8 +1007,9 @@ typeable `+ /task` door remains, and in a directory whose earlier sessions ran t
 column, and `ctrl+t` opens the same roster over the body instead once this session has
 tasks.
 
-Closed with `ctrl+g`, the column leaves a two-column edge at the right of the frame that
-opens it again on a click — see *The task bar disappeared* below.
+Closed with `ctrl+g` when no foreground command owns the key, the column leaves a
+two-column edge at the right of the frame that opens it again on a click — see *The task
+bar disappeared* below.
 
 The roster is a forest. Each root task is followed by its whole family, with children
 joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
@@ -1067,10 +1069,10 @@ At the bottom, under both sections, up to three dim lines: `Σ $1.42 · 312k tok
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
 
-Under those, always, one more line: `❯ ctrl+g hide`. It is the column's own door, and it
-is a button as well as a key — click that line and the column goes away. The `❯` is in ink
-and the words are dim, because the chevron is what the pointer presses and the words are
-what the keyboard reads.
+Under those, always, one more door line. It reads `❯ ctrl+g hide` when no foreground
+command can be kept and only `❯ hide` while a command owns that key. Click either form
+and the column goes away. The `❯` is in ink and the words are dim, because the chevron
+is what the pointer presses and the words name only the keyboard action available now.
 
 **Work that is running never scrolls off it.** Families are already ordered so that
 anything running or waiting on you leads the column, and those rows are also *pinned*: when
@@ -1092,7 +1094,8 @@ there from the moment the job starts until the moment it ends. This covers every
 `jobs` tool can list except a task's own worker, which already has a row of its own:
 
 - a command run with `bash background:true` — a server, a long build, a sweep
-- a foreground command that ran past its bound and became a job (`still running as job 3`),
+- a foreground command the `background after` clock kept running as a job
+  (`still running as job 3`), or one that reached its own timeout sooner,
   including one you sent there yourself with `ctrl+g`
 - a `watch`, whose row reads `watch <name>`
 - a video render, which is a job while it renders
@@ -1307,13 +1310,16 @@ twice — a row on the column is not also an `earlier` row.
 
 ## Hiding the task column: closing the right sidebar, panel or task bar
 
-`ctrl+g` closes the column of tasks on the right and gives its columns back to the
-conversation. Press it again and the column comes back with the current state of the
-work in it, including anything that started or finished while it was gone — nothing here
-is a snapshot; the column is redrawn from the tasks every frame.
+With no foreground command that can be kept, `ctrl+g` closes the column of tasks on the
+right and gives its columns back to the conversation. Press it again and the column
+comes back with the current state of the work in it, including anything that started or
+finished while it was gone — nothing here is a snapshot; the column is redrawn from the
+tasks every frame. While a foreground command can be kept, that command takes the key
+instead and the column stays exactly where it was.
 
 **The pointer can do the whole cycle on its own.** The last line of the column reads
-`❯ ctrl+g hide` with the chevron in ink: click it and the column closes. What is left
+`❯ ctrl+g hide` with no foreground command to keep and `❯ hide` while one owns the
+key. The chevron is in ink: click either form and the column closes. What is left
 behind is a thin edge carrying `❮`: click that and the column comes back. One control, two
 states — `❯` to close, `❮` to open — so a closed column is never a thing you need to know a
 chord to recover. See *The task bar disappeared* below.
@@ -1334,9 +1340,10 @@ With the column closed, work is still visible:
 - `ctrl+t` still works: asking for the roster brings the column back and gives it the
   keyboard in one press.
 
-`ctrl+g` works whether or not the session has tasks — the column stands empty, so an
-empty column is still a column to close. It does nothing, and is not swallowed, only when there is no roster on the frame at
-all: a frame under 100 columns where nothing has raised the roster over the body. On
+When no command can be kept, `ctrl+g` works whether or not the session has tasks — the
+column stands empty, so an empty column is still a column to close. It does nothing, and
+is not swallowed, only when there is no roster on the frame at all: a frame under 100
+columns where nothing has raised the roster over the body. On
 the untouched empty screen, where no column has stood yet, the key is a first keystroke
 first — the greeting goes — and then closes the column as usual.
 
@@ -1351,13 +1358,14 @@ rather than dim so the eye can find it:
 ```
 
 **Click anywhere on that edge and the column comes back** — the whole strip is the door,
-not just the handle, so there is nothing to aim at. It is the same act as `ctrl+g`, which
-still works and is still the key.
+not just the handle, so there is nothing to aim at. It is the column act `ctrl+g` performs
+whenever no foreground command can be kept.
 
 - Under the pointer the handle brightens further and the whole two-cell strip takes a
   background, which is how everything pressable on this screen says so.
 - **The chevron points the way the column goes**, and it is the same control in its other
-  state: `❮` while the column is away, `❯` on the `❯ ctrl+g hide` line while it stands.
+  state: `❮` while the column is away, `❯` on the final door line while it stands.
+  That line says `ctrl+g hide` only when the key is available, and says `hide` otherwise.
   Clicking one gives you the other, so the pointer goes round the full cycle. On a terminal
   that cannot draw them they are `<` and `>`.
 - **One cell above the handle says what the work is doing**, while there is anything worth
@@ -1368,8 +1376,8 @@ still works and is still the key.
   its own width. The text re-wraps; nothing is ever drawn underneath it.
 - **On a frame narrower than 100 columns there is no edge**, because there is no column at
   that width to bring back. The roster still opens over the whole frame with `ctrl+t`.
-- The keyboard is unchanged. The edge is for the hand that does not type chords; `ctrl+g`
-  is for the one that does.
+- The edge is for the hand that does not type chords. With no foreground command to keep,
+  `ctrl+g` is the keyboard's way around the same cycle; with one, it backgrounds the command.
 
 The legend above the message box also carries `ctrl+g tasks` while the column is away and
 this session has run something.
@@ -1387,12 +1395,13 @@ rest state, so a person who starts typing is typing, not navigating.
 | `enter` | open the task's room |
 | `alt+w` | toggle the wider 46-column tree (bare `w` only on the full-frame roster) |
 | `esc` or `ctrl+t` | give the keyboard back |
-| `ctrl+g` | close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
+| `ctrl+g` | keep a foreground command when one can be kept; otherwise close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
 When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
 `w · click seam — narrow` once it is wide); that hint is clickable as well as available
-from the keyboard, and so is the `❯ ctrl+g hide` line under it.
+from the keyboard, and so is the `❯` door line under it. The latter includes `ctrl+g`
+only when no foreground command owns the chord.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
@@ -1879,7 +1888,7 @@ is closed opens the card.
 ## The one door line at the bottom of the task column: `ctrl+. earlier`, `view more`
 
 When there is more work than the column is showing, the roster's footer grows one more dim
-line above `❯ ctrl+g hide`:
+line above the column's final `❯` hide door:
 
 ```
 ctrl+. earlier
