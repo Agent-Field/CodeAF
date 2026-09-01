@@ -229,17 +229,15 @@ func TestAForkedHandsSpendRaisesTheDayTotalOnce(t *testing.T) {
 	handsAreHome(t, agent)
 	FlushUsage()
 
-	// THE DAY TOTAL, READ THE WAY THE RAIL READS IT: every line of today, added
-	// up, with nothing in the sum that knows what a hand is.
+	// THE DAY TOTAL, READ THE WAY THE RAIL READS IT: every line since local
+	// midnight, added up by [UsageTotals], with nothing in the sum that knows
+	// what a hand is.
 	now := time.Now()
 	lines, err := ReadUsage(ledger, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()))
 	if err != nil {
 		t.Fatalf("read the ledger: %v", err)
 	}
-	day := 0.0
-	for _, line := range lines {
-		day += line.USD
-	}
+	day := UsageTotals(lines).USD
 	if !treeNear(day, 2.00) {
 		t.Fatalf("the day totals %v for two hands that spent a dollar each, want 2.00: %+v", day, lines)
 	}
@@ -415,10 +413,7 @@ func TestAnAdaptiveRunsNodeSpendRaisesTheDayTotalOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the ledger: %v", err)
 	}
-	day := 0.0
-	for _, line := range lines {
-		day += line.USD
-	}
+	day := UsageTotals(lines).USD
 	if !treeNear(day, 1.00) {
 		t.Fatalf("the day totals %v for one node that spent a dollar, want 1.00: %+v", day, lines)
 	}
