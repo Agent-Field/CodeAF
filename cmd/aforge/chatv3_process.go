@@ -113,12 +113,12 @@ func openV3Process(door string) (*v3Process, error) { return openV3ProcessWith(d
 // the process does not: whether somebody is sitting at this terminal who can
 // be ASKED for a key.
 //
-// `askKey` true is the interactive chat — a person, a TTY, no --once and no
-// --host — and it opens the process with no key at all when none is found, so
-// the surface can collect one on its first screen (internal/tui3's
-// firstrun.go). Every other door keeps the old refusal: nobody is there to
-// paste anything, and a process that opened keyless would fail on its first
-// request instead of at the door where the sentence can be read.
+// `askKey` true is an interactive local chat — a person, a TTY, no --once and
+// no --host — and it opens the process with no key at all when none is found,
+// so the surface can connect the default OpenRouter provider in a browser
+// (internal/tui3's firstrun.go). Every other door keeps the refusal: nobody is
+// there to finish the browser trip, and a process that opened keyless would fail
+// on its first request instead of at the door where the sentence can be read.
 func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// Housekeeping, in the background, once per process (chatv3_sweep.go). It
 	// was already a sync.Once and needs nothing from this move; it is here
@@ -126,14 +126,24 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	startPlaceSweep()
 	settings, err := config.Load()
 	if err != nil && askKey && errors.Is(err, config.ErrNoAPIKey) {
-		settings, err = config.LoadKeyless()
+		// A keyless process is useful only when the surface can answer it. The
+		// browser flow mints an OpenRouter key, so a custom OpenAI-compatible
+		// endpoint keeps the explicit-key refusal instead of opening a session
+		// whose very first model call is guaranteed to fail.
+		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
+			settings, err = keyless, nil
+		}
 	}
 	if err != nil {
 		if strings.TrimSpace(door) == "" {
 			door = "chat"
 		}
 		fmt.Fprintln(os.Stderr, "aforge "+door+" needs a model to talk with.")
-		fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
+			fmt.Fprintln(os.Stderr, "run `aforge` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+		} else {
+			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+		}
 		return nil, err
 	}
 	// AND THE BACKGROUND CHECKS ARE PUT BACK IF THEY DRIFTED, once per process,
@@ -170,6 +180,14 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:      v3Connect(settings.ProfileDir),
 		LaunchDir:  launchDir,
 	}, nil
+}
+
+// v3UsesDefaultOpenRouter identifies the one endpoint the browser flow can
+// authenticate. A harmless trailing slash and URL case do not turn the built-in
+// address into a custom provider.
+func v3UsesDefaultOpenRouter(settings config.Config) bool {
+	normalize := func(raw string) string { return strings.TrimRight(strings.TrimSpace(raw), "/") }
+	return strings.EqualFold(normalize(settings.BaseURL), normalize(config.DefaultBaseURL))
 }
 
 // history is the process's ONE input-history file, opened on the first

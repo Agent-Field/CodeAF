@@ -677,6 +677,19 @@ type (
 		status  connect.Status
 		err     error
 	}
+	// The two messages the default model provider's browser connection takes
+	// (firstrun.go). The first carries the listener after it is standing, so the
+	// link can be opened before the second waits for the browser to come back.
+	openRouterFlowMsg struct {
+		id   uint64
+		flow OpenRouterFlow
+		err  error
+	}
+	openRouterKeyMsg struct {
+		id  uint64
+		key string
+		err error
+	}
 	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
 	// schedules so its fresh numbers can go quiet on time (render.go's fade).
 	// There is deliberately no idle ticker behind it — a surface with nothing
@@ -1930,6 +1943,12 @@ type app struct {
 	// session's next request rides it ([Options.ApplyAPIKey]). Nil is a surface
 	// whose key lands on the next launch.
 	applyAPIKey func(key string) error
+	// routerConnect is the browser half of that same handover, available on
+	// a local interactive launch using the default provider. authSerial gives
+	// every attempt a name, so a listener that came up after esc can be closed
+	// without reopening the screen the person left.
+	routerConnect func(context.Context) (OpenRouterFlow, error)
+	authSerial    uint64
 	// welcome is the box an empty session opens with (welcome.go). It is the
 	// only animation on this surface that is not a spinner, and it runs once.
 	welcome welcome
@@ -2019,6 +2038,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		saveBashApproval: opts.SaveBashApproval,
 		saveModel:        opts.SaveModel,
 		applyAPIKey:      opts.ApplyAPIKey,
+		routerConnect:    opts.ConnectOpenRouter,
 		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
@@ -3341,6 +3361,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case connectResultMsg:
 		a.adoptConnectResult(msg)
 		return a, nil
+
+	case openRouterFlowMsg:
+		return a, a.adoptOpenRouterFlow(msg)
+
+	case openRouterKeyMsg:
+		return a, a.adoptOpenRouterKey(msg)
 
 	case hudFadeMsg:
 		// One of the two catch-up ticks: nothing changed, but a number that was
@@ -6536,6 +6562,10 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // quit is the door out of the PROGRAM, and it takes every conversation this
 // terminal is holding with it.
 func (a *app) quit() tea.Cmd {
+	// A provider connection owns a loopback listener. It leaves with the
+	// surface even when the browser is still open, just as account connections
+	// and file doors below do.
+	a.cancelSetupAuth()
 	// The draft goes to disk on the way out, synchronously and before anything
 	// else: the debounce may be mid-window, and a sentence typed in the last
 	// three hundred milliseconds of a session is exactly the one a person would
