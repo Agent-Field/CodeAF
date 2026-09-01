@@ -87,7 +87,12 @@ func TestAnIgnoredPathTheWorkerWroteDoesNotCostItTheRest(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
 	writeFile(t, filepath.Join(tree.dir, "run.log"), "noise\n")
 
-	saved := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"})
+	saved, problem := commitTaskWork(tree.dir, "write the report", []string{"run.log", "report.md"})
+	if problem != "" {
+		// THE REST OF THE LEDGER WENT IN, so the one path git refused is not a
+		// failure of the landing (task_land_unsaved.go's [unstagedWork]).
+		t.Fatalf("an ignored path stopped the landing: %s", problem)
+	}
 	if !containsString(saved, "report.md") {
 		t.Fatalf("committed %v, want the report on it", saved)
 	}
@@ -225,7 +230,7 @@ func TestAConflictedMergeNeedsYourLookRatherThanDone(t *testing.T) {
 	tree := taskTree{dir: filepath.Join(repo, "tree"), root: repo, branch: "task/edit-the-shared-file"}
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
 	state := agent.landConflicted(node, tree, []string{"shared.txt"},
-		"the parser now takes the shared line", detail, io.Discard)
+		"the parser now takes the shared line", mergeConflicted, detail, io.Discard)
 
 	if state != TaskUnverified {
 		t.Fatalf("a conflicted landing is %q, want it to need a look", state)

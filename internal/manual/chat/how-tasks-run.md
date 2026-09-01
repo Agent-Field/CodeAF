@@ -66,7 +66,7 @@ uncommitted edits and untracked files included. A repository
 the task only reads — a whole contract that names no file — is left alone, and the task gets
 a folder of its own. A plain folder with no history behind it is **copied** into the task's
 folder, and the files the task wrote — its parts' files included — are laid back over it by
-name when it lands. And "work
+name when it lands, all of them or none of them. And "work
 here" is you saying so: the task works in that folder itself, with nothing isolating it.
 
 **Two refusals and one correction.** A task whose contract names an absolute path outside
@@ -406,6 +406,34 @@ Pressing **accept** on the card does not change this. Accepting says the work is
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
 
+## My task could not save what it wrote — nothing merged, the file is still there
+
+A landing that cannot put the work away **does not merge, does not tidy anything up, and
+does not say done**. The work stays on disk in the task's own folder, which is then the only
+copy of it, and the task lands as **needs your look** with the report naming that folder and
+quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
+changed:
+
+`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
+
+Nothing of the task's working copy is given back: the branch is kept, the copy is left
+registered where it is, and your own branch is untouched — no empty merge, no commit that
+holds none of the work. The landing note says no more than the report does, because there is
+no branch to offer you: the folder in that sentence is where the files are.
+
+**On a plain folder it is the same answer.** The files the task wrote go back over your
+folder **whole or not at all**: they are staged beside where they are going first, and only
+when every one of them can be placed does anything move. A lay that cannot happen leaves
+your folder **exactly as it was** — not one file of the half that would have fitted — and
+says so:
+
+`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
+
+The task's copy is kept, so everything the family made is still in the folder that sentence
+names. Pressing **accept** later does not change any of this: an accept over a folder that
+still cannot take the work leaves the task needing your look with the same sentence, exactly
+as a conflicting merge does.
+
 ## What a task can do while it runs
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
@@ -679,7 +707,10 @@ When a task's work does come home, the paths it wrote are staged by name — nev
 `aforge <aforge@localhost>`, then merged into your branch with `git merge --no-edit`. The
 merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
-the branch is kept, the working copy is given back, and the task needs your look. Two tasks finishing at
+the branch is kept, the working copy is given back, and the task needs your look. A commit
+that could not be made at all stops the landing before the merge — nothing is merged,
+nothing is given back, and the task needs your look (*My task could not save what it wrote*
+above). Two tasks finishing at
 once are serialized, so a merge is never lost.
 
 ## What aforge says in the chat when a task lands, and the full path to the file
@@ -1233,7 +1264,7 @@ The model is told plainly not to quietly spend another task on it:
 Everything a correction worker and every check spends is folded into the same task's cost,
 and the task's elapsed keeps running, because the task never landed.
 
-## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line
+## What the card says while a task is checked — task says checking what it left, closing gaps what does that mean, why does my task say not done under it, round 1 of 1, sizing the work, the task finished but the card is still busy, my task went quiet after the last line, I sent a message to a task and nothing happened, steered a task and got no reply
 
 A task has several lives and one state. Its worker writes the work; a reading decides
 whether the work is handed out in parts; a second look reads what the worker left; a round
@@ -1268,6 +1299,15 @@ not done — go test ./... reports no test files
 
 That line is the reason the work is being done again. It takes the row the clock and the
 spend would have had, because the clock is true every second and this is not.
+
+**You cannot steer into the check.** The worker has finished reading, so a line typed into
+the task's room while it says `checking what it left` is refused with the reason —
+`task 3 is being checked — nobody is in there to read your line until the check lands` —
+and the steer guard opens over your words instead of pretending they were delivered.
+Because the task is still running, the guard offers only two keys: `m` sends your words to
+the main conversation, `esc` keeps them in the box (there is no `r` revive here — the work
+is not over, and restarting it would make a duplicate). If the check finds gaps, a round
+opens with a fresh worker and `enter` steers that worker as usual.
 
 **How long it can take.** Both are full model runs on your work, so minutes each is
 normal — a check on a large change has been four minutes, and a round is a second worker
