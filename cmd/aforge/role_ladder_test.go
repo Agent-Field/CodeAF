@@ -58,7 +58,7 @@ func TestRoleLadderWithoutAPlanKnobWritesNothing(t *testing.T) {
 func TestPlanKnobSeedsTheGlobalPlanBindingOnce(t *testing.T) {
 	graph := openLadderStore(t)
 	for launch := 0; launch < 3; launch++ {
-		installRoleLadder(graph, "talk/model", "planning/model", "work/model", "planning/model", "")
+		installRoleLadder(graph, "talk/model", "planning/model", "work/model", "planning/model", "AFORGE_PLAN_MODEL")
 	}
 	binding, found, err := graph.RoleBindingAt(store.RolePlan, store.ScopeGlobal)
 	if err != nil || !found {
@@ -84,9 +84,10 @@ func TestPlanKnobSeedsTheGlobalPlanBindingOnce(t *testing.T) {
 		t.Fatalf("three launches journaled %d bindings, want 1", events)
 	}
 
-	// The flag names itself instead, and a value the initializer has not said
-	// before does move the binding.
-	installRoleLadder(graph, "talk/model", "flagged/model", "work/model", "flagged/model", "flagged/model")
+	// Another origin names itself instead, and a value the initializer has not
+	// said before does move the binding. The origin is whatever named the model
+	// — a flag here, a crew preset on a headless run (config.ResolveSeats).
+	installRoleLadder(graph, "talk/model", "flagged/model", "work/model", "flagged/model", "--plan-model")
 	binding, _, err = graph.RoleBindingAt(store.RolePlan, store.ScopeGlobal)
 	if err != nil {
 		t.Fatal(err)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 const (
@@ -1085,7 +1086,24 @@ func cloneModel(model Model) Model {
 	return model
 }
 
-func normalizeID(id string) string { return strings.TrimPrefix(strings.TrimSpace(id), "~") }
+// normalizeID is the ONE PLACE a model value somebody wrote becomes a lookup key
+// in this table, and two things that are not part of a model id come off here.
+//
+// The first is the `~` floating-alias marker, which asks a family for its newest
+// member. The second is the tier rows' thinking level — `moonshotai/kimi-k3:low`
+// — which says how hard to ask a model rather than which model it is
+// ([roles.SplitEffort], and see config.ResolveSeats: since the crew reaches every
+// headless run, a levelled value is now an ordinary thing to look up). A lookup
+// that missed on the level answered zero context, no published price, and
+// "cannot say" about every capability — each of which is a caller quietly
+// falling back to a literal.
+//
+// Rows are indexed through this too, so a catalog that one day publishes an id
+// ending in a level would still be found by the key it was stored under.
+func normalizeID(id string) string {
+	model, _ := roles.SplitEffort(id)
+	return strings.TrimPrefix(model, "~")
+}
 
 // parsePrice reads one per-token price, and says whether the provider actually
 // published one. A blank, an unparseable string, or OpenRouter's "-1" — its

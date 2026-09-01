@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
@@ -304,6 +305,17 @@ type Config struct {
 // ([LoadKeyless]); the second stops the launch, whoever is watching.
 var ErrNoAPIKey = errors.New(APIKeyEnv + " (or OPENAI_API_KEY) is required")
 
+// ProfileDirEnv is the variable that moves the whole profile — the key, the
+// settings file, the measured behaviour — somewhere else. It is what an
+// isolated run sets, and it is spelled here once so every reader of the profile
+// asks the same question.
+const ProfileDirEnv = "AFORGE_PROFILE_DIR"
+
+// ProfileDir is the profile this process reads and writes. Empty is the ordinary
+// answer and means the state root's own profile; the readers below take it as
+// such, so a caller never has to know what the default expands to.
+func ProfileDir() string { return os.Getenv(ProfileDirEnv) }
+
 // Load resolves configuration from the environment, falling back to the
 // defaults above. Only the API key has no default; everything else runs
 // unconfigured.
@@ -318,10 +330,10 @@ func LoadKeyless() (Config, error) { return load(false) }
 
 func load(requireKey bool) (Config, error) {
 	config := Config{
-		APIKey:            APIKeyAt(os.Getenv("AFORGE_PROFILE_DIR")),
+		APIKey:            APIKeyAt(ProfileDir()),
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
-		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
-		PlanModel:         strings.TrimSpace(os.Getenv("AFORGE_PLAN_MODEL")),
+		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
+		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
@@ -335,7 +347,7 @@ func load(requireKey bool) (Config, error) {
 		PracticeIdle:      DefaultPracticeIdle,
 		BriefAfter:        DefaultBriefAfter,
 		Swarm:             DefaultSwarm,
-		ProfileDir:        os.Getenv("AFORGE_PROFILE_DIR"),
+		ProfileDir:        ProfileDir(),
 	}
 	if config.APIKey == "" && requireKey {
 		return Config{}, ErrNoAPIKey
@@ -681,7 +693,7 @@ func validateDailyBudgetValue(raw, source string) (float64, error) {
 // DailyBudgetUSD resolves the dollar rail without requiring a provider key.
 // Status-only commands use it even when they never construct a model client.
 func DailyBudgetUSD() (float64, error) {
-	return DailyBudgetUSDAt(os.Getenv("AFORGE_PROFILE_DIR"))
+	return DailyBudgetUSDAt(ProfileDir())
 }
 
 // Context stamps the run's provider knobs onto ctx: the effort the operator
@@ -733,6 +745,10 @@ func (c Config) PlanSplit() bool {
 // pinned as the router's opener, so chat keeps its runtime picker without
 // bypassing observation and escalation.
 func (c Config) ClientFor(model string) (router.Client, error) {
+	// The pin is a model id like any other and is stripped of its level for the
+	// same reason providerConfig strips one: a router pinned to a slug nobody
+	// publishes never opens on the model it was pinned to.
+	model, _ = roles.SplitEffort(model)
 	if len(c.Panel.Models) > 0 {
 		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, model)
 	}
@@ -761,6 +777,15 @@ func (c Config) DocumentClient() (*provider.Client, error) {
 }
 
 func (c Config) providerConfig(model string) provider.Config {
+	// THE THINKING LEVEL IS NOT PART OF A MODEL ID, and this is the one place
+	// that has to know it. `moonshotai/kimi-k3:low` is how a tier row, a
+	// --plan-model flag and AFORGE_PLAN_MODEL all say "that model, thinking a
+	// little"; the level is applied per call by the role ladder
+	// (internal/session's roleRequest), and the slug that goes on the wire is
+	// the model alone. Sent whole it is a slug no provider publishes, which is
+	// a 404 on every planning call — the flag path has had that bug for as long
+	// as it has taken a level.
+	model, _ = roles.SplitEffort(model)
 	return provider.Config{
 		APIKey:      c.APIKey,
 		BaseURL:     c.BaseURL,
