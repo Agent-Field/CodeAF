@@ -22,7 +22,12 @@ invalidates:
     The steer guard used to offer "[r] revive and send" unconditionally. On a
     task that is STILL RUNNING — refused mid-check, or while its work lands —
     the guard now opens "<title> cannot read this right now — " and offers only
-    m and esc, because reviving live work manufactures a duplicate task.
+    m and esc, because reviving live work manufactures a duplicate task. Which
+    of the two guards rises is the ENGINE's word, not the page's: the two
+    "nobody is in there" refusals carry session.ErrNobodyToRead and the surface
+    matches it with errors.Is. A page's own `done` is its record of a close it
+    may not have been told about yet, and reading "still running" off it
+    withheld revive from a node the engine had just called finished.
   - >
     TaskNode.spend() used to read the worker's unfolded cost off the room's
     speaker. The speaker now leaves before the money is folded, so the price

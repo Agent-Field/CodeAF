@@ -97,6 +97,23 @@ import (
 	"sync"
 )
 
+// ErrNobodyToRead marks the two refusals that mean the node is STILL RUNNING
+// and simply has no reader inside it right now — mid-check, or landing. It is
+// the fact a surface needs and cannot infer: "there is nobody in there" and
+// "the work is over" are opposite things to offer a person, and only the engine
+// knows which one it just said. Match it with errors.Is; the sentence to show
+// is the refusal's own.
+var ErrNobodyToRead = errors.New("nobody is in there to read your line")
+
+// nobodyToRead carries one of those refusals while answering
+// errors.Is([ErrNobodyToRead]). It keeps its OWN sentence rather than wrapping
+// with %w, because the surface prints that sentence to the person and a wrap
+// would append the sentinel's words to a line that already says them.
+type nobodyToRead struct{ said error }
+
+func (e nobodyToRead) Error() string { return e.said.Error() }
+func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
+
 // SteerTask injects the person's words into a running node's loop — the same
 // steering lane a job's exit note rides ([Agent.enqueueSteering]). Unknown id
 // or a node that is not running is an error naming which.
@@ -154,7 +171,7 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// person asking during the check hears what the check is instead of a
 	// sentence about a worker.
 	if node.lifeNow() == TaskPhaseChecking {
-		return false, fmt.Errorf("task %d is being checked — nobody is in there to read your line until the check lands", id)
+		return false, nobodyToRead{fmt.Errorf("task %d is being checked — nobody is in there to read your line until the check lands", id)}
 	}
 	// Read BEFORE the line is handed over, because handing it over is what ends
 	// the wait: after the enqueue the honest answer to "was it waiting" has
@@ -168,7 +185,7 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// ("not started yet" about a task that is finishing) is worse than naming
 	// neither.
 	if !node.openRoom().steerIn(text) {
-		return false, fmt.Errorf("task %d has nobody in it to read your line right now", id)
+		return false, nobodyToRead{fmt.Errorf("task %d has nobody in it to read your line right now", id)}
 	}
 	return waiting, nil
 }

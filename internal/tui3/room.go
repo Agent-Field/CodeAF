@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -1628,6 +1629,15 @@ func (a *app) steer() tea.Cmd {
 		// away the half that says what to do about it. It goes on the guard's
 		// second row rather than into the room, because it is the reason the
 		// question below is being asked.
+		//
+		// AND THE ENGINE SAYS WHICH KEYS ARE HONEST. A refusal that means the
+		// node is still running with no reader inside it withholds revive
+		// (session.ErrNobodyToRead); every other refusal — done, gone, never
+		// started — is exactly what revive is for.
+		if errors.Is(err, session.ErrNobodyToRead) {
+			a.raiseBusyGuard(line, err.Error())
+			return nil
+		}
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
@@ -1727,15 +1737,24 @@ type steerGuard struct {
 // is what the person was reading, and the question is about what to do with a
 // line they typed into it.
 func (a *app) raiseGuard(line, why string) {
+	a.raiseGuardOf(line, why, false)
+}
+
+// raiseBusyGuard is the same question about a node that is STILL RUNNING with
+// nobody inside to read the line ([steerGuard.busy]). Only the engine can tell
+// the two apart — this page's own `done` is its record of a close it may not
+// have been told about yet, and reading "still running" off it would withhold
+// revive from a node the engine just said was finished (#273's own test,
+// TestASteerTheEngineRefusedRaisesTheGuardWithItsReason).
+func (a *app) raiseBusyGuard(line, why string) {
+	a.raiseGuardOf(line, why, true)
+}
+
+func (a *app) raiseGuardOf(line, why string, busy bool) {
 	if a.room == nil {
 		return
 	}
-	// A room that has not seen its lane close is a node still running: the
-	// refusal came from the engine's door (mid-check, nobody inside), not from
-	// the work being over. done is this page's own record of the close, so the
-	// two cannot be stale against each other for longer than the close takes to
-	// arrive.
-	a.guard = &steerGuard{title: a.room.title, text: line, why: why, busy: !a.room.done && !a.roomIsJob()}
+	a.guard = &steerGuard{title: a.room.title, text: line, why: why, busy: busy}
 	// The typed lists follow the draft, and the draft is spoken for while the
 	// question is up: the same law the approval question states (consent.go).
 	a.closeLists()
