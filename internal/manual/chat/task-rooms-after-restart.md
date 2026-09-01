@@ -52,7 +52,7 @@ nothing on this page yet — it fills in as the task works
 Neither of the landed lines would be true there: nothing was lost, and nothing is over.
 This one comes off by itself the moment the task's first block arrives.
 
-**A room never draws a blank body under its header.** If the roster still holds the task's
+**A room never draws a blank body.** If the roster still holds the task's
 report — and it does, for anything that landed in a conversation you have open — the report
 is drawn above that line, so the page tells you what the work came to even when the
 transcript behind it is gone:
@@ -63,8 +63,9 @@ this task's transcript is not here any more
 task finished — esc to return
 ```
 
-The header is drawn from the same record, which is why it stays correct — the name, the
-state, the elapsed — in every one of these cases.
+The top bar above the page is drawn from the same record, which is why it stays correct —
+the name, the state, the elapsed — in every one of these cases. (The room has no pinned
+header of its own any more; those facts are the bar's.)
 
 The room is one of two doors onto old work. The other is the task page (`ctrl+.`,
 `/history`), whose `enter` on an `earlier` row opens a card with the task's report read off
@@ -73,7 +74,7 @@ case. If the room is empty, the card will be too; the file is the same file.
 
 ## I clicked on the task and there is nothing there at all — the page is hidden or blank, no chat, no output
 
-If you walked into a row and the body under the header showed nothing you could use, check
+If you walked into a row and the page showed nothing you could use, check
 **what kind of row it was**. The column beside the conversation carries two different
 things, and only one of them has a chat inside it.
 
@@ -97,11 +98,11 @@ A job's row is easy to tell apart before you open it: it is the row whose dim un
 starts with `job` and a number.
 
 Earlier versions of aforge got this wrong in a way worth naming, in case you remember it: a
-job's page came up with a correct header — its name, `done`, its elapsed — over a body
+job's page came up correctly named at the top of the frame — its name, `done`, its elapsed — over a body
 holding nothing but `· no task 4 in this session` and the foot. That sentence was aforge
 talking to itself, not about anything you did, and it is gone. A task that had not landed
 yet went wrong the same way and for longer: a queued task, or one opened the instant it
-started, drew a correct header over a screen with **nothing at all** on it, because the
+started, was correctly named at the top of the frame over a screen with **nothing at all** on it, because the
 line explaining the blank was only ever drawn for work that had finished. Both are fixed.
 **No room draws an empty body any more**, landed or not: whatever the row is, the page
 says what it knows and what it does not.

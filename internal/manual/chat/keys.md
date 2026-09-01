@@ -1390,6 +1390,10 @@ second conversation is open, `ctrl+k switch` whenever there is anywhere at all t
 place the switcher is named on the map (`alt+.`) instead, because a place's foot is four
 fixed clauses the design sets word for word.
 
+That naming **decays with the earned tips**: once every tip has been retired the resting
+slot goes quiet and advertises nothing. The keys themselves keep working, and so do the
+pointer's doors — see *Why the line above my box went blank* on the hints and tips page.
+
 ## Keys in the composer layer — `alt+enter`, `alt+w`, `alt+o`, and typing a number
 
 On macOS every `alt+` below is drawn `⌥` — `alt+enter` is `⌥enter`, `alt+w` is `⌥w`, `alt+o`
@@ -1705,7 +1709,7 @@ gate's answers instead; type something and they walk the history from there.
 **`esc` in a room never interrupts and never stops.** Out in the conversation `esc`
 interrupts the running turn; inside a room the first `esc` leaves the room and the next
 one interrupts. Ending the task itself is `x` and its card. The legend's left end always
-names what the next `esc` does: `room · esc/←← main`, and `room · esc your line back`
+names what the next `esc` does: `room · esc/← back`, and `room · esc your line back`
 while a history walk is on. The hint at the legend's right end reads `x stop` while there
 is work here to stop and `↑↓ history` during a walk — it never reads `esc interrupt`
 inside a room, because in here that is not what the key does.
@@ -1713,9 +1717,14 @@ inside a room, because in here that is not what the key does.
 **A click inside the room's page does not leave it.** A press that lands on nothing —
 a blank row, the gap beside a paragraph, the slack under a short transcript — does
 nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
-the top bar's task form names both: `esc/← back · ✕`. The back word is
-also a button — press it, or the crumb's conversation segment, and you are back in the
-conversation — except the `✕` at its right end, which asks to stop the work instead.
+the top bar's task form names both: `esc/← back · ✕`.
+
+**The back word and the crumb are two different doors.** Pressing `esc/← back` climbs
+**exactly one crumb level**, which is what `esc` and `←` do — from a sub-task that is its
+parent task's room, not the conversation. Pressing the crumb's **conversation segment**
+leaves the room outright, however deep the trail is. At one level down they land in the
+same place; deeper than that they do not, and they light separately under the pointer. The
+`✕` at the right end leaves nothing — it asks to stop the work.
 
 **Inside a harness design's room, while its card is waiting on you**, two more chords
 appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
@@ -1812,12 +1821,14 @@ Only the left button acts. A press is resolved in this order:
    ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
-   the right end of the top bar's task form. On a phone-width terminal the `✕`'s hit
-   box is three rows tall, because a finger is about that wide.
+   the right end of the top bar's task form. Below 60 columns the top bar is not drawn
+   at all, so there is no `✕` there and `x` over an empty box is the way to stop.
 7. The top bar's **crumb**, which is the pointer's way around: the project segment goes
-   home, and in a task the conversation's name is the way back to the conversation,
-   with the `esc/← back` word at the right end a second, wider target for the same
-   exit. The segment you are standing in is a fact, not a door, and does nothing.
+   home, and in a task the conversation's name goes back to the conversation however
+   deep the trail is. The `esc/← back` word at the right end is a **different** door,
+   not a wider one for the same exit — it climbs exactly one crumb level, so from a
+   sub-task it lands in the parent task's room. The segment you are standing in is a
+   fact, not a door, and does nothing.
 8. The rail column, then a proposal's choices row.
    **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
@@ -1831,7 +1842,9 @@ Only the left button acts. A press is resolved in this order:
    and the **money figure** (`$0.14`), which opens the **Spending** tab of `/settings`.
    In the top bar, the model name opens the model picker — aimed at the task when a
    room is open — and `YOLO` opens `/settings` on the **Safety** tab. Each brightens under
-   the pointer over its own cells to say it is a door. A press elsewhere on
+   the pointer over **its own cells**, never as a band across the row, to say it is a
+   door; `YOLO` keeps its red and takes a background band instead, because lifting it
+   would paint an open gate in the hue of something safe. A press elsewhere on
    the status row falls through — the rest of it is figures, not controls. On a narrow
    terminal the whole two-row deck answers.
 10. A message of yours **waiting** for the answer to finish, in the block above the

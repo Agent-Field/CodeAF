@@ -187,9 +187,9 @@ model · anthropic/claude-opus-5 — tasks already running keep the model they s
 
 With nothing running, the note is just `model · <the model>`.
 
-**To move one running task**, walk into its room and press the `task <model>` part of the
-status line — the ordinary picker opens aimed at that task, and the change takes effect on
-the task's next turn. That room is the only door; there is no command or setting that
+**To move one running task**, walk into its room and press the `task <model>` word in the
+**top bar's right cluster** — the ordinary picker opens aimed at that task, and the change
+takes effect on the task's next turn. That room is the only door; there is no command or setting that
 re-models running work from outside.
 
 **New tasks follow the switch.** Work admitted after `/model` runs on the model the

@@ -234,9 +234,10 @@ would type it into `scp`:
 - `devbox:app` in the top bar's host segment
 - `devbox:/srv/code/app` in full in `/status`
 
-The legend under the input box says the machine too, but as a segment of its own rather
-than as a path prefix, because that line carries the conversation's name and not the
-folder: `devbox · porting the parser`.
+The legend under the input box does **not** say the machine any more. It used to carry
+`devbox · porting the parser` at its left end; the host moved up to the top bar's right
+cluster, the conversation's name is a step of the bar's crumb, and the legend's left end is
+empty at rest.
 
 `/status` also names the session file with its machine in front of it, because that is a
 path you may want to copy. Once a measurement exists it also says `the round trip to
@@ -674,7 +675,8 @@ model.
 keeps trying, and when it gets back in it picks the conversation up where you left it,
 including the turn that was running while you were gone.
 
-While that is happening the status line says, quietly:
+While that is happening the **top bar's right cluster** says, quietly — it is never
+dropped, however narrow the frame gets, and it may evict every term beside it:
 
 ```
 reconnecting to devbox — trying for up to 5 minutes

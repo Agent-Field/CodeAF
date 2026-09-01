@@ -711,7 +711,8 @@ memories are dropped with `/forget`.
 `/model` with nothing after it opens the model picker: a filter box in the input line's
 place with a short list of models under it. It is bottom-anchored, so the conversation
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
-name in the status line opens the same picker.
+name in the **top bar** opens the same picker; inside a task's room that press aims the
+picker at the task rather than at the conversation.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -1307,9 +1308,11 @@ against the top of the frame. `/crew` never changes that model and never offers 
 `the model you talk to is untouched — /model changes that`.
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no
-relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-status line says `crew max` beside the model, `/status` prints the `crew` line under
-`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+relaunch, and no waiting for the next session. To read the crew back afterwards: `/status`
+prints the `crew` line under `model`, the phone's status sheet carries it,
+`/settings` → Providers has the crew row, and bare `/crew` opens on yours. **It is not on
+the status row at all** — that row keeps only what ticks, and `crew max` was one of the
+readings that left it.
 
 **That promise is local-session only.** Over `--host`, `/crew` reads and writes this
 machine's profile; the session resolves its crew from the other machine. There is no crew

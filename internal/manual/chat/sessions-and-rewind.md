@@ -455,12 +455,15 @@ The name is written by a model, once, and appears in the top bar's crumb:
 then asked, at the end of that same message,
 `Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
 **one call per conversation** — it is never retried inside a conversation, so a provider
-having a bad minute costs you a name and nothing else. Until it lands, the status line
-falls back to the folder's name; nothing says
+having a bad minute costs you a name and nothing else. Until it lands, the crumb is the
+project's step alone — a conversation with no name of its own, or one whose name is just
+the folder it stands in, draws no second step rather than repeating the word. Nothing says
 "untitled".
 
-The name is capped at **80 characters**, and the status line fits it to the room left by
-the model rather than letting identity push telemetry off the frame.
+The name is capped at **80 characters**, and the crumb walks its own give-way ladder to
+fit — folding the middle to `…`, dropping the project, and only then cutting the current
+title to 12 columns — rather than letting where-you-are push the terms on the bar's right
+end off the frame.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this
@@ -488,8 +491,9 @@ survives, so `fix: nil map crash` is kept whole.
 **A refused name is not a blank row.** The conversation simply has no name of its own, and
 the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
 opening words**, the first line you typed, exactly as they do for a conversation whose
-first turn has not finished yet. The legend above the message box shows only the branch
-until a real name lands.
+first turn has not finished yet. The top bar's crumb draws the project step alone until a
+real name lands — a conversation with no name of its own gets no second step rather than
+the folder's word said twice.
 
 **The ones already named badly heal themselves.** A transcript or a folder that was written
 down under the instruction is read back as having no name at all, and the folder's row gets

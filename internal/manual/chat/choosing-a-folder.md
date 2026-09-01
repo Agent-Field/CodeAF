@@ -99,8 +99,8 @@ rows.
 
 **Work aimed at it is allowed to go there.** A task, or the model's own edits, can now
 reach that folder — which is the whole point of choosing it. What it does **not** do is
-move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and its
-own status line stay exactly as they were.
+move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and the
+project step of the top bar's crumb stay exactly as they were.
 
 ## Where edits go — the folder you are standing in, and the ones you chose
 
@@ -186,7 +186,7 @@ different question with a different answer — see
 `## Undo what the agent did to my files — restoring the workspace` on the workspace page.
 
 **Your working directory does not move.** The folder aforge is standing in — the one the
-status line shows, the one the model's `AGENTS.md` and project settings come from, the one a
+top bar's crumb opens with, the one the model's `AGENTS.md` and project settings come from, the one a
 bare `notes.md` in your message means — is the directory you started aforge in, and nothing
 picks it up and moves it. `/workspace <path>` sets it **once**, for a conversation that never
 had one.

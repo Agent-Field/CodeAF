@@ -529,10 +529,11 @@ say why. A screen full of the wrong machine's work is a confident lie, and one h
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
-**The tab bar says whose machine it is.** Over a connection the right end of the bar reads
-`on <machine>` — the same name you typed after `--host`, and the same one the top bar's
-host segment and the legend under the box already carry. On a local session it is not there
-at all: a machine name is worth a word only when there is more than one machine in play.
+**The tab bar says whose machine it is, and `on spark` at its end is that.** Over a
+connection the right end of the tab bar reads `on <machine>` — the same name you typed after
+`--host`, and the same one the top bar's host segment already carries. On a local session it
+is not there at all: a name is worth a word only when there is more than one computer in
+play, so its absence means you are looking at this one.
 
 ## Why is home empty over ssh when I connect to another machine — space space over --host
 

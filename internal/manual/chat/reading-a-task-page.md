@@ -77,8 +77,8 @@ Three things that look like the same picture and are not:
   `a background job keeps a log, not a transcript` and nothing else. Its row is the one
   whose dim under-line starts with `job` and a number.
 
-No task page ever draws an empty body under its header. Whatever is true of the task,
-the page says it in one dim line:
+No task page ever draws an empty body. Whatever is true of the task, the page says it in
+one dim line:
 
 - a finished task whose transcript is gone from the disk keeps its report and says
   `this task's transcript is not here any more`
@@ -131,14 +131,14 @@ no log at all — the path belongs to the other machine, so the page shows the f
 ## Task page says finished but the work is still running
 
 It does not any more. If you are on an older build, this is what you were seeing: a job's
-page drew `task finished — esc to return` under a header whose clock was still counting up
-— `video · working · 32s` over a foot claiming the work was over.
+page drew `task finished — esc to return` while the clock at the top of the frame was still
+counting up — `video · working · 32s` over a foot claiming the work was over.
 
 The cause was that a background job is a row and never a task in aforge's own graph, so
 every attempt to open a page for one is refused — which is the **ordinary** answer for a
 job, on a perfectly healthy conversation — and that refusal was read as "the work has
-landed". Now the page asks the row instead, which is the same record the header above it is
-drawn from, and the two cannot disagree.
+landed". Now the page asks the row instead, which is the same record the top bar above it
+is drawn from, and the two cannot disagree.
 
 What each foot means now:
 
@@ -149,6 +149,8 @@ What each foot means now:
 - **no foot at all** — an ordinary task still working. There is nothing to say at the bottom
   of the page, because the next thing to arrive is what happens next.
 
-The header is the other half of the answer and it has always been true: `queued`,
-`working`, `checking what it left`, `closing gaps · round 1 of 2`, `finishing`, `waiting`,
-`stopping`, `done`. If the header says the work is running, it is running.
+**The top bar is the other half of the answer**, and it has always been true. The room's
+own pinned header is gone; the state word now rides in the bar's crumb, after the task's
+title: `queued`, `working`, `checking what it left`, `closing gaps · round 1 of 2`,
+`finishing`, `waiting`, `stopping`, `done`. If the bar says the work is running, it is
+running.

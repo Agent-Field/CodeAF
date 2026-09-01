@@ -52,7 +52,8 @@ machine too. The home page covers the whole of it.
 
 Run it in the directory you want it to work in. That directory is where it stands
 — what a bare filename means, where its `AGENTS.md` and project settings come from
-— and it is shown in the status line so you can always tell. It never moves for
+— and its name is the first step of the top bar's crumb, so you can always tell. `/status`
+and the status sheet print the whole path under `place`. It never moves for
 the life of the conversation. Starting in the "wrong" place is not a dead end,
 though: name the folder you actually meant with `/folder`, and the work goes
 there.
@@ -129,9 +130,10 @@ a folder* has that half. This section is about where you are standing.)
 **You started it inside a project.** Aforge borrows that directory. Its tools read
 and write your repository, exactly where you are standing — and that stays true of it
 however many other folders the conversation turns out to be about, because a folder you
-chose with `/folder` is written through a copy and landed with `/land` instead, and the status line
-shows that directory's name — `app`, `my-site` — until the conversation names
-itself, so you can always tell which project this conversation is about. The full
+chose with `/folder` is written through a copy and landed with `/land` instead, and the
+top bar's crumb opens with that directory's name — `app`, `my-site` — with the
+conversation's own name after it once one has been written, so you can always tell which
+project this conversation is about. The full
 path is on `/status` and on the status sheet, under `place`, with the git branch
 beside it.
 

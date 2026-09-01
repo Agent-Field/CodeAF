@@ -487,7 +487,7 @@ machine can do for it: the page is written, and the only remaining step is you s
 whether to keep it. So:
 
 - the roster's footer counts it under **`needs you`**, not `running`
-- the status row's `⏺ N running` does not count it
+- the phone deck's `⏺ N running` does not count it
 - its row wears the waiting mark **`?`**, not a spinner — nothing is turning, because
   nothing is happening
 
@@ -970,9 +970,10 @@ it beside everything else you can run here, and start it from its card.
 Two pieces of harness machinery exist in the code and cannot be reached in this build.
 They are listed here so you do not go looking for them:
 
-- **The running-harness chip.** The activity strip can draw a chip for a harness that is
-  currently running, and clicking it would open the panel. No real session provides the
-  chip with anything to draw, so it never appears. `/harness` is the way in.
+- **The running-harness chip.** There is nowhere left for one. It would have ridden the
+  strip of chips along the top of the frame, and that strip does not exist any more — the
+  top bar took its row. No real session ever gave the chip anything to draw either.
+  `/harness` is the way in.
 
 Two behaviours are absences rather than bugs, and are stated outright in the code:
 

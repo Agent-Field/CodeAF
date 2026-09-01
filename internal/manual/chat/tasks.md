@@ -1942,13 +1942,26 @@ conversation the same page tails that log live.
 | proposals | drawn as cards | never — a task's own pieces start without asking you |
 
 The room's facts are the top bar's task form:
-`⠙ main ▸ Fix the nil-map crash #2 · running · 2m12s · $0.04    esc/← back · ✕`. The
-state glyph leads, the crumb names the trail with `main` as the root, then come the state
-word, the clock, the spend — each dropped when nobody published it — and the right cluster
-ends with the room's two exits. The whole left cluster wears the accent while the room is
-open, because a fact that scrolls away is only true at the top of the page — and this one
-never scrolls. The model beside it is the task's own, with its effort as a `:high` rider
-on the segment; the task's model does not repeat after the crumb.
+
+```
+⠙ aforge-v2 › fix the parser › Fix the nil-map crash #2 · running · 2m12s · $0.04    task glm-4.6 · esc/← back · ✕
+```
+
+The state glyph leads in its own two-cell column, then the crumb — the project, the
+conversation's name, any parent tasks, and this task's title with its handle `#2` riding
+dim after it — then the state word, the clock and the spend, each dropped when nobody
+published it. The right cluster ends with the room's two exits. The whole left cluster
+wears the accent while the room is open, and drops to dim while a consent question is up.
+
+**The room has no pinned header of its own.** It used to draw one — a rule across the top
+of the page carrying these same facts, with dim `part of:` and `spawned:` lines under it —
+and that is gone: the facts are the bar's, and nothing is drawn over the top of a task's
+transcript.
+
+The model in the right cluster is the task's own, led by the word `task` so it cannot be
+misread as the conversation's, and followed by ` · thinking high` when a rung has been set
+on that node. It wears no `:effort` suffix and no `via` rider — both of those are facts
+about the model the *conversation* is running.
 
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
@@ -1956,9 +1969,13 @@ on a standing item, bound here to the task whose page you are standing in; the k
 has the whole of it. A worker already running keeps the rung it started with, so the line
 aforge writes says `task 7 · thinking · high · its next call takes it`.
 
-**The bar is a button as well as a line.** Press the `esc/← back` word, or the crumb's
-conversation segment, and you are back in the conversation, scroll restored. The one
-thing that does not leave is the `✕` at the right end, which asks to stop the work
+**The bar is a button as well as a line, and its two ways out are not the same door.**
+Press the crumb's **conversation segment** and you are back in the conversation, scroll
+restored, **however deep the trail is**. Press **`esc/← back`** and you climb **exactly one
+crumb level** — from a sub-task that is its parent task's room, not the conversation. One
+level down the two land in the same place; two levels down they do not, and they light
+separately under the pointer. The one thing that does not leave is the `✕` at the right
+end, which asks to stop the work
 instead. Every kind of room is in the top bar — a task's page, a sub-harness design, an
 adaptive run's graph, a run node's transcript — so the way out is always named and always
 pressable. The bar is not drawn below 60 columns, where the phone deck's top row takes
@@ -2127,41 +2144,32 @@ be if nothing were folded.
 Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
 there is no work chip for it to mean instead.
 
-## Who started this task, and what it handed out
+## Who started this task, and what it handed out — where the parent is named
 
-Standing inside a task, the crumb says where it sits in the
-family — who asked for the work, what the work handed out, and what it is still behind.
-The parent is a segment of the trail, and each fact is simply absent when there
-is nothing to say:
+**The crumb in the top bar names the parent.** Standing inside a piece of work, the trail
+walks down from the project to the conversation to every task above this one and then to
+this one:
 
 ```
-─ ⠙ main ▸ Write the tree · working · 2m 12s ────── esc/← main · ✕ ─
-  part of: Ship the port
-  spawned: Cut the goldens — queued · Wire the seam — running
+⠙ aforge-v2 › fix the parser › Ship the port › Write the tree #4 · working · 2m 12s    esc/← back · ✕
 ```
 
-- **`part of: <title>`** names the task that handed this work out — the parent. A task
-  nobody spawned draws no such line, so its absence means *this is a top-level task*. A
-  parent this session has had no update for is left unsaid rather than named as a bare id.
-- **`spawned: <title> — <state>`**, one entry per piece, separated by ` · `, in the order
-  the session met them. The state is the same word the roster uses: `queued`, `working`,
-  `finishing`, `waiting`, `done`, `failed`, `stopped`, `needs your look`. A piece that is
-  itself queued behind another piece says only `queued` here; open its own room to see what
-  it is behind.
-- **what this task waits on** is on the accent line itself, as its state word:
-  `waits: <title>` names the prerequisites that have not finished. It is there rather than
-  on a line of its own so the header never says the same thing twice.
+- **`Ship the port`** there is the task that handed this work out. A task nobody spawned
+  has no such step, so its absence means *this is a top-level task*. A parent this session
+  has had no update for is left out rather than named as a bare id, and the walk stops at
+  the first step it cannot name.
+- **What this task waits on** is its state word, right after the crumb: `waits: <title>`
+  names the prerequisites that have not finished, in place of `queued`.
+- **The step you are standing in is bold** and never dropped — a narrow frame folds the
+  middle of the trail to `…`, then drops the project, then the parent, and only then cuts
+  the current title.
 
-Nothing new is being tracked for these lines — they are the roster's own tree, read from
-the one node you are standing in, said in words because the tree shape is not on screen
-here.
-
-Limits, so you know when the page is not telling you everything: at most **three** lines,
-wrapped on their spaces and cut there, because they are charged to the transcript
-underneath them. They stand down entirely on a terminal shorter than **16 rows** or
-narrower than **12 columns**, where the header itself is already fighting for room. An
-adaptive run's page draws none of them: the graph with its edges is already on screen
-there.
+**There are no `part of:` and `spawned:` lines any more.** A room used to pin a header with
+those two dim lines under it; the header is gone, the parent is a step of the crumb, and
+**what this task handed out is read from the roster** — the pieces hang under it there as a
+family, each with its own id and state word — and from the room's own body, where the
+`propose_task` calls are drawn as they are made. An adaptive run's page names none of it
+either: the graph with its edges is already on screen there.
 
 ## Opening a task in the middle of its work — what the room shows
 
@@ -2285,10 +2293,11 @@ Where they show up:
 - **the roster** draws the whole family together, with each piece joined to its parent by
   tree connectors and carrying its own id and state.
 - **the parent's room** shows the `propose_task` calls as they are made, and the parent's
-  own words when the reports come back — and the top bar's crumb lists each piece by name
-  with the state it is in (*Who started this task, and what it handed out*).
-- **the piece's own room** says `part of: <the parent's title>` in its crumb, so a task
-  you walked into knows it is a piece of something.
+  own words when the reports come back.
+- **the piece's own room** carries the parent as a step of the top bar's crumb —
+  `… › Ship the port › Write the tree #4` — so a task you walked into knows it is a piece
+  of something, and one press on that step walks up into it
+  (*Who started this task, and what it handed out*).
 
 Each piece works in a copy of the repository taken from its **parent's** copy, and its
 branch merges back into the parent's — so a family's work comes home as the parent's work,
@@ -2440,8 +2449,8 @@ own cost row. The standing orders page has the rest of what an unattended run is
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief
-do. Walk into the parent's room and its header lists each part by name with the state it is
-in; walk into a part and its header says `part of: <the parent's title>`.
+do — the roster is where the family is read. Walk into a part and the top bar's crumb
+carries the parent as the step before it.
 
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
@@ -2671,11 +2680,13 @@ Name one, here or in the task's room, and every round of that task runs on it.
 
 ## Changing the model for one task while it is running — switch, change or swap a task's model
 
-**Walk into the task's room and press the model's name at the bottom of the screen.**
+**Walk into the task's room and press the model's name in the top bar.**
 
-While you are in a room the status line names that node: `<mark> <task name> · task
-<model>`. Press the `task <model>` part and the ordinary model picker opens, aimed at that
-task. Choose a row and that task moves onto it.
+While a room is open the top bar's right cluster names *that node's* model, led by the word
+`task` so it cannot be misread as the conversation's: `task glm-4.6`. Press it and the
+ordinary model picker opens, aimed at that task. Choose a row and that task moves onto it.
+It rests dim like everything else in that cluster and steps up under the pointer — that
+lift is how the bar says a word is a door.
 
 What that does, exactly:
 
@@ -2683,8 +2694,8 @@ What that does, exactly:
   finishes on the model it started on — killing a request in flight would throw away work
   you have already paid and waited for — and everything after it is on the new model.
 - **It moves that task and nothing else.** The conversation stays on its own model, and so
-  does every other task. Walk back out with `esc` and the status line is the
-  conversation's model again.
+  does every other task. Walk back out with `esc` and the top bar names the conversation's
+  model again.
 - **A note is written in the conversation**, reading `task 7 · model · <the model you
   chose>`, so the change is on the record where every other model change is.
 - **New tasks are unaffected.** Work admitted after this still follows the ordinary
@@ -2717,7 +2728,8 @@ task 7 is done, not running
 
 A stopped or failed task says the same thing with its own word in place of `done`.
 
-Two more places the name is not a door. At phone width the status line becomes a two-row
+Two more places the name is not a door. At phone width the top bar is not drawn at all —
+the status line becomes a two-row
 deck and the task's model is a chip on the second row: tapping it opens the status sheet,
 which names the conversation's model and the task's on two labelled lines, and only the
 conversation's line is a door. And if you have turned the mouse off (`ui.mouse`) there is
@@ -2810,7 +2822,7 @@ What else you can do yourself, on a task that is running:
 | copy text out of it | `ctrl+b` in its room |
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
-| stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
+| stop it | `x`, or the `✕` at the right end of the top bar while its room is open — one confirmation card, always |
 | change its brief or its done-condition | **cannot** — frozen; propose the work again |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
@@ -2840,11 +2852,13 @@ its row reads `finished — look it over`.
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
-**It also stands on home**, in the `needs you` strip, named after the task and saying
-`landed` and how long it has been waiting — from any project, in any conversation, whether
-or not that conversation is open. Pressing that row opens the conversation that ran the
+**It also stands on home**, at the top of the one list with an amber `?` on it, named after
+the task and saying `landed` and how long it has been waiting — from any project, in any
+conversation, whether or not that conversation is open. (There is no separate `needs you`
+strip on home any more; the list is sorted by exactly what that strip used to gather.)
+Pressing that row opens the conversation that ran the
 work **with the task's own record card in front of it**, so you land on the thing you
-pressed rather than at the live edge of the transcript. It stays on the strip for as long
+pressed rather than at the live edge of the transcript. It stays at the top for as long
 as it takes: nothing ages it out, and only your decision moves it.
 
 The landing card then asks, in as many words, and offers the answers under it:

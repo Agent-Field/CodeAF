@@ -77,10 +77,20 @@ The left cluster is a **breadcrumb**. In a conversation it reads:
 · aforge-v2 › fix the parser
 ```
 
-The project first, then the conversation's own name, joined by ` › `. Parents are dim and
-the segment you are standing in is ink. In a task room the crumb grows one segment — the
-task's title with its roster number riding after it, `#2` — and the row's lead glyph
-changes from the plain `·` to the task's state glyph, the same mark the roster paints:
+A two-cell lead glyph column first — the plain `·` at rest — then the project, then the
+conversation's own name, joined by ` › `. **Parents are dim; the step you are standing in
+is the last one and it is drawn bold, in its own hue** — ink in a conversation, the accent
+in a task room. It is bold rather than a fourth colour because a crumb is read by finding
+the end of it, and weight is spent on exactly three things across this surface, of which
+where-you-are is the first.
+
+**The conversation's step is there only when the conversation has a name of its own.** An
+untitled one, and one whose name is simply the folder it stands in, would put the same
+word on the crumb twice — so those draw the project step alone.
+
+In a task room the crumb grows the parent tasks and then this task's title, with its
+roster number riding dim after it, `#2`; the lead glyph becomes the task's state glyph,
+the same mark the roster paints:
 
 ```
 ⠙ aforge-v2 › fix the parser › port the lexer #2 · working · 2m12s · $0.04   esc/← back · ✕
@@ -88,18 +98,16 @@ changes from the plain `·` to the task's state glyph, the same mark the roster 
 
 After the crumb, in a task only, come the room's own facts — the state word, the clock,
 the spend — each dropped when nobody has published it, and the whole left cluster wears
-the accent while the room is open. The right cluster ends with the room's two exits,
-`esc/← back` and `✕`; the `✕` asks to stop the work and outlives the words beside it on a
-narrow frame.
+the accent while the room is open. While a consent question is up the cluster drops to
+dim, so nothing on the bar competes with the decision.
 
-The right cluster in a conversation reads `glm-5.3:high · main* · devbox · YOLO`:
+## The top bar's right cluster — the model, the branch, the host and YOLO
+
+The right end of the bar reads `glm-5.3:high · main* · devbox · YOLO`, and in a task room
+it gains ` · esc/← back · ✕` after that:
 
 - **the model**, with its effort as a `:high` rider — the same basename the picker uses.
-  It is a **door**: press it and the model picker opens, and inside a task room the pick
-  lands on **that task**, not the conversation. Where the pick could not land — a task
-  that has finished, failed, been stopped or needs your look, one that has not started,
-  an adaptive run's page, a node inside a run — the name is drawn and simply does not
-  react. `/model` is the keyboard path onto the same picker.
+  In a room it is the task's own model, spelled `task glm-4.6`.
 - **the branch**, with a `*` when the tree is dirty. There is no branch on a session
   running over `--host`: the git probe would read *this* machine's repository at the
   other one's path, so nothing is shown rather than something possibly wrong.
@@ -107,27 +115,89 @@ The right cluster in a conversation reads `glm-5.3:high · main* · devbox · YO
   answered. A reconnect in progress outranks everything else in the cluster and may evict
   all of it.
 - **`YOLO`**, only while the approval gate is set to `allow`, painted as the warning it
-  is. It is a **door**: press it and `/settings` opens on the **Safety** tab, because
-  seeing the gate open must offer the way to close it.
+  is.
+
+**The whole right cluster rests dim.** It is the quiet "about" voice, and that includes
+the model's name even though pressing it opens a picker: pressability on this surface is
+said by the pointer, not by loudness. Two things there are loud, and both are loud because
+of what they **mean** rather than what they do — `YOLO` in the bad hue, and a reconnect
+sentence in the accent.
 
 Nothing that ticks ever goes up there — no cost, no context percentage, no counts, no
 rates. Those live at the bottom, and a change in the top bar is a navigation event: the
 bar doubling as confirmation that the navigation happened.
 
-The crumb is a row of doors too. Press the **project** segment and home opens — the same
-thing `space space` does. In a task room, press the **conversation's name** and you are
-back in the conversation, scroll restored; the `esc/← back` word at the right end is a
-second, wider target for the same exit. The segment you are standing in is not a door —
-you are already there, and a door to nowhere does not light.
+## Pressing the top bar — its doors, and what each one does
 
-A deep crumb gives way before the right cluster does, one rung at a time: the middle
-folds to `…` first, then the project goes, then the parent, and only then is the title
-itself cut. The segment you are on is never sacrificed for a parent. `esc` climbs exactly
-one crumb level — a sub-task's `esc` goes to its parent task, not the conversation.
+Every door on the bar lights **at the size of its own cells**, never as a band across the
+row: the bar is one row, and a band would offer to go home over the cells that stop the
+work. Under the pointer a door steps up one — to the accent in a conversation, to ink
+inside a room, where the cluster is already accent. `YOLO` is the one exception: it keeps
+its red and takes a background band round its four cells instead, because lifting it would
+paint an open gate in the hue of something safe.
+
+- **the project step** → home, the same thing `space space` does.
+- **the conversation's step**, in a room → back to the conversation, scroll restored,
+  **however deep the trail is**.
+- **the model** → the model picker. Inside a room the pick lands on **that task**, not the
+  conversation. Where the pick could not land — a task that has finished, failed, been
+  stopped or needs your look, one that has not started, an adaptive run's page, a node
+  inside a run — the name is drawn, records no cells at all, and simply does not react.
+  `/model` is the keyboard path onto the same picker.
+- **`YOLO`** → `/settings` on the **Safety** tab, because seeing the gate open must offer
+  the way to close it.
+- **`esc/← back`** → **exactly one crumb level up**, which is what `esc` and `←` do. From a
+  sub-task that is the parent task's room, not the conversation. It is *not* a wider target
+  for the crumb's conversation step: one level down the two land in the same place and two
+  levels down they do not, and they light separately.
+- **`✕`** → the card that asks to stop the work.
+
+The step you are standing in is not a door — you are already there, and a door to nowhere
+does not light. Neither are the branch, the host, the clock, the spend or the state word:
+they are facts.
+
+## What the top bar gives way to when the frame is narrow
+
+In one order, and the crumb is the last thing on the left to yield:
+
+1. **the task's trimmings**, in this order: the spend, then the clock, then the state
+   word, then the lead glyph.
+2. **the crumb's own ladder** — the middle folds to `…`, then the project goes, then the
+   parent goes, and only then is the current title cut, to 12 columns. The step you are on
+   is never dropped.
+3. **the right cluster** — the host's latency detail first (the machine's name survives),
+   then the branch, then the `:effort` rider, then the model, then the back word.
+
+**`YOLO` and a reconnect sentence are never dropped**, at any width the bar is drawn at,
+and the crumb yields before either of them: if both clusters still will not fit, the last
+resort truncates the crumb and never the right cluster. The `✕` outlives the back word.
 
 On a short frame the top bar is the first chrome to go — the transcript wins, and the
 bottom two rows are the last. Below **60 columns** it is not drawn at all, and the phone
 deck's top row carries the crumb instead (see *Does this work on my phone?* below).
+
+Under the empty screen's greeting the bar is **the crumb alone**: no right cluster, and no
+doors on it.
+
+## Where is the task strip — the row of task chips above the transcript is gone
+
+**It does not exist any more, and nothing replaces it.** aforge used to draw a strip of
+chips across the top of the frame, one per running task, above the conversation. It said
+only what the roster already said and it cost a row on every frame, so it was removed.
+
+What answers the same questions now:
+
+- **which page you are on** — the top bar's crumb, and its lead glyph, which carries the
+  state of the task whose room you are standing in;
+- **what is running** — the roster: the column on the right when it is open, and `ctrl+t`
+  or `ctrl+g` to raise it when it is not;
+- **at phone width** — the deck's two rows, whose row 1 is the crumb and whose row 2 ends
+  with `⏺ N running` and the state word.
+
+**The room's own pinned header is gone with it.** A task's page used to pin a rule at the
+top carrying the task's trail, state, clock and spend, with dim `part of:` and `spawned:`
+lines under it. Those facts are the top bar's task form now, and the parent is a step of
+the crumb; nothing is drawn over the top of a task's transcript.
 
 ## The box says which room you are typing into
 
@@ -306,19 +376,20 @@ it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
 ## The line above the message box (the legend)
 
-The rule that separates the conversation from your own business carries the branch and
-the keys that work now, like the legend on a fieldset:
+The rule that separates the conversation from your own business carries the keys that work
+now, like the legend on a fieldset:
 
 ```
-─ chat-v3-task* ─────────────────────────────── / commands ─
+─────────────────────────────────────────────── / commands ─
 ```
 
-The left is the git branch, with a `*` when the tree has uncommitted work. On a session
-running over `--host` it is the machine instead. The conversation name belongs to the
-status line directly below, so the two adjacent lines do not repeat it.
+**Its left end is empty at rest.** The branch and the host used to sit there and are the
+top bar's now, where the slow facts live — a legend that repeated them would be the frame
+saying everything twice. Nothing takes their place: no name, no path, never "untitled".
 
-In a directory that is not a git repository there is no branch either, and the left end
-is simply blank rule. It never says "untitled" and never invents a placeholder.
+The one thing that does appear there is the room's own word while a task room is open —
+`room · esc/← back`, or `room · esc your line back` while a history walk is on, because in
+those few keystrokes `esc` puts your own draft back before it leaves.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
@@ -341,20 +412,26 @@ compete. It is the same in every hint the slot carries, in home's foot hint, in 
 legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
-**At rest it carries the two doors out of the conversation.** With an empty box, it reads
-exactly:
+**At rest it carries the doors out of the conversation** — every one that would actually
+act, in the order you meet them. With an empty box it reads:
 
 ```
-space space home · / commands
+space space home · tab last · ctrl+k switch · / commands
 ```
 
 Pressing the space bar twice on an empty box opens the home screen, and clicking those
-words does the same; `/` opens the command list. It is there on a fresh machine from the
-first minute — an empty home is still a home — and over `--host` too, where it opens the far
-machine's home. The whole slot gives way the moment you type or a state
-above claims it. It costs no row either way — this line is on the frame regardless. And
-it decays: once the earned tips have begun to appear, the plain advertising goes quiet
-and the tips take the slot.
+words does the same; `/` opens the command list. `tab last` appears once there is a
+conversation to flick back to, `ctrl+k switch` whenever the switcher would act. It is
+there on a fresh machine from the first minute — an empty home is still a home — and over
+`--host` too, where it opens the far machine's home. The whole slot gives way the moment
+you type or a state above claims it. It costs no row either way — this line is on the
+frame regardless.
+
+**And the advertising decays with the earned tips.** This rest line is shown for as long as
+the tips machinery still has a tip left to give you; once you have retired all of them the
+slot is simply quiet. **Only the advertising decays, never the doors** — the crumb's
+project step still opens home and the status row's `N open` still opens the conversations
+list, whether or not the words are drawn.
 
 **Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
@@ -431,8 +508,8 @@ the ones listed above are the ones that step up.
 
 ## Which folder am I in — where the workspace path and the git branch are shown
 
-The line above the message box used to carry the folder. It carries this conversation's
-name now, so the workspace path lives in two places, and both say it in full:
+The line above the message box used to carry the folder. Its left end is empty now, so the
+workspace path lives in two places, and both say it in full:
 
 - **`/status`** (aliases `/info`, `/context`) prints a `place` line — the whole path,
   then ` · ` and the branch with its `*` if the tree is dirty. On a remote session the
@@ -440,8 +517,9 @@ name now, so the workspace path lives in two places, and both say it in full:
 - **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
   with the path abbreviated fish-style (`~/s/aforge-v2`) because a sheet row is one line.
 
-The **branch** is also on the legend — `chat-v3-task*` — so a glance above the box tells you
-which branch you are working on without opening anything. There is no branch on a
+The **branch** is on the **top bar's right cluster** — `main*` — so a glance at the top of
+the frame tells you which branch you are working on without opening anything. It used to
+be on the legend above the message box and is not there any more. There is no branch on a
 session running over `--host`: the git probe would read *this* machine's repository at
 the other one's path, so nothing is shown rather than something possibly wrong.
 
@@ -487,11 +565,13 @@ The right cluster is the ticking facts, right-aligned, in a fixed order:
   the warm ink once this conversation has spent four fifths of its own `per conversation`
   limit — a bound about to be reached is not a failure and does not wear the failure hue.
 - **`12%`** — the context meter, how full the conversation is against the compaction
-  threshold. At width **80 or more** it is the full form, `12.4k/128k · 10%`, with the
-  sparkline; below that the percentage alone, which is the fact. It is a **door**: press
-  it and `/status` prints into the transcript, so the whole reading is where you can
-  scroll and copy it. The context meter keeps its own three-rung heat — calm, **near**
-  past 80% of the threshold, **due** past it — which outranks its age.
+  threshold. **It is a percent and nothing else**, at every width; the full
+  `12.4k/128k · 10%` form comes back on its own past 80% of the threshold, where the two
+  absolute figures start to matter. There is **no sparkline on the row at any width** —
+  that went to `/status` and the status sheet. Under 1% there is no segment at all. It is
+  a **door**: press it and `/status` prints into the transcript, so the whole reading is
+  where you can scroll and copy it. The meter keeps its own three-rung heat — calm,
+  **near** past 80% of the threshold, **due** past it — which outranks its age.
 - **`compaction in ~3 turns`** — a forecast from average growth. Empty when the
   conversation is not growing, when the answer is more than 5 turns out, or when
   compaction is already due.
@@ -515,18 +595,20 @@ row any more.** They are still read in full by `/status`, and the phone deck's s
 sheet carries them (see below). A row that ticks every frame is for what you act on;
 the rest is a reading, and readings belong where you ask for them.
 
-While a task **room** is open the row's spend and clock are the room's own — the task's
-spend, the task's clock — and the model in the top bar retargets to that node: pressing
-it opens the same picker aimed at **that task**, which switches from its next turn
-onward. Where the pick could not land the name is drawn and simply does not react: a
-task that has finished, failed, been stopped or needs your look, one that has not
-started, an adaptive run's page, or a node inside a run. The tasks page says the whole
-of it under "Changing the model for one task while it is running".
+While a task **room** is open this row stays the **session's** — its spend, its context,
+its state are the conversation's, because a room is a view over one region of the frame
+and not a second session. The task's own spend and clock are on the **top bar**, after the
+crumb. The model in the top bar retargets to that node: pressing it opens the same picker
+aimed at **that task**, which switches from its next turn onward. Where the pick could not
+land the name is drawn and simply does not react: a task that has finished, failed, been
+stopped or needs your look, one that has not started, an adaptive run's page, or a node
+inside a run. The tasks page says the whole of it under "Changing the model for one task
+while it is running".
 
-Below width **100** the row may give the left cluster up, still right-aligned, and only
-when the two clusters would otherwise collide — a short session still fits on one row at
-60 columns. If even the emptied line will not fit, the numbers are what survive, and
-nothing on the row is pressable.
+Below width **100** the ticking cluster may take a **row of its own**, still right-aligned,
+with the dim presence cluster on the row above it — and only when the two would otherwise
+collide, so a short session still fits on one row at 60 columns. If even that will not fit,
+the numbers are what survive, and nothing on the row is pressable.
 
 While the empty screen's greeting is up the row is empty and the top bar carries the
 crumb alone — a conversation nobody has typed into has nothing to tick (see *The empty
@@ -541,7 +623,7 @@ that ticks, each one a door where a door makes sense:
 | --- | --- | --- | --- | --- |
 | 1 | open | `2 open · 1 want you` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **A door**: press it and the conversations list opens | absent whenever only one is open, which is the ordinary case; the `· N want you` clause is absent when none is waiting |
 | 2 | cost | `$0.14` | the session's running spend. **A door**: press it and the **Spending** tab of `/settings` opens, and it brightens under the pointer to say so. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | **zero renders as nothing** — a session that has spent nothing has nothing to say |
-| 3 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline. **A door**: press it and `/status` prints into the transcript. Below width 80 the percentage alone | empty when nobody has said what the window is, or tokens are 0 |
+| 3 | context | `10%` | how full the conversation is — the percent alone at every width, and the full `12.4k/128k · 10%` form once it is past 80% of the compaction threshold. No sparkline on the row at all. **A door**: press it and `/status` prints into the transcript | empty when nobody has said what the window is, when tokens are 0, or under 1% |
 | 4 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 5 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty while anything is happening; **an idle chat's row ends at the numbers** |
 
@@ -725,27 +807,34 @@ fact you cannot read anywhere else on the frame.
 
 The **state word is not in that list at all** — it is why you are looking at the line.
 
-## The context meter and its sparkline
+## The context meter, and where the sparkline went
 
 How full the conversation is, measured against the **compaction threshold** rather than
 the model's window — the threshold is the thing that actually happens to you.
 
-On the status row it is the percentage alone below width **80** — `10%` — and the full
-form from 80 up: `12.4k/128k · 10%`, with the sparkline. The percentage is the fact;
-the rest is the reading behind it. **Pressing it prints `/status` into the transcript**,
-where the whole reading — tokens, window, threshold, cache — is prose you can scroll
-and copy.
+**On the status row it is a percent and nothing else** — `9%` — at every width. Twenty
+cells of fraction and trend on a row a person reads on every keystroke answered no
+question at 9%: "how much of the window am I on" is the decision the meter forces, and the
+percent *is* that answer. The workings come back exactly where they are needed: past 80%
+of the threshold the row draws the full `82.5k/1M · 84%` on its own, because that is the
+point where you are deciding whether to compact now or finish a thought first.
 
-Three rungs: calm (dim), **near** (accent) past 80% of the threshold, and **due** (the
-bad hue) past the threshold itself.
+**Pressing it prints `/status` into the transcript**, where the whole reading — tokens,
+window, threshold, cache — is prose you can scroll and copy.
 
-The sparkline is the last **6** turn-end readings, one glyph each from `▁▂▃▄▅▆▇`, also
-scaled to the threshold. No sparkline is drawn with fewer than two readings — one bar
-is not a trend, it is a bar. There is no sparkline in the ASCII glyph tier or the
-screen-reader tier. All three keep the number, which is the fact.
+Three rungs of heat: calm (dim), **near** (accent) past 80% of the threshold, and **due**
+(the bad hue) past the threshold itself. It is the same one-bit question that brings the
+fraction back.
 
-The percentage itself is dropped below 1% rather than shown as `0%` — a figure nobody
-measured is not drawn.
+**The sparkline is not on the status row at any width.** It was demoted to `/status`, the
+phone's status sheet and the Spending tab — a trend is a thing you go and look at, not
+something that earns six cells of the row you type under. Where it *is* drawn it is the
+last **6** turn-end readings, one glyph each from `▁▂▃▄▅▆▇`, scaled to the threshold; none
+is drawn with fewer than two readings, because one bar is not a trend, and none in the
+ASCII glyph tier or the screen-reader tier. All of them keep the number, which is the fact.
+
+Under 1% there is no segment on the row at all, and the percentage is dropped rather than
+shown as `0%` — a figure nobody measured is not drawn.
 
 ## Does this work on my phone? Narrow terminals
 
@@ -815,7 +904,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | the top bar is not drawn at all — the deck's top row takes the crumb | below width 60 |
 | telemetry may wrap to its own row | below width 100 |
 | legend loses its hint slot | below width 70 |
-| context meter is the percentage alone; the full `12.4k/128k` form with the sparkline | width 80 and up |
+| context meter is the percent alone at every width; the full `12.4k/128k · 10%` form returns | past 80% of the compaction threshold, not at any width |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
@@ -835,18 +924,18 @@ Under 60 columns the status row becomes a deck of exactly two rows — never one
 three:
 
 ```
- Fix the nil-map crash          $0.31 · 12%
- deepseek-v4-flash        ⏺ 2 running ▸
+ aforge-v2 › fix the parser     $0.31 · 12% ▸
+ deepseek-v4-flash          ⏺ 2 running · ⠹ working
 ```
 
-Row 1 is **what this is** (the session name, or the workspace place if it has not named
-itself) against **what it has cost** (spend, and the context percent only — the
-fraction is what the sheet is for), with a `▸` on the end. Row 2 is **what is
+Row 1's left is **the crumb** — the same trail the top bar draws, walked down the same
+give-way ladder until it fits: `project › chat` at rest, and in a room the room's own chip
+(its state mark and its title). The top bar is not drawn at this width, so this row carries
+it. Against it on the right is **what it has cost** — spend, and the context percent only,
+because the fraction is what the sheet is for — with a `▸` on the end. Row 2 is **what is
 answering** (the model basename, no rider) against **what is still moving**
 (`⏺ N running`, `N jobs`, then the state word). Identity left, telemetry right, the gap
-as the only separator, same as the wide row. The deck's top row is also the crumb's
-home at this width — the top bar is not drawn, and the current step of where you are
-sits where the name always sat.
+as the only separator, same as the wide row.
 
 On row 2, counts drop from the left when the row runs out. The state word is the last
 to go.
@@ -2718,11 +2807,20 @@ place answers the pointer the same way: the row you are hovering takes the band,
 wheel walks the list three rows a turn.
 
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
-accent to ink and keeps its underline; a cut
-table's foot, the jump-to-latest chip, the `✕` at the end of the top bar's task form, the
-model's name in the top bar and the money figure at the foot of the frame all go one step
-up in ink. A highlighted rectangle mid-paragraph
-would be the one boxed thing on a surface with no boxes.
+accent to ink and keeps its underline; a cut table's foot, the jump-to-latest chip, and
+every door on the top bar and the status row go one step up. A highlighted rectangle
+mid-paragraph would be the one boxed thing on a surface with no boxes.
+
+**On the top bar each door lights over its own span**, never the whole row: the project
+step, the conversation's step, the model's name, `esc/← back` and the `✕`. The step is one
+rung — to the accent in a conversation, to ink inside a room, where the bar is already
+accent. **`YOLO` is the only exception on the bar**: it keeps the bad hue and takes a
+background band round its four cells instead, because lifting it would paint an open gate
+in the hue of something safe.
+
+**On the status row four figures are doors and each brightens over its own cells**:
+`◦ keeping an eye on N`, `N open · M want you`, the context percent, and the money figure.
+The rest of the row is figures, not controls, and does not react.
 
 **The pointer and the cursor share one background; the chosen thing gets the louder
 one.** Whether you reached a row with the mouse or with `↓`, the row you are on looks the

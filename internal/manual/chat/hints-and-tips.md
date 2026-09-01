@@ -57,6 +57,24 @@ that retires it.
 When two are relevant at once the more useful one wins — the compact tip over the cost tip,
 the cost tip over the task page tip — and the other waits its turn.
 
+## Why the line above my box went blank — the key advertising decays with the tips
+
+**Because you have earned the quiet.** Under every tip there is one more rung: the generic
+key advertising, `space space home · tab last · ctrl+k switch · / commands`, which the
+resting slot draws over an empty box. It is the same kind of thing as a tip — a nudge
+towards a gesture you have not used yet — so it lives and dies with them. While any of the
+eight tips is still un-retired the advertising is drawn; once every one of them has been
+retired, that line is quiet too and the rule above the box is the plain rule it always was.
+
+**Only the advertising decays; the doors do not.** `space space` still opens home, `tab`
+still goes back to the last conversation, `ctrl+k` still opens the switcher, `/` still
+lists the commands — and the pointer's doors are unaffected: the top bar's project step
+opens home, and the status row's `N open · M want you` opens the conversations list,
+whether or not any of it is named.
+
+The keys a live state names — `esc interrupt`, `y allow · n deny · a always`, `x stop` —
+never decay. They are not hints; they say what the next keystroke does.
+
 ## Turn off hints — stop showing tips, disable the hints
 
 Open the settings panel with `/settings` (or `ctrl+,`), go to the **Display** tab, and flip

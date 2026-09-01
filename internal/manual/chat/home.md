@@ -1008,7 +1008,8 @@ fifty live conversations' worth of memory until you say otherwise. The two ways 
 - `ctrl+w` on the switcher card closes the conversation under the cursor without leaving the
   one you are in.
 
-`2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
+`2 open · 1 want you` on the status line is the count — and it is a door: press it and the
+conversations list opens, the same one `tab` walks. `ctrl+k` shows the first twelve as
 rows. Home is the page that shows every one of them.
 
 ## Enter does nothing on a row — the folder is gone

@@ -46,7 +46,7 @@ file and it writes it as the conversation happens.
 With the defaults, an ssh connection that stops answering is noticed in about **9
 seconds**: aforge asks after 3 seconds of silence and gives up after 3 unanswered asks.
 The existing reconnect loop then keeps trying for up to 5 minutes. A cleanly closed link
-is noticed immediately. During that gap the status line says
+is noticed immediately. During that gap the top bar's right cluster says
 `reconnecting to devbox — trying for up to 5 minutes`; a message submitted in the gap is
 refused visibly rather than lost.
 

@@ -150,8 +150,11 @@ on the same things are the work running in parallel. Under the graph, a dim `pla
 heading gathers the planner's narration in one place, each note wrapped whole under its
 `· ` bullet — it is the planner's own sentence about what it just decided, and half of
 one says nothing. Your own steers and gate answers follow (`you steered · …`), then the
-`answer` section once there is one. The fuel gauge stays pinned in the header
-(`$0.87 / $100.00`) and is never dropped at any width. The page re-reads the run four
+`answer` section once there is one. The **top bar** carries the run's own word as its left
+cluster while the page is open — `◐ main ▸ ship the parser fix · $0.87 / $100.00 ·
+working`, the run's trail spelled with `▸` and rooted at `main` — and the fuel gauge in it
+is never dropped at any width; the goal is what gets cut instead. The bar's right cluster
+is the room's, ending `esc/← back · ✕`. The page re-reads the run four
 times a second. `esc` leaves; the conversation is untouched.
 
 **Type a sentence with the page open and it goes to the planner**, which sees it on its next
@@ -350,7 +353,7 @@ verbatim part, and no heading over nothing.
 
 The goal itself carries the rest of the contract, because a run has no separate deliverable
 or acceptance field: what must exist at the end and how it is checked are written into the
-goal, whose first line is the run's own header on its page — and is what the roster calls the
+goal, whose first line is what the top bar names the run while its page is open — and is what the roster calls the
 run until a **short name** lands for it. A run's row is named the same way a task's is: a
 cheap `taskname` call turns a goal that is still a sentence into two or three lowercase
 words, a few seconds after the run has already started. *Work that runs on its own* has it
@@ -1144,7 +1147,7 @@ it ended when aforge closed; its journal is kept
 ```
 
 **These restored rows are history the column keeps, not work.** Nothing on them runs.
-Nothing on them can be stopped — `x` and the header's ✕ are not offered over a run that
+Nothing on them can be stopped — `x` and the top bar's ✕ are not offered over a run that
 ended with the last process, because there is nothing left to stop. They are not counted
 in the running total on the status line, and no queued row among them will start. Opening
 one still opens the run's page, and the page says `no shape published yet`, because the
