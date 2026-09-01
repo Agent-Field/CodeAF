@@ -107,12 +107,43 @@ var (
 	thinkPace = math.Log(8)    // seconds of a whole thinking phase
 )
 
-// subject names which levels one observation is entitled to move and what each
-// of them is keyed on. An EMPTY NAME IS A LEVEL THE OBSERVATION SAYS NOTHING
-// ABOUT, and it is left exactly where it is — which is how a sheet row reaches
-// b and e without touching μ and a, and how a thinking duration reaches the
-// model without pretending a lane can make a model think less.
+// subject names what each level of one observation is keyed on. An EMPTY NAME
+// IS A LEVEL THIS QUANTITY DOES NOT HAVE — a thinking duration has no provider
+// term, because a lane cannot make a model think less — and it is the only
+// thing that takes a level out of the sum.
+//
+// IT IS NOT THE SAME QUESTION AS WHICH LEVELS MAY MOVE. See [absorbs]: every
+// level a subject names is PREDICTED FROM, and only some of them absorb.
 type subject [Levels]string
+
+// absorbs says which of a subject's levels one observation is entitled to move.
+//
+// THE TWO ARE DIFFERENT QUESTIONS AND CONFLATING THEM COSTS AN ORDER OF
+// MAGNITUDE. A sheet row is published per model, so it may move b[model] and
+// e[model, lane] and must not move μ or a[lane] — one refresh moving the world's
+// pace would move every belief this process holds. But the number it carries is
+// an ABSOLUTE first token, and the belief it is folded into is a SUM. Predicting
+// from the two levels it is allowed to move and folding the whole absolute into
+// them puts μ's own mean into b and e as well, and [Chain.Predict] then adds μ
+// a second time: a lane the sheet published at 430 ms was believed to take eight
+// seconds, which is a controller that would wait out a person's whole patience
+// on the fastest machine it knows.
+//
+// So the innovation is against the WHOLE belief, exactly as the design's own
+// equations write it — ŷ = Σ X over the levels, S = Σ P + R over the same — and
+// the constraint is applied where it belongs: to the gains. A level that may not
+// move still explains its share of the surprise, so the levels that may move
+// absorb less, which is the honest reading of "we are not sure whether this is
+// the model or the world".
+type absorbs [Levels]bool
+
+// everyLevel is the ordinary case: an observation about one deployment is
+// evidence about the world, the provider, the model and the deployment.
+var everyLevel = absorbs{true, true, true, true}
+
+// publishedLevels is what a sheet row may move: the model it is published for
+// and the deployment it names, and nothing wider.
+var publishedLevels = absorbs{LevelModel: true, LevelPair: true}
 
 // pairOf is the subject of a timing observation: the world, the provider, the
 // model, and the deployment.
@@ -131,11 +162,11 @@ func pairOf(id ID) subject {
 	}
 }
 
-// modelOf is the subject of a sheet row, which is published PER MODEL: it
-// speaks about this model and this deployment and about nothing wider.
-func modelOf(id ID) subject {
-	return subject{LevelModel: id.Model, LevelPair: id.String()}
-}
+// modelOf is the subject of a sheet row. It is keyed exactly as a timing
+// observation is — the belief it is folded into is the same sum — and which of
+// those levels a published row may MOVE is [publishedLevels]'s answer, not this
+// one's.
+func modelOf(id ID) subject { return pairOf(id) }
 
 // thoughtOf is the subject of a thinking duration: how long a model deliberates
 // is a property of the model and of the rung it was asked at, so there is no
@@ -276,13 +307,17 @@ func (c *chains) look(of subject, now time.Time) Chain {
 // fold shares one observation z, with observation noise R, out among the levels
 // the subject names, and returns the standardized residual — how surprising the
 // observation was in standard deviations of what was predicted.
-func (c *chains) fold(of subject, z, R float64, now time.Time) float64 {
+func (c *chains) fold(of subject, take absorbs, z, R float64, now time.Time) float64 {
 	if R <= 0 || math.IsNaN(z) || math.IsInf(z, 0) {
 		return 0
 	}
 	c.anchor(now)
 	var held [Levels]node
 	predicted, total := 0.0, R
+	// EVERY LEVEL THE SUBJECT NAMES IS IN BOTH SUMS, whether or not it may move.
+	// The prediction is the belief and the innovation is the surprise against
+	// it; a partial prediction would make the surprise the difference between a
+	// whole number and half a belief. See [absorbs].
 	for level, name := range of {
 		if name == "" {
 			continue
@@ -296,7 +331,7 @@ func (c *chains) fold(of subject, z, R float64, now time.Time) float64 {
 	}
 	surprise := z - predicted
 	for level, name := range of {
-		if name == "" {
+		if name == "" || !take[level] {
 			continue
 		}
 		gain := held[level].P / total
@@ -329,7 +364,7 @@ func (c *chains) fold(of subject, z, R float64, now time.Time) float64 {
 // It is the only mechanism in this package that moves an ESTIMATE rather than a
 // variance, which is why it is the only one with an alarm on it.
 func (c *chains) note(of subject, z, R float64, now time.Time) bool {
-	residual := c.fold(of, z, R, now)
+	residual := c.fold(of, everyLevel, z, R, now)
 	leaf := of[LevelPair]
 	if leaf == "" || residual == 0 {
 		return false

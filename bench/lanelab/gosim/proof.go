@@ -88,6 +88,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -120,10 +121,12 @@ const (
 // ── THE STAGING ─────────────────────────────────────────────────────────────
 
 const (
-	// quietFor is how long a staged lane goes silent. It is longer than every
-	// ceiling in [lane.Role]'s table, so a wait that ended before it did was
-	// bounded by the build and not by the script.
-	quietFor = 60 * time.Second
+	// quietFor is how long a staged lane goes silent. TWICE the ceiling of the
+	// role these rows run under, so a wait that ended before it did was bounded
+	// by the build and not by the script — and no longer than twice, because a
+	// stream nobody was sent to rescue is READ OUT TO ITS END here, and every
+	// second of the script is then a second of the run.
+	quietFor = 20 * time.Second
 
 	// thinkDeltas and thinkRate script a run of thought that lasts about five
 	// and a half seconds of the world: long enough that a controller with no
@@ -153,12 +156,29 @@ const (
 	// proofRequests and proofSeeds are the committed proof run, and they are
 	// smaller than the ship gate's because these rows answer a bound rather than
 	// a percentile: what a ceiling row needs is every trial, not a long tail.
-	proofRequests = 200
+	proofRequests = 150
 	proofSeeds    = 3
 )
 
 // proofRole is the role every proof row runs under.
 const proofRole = lane.RoleTalk
+
+// The two doors onto one ledger a plan can be built against.
+//
+// `shipped` is [lane.PaceFor], which is what `internal/provider`'s planFor
+// asks and therefore what the build really waits against: it prefers the
+// four-level chain over the flat belief whenever the chain believes anything.
+// `flat` is [lane.PaceOf] over the same ledger's flat belief, which is what
+// [lane.PaceFor] falls back to when the chain believes nothing.
+//
+// THE SECOND ARM EXISTS BECAUSE THIS LANE MEASURED THE TWO DISAGREEING BY AN
+// ORDER OF MAGNITUDE, and a table that reported only the first would say the
+// controller acts too early without saying what it is acting on. REPORT.md
+// carries the reproduction.
+const (
+	paceShipped = "shipped"
+	paceFlat    = "flat"
+)
 
 // proofScenario is which of the three scenarios above the proof rows borrow
 // their economics from. `talk` is the one a person is reading.
@@ -177,6 +197,18 @@ type proofCase struct {
 	// stallAfter is which delta the fault window's silence follows. Zero stalls
 	// the lane before it has said anything at all, which is the silent phase.
 	stallAfter int
+	// rate is how fast every lane in this row's world writes, in the world's
+	// tokens a second, AND WHAT THE SHEET PUBLISHES ABOUT THEM. Zero leaves both
+	// as the fixture has them.
+	//
+	// IT IS ONE FIELD AND NOT TWO ON PURPOSE. The liveness clock of §B judges a
+	// gap between two thinking deltas against the lane's BELIEVED rate, so a run
+	// of thought scripted at half a second a delta on a lane the sheet publishes
+	// at thirty tokens a second is a STALLED think by the design's own
+	// definition, and a row that staged one would be measuring §K's fourth
+	// criterion against the third. A model that deliberates slowly and is
+	// published as deliberating slowly is the legitimate long think.
+	rate float64
 	// pinned sends `only:[pin]`, which makes the act a question rather than a
 	// rescue.
 	pinned bool
@@ -190,7 +222,7 @@ var proofCases = []proofCase{
 	{name: "cold store", why: "nothing primed, no sheet, and the lane says nothing"},
 	{name: "stalled lane", why: "quiet five words into the answer", prime: true, stallAfter: stallWords},
 	{name: "thinking model", why: "a long run of thought, and a stall inside one",
-		prime: true, reasoning: thinkDeltas, stallAfter: thinkDeltas / 2},
+		prime: true, reasoning: thinkDeltas, stallAfter: thinkDeltas / 2, rate: thinkRate},
 	{name: "pinned lane, a reader", why: "only:[pin], and somebody to answer the offer",
 		prime: true, pinned: true, reader: true},
 	{name: "pinned lane, no reader", why: "only:[pin], headless, so the offer is borrowed",
@@ -212,7 +244,7 @@ func (c proofCase) tokens() int {
 func (c proofCase) script(profile *lanestub.Profile, speedup int, sick bool) {
 	if c.reasoning > 0 {
 		profile.Reasoning = c.reasoning
-		profile.Rate = thinkRate * float64(speedup)
+		profile.Rate = c.rate * float64(speedup)
 		profile.Tokens = thinkVisible
 	}
 	if !sick {
@@ -237,22 +269,35 @@ type trial struct {
 	acted bool
 	kind  control.Kind
 	// action is time-to-action measured from the request going out, and silence
-	// is `s` at that moment — the same figure until a visible word has arrived
-	// and a different one after.
+	// is `s` at that moment: how long the wait the controller ended had really
+	// run. THEY ARE THE SAME FIGURE UNTIL A VISIBLE WORD HAS ARRIVED and a
+	// different one after, because the ceiling bounds the SILENCE — a lane that
+	// wrote five words and then stopped is bounded from the fifth word, not from
+	// the request.
 	action  float64
 	silence float64
 	// late is how much of `action` was this bench's own alarm rather than the
 	// build's decision, in milliseconds of the world.
 	late float64
+	// reason is the controller's own machine word for WHICH CLOCK decided: the
+	// first-token belief, the gap between two deltas, the duration of a whole
+	// thought, or the ceiling under all three.
+	reason string
 	// armed says a second request went on the wire, usd is every stream this
 	// question put there charged through the one price table, and waste is what
 	// the streams that did not answer cost.
 	armed bool
 	usd   float64
 	waste float64
-	// thought says this trial ran a run of thought with nothing staged wrong in
-	// it, and survived that it reached its first visible word with no arm.
-	thought  bool
+	// thought says a run of thought really BEGAN on this trial with nothing
+	// staged wrong in it. A phase that never started is not a phase, and
+	// counting one would answer §K's fourth criterion with requests that were
+	// acted on before the model had said anything at all.
+	thought bool
+	// survived says that thought then reached its first visible word WITH NO ARM
+	// behind it, which is §K's fourth criterion in its own words. An arm and not
+	// an act: [control.Report] sends nothing, so a wait that was merely said out
+	// loud is a thinking phase that finished on its own.
 	survived bool
 	// answered says a visible word arrived at all.
 	answered bool
@@ -277,7 +322,8 @@ type proofRow struct {
 	ActionP50  float64 `json:"action_p50_s"`
 	ActionP90  float64 `json:"action_p90_s"`
 	ActionMax  float64 `json:"action_max_s"`
-	OverCeil   int     `json:"actions_over_ceiling"`
+	OverCeil   int     `json:"actions_over_ceiling_since_sent"`
+	OverSil    int     `json:"actions_over_ceiling_of_silence"`
 	LateMedian float64 `json:"alarm_late_median_ms"`
 	LateMax    float64 `json:"alarm_late_max_ms"`
 
@@ -294,8 +340,10 @@ type proofRow struct {
 	USD           float64 `json:"usd_total"`
 	Waste         float64 `json:"usd_waste"`
 
-	// Kinds is how many acts of each kind fired, by the controller's own word.
+	// Kinds is how many acts of each kind fired and Whys which clock decided
+	// them, both in the controller's own words.
 	Kinds map[string]int `json:"acts_by_kind"`
+	Whys  map[string]int `json:"acts_by_clock"`
 }
 
 // ceilingWord is the role ceiling as every line of this table spells it.
@@ -311,7 +359,7 @@ var kindWords = map[control.Kind]string{
 // summariseProof pools one case's trials into §K's quantities.
 func summariseProof(c proofCase, got []trial) proofRow {
 	out := proofRow{Case: c.name, Why: c.why, N: len(got),
-		CeilingS: proofRole.Ceiling().Seconds(), Kinds: map[string]int{}}
+		CeilingS: proofRole.Ceiling().Seconds(), Kinds: map[string]int{}, Whys: map[string]int{}}
 	var action, silence, late []float64
 	for _, one := range got {
 		out.USD += one.usd
@@ -328,6 +376,7 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		}
 		out.Acts++
 		out.Kinds[kindWords[one.kind]]++
+		out.Whys[one.reason]++
 		if !one.sick {
 			continue
 		}
@@ -336,6 +385,7 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		silence = append(silence, one.silence)
 		late = append(late, one.late)
 		out.OverCeil += boolCount(one.action > out.CeilingS)
+		out.OverSil += boolCount(one.silence > out.CeilingS)
 	}
 	out.ActionP50, out.ActionP90, out.ActionMax = pct(action, 0.50), pct(action, 0.90), pct(action, 1.0)
 	out.SilenceP50, out.SilenceP90, out.SilenceMax = pct(silence, 0.50), pct(silence, 0.90), pct(silence, 1.0)
@@ -372,13 +422,20 @@ func share(part, whole int) float64 {
 // proveIt is the whole of the `-proof` run: the four scenarios, the pass table,
 // the two figures §K reports without gating, and the raw rows if a file was
 // named for them.
-func proveIt(w *world, seeds []int, n, speedup int, trace bool, jsonOut string, began time.Time) {
+func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces []string, jsonOut string, began time.Time) {
 	fmt.Printf("script:   the lane that is about to serve goes quiet for %v on the middle half "+
 		"of every case's requests\n", quietFor)
 	fmt.Println()
-	rows := runProof(w, seeds, n, speedup, trace)
-	gates := proofGates(rows)
-	printProof(rows, gates, seeds, n, speedup)
+	arms := make([]proofArm, 0, len(paces))
+	for _, pace := range paces {
+		rows := runProof(w, seeds, n, speedup, trace, pace)
+		arms = append(arms, proofArm{Pace: pace, Rows: rows, Criteria: proofGates(rows)})
+	}
+	rows, gates := arms[0].Rows, arms[0].Criteria
+	for _, arm := range arms {
+		fmt.Printf("── the plan waits against the %s belief ─────────────────────────────────────\n\n", arm.Pace)
+		printProof(arm.Rows, arm.Criteria, seeds, n, speedup)
+	}
 	wall := time.Since(began)
 	fmt.Printf("   wall %s\n", wall.Round(time.Second))
 	if jsonOut == "" {
@@ -388,7 +445,7 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, jsonOut string, 
 		"model": w.model, "fetched_at": w.fetched, "seeds": seeds, "n_per_case_per_seed": n,
 		"speedup": speedup, "role": string(proofRole), "ceiling_s": proofRole.Ceiling().Seconds(),
 		"scenario": proofScenario, "quiet_for_s": quietFor.Seconds(),
-		"rows": rows, "criteria": gates, "wall_seconds": wall.Seconds(),
+		"rows": rows, "criteria": gates, "arms": arms, "wall_seconds": wall.Seconds(),
 	}, "", "  ")
 	if err != nil {
 		log.Fatal(err)
@@ -399,8 +456,30 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, jsonOut string, 
 	fmt.Printf("\n   wrote %s\n", jsonOut)
 }
 
+// pacesFrom is which doors the proof rows are run against. Both, unless the
+// caller named one: the two tables side by side are the whole of the argument
+// about where a number in the first one came from.
+func pacesFrom(named string) []string {
+	switch named {
+	case "":
+		return []string{paceShipped, paceFlat}
+	case paceShipped, paceFlat:
+		return []string{named}
+	}
+	log.Fatalf("gosim: no pace called %q; it is %q or %q", named, paceShipped, paceFlat)
+	return nil
+}
+
+// proofArm is one whole table: the rows and the four criteria, for one of the
+// two doors a plan can be built against.
+type proofArm struct {
+	Pace     string      `json:"pace"`
+	Rows     []proofRow  `json:"rows"`
+	Criteria []proofGate `json:"criteria"`
+}
+
 // runProof is the whole of §K: every case, every seed, pooled.
-func runProof(w *world, seeds []int, n, speedup int, trace bool) []proofRow {
+func runProof(w *world, seeds []int, n, speedup int, trace bool, pace string) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)
 	if !ok {
 		log.Fatalf("gosim: no scenario called %q to run the proof rows in", proofScenario)
@@ -409,7 +488,7 @@ func runProof(w *world, seeds []int, n, speedup int, trace bool) []proofRow {
 	for _, c := range proofCases {
 		var all []trial
 		for _, seed := range seeds {
-			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace)...)
+			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace)...)
 		}
 		rows = append(rows, summariseProof(c, all))
 	}
@@ -433,7 +512,7 @@ func scenarioNamed(name string) (scenario, bool) {
 // did not move the state root would fold this program's lanes into the belief
 // file of whoever ran it — and the cold-store row would not be cold on its
 // second seed.
-func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool) []trial {
+func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace string) []trial {
 	dir, err := os.MkdirTemp("", "gosim-proof-")
 	if err != nil {
 		log.Fatal(err)
@@ -448,7 +527,7 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 	ledger := lane.Default().Ledger()
 	if c.prime {
 		for _, l := range w.lanes {
-			ledger.Prime(l.row(w.model), lane.SheetWeight)
+			ledger.Prime(published(l, w.model, c), lane.SheetWeight)
 		}
 	}
 
@@ -458,7 +537,7 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 	p := &prover{
 		world: w, scen: s, kase: c, seed: seed, stub: stub, ledger: ledger,
 		budget: lane.DefaultBudget(), client: &http.Client{},
-		speedup: speedup, total: n, at: theMoment, trace: trace,
+		speedup: speedup, total: n, at: theMoment, trace: trace, pace: pace,
 	}
 	out := make([]trial, 0, n)
 	for index := 0; index < n; index++ {
@@ -469,6 +548,38 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 		out = append(out, got)
 	}
 	return out
+}
+
+// published is the sheet row as the proof rows prime the ledger with it: the
+// same row every other arm in this program is primed from, WITH THE MOMENT IT
+// WAS PUBLISHED ON IT.
+//
+// THE MOMENT IS NOT DECORATION AND LEAVING IT OFF IS A MEASURABLE MISTAKE.
+// [lane.Ledger.Prime] folds a row into the four-level chain only when the row
+// carries one — a component stamped with a time that never happened is a
+// component that can never be aged — while the FLAT belief is primed either
+// way. And [lane.PaceFor] prefers the chain over the flat belief whenever the
+// chain believes anything at all, which it does from its own prior. So a
+// fixture primed with no moment leaves the flat belief knowing each lane's real
+// median and leaves the controller waiting against a prior nobody ever fed:
+// one second, with the four prior widths summed under it.
+//
+// The three scenarios above prime without a moment ([worldLane.row] sets none),
+// which is a finding of this lane rather than something it fixes here — moving
+// `world.go` would move the committed ship-gate table underneath a run nobody
+// re-took. REPORT.md carries it.
+func published(l worldLane, model string, c proofCase) lane.Row {
+	row := l.row(model)
+	if c.rate > 0 {
+		// A LANE IS PUBLISHED AT THE SPEED IT WRITES. See [proofCase.rate].
+		row.Ratep50, row.Ratep75, row.Ratep90, row.Ratep99 = c.rate, c.rate, c.rate, c.rate
+	}
+	// The sheet is a thirty-minute aggregate and this run's own moment is when
+	// it is being read, so the row is stamped as published now rather than at
+	// the fixture's `fetched_at`: a row stamped after the moment the request
+	// carries would be a belief aged backwards.
+	row.At = theMoment
+	return row
 }
 
 // prover is one proof row at one seed.
@@ -484,6 +595,8 @@ type prover struct {
 	speedup int
 	total   int
 	trace   bool
+	// pace is which door the plan is built against: [paceShipped] or [paceFlat].
+	pace string
 
 	// at is the moment in the WORLD this request went out and wire the moment on
 	// the socket it went out at; every world moment handed to the watch is the
@@ -521,7 +634,7 @@ func (p *prover) prove(index int) (trial, error) {
 	primary := p.open(ctx, choice.Order, choice.Only)
 	defer primary.cancel()
 
-	out := trial{sick: sick, usd: p.priceOf(head), thought: p.kase.reasoning > 0 && !sick}
+	out := trial{sick: sick, usd: p.priceOf(head)}
 	act, served, err := p.untilActed(watch, primary, &out)
 	if err != nil {
 		return trial{}, err
@@ -529,9 +642,16 @@ func (p *prover) prove(index int) (trial, error) {
 	if served == "" {
 		served = head
 	}
-	if out.acted {
-		p.answer(ctx, act, primary, served, &out)
+	// AN ACT THAT SENDS NOTHING DOES NOT END THE REQUEST. [control.Report] says
+	// the wait is real and sends nobody anywhere; an offer with a reader is a
+	// question, not an override. The stream that was already in flight is still
+	// the answer in both cases, so it is read out — which is also the only way
+	// a run of thought ever finishes, and the only way the duration clock ever
+	// learns what one costs.
+	if !out.acted || !p.answer(ctx, act, primary, served, &out) {
+		p.drain(primary, &out)
 	}
+	out.survived = out.thought && out.answered && !out.armed
 	p.close(index, served, out)
 	return out, nil
 }
@@ -571,11 +691,22 @@ func (p *prover) headFor(choice lane.Choice) string {
 // is believed about it, the role's ceiling and λ and the alternatives the
 // frontier named — and then the things only a transport knows.
 func (p *prover) plan(choice lane.Choice, head string) control.Plan {
-	plan := lane.PlanFor(choice, lane.PaceFor(lane.ID{Model: p.world.model, Lane: head}, p.at), proofRole, p.at)
+	plan := lane.PlanFor(choice, p.paceFor(head), proofRole, p.at)
 	plan.Pinned = len(choice.Only) > 0
 	plan.Purse = lane.Spending(p.budget)
 	plan.Think = lane.Thinks(p.world.model, "", p.at)
 	return plan
+}
+
+// paceFor is what this plan waits against: the door the transport asks, or the
+// flat belief underneath it. See [paceShipped].
+func (p *prover) paceFor(head string) lane.Pace {
+	id := lane.ID{Model: p.world.model, Lane: head}
+	if p.pace == paceFlat {
+		belief, _ := p.ledger.Belief(id)
+		return lane.PaceOf(belief)
+	}
+	return lane.PaceFor(id, p.at)
 }
 
 // stage scripts the world for one request: every lane behaving as its draw
@@ -592,8 +723,8 @@ func (p *prover) stage(shots []shot, head string, sick bool) []lanestub.Lane {
 			continue
 		}
 		p.kase.script(&staged[index].Profile, p.speedup, sick)
-		if p.kase.reasoning > 0 {
-			p.rates[head] = thinkRate
+		if p.kase.rate > 0 {
+			p.rates[head] = p.kase.rate
 		}
 	}
 	return staged
@@ -640,19 +771,29 @@ func (p *prover) untilActed(watch *lane.Watch, s *armed, out *trial) (control.Ac
 				belief, _ := p.ledger.Belief(lane.ID{Model: p.world.model, Lane: served})
 				watch.Serving(served, belief, seen.reading.At)
 			}
+			if seen.reading.Hidden > 0 && !out.sick {
+				out.thought = true
+			}
 			if seen.reading.Visible > 0 {
 				out.answered = true
-				out.survived = out.survived || out.thought
 			}
 			if act := watch.Read(seen.reading); act.Kind != control.None {
-				p.mark(out, act, 0)
+				p.mark(out, act, seen.reading.At, 0)
 				return act, served, nil
 			}
 		case <-ring.rings:
+			// THE MOMENT ASKED ABOUT IS THE MOMENT THE CONTROLLER ASKED FOR, and
+			// not the one this bench's timer got round to. A beat wakes at the
+			// deadline and asks whether anything has arrived by then; the wire
+			// has really reached that moment by the time the alarm rings, and
+			// anything that arrived in the microseconds between is still sitting
+			// in the channel to be read with its own stamp. What the timer cost
+			// is measured beside it and printed with the table rather than
+			// folded into the figure the ceiling is judged on.
 			rang = ring.at
 			late := p.worldNow().Sub(ring.at)
-			if act := watch.Quiet(p.worldNow()); act.Kind != control.None {
-				p.mark(out, act, late)
+			if act := watch.Quiet(ring.at); act.Kind != control.None {
+				p.mark(out, act, ring.at, late)
 				return act, served, nil
 			}
 		case err := <-s.done:
@@ -664,14 +805,11 @@ func (p *prover) untilActed(watch *lane.Watch, s *armed, out *trial) (control.Ac
 
 // mark records the first act with the numbers the controller decided it on, and
 // with how late this bench's own alarm was when it asked.
-func (p *prover) mark(out *trial, act control.Act, late time.Duration) {
-	out.acted, out.kind = true, act.Kind
+func (p *prover) mark(out *trial, act control.Act, asked time.Time, late time.Duration) {
+	out.acted, out.kind, out.reason = true, act.Kind, act.Reason
 	out.silence = act.Silence.Seconds()
-	out.action = p.worldNow().Sub(p.at).Seconds()
+	out.action = asked.Sub(p.at).Seconds()
 	out.late = float64(late) / float64(time.Millisecond)
-	// A think that was still running when something was done about it is not a
-	// think that finished on its own, whatever arrives afterwards.
-	out.survived = out.survived && !out.thought
 }
 
 // ── PHASE TWO: WHAT THE ACT LED TO ──────────────────────────────────────────
@@ -684,14 +822,14 @@ func (p *prover) mark(out *trial, act control.Act, late time.Duration) {
 // An offer with a reader is left standing, because a pin is asked and this bench
 // has nobody to answer with. An offer with nobody there becomes the borrow §E
 // describes — and that conversion is this file's, not the build's.
-func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, served string, out *trial) {
+func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, served string, out *trial) bool {
 	borrow := act.Kind == control.Ask && !p.kase.reader
 	if act.Lane == "" || (act.Kind != control.Hedge && !borrow) {
-		return
+		return false
 	}
 	price := p.priceOf(act.Lane)
 	if !p.budget.Allow(p.at, price) {
-		return
+		return false
 	}
 	p.budget.NoteHedge(price, p.at)
 	out.armed = true
@@ -710,6 +848,24 @@ func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, se
 		out.waste += price
 	case <-arm.done:
 		out.waste += price
+	}
+	return true
+}
+
+// drain reads a stream nobody was sent to rescue out to its end, which is what
+// happens to it in the build: nothing was cancelled, so the answer still
+// arrives, and a run of thought that finishes is one the duration clock can
+// learn from.
+func (p *prover) drain(one *armed, out *trial) {
+	for {
+		select {
+		case seen := <-one.sights:
+			if seen.reading.Visible > 0 {
+				out.answered = true
+			}
+		case <-one.done:
+			return
+		}
 	}
 }
 
@@ -732,14 +888,14 @@ func (p *prover) close(index int, served string, out trial) {
 	// MEASUREMENT rather than a prior. The build folds one in after every
 	// thinking phase it sees; a bench that predicted from a chain nothing had
 	// ever written to would be measuring the prior and calling it the build.
-	if out.survived {
+	if out.thought && out.answered {
 		lane.NoteThought(p.world.model, "", thinkFor, p.at)
 	}
 	p.budget.NoteRequest(p.at)
 	p.budget.NoteSpend(out.usd, p.at)
 	if p.trace {
-		fmt.Fprintf(os.Stderr, "proof %-22s/%d %4d  served %-14s %-8s action %7.2fs  s %7.2fs  $%.6f%s\n",
-			p.kase.name, p.seed, index, served, kindWords[out.kind], out.action, out.silence, out.usd,
+		fmt.Fprintf(os.Stderr, "proof %-22s/%d %4d  served %-14s %-22s action %7.2fs  s %7.2fs  $%.6f%s\n",
+			p.kase.name, p.seed, index, served, kindWords[out.kind]+"/"+out.reason, out.action, out.silence, out.usd,
 			map[bool]string{true: "  SICK", false: ""}[out.sick])
 	}
 	reading := float64(p.scen.visible) / lane.ReadRate * float64(time.Second)
@@ -845,7 +1001,14 @@ type armed struct {
 func (p *prover) open(ctx context.Context, order, only []string) *armed {
 	inner, cancel := context.WithCancel(ctx)
 	one := &armed{sights: make(chan sight, 4), done: make(chan error, 1), cancel: cancel}
-	go func() { one.done <- p.read(inner, one, order, only) }()
+	// THE END IS SENT ONCE AND THEN CLOSED, so that a second reader of a stream
+	// that is already over — [prover.drain], on a request nobody was sent to
+	// rescue — is told so immediately instead of waiting for an end that has
+	// already happened.
+	go func() {
+		one.done <- p.read(inner, one, order, only)
+		close(one.done)
+	}()
 	return one
 }
 
@@ -1050,8 +1213,10 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int)
 	fmt.Println()
 	for _, r := range rows {
 		fmt.Printf("     %-24s %s\n", r.Case, r.Why)
-		fmt.Printf("     %-24s acts: %s   alarm late %.0f/%.0f ms median/max   a word arrived on %d/%d\n",
-			"", kindTally(r.Kinds), r.LateMedian, r.LateMax, r.Answered, r.N)
+		fmt.Printf("     %-24s acts: %s   clocks: %s\n", "", kindTally(r.Kinds), whyTally(r.Whys))
+		fmt.Printf("     %-24s over the ceiling: %d since sent, %d of silence   "+
+			"alarm late %.0f/%.0f ms median/max   a word arrived on %d/%d\n",
+			"", r.OverCeil, r.OverSil, r.LateMedian, r.LateMax, r.Answered, r.N)
 	}
 	fmt.Println()
 	fmt.Println("── §K, the four criteria ───────────────────────────────────────────────────────")
@@ -1076,6 +1241,23 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int)
 			r.Case, r.SilenceP50, r.SilenceP90, r.SilenceMax, r.ReportPct)
 	}
 	fmt.Println()
+}
+
+// whyTally is which clock decided the acts, commonest first.
+func whyTally(whys map[string]int) string {
+	names := make([]string, 0, len(whys))
+	for name := range whys {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(a, b int) bool { return whys[names[a]] > whys[names[b]] })
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, fmt.Sprintf("%s %d", name, whys[name]))
+	}
+	if len(out) == 0 {
+		return "none"
+	}
+	return strings.Join(out, ", ")
 }
 
 // kindTally is which acts fired, in the ladder's own order.

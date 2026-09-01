@@ -31,12 +31,12 @@ func TestASurpriseMovesTheLevelThatKnowsNothing(t *testing.T) {
 	// Two hundred consistent answers from one provider: the world's pace, this
 	// provider and this model are all now known, and the deployment with them.
 	for range 200 {
-		held.fold(pairOf(familiar), math.Log(800), 0.05, noon)
+		held.fold(pairOf(familiar), everyLevel, math.Log(800), 0.05, noon)
 	}
 	before := held.look(pairOf(ID{Model: scriptedModel, Lane: fresh}), noon)
 
 	// And now a provider nobody has ever measured answers, slowly.
-	held.fold(pairOf(ID{Model: scriptedModel, Lane: fresh}), math.Log(6000), 0.05, noon)
+	held.fold(pairOf(ID{Model: scriptedModel, Lane: fresh}), everyLevel, math.Log(6000), 0.05, noon)
 	after := held.look(pairOf(ID{Model: scriptedModel, Lane: fresh}), noon)
 
 	moved := func(level Level) float64 { return math.Abs(after[level].X - before[level].X) }
@@ -177,12 +177,26 @@ func TestAChangePointResetsTheLeafAndNotItsParents(t *testing.T) {
 func TestASheetRowMovesTheModelAndTheDeploymentAndNothingWider(t *testing.T) {
 	held := waitChains()
 	id := ID{Model: scriptedModel, Lane: "Cloudflare"}
-	held.fold(modelOf(id), math.Log(768), 0.22*SheetWeight, noon)
+	held.fold(modelOf(id), publishedLevels, math.Log(768), 0.22*SheetWeight, noon)
 	if held.World.P != 0 || len(held.Lane) != 0 {
 		t.Fatalf("a sheet row moved the world's pace or a provider: world %+v, lanes %v", held.World, held.Lane)
 	}
 	if len(held.Model) != 1 || len(held.Pair) != 1 {
 		t.Fatalf("a sheet row did not reach the model and the deployment: %v / %v", held.Model, held.Pair)
+	}
+	// AND WHAT IT PREDICTS AFTERWARDS IS THE NUMBER IT WAS PUBLISHED WITH.
+	//
+	// A row is an ABSOLUTE first token and a belief is a SUM. Folding the whole
+	// absolute into the two levels a published row may move — while predicting
+	// from those two alone — puts the world's own pace into them as well, and
+	// [Chain.Predict] then adds it a second time. The lane the sheet published
+	// at 768ms was believed to take eight seconds, which is a controller that
+	// would wait out a person's whole patience on the fastest machine it knows.
+	// The innovation is against the whole belief now, so the two levels that may
+	// move carry the OFFSET from it and the sum comes back where it started.
+	predicted, _ := held.look(pairOf(id), noon).Predict()
+	if got := math.Exp(predicted); got < 500 || got > 1400 {
+		t.Fatalf("the sheet published 768ms and the belief predicts %.0fms", got)
 	}
 }
 

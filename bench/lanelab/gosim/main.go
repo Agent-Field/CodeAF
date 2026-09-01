@@ -200,6 +200,8 @@ func main() {
 	trace := flag.Bool("trace", false, "write one line per request to standard error: asked, served, timed")
 	proof := flag.Bool("proof", false,
 		"run docs/design/waiting/DESIGN.md §K's four scenarios and its pass table instead of the ship gate")
+	pace := flag.String("pace", "",
+		"proof only: which belief the plan waits against, `shipped` or `flat`; both when unsaid")
 	flag.Parse()
 
 	// THE PROOF ROWS HAVE THEIR OWN SIZE and it is smaller, because they answer
@@ -267,7 +269,7 @@ func main() {
 	fmt.Printf("wire:     %d× faster than the world; %d tokens streamed per answer "+
 		"(the rate filter's floor is %d)\n", *speedup, streamTokens, 32)
 	if *proof {
-		proveIt(world, seedList, *requests, *speedup, *trace, *jsonOut, began)
+		proveIt(world, seedList, *requests, *speedup, *trace, pacesFrom(*pace), *jsonOut, began)
 		return
 	}
 	fmt.Printf("script:   the lane the router chose on request 0 goes to a %v first token at "+

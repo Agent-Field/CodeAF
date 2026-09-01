@@ -297,10 +297,10 @@ func (l *ledger) migrate(held storeState) {
 		}
 		of := pairOf(belief.ID)
 		if belief.TTFT.Known() {
-			l.wait.fold(of, belief.TTFT.X, belief.TTFT.P, belief.At)
+			l.wait.fold(of, everyLevel, belief.TTFT.X, belief.TTFT.P, belief.At)
 		}
 		if belief.Rate.Known() {
-			l.rate.fold(of, belief.Rate.X, belief.Rate.P, belief.At)
+			l.rate.fold(of, everyLevel, belief.Rate.X, belief.Rate.P, belief.At)
 		}
 	}
 }
@@ -498,8 +498,8 @@ func (l *ledger) primeRow(row Row, k float64) {
 		// stamped with a time that never happened is a component that can never
 		// be aged. See [Row.At].
 		if !row.At.IsZero() {
-			l.wait.fold(modelOf(row.ID), ttft.X, ttft.P*k, row.At)
-			l.rate.fold(modelOf(row.ID), rate.X, rate.P*k, row.At)
+			l.wait.fold(modelOf(row.ID), publishedLevels, ttft.X, ttft.P*k, row.At)
+			l.rate.fold(modelOf(row.ID), publishedLevels, rate.X, rate.P*k, row.At)
 		}
 	}
 	// The quality prior is set once and never re-asserted: a lane that has
@@ -955,7 +955,7 @@ func (l *ledger) deliberated(seen thought) {
 	if seen.Took <= 0 || seen.At.IsZero() {
 		return
 	}
-	l.think.fold(thoughtOf(seen.Model, seen.Rung), math.Log(seen.Took.Seconds()), levelVariance(LevelPair), seen.At)
+	l.think.fold(thoughtOf(seen.Model, seen.Rung), everyLevel, math.Log(seen.Took.Seconds()), levelVariance(LevelPair), seen.At)
 }
 
 // Skipped is how many journal lines this ledger could not read. A half-written
