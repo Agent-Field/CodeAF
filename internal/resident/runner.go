@@ -103,11 +103,6 @@ type Runner struct {
 	activePractice      map[string]context.CancelFunc
 	serviceConsentGrace time.Duration
 	governor            *executor.Governor
-	// localInFlight counts the running leaves that do real work on this
-	// machine — compilers, test binaries — as opposed to the ones parked on a
-	// socket waiting for a model. It is the only population the load governor
-	// is asked about, because it is the only one the host can feel.
-	localInFlight atomic.Int64
 	// passFaults counts panics recovered *inside a dispatch pass* — the ones
 	// that end the pass early without ending the loop. A leaf that faults in
 	// its own goroutine is not one of these: it lands failed through the
@@ -943,15 +938,9 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 
 	// The backstop, and nothing else. How many leaves may exist at once is a
 	// resource question — handles, goroutines — not a scheduling one, because
-	// a leaf is a goroutine parked on a socket waiting for a model. Refusing
-	// here is therefore allowed to end the pass: at the backstop no leaf of
-	// any class could be admitted, so there is nothing to skip to.
-	//
-	// The gate that still reads host pressure lives inside claimNext, asked
-	// per node, and only of the leaves that spawn real local processes. That
-	// is where a refusal must skip one candidate rather than end the pass:
-	// this one used to do both jobs, and a single busy compile ended the pass
-	// for every briefing waiting behind it.
+	// every leaf is a goroutine parked on a socket waiting for a model.
+	// Refusing here is therefore allowed to end the pass: at the backstop no
+	// leaf could be admitted, so there is nothing to skip to.
 	if !r.governor.Admit(len(r.slots) - 1) {
 		release()
 		return false, nil
@@ -1006,15 +995,7 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 			r.activePractice[node.ID] = cancel
 		}()
 	}
-	// Counted before the worker exists, for the same reason the slot is taken
-	// before the worker exists: the next dispatch in this same pass has to see
-	// it. A count incremented inside the goroutine would still read zero while
-	// eight compiles were being handed out.
-	local := executor.LocalWorkSubharness(node.Subharness)
 	r.wg.Add(1)
-	if local {
-		r.localInFlight.Add(1)
-	}
 	held = false            // the worker's own defer returns the slot now
 	claimed = store.Claim{} // and the worker's own landing settles the claim
 	go func(node store.Node, runCtx context.Context, cancel context.CancelFunc, hold *leafHold) {
@@ -1027,12 +1008,6 @@ func (r *Runner) dispatchOne(ctx context.Context, pass *passReads) (spawned bool
 		// exactly as full as it was.
 		defer r.nudge()
 		defer func() { <-r.slots }()
-		// Registered after the slot's own defer so it runs before it: the pass
-		// woken by the returned slot must not read a local count that still
-		// includes the compile that just finished.
-		if local {
-			defer r.localInFlight.Add(-1)
-		}
 		defer cancel()
 		// Dropped after the landing and before the slot goes back, so the pass
 		// woken by the returned slot can never find a grip on a worker that is
@@ -1111,21 +1086,6 @@ func (r *Runner) claimNext(pass *passReads) (store.Node, bool, error) {
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
 		if pass.open[node.ID] {
-			continue
-		}
-		// The last gate that still asks the machine anything, asked only of
-		// the leaves the machine can feel. Which worker those are is the
-		// executor's own answer, not a name this package knows: a worker that
-		// spawns compilers and test binaries loads this host, and the
-		// fan-pinning incident that protection was built for was exactly that.
-		// Everything else is a goroutine on a socket.
-		//
-		// A refusal skips this node and looks at the next one. That is the
-		// whole difference between a cap and a stall: the leaf behind a busy
-		// compile is usually a briefing that costs this host nothing, and it
-		// used to wait out the compile because one refusal ended the pass.
-		if executor.LocalWorkSubharness(node.Subharness) &&
-			!r.governor.AdmitLocal(len(r.slots)-1, int(r.localInFlight.Load())) {
 			continue
 		}
 		// Admission reserves the per-firing budget; nothing until now spent it.

@@ -229,8 +229,8 @@ func TestSubmitSendsTheAttachedBytesAndEmptiesTheTray(t *testing.T) {
 	}
 }
 
-// THE TRANSCRIPT NAMES THE PICTURES. A terminal cell cannot show one, and the
-// honest thing to draw is the file the person pointed at.
+// THE TRANSCRIPT NAMES THE PICTURES above the thumbnail, so the sentence's
+// number, the marker and its file door remain one correspondence.
 func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"shot.png": 8, "chart.png": 8})
 	// Whether a link is written at all is read off TERM at construction
@@ -318,6 +318,9 @@ func TestReplayDrawsTheJournalsImagePlaceholder(t *testing.T) {
 // attachments would make the person go and find the files again.
 func TestAGateRefusalKeepsTheChipsAndNamesTheModel(t *testing.T) {
 	a, agent, dir := attachLab(t, map[string]int{"shot.png": 8})
+	// A connection echoes before the far end accepts the turn, which is the
+	// withdrawal flow this contract is about.
+	a.host, a.localRoot = "devbox", dir
 	agent.model = "vendor/blind"
 	agent.refuse = errors.New(
 		"session: vendor/blind cannot read images — switch to a model with vision, or describe what the picture shows")
@@ -333,6 +336,41 @@ func TestAGateRefusalKeepsTheChipsAndNamesTheModel(t *testing.T) {
 	}
 	if a.state != stateIdle {
 		t.Fatalf("the surface is %v after a refusal, want idle", a.state)
+	}
+	// Q7: withdrawing a refused user line also withdraws the thumbnail it owns.
+	for _, e := range a.entries {
+		if e.kind == entryUser {
+			t.Fatalf("the refused message left its user block on the page: %+v", e)
+		}
+	}
+}
+
+// Q7: a refusal also withdraws a picture when another row landed after the
+// echoed message, forcing the in-place branch that cannot remove its entry.
+func TestARefusedMessageWithdrawsItsPictureBehindALaterRow(t *testing.T) {
+	a, agent, dir := attachLab(t, nil)
+	a.host, a.localRoot = "devbox", dir
+	a.pal = newPalette(tokens.TrueColor, false)
+	agent.model = "vendor/blind"
+	agent.refuse = errors.New("session: vendor/blind cannot read images")
+	path := writePicture(t, dir, "shot.png", wideTestPicture())
+	a.attach(path)
+	cmd := a.submitImages("look at this")
+	if len(a.entries) != 1 || len(a.entries[0].pictures) != 1 || !a.entries[0].pending {
+		t.Fatalf("the hosted picture was not echoed before submission: %+v", a.entries)
+	}
+	a.note("another row landed while the bytes were travelling")
+	a.adopt(runSubmit(t, cmd))
+
+	if len(a.entries) < 2 || a.entries[0].kind != entryUser {
+		t.Fatalf("the in-place branch was not exercised: %+v", a.entries)
+	}
+	withdrawn := a.entries[0]
+	if withdrawn.text != "" || len(withdrawn.pictures) != 0 || withdrawn.picturesHere || withdrawn.pending {
+		t.Fatalf("the withdrawn block kept message state: %+v", withdrawn)
+	}
+	if body := frame(a); strings.Contains(body, halfBlock) || strings.Contains(plain(body), "[#1 shot.png]") {
+		t.Fatalf("the refused picture remained on the page:\n%s", plain(body))
 	}
 }
 

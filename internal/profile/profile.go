@@ -77,14 +77,6 @@ type Record struct {
 	// recalibration prompt is byte-identical.
 	Calibration []string `json:"calibration,omitempty"`
 
-	// EscalatedFrom names the worker that tried this task first and could not
-	// finish it. It is one string rather than a chain because the boundary it
-	// measures has two sides and no more: "linear could not, this one could" is
-	// the entire fact, and it is the only direct evidence there is that the
-	// boundary between two rulers sits too high. Empty is the ordinary case —
-	// the task came here first, by choice, and nothing about a ruler follows.
-	EscalatedFrom string `json:"escalated_from,omitempty"`
-
 	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
 	// the scheduler's StateDone carried across — true of a leaf that exhausted
 	// its budget mid-edit as much as of one that finished — and the flag was
@@ -160,10 +152,10 @@ func (r Record) Overran() bool {
 
 // Profile is the accumulated experience of one model running one kind of work.
 //
-// Keyed by model and subharness because capability is a property of the
-// executor, not of the project. Specialised workers — a reviewer, a coding
-// pipeline — each accumulate their own profile with no new machinery: a
-// different subharness is simply a different file.
+// Keyed by model and worker because capability is a property of the executor,
+// not of the project. There is one worker, so in practice there is one file per
+// model; the key keeps its shape so that a profile written by a build with more
+// than one is simply a file nothing opens.
 type Profile struct {
 	Model      string   `json:"model"`
 	Subharness string   `json:"subharness"`
@@ -555,10 +547,9 @@ func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 }
 
 // Boundary reports whether this record says anything about where the edge of
-// this worker's capacity is: a note the worker wrote about its own fit, or the
-// fact that another worker tried the task first and could not finish it.
+// this worker's capacity is: a note the worker wrote about its own fit.
 func (r Record) Boundary() bool {
-	return len(r.Calibration) > 0 || strings.TrimSpace(r.EscalatedFrom) != ""
+	return len(r.Calibration) > 0
 }
 
 // BoundaryEvidence is the newest handful of records that say something about

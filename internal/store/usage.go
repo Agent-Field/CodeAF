@@ -1036,7 +1036,7 @@ func otherRoomsSpokeSince(query rowQuerier, sessionID string, sinceSeq int64) (b
 // in three separate ways at once. It is read while the run is still landing, so
 // a leaf that journals its row a second later is money the receipt never saw
 // (P1 of the perf wave reported $0.5255 against a table that summed to $0.8221:
-// the difference was one specialist leaf, exactly). It is scoped to a day, so a run
+// the difference was one leaf, exactly). It is scoped to a day, so a run
 // that crosses local midnight subtracts the wrong baseline. And it is scoped to
 // the whole store, so a durable journal another session is also billing hands
 // this run somebody else's money.

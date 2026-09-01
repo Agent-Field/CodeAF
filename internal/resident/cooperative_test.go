@@ -32,7 +32,7 @@ func splitFixture(t *testing.T, name string) (*store.Store, store.Claim, store.N
 	t.Cleanup(func() { graph.Close() })
 	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
 		{ID: "job", Brief: "the whole job"},
-		{ID: "job-a", Parent: "job", Brief: "run every test case in tests/", Subharness: executor.BareSubharness},
+		{ID: "job-a", Parent: "job", Brief: "run every test case in tests/"},
 		{ID: "job-b", Parent: "job", Brief: "consumes a", Needs: []store.Need{{NodeID: "job-a", Kind: store.FeedsInto}}},
 	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "test"}); err != nil {
 		t.Fatal(err)
@@ -154,13 +154,10 @@ func TestACooperativeSplitRoutesThroughTheGovernedSplice(t *testing.T) {
 		t.Fatalf("%d admitted growths, want exactly one", admitted)
 	}
 
-	// The parts keep the envelope their own sizing chose. The generalist ladder
-	// exists because an exhaustion is evidence the sitting was bigger than the
-	// envelope; a leaf that handed its grant back is the opposite evidence, and
-	// escalating here would provision every part against a failure that did not
-	// happen.
+	// A splice names no worker on its provenance: there is one worker, so there
+	// is nothing to name and nothing a reader could mistake for a choice.
 	if got := sinkNode.Provenance.Subharness; got != "" {
-		t.Fatalf("the division was pinned to %q — the continuation ladder ran on a leaf that did not exhaust", got)
+		t.Fatalf("the division was pinned to %q", got)
 	}
 }
 
@@ -285,15 +282,5 @@ func TestTheOverrunGoalIsUnchangedByTheCooperativeSeam(t *testing.T) {
 	}
 	if !strings.Contains(planned, "resources ran out") {
 		t.Fatalf("the overrun goal lost its own phrasing:\n%s", planned)
-	}
-	// And its continuation still climbs the ladder off a bare envelope, which
-	// KeepEnvelope only ever turns off for the caller that sets it.
-	sink, ok, err := graph.Node("job-a-x1-n9")
-	if err != nil || !ok {
-		t.Fatalf("overrun sink missing: ok=%t err=%v", ok, err)
-	}
-	if sink.Provenance.Subharness != executor.LinearSubharness {
-		t.Fatalf("overrun continuation subharness = %q, want the escalated %q",
-			sink.Provenance.Subharness, executor.LinearSubharness)
 	}
 }

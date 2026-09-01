@@ -176,8 +176,8 @@ decay timestamp.
 ("this error was fixed before").
 
 ### Saved programs (subharnesses)
-Saved, versioned programs for a recurring shape of work. Installed today: `bare`,
-`swe`.
+Saved, versioned programs for a recurring shape of work. None ship with the
+binary: one exists once a designer has written it.
 **Data per program:** name, one-sentence description, the words a designer said
 it answers to, matcher, version record (hash, parent, why), bundle (manifest,
 program.js, prompts, seed memory), what it has learnt, how its last run went.
@@ -228,7 +228,7 @@ hears), context window, price. Plus `model-quirks.json`.
 Measured records of what tasks actually cost each model, used to recalibrate how
 the planner sizes work. Six profile files on this machine today.
 **Data:** `~/.aforge/profile-<model>-<kind>.json`, per model and per work kind
-(`linear`, `swe`).
+(`linear`).
 **Reach:** machine. **On home:** nothing. Not person-facing anywhere.
 
 ### Permissions — what runs without asking

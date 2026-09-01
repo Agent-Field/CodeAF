@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // bashAnswer is one bash call's result carried whole, so a call made from a
@@ -135,6 +136,73 @@ func TestAForegroundCommandThatRunsOutOfTimeBecomesAJob(t *testing.T) {
 	}
 }
 
+// M1: the background-after clock returns the existing promotion result and
+// roster row promptly, then carries the real exit into the next model boundary.
+func TestTheBackgroundAfterClockKeepsTheCommandAndTheConversationMovesOn(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("clock-call", "bash", `{"command":"sleep 5; echo late"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("I moved on while it finishes."), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("The late command finished."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 2
+	})
+	lane := rosterLane(t, agent)
+
+	started := time.Now()
+	turn := mustSubmit(t, agent, "run the slow command and continue")
+	row := awaitJobRow(t, lane, TaskRunning)
+	collect(t, turn)
+	elapsed := time.Since(started)
+	if elapsed < 1500*time.Millisecond || elapsed > 4*time.Second {
+		t.Fatalf("the foreground turn returned after %v, want the two-second clock", elapsed)
+	}
+
+	request := completer.request(1)
+	result := roleText(request, "tool")
+	const resultLead = "still running as job 1; log at "
+	if !strings.Contains(result, resultLead) || !strings.Contains(result, ".log") {
+		t.Fatalf("the tool result did not carry the existing promotion sentence and log: %q", result)
+	}
+	firstLine := strings.SplitN(result, "\n", 2)[0]
+	logPath := strings.TrimPrefix(firstLine, resultLead)
+	if row.Report != jobRowLead(1, logPath) {
+		t.Fatalf("the running roster row is %q, want %q", row.Report, jobRowLead(1, logPath))
+	}
+	waitFor(t, "the promoted call to leave the in-flight set", func() bool {
+		return agent.inFlightBash.find("clock-call") == nil
+	})
+	waitFor(t, "the exit to reach the next model boundary", func() bool {
+		return completer.requests() >= 3
+	})
+	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 0: late") {
+		t.Fatalf("the next boundary did not receive the exit note: %q", got)
+	}
+}
+
+// M2: a command that finishes before the background-after clock remains an
+// ordinary foreground result and never enters the job registry.
+func TestAQuickForegroundCommandFinishesNormallyBeforeTheClock(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 1
+	})
+	answer, isError := runBash(t, context.Background(), agent, map[string]any{
+		"command": "sleep 0.2; echo quick",
+	})
+	if isError || strings.TrimSpace(answer) != "quick" {
+		t.Fatalf("quick foreground bash answered %q (error=%v)", answer, isError)
+	}
+	if jobs := agent.jobs.all(); len(jobs) != 0 {
+		t.Fatalf("a quick command left %d jobs", len(jobs))
+	}
+}
+
 // The output a command produced BEFORE its promotion is not lost: bare's tail is
 // replayed into the job's log, so the file reads as one command from the top.
 func TestAPromotedCommandKeepsWhatItPrintedBeforeThePromotion(t *testing.T) {
@@ -163,7 +231,7 @@ func TestAPromotedCommandKeepsWhatItPrintedBeforeThePromotion(t *testing.T) {
 }
 
 // With nothing there to take the process, the law is exactly what it always was.
-// This is the bare executor's path, and a subharness leaf still gets it.
+// This is the path a tool taken straight off bare's belt runs on.
 func TestWithNobodyToPromoteItATimeoutStillKills(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -191,7 +259,9 @@ func TestWithNobodyToPromoteItATimeoutStillKills(t *testing.T) {
 // no job row is left behind for work somebody just said they did not want.
 func TestAnInterruptedCommandIsNeverPromoted(t *testing.T) {
 	t.Parallel()
-	agent, _ := jobsAgent(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 1
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan bashAnswer, 1)
@@ -200,7 +270,7 @@ func TestAnInterruptedCommandIsNeverPromoted(t *testing.T) {
 			"command": "sleep 5",
 			// A bound the interrupt will beat to it — the timeout must not be
 			// able to promote a call that is already cancelled.
-			"timeout": 0.5,
+			"timeout": 5,
 		})
 	}()
 
@@ -226,6 +296,36 @@ func TestAnInterruptedCommandIsNeverPromoted(t *testing.T) {
 	// And the promotion door refuses the call even now.
 	if _, promoted := agent.PromoteCall("nothing-by-that-name"); promoted {
 		t.Fatal("the door promoted a call that does not exist")
+	}
+}
+
+// M4: once the clock has adopted a call, the key door cannot adopt it again;
+// the one process has exactly one job id and one tool result.
+func TestTheClockWinsOnceAndAKeyCannotAdoptTheCallAgain(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.BashBackgroundAfterSeconds = 1
+	})
+	const callID = "clock-then-key"
+	answers := make(chan bashAnswer, 1)
+	go func() {
+		answers <- callBash(withCallID(context.Background(), callID), agent, map[string]any{
+			"command": "sleep 2; echo once",
+		})
+	}()
+	waitFor(t, "the clock to adopt the call", func() bool { return len(agent.jobs.all()) == 1 })
+	if _, promoted := agent.PromoteCall(callID); promoted {
+		t.Fatal("the key adopted a call the clock had already taken")
+	}
+	select {
+	case answer := <-answers:
+		if answer.err != nil || answer.isError || !strings.Contains(answer.text, "still running as job 1") {
+			t.Fatalf("the clock's tool result was %+v", answer)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the clock-promoted call never answered")
+	}
+	if jobs := agent.jobs.all(); len(jobs) != 1 || jobs[0].id != 1 {
+		t.Fatalf("the one command became %+v", jobs)
 	}
 }
 

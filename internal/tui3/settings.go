@@ -216,6 +216,10 @@ var settingUI = map[string]settingMeta{
 		about: "seconds an approval question waits before it answers no for you. " +
 			"Any key stops the clock; 0 turns it off.",
 	},
+	config.KeyBashBackgroundAfter: {
+		tab: tabSafety, label: "background after", widget: widgetText,
+		about: config.BashBackgroundAfterHint,
+	},
 	// THE FOUR ssh ROWS ARE THIS CONVERSATION'S TOO, because a connection to
 	// another machine is a property of the session that runs over it and of
 	// nothing else on this screen — a change lands on the next launch, which the
@@ -320,19 +324,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabTasks, label: "task model", widget: widgetSelect,
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
-	},
-	// WHICH HANDS THIS INSTALL HAS. It is on Workspace and not on Session
-	// because it is not about one conversation's work: a worker takes leaves on
-	// every surface there is, and the roster is a fact about the install. It is
-	// a text row rather than a cycle because it is a SET and not a choice — a
-	// person turning one specialist off keeps the rest — and it is written as
-	// the workers rather than as the machinery, because "specialist" is the
-	// word somebody uses and "subharness" is the word the code uses.
-	config.KeyWorkers: {
-		tab: tabTasks, label: "workers", widget: widgetText,
-		about: "which workers may be handed a piece of work, separated by commas. " +
-			"Blank is all of them. The general-purpose worker is always there and is " +
-			"never on the list.",
 	},
 	// THE CREW LIVES ON THE PROVIDERS TAB, with the model it answers under.
 	//
@@ -443,7 +434,7 @@ var settingUI = map[string]settingMeta{
 		about: "where a web search goes. auto uses the best back end your keys " +
 			"reach and falls back to one that needs none.",
 	},
-	// THE KEY EVERY CALL RIDES sits on the Providers tab above the two search
+	// THE KEY EVERY CALL RIDES sits on the Providers tab above the three search
 	// keys: it is the credential the browser connection or a manual paste writes
 	// (firstrun.go), and remains the replacement door after that.
 	config.KeyAPIKey: {
@@ -456,6 +447,11 @@ var settingUI = map[string]settingMeta{
 		tab: tabContext, label: "exa key", widget: widgetText,
 		about: "an exa.ai key, which buys better results and page fetches than " +
 			"the free back end. Optional.",
+	},
+	config.KeyFirecrawlKey: {
+		tab: tabContext, label: "firecrawl key", widget: widgetText,
+		about: "a firecrawl.dev key, for when the free monthly allowance runs " +
+			"out. Optional.",
 	},
 	config.KeyJinaKey: {
 		tab: tabContext, label: "jina key", widget: widgetText,
@@ -575,8 +571,8 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTaskColumn: {
 		tab: tabDisplay, label: "task column", widget: widgetToggle,
-		about: "stands the task roster beside the chat. ctrl+g closes it and " +
-			"brings it back; this is where the answer is remembered.",
+		about: "stands the task roster beside the chat. With no foreground command " +
+			"to background, ctrl+g closes it and brings it back; this is where the answer is remembered.",
 	},
 	config.KeyQuickSwitch: {
 		tab: tabDisplay, label: "quick switch", widget: widgetToggle,

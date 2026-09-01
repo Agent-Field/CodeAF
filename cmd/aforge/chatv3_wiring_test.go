@@ -34,13 +34,14 @@ func v3Profile(t *testing.T, rows map[string]any) string {
 
 func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 	dir := v3Profile(t, map[string]any{
-		"tools.approvalMode":     "allow",
-		"tools.approval":         "bash:prompt, write:deny",
-		"models.tiers.low":       "cheap/model",
-		"models.tiers.high":      "capable/model",
-		"models.roles":           "title:pinned/model",
-		"session.spendRailUSD":   4.5,
-		"unrelated_other_person": "left alone",
+		"tools.approvalMode":            "allow",
+		"tools.approval":                "bash:prompt, write:deny",
+		"models.tiers.low":              "cheap/model",
+		"models.tiers.high":             "capable/model",
+		"models.roles":                  "title:pinned/model",
+		"session.spendRailUSD":          4.5,
+		"bash.background_after_seconds": 12,
+		"unrelated_other_person":        "left alone",
 	})
 
 	cfg, err := applyV3Governance(session.Config{Model: "session/model"}, dir, false, false)
@@ -88,6 +89,9 @@ func TestTheSettingsRowsReachTheSessionConfig(t *testing.T) {
 
 	if cfg.SpendRailUSD != 4.5 {
 		t.Fatalf("the ceiling is %v, want 4.5", cfg.SpendRailUSD)
+	}
+	if cfg.BashBackgroundAfterSeconds != 12 {
+		t.Fatalf("the background-after clock is %d, want 12", cfg.BashBackgroundAfterSeconds)
 	}
 }
 
@@ -182,34 +186,40 @@ func TestYoloIsADefaultAndNotAnOverride(t *testing.T) {
 
 // ── the web-search rows ─────────────────────────────────────────────────────
 
-// The mapping from three settings rows to one [search.Options]: auto means no
+// V3: The mapping from four settings rows to one [search.Options]: auto means no
 // pin, a chosen plug is the pin, and a key comes from the shell or the sheet
 // with the shell winning.
 func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
 	t.Setenv("EXA_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
 	t.Setenv("JINA_API_KEY", "")
 
 	empty := v3SearchOptions(t.TempDir())
-	if empty.Provider != "" || empty.ExaKey != "" || empty.JinaKey != "" {
+	if empty.Provider != "" || empty.ExaKey != "" || empty.FirecrawlKey != "" || empty.JinaKey != "" {
 		t.Fatalf("an untouched profile produced %+v, want an empty auto configuration", empty)
 	}
 
 	dir := v3Profile(t, map[string]any{
-		"search.provider": "exa",
-		"search.exaKey":   "from-the-sheet",
-		"search.jinaKey":  "jina-from-the-sheet",
+		"search.provider":     "exa",
+		"search.exaKey":       "from-the-sheet",
+		"search.firecrawlKey": "firecrawl-from-the-sheet",
+		"search.jinaKey":      "jina-from-the-sheet",
 	})
 	fromRows := v3SearchOptions(dir)
 	if fromRows.Provider != "exa" {
 		t.Fatalf("the pin did not reach the options: %q", fromRows.Provider)
 	}
-	if fromRows.ExaKey != "from-the-sheet" || fromRows.JinaKey != "jina-from-the-sheet" {
+	if fromRows.ExaKey != "from-the-sheet" || fromRows.FirecrawlKey != "firecrawl-from-the-sheet" || fromRows.JinaKey != "jina-from-the-sheet" {
 		t.Fatalf("the keys did not reach the options: %+v", fromRows)
 	}
 
 	t.Setenv("EXA_API_KEY", "from-the-shell")
 	if got := v3SearchOptions(dir).ExaKey; got != "from-the-shell" {
 		t.Fatalf("the environment lost to the sheet: %q", got)
+	}
+	t.Setenv("FIRECRAWL_API_KEY", "firecrawl-from-the-shell")
+	if got := v3SearchOptions(dir).FirecrawlKey; got != "firecrawl-from-the-shell" {
+		t.Fatalf("the Firecrawl environment lost to the sheet: %q", got)
 	}
 
 	// An auto row is the ABSENCE of a pin, not the word: internal/search reads
@@ -224,6 +234,7 @@ func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
 // still gets both hands, and a pin moves the one it names.
 func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	t.Setenv("EXA_API_KEY", "")
+	t.Setenv("FIRECRAWL_API_KEY", "")
 	t.Setenv("JINA_API_KEY", "")
 
 	cfg, err := applyV3Governance(session.Config{}, t.TempDir(), false, false)
@@ -233,7 +244,8 @@ func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
 	if cfg.SearchProvider == nil || cfg.SearchFetcher == nil {
 		t.Fatal("a keyless profile got no search pair; the zero-key rung is the whole point")
 	}
-	if got := cfg.SearchProvider.Name(); got != "duckduckgo" {
+	// V1: A fresh v3 session resolves its keyless search hand to Firecrawl.
+	if got := cfg.SearchProvider.Name(); got != "firecrawl" {
 		t.Fatalf("a keyless profile searches through %q, want the zero-key plug", got)
 	}
 	if got := cfg.SearchFetcher.Name(); got != "jina" {

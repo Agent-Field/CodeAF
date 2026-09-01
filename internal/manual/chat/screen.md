@@ -39,11 +39,13 @@ dim lowercase label appears only when that section has rows. Work fills the colu
 rather than raising it, and the work it fills with is **this conversation's alone**.
 An empty column keeps only its typeable `+ /task` and `+ /standing` doors; where
 the project has a record from earlier sessions, one dim line at the foot of the column
-reads `ctrl+. earlier` and opens the task page. `ctrl+g` closes it and opens it again, remembered between
-sessions, and the column's own last line says so: `❯ ctrl+g hide`. With it closed the
+reads `ctrl+. earlier` and opens the task page. With no foreground command that can be
+kept, `ctrl+g` closes the column and opens it again, remembered between sessions, and the
+column's own last line says so: `❯ ctrl+g hide`. While a command can be kept, that
+command takes the key and the column stays where it was. With the column closed the
 conversation is laid out at the full width of the terminal, running work still draws
 the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once the
-session has tasks to come back to.
+session has tasks to come back to and no running-turn line owns that slot.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
 standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
@@ -259,16 +261,27 @@ is simply blank rule. It never says "untitled" and never invents a placeholder.
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
-`enter steers it in · cmd+enter waits · shift+enter stops and sends` while a turn is
-running and you have typed something, `esc stops and sends` while a message of yours is
-waiting for the answer to finish, or `↑↓ · enter · esc` while a list is open.
+`enter steers it in · shift+enter stops and sends · esc interrupt` while a turn is
+running and you have typed words on a terminal that can deliver the secondary key,
+`enter waits · shift+enter stops and sends · esc interrupt` while an otherwise empty
+box has a picture on its tray on that terminal,
+`enter steers it in · shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
+when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
+while a list is open. A waiting message changes the final clause to
+`esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
 It only ever names a key that **works right now**, and that includes the terminal: the
-`shift+enter` and `cmd+enter` clauses are not drawn on a terminal that cannot tell those
-chords apart from a plain `enter`, because a hint for a key that could never arrive would
-be the surface lying to you — there the line keeps only `enter steers it in`. See the keys page,
+`shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
+plain `enter`, because a hint for a key that could never arrive would be the surface lying
+to you — there the send half keeps only `enter steers it in`. `cmd+enter` still waits on
+terminals that can deliver it, but is not part of this one-line slot. See the keys page,
 "Interrupt and say something new in one key" and "Send a message into the running
 answer".
+
+The running-turn clauses always have this order: send, `shift+enter`, background, stop.
+When the right side is tight, aforge removes whole clauses from the right until the line
+fits. At 70 columns at least the first fitting clause remains; a running turn never loses
+the slot merely because every clause would not fit.
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -306,9 +319,9 @@ out, the slot turns a small spinner in front of the same words. Neither ever mov
 message box: this line is on the frame in every state.
 
 One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
-when you have closed the task column and this session has run something. It is the
-whole of what the frame says about a roster that is not on screen, and it says nothing
-at all when nothing has been run.
+when you have closed the task column, this session has run something, and no active
+running-turn hint has the slot. It is the whole of what the frame says about a roster
+that is not on screen, and it says nothing at all when nothing has been run.
 
 While a question is waiting, the legend's left label — the branch, or the machine over
 `--host` — goes violet along with the status word below it, so the question is pointed at
@@ -917,6 +930,24 @@ An `ask here` answer on home keeps the same law with one step instead of two: it
 while it arrives and formats when the turn ends. There is no 1500ms promotion there, because
 the pane's answers are short enough that the settle is the catch-up.
 
+## The answer stayed raw until I asked the next question
+
+It cannot any more. **The end of a turn is the only thing that settles it**, and it settles
+the whole turn: every block of it is a finished document from that moment, and nothing that
+arrives afterwards can leave a paragraph half-drawn for the next question to tidy up.
+
+What used to happen: a turn ends twice — the session finishing it, and the connection
+closing behind it — and in the gap a provider could still deliver the tail of a reply it had
+already buffered, or a straggler behind an `esc`. Those words opened a **second** block that
+nothing was left to settle, so it drew as the characters you typed rather than as markdown,
+and its mere presence pushed the real answer above it into the grey working column. Both
+went away the moment you asked something else, which is why it looked like the next question
+was fixing the last one.
+
+Late words now join the answer they belong to, already settled. If the turn's last block was
+a tool call rather than a reply, they land in a block of their own — also settled — because
+words that came after a call belong after it.
+
 ## The reply dims when it finishes — brighter while streaming, calmer when done
 
 That is deliberate, and it is the only thing that says the turn is over. There is no
@@ -957,6 +988,12 @@ and the loudest thing on screen would be the part you did not ask for.
 Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
 what came after what — so it is the same on a conversation you resume as it was live, and
 the same on a task's own page.
+
+One thing that is **not** work, and so never greys the paragraph above it: a line aforge
+writes about the turn itself. What the turn changed, what it cost, a notice that a request
+had to be reshaped — those land under the reply they are about, and a reply that had one
+written through the middle of it stays one answer rather than breaking into a grey half and
+a flush half.
 
 Below 60 columns the gutter is dropped and the shading alone carries the difference. With
 no colour at all, the gutter alone does.
@@ -1005,7 +1042,7 @@ glyph your messages wear in the conversation. Under it sits one dim line:
 
 ```
 › do much more of a deep research please
-  waits for this answer · esc stops and sends · → steers it in · ↑ or click to edit
+  waits for this answer · esc stops and drops · → steers it in · ↑ or click to edit
 ```
 
 The dim line trims from the right on a narrow terminal: the last piece goes first, then
@@ -1015,9 +1052,9 @@ exactly one it is not counted at all.
 
 `→ steers it in` is there only while the message can go into the running answer: a turn
 still running, and a message of words alone. A waiting message that carries pictures, or
-one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. `esc
-stops and sends` and `→ steers it in` both go while a turn you stopped is winding down —
-for those seconds neither key does anything, and what is left of the line is still true.
+one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. Pressing
+`esc` removes the waiting block at once; `→ steers it in` is absent while a stopped turn
+is winding down because that turn has no boundary left to take the words.
 
 ## What happens to a message waiting above the box
 
@@ -1026,7 +1063,8 @@ What happens to it:
 - **When the answer finishes**, it sends itself as an ordinary new turn and appears in
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
-- **`esc`** stops the answer and sends it immediately.
+- **`esc`** stops the answer and drops every parked message and queued follow-up. None
+  starts a turn when the interrupted stream closes.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
   **into** the running answer instead of leaving it to wait. A streaming generation
   stops and keeps its partial; a long bash is kept as a job. With several waiting it
@@ -1039,8 +1077,8 @@ What happens to it:
   box — the waiting messages are dropped and aforge says so: `1 waiting message dropped`
   or `N waiting messages dropped`.
 
-While something is waiting, the hint slot in the legend reads `esc stops and sends`
-instead of `esc interrupt`.
+While something is waiting, the hint slot in the legend ends with
+`esc stops and drops` instead of `esc interrupt`.
 
 ## Markdown at phone width
 
@@ -1087,7 +1125,7 @@ nothing is worse than no link.
 A reference inside a fenced code block, inside an inline code span, or inside a URL
 field gets no link.
 
-## Click a file path to open it — open a file from the chat
+## Click a file path to open it — open a file from the chat, why is this file path not clickable?
 
 **Every file path on this screen that names a file that really exists is a real
 hyperlink.** Click it and the file opens the way your desktop would open it. In most
@@ -1373,9 +1411,11 @@ A `+` is appended to a count whose output — or whose arguments — were shorte
 display cap, meaning "at least this many": a huge write reads `+412+ lines` and a huge
 edit `+37+ −12+`. See *Why is a big write or edit cut off*. If you answered a consent question for the call, the word `allowed` or
 `denied` rides the same slot, after a ` · ` on a wide row, and replaces the stat
-entirely at phone width. **A command you sent to the background with `ctrl+g` rides
-it too**, as `job 3`, and it is drawn last because it is the most recent thing to
-have happened to the row.
+entirely at phone width. **Every foreground command kept as a background job rides it
+too**, as `job 3`, whether the background-after clock, its timeout, `ctrl+g`, or the
+row's `click to background` offer did the handoff. On a wide row it is drawn last because
+it is the most recent thing to have happened; at phone width it replaces the stat in
+that same slot.
 
 A stat is only ever drawn for a finished call. An edit's `+N −M` is knowable early and
 is deliberately withheld — it is the shape the preview collapses into when the change
@@ -1484,12 +1524,14 @@ that took 5ms says so and stops counting while the `go build` beside it is still
 rather than counting the build's minutes onto its own line. The row keeps its spinner
 until its result lands, because until then nothing here knows whether it worked.
 
-A call with no timeout gets no countdown, no bound and no colour — chrome implying a
-deadline would be inventing one. A foreground `bash` always has one: a `timeout` that is
-missing, null or zero counts down against the 600-second ceiling the command is really
-bounded by, never a number nothing is going to enforce. A background `bash` has no bound,
-because it runs as a job. A turn that ended with a call unresolved stops every clock, and
-it stays stopped:
+A call with no bound gets no countdown and no colour — chrome implying a deadline would
+be inventing one. A foreground `bash` always has one: normally it counts down against
+the clock armed from `background after` when the session launched, 30 seconds by default.
+Over `--host`, that exact armed clock comes from the engine machine rather than this
+surface's profile. With the setting at 0, a `timeout` that is
+missing, null or zero counts down against the 600-second ceiling. An earlier explicit
+timeout wins. A background `bash` has no bound because it runs as a job. A turn that ended
+with a call unresolved stops every clock, and it stays stopped:
 the row takes the dim `·` mark at the moment the turn ends and keeps it through every
 turn after, so an abandoned call can never start spinning again.
 
@@ -1529,9 +1571,10 @@ So the coloured last seconds are a warning that the command is about to leave th
 turn, not that it is about to be destroyed. Nothing is thrown away and nothing is
 run twice.
 
-`ctrl+g` does the same thing early, on purpose — see the keys page. A row you sent
-away that way keeps its spinner until its result lands, and gains a dim `job 3`
-beside its other trailing marks. The full account of both is on what-i-can-do.
+`ctrl+g` or the row's `click to background` offer does the same thing early, on purpose
+— see the keys page. Whichever door did it, the row keeps its spinner until its result
+lands and gains a dim `job 3` beside its other trailing marks. The full account is on
+what-i-can-do.
 
 ## Seeing more of a tool call
 
@@ -1661,8 +1704,10 @@ mid-string, which nothing could read, so opening one drew a dim `—` and nothin
 ## Seeing the image itself in the terminal, in colour
 
 **You do not have to do anything.** The moment a `generate_image` or `view_image` call
-finishes, the picture is drawn under its row, in colour — no click, no key, no flag. It
-is there in the conversation as you read it, and it is there in a task's room too.
+finishes, the picture is drawn under its row, in colour — no click, no key, no flag. A
+picture you attach is drawn the same way under your own line after you send it, while its
+numbered `[#1 shot.png]` marker stays above it. Both forms are there in the conversation
+as you read it and in a task's room too.
 
 It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
 top colour and its bottom one, which is how a terminal shows a photograph with nothing
@@ -1670,7 +1715,7 @@ but colour codes. No image protocol is involved and nothing is written outside t
 frame, so the picture survives every repaint, scrolls with the conversation, and works
 over ssh and inside tmux the same as anywhere else.
 
-The picture under a row is a **thumbnail**: at most **12 rows** tall, or **4** at phone
+The picture under a row or your own message is a **thumbnail**: at most **12 rows** tall, or **4** at phone
 width — the same ceiling the live preview takes, because a block nobody asked for should
 not take the screen from the conversation it appeared in. It carries no heading, no
 border and no caption. Nothing is held back behind a `… N more lines` foot either: the
@@ -1691,16 +1736,22 @@ blur claiming to be detail.
 **png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
 
 A picture is **decoded once and kept**, so a row you scroll past, a row you leave open
-and a row that repaints ten times a second all cost the same after the first frame.
-Resize the terminal, switch your theme, or overwrite the file on disk and it is drawn
-again — those are the only three things that make it re-read anything.
+and a row that repaints ten times a second all cost the same after the first frame. Tool
+picture rows check the file's modification time when they repaint. Your own settled
+message keeps its ordinary transcript-row cache and refreshes its thumbnail on a resize,
+a theme repaint, or when a mirrored file lands; until one of those, replacing the file at
+the same path may leave the earlier thumbnail on screen.
 
 ## When the image preview is not drawn — you only gave me text, it only gave me text, why don't I see the image, and where did my generated picture go?
 
-If a row shows only text — something like
+If a tool row shows only text — something like
 `/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
 picture could be drawn, and **that line is the answer instead**: it names the file
 **whole and absolute**, so you can open it yourself from anywhere.
+
+For a picture you attached, the fallback is the message's existing `[#1 shot.png]`
+marker. No error or empty picture block is added, and an ordinary file marker beside it
+is unchanged.
 
 The reasons, in the order they are worth checking:
 
@@ -1712,16 +1763,18 @@ The reasons, in the order they are worth checking:
 - **The row is under 8 columns wide.**
 - **The call has not finished.** A picture is drawn when the file exists, and
   `generate_image` writes the file last.
-- **The session is over `--host`.** The generated file is on the other machine, so this
-  terminal keeps the full result path instead of reading the same path on this machine.
-  Open the linked path to fetch it and use your desktop viewer.
+- **The session is over `--host` and the mirror does not hold the bytes yet.** Generated
+  pictures are fetched from the other machine into the local mirror. A picture you have
+  just attached is already read from this machine; after a restart its journal path is on
+  the far machine and the thumbnail appears once an optional mirror fetch lands.
 - **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
   four types** — a `svg`, a `tiff`, a `pdf`.
 
-In every one of those the row is **exactly what it would have been** — its result line,
-or what the looking model said — and never an error. Opening the row in those cases
-gives you the file's whole absolute path on its own rows, wrapped rather than cut,
-because a path with an ellipsis in it cannot be clicked, copied or pasted.
+In every one of those the tool row is **exactly what it would have been** — its result
+line, or what the looking model said — and never an error. Your own message keeps its
+marker exactly. Opening a tool row in those cases gives you the file's whole absolute
+path on its own rows, wrapped rather than cut, because a path with an ellipsis in it
+cannot be clicked, copied or pasted.
 
 Where the files themselves land is on the "making pictures, audio and video" page.
 
@@ -2012,9 +2065,10 @@ words on it say which: `ctrl+. earlier` when the project's record holds work thi
 session never ran, and `ctrl+. view more` when the only thing held back is a family the
 column has folded. There is never more than one such line.
 `w · click seam — widen` appears only while a title is actually being cut by its own
-indent. `❯ ctrl+g hide` is always there, and its `❯` is drawn in ink rather than dim
-because it is the control the pointer presses — the words beside it are the label for the
-hand that types chords.
+indent. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
+because it is the control the pointer presses. With no foreground command to keep it
+reads `❯ ctrl+g hide`; while a command owns that chord it reads only `❯ hide`, because
+a hint may name only a key that works on that frame.
 
 ## Opening a finished row on the task column: how to see the log path of a job that already finished, and where the merge word, price or branch went
 
@@ -2124,16 +2178,18 @@ rule. On a build with no ambient side the `standing` section is absent entirely.
 
 **The right edge always carries one chevron, and clicking it goes both ways.**
 
-- While the column **stands**, its last footer line reads `❯ ctrl+g hide`. The `❯` is
-  drawn in ordinary ink, not dim, because it is a control and not a reading; the words
-  beside it stay dim. Click the line and the column closes.
+- While the column **stands**, its last footer line reads `❯ ctrl+g hide` when no
+  foreground command can be kept, and `❯ hide` while a command owns that key. The
+  `❯` is drawn in ordinary ink, not dim, because it is a control and not a reading;
+  the words beside it stay dim. Click the line and the column closes either way.
 - While the column is **away**, what is left is **two columns down the right of the frame**
   with a `❮` handle at the middle of them, also in ink. The whole strip is a door: click
   anywhere on it and the column comes back.
 
 So one control in two states — `❯` to close, `❮` to open — and the pointer can go round the
-whole cycle without touching the keyboard. `ctrl+g` does the same thing from the keyboard
-and still works either way. Under the pointer the chevron brightens further and its line
+whole cycle without touching the keyboard. With no foreground command to keep, `ctrl+g`
+does the same thing from the keyboard; while one can be kept, the key backgrounds it.
+Under the pointer the chevron brightens further and its line
 takes a background, which is how everything pressable on this screen says so. On a terminal
 that cannot draw them the two chevrons are `>` and `<`.
 
@@ -2222,7 +2278,8 @@ There is a linear tier, and it is three subtractions.
 
 **No animation.** A spinner read aloud is a word repeated forever, so every spinner
 becomes a still `*`, the pulsing ellipsis becomes its last still frame, and a forming
-tool row stops pulsing.
+tool row stops pulsing. The forming proposal card's mark becomes a still `*` too, while
+only its clock climbs.
 
 **No hover.** A pointer's shadow is nothing to a reader, so no row ever brightens under
 the pointer.
@@ -2701,6 +2758,15 @@ two answers on the stop card, a chip or a link on an adaptive run's page: the on
 the pointer lights and its neighbours stay dark. The gap between two chips lights nothing
 — it is a place to miss, not a door.
 
+**A running foreground command has one narrow target inside its row.** Moving over the
+row reveals `click to background` in the right-hand stat slot only while that exact bash
+call can be kept. Moving onto those words lights only the clause, not the row; clicking
+it keeps that command as a job and does not open the expansion. Moving elsewhere on the
+same row gives the whole row its ordinary band, and clicking there opens it. The offer is
+absent for other tools, a command already in the background, a forming or replayed row,
+a row already marked `job N`, and a session over `--host`. It is not drawn at phone width,
+where the full-frame tool sheet has no pointer targets.
+
 **The tab bar of the places is one of them.** Each place's word is its own chip, clicking
 it goes there, and the gap between two words is a place to miss. Under the bar, every
 place answers the pointer the same way: the row you are hovering takes the band, and the
@@ -2794,3 +2860,34 @@ turn — because that is a genuinely new stretch of thinking.
 Thinking is never saved into the conversation's record. A reopened session shows the
 answers, not the working behind them — so a `thought for` row you can see now will not be
 there after a restart, and that is deliberate.
+
+## A reply that shows up as thinking, or a turn that seems not to have answered
+
+It should not happen any more, and if you saw it before, this is what it was.
+
+Some endpoints put the whole reply on the **working** channel and send no answer at all.
+aforge used to draw that as a model that thought for a while and said nothing: a dim
+`thought for 9s` row, no answer under it, and — because a reply with no words in it looks
+exactly like a call that failed — the same question asked again at your expense.
+
+Now the decision about which words are the answer is made once, where the wire is: **a
+turn that asked for nothing and said nothing put its reply in its working, and the working
+is the reply.** It arrives as the answer, it is rendered as markdown like any other answer,
+and it is what a resumed conversation shows you later. A turn that called a tool and said
+nothing is untouched — that is a model behaving, not a lost reply.
+
+## `<think>` showed up in my answer
+
+It does not any more. Some endpoints — anything reached through `AFORGE_BASE_URL`, and any
+gateway in front of a raw open model — do not separate the model's working from its reply
+and instead fence it inside the answer as `<think>…</think>`. aforge used to type the tag
+and everything in it straight into your answer, and keep it in the conversation's record
+as words the model had said out loud.
+
+That working now goes where working goes: the dim `thought for` row above the reply. The
+tag never reaches the answer and never reaches the record. `<thinking>` is read the same way.
+
+Two limits worth knowing. The fence is only read as one when it **opens the reply** — a
+`<think>` written in the middle of a paragraph is a model talking about the tag, and your
+answer keeps its own words. And a fence that is opened and never closed leaves a reply with
+no words outside it, which is the case above: the working is the reply.

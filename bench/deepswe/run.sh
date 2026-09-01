@@ -83,10 +83,6 @@ roles = ["auditor", "careful", "compaction", "consolidate", "designer", "divisio
 json.dump({
     "api_key": key,
     "tools.approvalMode": "allow",
-    # The roster. `aforge do`'s own path is what this rig measures, so the
-    # specialist workers are not installed at all: a run one of them took over
-    # would be a measurement of the specialist wearing the harness's name.
-    "work.workers": os.environ.get("BENCH_WORKERS", "bare"),
     "models.roles": "\n".join(f"{r}:{model}" for r in roles),
     "model.talk": model,
     "models.tiers.low": model,
@@ -330,18 +326,16 @@ except Exception as e:
 json.dump(out, open(sys.argv[2], "w"), indent=2)
 PY
 
-# Which worker actually did the work. `aforge do` is meant to be measured on
-# its own path: a run a specialist worker took over is measuring the specialist,
-# not the harness, so it is recorded and flagged rather than quietly averaged
-# in.
+# Which worker actually did the work — one row of provenance beside every
+# result, so a store can be read back years later without guessing.
 #
 # THE COLUMN IS nodes.ran, AND IT IS THE ONLY ONE THAT ANSWERS THIS QUESTION.
-# nodes.subharness is what the compiler ASKED for and is blank on the great
-# majority of nodes, because the compiler routes almost nothing — every node of
-# the s9 ink and igel stores read blank, which is why that sweep's autopsy took
-# a day. splice_subharness is what the subtree was admitted under, an intention
-# and not a fact. nodes.ran is written by the dispatch path at the moment it
-# builds the worker, and it names the generalist out loud.
+# nodes.subharness is what a stored graph ASKED for and is blank on the great
+# majority of nodes — every node of the s9 ink and igel stores read blank, which
+# is why that sweep's autopsy took a day. splice_subharness is what the subtree
+# was admitted under, an intention and not a fact. nodes.ran is written by the
+# dispatch path at the moment it builds the worker, and it names the worker out
+# loud.
 python3 - "$OUT/graph.db" "$OUT/meta.json" <<'WORKERS'
 import json, os, sqlite3, sys
 db, metapath = sys.argv[1], sys.argv[2]
@@ -369,7 +363,6 @@ except Exception as err:
 meta["workers_ran"] = ran
 meta["workers_asked"] = asked
 meta["workers_planned"] = planned
-meta["void"] = "swe" in ran
 json.dump(meta, open(metapath, "w"), indent=2)
 WORKERS
 

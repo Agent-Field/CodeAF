@@ -1582,7 +1582,7 @@ tabs beside it: **Safety** is what aforge may do without asking you first (ask b
 running, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
-busy machine, memory floor, task model, workers).
+busy machine, memory floor, task model).
 
 **Six doors open that one tab, and none of them is a second editor** — every one lands on
 the same registry row, so what you set through one is what the others show:

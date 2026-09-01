@@ -843,7 +843,7 @@ Three ways to open it, and all three fold it again:
 **The fold always cuts between tasks**, never through one — you will not find a sentence
 under the fold line with nothing above it saying what it was about.
 
-The project's whole history is somewhere else: `ctrl+g` opens the task page, which is the
+The project's whole history is somewhere else: `ctrl+.` opens the task page, which is the
 record of everything this project has ever run.
 
 ## I clicked a task on home and nothing happened — open a task from the card
@@ -861,7 +861,7 @@ Which rows on the card answer a press:
 - **a file under `made for you`** — opens the file.
 
 The `▸ N more tasks` line at the foot of `work` is **not** one of them. It names the tasks
-place out at the right margin because a card is not the place that holds them; `ctrl+g`, or
+place out at the right margin because a card is not the place that holds them; `ctrl+.`, or
 `tab` onto `tasks`, is the way there.
 
 **Move the mouse over the card and the doors show themselves.** The line under the pointer
@@ -871,7 +871,7 @@ be pressed is to point at it: a task's name row lights, a fold line lights, and 
 headings, the title, the place line, the facts and the `▸ N more tasks` line do not.
 
 The card is only drawn where the frame is genuinely wide — around 160 columns and up. On a
-narrower window there is no card, and the tasks place (`ctrl+g`) is where the work is
+narrower window there is no card, and the tasks place (`ctrl+.`) is where the work is
 listed; `enter` or a click on a row there opens the same record.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
@@ -954,8 +954,23 @@ A conversation another terminal has open is a **door**, and pressing `enter` on 
 it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
 in this one, with its work and its half-typed sentence.
 
-**It takes two enters, and the first one only offers.** The first press arms the row and the
-foot line says what the second will do and what it costs:
+**The row itself says so, on the line you are standing on.** Move the cursor onto a held
+conversation and its right margin grows from `another window` into the whole door:
+
+```
+○ The Other Terminal                        alpha another window · enter brings it here
+○ A Third Window                                              alpha another window
+```
+
+Only the row under the cursor says it — the others keep the short word, because seven rows
+repeating one instruction is noise and the instruction is only true of the row `enter` would
+act on. On a terminal too narrow to hold the sentence beside the conversation's whole name
+the row hands it back and says `another window` again, rather than cutting it in half; the
+card beside the row carries `enter brings it here` at every width.
+
+**It takes two enters, and the first one only offers.** The first press arms the row. The
+card beside it says `enter again moves it here`, then `its reply finishes first · its tasks
+come here`, and the foot line says the whole of it once more:
 
 ```
 open in another window · working — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
@@ -963,18 +978,6 @@ open in another window · working — enter again to move it here (it moves when
 
 Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
 in the other window knows you looked.
-
-**The second press asks, and then waits**, because a reply is never cut:
-
-```
-moving it here — waiting for the other window…
-```
-
-If that window is in the middle of an answer, it finishes it first and lets go straight
-after. There is **no time limit** on the wait; after fifteen seconds the line explains
-itself — `still waiting — the other window finishes its reply first · esc stops waiting` —
-and `esc` withdraws the request, leaving the other window untouched. The moment it lets go,
-the row opens here.
 
 **What comes with it.** Tasks that were running land `paused — it resumes` and start again
 from their checkpoint in this window. The unsent sentence in the other window's box arrives
@@ -991,6 +994,52 @@ continues where you left off, and `esc` gets on with the new conversation instea
 **The one exception is `--host`.** The holder is a window here and the journal is on the
 other machine, so there is nobody to ask, and the row still says
 `open in another window — go there, or start a new conversation here`.
+
+## Why is moving a conversation slow — it says coming here and nothing happens, how do I cancel the move, that window did not answer
+
+**An idle window lets go in well under a second.** It looks for the request four times a
+second, so `enter` and the conversation arriving are one gesture. It used to ride the
+five-second heartbeat that window writes its presence file on, which is why a move felt slow
+even when there was plainly nothing to wait for. If it is slow now, something is genuinely
+being waited for and the card says which.
+
+**The second press asks, and the row says it is coming.** The right margin stops saying
+`another window` and says `coming here`, the row takes the page's one turning cell, and the
+card carries the state:
+
+```
+coming here · 14s
+that window is mid-reply — it comes the moment the reply ends
+esc stops waiting
+```
+
+If that window has nothing in flight the reason line is absent, because there is nothing to
+explain — it lets go within about a second. Past fifteen seconds with still nothing in
+flight over there, the card says `that window has not answered yet` and stops at that: a
+window wedged on a disk, one whose machine went to sleep and one on an older build all look
+identical from here, so it states the fact and invents no cause. The clock only appears once
+the move has taken longer than two seconds. Below a hundred and sixty columns there is no card at all, and the
+foot line carries it instead: `moving it here — esc stops waiting`, or `moving it here —
+that window finishes its reply first · esc stops waiting`.
+
+There is **no time limit** on a wait for a window that is answering — a long reply is
+minutes — and `esc` withdraws the request, leaving the other window untouched. The moment it
+lets go, the row opens here.
+
+**If nothing ever answers, the wait ends and says so.** A request is only good for ten
+minutes; past that no window will ever pick it up, so this one stops waiting rather than
+beating at a lock for ever, and the card says:
+
+```
+that window did not answer — it still has it
+enter asks again
+```
+
+That is what a window killed with the conversation still open looks like, or one on a build
+too old to hear the question. One `enter` asks again.
+
+**And if it comes free while you are looking at something else**, nothing is opened under
+you. The card says `it came free — enter opens it` when you come back to home.
 
 ## Open another project from home
 
@@ -1408,7 +1457,7 @@ That is the way back to home.
 
 There is no `ctrl+` chord for it: every `ctrl+<letter>` this surface has is already taken,
 and `esc` was not available either — on an idle conversation it already arms rewind and
-already sends a message you parked, and a third meaning on one key is how a surface stops
+already drops a message you parked, and a third meaning on one key is how a surface stops
 being predictable. What was left is the one keystroke that reliably means nothing: a
 message that starts with two spaces is a message nobody meant to send that way.
 

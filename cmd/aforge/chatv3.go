@@ -468,6 +468,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// The countdown reads the same frozen value the session clock armed. A
+		// profile edit changes both together on the next session rather than
+		// moving only the surface's number at a turn boundary.
+		BashBackgroundAfterSeconds: cfg.BashBackgroundAfterSeconds,
 		// /new and the picker, as the seam answers them. The two wrappers below
 		// are the OLDER shape of the same doors, kept because the surface still
 		// falls back to them and because the hosted door can only answer that
@@ -1232,6 +1236,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
 	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
+	cfg.BashBackgroundAfterSeconds = config.BashBackgroundAfterAt(profileDir)
 	// Which model the work that leaves this conversation runs on, PROFILE-ONLY
 	// for the reason the fallback chain above is: a repository that could answer
 	// this could send a visitor's work — and their credit — to a model they never
@@ -1319,7 +1324,7 @@ func v3LanePin(profileDir string) provider.LanePin {
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
-// three settings rows in, [search.Resolve]'s answer out.
+// four settings rows in, [search.Resolve]'s answer out.
 //
 // IT RETURNS NO ERROR, and that is a statement about the layer rather than an
 // omission. Every rung of the resolution ladder ends in a plug that needs no
@@ -1346,7 +1351,7 @@ func v3Search(profileDir string) (search.Provider, search.Fetcher) {
 
 // v3SearchOptions is the mapping itself, split out so it can be read and tested
 // without a registry: the pin from the choice row (auto meaning no pin, which
-// internal/search spells as the empty string), and the two credentials from the
+// internal/search spells as the empty string), and the three credentials from the
 // environment or the sheet.
 func v3SearchOptions(profileDir string) search.Options {
 	pin := config.SearchProviderAt(profileDir)
@@ -1354,9 +1359,10 @@ func v3SearchOptions(profileDir string) search.Options {
 		pin = ""
 	}
 	return search.Options{
-		Provider: pin,
-		ExaKey:   config.ExaKeyAt(profileDir),
-		JinaKey:  config.JinaKeyAt(profileDir),
+		Provider:     pin,
+		ExaKey:       config.ExaKeyAt(profileDir),
+		FirecrawlKey: config.FirecrawlKeyAt(profileDir),
+		JinaKey:      config.JinaKeyAt(profileDir),
 	}
 }
 

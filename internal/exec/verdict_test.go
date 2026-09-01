@@ -152,7 +152,7 @@ func TestAFailedLeafIsRetriedOnceWhenThereIsSomewhereToGo(t *testing.T) {
 	}
 
 	graph, fake := build()
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(NewGovernor())
 	scheduler.Escalations = 1
 	if err := scheduler.Run(context.Background(), graph); err != nil {
 		t.Fatal(err)
@@ -171,7 +171,7 @@ func TestAFailedLeafIsRetriedOnceWhenThereIsSomewhereToGo(t *testing.T) {
 	// The same graph with no panel behind it: one attempt, and the budget stop
 	// is recorded exactly as before.
 	plain, plainFake := build()
-	plainScheduler := NewScheduler(NewRegistry(plainFake), workspace(t), 2).WithGovernor(calmGovernor())
+	plainScheduler := NewScheduler(NewRegistry(plainFake), workspace(t), 2).WithGovernor(NewGovernor())
 	if err := plainScheduler.Run(context.Background(), plain); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestAProviderFailureIsNotRetriedUpTheLadder(t *testing.T) {
 		first: Outcome{Stop: StopError, Verdict: provider.VerdictProviderFailure},
 		then:  Outcome{Stop: StopDone, Text: "finished", Verdict: provider.VerdictUnverifiedSuccess},
 	}
-	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(calmGovernor())
+	scheduler := NewScheduler(NewRegistry(fake), workspace(t), 2).WithGovernor(NewGovernor())
 	scheduler.Escalations = 1
 	_ = scheduler.Run(context.Background(), graph)
 

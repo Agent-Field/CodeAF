@@ -2,7 +2,6 @@ package resident
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -116,68 +115,4 @@ func TestRepairedGateVerdictStillTeaches(t *testing.T) {
 			t.Fatalf("a gap an accepted repair closed was withheld: %q", distilled)
 		}
 	})
-}
-
-// A working method belongs to the kind of work that earned it. Measured case:
-// prose-delivery lessons from a research job were injected into a Go coding
-// leaf running the swe pipeline.
-func TestNotebookDigestKeepsMethodLessonsInsideTheirHarness(t *testing.T) {
-	graph := openStore(t)
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
-		ID: "prose", Brief: "write twelve profiles", Stage: 1, Subharness: "linear",
-	}}}, store.Provenance{Origin: store.OriginUser, Intent: "write twelve profiles"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{{
-		ID: "coding", Brief: "build a markdown table aligner in Go", Stage: 1, Subharness: "swe",
-	}}}, store.Provenance{Origin: store.OriginUser, Intent: "build a markdown table aligner in Go"}); err != nil {
-		t.Fatal(err)
-	}
-
-	crossHarness, err := graph.RecordFact("prose", "user", store.FactLesson,
-		"assemble a markdown table deliverable into one contiguous final message, never separate files")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := graph.RecordFact("coding", "user", store.FactLesson,
-		"run go build on the markdown table package before reporting a coding job done"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := graph.RecordFact("prose", "user", store.FactPreference,
-		"the person wants a markdown table deliverable kept terse"); err != nil {
-		t.Fatal(err)
-	}
-
-	digest := NotebookDigest(graph, "coding", "build a markdown table aligner in Go",
-		"build a markdown table aligner in Go", 8)
-	if strings.Contains(digest, "one contiguous final message") {
-		t.Fatalf("a prose-delivery lesson reached a coding leaf: %q", digest)
-	}
-	if !strings.Contains(digest, "run go build") {
-		t.Fatalf("a lesson the swe harness itself earned was withheld: %q", digest)
-	}
-	if !strings.Contains(digest, "kept terse") {
-		t.Fatalf("a standing preference was scoped to a harness: %q", digest)
-	}
-
-	// The withheld line is never claimed as read: attribution has to describe
-	// what the leaf actually saw, or outcome accounting blames the wrong fact.
-	events, err := graph.Events(0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range events {
-		if event.Kind != store.EventFactInjected || event.NodeID != "coding" {
-			continue
-		}
-		if strings.Contains(string(event.Payload), strconv.FormatInt(crossHarness.Seq, 10)) {
-			t.Fatalf("a dropped fact was recorded as injected: %s", event.Payload)
-		}
-	}
-
-	// The same lesson is still the right advice for its own kind of work.
-	back := NotebookDigest(graph, "prose", "write twelve profiles", "write twelve profiles", 8)
-	if !strings.Contains(back, "one contiguous final message") {
-		t.Fatalf("the lesson stopped reaching the work that earned it: %q", back)
-	}
 }

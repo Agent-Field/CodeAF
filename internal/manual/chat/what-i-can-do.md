@@ -118,7 +118,15 @@ directory. Default **500 entries**, and at the cap:
 All three are capped at 50KB of output, and all three are pure reads, so none of
 them asks your permission.
 
-## Can you run a command, run my tests, or build the project?
+## Can you run tests for me or start a dev server?
+
+Yes. The `bash` tool runs tests, builds and development servers through `/bin/bash -c`
+in your workspace. A server meant to stay up can start in the background immediately.
+It streams stdout and stderr together, keeps unexpectedly long commands running as
+background jobs instead of killing them, and reports a non-zero exit as
+`Command exited with code N`.
+
+## Run a command or build the project — background after and timeout
 
 Yes. The `bash` tool runs a command through `/bin/bash -c` in your workspace,
 with the environment aforge itself was started with.
@@ -130,18 +138,23 @@ with the environment aforge itself was started with.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
 
-**aforge waits for the command.** A foreground call runs for as long as its own
-`timeout` argument says, and **600 seconds — ten minutes — is the ceiling**. A
-higher `timeout` is quietly clamped to 600. A `timeout` that is missing, null,
-zero or negative is the same as not asking, and gets the full ten minutes, so
-there is no way to spell a foreground command that runs unbounded and no way for
-one to be sent to the background before the time it asked for is up.
+**aforge waits up to the `background after` setting — 30 seconds unless you
+change it.** If the foreground command is still running then, the same process
+is kept as a background job; the call returns its output so far and a job id, and
+the chat moves on. Nothing is killed or restarted.
 
-It used to be two minutes by default with ten as the cap, and the gap between
-them was expensive: a four-minute script hit the two-minute default every single
-time and came back as a background job nobody had asked for, which the model then
-had to chase. One number now, and the escape for anything genuinely longer is
-`background: true`, which is a decision rather than an accident of the clock.
+The row is labelled **background after** on `/settings`' Safety tab; its key is
+`bash.background_after_seconds`. The session engine and the visible countdown arm from
+it together at launch, so a change applies to the **next session**. It is a machine brake,
+so the model's `change_setting` tool refuses to widen it; change it yourself in the panel.
+
+Set `background after` to **0** to turn that clock off and wait for the command's
+own `timeout` instead. **600 seconds — ten minutes — is the timeout ceiling.** A
+higher timeout is quietly clamped to 600. A timeout that is missing, null, zero
+or negative gets the full ten minutes. The command timeout used to default to
+two minutes; it was raised to ten because a four-minute script should not hit an
+arbitrary two-minute handoff. The separate 30-second chat clock now controls
+when the conversation moves on, while 0 preserves the timeout-only behaviour.
 
 **A long command's output arrives while it runs, not all at once at the end.**
 Programs writing to a pipe normally hold their output back in 4KB blocks —
@@ -152,8 +165,9 @@ commands line-buffered (`stdbuf` where the machine has it, plus
 as the work happens. If you had already exported `PYTHONUNBUFFERED` yourself,
 your value is left alone.
 
-**Reaching the ceiling does not kill the command.** It is handed to the job
-registry and keeps running — see the next section.
+**Reaching either foreground bound does not kill the command.** The
+background-after clock or an earlier command timeout keeps it on the job list
+and it keeps running — see the next section.
 
 A command that exits non-zero answers `Command exited with code N`. An
 interrupted one answers `Command aborted`. If the workspace directory is gone:
@@ -166,9 +180,10 @@ is better started in the background from the start, where no clock runs at all.
 
 ## The command took too long — is the work lost, or does it keep running?
 
-It keeps running. A foreground command that reaches its timeout is **adopted as
-a background job**, not killed, and the call answers with one line and then
-whatever the command had already printed:
+It keeps running. A foreground command that reaches the `background after`
+clock, or reaches its own timeout sooner, is **kept as a background job**, not
+killed. The call answers with one line and then whatever the command had already
+printed:
 
 ```
 still running as job 3; log at ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log
@@ -183,22 +198,23 @@ answers with, and from that moment it *is* an ordinary job: a row in `jobs list`
 a tail in `jobs output`, `jobs kill` reaches its whole process group. The turn
 carries on straight away rather than waiting.
 
-So a fifteen-minute `make` behind a ten-minute ceiling costs nothing. Nothing is
-thrown away and nothing is run twice. The old behaviour — the process group
-killed and `Command timed out after N seconds` — is what a bare subharness leaf
-still does; the chat does not.
+So a fifteen-minute `make` behind the default 30-second chat clock keeps the
+work already done. Nothing is thrown away and nothing is run twice. The old
+behaviour — the process group killed and `Command timed out after N seconds` —
+is what a plain shell tool with no session behind it still does; the chat does
+not.
 
 Two things it does **not** do:
 
 - **A command you interrupted is interrupted.** Pressing `esc` cancels the turn,
-  and a cancelled command is never adopted: it dies, no job appears, and the
+  and a cancelled command is never kept as a job: it dies, no job appears, and the
   answer is `Command aborted`. Stop means stop.
-- **It does not outlive the conversation.** A promoted job is a job, so it is
+- **It does not outlive the conversation.** A foreground command kept as a job is a job, so it is
   killed when the session closes, like every other one.
 
 The log opens with the output you had already watched scroll past, and continues
 with everything the command printed afterwards. For a command that had printed
-truly enormous amounts before it was promoted, the log begins where aforge's own
+truly enormous amounts before it was kept as a job, the log begins where aforge's own
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
 
@@ -252,16 +268,24 @@ intermediate look at a job you asked about; it is not how waiting is done.
 ## Can I send a running command to the background myself?
 
 Yes — press **`ctrl+g`** while a foreground command is running. It is the same
-adoption the timeout does: the command is not killed and not started again, it
-simply becomes a job, the row says which one (`job 3`), and the turn carries on.
+handoff the background-after and timeout clocks use: the command is not killed
+and not started again, it simply becomes a job, the row says which one (`job
+3`), and the turn carries on.
 
-The key does nothing when there is nothing to send away — no command running, a
-command that is already a background job, a call that is not `bash`. See the
-keys page.
+With the mouse, move over that running row and press its right-hand
+`click to background` offer. Only the offer keeps the command; pressing elsewhere
+still opens the row. The offer is not drawn on a phone-width frame.
 
-aforge can also reach for this itself, in effect, by starting a long command
-with `background: true` in the first place; `ctrl+g` is the answer when neither
-of you knew in advance that the command would be a long one.
+The background gesture is absent when there is nothing to send away — no command
+running, a command that is already a background job, a call that is not `bash`, or
+a session over `--host`, where the local surface has no handoff door. With no command
+to keep, `ctrl+g` returns to its other job of hiding or restoring the task column. See
+the keys page.
+
+Starting a command with `background: true` makes it a job from the first instant.
+For an ordinary foreground command whose length you did not know in advance, use
+`ctrl+g` or the row's pointer offer; if neither happens first, the configured
+background-after clock keeps it automatically.
 
 ## Does cd stick between commands — changing directory in bash
 
@@ -312,8 +336,9 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
 - `list` — one row per job: `job 1 · exited(0) · 12.4s · go build ./...`.
   Status is `running`, `exited(N)` or `killed`. Nothing running reads
   `No background jobs.` A job that started life as a foreground command and was
-  promoted — by its timeout, or by `ctrl+g` — has exactly this row, with no mark
-  saying where it came from: it is a job like any other. A forked **hand** is in
+  kept as a job — by the background-after clock, its timeout, or `ctrl+g` — has
+  exactly this row, with no mark saying where it came from: it is a job like any
+  other. A forked **hand** is in
   this list too, as `job 4 · hand 2 · running · 12.0s · the docs`, and its status
   when it ends is `finished` — a hand has no exit code, it has a report.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
@@ -718,7 +743,7 @@ most**, silently clamped rather than refused. Results come back as
 `1. Title — URL` with the publication date and a snippet of up to 300
 characters under each, and a footer like `5 of 12 results`. Nothing found reads
 `no results`. A failed search names the back end it used:
-`Search failed (duckduckgo): <err>`.
+`Search failed (firecrawl): <err>`.
 
 `web_fetch` takes one absolute `url` with a scheme and returns the page's text
 with the markup stripped, capped at **4000 bytes**, with the overflow announced
@@ -729,8 +754,9 @@ those.
 Which back end answers is decided top-down: a pin in the `search.provider`
 setting wins; otherwise the first keyed service you have a key for (`exa` needs
 an Exa key, `jina-search` needs a Jina key); otherwise the zero-key default,
-which is DuckDuckGo's HTML endpoint and is always available. So keys change
-*which* engine answers, never *whether* the web is reachable.
+which is Firecrawl: keyless, with a free monthly allowance and no key needed.
+DuckDuckGo remains available as an explicit pin. So keys change *which* engine
+answers or raise its ceiling, never *whether* the web is reachable.
 
 This matters more generally: aforge leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a
@@ -936,16 +962,18 @@ Plainly, so you do not have to find out the hard way.
   it `find` says `fd is not available and could not be downloaded` and stops.
   `grep` is no longer in this position — it works without ripgrep, on its own
   legs, and only its treatment of `.gitignore` changes.
-- **`bash` in the foreground cannot run longer than 600 seconds** — but reaching
-  that ceiling does not throw the work away: the command becomes a background job
-  and keeps going, and the call hands back what it had printed so far.
+- **A foreground `bash` call waits no longer than `background after`** — 30
+  seconds by default. Set it to 0 to wait for the command's timeout, capped at
+  600 seconds. Reaching either bound does not throw the work away: the command
+  becomes a background job and keeps going, and the call hands back what it had
+  printed so far.
 - **A scanned PDF is not readable by `read`**, only by `read_document`.
 - **More than 3 watches at once is refused.**
 
 ## What does not survive the conversation ending
 
 - **Background jobs and watches**, including a foreground command that was
-  promoted into one. Every running job is killed when the session closes. Their
+  kept as one. Every running job is killed when the session closes. Their
   log files stay under this conversation's own folder, in `logs/jobs/`.
 - **A "don't ask again" answer to a permission question.** It is held in memory
   for this session only and is never written down, so the next session asks

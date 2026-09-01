@@ -12,9 +12,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// seedErrandGraph is one settled errand in a real store: a root that carries a
-// worker choice, and its leaf. The watcher reads nodes exactly as it does in a
-// live run, which is the only way this proves anything about the field.
+// seedErrandGraph is one settled errand in a real store: a root, its leaf, and
+// whatever worker name the splice was written with — the empty string on
+// anything this build writes, and a stored name on a graph that predates it.
+// The watcher reads nodes exactly as it does in a live run, which is the only
+// way this proves anything about the field.
 func seedErrandGraph(t *testing.T, session, worker string) *store.Store {
 	t.Helper()
 	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
@@ -48,7 +50,10 @@ func errandWatcher(graph *store.Store, session string, progress *strings.Builder
 func TestHeadlessOutcomeAlwaysNamesTheWorker(t *testing.T) {
 	for _, probe := range []struct{ chosen, want string }{
 		{"", exec.LinearSubharness},
-		{"swe", "swe"},
+		{exec.LinearSubharness, exec.LinearSubharness},
+		// A row an older build wrote. The column says what the store says; the
+		// note on the stream (below) is where the run admits it ran linear.
+		{"retired-worker", "retired-worker"},
 	} {
 		session := "headless-worker-" + probe.want
 		graph := seedErrandGraph(t, session, probe.chosen)
@@ -76,20 +81,13 @@ func TestHeadlessOutcomeAlwaysNamesTheWorker(t *testing.T) {
 	}
 }
 
-// The understood line names a specialist once and stays exactly as it was for
-// the errand that took the default — which is nearly every errand.
-func TestUnderstoodLineNamesANonDefaultWorkerOnce(t *testing.T) {
-	for _, probe := range []struct {
-		chosen string
-		want   string
-		absent string
-	}{
-		{"", "· understood · 2 tasks", "("},
-		{exec.LinearSubharness, "· understood · 2 tasks", "("},
-		{"swe", "· understood · 2 tasks (swe)", ""},
-	} {
+// The understood line is said once and carries no worker at all — there is one,
+// and a line that named it would be decoration on every errand this program
+// runs.
+func TestUnderstoodLineIsSaidOnceAndNamesNoWorker(t *testing.T) {
+	for _, chosen := range []string{"", exec.LinearSubharness, "retired-worker"} {
 		session := "headless-understood"
-		graph := seedErrandGraph(t, session, probe.chosen)
+		graph := seedErrandGraph(t, session, chosen)
 		var progress strings.Builder
 		watcher := errandWatcher(graph, session, &progress)
 		nodes, err := watcher.sessionNodes()
@@ -99,24 +97,25 @@ func TestUnderstoodLineNamesANonDefaultWorkerOnce(t *testing.T) {
 		watcher.report(nodes)
 		watcher.report(nodes)
 		said := progress.String()
-		if !strings.Contains(said, probe.want) {
-			t.Fatalf("chosen %q said:\n%s\nwant %q", probe.chosen, said, probe.want)
+		if !strings.Contains(said, "· understood · 2 tasks") {
+			t.Fatalf("stored worker %q said:\n%s", chosen, said)
 		}
 		if strings.Count(said, "understood") != 1 {
-			t.Fatalf("chosen %q said understood %d times:\n%s", probe.chosen, strings.Count(said, "understood"), said)
+			t.Fatalf("stored worker %q said understood %d times:\n%s",
+				chosen, strings.Count(said, "understood"), said)
 		}
-		if probe.absent != "" && strings.Contains(said, probe.absent) {
-			t.Fatalf("chosen %q decorated the default line:\n%s", probe.chosen, said)
+		if strings.Contains(said, "understood · 2 tasks (") {
+			t.Fatalf("stored worker %q decorated the line with a worker:\n%s", chosen, said)
 		}
 	}
 }
 
 // Degradation is the law; silent degradation is a measurement of the wrong
-// thing. A node promised a worker this build was not compiled with says so once
-// — and a build that does have the worker says nothing at all.
+// thing. A node from an older graph, whose row names a worker that no longer
+// exists, says so once per node — and an ordinary node says nothing at all.
 func TestDegradationIsSaidOncePerNode(t *testing.T) {
 	session := "headless-degraded"
-	graph := seedErrandGraph(t, session, "swe")
+	graph := seedErrandGraph(t, session, "retired-worker")
 	var progress strings.Builder
 	watcher := errandWatcher(graph, session, &progress)
 	nodes, err := watcher.sessionNodes()
@@ -126,20 +125,25 @@ func TestDegradationIsSaidOncePerNode(t *testing.T) {
 	watcher.report(nodes)
 	watcher.report(nodes)
 	said := progress.String()
-	if count := strings.Count(said, `not in this build`); count != len(nodes) {
+	if count := strings.Count(said, "this build has one worker"); count != len(nodes) {
 		t.Fatalf("said the note %d times for %d nodes:\n%s", count, len(nodes), said)
 	}
-	if !strings.Contains(said, `note: worker "swe" not in this build; ran linear`) {
+	if !strings.Contains(said, `note: "retired-worker" is not a worker; ran linear, and this build has one worker`) {
 		t.Fatalf("the note does not say what happened:\n%s", said)
 	}
 
-	defer exec.ForgetSubharnesses()
-	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "coding"})
-	var honored strings.Builder
-	kept := errandWatcher(graph, session, &honored)
-	kept.report(nodes)
-	if strings.Contains(honored.String(), "not in this build") {
-		t.Fatalf("a build that has the worker apologized for it:\n%s", honored.String())
+	for _, ordinary := range []string{"", exec.LinearSubharness} {
+		plain := seedErrandGraph(t, session, ordinary)
+		var quiet strings.Builder
+		watching := errandWatcher(plain, session, &quiet)
+		plainNodes, err := watching.sessionNodes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		watching.report(plainNodes)
+		if strings.Contains(quiet.String(), "is not a worker") {
+			t.Fatalf("an ordinary run apologized for its worker:\n%s", quiet.String())
+		}
 	}
 }
 
@@ -148,7 +152,7 @@ func TestDegradationIsSaidOncePerNode(t *testing.T) {
 // the node's own flight recorder, once, before the worker writes a turn into it.
 func TestDegradationReachesTheNodesFlightRecorder(t *testing.T) {
 	session := "chat-degraded"
-	graph := seedErrandGraph(t, session, "swe")
+	graph := seedErrandGraph(t, session, "retired-worker")
 	workspace := t.TempDir()
 	seatLeafWorkerNotes(workspace, "", graph)
 	t.Cleanup(func() { seatLeafWorkerNotes("", "", nil) })
@@ -157,7 +161,7 @@ func TestDegradationReachesTheNodesFlightRecorder(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read the leaf: found=%t err=%v", found, err)
 	}
-	if got := leafSubharness(node); got != "swe" {
+	if got := leafSubharness(node); got != "retired-worker" {
 		t.Fatalf("leaf worker = %q", got)
 	}
 	leafSubharness(node)
@@ -169,10 +173,10 @@ func TestDegradationReachesTheNodesFlightRecorder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the trace: %v", err)
 	}
-	if want := `note: worker "swe" not in this build; ran linear`; !strings.Contains(string(body), want) {
+	if want := `note: "retired-worker" is not a worker; ran linear, and this build has one worker`; !strings.Contains(string(body), want) {
 		t.Fatalf("the recorder does not carry the note: %q", string(body))
 	}
-	if strings.Count(string(body), "not in this build") != 1 {
+	if strings.Count(string(body), "is not a worker") != 1 {
 		t.Fatalf("the note was said twice: %q", string(body))
 	}
 

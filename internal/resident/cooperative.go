@@ -56,11 +56,8 @@ func SplitCooperatively(ctx context.Context, graph *store.Store, node store.Node
 	if strings.TrimSpace(growth.Goal) == "" {
 		growth.Goal = CooperativeGoal(node, request, partial)
 	}
-	// The parts are sized by the division that plans them, not by the envelope
-	// the leaf that asked was running in. See Growth.KeepEnvelope.
-	growth.KeepEnvelope = true
 	return ReplanOverrunAs(ctx, graph, node, partial, "", artifacts,
-		dailyBudgetUSD, "", growth, divide)
+		dailyBudgetUSD, growth, divide)
 }
 
 // CooperativeGoal phrases the division brief.

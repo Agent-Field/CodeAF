@@ -185,7 +185,7 @@ func BenchmarkResize10k(b *testing.B) {
 func BenchmarkHeaderRender(b *testing.B) {
 	h := Header{
 		Glyph:  "◐",
-		Title:  "swe",
+		Title:  "fix",
 		Desc:   "rewriting the executor harness",
 		Badges: []Badge{{Text: "?2", Hue: HueAttention}},
 		Meta:   []string{"K3 ▄ $8.65", "4m"},

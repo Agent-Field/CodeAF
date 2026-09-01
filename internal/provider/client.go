@@ -727,6 +727,12 @@ func (c *Client) completionInOnePiece(
 	// came with it; it goes straight back on the response, where every reader
 	// below and above this adapter expects to find it.
 	response.Usage = decoded.Usage.usage()
+	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
+	// A gateway that fences its working in `<think>` does it whether or not the
+	// request asked for a stream, and an answer that carried the model's private
+	// working into the transcript on one transport and not the other would be
+	// two accounts of one law.
+	c.splitOnePiece(ctx, &response, payload)
 	// An answer delivered whole has no first token to wait for — the whole thing
 	// arrives at once — so it is rated and never judged on TTFT, and it has no
 	// mid-stream gaps to judge either. Passing zero says "unmeasured" rather
@@ -1123,6 +1129,12 @@ func (c *Client) completeWithMessagesStreaming(
 	response := &ai.Response{Model: request.Model}
 	var content strings.Builder
 	var tools toolCallAccumulator
+	// THE ONE DECISION ABOUT WHAT IS ANSWER AND WHAT IS WORKING, taken here so
+	// that the observer the surface draws from and the `content` that becomes
+	// the assistant message are two spendings of ONE reading (answer.go). It is
+	// per response and not per client: the state it holds is about the reply
+	// being read now.
+	var split answerSplit
 	finishReason := ""
 	thinking := false
 	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
@@ -1262,6 +1274,11 @@ func (c *Client) completeWithMessagesStreaming(
 			if choice.Index != 0 {
 				continue
 			}
+			// THE SPLIT IS TAKEN FIRST AND ONCE (answer.go), because every line
+			// below wants its answer rather than the channel the bytes came in
+			// on: what the person is shown, what the response accumulates, what
+			// the babble guard reads, and what the phase clock calls this moment.
+			answerText, workingText := split.content(choice.Delta.Content)
 			// Reasoning counts as the first token. It is the endpoint writing —
 			// billed, streamed, and the thing the person is waiting through —
 			// and a reasoning model that thinks for a minute before its first
@@ -1289,32 +1306,37 @@ func (c *Client) completeWithMessagesStreaming(
 				// work that shows nothing — and the watch's commitment rule is
 				// about what would be taken away from somebody, so it counts
 				// only the first (internal/lane's watch.go).
-				watch.token(choice.Delta.Content != "")
+				watch.token(answerText != "")
 				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
 				// only thing on the wire that can tell a person the difference
 				// between a model thinking and a model writing. Only the arm
 				// the person is HEARING may move it: the other one's deltas are
 				// held (hedge.go's one-voice rule) and a story told from them
 				// would be about text nobody is reading.
+				//
+				// THE CLOCK IS TOLD WHAT THE SPLIT DECIDED and not what channel
+				// the bytes arrived on (answer.go): a model whose working comes
+				// fenced inside `content` is THINKING, and a clock that read the
+				// channel would tell the person it was writing their reply.
 				if watch.speaking() {
-					if choice.Delta.Content != "" {
+					if answerText != "" {
 						phase.enter(PhaseWriting, "")
-					} else if choice.Delta.thinking() {
+					} else if workingText != "" || choice.Delta.thinking() {
 						phase.enter(PhaseThinking, "")
 					}
 					phase.wrote()
 				}
 			}
-			if choice.Delta.Content != "" {
+			if answerText != "" {
 				thinking = false
-				content.WriteString(choice.Delta.Content)
-				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content, Session: session})
+				content.WriteString(answerText)
+				observer(StreamEvent{Kind: StreamDelta, Delta: answerText, Session: session})
 				// AND THE JUNK STOPS HERE. The delta has already been handed to
 				// the observer — a person watches text arrive and the surface
 				// throws away what a cut turn streamed — but nothing past this
 				// point becomes a response, so no soup is ever returned to the
 				// turn loop and none of it reaches the transcript.
-				if babble != nil && babble.write(choice.Delta.Content) {
+				if babble != nil && babble.write(answerText) {
 					cut := &StreamCut{Reason: CutBabble}
 					c.stampCut(cut, served, began, content.String())
 					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
@@ -1341,10 +1363,30 @@ func (c *Client) completeWithMessagesStreaming(
 				events, count := choice.Delta.reasoningEvents()
 				for _, event := range events[:count] {
 					event.Session = session
+					split.reasoning(event.Delta)
 					observer(event)
 				}
 			}
+			// AND THE WORKING THE SPLIT CARVED OUT OF THE ANSWER CHANNEL rides
+			// the same events, so a surface has exactly one notion of what
+			// thinking looks like whether the endpoint fenced it or fielded it.
+			//
+			// IT CARRIES NO WIRE FIELD, AND [StreamEvent.FromAnswer] SAYS WHY:
+			// this working never travelled on a reasoning field, so there is no
+			// field to replay it under, and a continuation that invented one
+			// would be handing the endpoint back a message it never sent.
+			if workingText != "" {
+				if !thinking {
+					thinking = true
+					observer(StreamEvent{Kind: StreamThinking, Session: session})
+				}
+				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
+			}
 			for _, fragment := range choice.Delta.ToolCalls {
+				// A response that asked for a call is a response that behaved,
+				// however little it said in words, so the split must never read
+				// its silence as a lost answer (answer.go's [answerSplit.promote]).
+				split.sawTools()
 				// One call finishing is worth saying before the whole message
 				// does, so a consumer can start on it. The marshal is per
 				// completed call rather than per token, which is the budget this
@@ -1369,6 +1411,31 @@ func (c *Client) completeWithMessagesStreaming(
 	// half an instruction.
 	for _, ready := range tools.flush() {
 		observeToolCallReady(observer, session, ready)
+	}
+	// AND THE SPLIT'S OWN LAST TWO ACTS, in this order and only here — the
+	// stream is over, so both questions now have answers they will not have to
+	// take back (answer.go).
+	//
+	// First whatever was withheld against a fence that never completed: a `<th`
+	// at the end of the last delta is text the model wrote, and the person gets
+	// it rather than losing it to a tag that was never coming.
+	if heldAnswer, heldWorking := split.flush(); heldAnswer != "" || heldWorking != "" {
+		if heldAnswer != "" {
+			content.WriteString(heldAnswer)
+			observer(StreamEvent{Kind: StreamDelta, Delta: heldAnswer, Session: session})
+		}
+		if heldWorking != "" {
+			observer(StreamEvent{Kind: StreamReasoning, Delta: heldWorking, FromAnswer: true, Session: session})
+		}
+	}
+	// Then the promotion: a response that asked for nothing and said nothing put
+	// its reply on the working channel, and the reply is what the person asked
+	// for. It goes out as a delta BEFORE the message is assembled, so the words
+	// the surface draws and the words the transcript keeps are the same words
+	// arriving by the same road — which is the property a replay depends on.
+	if promoted, ok := split.promote(ProseAnswerAsked(ctx)); ok {
+		content.WriteString(promoted)
+		observer(StreamEvent{Kind: StreamDelta, Delta: promoted, Session: session})
 	}
 	message := ai.Message{
 		Role:      "assistant",

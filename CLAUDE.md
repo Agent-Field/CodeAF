@@ -127,10 +127,11 @@ Three gates fail the build if you forget:
 
 The failure message names the exact missing string.
 
-The corpus ships **packed** — `internal/manual/{pages,chat}.pack.gz`, generated from the
-folders by `make build` (see `internal/packed`). Edit the Markdown and never the archive;
-`internal/manual/packed_test.go` fails when the two disagree, so a page changed without a
-build is a page the binary has not learned.
+The corpus ships **packed** — `make build` generates ignored
+`internal/manual/{pages,chat}.pack.gz` artifacts from the folders and selects them for the
+release binary (see `internal/packed`). Edit and commit only the Markdown. Ordinary
+`go build`/`go test` embed that Markdown directly so a clean checkout works without generated
+files; `make test-packed-manual` exercises the compressed path the shipped binary uses.
 
 **When a question reaches the wrong page, fix the page, never the test.** Write the
 asker's vocabulary into a `## ` heading — people search for "saved" where a writer wrote
@@ -212,8 +213,8 @@ here is a proposal, and the template is for defects.
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
 **not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
-`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `internal/swepro`
-packages, four `cmd/harness-design` tests, two `internal/guard`
+`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `cmd/harness-design`
+tests, two `internal/guard`
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
 `internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
 `internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
@@ -271,4 +272,3 @@ make test-remote          # three containers, no API key, ~50s; SKIPS GREEN with
 machine, `--host localhost` is a real connection over a real ssh pipe and exercises
 everything except the shared-disk law — `docs/remote-access-testing.md` §3.0 has the tmux
 recipe for driving the surface and killing the link on purpose.
-

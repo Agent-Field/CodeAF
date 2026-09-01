@@ -489,10 +489,10 @@ type Resolves func(modelID string) bool
 //     catalogs and in others is a name nobody has ever published.
 //
 // The third is why this takes a resolver at all. Substituting the canonical
-// slug unasked is what broke the swe leaf on the default model of every install:
+// slug unasked is what broke a leaf on the default model of every install:
 // models.dev carries deepseek/deepseek-v4-flash and deepseek/deepseek-v4-flash-0731
 // and has never heard of deepseek/deepseek-v4-flash-20260423, so a translation
-// meant to save the engine handed it a name that could not exist.
+// meant to help handed the far side a name that could not exist.
 //
 // When nothing resolves, the id as written is forwarded — never a substitution
 // the target catalog is KNOWN not to have — so the far side's own error names
