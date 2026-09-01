@@ -733,6 +733,16 @@ func (c *familyCompleter) CompleteWithMessages(ctx context.Context, messages []a
 			break
 		}
 	}
+	// AND A PART IS TOLD APART BY WHAT IT OWNS, not by what it was told about
+	// its siblings. The harness composes the map of which scopes the OTHER parts
+	// hold above this one's scope (task_divide_compose.go), so the second part's
+	// own first message carries the first part's mark as well — and a router
+	// reading the whole document would answer as its sibling and write its file.
+	// What is read is the section under WHAT THIS PART OWNS, which is this
+	// part's alone; a node nobody divided has no such heading and is read whole.
+	if _, own, found := strings.Cut(brief, divisionThisPart); found {
+		brief = own
+	}
 	c.mu.Lock()
 	var next step
 	for _, mark := range c.marks {
