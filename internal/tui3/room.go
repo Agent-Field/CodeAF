@@ -388,6 +388,12 @@ const (
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
+	// roomBusyWord is the opener when the node is STILL RUNNING and simply has
+	// nobody inside to read a line — mid-check, or landing. "is parked" would be
+	// a lie about live work, and the revive key is withheld for the same reason:
+	// asking the head to start the work again while the original is minutes from
+	// done manufactures a duplicate task.
+	roomBusyWord    = " cannot read this right now — "
 	roomLoadingWord = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
@@ -1710,6 +1716,11 @@ type steerGuard struct {
 	// why is the engine's own sentence about the node, or empty when the room
 	// simply saw its lane close.
 	why string
+	// busy is a node that is STILL RUNNING with nobody inside to read a line —
+	// refused mid-check, or while the work lands (#273). A busy guard offers no
+	// revive: the honest keys are m and esc, because "start it again" about work
+	// that is minutes from done would race the original with a duplicate.
+	busy bool
 }
 
 // raiseGuard puts the question up. The room stays open underneath it: the page
@@ -1719,7 +1730,12 @@ func (a *app) raiseGuard(line, why string) {
 	if a.room == nil {
 		return
 	}
-	a.guard = &steerGuard{title: a.room.title, text: line, why: why}
+	// A room that has not seen its lane close is a node still running: the
+	// refusal came from the engine's door (mid-check, nobody inside), not from
+	// the work being over. done is this page's own record of the close, so the
+	// two cannot be stale against each other for longer than the close takes to
+	// arrive.
+	a.guard = &steerGuard{title: a.room.title, text: line, why: why, busy: !a.room.done && !a.roomIsJob()}
 	// The typed lists follow the draft, and the draft is spoken for while the
 	// question is up: the same law the approval question states (consent.go).
 	a.closeLists()
@@ -1750,6 +1766,11 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+c":
 		return nil, false
 	case "r":
+		// A busy guard has no revive (see [steerGuard.busy]): the key does
+		// nothing rather than restarting work that is still running.
+		if a.guard.busy {
+			return nil, true
+		}
 		return a.guardSend(true), true
 	case "m":
 		return a.guardSend(false), true
@@ -1842,6 +1863,11 @@ func (a *app) guardRows(width int) []string {
 	parts := []string{
 		a.guard.title + roomParkedWord, "[r]", " revive and send · ", "[m]",
 		" send to main · ", "[esc]", " cancel",
+	}
+	if a.guard.busy {
+		parts = []string{
+			a.guard.title + roomBusyWord, "[m]", " send to main · ", "[esc]", " cancel",
+		}
 	}
 	line := strings.Join(parts, "")
 	out := make([]string, 0, 2)

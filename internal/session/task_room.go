@@ -148,25 +148,27 @@ func (a *Agent) SteerTask(id uint64, text string) (bool, error) {
 	// a receipt and read by nobody (#273: the room drew the person's question as
 	// said while the gate was reading the tree, and the words died with the
 	// worker). The runner withdraws the speaker on its way out (task_run.go's
-	// [runTaskChild]); this is the same refusal said from the phase's side, so
-	// the two cannot disagree in the instant between them.
-	if node.beat.phaseNow() == taskBeatChecking {
+	// [runTaskChild]); this is the same refusal said from the phase's side —
+	// read off the node's own graph-locked word ([TaskNode.lifeNow]), never the
+	// beat file, which is the same fact written for OTHER processes — so a
+	// person asking during the check hears what the check is instead of a
+	// sentence about a worker.
+	if node.lifeNow() == TaskPhaseChecking {
 		return false, fmt.Errorf("task %d is being checked — nobody is in there to read your line until the check lands", id)
-	}
-	child := node.openRoom().speaker()
-	if child == nil {
-		// Running, but the child is not up yet (its worktree is still being
-		// prepared) or is already shutting down. Both are "there is nobody in
-		// there to talk to", and both are worth saying rather than silently
-		// dropping the person's line into a queue nothing will drain.
-		return false, fmt.Errorf("task %d has no worker to talk to yet", id)
 	}
 	// Read BEFORE the line is handed over, because handing it over is what ends
 	// the wait: after the enqueue the honest answer to "was it waiting" has
 	// already changed.
 	waiting := node.waitingOnItsPieces()
-	if !child.enqueueSteeredLine(text) {
-		return false, fmt.Errorf("task %d has just finished, so there is nobody left to say it to", id)
+	// The nil-check and the enqueue happen under the room's own lock
+	// ([taskRoom.steerIn]) so the runner's withdrawal cannot slip between them.
+	// One sentence covers every "nobody" — a worktree still being prepared, a
+	// worker whose reading is over, a landing in progress — because they are the
+	// same fact from the person's side, and naming the wrong end of the run
+	// ("not started yet" about a task that is finishing) is worse than naming
+	// neither.
+	if !node.openRoom().steerIn(text) {
+		return false, fmt.Errorf("task %d has nobody in it to read your line right now", id)
 	}
 	return waiting, nil
 }
@@ -353,9 +355,12 @@ func (a *Agent) taskNode(id uint64) *TaskNode {
 // on a surface that is redrawing, and must never drop a text delta, which is the
 // one event whose loss reads as corruption rather than as lag.
 type taskRoom struct {
-	mu       sync.Mutex
-	child    *Agent
-	closed   bool
+	mu     sync.Mutex
+	child  *Agent
+	closed bool
+	// pay is the agent the node's price still owes for after the speaker is
+	// withdrawn — see [taskRoom.bill].
+	pay      *Agent
 	watchers map[*eventStream]struct{}
 	// live is the recorder every published event also goes through
 	// (task_live.go): what the node is doing and the tail of what it has said,
@@ -451,7 +456,9 @@ func (r *taskRoom) speaking(child *Agent) {
 
 // speaker is who is in the room, or nil once the node is over. It is cleared at
 // close so a line typed into a landed node's page is refused rather than queued
-// onto an agent nothing will drain.
+// onto an agent nothing will drain — and, since #273, also withdrawn by the
+// runner the moment the worker's reading is over (task_run.go's
+// [runTaskChild]), because the swallow lived in the gap between the two.
 func (r *taskRoom) speaker() *Agent {
 	if r == nil {
 		return nil
@@ -459,6 +466,49 @@ func (r *taskRoom) speaker() *Agent {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.child
+}
+
+// steerIn hands the person's line to whoever is in the room, with the nil-check
+// and the enqueue under ONE hold of the room's lock. The runner's withdrawal
+// takes the same lock, so the two cannot interleave into a swallow: either this
+// enqueue lands while the speaker still stands — and then it lands BEFORE the
+// runner's final queue check, which answers it with one more turn — or the
+// withdrawal won and this refuses, words kept. Split across two locks it was
+// the #273 race with a narrower window, not a fix.
+func (r *taskRoom) steerIn(text string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.child == nil {
+		return false
+	}
+	return r.child.enqueueSteeredLine(text)
+}
+
+// bill is the agent whose unfolded usage the node's price still owes: the
+// worker, from the moment it starts until retire folds it into the frozen
+// figure. It outlives the speaker on purpose — the speaker answers "who can
+// read a line", the bill answers "whose meter is still running", and the check
+// is exactly the stretch where those are different agents' answers
+// ([TaskNode.spend]).
+func (r *taskRoom) bill(child *Agent) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.pay = child
+	r.mu.Unlock()
+}
+
+func (r *taskRoom) billed() *Agent {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pay
 }
 
 // publish fans one of the child's events out to everyone watching. The lock is

@@ -420,14 +420,14 @@ func TestASteerDuringTheCheckIsRefusedWithTheReason(t *testing.T) {
 	release := make(chan struct{})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
 		// The rig stands the node exactly where the live run stands it during
-		// auditNode: pulse saying "checking", worker still in the room, state
-		// still TaskRunning.
-		node.beat = newTaskBeat(filepath.Join(t.TempDir(), "1.beat.json"), node.id, "a node", time.Now())
+		// auditNode: the node's own word saying "checking" (the same word
+		// enterPhase records), worker still in the room, state still
+		// TaskRunning.
 		node.openRoom().speaking(worker)
-		leave := node.beat.phase(taskBeatChecking)
+		node.living(TaskPhaseChecking)
 		close(started)
 		<-release
-		leave()
+		node.living(TaskPhaseWorking)
 		node.finish("it landed", nil, "", "")
 		node.graph.complete(node, TaskDone)
 	})

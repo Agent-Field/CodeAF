@@ -2949,6 +2949,12 @@ the engine's own reason on a dim second row. `r` leaves the room and asks the mo
 the work again with your instruction; `m` leaves the room and sends your words to the model
 unwrapped; `esc` cancels and leaves your words exactly where they are in the box.
 
+The same question also rises on a task that is **still running** but momentarily has
+nobody inside to read a line — while it says `checking what it left`, or in the seconds
+its work is landing. That guard reads `<title> cannot read this right now — [m] send to
+main · [esc] cancel`: no revive, because the work is not over and starting it again would
+make a duplicate. Wait for the check to land, or send the thought to main.
+
 Whenever a task stops for any reason it wears `stopped — branch kept` and its branch name.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
