@@ -844,33 +844,44 @@ account, alternating request by request so a slow ten minutes hits both:
 - **The cold-store half is run first**, from an empty `AFORGE_HOME`, because that
   is the state the reported defect happened in and a warmed ledger would hide it.
 
-### Laws currently red
+### Laws currently red — none, as of the integration lane
 
-Written before the work, failing honestly, listed so that "done" is something
-the build says.
+Written before the work, failing honestly, and now every one of them green. The
+table is kept rather than deleted because the interesting column is the third
+one: what each law was red FOR is the shape of the defect this design was
+written from, and a list of green test names with no reasons beside them is a
+list nobody can read back.
 
-| law | file | red because | lane |
+| law | file | was red because | landed in |
 | --- | --- | --- | --- |
-| `TestRoutingAndWaitingNeverShareANil` | `internal/lane/law_test.go` | `Choice` still carries `Deadline` and `Alt` | W5 |
-| `TestUnknownBeliefStillYieldsADeadline` | `internal/lane/law_test.go` | no controller is installed | W2 |
-| `TestThinkingDoesNotStopTheClock` | `internal/lane/law_test.go` | no controller is installed | W2 |
-| `TestHeartbeatsDoNotResetSilence` | `internal/lane/law_test.go` | no controller is installed | W2 |
-| `TestAPinnedLaneRaisesAnOfferNotAHedge` | `internal/lane/law_test.go` | no controller is installed | W2 |
-| `TestWithNothingToHedgeToTheWaitIsReported` | `internal/lane/law_test.go` | no controller is installed | W2 |
-| `TestBeliefsDecayWhenUnobserved` | `internal/lane/law_test.go` | the ledger does not answer `Hierarchy` | W1 |
-| `TestNoTestWritesTheRealHome` | `internal/lane/law_test.go` | two tests use the default registry without a home of their own | W5 |
-| `TestEveryFunnelCallHasAController` | `internal/provider/waiting_law_test.go` | the race refuses a call whose choice named no alternative | W3 |
-| `TestTheControllerIsInstalledExactlyOnce` | `internal/provider/waiting_law_test.go` | nothing installs one | W2 |
-| `TestAHeartbeatIsReportedAsAHeartbeat` | `internal/provider/waiting_law_test.go` | the stream loop fills no `Reading` | W3 |
-| `TestAPinnedLaneCanRaiseAnOffer` | `internal/provider/waiting_law_test.go` | there is no `PhaseAsking` and no `AnswerOffer` | W3 |
-| `TestTheCallLogSaysWhyItWaitedAndWhatItDid` | `internal/provider/waiting_law_test.go` | `calllog.Record` carries no action fields | W3 |
-| `TestSetModelReachesTheBeat` | `internal/provider/waiting_law_test.go` | `SetModel` never tells the beat | W4 |
+| `TestRoutingAndWaitingNeverShareANil` | `internal/lane/law_test.go` | `Choice` still carried `Deadline` and `Alt` | W5 |
+| `TestUnknownBeliefStillYieldsADeadline` | `internal/lane/law_test.go` | no controller was installed | W2 |
+| `TestThinkingDoesNotStopTheClock` | `internal/lane/law_test.go` | no controller was installed | W2 |
+| `TestHeartbeatsDoNotResetSilence` | `internal/lane/law_test.go` | no controller was installed | W2 |
+| `TestAPinnedLaneRaisesAnOfferNotAHedge` | `internal/lane/law_test.go` | no controller was installed | W2 |
+| `TestWithNothingToHedgeToTheWaitIsReported` | `internal/lane/law_test.go` | no controller was installed | W2 |
+| `TestBeliefsDecayWhenUnobserved` | `internal/lane/law_test.go` | the ledger did not answer `Hierarchy` | W1 |
+| `TestNoTestWritesTheRealHome` | `internal/lane/law_test.go` | two tests used the default registry without a home of their own | W5 |
+| `TestEveryFunnelCallHasAController` | `internal/provider/waiting_law_test.go` | the race refused a call whose choice named no alternative | W3 |
+| `TestTheControllerIsInstalledExactlyOnce` | `internal/provider/waiting_law_test.go` | nothing installed one — and then, briefly, the law could not SEE the one that did: it grepped for a qualified call and the install is unqualified, in the package that owns the seam. It reads the syntax tree now, so both spellings count and the declaration excludes itself | W2, W5 |
+| `TestAHeartbeatIsReportedAsAHeartbeat` | `internal/provider/waiting_law_test.go` | the stream loop filled no `Reading` | W3 |
+| `TestAPinnedLaneCanRaiseAnOffer` | `internal/provider/waiting_law_test.go` | there was no `PhaseAsking` and no `AnswerOffer`. It was a source grep while those were being written and is a behaviour now: the shipped pin path has to yield a plan that is `Pinned` AND names somewhere a `y` would go | W3, W5 |
+| `TestTheCallLogSaysWhyItWaitedAndWhatItDid` | `internal/provider/waiting_law_test.go` | `calllog.Record` carried no action fields | W3 |
+| `TestSetModelReachesTheBeat` | `internal/provider/waiting_law_test.go` | `SetModel` never told the beat | W4 |
 
-Green already, so that the set is not vacuous:
+Green before the work started, so that the set was never vacuous:
 `TestEveryRoleWaitsForABoundedTime`, `TestTheControllerIsBuiltFromTheOneFactory`,
 `TestEveryStreamingRoleIsBoundedAndMediaIsNot`.
 
----
+And one law the integration lane added, because the finding it holds was found
+rather than designed: `TestEveryTransportBoundSitsAboveTheCeilingTheControllerActsAt`
+(`internal/provider/streamguard_ceiling_test.go`). Decision 10 says the
+transport's bounds are the LAST resort; they were not. A mid-stream gap derived
+at fifteen seconds pre-empted the thirty- and sixty-second ceilings of every
+unattended role, so for most of this build's calls the first thing to act on a
+stall was the one act that throws the whole attempt away. The bounds are scaled
+by the role's patience now and floored at twice its ceiling, and the law walks
+every role in the table at every rate the derivation can be handed.
 
 ## What this deliberately does not do
 

@@ -369,6 +369,36 @@ func share(part, whole int) float64 {
 
 // ── THE RUN ─────────────────────────────────────────────────────────────────
 
+// proveIt is the whole of the `-proof` run: the four scenarios, the pass table,
+// the two figures §K reports without gating, and the raw rows if a file was
+// named for them.
+func proveIt(w *world, seeds []int, n, speedup int, trace bool, jsonOut string, began time.Time) {
+	fmt.Printf("script:   the lane that is about to serve goes quiet for %v on the middle half "+
+		"of every case's requests\n", quietFor)
+	fmt.Println()
+	rows := runProof(w, seeds, n, speedup, trace)
+	gates := proofGates(rows)
+	printProof(rows, gates, seeds, n, speedup)
+	wall := time.Since(began)
+	fmt.Printf("   wall %s\n", wall.Round(time.Second))
+	if jsonOut == "" {
+		return
+	}
+	blob, err := json.MarshalIndent(map[string]any{
+		"model": w.model, "fetched_at": w.fetched, "seeds": seeds, "n_per_case_per_seed": n,
+		"speedup": speedup, "role": string(proofRole), "ceiling_s": proofRole.Ceiling().Seconds(),
+		"scenario": proofScenario, "quiet_for_s": quietFor.Seconds(),
+		"rows": rows, "criteria": gates, "wall_seconds": wall.Seconds(),
+	}, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := os.WriteFile(jsonOut, blob, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("\n   wrote %s\n", jsonOut)
+}
+
 // runProof is the whole of §K: every case, every seed, pooled.
 func runProof(w *world, seeds []int, n, speedup int, trace bool) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)

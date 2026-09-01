@@ -198,7 +198,22 @@ func main() {
 	speedup := flag.Int("speedup", 100, "how many times faster the wire runs than the world it describes")
 	jsonOut := flag.String("json", "", "write the raw table here")
 	trace := flag.Bool("trace", false, "write one line per request to standard error: asked, served, timed")
+	proof := flag.Bool("proof", false,
+		"run docs/design/waiting/DESIGN.md §K's four scenarios and its pass table instead of the ship gate")
 	flag.Parse()
+
+	// THE PROOF ROWS HAVE THEIR OWN SIZE and it is smaller, because they answer
+	// a bound rather than a percentile: what a ceiling needs is every trial of a
+	// staged fault and not a long tail of ordinary ones. A figure the caller
+	// asked for out loud always wins.
+	given := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if *proof && !given["requests"] {
+		*requests = proofRequests
+	}
+	if *proof && !given["seeds"] {
+		*seeds = proofSeeds
+	}
 
 	began := time.Now()
 
@@ -251,6 +266,10 @@ func main() {
 	fmt.Printf("prompt:   %d tokens every request; read rate %g tok/s\n", promptTokens, lane.ReadRate)
 	fmt.Printf("wire:     %d× faster than the world; %d tokens streamed per answer "+
 		"(the rate filter's floor is %d)\n", *speedup, streamTokens, 32)
+	if *proof {
+		proveIt(world, seedList, *requests, *speedup, *trace, *jsonOut, began)
+		return
+	}
 	fmt.Printf("script:   the lane the router chose on request 0 goes to a %v first token at "+
 		"request %d of every run and recovers at request %d\n",
 		brokenTTFT, breakAt, healAt)
