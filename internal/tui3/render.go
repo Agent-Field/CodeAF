@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -112,6 +113,11 @@ type row struct {
 	// that carries it (mdtable.go). It is the second target this surface resolves
 	// by column, and it is recorded here for the reason the links above it are.
 	foot tableFoot
+	// keep is where a running bash row's `click to background` clause is, or will
+	// be on the hover that reveals it (toolview.go). It is the third transcript
+	// target resolved by column; the one-frame-ahead geometry is what lets a
+	// pointer land straight on the hidden clause and light only those words.
+	keep hudSpan
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -550,6 +556,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		for i := range out {
 			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {
 				out[i].text = "  " + out[i].text
+				if out[i].keep.pressable() {
+					out[i].keep.from += workIndentCols(width)
+					out[i].keep.to += workIndentCols(width)
+				}
 			}
 		}
 	}
@@ -647,8 +657,8 @@ func (a *app) entryRows(d deck, i, width int) []string {
 		return a.renderEntry(i, e, width)
 	}
 	// AN OPEN PROPOSAL IS NOT CACHED EITHER, and for the same reason: its
-	// countdown is a function of the frame (task.go). It rejoins the cache the
-	// moment it is answered, which is the moment the clock stops.
+	// countdown or count-up is a function of the frame (task.go). It rejoins the
+	// cache the moment it is answered, which is the moment the clock stops.
 	if e.kind == entryTask && e.card != nil && !e.card.settled() {
 		return a.renderEntry(i, e, width)
 	}
@@ -676,6 +686,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 		a.renderIdentity++
 		e.identity = a.renderIdentity
 	}
+	// A PICTURE-BEARING USER ENTRY KEEPS THIS ORDINARY ROW KEY. The picture
+	// cache below it keys the file's own mtime and size, while this row memo may
+	// keep painted cells until the next palette repaint or remote-file restyle.
+	// That bounded staleness is the trade for keeping settled transcript blocks
+	// out of the per-frame path; tool rows make the opposite trade because their
+	// lines already bypass this cache.
 	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
 	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
@@ -695,6 +711,99 @@ const userLead = "  "
 
 // userLeadCols is what that lead costs, in cells.
 const userLeadCols = len(userLead)
+
+// pictureMarkerMask holds one basename out of the generic path pass. A marker
+// deliberately shows only the basename, while its door must retain the full
+// attachment path; letting the generic pass resolve the visible name loses
+// that identity whenever the picture lived below another directory.
+type pictureMarkerMask struct {
+	tokens []rune
+	label  []rune
+	path   string
+}
+
+// maskPictureMarkers substitutes equal-width private glyphs before wrapping.
+// The generic path linker cannot mistake those glyphs for a workspace-relative
+// basename, and [app.restorePictureMarkers] puts the visible name and its exact
+// door back after that pass. Equal width keeps every wrap boundary unchanged.
+func (a *app) maskPictureMarkers(text string, e *entry, doors bool) (string, []pictureMarkerMask) {
+	if e == nil || len(e.pictures) == 0 || !doors {
+		return text, nil
+	}
+	masks := make([]pictureMarkerMask, 0, len(e.pictures))
+	for i, picture := range e.pictures {
+		label := filepath.Base(strings.TrimSpace(picture))
+		if label == "" || label == "." {
+			continue
+		}
+		marker := "[#" + itoa(i+1) + " " + label + "]"
+		labelRunes := []rune(label)
+		if len(labelRunes) == 0 || !strings.Contains(text, marker) {
+			continue
+		}
+		// One private rune stands in for one single-cell filename rune. Distinct
+		// runes let restoration survive a hard wrap or a brief-fold cut: each
+		// visible fragment can be put back and linked without leaking a sentinel.
+		tokens := make([]rune, len(labelRunes))
+		maskable := true
+		for j, r := range labelRunes {
+			if ansi.StringWidth(string(r)) != 1 {
+				maskable = false
+				break
+			}
+			tokens[j] = rune(0xE000 + i*512 + j)
+		}
+		if !maskable || len(tokens) > 512 || tokens[len(tokens)-1] > 0xF8FF {
+			continue
+		}
+		token := string(tokens)
+		text = strings.Replace(text, marker, "[#"+itoa(i+1)+" "+token+"]", 1)
+		masks = append(masks, pictureMarkerMask{tokens: tokens, label: labelRunes, path: picture})
+	}
+	return text, masks
+}
+
+func (a *app) restorePictureMarkers(rows []string, masks []pictureMarkerMask, here bool) []string {
+	for _, mask := range masks {
+		l := a.linker()
+		// A live hosted attachment is on the laptop in front of the person, not
+		// on the hosted engine. Its marker therefore uses the local linker even
+		// though model-written paths elsewhere in the same row use the far one.
+		if here {
+			l.far = nil
+			l.root, l.home, l.seen = a.workspace, a.tilde, a.pathSeen
+		}
+		// An exact attachment path stays honest inside a task room too. The room
+		// disables generic relative links because they could name another
+		// worktree; this path came from the journal and is not a guess.
+		l.on = a.pathLinks
+		target, linked := "", false
+		if l.on {
+			target, linked = l.resolve(strings.TrimSpace(mask.path))
+		}
+		for i := range rows {
+			for j := 0; j < len(mask.tokens); {
+				at := strings.IndexRune(rows[i], mask.tokens[j])
+				if at < 0 {
+					j++
+					continue
+				}
+				end, k := at, j
+				for k < len(mask.tokens) && strings.HasPrefix(rows[i][end:], string(mask.tokens[k])) {
+					end += len(string(mask.tokens[k]))
+					k++
+				}
+				label := string(mask.label[j:k])
+				if linked {
+					label = l.anchor(label, target)
+				}
+				rows[i] = rows[i][:at] + label + rows[i][end:]
+				j = k
+			}
+		}
+	}
+	return rows
+}
 
 // renderEntry paints one block. Nothing here appends a blank row — see
 // [app.layout].
@@ -739,7 +848,20 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		if e.pending {
 			words = a.pal.narr
 		}
-		body := wrap(e.text, width-userLeadCols)
+		// Decide the preview rung once. Besides avoiding a second cache lookup,
+		// this tells the marker pass whether this terminal is on a picture-capable
+		// rung: fallback tiers must remain byte-for-byte ordinary prose. The door
+		// does not depend on decoding succeeding — a hosted file can still be
+		// opened even when its mirror has not arrived or its bytes are malformed.
+		cap := previewCap(layoutTier(width) == tierPhone)
+		pictures := make([][]string, len(e.pictures))
+		pictureDrawn := make([]bool, len(e.pictures))
+		for i, path := range e.pictures {
+			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, width-userLeadCols, cap)
+		}
+		pictureDoors := a.pathLinks && a.pal.paintsPictures() && width-userLeadCols >= pictureColsMin && cap > 0
+		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
+		body := wrap(marked, width-userLeadCols)
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
 		}
@@ -787,7 +909,23 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// turn it adds nothing at all — which is nearly every turn, and is why this
 		// line changes no frame most people will ever look at.
 		//
-		return a.turnContextRows(a.linkPaths(out), e.context, width)
+		out = a.linkPaths(out)
+		out = a.restorePictureMarkers(out, pictureMasks, e.picturesHere)
+		out = a.turnContextRows(out, e.context, width)
+		// THE PICTURE COMES LAST. The context pass above may append to its final
+		// prose row, and the path pass must never scan the thumbnail's SGR bytes;
+		// appending here makes both relationships structural rather than hopeful.
+		// Each picture is its own stacked block in tray order, fitted to the
+		// sentence's column and to the same unasked-for cap tool rows use.
+		for i, picture := range pictures {
+			if !pictureDrawn[i] {
+				continue
+			}
+			for _, row := range picture {
+				out = append(out, userLead+row)
+			}
+		}
+		return out
 
 	case entrySteer:
 		// ONE CORRECTION, WHERE IT WAS SAID (steerelbow.go). It is a block of its
@@ -2689,22 +2827,19 @@ func (a *app) legend(width int) string {
 	// this narrow. A rung whose name did not survive is skipped rather than
 	// drawn, which is what puts the hints on the block before the name.
 	right := a.legendRight(width)
-	attempts := make([]struct{ left, right string }, 0, 3)
-	if left, named := a.legendLeft(width, legendRoom(width, right)); named {
-		attempts = append(attempts, struct{ left, right string }{left, right})
-	}
-	// AND A RUNG FOR THE SLOT'S OWN SHORTER FORM, where it has one. One state
-	// names three keys rather than two (steer.go's [app.typingHint]), and on a
-	// frame that cannot hold the longer sentence the choice is between the two
-	// keys that fit and NO hint at all — which is the whole slot lost to the
-	// clause that was added last. So the shorter form is offered here, measured
-	// by the same [app.legendLine] as everything else rather than against
-	// arithmetic copied out of it, and it is tried BEFORE the rung that spends
-	// the slot entirely. Every other state answers "" and skips it.
-	if short := a.hintShorter(right); short != "" {
-		if left, named := a.legendLeft(width, legendRoom(width, short)); named {
-			attempts = append(attempts, struct{ left, right string }{left, short})
+	attempts := make([]struct{ left, right string }, 0, 6)
+	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
+	// and measures again, preserving the fixed order rather than inventing a
+	// second short sentence. Every other state has one rung and stops here.
+	for rung := right; rung != ""; {
+		if left, named := a.legendLeft(width, legendRoom(width, rung)); named {
+			attempts = append(attempts, struct{ left, right string }{left, rung})
 		}
+		next := a.hintShorter(rung)
+		if next == "" {
+			break
+		}
+		rung = next
 	}
 	bare, _ := a.legendLeft(width, legendRoom(width, ""))
 	attempts = append(attempts, struct{ left, right string }{bare, ""})
@@ -2986,7 +3121,7 @@ const hopDoorWord = hopOpenKey + " switch"
 //	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
 //	a question is up      a allow · t always · d deny  (consent.go's own keys)
 //	a room is open        x stop, or ↑↓ history mid-walk  (room.go's [app.roomHint])
-//	a turn is running     esc interrupt
+//	a turn is running     send · stop-and-send · background · stop (when true)
 //	the column is away    ctrl+g tasks               (task.go's [railBackHint])
 //	idle                  nothing
 //
@@ -3147,47 +3282,11 @@ func (a *app) hintWord() string {
 		// room is open, esc leaves the page and does not touch the conversation's
 		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
-	case len(a.parks) > 0 && a.parking():
-		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
-		// more thing than it did: it stops the turn AND sends what is parked
-		// (park.go). It outranks the plain interrupt below for the reason the
-		// armed rewind outranks it — the slot promises what the NEXT esc does,
-		// and that is no longer only a stop. It is spelled exactly as the block's
-		// own dim line spells it, so the two lines on one screen agree.
-		//
-		// AND IT ASKS [app.parking] AS WELL AS THE QUEUE, which is that agreement
-		// made structural rather than left to two authors. A message stays parked
-		// through the whole of the wind-down window ([app.windingDown]) and esc is
-		// inert for every frame of it, so the queue alone would keep this line
-		// standing over a key that does nothing — the one thing A HINT MAY ONLY
-		// NAME A KEY THAT WORKS forbids. The block's own dim line drops the same
-		// piece on the same question (park.go's [parkedWord]).
-		return parkedHint[1]
-	case a.steerOffered() || a.bargeOffered():
-		// A TURN IS RUNNING AND THERE IS A SENTENCE IN THE BOX, so the slot teaches
-		// the things enter's neighbourhood now means. On a steerable session enter
-		// stops the current generation and sends the correction into the same turn;
-		// a secondary chord can instead stop the whole turn or park the sentence.
-		// It is the ONE state this line
-		// is drawn in, which is the emptiness law: over an empty box there is
-		// nothing to send, at rest there is nothing to stop, and in either the line
-		// would be a permanent cheatsheet in the slot this surface stopped keeping
-		// one in.
-		//
-		// It ranks UNDER the parked block above, which is the slot's ordering law
-		// rather than an exception to it: while a message is already waiting, what
-		// the next esc does is the fact a person needs, and the block on screen is
-		// drawing its own dim line about the queue besides. Somebody who has parked
-		// a message has already found the queue; this line is for somebody who has
-		// not.
-		//
-		// PLAIN ENTER IS STILL NAMED ON THE SIMPLEST TERMINAL. [app.typingHint]
-		// removes only the secondary chords when the terminal cannot distinguish
-		// them, because hiding the universally available steer would recreate the
-		// discoverability failure this line exists to prevent.
-		return a.typingHint()
 	case a.state == stateWorking:
-		return "esc interrupt"
+		// ONE RUNNING STATE, ONE COMPOSED LINE (steer.go's [app.runHint]). Its
+		// clauses ask their keys' own guards and remain in one fixed order, so the
+		// slot never teaches a gesture another router has taken on this frame.
+		return a.runHint()
 	case a.spell.asking:
 		// THE EXPANSION IS OUT. The slot the chord was named in is where the
 		// spinner for it belongs — the person pressed a key at the end of this

@@ -541,7 +541,7 @@ func TestSearchProviderDefaultsToAutoAndRefusesAPlugItDoesNotKnow(t *testing.T) 
 	}
 }
 
-// Both credentials: optional, masked when they read, and pinned by the
+// V3: All search credentials are optional, masked when they read, and pinned by the
 // vendors' own environment variables.
 func TestTheSearchKeysAreOptionalMaskedAndEnvironmentPinned(t *testing.T) {
 	for _, credential := range []struct {
@@ -551,6 +551,7 @@ func TestTheSearchKeysAreOptionalMaskedAndEnvironmentPinned(t *testing.T) {
 		read  func(string) string
 	}{
 		{KeyExaKey, "EXA_API_KEY", "exa key", ExaKeyAt},
+		{KeyFirecrawlKey, "FIRECRAWL_API_KEY", "firecrawl key", FirecrawlKeyAt},
 		{KeyJinaKey, "JINA_API_KEY", "jina key", JinaKeyAt},
 	} {
 		t.Run(credential.key, func(t *testing.T) {
@@ -1169,7 +1170,6 @@ func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
 		KeyTaskAudit:        CategoryTasks,
 		KeyTaskParallel:     CategoryTasks,
 		KeyTaskModel:        CategoryTasks,
-		KeyWorkers:          CategoryTasks,
 	}
 	for key, category := range want {
 		if got := mustRow(t, rows, key).Category; got != category {

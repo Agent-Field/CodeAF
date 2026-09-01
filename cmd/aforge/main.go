@@ -22,18 +22,11 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
 func main() {
-	// Before anything else — before the GC is tuned, before a flag is read,
-	// before a single line of aforge exists in this process — the binary asks
-	// whether it was started to be something else. See swepro.go.
-	if sweproSentinel(os.Getenv) {
-		os.Exit(dispatchSwepro(os.Args[1:]))
-	}
 	os.Exit(execute())
 }
 
@@ -97,10 +90,6 @@ func execute() (code int) {
 }
 
 func run() error {
-	// Who this build can hand a leaf to, declared once, before any command has
-	// read a flag. Every surface below reads the same menu and the same rulers
-	// because none of them registers anything of its own.
-	installSubharnesses()
 	if len(os.Args) < 2 {
 		// No arguments opens the chat surface, and that surface is v3. The v2
 		// surface and its --v2 door (flag and environment pin both) were removed
@@ -214,7 +203,7 @@ var usageText = `aforge — build and revise task graphs
   aforge devices [revoke [--all] <name>]
                          list the devices paired with this machine, and stop one
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
-                       [--subharness name] [--context-fill 60] [--completion-reserve 65536]
+                       [--context-fill 60] [--completion-reserve 65536]
                          do one task and exit — the same living brain the chat runs, with nobody watching
                          the task is run verbatim: what you type is the goal, and what it has to assume it declares
                          exit 0 the whole of it stands · 1 nothing usable · 2 partial: the wall came first,
@@ -257,16 +246,6 @@ var usageText = `aforge — build and revise task graphs
                                 and how it ended
   aforge version                print the build this binary was cut from
                                 (--version and -v say the same thing)
-
-Workers:
-  chat, do and run each take --subharness <name>, which forces every leaf onto
-  one worker instead of letting the compiler choose per node. Leave it unset
-  unless you are measuring one worker against another. This build has:
-    swe   a whole software-engineering pipeline. It takes a coding issue in a
-          git repository whole — plans it, edits in parallel worktrees, judges
-          each change before merging, and audits the result against that
-          repository's own build and tests before calling itself done.
-  An unknown name is a note on stderr and the default worker, never a refusal.
 
 Environment:
   OPENROUTER_API_KEY   required
@@ -311,9 +290,6 @@ Environment:
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.
   AFORGE_PREAUTHORIZE_SPEND  1 raises the rail without a headless stdin prompt
-  AFORGE_SWE_MAX_COST  ` + usageDollars(exec.DefaultSWEMaxCost) + `  dollar ceiling on one swe leaf's run inside the
-                       coding pipeline. A backstop, not a budget — the daily
-                       rail is the budget.
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.aforge). Move it to
                        run a disposable brain that touches nothing of yours.

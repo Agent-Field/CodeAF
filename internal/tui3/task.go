@@ -96,10 +96,11 @@ type taskCard struct {
 	// (session's TaskNotice.Deadline). A zero deadline draws no countdown: a
 	// number counting down to nothing is a promise the engine did not make.
 	deadline time.Time
-	// born is when the question arrived, and it exists for the METER: a bar that
-	// drains needs both ends of the span, and the notice carries only the far
-	// one. It is taken from the surface's own clock at the moment the card is
-	// built, which is the moment the person could first have answered.
+	// born is when this phase of the card arrived. While it forms, the count-up
+	// measures from the call's first fragment. Once the question lands, the
+	// replacement card uses it for the METER: a bar that drains needs both ends
+	// of the span, and the notice carries only the far one. Both are taken from
+	// the surface's own clock at the moment the phase first becomes visible.
 	born time.Time
 	// open says the brief and the acceptance are showing, behind the same
 	// expand mechanic a tool row's detail is behind.
@@ -137,6 +138,10 @@ type taskCard struct {
 	// question hue. It exists so the block GROWS where it will stand instead of
 	// arriving whole under a reply somebody is in the middle of reading.
 	forming bool
+	// callID is the provider's identity for the call filling a forming card. It
+	// is separate from id, which belongs to the task the engine has not minted
+	// yet, and empty when the wire has not named the call.
+	callID string
 }
 
 // choiceSpan is one option's columns on the choices row: [from, to) answers to
@@ -868,10 +873,21 @@ const taskTool = "propose_task"
 func (a *app) formTask(ev session.Event) {
 	card := a.formingCard()
 	if card == nil {
-		card = &taskCard{forming: true, born: a.now(), choiceRow: -1, modelRow: -1}
+		card = &taskCard{
+			forming: true, callID: ev.CallID, born: a.now(), choiceRow: -1, modelRow: -1,
+		}
 		a.closeLive()
 		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
 		a.follow()
+	} else if card.callID != "" && ev.CallID != "" && card.callID != ev.CallID {
+		// A DIFFERENT CALL STARTS A DIFFERENT CLOCK. A refused attempt may be
+		// followed by a corrected call in the same turn, and its seconds do not
+		// belong under the corrected title. Both ids must be present: an id can
+		// land after the first fragment, and learning it is not a new attempt.
+		card.callID = ev.CallID
+		card.born = a.now()
+	} else {
+		card.callID = firstNonEmpty(ev.CallID, card.callID)
 	}
 	// The gloss is "propose_task <title>" once the title field has CLOSED
 	// (session's toolhint.go), and empty until then — so the name lands once,
@@ -885,20 +901,22 @@ func (a *app) formTask(ev session.Event) {
 }
 
 // formingCard is the card a propose_task call is currently forming into, or
-// nil. It walks newest first: a forming card is by construction the most recent
-// one on the transcript, and every settled card behind it is somebody else's.
+// nil. Its lookup walks newest first: a forming card is by construction the
+// most recent one on the live turn, and every settled card behind it is
+// somebody else's.
 func (a *app) formingCard() *taskCard {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
-		if e.kind != entryTask || e.card == nil {
-			continue
-		}
-		if e.card.forming && !e.card.settled() {
-			return e.card
-		}
+	if at := a.formingCardAt(); at >= 0 {
+		return a.entries[at].card
 	}
 	return nil
 }
+
+// formingCardLive reports whether the transcript currently carries a proposal
+// whose arriving row moves. It is asked here rather than inferred from the turn
+// because the clock that draws it must not depend on a second fact staying true.
+// It must never be a cached bool: rewind and detach replace [app.entries]
+// wholesale, and a stale flag would ask for frames forever after the card left.
+func (a *app) formingCardLive() bool { return a.formingCard() != nil }
 
 // dropFormingCard resolves a card whose call never arrived — the turn ended, or
 // the stream died, between two fragments of a propose_task.
@@ -915,6 +933,42 @@ func (a *app) dropFormingCard() {
 			e.stale = true
 		}
 	}
+}
+
+// dropRetryingFormingCard removes the partial proposal drawn by an attempt the
+// session has cut and discarded. Unlike [app.dropFormingCard], this does not
+// settle the block: the transcript contains no call to account for, and the
+// replacement attempt must begin with a fresh card and a fresh argument stream.
+//
+// The card is normally the newest entry because [app.formTask] closes live text
+// before appending it. The empty-entry fallback preserves every later index if
+// a person steered while the call was arriving; removing from the middle would
+// move selection and hover targets that are held by index.
+func (a *app) dropRetryingFormingCard() {
+	at := a.formingCardAt()
+	if at < 0 {
+		return
+	}
+	if at == len(a.entries)-1 {
+		a.entries = a.entries[:at]
+	} else {
+		a.entries[at].card = nil
+		a.entries[at].stale = true
+	}
+	a.touch()
+}
+
+// refuseFormingCard settles the block when propose_task returns without ever
+// raising a proposal. That result is a third ending, distinct from a turn or a
+// stream dying halfway through the call, so it keeps its own words.
+func (a *app) refuseFormingCard() {
+	card := a.formingCard()
+	if card == nil {
+		return
+	}
+	card.verdict = taskFormingRefused
+	a.markCardStale(card)
+	a.touch()
 }
 
 func (a *app) proposeTask(ev session.Event) {
@@ -984,6 +1038,12 @@ func (a *app) proposeTask(ev session.Event) {
 func (a *app) formingCardAt() int {
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
+		// THE LIVE TURN BOUNDS THIS WALK. Update asks the derived card question
+		// on every message, so letting the ordinary no-card case cross this
+		// boundary would make input cost grow with the whole transcript.
+		if e.turn != a.turn {
+			break
+		}
 		if e.kind != entryTask || e.card == nil {
 			continue
 		}
@@ -1038,6 +1098,9 @@ const (
 	// taskFormingLost is what a card keeps when the call never finished
 	// arriving: the turn ended, or the stream died, mid-proposal.
 	taskFormingLost = "cancelled · the proposal never arrived"
+	// taskFormingRefused is what it keeps when the whole call arrived but the
+	// engine refused it before there was a proposal to ask about.
+	taskFormingRefused = "not started · the call was refused"
 )
 
 // THE THREE ANSWERS, and they are a ROW OF OPTIONS rather than three keys named
@@ -1623,21 +1686,29 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 // what state this is, and the foot.
 //
 //	╭─ ◌ Port the streaming ────────────────
-//	│ forming…
+//	│ ⠙ forming… · 6s
 //	╰───────────────────────────────────────
 //
 // The shape is the proposal's own, minus everything that would be a lie: no
 // summary (nothing has closed), no models row (the engine has not resolved
 // one), no choices (there is nothing to answer) and no meter (there is no
 // deadline — the clock starts when the engine takes the proposal, not when the
-// model starts writing it). What stands in the meter's place is the word for
-// exactly what is happening.
+// model starts writing it). What stands in the meter's place is the live account
+// of exactly what is happening: a spinner, the forming word and the elapsed time.
 func (a *app) taskFormingRows(card *taskCard, width int, sel bool) []string {
 	stem := a.pal.dim(a.blockStem())
 	room := width - ansi.StringWidth(a.blockStem())
+	mark := tokens.Spinner(a.paints / spinnerStep)
+	if a.linear {
+		mark = glyphRunASCII
+	}
+	line := taskFormingWord
+	if word := countUpWord(a.now().Sub(card.born)); word != "" {
+		line += " · " + word
+	}
 	return []string{
 		a.taskFormingHead(card, width, sel),
-		stem + a.pal.dim(fit(taskFormingWord, room)),
+		stem + a.pal.dim(mark+" "+fit(line, room-2)),
 		a.taskFoot(card, width),
 	}
 }
@@ -1647,8 +1718,9 @@ func (a *app) taskFormingRows(card *taskCard, width int, sel bool) []string {
 // Two cells differ and both of them are the same decision. There is no "?",
 // because nobody is being asked anything; and the node's own glyph is not there
 // either, because the ident is derived from an id the engine has not minted —
-// so the cell holds the forming mark instead, the same pulsing ◌ the tool row
-// carries (toolview.go), which is the honest statement that this is arriving.
+// so the cell holds a still ◌ as the ident slot standing empty. The middle row
+// already says this is alive; animating the head too would be two answers to one
+// question.
 func (a *app) taskFormingHead(card *taskCard, width int, sel bool) string {
 	rule := a.blockRule()
 	corner := taskHeadCorner
@@ -1656,7 +1728,7 @@ func (a *app) taskFormingHead(card *taskCard, width int, sel bool) string {
 		corner = taskCornerASCII
 	}
 	head := corner + " "
-	mark := a.formingInk(a.linearMark(glyphQueued, glyphQueuedASCII)) + " "
+	mark := a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII)) + " "
 	title := fit(firstNonEmpty(card.name, taskFormingName), width-ansi.StringWidth(head)-3)
 	line := a.pal.dim(head) + mark
 	if sel {
@@ -3558,6 +3630,12 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if key == railStowKey {
+		// A RUNNING COMMAND OWNS ctrl+g while it can be kept. The roster is read
+		// before the message box, so standing down here is what lets the command's
+		// door answer; with no such row the column behaves exactly as it always has.
+		if a.promotableRow() >= 0 {
+			return nil, false
+		}
 		// THE ONE KEY THAT ANSWERS WITH THE COLUMN ITSELF. It is read before the
 		// hold below because it is true in both postures — a column that is up goes
 		// away, a column that is away comes back — and it is the only key on this
@@ -3929,12 +4007,11 @@ const railFootMax = 3
 // tree. It reports which of its lines that offer landed on, or -1, because the
 // line is pressable and the press has to know where it was drawn.
 //
-// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). That one is NOT
-// contextual and the difference is worth stating, because the two lines look
-// alike: widening is an offer the column makes about itself when a title is
-// being cut, and hiding is the answer to "I do not want this here", which a
-// person can want at any moment and can find no other way. It is reported the
-// same way and for the same reason — it is pressed as often as it is typed.
+// AND UNDER IT, THE COLUMN'S OWN DOOR ([railStowHint]). The chevron is always
+// live, while the chord is named only when the column actually owns it: a
+// promotable foreground command takes ctrl+g first. Widening is an offer the
+// column makes about itself when a title is being cut; hiding remains a pointer
+// answer at every moment and a keyboard answer whenever no command can be kept.
 func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	if width < 8 || height < 4 {
 		return nil, -1, -1, -1
@@ -3967,7 +4044,7 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// The chevron and its space are charged for here, because the door is drawn
 	// with them ([app.railDoorLine]) and a width test that measured only the words
 	// would let the mark run off the end of a narrow column.
-	stow := !a.railFull() && ansi.StringWidth(railStowHint)+2 <= width
+	stow := !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= width
 	// THE DOOR ONTO THE TASK PAGE IS OFFERED ONLY WHEN THERE IS MORE BEHIND IT,
 	// which is the emptiness law applied to an affordance rather than to a figure.
 	// A door on a column that is already showing everything is a row that promises
@@ -4033,14 +4110,14 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 }
 
 // railDoorLine is the standing column's own door as it is drawn: the chevron
-// that closes it, and then the chord that does the same thing.
+// that closes it, and then the chord only while the chord does the same thing.
 //
 // THE CHEVRON IS THE CONTROL AND THE WORDS ARE THE LABEL, which is why they are
-// painted at two weights. `ctrl+g hide` is a sentence telling the hand that
-// types chords what to press, and it stays dim with the rest of the footer; the
-// `❯` is what the hand that does NOT type chords presses, so it takes the ink —
-// the same split the closed edge makes at the other end of the cycle
-// ([app.railGripRows]).
+// painted at two weights. `ctrl+g hide` tells the hand that types chords what to
+// press only while no foreground command owns that key; with one running, the
+// label is simply `hide`. The `❯` is what the hand that does NOT type chords
+// presses either way, so it takes the ink — the same split the closed edge makes
+// at the other end of the cycle ([app.railGripRows]).
 //
 // IT POINTS RIGHT AND ITS TWIN POINTS LEFT, and between them the pointer can go
 // round the whole cycle: `❯` sends the column off the right edge, `❮` brings it
@@ -4052,7 +4129,17 @@ func (a *app) railDoorLine() string {
 	if a.hoveringRailDoor() {
 		ink = a.pal.accent
 	}
-	return ink(mark) + " " + paintHint(railStowHint, a.pal, a.pal.dim)
+	return ink(mark) + " " + paintHint(a.railDoorHint(), a.pal, a.pal.dim)
+}
+
+// railDoorHint names only the keyboard action available on this frame. The
+// pointer's chevron still hides the column while a command owns ctrl+g, so the
+// verb stays and only the unavailable chord comes off the line.
+func (a *app) railDoorHint() string {
+	if a.promotableRow() >= 0 {
+		return "hide"
+	}
+	return railStowHint
 }
 
 // railDoorAt reports whether a pointer is on that line. It is the hover's guard,

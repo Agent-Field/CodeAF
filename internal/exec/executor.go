@@ -151,27 +151,18 @@ type Task struct {
 	// then the claim owner releases through the store CAS path.
 	Control func() ControlAction
 
-	// Overrun is the straggler watch: the spend past which this leaf has stopped
-	// resembling anything this worker has been measured doing, and the judge to
-	// ask when it does. The threshold is derived by the caller from that
-	// worker's own profile spread (profile.Straggler), never chosen here, and
-	// nil — the value on every path that has no measurement, which is every path
-	// that existed before this — means the question is never asked and the loop
-	// runs precisely as it always has. See straggler.go.
-	Overrun *OverrunWatch
-
 	// Progress is within-node visibility: where the work has got to, said in a
 	// way that replaces the last thing it said rather than adding to it.
 	//
-	// It exists for the worker whose leaf is long and whose insides are not
-	// nodes. A linear leaf is a turn loop nobody watches and passes nil; a
-	// subharness that runs a pipeline for forty minutes would otherwise be a
-	// spinner, and the two honest alternatives to this — splicing its stages
-	// into the graph, or posting them as thread messages — are the two things
-	// docs/SUBHARNESSES.md forbids by name. phase is the coarse thing being
-	// done, done/total are a count when there is one, and latest is the short
-	// right-hand side. Nil-safe and ignored when nil, so no existing caller
-	// pays anything for it.
+	// It exists for the leaf that is long and whose insides are not nodes. A
+	// linear leaf is a turn loop nobody watches and passes nil; a saved program
+	// that runs a pipeline for forty minutes would otherwise be a spinner, and
+	// the two alternatives to this are both worse — splicing its stages into
+	// the graph would put work in the plan that nobody planned, and posting
+	// them as thread messages would spend the person's attention on a running
+	// pipeline. phase is the coarse thing being done, done/total are a count
+	// when there is one, and latest is the short right-hand side. Nil-safe and
+	// ignored when nil, so no existing caller pays anything for it.
 	Progress func(phase string, done, total int, latest string)
 
 	// Fault carries a recovered panic out to whoever can write it down.
@@ -577,13 +568,12 @@ const (
 	// produced.
 	StopEmpty StopReason = "empty"
 
-	// StopOverrun is the straggler handed back on measured evidence: this leaf
-	// ran far past what work of its kind has ever cost on this machine, a judge
-	// was shown the numbers and what it had produced, and the judge said the
-	// work should go somewhere else. It is separate from StopBudget because
-	// nothing ran out — the grant was still there and would have gone on being
-	// spent — and separate from StopError because nothing failed. See
-	// straggler.go.
+	// StopOverrun is a leaf that was landed for running far past what work of
+	// its kind has ever cost on this machine. Nothing writes it any more; it is
+	// kept because a leaf run recorded before it was retired still carries the
+	// word on disk (internal/store/leafrun.go), and a reason a reader cannot
+	// name is worse than one nothing produces. It is separate from StopBudget
+	// because nothing ran out, and from StopError because nothing failed.
 	StopOverrun StopReason = "overrun"
 
 	// StopSplit is the cooperative ending: the leaf found mid-work that it was
@@ -673,9 +663,9 @@ type Executor interface {
 // finished, which was measured at 23 model calls, zero edits and 80% of the
 // leaf's spend.
 //
-// It is deliberately not "is this the swe worker": nothing here names a
-// subharness, so a second mutating worker is a registration and not an edit to
-// the repair path.
+// It is deliberately a question about the executor rather than a name: nothing
+// here names a worker, so a mutating program is a registration and not an edit
+// to the repair path.
 type Mutator interface {
 	// Mutates reports that this worker's deliverable is a change to the
 	// workspace. It is a property of the worker and never of one run.

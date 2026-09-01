@@ -67,10 +67,9 @@ import (
 // as a mysterious refusal on somebody's laptop.
 var _ remote.WrappedAgent = (*session.Agent)(nil)
 
-// The name says "remote" because this tree has another engine: the swepro
-// sentinel turns the same binary into a different program entirely (swepro.go),
-// and two doors called runEngine in one package would be a coin toss for
-// whoever reads the switch next.
+// The name says "remote" because what this door opens is the engine on the
+// other end of the wire — the host this surface talks to — and a plain
+// runEngine would read as the thing that runs work in this process.
 func runRemoteEngine(args []string) error {
 	flags := flag.NewFlagSet("engine", flag.ContinueOnError)
 	workspace := flags.String("workspace", "", "directory to work in; relative paths are relative to the home directory, empty is the home directory")
@@ -477,6 +476,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// directory to read, which the welcome's omitempty and the badge's
 		// emptiness law both already handle.
 		ApprovalMode: config.ToolApprovalModeAt(launch.Settings.ProfileDir),
+		// The countdown is an engine fact for the same reason: the far surface's
+		// profile is a different machine's, and zero is a meaningful off posture.
+		BashBackgroundAfterSeconds: cfg.BashBackgroundAfterSeconds,
 		// The three doors a remote surface reaches through, and every one of
 		// them is a closure the local surface already has by another name: /new,
 		// the resume picker, and the welcome box's list of recent conversations.

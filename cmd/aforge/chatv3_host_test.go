@@ -241,11 +241,14 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	t.Setenv("HOME", t.TempDir())
 	welcome := remote.Welcome{
 		Version: remote.Version, Workspace: "/srv/app",
-		Build: "1265feda built 2026-08-27 13:28",
+		Build: "1265feda built 2026-08-27 13:28", BashBackgroundAfterSeconds: 47,
 	}
 	options := hostOptions(nil, nil, "devbox", welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
+	}
+	if options.BashBackgroundAfterSeconds != welcome.BashBackgroundAfterSeconds {
+		t.Fatalf("the surface countdown is %d, want the engine's %d", options.BashBackgroundAfterSeconds, welcome.BashBackgroundAfterSeconds)
 	}
 	if options.Standing.Items == nil || options.Standing.Save == nil {
 		t.Fatal("the door hands over no standing seam, so a remote surface has no rows and no pause key")

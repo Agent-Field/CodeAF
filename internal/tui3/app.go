@@ -264,6 +264,17 @@ type entry struct {
 	// history every time the person walked into a different room.
 	context string
 
+	// pictures are the resolved paths of the PICTURES this message carried, in
+	// the tray order its `[image #n]` tokens and `[#n name]` markers use.
+	// picturesHere says those paths name this machine rather than the engine's.
+	//
+	// IT IS A SLICE OF PATHS AND NOT CHIPS FOR [entry.hung]'s BUDGET REASON. A
+	// chip's file flag is a fact about the tray and every path here is already a
+	// picture; retaining that larger staging shape on every transcript block
+	// would make the hot entry carry a distinction no renderer can read.
+	pictures     []string
+	picturesHere bool
+
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
 	// [entry.stand] are: the outcome lands on the block minutes after it was
@@ -301,10 +312,11 @@ type entry struct {
 	// "allowed" or "denied", dim, beside the row's stat (consent.go). It is
 	// empty for every call the policy did not stop.
 	decision string
-	// bg is set when the person sent this running call to the background with
-	// ctrl+g (background.go): `job 3`, dim, beside the row's stat, in the slot
-	// [entry.decision] already uses because it is the same kind of fact. It is
-	// empty for every call nobody promoted.
+	// bg is set when this running call was kept in the background — by ctrl+g,
+	// the row's pointer door, or the session's clock (background.go): `job 3`,
+	// dim, beside the row's stat, in the slot [entry.decision] already uses
+	// because it is the same kind of fact. It is empty for every call nobody
+	// promoted.
 	bg string
 
 	// callID is the PROVIDER's id for this call (session.Event.CallID), taken
@@ -911,6 +923,12 @@ type app struct {
 	stamps     map[int]turnStamp
 	timestamps string
 	workMode   string
+	// bashBackgroundAfter is the foreground command's ARMED session clock in
+	// seconds, handed over with the agent at boot. It is never re-read from this
+	// surface's profile: a settings change belongs to the next session, and over
+	// --host that profile is on another machine. Zero leaves the command's own
+	// timeout as the only bound (toolview.go).
+	bashBackgroundAfter int
 	// ctxRing is the last [ctxRingSize] TURN-END context readings, oldest first.
 	// It is the sparkline's data and the compaction ETA's, and it is sampled at
 	// turn end rather than on the frame clock because that is the only moment
@@ -2022,67 +2040,68 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	shown := placeShown(place, opts.Owned, host)
 	a := &app{
-		ctx:              ctx,
-		agent:            opts.Agent,
-		fresh:            opts.Fresh,
-		start:            opts.Start,
-		open:             opts.Open,
-		anchorWorkspace:  opts.AnchorWorkspace,
-		errand:           opts.Errand,
-		standingRoot:     opts.StandingRoot,
-		leaveAnswer:      opts.Answer,
-		host:             host,
-		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
-		owned:            opts.Owned,
-		landing:          opts.Landing,
-		takeOverAt:       opts.TakeOver,
-		pickSession:      opts.PickSession,
-		workspace:        place,
-		place:            shown,
-		file:             opts.SessionFile,
-		build:            strings.TrimSpace(opts.Build),
-		resumed:          opts.Resumed,
-		models:           opts.Models,
-		history:          opts.History,
-		draftFile:        opts.DraftFile,
-		artifacts:        opts.ArtifactsIndex,
-		ctxWindow:        opts.ContextWindow,
-		profileDir:       opts.ProfileDir,
-		settings:         opts.Settings,
-		saveApproval:     opts.SaveApproval,
-		saveBashApproval: opts.SaveBashApproval,
-		saveModel:        opts.SaveModel,
-		applyAPIKey:      opts.ApplyAPIKey,
-		routerConnect:    opts.ConnectOpenRouter,
-		applyApprovals:   opts.ApplyApprovals,
-		recentSessions:   opts.RecentSessions,
-		resume:           opts.Resume,
-		stands:           opts.Standing,
-		link:             opts.Link,
-		conns:            opts.Connections,
-		harn:             opts.Harnesses,
-		memory:           opts.Memory,
-		searchStore:      opts.Search,
-		usageLedger:      opts.UsageLedger,
-		ledger:           opts.Ledger,
-		archive:          opts.Archive,
-		world:            opts.World,
-		farPlaces:        opts.WorldRoot,
-		farRecord:        opts.TaskRecord,
-		farRoomRecord:    opts.TaskRoom,
-		farTasks:         opts.TaskIndex,
-		live:             -1,
-		echoAt:           -1,
-		sel:              -1,
-		think:            -1,
-		unfolded:         map[int]bool{},
-		stick:            true,
-		width:            80,
-		height:           24,
-		pal:              detectPalette(),
-		linear:           opts.Linear,
-		tmux:             tmuxTerm(os.Getenv),
-		remote:           remoteLink(os.Getenv),
+		ctx:                 ctx,
+		agent:               opts.Agent,
+		fresh:               opts.Fresh,
+		start:               opts.Start,
+		open:                opts.Open,
+		anchorWorkspace:     opts.AnchorWorkspace,
+		errand:              opts.Errand,
+		standingRoot:        opts.StandingRoot,
+		leaveAnswer:         opts.Answer,
+		host:                host,
+		hostApproval:        strings.TrimSpace(opts.ApprovalMode),
+		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
+		owned:               opts.Owned,
+		landing:             opts.Landing,
+		takeOverAt:          opts.TakeOver,
+		pickSession:         opts.PickSession,
+		workspace:           place,
+		place:               shown,
+		file:                opts.SessionFile,
+		build:               strings.TrimSpace(opts.Build),
+		resumed:             opts.Resumed,
+		models:              opts.Models,
+		history:             opts.History,
+		draftFile:           opts.DraftFile,
+		artifacts:           opts.ArtifactsIndex,
+		ctxWindow:           opts.ContextWindow,
+		profileDir:          opts.ProfileDir,
+		settings:            opts.Settings,
+		saveApproval:        opts.SaveApproval,
+		saveBashApproval:    opts.SaveBashApproval,
+		saveModel:           opts.SaveModel,
+		applyAPIKey:         opts.ApplyAPIKey,
+		routerConnect:       opts.ConnectOpenRouter,
+		applyApprovals:      opts.ApplyApprovals,
+		recentSessions:      opts.RecentSessions,
+		resume:              opts.Resume,
+		stands:              opts.Standing,
+		link:                opts.Link,
+		conns:               opts.Connections,
+		harn:                opts.Harnesses,
+		memory:              opts.Memory,
+		searchStore:         opts.Search,
+		usageLedger:         opts.UsageLedger,
+		ledger:              opts.Ledger,
+		archive:             opts.Archive,
+		world:               opts.World,
+		farPlaces:           opts.WorldRoot,
+		farRecord:           opts.TaskRecord,
+		farRoomRecord:       opts.TaskRoom,
+		farTasks:            opts.TaskIndex,
+		live:                -1,
+		echoAt:              -1,
+		sel:                 -1,
+		think:               -1,
+		unfolded:            map[int]bool{},
+		stick:               true,
+		width:               80,
+		height:              24,
+		pal:                 detectPalette(),
+		linear:              opts.Linear,
+		tmux:                tmuxTerm(os.Getenv),
+		remote:              remoteLink(os.Getenv),
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
 		// whether the modifier is called `alt+` or `⌥`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the
@@ -2379,7 +2398,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// air the block was built to end (taskcommand.go's [preflight]). The two
 	// places read ONE fact, [preflight.live], so a clock that starts and a clock
 	// that keeps going cannot disagree about whether a wait is up.
-	if a.levelsWaiting() || a.waiting() {
+	// AN ARRIVING PROPOSAL CARD IS THE THIRD THING ARMED HERE. Its own event
+	// stream normally wakes the surface, but both clock lists read the derived
+	// card fact so a start and a keep can never disagree (task.go).
+	if a.levelsWaiting() || a.waiting() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
 	return model, cmd
@@ -3739,7 +3761,14 @@ func (a *app) paint() tea.Cmd {
 		// this clock, so a clock that stopped the moment a list was drawn would
 		// leave every row of it spelled without its level until something
 		// unrelated repainted them (reasoninglevel.go).
-		a.levelsWaiting() {
+		a.levelsWaiting() ||
+		// AND A FORMING PROPOSAL CARD IS THE FIFTEENTH: its spinner and count-up
+		// are functions of this frame, not of the fragments that fill its brief.
+		// There is deliberately no page gate. The card lives for seconds, and its
+		// forming stream already wakes the surface up to ten times a second; a
+		// second visibility fact would only let the clock disagree with the card
+		// about whether its live row still exists (task.go).
+		a.formingCardLive() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
@@ -4194,7 +4223,12 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// answer sitting above the live one is the surface telling a story the
 		// transcript does not contain.
 		a.dropLive()
+		a.dropRetryingFormingTools()
 		a.resolveUnfinished()
+		// A PARTIAL PROPOSAL BELONGS TO THE DEAD ATTEMPT TOO. The session throws
+		// away a half-arrived call before it asks again, so keeping its card would
+		// join fragments from two different requests into one proposal.
+		a.dropRetryingFormingCard()
 		a.retrying = true
 		a.note(ev.Text)
 
@@ -4425,6 +4459,31 @@ func (a *app) dropForming() {
 	// The spawn card is the same event's other half and dies the same death
 	// (task.go).
 	a.dropFormingCard()
+}
+
+// dropRetryingFormingTools removes calls that were still being spelled when a
+// provider request was cut. The session discards those partial calls rather
+// than recording them, so settling their rows as cancelled would leave a call
+// on screen that never existed in the transcript.
+//
+// Forming rows are normally the newest entries. The empty assistant fallback is
+// the same one [app.dropLive] uses when a later row holds an index in place.
+func (a *app) dropRetryingFormingTools() {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.turn != a.turn {
+			break
+		}
+		if e.kind != entryTool || e.status != toolForming {
+			continue
+		}
+		if i == len(a.entries)-1 {
+			a.entries = a.entries[:i]
+			continue
+		}
+		a.entries[i] = entry{kind: entryAssistant, turn: a.turn, stale: true}
+	}
+	a.touch()
 }
 
 // resolveUnfinished stops the clock on every call that was still in the air when
@@ -5064,6 +5123,12 @@ func (a *app) claimAnnounced(ev session.Event) int {
 // itself. The failure text is a fallback for the Output, because a tool that
 // failed before it ran has a reason and no result.
 func (a *app) closeTool(ev session.Event, status toolState, why string) {
+	// A PROPOSE_TASK RESULT WITH A FORMING CARD IS A REFUSAL. A proposal that
+	// landed has already replaced this block with its question, so the presence
+	// of the forming card is the one fact that distinguishes the two outcomes.
+	if ev.Tool == taskTool {
+		a.refuseFormingCard()
+	}
 	for i := range a.entries {
 		e := &a.entries[i]
 		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
@@ -5073,6 +5138,7 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 		e.ended = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.detail.Output = firstNonEmpty(ev.Output, why)
+		a.learnBackground(e, ev.Output)
 		if why != "" && status == toolFailed {
 			e.text = strings.TrimSpace(e.text + " — " + why)
 		}
@@ -5119,13 +5185,17 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 // first, and the two identical calls where the rules disagree are the same work
 // either way. A row that already has its figure is never taken twice.
 func (a *app) finishTool(ev session.Event) {
-	if ev.Took <= 0 {
-		return
-	}
 	fallback := -1
 	for i := range a.entries {
 		e := &a.entries[i]
 		if e.kind != entryTool || !e.status.live() || e.ran > 0 || e.tool != ev.Tool {
+			continue
+		}
+		if ev.CallID != "" && e.callID != "" {
+			if e.callID == ev.CallID {
+				fallback = i
+				break
+			}
 			continue
 		}
 		if ev.Args != "" && e.detail.Args == ev.Args {
@@ -5139,7 +5209,10 @@ func (a *app) finishTool(ev session.Event) {
 	if fallback < 0 {
 		return
 	}
-	a.entries[fallback].ran = ev.Took
+	e := &a.entries[fallback]
+	if ev.Took > 0 && e.ran == 0 {
+		e.ran = ev.Took
+	}
 	a.touch()
 }
 
@@ -5654,6 +5727,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// model's prose, and the prose around it has no gesture of its own
 	// (mdtable.go's [app.footPress]).
 	if a.footPress(x, r) {
+		return
+	}
+	// AND THE NARROW DOOR INSIDE A RUNNING BASH ROW, resolved before the row's
+	// own answer for the same reason: these words keep the process, while the
+	// rest of the row opens its expansion (background.go's [app.keepPress]).
+	if a.keepPress(x, r) {
 		return
 	}
 	// AND A CLICK ON A WAITING SIGN-IN COPIES ITS LINK (connect.go). It is read
@@ -6719,6 +6798,24 @@ func (a *app) quit() tea.Cmd {
 // arriving for seconds after a person had stopped the turn, which is the screen
 // disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
+	a.interruptTurn()
+	// ESC STOPS EVERYTHING, including both ways a later turn can already be
+	// waiting. The session drops its follow-up queue on interrupt; the surface
+	// drops that mirror and its editable parked queue in the same keypress so the
+	// stream close cannot orphan or unexpectedly send either one.
+	a.dropFollows()
+	a.dropParked()
+}
+
+// interruptForBarge stops the current turn but preserves the draft
+// [app.bargeIn] just parked. shift+enter promises stop-and-send; it shares the
+// stop machinery with esc without sharing esc's queue-clearing decision.
+func (a *app) interruptForBarge() {
+	a.interruptTurn()
+	a.dropFollows()
+}
+
+func (a *app) interruptTurn() {
 	// THE AGENT IS ASKED FOR RATHER THAN ASSUMED, on [app.quit]'s own terms: a
 	// surface can be standing with no session under it, and a stop that panicked
 	// on the way to stopping nothing would be the worst possible answer to the
@@ -6765,10 +6862,6 @@ func (a *app) interrupt() {
 	// the state the session is IN rather than a line about what happened, which is
 	// what this note is.
 	a.note("stopped")
-	// The session drops its follow-up queue on an interrupt — a stop that was
-	// followed by the session working again is not a stop — so the surface says
-	// so rather than leaving a count above the box for turns that will never run.
-	a.dropFollows()
 	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
 	// on the blocks at the keypress so the demotion is on screen the moment the
 	// person presses esc, and again when the stream finally closes ([app.settle]),

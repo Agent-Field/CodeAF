@@ -305,13 +305,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why were the files my task saved called unverified", "how-tasks-run"},
 		// And the other half: a fork whose hands declared their files in full and
 		// were refused every single write.
-		// The worker roster, asked the four ways somebody meets it: the two
-		// sentences the person who wanted it actually said, the config line
-		// they went looking for, and the note a typo in that line prints.
-		{"only use the normal workers", "how-tasks-run"},
-		{"turn off the specialist worker", "how-tasks-run"},
-		{"stop it using swe", "how-tasks-run"},
-		{"which workers are installed", "how-tasks-run"},
 		{"how do I say which files each hand may write", "tasks"},
 		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
@@ -437,6 +430,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I copy text out", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
+		{"do I see my own screenshot in the conversation", "keys"},
 		// The wave that made a dropped file attach: the words people use for it
 		// are "drag", "drop" and the token they then find in their own sentence.
 		{"can I drag and drop an image into the message box", "keys"},
@@ -737,6 +731,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// The proposal's own forming card is a different block from `/task`'s
+		// shaping line. Its still head mark is deliberate; the row below must move.
+		{"the proposal card is frozen", "tasks"},
+		{"the forming card is not moving", "tasks"},
 		// The wait a person can now see into: the preview row under the phase
 		// row, asked the three ways somebody meets it — wanting it, describing
 		// it, and asking what the extra line is.
@@ -1051,6 +1049,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
+		// The transfer wave: every state of a move, asked the way somebody
+		// staring at one asks it. The first is the report's own complaint —
+		// nothing appeared to happen — and the rest are the states that used to
+		// be silent.
+		{"why is moving a conversation so slow", "home"},
+		{"it says coming here and nothing happens", "home"},
+		{"that window did not answer", "home"},
+		{"I pressed enter to move a chat and nothing happened", "home"},
+		{"how do I cancel moving a conversation here", "home"},
+		// And the resting row's own words, which is where somebody looking at
+		// `another window` starts: they are staring at a margin, not at a card.
+		{"the row says another window, how do I get it back", "home"},
+		{"how do I bring a conversation back to this window", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
@@ -1257,6 +1268,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I dropped a file and it said unknown command", "attaching-files"},
 		{"drag and drop shows the path as text", "attaching-files"},
 		{"why is the path of my screenshot in the message box", "attaching-files"},
+		{"my screenshot path has spaces and stays text", "attaching-files"},
 		{"my terminal types the drop instead of pasting it", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},
@@ -1388,6 +1400,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
+	// V6: The question a person asks retrieves the implemented zero-key ladder
+	// and the exact Firecrawl failure string in one self-contained section.
+	found := Chat().Search("can you search the web", DefaultResults)
+	for _, section := range found {
+		if section.Page != "what-i-can-do" || section.Title != "Can you search the web?" {
+			continue
+		}
+		for _, want := range []string{
+			"Firecrawl: keyless, with a free monthly allowance and no key needed",
+			"DuckDuckGo remains available as an explicit pin",
+			"Search failed (firecrawl): <err>",
+		} {
+			if !strings.Contains(section.Body, want) {
+				t.Errorf("search section does not contain %q:\n%s", want, section.Body)
+			}
+		}
+		return
+	}
+	t.Fatalf("search question did not retrieve its section: %#v", found)
 }
 
 // The two corpora must stay strangers. This is the package-level half of the

@@ -82,10 +82,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$TMPDIR"
           skip="$(grep -v -e '^#' -e '^[[:space:]]*$' .github/known-red.txt | paste -sd'|' -)"
-          # internal/swepro is excluded the same way the Makefile excludes it —
-          # it arrived with its own failures and fixing them was not on the way
-          # in. internal/swepro/EMBEDDING.md is the to-do.
-          pkgs="$(go list ./... | grep -v '/internal/swepro/' | awk -v s="$SHARD" 'NR % 3 == s')"
+          pkgs="$(go list ./... | awk -v s="$SHARD" 'NR % 3 == s')"
           echo "shard ${SHARD}: $(echo "$pkgs" | wc -l) packages, skipping ${skip}"
           # -p 1: ONE PACKAGE AT A TIME WITHIN A SHARD. The second full run died
           # the same way as the first — a runner shutdown with slow packages in

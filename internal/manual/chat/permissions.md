@@ -479,11 +479,13 @@ The whole list, by settings key:
   are rails too: each is a number that multiplies what one piece of unattended
   work costs.
 - **How hard this machine may be worked** — `task.parallel`, `task.max_load`,
-  `task.min_free_mb`.
+  `task.min_free_mb`, `bash.background_after_seconds`. The last is labelled
+  **background after** on `/settings`' Safety tab and arms both the engine's handoff
+  clock and the countdown for the next session.
 - **Whether aforge's own work is checked** — `task.audit`. A session that can
   switch off the auditor can call anything done.
 - **How work that leaves this machine is signed** — `attribution`.
-- **Your credentials** — `search.exaKey`, `search.jinaKey`,
+- **Your credentials** — `search.exaKey`, `search.firecrawlKey`, `search.jinaKey`,
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the
   secret beside it. These restrain nothing; they are refused because a key
   overwritten with something a model invented is a working account broken in a
@@ -491,6 +493,12 @@ The whole list, by settings key:
 
 Everything else is fair game: which model does what, how the screen draws, how
 long the room stays quiet, where a search goes, which model draws your pictures.
+
+For the background clock, the exact refusal is:
+
+```
+"background after" (bash.background_after_seconds) is one of the brakes on how much work may run at once on this machine, so it is not mine to change. Open /settings and change it yourself.
+```
 
 Two rows are refused for a different reason, and it is not safety. The
 conversation's own model (`model.talk`) is changed with `/model`, and the other

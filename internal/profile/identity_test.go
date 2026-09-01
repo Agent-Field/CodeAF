@@ -130,8 +130,8 @@ func TestLoadAdoptsTheHistoryWrittenUnderAnotherSpelling(t *testing.T) {
 		Model: "someone/else", Subharness: "linear",
 		Records: []Record{{Title: "another model", Size: "atomic", Turns: 1, Tokens: 1, Time: base}},
 	})
-	writeProfile(t, dir, "profile-anthropic-claude-opus-5-swe.json", &Profile{
-		Model: "anthropic/claude-opus-5", Subharness: "swe",
+	writeProfile(t, dir, "profile-anthropic-claude-opus-5-retired-worker.json", &Profile{
+		Model: "anthropic/claude-opus-5", Subharness: "retired-worker",
 		Records: []Record{{Title: "another worker", Size: "atomic", Turns: 1, Tokens: 2, Time: base}},
 	})
 

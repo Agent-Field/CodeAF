@@ -112,20 +112,17 @@ const (
 	EventNodeHeld            EventKind = "node_held"
 	EventNodeResumed         EventKind = "node_resumed"
 	EventNodePriorityChanged EventKind = "node_priority_changed"
-	// A node's worker may change once, when a failed first attempt is handed to
-	// a different kind of worker rather than to a stronger model. It is journaled
-	// for the same reason the choice is journaled at splice time: a leaf claimed
-	// after a restart must run on what it was last promised.
+	// A node's worker changing hands, journaled by a build that had more than
+	// one worker. NOTHING WRITES ONE. It is replayed and never appended, so a
+	// graph that holds them opens, rebuilds and reads back what it recorded.
 	EventNodeWorkerChanged EventKind = "node_worker_changed"
 	// A node's RUNNING worker is a different fact from the one above, and it is
 	// the fact an autopsy actually needs: which worker the dispatch path built
-	// and handed the work to. The two agree for nearly every node and disagree
-	// for exactly the nodes worth knowing about — an unrouted node runs the
-	// generalist while its assignment column says nothing at all, and a node
-	// promised a worker this build cannot construct runs the generalist while
-	// its assignment column names the specialist. The s9 sweep cost a day to
-	// this: every node in its stores said nothing, and no other row said who
-	// had done the work.
+	// and handed the work to. A node's assignment column says nothing at all —
+	// nothing routes a node — so without this row nobody can tell an unrouted
+	// node from a node nobody ran. The s9 sweep cost a day to exactly that:
+	// every node in its stores said nothing, and no other row said who had done
+	// the work.
 	EventNodeRan EventKind = "node_ran"
 	// A node's model may change whenever somebody says so, for as long as the
 	// node still has work left. It is one event per node rather than one sweep
@@ -223,15 +220,13 @@ const (
 	EventOverrunResumed  EventKind = "overrun_resumed"
 
 	// EventOverrunEvidence is a leaf caught running far past what work of its
-	// kind has ever cost on this machine, journaled at the moment the comparison
+	// kind had ever cost on this machine, journaled at the moment the comparison
 	// was made rather than reconstructed afterwards from a bill.
 	//
-	// It is evidence and never control: the verdict beside it is the judge's,
-	// and nothing reads this record back to decide anything. It exists because
-	// the incident it was written for — one leaf at thirty-six times its
-	// siblings, 31% of a run's cost, setting the wall time of the barrier they
-	// were all waiting at — left no trace at all in the journal, and a cost that
-	// leaves no trace is a cost nobody can audit twice.
+	// The comparison is no longer made, so nothing writes this kind any more.
+	// The constant and its replay stay because journals that carry it are on
+	// disk, and a rebuild that could not name one of its own events would
+	// refuse a graph it wrote itself.
 	EventOverrunEvidence EventKind = "overrun_evidence"
 
 	// EventDeliveryGate is the final judge's evidence about one delivered job.
@@ -368,13 +363,10 @@ type Provenance struct {
 	// carries it: survival is measured per workflow version, so the version a
 	// leaf actually ran under must be as durable as the leaf itself.
 	Craft string `json:"craft,omitempty"`
-	// Subharness names the worker chosen for this whole subtree — the compiler's
-	// judgement that the essence of this job is what one specialist is for.
-	// Empty is the generalist and is nearly every job. It is provenance for the
-	// same reason WorkModel is: the leaf that ran is inseparable from what ran
-	// it, so the choice is made once, at splice, and survives a restart rather
-	// than being re-decided by whatever the process happens to have registered
-	// when the leaf finally starts.
+	// Subharness names the worker chosen for this whole subtree by a build that
+	// had more than one to choose from. NOTHING WRITES IT: it is kept so that a
+	// graph written by such a build still replays and still reads back what it
+	// recorded, which is the same reason the hand-over event above is kept.
 	Subharness string `json:"subharness,omitempty"`
 }
 
@@ -402,14 +394,12 @@ type NodeSpec struct {
 	// provenance for display — execution reads only Parent and Needs.
 	Group string `json:"group,omitempty"`
 
-	// Subharness names the worker this one node was sized for: a specialist
-	// when the sizing pass judged it atomic for one, "linear" when that pass
-	// judged it and answered the generalist. Only an empty name — the pass
-	// never ran, or never reached this node — inherits the splice's own choice.
-	// One node of a subtree may be a coding job while its siblings are not, and
-	// one node of a coding job may be the only part of it that is not; the
-	// graph is where both differences live, and neither is expressible if the
-	// generalist has no name.
+	// Subharness names the worker this one node was sized for. There is one
+	// worker, so a node written by this build carries "linear" or nothing;
+	// only an empty name — nobody wrote the column — inherits the splice's own
+	// choice. Both facts are kept because a graph written by a build that had
+	// more than one worker still has to read back what it recorded, and
+	// "nobody wrote this" is not the same fact as "this says linear".
 	Subharness string `json:"subharness,omitempty"`
 
 	// Spec is the planner's task object for this node, carried as opaque bytes.

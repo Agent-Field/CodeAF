@@ -4,8 +4,8 @@ import "testing"
 
 // The one-sitting collapse: a chain of atomic nodes, one per stage, each
 // needing only the one before it, is folded into a single leaf whose brief is
-// the goal. Anything richer — width, a specialist, an unmeasured node, a
-// fidget of five — is left exactly as drawn.
+// the goal. Anything richer — width, an unmeasured node, a fidget of five — is
+// left exactly as drawn.
 func TestCollapseAtomicChain(t *testing.T) {
 	chainOf := func(n int) *Graph {
 		graph := &Graph{Goal: "the goal", Stages: make([]Stage, n)}
@@ -56,12 +56,6 @@ func TestCollapseAtomicChain(t *testing.T) {
 	unmeasured.Nodes[1].Size = SizeBorderline
 	if folded := collapseAtomicChain(unmeasured); folded != 0 {
 		t.Fatalf("borderline chain folded = %d, want 0", folded)
-	}
-	// A specialist in the chain is the inversion the sizing pass stands by.
-	specialist := chainOf(2)
-	specialist.Nodes[1].Subharness = "swe"
-	if folded := collapseAtomicChain(specialist); folded != 0 {
-		t.Fatalf("specialist chain folded = %d, want 0", folded)
 	}
 	// A fan-in is not a chain.
 	fanIn := chainOf(2)

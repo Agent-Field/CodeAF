@@ -6,15 +6,12 @@ import (
 	"testing"
 )
 
-// A leaf whose first attempt failed may be handed to a different kind of worker
-// for its second, and the promise has to be durable or it is not a promise: a
-// resident that dies mid-retry releases the claim, and whoever claims the node
-// next must claim it for the worker it was moved to.
-//
-// Journaled, therefore, and not merely written to the row — a rebuild that
-// replayed the splice alone would quietly hand the leaf back to the worker that
-// had already failed at it.
-func TestNodeWorkerChangeSurvivesReopenAndRebuild(t *testing.T) {
+// A graph written by a build that had more than one worker carries hand-over
+// events this build never writes, and it still has to open, replay and read
+// back exactly what it recorded. The row is a view of the journal, so the proof
+// is a rebuild: the event alone, with no row written beside it, must produce
+// the row.
+func TestAJournaledWorkerChangeStillReplays(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "worker.db")
 	graph := openTestStore(t, path)
 	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
@@ -25,74 +22,43 @@ func TestNodeWorkerChangeSurvivesReopenAndRebuild(t *testing.T) {
 	if node, _, err := graph.Node("job"); err != nil || node.Subharness != "" {
 		t.Fatalf("a fresh node already names a worker: %q (%v)", node.Subharness, err)
 	}
-	changed, err := graph.SetNodeSubharness("job", "swe", "escalated from linear after a failed attempt")
-	if err != nil || !changed {
-		t.Fatalf("the worker change did not land: changed=%t err=%v", changed, err)
+	// The journal an older build would have left behind, written straight into
+	// the log the way that build wrote it.
+	tx, err := graph.beginWrite()
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Idempotent: the same answer twice is not a second event.
-	if changed, err := graph.SetNodeSubharness("job", "swe", "again"); err != nil || changed {
-		t.Fatalf("re-stating the same worker changed something: changed=%t err=%v", changed, err)
+	if _, _, err := appendEvent(tx, "job", EventNodeWorkerChanged,
+		nodeWorkerPayload{Subharness: "retired-worker", Reason: "a build that had one"}); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	if err := graph.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	reopened := openTestStore(t, path)
-	assert := func(stage string) {
-		t.Helper()
-		node, found, err := reopened.Node("job")
-		if err != nil || !found {
-			t.Fatalf("%s: read job: found=%t err=%v", stage, found, err)
-		}
-		if node.Subharness != "swe" {
-			t.Fatalf("%s: worker = %q, want the one the retry was moved to", stage, node.Subharness)
-		}
-	}
-	assert("reopened")
 	if err := reopened.Rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	assert("rebuilt")
-}
-
-// The store carries the choice and holds no opinion about it: a name it has
-// never heard of is remembered exactly as faithfully as a registered one, and
-// whether it reaches a worker is settled at dispatch by the registry. What it
-// does refuse is a node whose work is over.
-func TestNodeWorkerChangeIsRememberedNotJudged(t *testing.T) {
-	graph := openTestStore(t, filepath.Join(t.TempDir(), "worker.db"))
-	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
-		{ID: "job", Brief: "review the change", Stage: 1},
-	}}, Provenance{Origin: OriginUser, SessionID: "s", Intent: "review the change"}); err != nil {
-		t.Fatal(err)
+	node, found, err := reopened.Node("job")
+	if err != nil || !found {
+		t.Fatalf("read job: found=%t err=%v", found, err)
 	}
-	if _, err := graph.SetNodeSubharness("job", "a-worker-nobody-registered", "the judge said so"); err != nil {
-		t.Fatalf("the store refused a name it does not know: %v", err)
-	}
-	if node, _, _ := graph.Node("job"); node.Subharness != "a-worker-nobody-registered" {
-		t.Fatalf("worker = %q", node.Subharness)
-	}
-	if _, err := graph.SetNodeSubharness("no-such-node", "swe", ""); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("a missing node answered %v", err)
-	}
-	claim, claimed, err := graph.Claim("job", "test")
-	if err != nil || !claimed {
-		t.Fatalf("claim: claimed=%t err=%v", claimed, err)
-	}
-	if err := graph.Complete(claim, "done"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := graph.SetNodeSubharness("job", "swe", ""); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("settled work accepted a new worker: %v", err)
+	if node.Subharness != "retired-worker" {
+		t.Fatalf("the rebuild forgot an older build's hand-over: %q", node.Subharness)
 	}
 }
 
 // The worker that RAN is a different fact from the worker a node was assigned,
 // and it lives in a different column for one reason: the assignment is empty on
-// nearly every node there has ever been — the compiler routes almost nothing —
-// so a reader asking "who did this work" was reading a table of blanks. This is
-// the fact that column could never hold, and like every other fact about a node
-// it is journaled and therefore survives a rebuild.
+// nearly every node there has ever been — nothing routes a node — so a reader
+// asking "who did this work" was reading a table of blanks. This is the fact
+// that column could never hold, and like every other fact about a node it is
+// journaled and therefore survives a rebuild.
 func TestTheWorkerThatRanIsItsOwnFactAndSurvivesARebuild(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ran.db")
 	graph := openTestStore(t, path)
@@ -110,24 +76,27 @@ func TestTheWorkerThatRanIsItsOwnFactAndSurvivesARebuild(t *testing.T) {
 		t.Fatalf("a blank worker was accepted: %v", err)
 	}
 	if changed, err := graph.RecordNodeRan("job", "linear", ""); err != nil || !changed {
-		t.Fatalf("the generalist did not land: changed=%t err=%v", changed, err)
+		t.Fatalf("the worker did not land: changed=%t err=%v", changed, err)
 	}
 	// The same worker again is the same fact, not a hand-over.
 	if changed, err := graph.RecordNodeRan("job", "linear", ""); err != nil || changed {
 		t.Fatalf("recording the same worker twice read as a change: changed=%t err=%v", changed, err)
 	}
-	if changed, err := graph.RecordNodeRan("job", "swe", "escalated from linear"); err != nil || !changed {
-		t.Fatalf("the hand-over did not land: changed=%t err=%v", changed, err)
+	// The store carries names and holds no opinion about which ones exist: a
+	// name this build could not construct is recorded as faithfully as one it
+	// can, because remembering is its job and resolving is the registry's.
+	if changed, err := graph.RecordNodeRan("job", "retired-worker", "read off an older graph"); err != nil || !changed {
+		t.Fatalf("a name this build does not have was refused: changed=%t err=%v", changed, err)
 	}
-	// It says nothing about the assignment, which is the compiler's answer and
-	// is still, correctly, that the compiler routed nothing.
-	if node, _, err := graph.Node("job"); err != nil || node.Ran != "swe" || node.Subharness != "" {
+	// It says nothing about the assignment, which is still, correctly, that
+	// nothing routed this node.
+	if node, _, err := graph.Node("job"); err != nil || node.Ran != "retired-worker" || node.Subharness != "" {
 		t.Fatalf("ran=%q assigned=%q (%v)", node.Ran, node.Subharness, err)
 	}
 	if err := graph.Rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	if node, _, err := graph.Node("job"); err != nil || node.Ran != "swe" {
+	if node, _, err := graph.Node("job"); err != nil || node.Ran != "retired-worker" {
 		t.Fatalf("the rebuild forgot who ran the node: %q (%v)", node.Ran, err)
 	}
 	// A node that does not exist is a caller error and not a silent success:

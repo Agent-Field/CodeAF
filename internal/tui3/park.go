@@ -22,11 +22,11 @@ import (
 // held HERE, on the surface, in its own block between the answer and the box,
 // and it goes when the answer is finished — as a turn of its own, which is a
 // turn the model always answers. Held on the surface rather than handed to the
-// session is what makes the other three things possible: it can still be edited,
-// it can still be taken back, and esc can send it early.
+// session is what makes the other things possible: it can still be edited or
+// taken back, and esc can drop it together with everything else waiting.
 //
 //	enter    park it. The answer keeps streaming, the box is clear again.
-//	esc      stop the answer and send what is parked, now.
+//	esc      stop the answer and drop what is parked.
 //	↑        with an empty box, pull the parked message back in to edit it.
 //	click    the same, on the block itself.
 //
@@ -205,12 +205,6 @@ func (a *app) recallParkedAt(i int) bool {
 // parkedHint is the dim line under the block, in the three pieces it is trimmed
 // down through on a narrow frame. Each piece is dropped from the right, because
 // what the message is DOING outranks what you can do about it.
-// The middle piece is interpolated from [bargeSendWord] rather than spelled
-// here, because the same three words are now what the hint slot says about the
-// CHORD that does this in one gesture (bargein.go). One phrase, one act, and no
-// second copy to drift: `esc stops and sends` and `shift+enter stops and sends`
-// have to stay the same sentence about the same thing.
-//
 // AND THE MIDDLE PIECES ARE CONDITIONAL, which is what the `stops` and `steers`
 // arguments below buy. There is a window — the seconds between a person's esc
 // and the engine letting go of the turn (render.go's [app.windingDown]) — in
@@ -229,7 +223,7 @@ func (a *app) recallParkedAt(i int) bool {
 // same question the stop is, because a turn that is winding down has no
 // boundary left to steer into either.
 var parkedHint = []string{
-	"waits for this answer", "esc " + bargeSendWord, steerArrowWord, "↑ or click to edit",
+	"waits for this answer", "esc stops and drops", steerArrowWord, "↑ or click to edit",
 }
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim

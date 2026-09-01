@@ -408,7 +408,7 @@ type Options struct {
 
 	// Journal, when set, writes one node_briefed event per briefed node as the
 	// brief pass lands — the rendered instruction, the sufficiency sentence
-	// (Spec.Done) and the subharness — so a run's stopping condition is
+	// (Spec.Done) — so a run's stopping condition is
 	// queryable from its own artifacts rather than only as a field inside the
 	// plan blob. The caller forms the store id; see BriefJournal. Nil leaves
 	// briefs exactly as durable as they were before this existed, which is the
@@ -704,9 +704,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// priced as a graph. A chain of sittings-that-are-each-atomic is one
 	// sitting: the same agent reads its own earlier files, which is sequence
 	// inside a worker, not a gate between workers. When the whole graph is that
-	// chain, with nobody's specialist machinery involved, the graph is the
-	// undivided answer the spine's one-stage sample would have given, reached
-	// by evidence instead of by sampling luck.
+	// chain, the graph is the undivided answer the spine's one-stage sample
+	// would have given, reached by evidence instead of by sampling luck.
 	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
 		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
 		emitProgress(progress, "steps", "1", "")
@@ -735,8 +734,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 
 // collapseAtomicChain folds a graph that is one short chain of atomic work
 // nodes into a single undivided leaf. The shape it looks for is exact: every
-// work node sized atomic by the sizing pass, no specialist anywhere, one node
-// per stage, and each node's only need the node before it — work the spine
+// work node sized atomic by the sizing pass, one node per stage, and each
+// node's only need the node before it — work the spine
 // drew as stages and the ruler then measured as sittings one agent could each
 // just do. Four links is the most the rule trusts: past that the sittings sum
 // past what one context ought to hold, and the graph stands as drawn.
@@ -753,9 +752,6 @@ func collapseAtomicChain(graph *Graph) int {
 			return 0
 		}
 		if node.Size != SizeAtomic || node.Depth != 0 {
-			return 0
-		}
-		if node.Subharness != "" && !GeneralistSubharness(node.Subharness) {
 			return 0
 		}
 		chain = append(chain, node)

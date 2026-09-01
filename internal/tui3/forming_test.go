@@ -1,10 +1,12 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -49,6 +51,16 @@ func formingTurn(t *testing.T) (*app, *fakeAgent) {
 func formingRow(t *testing.T, a *app) string {
 	t.Helper()
 	return toolRowAt(t, a)
+}
+
+// plainStringRowsText keeps the forming-card string rows distinct from the
+// typed forming-block rows used by taskcommand_test.go.
+func plainStringRowsText(rows []string) string {
+	var out []string
+	for _, line := range rows {
+		out = append(out, plain(line))
+	}
+	return strings.Join(out, "\n")
 }
 
 func toolEntries(a *app) int {
@@ -287,6 +299,303 @@ func TestTheSpawnCardFormsBeforeItAsks(t *testing.T) {
 	if strings.Contains(body, taskFormingWord) {
 		t.Fatalf("the landed proposal is still forming:\n%s", body)
 	}
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// C1, C2, C3, C4 AND C9: the forming card's row moves, its clock floors cleanly, and its head stays still.
+func TestTheFormingCardMovesBetweenPaints(t *testing.T) {
+	base := time.Now()
+	a, agent := formingTurn(t)
+	a.clock = func() time.Time { return base }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+
+	card := a.formingCard()
+	if card == nil {
+		t.Fatal("the forming fragment raised no card")
+	}
+	a.paints = 0
+	a.clock = func() time.Time { return base.Add(500 * time.Millisecond) }
+	firstRows := a.taskFormingRows(card, 60, false)
+	first := plainStringRowsText(firstRows)
+	if row := plain(firstRows[1]); strings.Contains(row, "0s") || strings.Contains(row, taskFormingWord+" ·") {
+		t.Fatalf("a forming card under one second is timing itself: %q", row)
+	}
+	if !strings.ContainsAny(first, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the sub-second forming card has no moving braille mark: %q", first)
+	}
+
+	a.paints = spinnerStep
+	a.clock = func() time.Time { return base.Add(2 * time.Second) }
+	second := plainStringRowsText(a.taskFormingRows(card, 60, false))
+	if first == second {
+		t.Fatalf("the forming card is the same picture two paints apart: %q", first)
+	}
+	if !strings.Contains(second, taskFormingWord+" · 2s") {
+		t.Fatalf("the forming card did not count from its first fragment: %q", second)
+	}
+	// Hold elapsed time still so only the spinner can make these pictures differ.
+	a.paints = 0
+	sameTime := plainStringRowsText(a.taskFormingRows(card, 60, false))
+	if sameTime == second {
+		t.Fatalf("the forming card's mark stayed still while its clock was fixed: %q", second)
+	}
+	if !strings.ContainsAny(second, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the moving forming row has no braille spinner: %q", second)
+	}
+
+	// The header's empty ident slot is a fact, not a second liveness signal.
+	a.paints = 0
+	head := a.taskFormingHead(card, 60, false)
+	a.paints = pulseStep
+	if got := a.taskFormingHead(card, 60, false); got != head {
+		t.Fatalf("the forming card's head moved with the old pulse: %q then %q", plain(head), plain(got))
+	}
+
+	// The linear tier keeps one still mark while the number continues to climb.
+	a.linear = true
+	a.paints = 0
+	a.clock = func() time.Time { return base.Add(2 * time.Second) }
+	still := plainStringRowsText(a.taskFormingRows(card, 60, false))
+	if !strings.Contains(still, glyphRunASCII+" "+taskFormingWord+" · 2s") {
+		t.Fatalf("the linear forming card has no still running mark: %q", still)
+	}
+	a.paints = spinnerStep
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); got != still {
+		t.Fatalf("the linear tier animated the forming card's mark: %q then %q", still, got)
+	}
+	a.clock = func() time.Time { return base.Add(4 * time.Second) }
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, glyphRunASCII+" "+taskFormingWord+" · 4s") {
+		t.Fatalf("the linear forming card's clock did not climb: %q", got)
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// C5 AND C6: a forming card starts and keeps the frame clock alive independently, then releases it when settled.
+func TestTheFormingCardKeepsTheFrameClockTurning(t *testing.T) {
+	a, agent := formingTurn(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+	if a.formingCard() == nil {
+		t.Fatal("the forming fragment raised no card")
+	}
+
+	a.painting = false
+	model, cmd := a.Update(tea.WindowSizeMsg{Width: a.width, Height: a.height})
+	a = model.(*app)
+	framed := false
+	for _, msg := range runCmd(cmd) {
+		if _, ok := msg.(frameMsg); ok {
+			framed = true
+		}
+	}
+	if !framed {
+		t.Fatal("the forming card is up with no frame on the way")
+	}
+	if !a.painting {
+		t.Fatal("the forming card never claimed the frame clock")
+	}
+
+	a.state = stateIdle
+	if cmd := a.paint(); cmd == nil {
+		t.Fatal("an idle surface stopped painting while its forming card was still moving")
+	}
+	a.dropFormingCard()
+	if cmd := a.paint(); cmd != nil {
+		t.Fatal("a settled forming card kept the frame clock turning on its account")
+	}
+
+	a.state = stateWorking
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// REVIEW 4: the derived clock question stops at the live turn instead of searching old transcript entries.
+func TestTheFormingCardLookupStopsAtTheLiveTurn(t *testing.T) {
+	a, agent := formingTurn(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+	if a.formingCard() == nil {
+		t.Fatal("the forming fragment raised no card")
+	}
+
+	oldTurn := a.turn
+	a.turn++
+	a.state = stateIdle
+	if a.formingCard() != nil || a.formingCardLive() {
+		t.Fatal("an older turn's forming card was mistaken for the live turn's card")
+	}
+	if cmd := a.paint(); cmd != nil {
+		t.Fatal("an older turn's forming card kept the frame clock turning")
+	}
+
+	a.turn = oldTurn
+	a.state = stateWorking
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// C7: an open forming card bypasses the row cache and a settled one rejoins it.
+func TestTheFormingCardIsNeverServedFromTheRowCache(t *testing.T) {
+	a, agent := formingTurn(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+
+	at := -1
+	for i := range a.entries {
+		if a.entries[i].kind == entryTask {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatal("the forming fragment raised no task entry")
+	}
+	d := a.conversation()
+	before := a.renders
+	_ = a.entryRows(d, at, 60)
+	_ = a.entryRows(d, at, 60)
+	if got := a.renders - before; got != 2 {
+		t.Fatalf("the open forming card rendered %d times for two reads, want 2", got)
+	}
+	if a.entries[at].built {
+		t.Fatal("the open forming card built a row-cache entry")
+	}
+
+	a.dropFormingCard()
+	_ = a.entryRows(d, at, 60)
+	if !a.entries[at].built {
+		t.Fatal("the settled forming card did not rejoin the row cache")
+	}
+	before = a.renders
+	_ = a.entryRows(d, at, 60)
+	if got := a.renders - before; got != 0 {
+		t.Fatalf("the cache re-rendered a settled forming card %d times", got)
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// C8: retrying discards the half-arrived call, so its forming card disappears
+// and the replacement attempt starts a separate card and clock.
+func TestARetryDiscardsTheFormingCard(t *testing.T) {
+	base := time.Now()
+	a, agent := formingTurn(t)
+	a.clock = func() time.Time { return base }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+
+	card := a.formingCard()
+	if card == nil {
+		t.Fatal("the forming fragment raised no card")
+	}
+	a.clock = func() time.Time { return base.Add(8 * time.Second) }
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 8s") {
+		t.Fatalf("the first attempt's clock never advanced: %q", got)
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventRetrying, Text: "asking again"}})
+
+	if card = a.formingCard(); card != nil {
+		t.Fatalf("retrying kept the dead attempt's forming card: %+v", card)
+	}
+	if got := plainStringRowsText(plainRows(a)); strings.Contains(got, taskFormingWord) || strings.Contains(got, "Fix the nil-map") {
+		t.Fatalf("the discarded proposal is still on screen: %q", got)
+	}
+	if a.formingCardLive() {
+		t.Fatal("the discarded card still claimed the frame clock")
+	}
+
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c2", taskTool, taskTool+" Retry cleanly", "{\"title\":\"Retry\"")})
+	card = a.formingCard()
+	if card == nil {
+		t.Fatal("the replacement attempt raised no fresh forming card")
+	}
+	immediate := plainStringRowsText(a.taskFormingRows(card, 60, false))
+	if strings.Contains(immediate, "8s") || strings.Contains(immediate, "0s") {
+		t.Fatalf("the replacement card kept the dead attempt's clock: %q", immediate)
+	}
+	if !strings.Contains(immediate, "Retry cleanly") {
+		t.Fatalf("the replacement card has the wrong title: %q", immediate)
+	}
+	a.clock = func() time.Time { return base.Add(10 * time.Second) }
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
+		t.Fatalf("the replacement card did not count from its first fragment: %q", got)
+	}
+
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// REVIEW 1: a refused propose_task result settles its card and releases the frame clock.
+func TestARefusedTaskCallSettlesItsFormingCard(t *testing.T) {
+	base := time.Now()
+	a, agent := formingTurn(t)
+	a.clock = func() time.Time { return base }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" Fix the nil-map crash", "{\"title\":\"Fix\"")})
+
+	card := a.formingCard()
+	if card == nil {
+		t.Fatal("the forming fragment raised no card")
+	}
+	a.clock = func() time.Time { return base.Add(8 * time.Second) }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventToolFailed, Tool: taskTool,
+		Hint: "Invalid arguments: brief is required", Err: errors.New("invalid arguments"),
+	}})
+
+	if a.formingCard() != nil {
+		t.Fatal("a refused propose_task left its card forming")
+	}
+	settled := plainStringRowsText(a.taskCardRows(card, 60, false))
+	if !strings.Contains(settled, taskFormingRefused) {
+		t.Fatalf("the refused proposal does not say what happened: %q", settled)
+	}
+	if strings.Contains(settled, taskFormingWord) || strings.ContainsAny(settled, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the refused proposal still looks alive: %q", settled)
+	}
+	a.paints += spinnerStep
+	a.clock = func() time.Time { return base.Add(10 * time.Second) }
+	if got := plainStringRowsText(a.taskCardRows(card, 60, false)); got != settled {
+		t.Fatalf("the refused proposal kept moving: %q then %q", settled, got)
+	}
+	a.state = stateIdle
+	if cmd := a.paint(); cmd != nil {
+		t.Fatal("the refused proposal kept the frame clock turning on its account")
+	}
+
+	a.state = stateWorking
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
+
+// REVIEW 2: a different propose_task call in the same turn starts its own elapsed clock.
+func TestANewTaskCallRestartsTheFormingCardsClock(t *testing.T) {
+	base := time.Now()
+	a, agent := formingTurn(t)
+	a.clock = func() time.Time { return base }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c1", taskTool, taskTool+" First proposal", "{\"title\":\"First\"")})
+
+	card := a.formingCard()
+	if card == nil {
+		t.Fatal("the first forming fragment raised no card")
+	}
+	a.clock = func() time.Time { return base.Add(8 * time.Second) }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("c2", taskTool, taskTool+" Corrected proposal", "{\"title\":\"Corrected\"")})
+
+	if got := a.formingCard(); got != card {
+		t.Fatal("the corrected call did not reuse the forming block")
+	}
+	if card.callID != "c2" {
+		t.Fatalf("the forming card kept call id %q, want c2", card.callID)
+	}
+	immediate := plainStringRowsText(a.taskFormingRows(card, 60, false))
+	if strings.Contains(immediate, "8s") || strings.Contains(immediate, "0s") {
+		t.Fatalf("the corrected call inherited the first call's clock: %q", immediate)
+	}
+	a.clock = func() time.Time { return base.Add(10 * time.Second) }
+	if got := plainStringRowsText(a.taskFormingRows(card, 60, false)); !strings.Contains(got, taskFormingWord+" · 2s") {
+		t.Fatalf("the corrected call did not count from its own first fragment: %q", got)
+	}
+
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
 }

@@ -274,9 +274,13 @@ to the wrong machine, and before that it refused to open.
 These are two different things and they are easy to run together.
 
 **Another window** is a second aforge on the *same* machine holding a conversation you can
-see on home. Its row says `another window` in the right margin, and `enter` on it will not
-open a second copy — one conversation, one writer. Go to that terminal, or start a new
-conversation here.
+see on home. Its row says `another window` in the right margin — and `another window · enter
+brings it here` while the cursor is on it. `enter` on it never opens a
+second copy — one conversation, one writer — but it does something better: it **moves** the
+conversation into this terminal. Two presses, the row says `coming here` while it is on its
+way, and the other window lands on whatever else it was holding. *Continue a conversation
+from another terminal*, on the home page, is the whole of it. (The old answer here was "go
+to that terminal, or start a new conversation here", which is no longer the only way.)
 
 **Another machine** is `--host`. The conversation lives over there and your terminal
 *attaches* to it: what you type crosses the wire, the work runs on that machine, and the
@@ -411,7 +415,15 @@ registry yet. They name that machine and refuse; they do not report its registry
    change it on that machine`
    rather than listing this machine's and offering to run them there.
 
-## Why is the task roster empty over host, can I start a task, and why did it say no task door?
+## Task says no task door
+
+The current `--host` protocol carries the far engine's task doors. Starting a task,
+listing it on the roster, opening its live room, steering it and stopping it all work on
+the other machine. A surface that answers
+`room unavailable — this session has no task rooms` is not using that current contract;
+update the older aforge so both ends are the same build and reconnect.
+
+## Why is the task roster empty over host, and can I start a task?
 
 The task roster lists this far conversation's work. Its rows come from the far
    machine's task record, so `ctrl+g` reveals the same landed tasks beside the chat that

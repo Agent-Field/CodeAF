@@ -37,10 +37,10 @@ def row(d):
     cost = read(os.path.join(d, "cost.json"))
     reward = read(os.path.join(d, "reward.json"), default=None)
     note = ""
-    if meta.get("void") is None:
-        # An older result, or one whose run never reached the worker check.
-        # The store still knows, so ask it rather than reporting a run as
-        # valid because the fact was never written down.
+    if meta.get("workers_ran") is None:
+        # An older result, or one whose run never reached the worker reading.
+        # The store still knows, so ask it rather than leaving the provenance
+        # blank because the fact was never written down.
         #
         # nodes.ran is the worker that ACTUALLY executed the node, written at
         # dispatch; nodes.subharness is only what the compiler asked for, and it
@@ -52,20 +52,11 @@ def row(d):
             c = sqlite3.connect(os.path.join(d, "graph.db"))
             columns = {r[1] for r in c.execute("pragma table_info(nodes)")}
             column = "ran" if "ran" in columns else "subharness"
-            ran = sorted({r[0] for r in c.execute(
+            meta["workers_ran"] = sorted({r[0] for r in c.execute(
                 f"select {column} from nodes where coalesce({column},'') != ''")})
-            meta["workers_ran"], meta["void"] = ran, "swe" in ran
             meta["workers_from_ask"] = column == "subharness"
         except Exception:
             pass
-    if meta.get("void"):
-        # A specialist worker took the run over, so it is not a measurement of
-        # the path under test. Never averaged in, never silently dropped.
-        return {"dir": os.path.basename(d), "task": meta.get("task", "?"),
-                "lang": meta.get("language", ""), "reward": "VOID", "partial": "",
-                "cost": read(os.path.join(d, "cost.json")).get("cost_usd", 0.0) or 0.0,
-                "wall": meta.get("agent_seconds", 0), "exit": meta.get("exit_code", ""),
-                "note": "ran on worker " + ",".join(meta.get("workers_ran", []))}
     if reward is None:
         score, partial = "rig", ""
         note = meta.get("stage", "?")

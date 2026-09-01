@@ -25,16 +25,12 @@
 package resident
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"sort"
 	"strings"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -636,71 +632,6 @@ func bankedLine(message store.Message) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(message.Body, NoteMark))
-}
-
-// ClockDeath reports that an attempt ended because time ran out, and for no
-// other reason.
-//
-// It reads shapes, never sentences. The executor records how its own loop ended
-// (StopDeadline, and Exhausted for a loop ordered to land because the clock was
-// close); a context that expired is context.DeadlineExceeded; a transport that
-// timed out satisfies the standard Timeout() interface net.Error and the node
-// watchdog both speak; and a provider that answered with a timeout status says
-// so in provider.APIError.Status. A string match would be a fifth answer that
-// could disagree with the four.
-func ClockDeath(outcome *executor.Outcome, err error) bool {
-	if outcome != nil && (outcome.Stop == executor.StopDeadline || outcome.Exhausted == executor.StopDeadline) {
-		return true
-	}
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	var timeout interface{ Timeout() bool }
-	if errors.As(err, &timeout) && timeout.Timeout() {
-		return true
-	}
-	var api *provider.APIError
-	if errors.As(err, &api) && api != nil {
-		switch api.Status {
-		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
-			return true
-		}
-	}
-	return false
-}
-
-// MayReclassify reports whether the way an attempt ended is evidence about what
-// KIND of worker this assignment needs.
-//
-// The rule it enforces, and the reason it exists: a leaf that dies on its time
-// ceiling was WORKING. It ran out of clock, which is a fact about the clock. In
-// the incident this file was written for, a writeup-and-benchmark leaf that died
-// nine minutes after announcing its finished document was recalibrated onto a
-// repository-shaped coding worker for its retry, and the retry opened by
-// "preparing the repository" for a comparison document. Nothing about the ending
-// said the worker was the wrong kind; only that the hour was up.
-//
-// The taxonomy is not a new one. provider.Verdict already separates what may be
-// learned from — a budget stop, a turn cap, an empty response, a reply that did
-// not parse or was wrong — from what may not: a provider failure, which is
-// weather, and an unverified success, which is silence. Verdict.Escalates is
-// that question already asked, and a class change is the same question about a
-// different rung, so it gets the same answer.
-//
-// An attempt that produced no outcome at all and failed for a reason that is not
-// the clock is capability evidence by elimination: something refused before any
-// work happened, and who to ask instead is exactly the open question.
-func MayReclassify(outcome *executor.Outcome, err error) bool {
-	if ClockDeath(outcome, err) {
-		return false
-	}
-	if outcome != nil && outcome.Verdict != "" {
-		return outcome.Verdict.Escalates()
-	}
-	return err != nil
 }
 
 // LeafState derives what a dead leaf's worker actually did — the files it

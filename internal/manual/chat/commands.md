@@ -1443,7 +1443,7 @@ errands on two screens. Neither is the conversation's own money limit here any m
 `per conversation` on **Spending**.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
-"context reuse", "searching", "exa key", "jina key".
+"context reuse", "searching", "exa key", "firecrawl key", "jina key".
 
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
@@ -1461,16 +1461,12 @@ and "practice". `/budget` and `/limits` open it. *Models, context, and what it c
 every row and every door onto them.
 
 **Safety** — what aforge may do without asking you first. Rows: "ask before running",
-"tool exceptions", "shell command rules", "guardian", "approval countdown", "task
-countdown", "who settles work that needs a look".
+"tool exceptions", "shell command rules", "guardian", "approval countdown", "background
+after", "task countdown", "who settles work that needs a look".
 
 **Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
-work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task model",
-"workers".
-
-**"workers"** is which workers this install may hand a piece of work to, separated by
-commas — blank is all of them, which is the default. It is how you turn a specialist off;
-*How work on its own actually runs* has the whole of it.
+work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task
+model".
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "task column", "hints" — the one-line tips above the

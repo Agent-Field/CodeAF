@@ -591,11 +591,12 @@ func decode[T any](t *testing.T, payload json.RawMessage) T {
 
 func engineOn(agent *fakeAgent) *Engine {
 	return &Engine{
-		Agent:       agent,
-		Workspace:   "/home/somebody/api",
-		SessionFile: "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
-		Resumed:     true,
-		Note:        "session open elsewhere — started a new one",
+		Agent:                      agent,
+		Workspace:                  "/home/somebody/api",
+		SessionFile:                "/home/somebody/.aforge/v3/sessions/-home-somebody-api/one.jsonl",
+		Resumed:                    true,
+		Note:                       "session open elsewhere — started a new one",
+		BashBackgroundAfterSeconds: 47,
 	}
 }
 
@@ -621,6 +622,9 @@ func TestServeWelcomesAHello(t *testing.T) {
 	}
 	if welcome.Model != "openai/gpt-5" || welcome.Title != "the api rewrite" {
 		t.Errorf("welcome model %q title %q", welcome.Model, welcome.Title)
+	}
+	if welcome.BashBackgroundAfterSeconds != 47 {
+		t.Errorf("welcome background clock %d, want the engine's 47", welcome.BashBackgroundAfterSeconds)
 	}
 	if !strings.Contains(welcome.Note, "started a new one") {
 		t.Errorf("welcome note %q — the locked-file sentence has to travel", welcome.Note)
@@ -1383,7 +1387,7 @@ func TestTheEnginesStandingStoreAnswersOverTheWire(t *testing.T) {
 	// is asked to hold, and the surface prints the refusal on its own message
 	// line rather than redrawing a row that was never saved.
 	broken := paused
-	broken.Rails.PerRunUSD = 0
+	broken.Rails.PerRunUSD = -1
 	if result := l.call(4, MethodStandingSave, broken); result.Error == "" {
 		t.Fatal("an item the store refuses was reported as written")
 	}

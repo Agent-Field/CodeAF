@@ -1579,48 +1579,6 @@ it is really on.
 The receipt only names a model when the `model` argument was given. A task that named no
 model is not told which default it got.
 
-## Which workers are installed — only use the normal workers, turn off the specialist worker
-
-A **worker** is the program that actually takes a piece of work. The **general-purpose
-worker** — one agent, alone and in order, with tools — is what takes it when nothing else
-is named, and it is never on any list because it is what you get when you pick nothing.
-Beside it this build ships **specialists**: `bare`, the cheapest whole-taker for work that
-fits in one sitting, and `swe`, an end-to-end software-engineering pipeline.
-
-The **workers** row on the **Tasks** tab of `/settings` says which of them are
-installed here. It is a list separated by commas, and **blank is all of them**, which is the default.
-The same thing written by hand in your profile's `config.json`:
-
-```json
-"work.workers": "bare"
-```
-
-That line is the whole of "only use the normal workers": `bare` and the general-purpose
-worker stay, `swe` is not installed at all. `AFORGE_WORKERS=bare` pins it for one launch
-without touching the file, and while it is set the settings row is read-only and says so.
-
-**A worker you leave out is absent, not refused.** It is never registered, so nothing can
-reach it: it is off the list the planner chooses a worker from, work that runs out of room
-cannot be escalated onto it, and `--subharness swe` answers
-
-```
-no subharness named "swe" — this build has: bare; running on the default worker
-```
-
-and does the work on the general-purpose worker anyway. Nothing dies over it and nothing
-is half-done.
-
-**A name this build does not know is said once and ignored**, on stderr as aforge starts:
-`note: no worker named "reviewer" — this build has: swe, bare`. A line that names nothing
-this build has — including a line that only says `linear` — leaves you the
-general-purpose worker and no specialists, which is a working install and the way aforge
-ran before there was a second worker.
-
-**The chat cannot change this row for you.** Ask it to and it answers `"workers"
-(work.workers) is one of the rails on what may be spent without you being asked, so it is
-not mine to change. Open /settings and change it yourself.` The specialists are the
-expensive way of taking a job, so putting one back is yours.
-
 ## When aforge refuses a model name
 
 Two refusals, both ordinary tool results the model can retry from in one round trip.

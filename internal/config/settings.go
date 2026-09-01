@@ -412,32 +412,15 @@ const (
 	// to both of them — this row changes who is asked first, and nothing else.
 	KeyTaskSettle = "task.settle"
 
-	// KeyWorkers is WHICH LEAF WORKERS ARE INSTALLED IN THIS PROFILE — the
-	// roster (internal/config's workers.go states the law, cmd/aforge's
-	// subharness.go applies it at registration).
-	//
-	// It is named under `work.` rather than `task.` because it is not about the
-	// work you hand off from a conversation: a worker is what actually takes a
-	// leaf, on every surface there is — a task, an adaptive run's node, a
-	// headless `aforge run`, and the resident's continuation ladder. The `task.`
-	// rows above are about one road onto that; this is about who is standing at
-	// the end of all of them.
-	//
-	// A comma-separated set of worker names, and BLANK IS EVERY WORKER THIS
-	// BUILD HAS — the default, and byte for byte the behaviour every profile had
-	// before the row existed. Names this build does not know are said once on
-	// stderr and ignored; a line that places no worker at all leaves the
-	// generalist, which is never on the roster because it is never registered.
-	KeyWorkers = "work.workers"
-
-	// The web-search rows. They are three rather than one because they answer
-	// three separable questions: WHERE a lookup goes, and the two credentials
+	// The web-search rows. They are four rather than one because they answer
+	// four separable questions: WHERE a lookup goes, and the three credentials
 	// that change what "where" can mean. A person with no key still searches —
 	// internal/search's last rung takes none — so the keys are an upgrade and
 	// never a prerequisite, and none of the three has to be answered for the
 	// session to be able to look something up.
 	KeySearchProvider = "search.provider"
 	KeyExaKey         = "search.exaKey"
+	KeyFirecrawlKey   = "search.firecrawlKey"
 	KeyJinaKey        = "search.jinaKey"
 
 	// The two rows that let a person connect their Google account
@@ -476,7 +459,6 @@ const (
 	KeyWorkingSet        = "working_set_tokens"
 	KeyContextReuse      = "context_reuse_pct"
 )
-
 
 // ToolApprovalModes are the three answers the tool gate can be set to, in the
 // order they widen: ask about everything, run everything, refuse everything.
@@ -892,7 +874,8 @@ const SearchProviderAuto = "auto"
 // answer means the day a plug is renamed or one is added. The cost is that a
 // new plug needs a line here to be pinnable — which is the right cost, because
 // a plug nobody can name in the sheet is still reachable through auto.
-var SearchProviders = []string{SearchProviderAuto, "exa", "duckduckgo"}
+// jina-search is named here too so every registered search plug is pinnable.
+var SearchProviders = []string{SearchProviderAuto, "exa", "firecrawl", "jina-search", "duckduckgo"}
 
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
@@ -956,18 +939,6 @@ var OperatorEnvPins = []string{
 	"AFORGE_RTK",
 	"AFORGE_RTK_BIN",
 	"AFORGE_PREAUTHORIZE_SPEND",
-	// AFORGE_SWE_MAX_COST is the dollar ceiling one coding-pipeline leaf may
-	// spend inside the vendored engine. It is plumbing rather than a setting
-	// for the same reason the node budget is: it is a number handed to a
-	// subprocess, not a preference the product has an opinion about, and the
-	// preference that governs spending is the daily rail.
-	"AFORGE_SWE_MAX_COST",
-	// AFORGE_SWEPRO is not a setting anybody would ever want to turn on: it
-	// tells the binary, before it has read anything else, that this process
-	// is not aforge at all but the vendored swe engine (cmd/aforge/swepro.go).
-	// The subharness sets it on the children it spawns; a user who set it
-	// would simply lose their own program.
-	"AFORGE_SWEPRO",
 	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,
@@ -978,8 +949,8 @@ var OperatorEnvPins = []string{
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
-	// plumbing for the reason AFORGE_SWEPRO is — a wave's escape hatch, not a
-	// preference — and it has the same lifetime: it disappears once the gate
+	// plumbing rather than a preference — a wave's escape hatch — and it has
+	// the same lifetime a persisted setting must not have: it disappears once the gate
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
@@ -988,9 +959,9 @@ var OperatorEnvPins = []string{
 	// (config.go's DefaultSwarm): a resident leaf carries request_split, a v3
 	// task's worker carries divide_work, and the sizing judgments read measured
 	// overrun base rates. Set it to 0 and the tree is byte-identical to before
-	// the wave. It is plumbing for the reason AFORGE_SWEPRO is — it decides
-	// which decomposition doctrine the binary runs, not a preference the
-	// product has an opinion about — and it has the same lifetime: it
+	// the wave. It is plumbing rather than a preference — it decides which
+	// decomposition doctrine the binary runs, not something the product has an
+	// opinion about — and it has the same lifetime: it
 	// disappears when nobody has a reason to turn the default off any more,
 	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
@@ -1505,7 +1476,7 @@ func (s *Settings) build() []Setting {
 
 		// Searching sits beside looking and reading because it is the third
 		// question of the same shape — which back end answers when aforge has
-		// to go outside the machine — and the two keys sit under it because a
+		// to go outside the machine — and the three keys sit under it because a
 		// key is not a preference on its own: it is the thing that decides
 		// what the row above it can resolve to.
 		Setting{
@@ -1541,6 +1512,16 @@ func (s *Settings) build() []Setting {
 				"back end. Optional — search works without it. A change lands on the next session.",
 			read:  func() string { return maskCredential(ExaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyExaKey, raw, ExaKeyAt(dir)) },
+		},
+		Setting{
+			Key: KeyFirecrawlKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "firecrawl key", Env: "FIRECRAWL_API_KEY", EmptyLabel: "not set",
+			Hint: "a firecrawl.dev key, for when the free monthly allowance runs out. " +
+				"Optional — search works without it. A change lands on the next session.",
+			read: func() string { return maskCredential(FirecrawlKeyAt(dir)) },
+			write: func(raw string) error {
+				return writeCredential(dir, KeyFirecrawlKey, raw, FirecrawlKeyAt(dir))
+			},
 		},
 		Setting{
 			Key: KeyJinaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
@@ -1626,29 +1607,6 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
-		// WHICH HANDS THIS INSTALL HAS: the workers this install may hand a piece
-		// of work to at all. It is a TASK row and not a money one — it was filed
-		// under spending because specialists are the expensive way of taking a
-		// job, which is a reason to think about it and not a reason to look for
-		// it there. A person on the spending tab is asking what may be spent, and
-		// a roster of workers is not an answer to that.
-		//
-		// Its receipt names the build's own workers rather than the hint, because
-		// the hint is written once and the workers are whatever the binary ships
-		// — a sentence listing them here would be the copy that goes stale.
-		Setting{
-			Key: KeyWorkers, Category: CategoryTasks, Kind: SettingText,
-			Label: "workers", EmptyLabel: "every worker installed", Env: EnvWorkers,
-			Hint: "which workers this install may hand a piece of work to, separated by " +
-				"commas. Blank is all of them, which is the default. The general-purpose " +
-				"worker is never on the list and is never off it — it is what takes the work " +
-				"when nothing else is named, so a roster that names nothing runs everything " +
-				"the ordinary way.",
-			read:    func() string { return WorkersAt(dir) },
-			write:   func(raw string) error { return writeText(dir, KeyWorkers, raw) },
-			receipt: workersReceipt,
-		},
-
 		// The two consent rows sit with spending because they answer the same
 		// question about a different currency: what may aforge do without
 		// stopping to ask you. The dollars are above; the actions are here.
@@ -1701,6 +1659,12 @@ func (s *Settings) build() []Setting {
 				"and the clock stops the moment you press any key. 0 waits for you forever.",
 			read:  func() string { return strconv.Itoa(ConsentTimeoutAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
+		},
+		Setting{
+			Key: KeyBashBackgroundAfter, Category: CategorySafety, Kind: SettingCount,
+			Label: "background after", Hint: BashBackgroundAfterHint,
+			read:  func() string { return strconv.Itoa(BashBackgroundAfterAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyBashBackgroundAfter, raw) },
 		},
 		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
@@ -2707,7 +2671,6 @@ func AttributionAt(profileDir string) bool {
 	return DefaultAttribution
 }
 
-
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
 // into ~/.aforge/v3/history.jsonl. A malformed pin reads as the default
 // rather than refusing a launch over a recall list.
@@ -2738,8 +2701,6 @@ func DraftPersistAt(profileDir string) bool {
 	}
 	return DefaultDraftPersist
 }
-
-
 
 // TaskColumnAt resolves whether the v3 chat stands its task column up, default
 // on. A row that will not parse reads as the default rather than as off, for
@@ -2783,9 +2744,6 @@ func HintsAt(profileDir string) bool {
 	}
 	return DefaultHints
 }
-
-
-
 
 // DocumentEngineAt resolves the document-reading rung.
 func DocumentEngineAt(profileDir string) (string, error) {
@@ -2831,13 +2789,14 @@ func InstallPersistedEnv(profileDir string) {
 
 // ── the web-search rows ─────────────────────────────────────────────────────
 //
-// The two key rows ARE environment-pinned, where the v3 rows below are not,
+// The three key rows ARE environment-pinned, where the v3 rows below are not,
 // and the difference is what the variable can do. A pin on the tool gate would
 // be a bypass — a stray export widening what may run without asking. A pin on
-// a credential is the credential itself: EXA_API_KEY and JINA_API_KEY are the
-// vendors' own variable names, already exported in the shells of the people
-// who have keys, and a settings sheet that ignored them would make the same
-// person paste the same secret twice and then wonder which copy was live.
+// a credential is the credential itself: EXA_API_KEY, FIRECRAWL_API_KEY and
+// JINA_API_KEY are the vendors' own variable names, already exported in the
+// shells of the people who have keys, and a settings sheet that ignored them
+// would make the same person paste the same secret twice and then wonder which
+// copy was live.
 //
 // They are the vendors' spellings rather than AFORGE_-prefixed ones for that
 // same reason: the value is not ours, and renaming somebody's key variable to
@@ -2863,6 +2822,11 @@ func SearchProviderAt(profileDir string) string {
 // then empty — and empty is a working configuration, not a fault.
 func ExaKeyAt(profileDir string) string {
 	return credentialAt(profileDir, "EXA_API_KEY", KeyExaKey)
+}
+
+// FirecrawlKeyAt resolves the optional Firecrawl ceiling credential the same way.
+func FirecrawlKeyAt(profileDir string) string {
+	return credentialAt(profileDir, "FIRECRAWL_API_KEY", KeyFirecrawlKey)
 }
 
 // JinaKeyAt resolves the Jina credential the same way.

@@ -26,8 +26,6 @@ import (
 	"strings"
 	"sync"
 	"unicode"
-
-	"github.com/Agent-Field/aforge-v2/internal/packed"
 )
 
 const (
@@ -58,11 +56,20 @@ type Section struct {
 	Body  string
 }
 
+// corpusFiles is the narrow file surface a corpus needs. The ordinary Go
+// build supplies the Markdown directly, while the shipped build supplies the
+// generated compressed archive; keeping that choice outside Corpus makes both
+// paths exercise the same indexing and retrieval code.
+type corpusFiles interface {
+	Glob(pattern string) ([]string, error)
+	ReadFile(name string) ([]byte, error)
+}
+
 // Corpus is one indexed folder of pages. It is built once, on the first
 // question asked of it, and never changes afterwards: the pages are embedded in
 // the binary, so a corpus that has been read is a corpus that is already right.
 type Corpus struct {
-	files *packed.Folder
+	files corpusFiles
 	glob  string
 
 	once     sync.Once
@@ -84,7 +91,7 @@ type Corpus struct {
 
 // newCorpus names a folder to index. Nothing is read until the corpus is asked
 // a question, so declaring one costs nothing at startup.
-func newCorpus(files *packed.Folder, glob string) *Corpus {
+func newCorpus(files corpusFiles, glob string) *Corpus {
 	return &Corpus{files: files, glob: glob}
 }
 

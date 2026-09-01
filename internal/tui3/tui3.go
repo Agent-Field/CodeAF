@@ -484,6 +484,13 @@ type Options struct {
 	// reads the profile directly there instead, live, the way it always has.
 	ApprovalMode string
 
+	// BashBackgroundAfterSeconds is the foreground-command clock the AGENT
+	// armed when this session was built. It is handed over rather than re-read
+	// by the surface because zero is a real posture, a setting change lands on
+	// the next session, and over --host the relevant profile is on the engine's
+	// machine.
+	BashBackgroundAfterSeconds int
+
 	// SessionFile is the transcript being written, shown by /help and /new.
 	// Empty means the conversation is memory-only.
 	SessionFile string

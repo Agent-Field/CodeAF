@@ -59,7 +59,7 @@ alive as a job and lands your steer immediately. The clause names the job and
 |---|---|
 | `enter` | stops the current generation and sends the words into this turn |
 | `cmd+enter` | holds the message for an ordinary turn after this answer |
-| `esc` | stops the answer and sends the waiting message immediately |
+| `esc` | stops the answer and clears both waiting-message queues |
 | `→` over an empty box | steers the oldest waiting words into the running answer |
 | click `→ steers it in` | the same, with the pointer |
 | `shift+enter` instead of `enter` | stops the answer and sends the sentence in one key — see below |
@@ -72,10 +72,12 @@ it back. `/`-commands are **not** held: a slash command is something you said to
 surface rather than to the model, and it runs at once.
 
 **Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
-The held message is dropped, with a note — `1 waiting message dropped` or `N waiting
-messages dropped` — if the conversation is replaced under it by `/new` or by opening a
-session from the welcome box. Inside a **task room** `enter` steers the node instead
-and nothing is held; that is the room's own key (see the room section below).
+With messages waiting, it clears both the editable parked queue and the `ctrl+q`
+follow-up queue. Each nonempty queue says what was dropped — `1 waiting message dropped`
+or `N waiting messages dropped` for parked messages, and the corresponding `queued`
+word for follow-ups. Replacing the conversation with `/new` or from the welcome box also
+drops parked messages. Inside a **task room** `enter` steers the node instead and nothing
+is held; that is the room's own key (see the room section below).
 
 **Why it goes straight in.** Plain `enter` is the gesture people expect to act now.
 The current generation is itself made into a legal boundary: aforge keeps its partial
@@ -132,12 +134,17 @@ words steer; pictures take their own durable attachment path, and a marked sente
 is bound for the standing-order door. When either is at the front of the queue, the
 line does not offer `→ steers it in`.
 
-**The line that teaches it.** While a turn is running and you have typed something, the
+**The line that teaches it.** While a turn is running and you have words in the box, the
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in · cmd+enter waits · shift+enter stops and sends
+enter steers it in · shift+enter stops and sends · esc interrupt
 ```
+
+That is the terminal-capable form when no command can be kept. A running foreground
+command adds `ctrl+g backgrounds` immediately before `esc interrupt`; a terminal that
+cannot deliver `shift+enter` leaves that clause out. `cmd+enter` still waits, but the
+one-line slot no longer advertises it.
 
 ## My message went in too late — the answer finished first, so it became the next message
 
@@ -163,11 +170,12 @@ Where it cannot be spelled, the key arrives as ordinary `enter` and therefore
 **steers**. Use `ctrl+q` if you need a guaranteed fresh turn on such a terminal.
 
 On those terminals aforge never advertises the chord. The line under the box still
-reads `enter steers it in`, because plain enter works everywhere.
+begins `enter steers it in`, because plain enter works everywhere, and ends with the
+stop clause that works in the current state.
 
 **What works everywhere instead.** `ctrl+q` queues a new turn after the current one.
 
-## Interrupt and say something new in one key — barge in, stop it and tell it something else
+## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
 `shift+enter` while a turn is running **stops the answer and sends what is in the box**,
 as one gesture. Unlike a steer, it ends the whole turn and starts your sentence as a
@@ -212,14 +220,19 @@ chord. Use `esc` to stop the whole turn, then send the next message normally.
 right end of the row under the message box reads exactly:
 
 ```
-enter steers it in
+enter steers it in · esc interrupt
 ```
 
 On a terminal that can spell the secondary chords, the line reads
-`enter steers it in · cmd+enter waits · shift+enter stops and sends`.
+`enter steers it in · shift+enter stops and sends · esc interrupt`. A foreground
+command that can be kept inserts `ctrl+g backgrounds` before the final stop clause.
 
-It is shown only in that state — a turn running, something in the box, and a terminal that
-can deliver the chord. Over an empty box it goes back to `esc interrupt`.
+**A picture on the tray is a message even when the box has no words.** It cannot steer, so
+that form reads `enter waits · esc interrupt`, or
+`enter waits · shift+enter stops and sends · esc interrupt` on a terminal that can
+spell the secondary chord. With neither words nor a picture, the line is simply
+`esc interrupt`, unless a command can be kept, when it is
+`ctrl+g backgrounds · esc interrupt`.
 
 ## I typed while it was working — did my message get lost?
 
@@ -271,10 +284,12 @@ you are looking for the word *interrupted* anywhere else on the screen, that is 
 is — the status line, and only after the turn has truly ended.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt` — or `enter steers it in · cmd+enter waits ·
-shift+enter stops and sends` while you have typed something and this terminal can
-deliver the secondary chords, or `esc stops and sends` while a message of yours is
-already waiting for the answer to finish. On the very first frame of a session the conversation carries the note
+message box ends with `esc interrupt` — for example
+`enter steers it in · shift+enter stops and sends · esc interrupt` while you have
+typed something and this terminal can deliver `shift+enter`. A foreground command that
+can be kept inserts `ctrl+g backgrounds` immediately before the stop clause. When a
+message of yours is already waiting for the answer to finish, the last clause becomes
+`esc stops and drops`. On the very first frame of a session the conversation carries the note
 `esc interrupts · ctrl+c twice quits`.
 
 **Stopping it and saying something new at once.** `shift+enter` does both in one key —
@@ -409,7 +424,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `esc` `esc` | Two presses inside a short window open the quick inline rewind mode. `/rewind` opens the full timeline instead |
 | `ctrl+c` | Turn running: interrupt, and nothing else. Nothing running: arm the door; press it again within 1.5 seconds to quit |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
-| `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
+| `ctrl+g` | A foreground command that can be kept: send that command to the background. Otherwise: close the task column, or bring it back. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `enter` while a turn runs | Stop the current generation, keep its partial reply, and steer the words into the same turn |
 | `cmd+enter` while a turn runs | Hold the message above the box until the answer finishes. Empty box: nothing. Nothing running: nothing |
 | `shift+enter` while a turn runs | Stop the answer and send what you have typed, as one gesture. Empty box: nothing. Nothing running: nothing |
@@ -437,7 +452,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `ctrl+g` | Close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised, it does nothing |
+| `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
 | `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
@@ -890,9 +905,10 @@ stay true.
 **Drag a picture onto the terminal, or paste one you copied as a file, and aforge
 attaches it.** What the terminal actually hands over is the file's *path* as pasted
 text — `/var/folders/.../Screenshot 2026-08-21 at 5.21.40 PM.png`, usually with its
-spaces backslashed, sometimes quoted, sometimes as a `file://` URL. aforge reads all
-three shapes, and reads several files dropped at once, separated by spaces or by
-newlines.
+spaces backslashed, sometimes quoted, sometimes as a `file://` URL, and sometimes with
+raw spaces or `%20` escapes. aforge reads every shape, including the narrow no-break
+space in a macOS screenshot name, and reads several files dropped at once, separated by
+spaces or by newlines.
 
 **Your sentence gets `[image #1]`, not the path.** The picture goes on the tray and a
 short token takes its place in the message box, numbered in the order the pictures
@@ -906,10 +922,10 @@ first picture in the message, so the number you read is the picture it is lookin
 to the end of your sentence when you press `enter`, so "image 2" means the same thing
 whichever way the picture got there.
 
-**It is all or nothing, on purpose.** A paste is treated as pictures only when *every*
-word in it names one of the five picture types **and that file exists on this machine**.
-A sentence that mentions a `.png`, a diff, a stack trace, a log — all of it goes into
-the message box as the text it plainly is, which is what pasting has always done.
+**It is all or nothing, on purpose.** A paste is treated as attachments only when one
+complete terminal reading of it names real files **on this machine**. A sentence that
+mentions a `.png`, a diff, a stack trace, a log — all of it goes into the message box as
+the text it plainly is, which is what pasting has always done.
 A paste over a line that starts with `/` is left as text too, so `/image ` and
 `/export ` still take a path.
 
@@ -932,7 +948,9 @@ a file first, then drag that in, or use `/image <path>`.
 A dragged or pasted picture is measured **at the moment you drop it**, and one over the
 ceiling is refused there rather than attached and refused later. Nothing is lost when
 that happens: the path stays in your message box as the text it arrived as, so you can
-still ask aforge to look at the file where it lies.
+still ask aforge to look at the file where it lies. Pressing `enter` on that retained
+absolute path repeats the attachment refusal; it is not treated as an unknown slash
+command and the path remains in the box.
 
 A picture that is dragged in but **does not exist on this machine** is not refused at
 all — the paste was never a picture, so the text goes into the message box unchanged
@@ -956,11 +974,27 @@ words, which is why the path is rooted on your **local** machine even on a remot
 session. If the model you are talking to cannot see, the picture is shown to a model
 that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
 can see, the message is refused before anything is sent and your pictures stay on the
-tray. The tray is not rendered as a picture — a terminal cell is not a place to show
-one.
+tray. Once the message is sent, the transcript keeps the numbered marker and draws a
+small thumbnail of each picture under your line.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.
+
+## Do I see my own screenshot in the conversation?
+
+Yes. After you send a message with pictures, each one is drawn under your line in tray
+order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
+`[image #1]` and still clickable as the file door.
+
+Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
+border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
+the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
+screen-reader display, a very narrow row, or when the file is missing or unreadable, no
+thumbnail is added and the marker remains exactly as it was.
+
+This applies to a live message, a resumed conversation while the referenced file is
+available, and a task room's journal. A waiting message in the parked block remains its
+words and markers; its picture appears after that message is actually sent.
 
 ## Completing a path with `@`
 
@@ -1207,7 +1241,7 @@ The welcome box is the one exception worth naming: **`tab` does not dismiss it**
 other key does — that is the box's contract — but switching away is the opposite of
 starting work here, so the box is still standing when you come back.
 
-## Switch between my open chats — ctrl+k, the conversation switcher, alt tab between conversations
+## Switch to another conversation without going home — ctrl+k, the conversation switcher, switch between my open chats, alt tab between conversations
 
 **Press `ctrl+k` and you are in your previous conversation, at once.** Press it again and
 you are one further back. This is quick switch, the default: the press is the switch, the
@@ -1452,7 +1486,7 @@ There is no `ctrl+<letter>` chord for home: every one this surface could use is 
 taken, and `ctrl+.` is the tasks place (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
-already arms rewind and already sends a message you parked with `ctrl+q`, and a third
+already arms rewind and already clears messages waiting from the turn, and a third
 meaning on one key in that state is how a surface stops being predictable.
 
 **The first space types itself.** The second one, finding a box that still shows nothing
@@ -1677,7 +1711,8 @@ cards a tap opens, its foot is a `‹ back` bar in place of the key legend
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
-**`ctrl+g` closes the roster's column, and opens it again.** It works from the message
+**`ctrl+g` closes the roster's column, and opens it again when it has no foreground
+command to keep.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
@@ -1685,11 +1720,12 @@ session opens the way you left it, and `ctrl+t` counts as asking for the column 
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
-`❯ ctrl+g hide` line while the column stands closes it** — one chevron control, two
-states, so the pointer can go both ways. The key is unchanged; the chevron is there so the
-column is not a thing you have to already know a chord to get back.
-The key falls through and does nothing only when there is no roster on the frame to
-close: a frame under 100 columns where nothing has raised the overlay. It works with
+column's `❯` door while it stands closes it** — one chevron control, two states, so the
+pointer can go both ways. With no foreground command to keep the line says
+`❯ ctrl+g hide`; while a command owns `ctrl+g`, it says only `❯ hide`. The chevron
+works in both states; the keyboard chord belongs to the command in the second one.
+When no command can be kept, the key falls through and does nothing only when there is
+no roster on the frame to close: a frame under 100 columns where nothing has raised the overlay. It works with
 no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
 `ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
 empty column is still a column to close. On the untouched empty screen there is no
@@ -1841,7 +1877,8 @@ Only the left button acts. A press is resolved in this order:
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
    pressing it asks to stop that work instead of opening its room. **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
-   a press anywhere on it opens the column again, which is exactly what `ctrl+g` does.
+   a press anywhere on it opens the column again. With no foreground command to keep,
+   `ctrl+g` does that too; while a command can be kept, the key backgrounds that command.
    Within the column, its own lines are asked before its task rows: a `+ /task` or
    `+ /standing` row types that command into your message box, and a row in the
    `standing` section opens `/standing` with the cursor already on that order.
@@ -1854,12 +1891,14 @@ Only the left button acts. A press is resolved in this order:
 10. A message of yours **waiting** for the answer to finish, in the block above the
    box — a click anywhere along its line takes that message back into the box to be
    edited, and the block loses it. The whole line answers, because nothing shares it.
-   A press on the dim line under the block does nothing: that line is a statement,
-   not a message.
+   On the dim line under it, only the words `→ steers it in` answer; a press on the
+   rest does nothing.
 11. The body: an inline **task link** inside prose, which is the one mouse-only target
    on the surface; a cut markdown table's foot; a waiting sign-in, where a click
    copies its link; a thinking block, clickable over its whole height; a tool row,
-   which opens its expansion, or the full-frame sheet on a narrow terminal; the
+   which opens its expansion, except that hovering a running foreground command reveals
+   `click to background` in its right-hand slot and only those words keep that command;
+   or the full-frame sheet on a narrow terminal; the
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context — except on the answers row of a card
@@ -2225,20 +2264,25 @@ and it is killed with everything else when the session closes. The command's log
 file is named in the call's own result, which you can read by opening the row.
 
 **The key is absent whenever it cannot work**, and absent means it does nothing
-at all rather than telling you it cannot:
+as a background gesture rather than telling you it cannot. The same absence rule
+governs the row's pointer offer:
 
 - nothing is running
 - the running call is not `bash` — a `read` or a `write` has no process to hand over
 - the running `bash` asked for the background already, so it was a job from the start
 - the row has already been sent away
+- the call is being replayed or is still forming
+- this session is over `--host`, where there is no door for the local surface to hand
+  that process over
 
 When more than one command is running at once, `ctrl+g` takes **the one that has
 been running longest**, which is the one you are waiting on.
 
-`ctrl+b` is copy mode and `esc` interrupts; neither changes. `ctrl+g` was
-previously unbound.
+While a command can be kept, this meaning takes precedence over hiding or restoring the
+task column, so the column stays where it was. With no such command the key belongs to
+the column as described above. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
 
-## A settings change lands one turn later
+## When a settings change lands
 
 The `ui.mouse` and `ui.timestamps` settings are read at boot and again at the end of
 every turn — not the moment you change them. The same is true of the approval posture
@@ -2250,6 +2294,13 @@ So if you turn the mouse off, or turn timestamps on, mid-turn, the change takes 
 This holds however the row was changed — in the panel, or by asking aforge to do it with
 `change_setting`. The row is written straight away and the transcript says so; the screen
 picks it up when the turn ends.
+
+The **background after** row is different. Its key is
+`bash.background_after_seconds`, and the session engine and the visible countdown arm
+from it together at launch. A change lands on the **next session**, not at the end of the
+current turn. Because this row controls how hard the machine may be worked,
+`change_setting` refuses it; open `/settings`, choose the Safety tab, and change the row
+yourself.
 
 With `ui.mouse` off, every drag belongs to your terminal permanently, and `ctrl+s` has
 nothing to hand over.

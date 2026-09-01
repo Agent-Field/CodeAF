@@ -162,8 +162,9 @@ var settingReaders = map[string]string{
 	// door: the clock runs on the frame clock beside the question it is counting
 	// down (internal/tui3's consent.go), so what touches the value is this
 	// accessor and nothing downstream of it.
-	KeyConsentTimeout: "ConsentTimeoutAt",
-	KeyMouse:          "MouseEnabledAt",
+	KeyConsentTimeout:      "ConsentTimeoutAt",
+	KeyBashBackgroundAfter: "BashBackgroundAfterAt",
+	KeyMouse:               "MouseEnabledAt",
 	// The timestamps row is read by the v3 surface itself — at boot and at every
 	// turn end, beside the mouse and the gate posture — and becomes what the
 	// transcript draws of the clock (internal/tui3's timestamps.go).
@@ -223,12 +224,7 @@ var settingReaders = map[string]string{
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,
 	// as the guardian and the countdown rows do.
-	KeyTaskModel: "TaskModelAt",
-	// The worker roster is read once, at the top of cmd/aforge's run(), by the
-	// function that registers this build's workers — before any command has read
-	// a flag, because registration is what puts a worker in front of everything
-	// that could choose one. It names its own accessor, as the throttle rows do.
-	KeyWorkers:       "WorkersAt",
+	KeyTaskModel:     "TaskModelAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
 	// The mastermind row names the TIER rather than the shared spelling, for the
@@ -247,7 +243,7 @@ var settingReaders = map[string]string{
 	// time would let the low row prove this one.
 	KeyTierReflexModel: "RoleReflex",
 	KeyModelRoles:      "PinKey",
-	// The three web-search rows are read by the v3 door, which turns them into
+	// The four web-search rows are read by the v3 door, which turns them into
 	// the [search.Options] it resolves the session's pair from
 	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader
 	// rather than the mapping they share, so a row that stops being read
@@ -255,6 +251,7 @@ var settingReaders = map[string]string{
 	KeySearchProvider: "SearchProviderAt",
 	KeyAPIKey:         "APIKeyAt",
 	KeyExaKey:         "ExaKeyAt",
+	KeyFirecrawlKey:   "FirecrawlKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
 	// The Google pair is read by the v3 door, which turns it into the manager
 	// hung off session.Config.Connect (cmd/aforge/chatv3.go's v3Connect). Both
@@ -345,7 +342,7 @@ func walkGoFiles(t *testing.T, root string, visit func(path string, data []byte)
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "node_modules", "swepro":
+			case ".git", "node_modules":
 				return filepath.SkipDir
 			}
 			return nil
