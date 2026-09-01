@@ -138,6 +138,33 @@ type cachedPresence struct {
 	asked    time.Time
 }
 
+// attachLocks holds one lock per workspace root, because attaching is the one
+// operation in this package that two callers may not do to one folder at once
+// ([Attach] says what was measured). It is package-level for the reason the
+// presence cache is: the folder is the thing being contended, not the Workspace
+// value somebody happens to be holding.
+//
+// The locks are never removed. A process attaches the handful of folders it
+// works in, so the map is small by construction, and a lock deleted while
+// somebody is waiting on it is a lock that stopped excluding anything.
+var (
+	attachMu    sync.Mutex
+	attachLocks = map[string]*sync.Mutex{}
+)
+
+// lockAttach takes the lock for one root and answers the release.
+func lockAttach(root string) func() {
+	attachMu.Lock()
+	lock, ok := attachLocks[root]
+	if !ok {
+		lock = &sync.Mutex{}
+		attachLocks[root] = lock
+	}
+	attachMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
+
 // Forget drops the cached answer for every workspace. It exists for tests,
 // which change what is on PATH between cases and would otherwise read a
 // neighbour's answer, and for a caller that has just watched the person attach
@@ -312,6 +339,17 @@ const attachTimeout = 60 * time.Second
 // Every failure answers nil, exactly as [Open] does, and the caller falls to
 // whatever it would have done on a machine without furrow.
 func Attach(ctx context.Context, root string) *Workspace {
+	// ONE ATTACH AT A TIME PER FOLDER, and this is not a nicety. Five `furrow
+	// watch` runs started on one folder in the same instant were measured: one
+	// succeeds and the other four fail outright. The callers that do that are
+	// exactly the interesting ones — a task handing five parts out at once, each
+	// grounding a child in the same project — and without this the first child
+	// gets a universe and its four siblings quietly get the rung below, which is
+	// four different worlds for one division and nothing anybody could debug from
+	// the outside. Whoever holds the lock does the attach; everybody behind it
+	// finds the folder attached and takes the [Open] road above.
+	unlock := lockAttach(absoluteRoot(root))
+	defer unlock()
 	if workspace := Open(ctx, root); workspace != nil {
 		return workspace
 	}

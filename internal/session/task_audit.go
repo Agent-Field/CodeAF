@@ -1503,13 +1503,20 @@ func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
 // empty diff, and the sentence the auditor is given — "its changes are staged,
 // so `git diff --cached` shows all of them" — has to be true of the tree it is
 // actually standing in.
+//
+// THE CHECKOUT IS CUT FROM WHICHEVER REPOSITORY HOLDS THE BRANCH, which is the
+// ground for a node working in a worktree of it and the node's own copy for one
+// working in a universe (groundladder.go's [taskTree.branchHolder]). A branch is
+// only reachable where it was cut until the landing carries it home, and asking
+// the ground for it before then is asking for a name it has never heard.
 func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	dir := tree.dir + "-check"
+	holder := tree.branchHolder()
 	remove := func() {
 		unlock := lockGitRoot(tree.place, tree.root)
 		defer unlock()
-		_, _ = git(tree.root, "worktree", "remove", "--force", dir)
-		_, _ = git(tree.root, "worktree", "prune")
+		_, _ = git(holder, "worktree", "remove", "--force", dir)
+		_, _ = git(holder, "worktree", "prune")
 		_ = os.RemoveAll(dir)
 	}
 	// A restore left behind by a process that died is cleared before this one is
@@ -1519,7 +1526,7 @@ func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	remove()
 
 	unlock := lockGitRoot(tree.place, tree.root)
-	out, err := git(tree.root, "worktree", "add", "--detach", dir, tree.branch)
+	out, err := git(holder, "worktree", "add", "--detach", dir, tree.branch)
 	unlock()
 	if err != nil {
 		_ = os.RemoveAll(dir)

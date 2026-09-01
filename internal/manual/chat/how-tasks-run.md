@@ -88,14 +88,18 @@ names another folder, the task works in that exact folder instead; its card and 
 aforge cuts that worktree from your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
 
-- **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home,
-  while the worktree is registered in the repository it was cut from.
+- **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home. It
+  is either a worktree registered in the repository it was cut from, or a whole copy of
+  your folder that is a repository of its own — see *Does my task see my .env* below, which
+  says which and why it makes no difference to how the work comes back.
 - **Branch:** `task/<title slugified, at most 32 characters>-<6 hex>` — for example
   `task/fix-the-nil-map-crash-9c1a2f`. The random tail lets the same title be proposed
   twice.
 
-The worktree lives inside the conversation's session folder. You will see its registration
-in the repository's `git worktree list`, but aforge puts no task directory in your repo.
+The task's copy lives inside the conversation's session folder, and aforge puts no task
+directory in your repo. When it is a worktree you will also see its registration in the
+repository's `git worktree list`; when it is a whole copy there is nothing to see there,
+and the branch appears in your repository when the work comes home.
 
 If a directory is already at that name it can only be this session's own dead run, so it is
 removed with `git worktree remove --force`, pruned and deleted before the add.
@@ -180,15 +184,55 @@ stands, called `the world this task started from: <title>`, and cuts the task's 
 that. Your own checkout is not touched: your HEAD does not move, your index does not move,
 and your uncommitted work is still uncommitted in front of you. That commit is scaffolding
 and it never comes home — when the task lands, only what the task itself wrote is merged.
+When the task got a whole copy of your folder, that commit is written in the copy and your
+repository never holds it at all.
 
-**The one thing that still does not travel** is what your `.gitignore` covers: a `.env`, an
-installed `node_modules`, a dev database. Git cannot see those, so the commit cannot carry
-them. A task that needs one of them is a task to run **in place** — a named folder, or
-`where: in place` — where there is only one directory and the question does not arise.
+**What your `.gitignore` covers travels too**, most of the time — a `.env`, an installed
+`node_modules`, a dev database. That depends on how the copy was made, so it has a section
+of its own: *Does my task see my .env* below says when it happens and how to tell.
 
 **If you would rather it did not have your half-finished work,** commit or stash before you
 start. There is no flag for it: the world is the folder, and the folder is what you leave in
 it.
+
+## Does my task see my .env — does a task get node_modules, an installed dependency tree, the dev database, the files git ignores
+
+**Usually yes.** A task's world is a copy of your whole folder, made by furrow, which every
+aforge carries inside itself. A copy made that way holds what git was told to ignore
+alongside everything git can see: your `.env`, an installed `node_modules` or `.venv`, a
+dev database sitting in the folder, a build somebody spent ten minutes on. That is the
+difference between a task that can run your tests and one that spends its first four steps
+discovering that it cannot.
+
+None of those files come home. They were invisible to git on the way out and they are
+invisible to git on the way back, so what lands on your branch is only what the task itself
+wrote — and your own copy of them is never touched.
+
+**When it cannot be done that way**, the task falls back to a copy made by git, and then
+what your `.gitignore` covers is the one thing it does not have. Two reasons:
+
+- furrow could not take that folder on this machine — the binary will not run, the folder
+  will not attach, the fork failed. Nothing is refused and nothing is reported: the copy is
+  simply made the other way.
+- the folder is a **linked worktree** — its `.git` is a file naming another repository
+  rather than a directory of its own. aforge never copies one of those whole, because a
+  byte-exact copy would write the task's commits into the repository that file points at
+  and move a checkout you are standing in.
+
+Everything else is the same either way: your uncommitted edits and your untracked files
+travel on both roads, the task works on `task/<title>-<6 hex>`, and its work comes home as
+a merge into your branch.
+
+**To see which one a task got,** open its page: the first line of its log says what world
+it worked in — `its world is a fork of <folder> as it stood, taken whole` for the whole
+copy, and `its world is a branch off <folder> as it stood, uncommitted work included` for
+the git one.
+
+**Copying your folder whole writes one thing into it:** a `.furrow/` directory, which
+furrow keeps its own ids in. aforge adds that name to your repository's
+`.git/info/exclude`, so it never appears in `git status` and can never be committed. That
+file is local to your checkout — it is not committed, not pushed, and nobody else working
+on the project sees it.
 
 ## A task that never started — its world did not match, stale ground, my task failed before it did anything, expects
 

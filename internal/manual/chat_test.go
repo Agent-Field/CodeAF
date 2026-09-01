@@ -198,6 +198,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// What a task inherits that git cannot see, asked the four ways people
+		// ask it: the file they are worried about, the folder they do not want
+		// reinstalled, and the general form of the question.
+		{"does my task see my .env", "how-tasks-run"},
+		{"does a task get node_modules", "how-tasks-run"},
+		{"can a task run my tests without installing dependencies", "how-tasks-run"},
+		{"do tasks get the files git ignores", "how-tasks-run"},
 		// WHICH PROJECT THE WORK IS ABOUT, asked the four ways people meet it: the
 		// plain question, the conversation opened in the wrong place, the wish to
 		// send work somewhere else, and the complaint after it went wrong.

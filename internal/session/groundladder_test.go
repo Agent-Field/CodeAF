@@ -227,24 +227,272 @@ func TestAUniverseGroundsACopiedTaskAndSaysSo(t *testing.T) {
 	}
 }
 
-// A REPOSITORY IS NOT GROUNDED IN A UNIVERSE EVEN WHEN FURROW IS RIGHT THERE,
-// and this is the law the ladder is written to: the ladder chooses the world, it
-// never changes the promise. A repository ground was promised a branch, and a
-// universe is a repository of its own that merges into nobody.
-func TestAUniverseNeverTakesTheBranchAwayFromARepository(t *testing.T) {
+// ── A REPOSITORY TASK INHERITS THE WHOLE UNIVERSE (issue #172) ──────────────
+//
+// The tests below are the issue's acceptance clauses, plus the one refusal that
+// keeps the rung honest. They share one shape, because the promise and the world
+// are the two halves of one claim: a repository ground that takes the top rung
+// must come home EXACTLY as it did from the rung below, and must arrive holding
+// what that rung could not carry. The fourth clause — that the manual answers
+// "does my task see my .env" in the asker's own words — is pinned where every
+// other question about the pages is, in internal/manual/chat_test.go.
+
+// worldGitCannotSee is [dirtyRepo] plus the two things a repository is
+// configured not to see: a `.env` and an installed dependency tree. They are the
+// files issue #142 named as "the world" and the ones the snapshot rung has to
+// leave behind, because `git add` will not stage what `.gitignore` covers.
+func worldGitCannotSee(t *testing.T) string {
+	t.Helper()
 	repo := dirtyRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitignore"), ".env\nnode_modules/\n")
+	mustGit(t, repo, "add", ".gitignore")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "what this project ignores")
+	writeFile(t, filepath.Join(repo, ".env"), "SECRET=1\n")
+	writeFile(t, filepath.Join(repo, "node_modules", "left-pad", "index.js"), "module.exports = 1\n")
+	return repo
+}
+
+// THE FIRST ACCEPTANCE CLAUSE: a repository parent holding an uncommitted edit,
+// an untracked file, an ignored `.env` and an ignored dependency tree divides,
+// and the child's ground has ALL FOUR.
+//
+// The rung below carries only the first two, and that is not an accident of this
+// test: a machine commit is git's world and git's world stops at `.gitignore`.
+// TestARepositoryWithoutFurrowFallsToTheSnapshotAndSaysSo below is the same
+// scenario with furrow taken away, and it asserts exactly that difference.
+func TestAUniverseGroundedRepositoryCarriesTheWholeWorld(t *testing.T) {
+	repo := worldGitCannotSee(t)
 	installFakeFurrow(t)
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 
-	tree, err := prepareTaskTree(place, repo, "bbbb8888bbbb8888", 10, "keep the branch")
+	tree, err := prepareTaskTree(place, repo, "bbbb8888bbbb8888", 10, "carry the whole world")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	if tree.rung != GroundRungUniverse {
+		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungUniverse)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, "shared.txt")); !strings.Contains(got, "the parent's own") {
+		t.Fatalf("the child's shared.txt is %q; the parent's uncommitted line is missing", got)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, "invented.txt")); !strings.Contains(got, "the parent made") {
+		t.Fatalf("the child's invented.txt is %q; the parent's untracked file is missing", got)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, ".env")); !strings.Contains(got, "SECRET=1") {
+		t.Fatalf("the child's .env is %q; a repository task still cannot read its parent's environment", got)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, "node_modules", "left-pad", "index.js")); !strings.Contains(got, "module.exports") {
+		t.Fatalf("the child's node_modules is %q; a repository task still cannot run the parent's tests", got)
+	}
+	// AND IT IS STILL A BRANCH. The promise is what the landing does, so the
+	// record a person and every other part of the harness reads is unchanged.
+	if tree.mode != TaskModeWorktree || !strings.HasPrefix(tree.branch, "task/") {
+		t.Fatalf("mode = %q, branch = %q; want a worktree promise on a task branch", tree.mode, tree.branch)
+	}
+	if head := strings.TrimSpace(gitOut(t, tree.dir, "rev-parse", "--abbrev-ref", "HEAD")); head != tree.branch {
+		t.Fatalf("the child stands on %q, want its own branch %q", head, tree.branch)
+	}
+	// The child wakes up in a CLEAN tree, exactly as it does on the rung below:
+	// an inheritance it cannot tell from its own work is one it will commit.
+	if status := gitOut(t, tree.dir, "status", "--porcelain"); strings.TrimSpace(status) != "" {
+		t.Fatalf("the child's tree is not clean:\n%s", status)
+	}
+	// And the record says which world, so a report can too.
+	if world := tree.world(); !strings.Contains(world, "taken whole") {
+		t.Fatalf("world() = %q; it does not say the world was taken whole", world)
+	}
+}
+
+// THE SECOND ACCEPTANCE CLAUSE: the child's commits land on the parent's task
+// branch through the existing road, and nothing about the landing reads
+// differently from a snapshot-grounded one.
+func TestAUniverseGroundedRepositoryLandsOnItsTaskBranch(t *testing.T) {
+	repo := worldGitCannotSee(t)
+	installFakeFurrow(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+
+	tree, err := prepareTaskTree(place, repo, "cccc9999cccc9999", 11, "land the work")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	if tree.rung != GroundRungUniverse {
+		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungUniverse)
+	}
+	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
+	merge, detail := tree.comeHome("land the work", []string{"done.txt"})
+	if merge != mergeMerged {
+		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
+	}
+	if got := readFile(t, filepath.Join(repo, "done.txt")); !strings.Contains(got, "what the node made") {
+		t.Fatalf("the person's tree has %q; the node's work did not land", got)
+	}
+	// The parent's own work is still THEIRS: uncommitted, in their tree, and not
+	// swept into history by somebody else's landing.
+	status := gitOut(t, repo, "status", "--porcelain")
+	if !strings.Contains(status, "shared.txt") || !strings.Contains(status, "invented.txt") {
+		t.Fatalf("the parent's uncommitted work was taken away from them:\n%s", status)
+	}
+	if log := gitOut(t, repo, "log", "--oneline"); strings.Contains(log, "the world this task started from") {
+		t.Fatalf("the machine commit came home with the work:\n%s", log)
+	}
+	// FURROW'S OWN BOOKKEEPING IS NOT IN THEIR WAY. Attaching writes a
+	// `.furrow/` into the folder, and an untracked file a merge would write over
+	// is a merge git refuses outright ([hideFurrowMarker]).
+	if strings.Contains(status, ".furrow") {
+		t.Fatalf("furrow's marker is sitting in the person's git status:\n%s", status)
+	}
+	// And the branch is gone the way a merged branch always goes.
+	if out, err := git(repo, "rev-parse", "--verify", "--quiet", tree.branch); err == nil {
+		t.Fatalf("the merged branch is still there: %s", out)
+	}
+}
+
+// THE SECOND CLAUSE'S OTHER HALF: work that is NOT merged is still offered as a
+// branch in the person's own repository, because that is what the sentence about
+// it says. A branch that only ever existed inside a fork would be a recovery
+// artifact nobody could check out.
+func TestAKeptUniverseBranchIsInThePersonsOwnRepository(t *testing.T) {
+	repo := worldGitCannotSee(t)
+	installFakeFurrow(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+
+	tree, err := prepareTaskTree(place, repo, "dddd0000dddd0000", 12, "keep the work")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "half.txt"), "as far as it got\n")
+	merge, changed := keptWork(tree, "keep the work", []string{"half.txt"})
+	if merge != mergeAborted {
+		t.Fatalf("merge = %q, want the branch kept", merge)
+	}
+	if len(changed) == 0 {
+		t.Fatal("the kept work names no files")
+	}
+	if _, err := git(repo, "rev-parse", "--verify", "--quiet", tree.branch); err != nil {
+		t.Fatalf("%s cannot be checked out in the person's repository, and the report offers it to them", tree.branch)
+	}
+	held := gitOut(t, repo, "show", "--stat", "--oneline", tree.branch)
+	if !strings.Contains(held, "half.txt") {
+		t.Fatalf("the kept branch does not hold the work:\n%s", held)
+	}
+}
+
+// THE THIRD ACCEPTANCE CLAUSE: with furrow absent the same scenario passes on
+// the snapshot rung MINUS the ignored files, and the record says which rung it
+// was. This is the whole of the difference between the two rungs, in one test.
+func TestARepositoryWithoutFurrowFallsToTheSnapshotAndSaysSo(t *testing.T) {
+	// Nothing is installed: the package's own TestMain pins furrow at a path
+	// that is not there, which is the whole of "a machine without furrow"
+	// (hermetic_test.go).
+	repo := worldGitCannotSee(t)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+
+	tree, err := prepareTaskTree(place, repo, "eeee1111eeee1111", 13, "the world git can see")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	if tree.rung != GroundRungSnapshot {
 		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungSnapshot)
 	}
+	if got := readFile(t, filepath.Join(tree.dir, "shared.txt")); !strings.Contains(got, "the parent's own") {
+		t.Fatalf("the child's shared.txt is %q; the parent's uncommitted line is missing", got)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, "invented.txt")); !strings.Contains(got, "the parent made") {
+		t.Fatalf("the child's invented.txt is %q; the parent's untracked file is missing", got)
+	}
+	// AND WHAT THIS RUNG CANNOT CARRY IS ABSENT RATHER THAN HALF THERE.
+	if _, err := os.Stat(filepath.Join(tree.dir, ".env")); err == nil {
+		t.Fatal("the snapshot rung carried an ignored file; git cannot see one, so this is a test lying about which rung ran")
+	}
+	if _, err := os.Stat(filepath.Join(tree.dir, "node_modules")); err == nil {
+		t.Fatal("the snapshot rung carried an ignored directory; git cannot see one")
+	}
+	// The record is what a report reads, so it has to say so in words.
+	if world := tree.world(); !strings.Contains(world, "a branch off") || !strings.Contains(world, "uncommitted work included") {
+		t.Fatalf("world() = %q; it does not say which world this was", world)
+	}
 	if list := gitOut(t, repo, "worktree", "list"); !strings.Contains(list, tree.dir) {
 		t.Fatalf("git does not know the worktree:\n%s", list)
+	}
+}
+
+// A GROUND WHOSE `.git` BELONGS TO SOMEBODY ELSE IS NOT THIS RUNG'S, and it is
+// the one refusal worth a test of its own: a linked worktree's `.git` is a line
+// naming an administrative directory inside ANOTHER repository, so a byte-exact
+// copy of it would write its commits, its branch and its HEAD into that
+// repository and move a checkout somebody is standing in.
+func TestAUniverseIsNeverForkedFromALinkedWorktree(t *testing.T) {
+	repo := dirtyRepo(t)
+	installFakeFurrow(t)
+	linked := filepath.Join(t.TempDir(), "linked")
+	mustGit(t, repo, "worktree", "add", "-b", "beside", linked)
+	place := Place{Dir: t.TempDir(), Workspace: linked}
+
+	tree, err := prepareTaskTree(place, linked, "ffff2222ffff2222", 14, "do not move their checkout")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	if tree.rung != GroundRungSnapshot {
+		t.Fatalf("rung = %q, want the rung below %q", tree.rung, GroundRungSnapshot)
+	}
+	if head := strings.TrimSpace(gitOut(t, linked, "rev-parse", "--abbrev-ref", "HEAD")); head != "beside" {
+		t.Fatalf("the person's own checkout is standing on %q now, and it was on beside", head)
+	}
+}
+
+// realFurrowEnvVar names a furrow binary to run ONE test against the real
+// program. It is opt-in and never found by looking, because this package's own
+// TestMain states the law it would otherwise break: a suite whose answers depend
+// on what the person running it happens to have installed is a suite that cannot
+// be believed. So the fakes above carry every claim, and this carries the one
+// thing a fake cannot — that furrow itself forks a repository the way the rung
+// assumes it does.
+//
+//	AFORGE_FURROW_REAL=$(which furrow) go test ./internal/session/ -run RealFurrow
+const realFurrowEnvVar = "AFORGE_FURROW_REAL"
+
+// THE WHOLE ROAD, AGAINST THE PROGRAM ITSELF: fork a real repository holding
+// everything git can and cannot see, work in it, and come home to a merge.
+func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
+	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
+	if binary == "" {
+		t.Skip("set " + realFurrowEnvVar + " to a furrow binary to run this against the real program")
+	}
+	repo := worldGitCannotSee(t)
+	t.Setenv(furrow.BinaryEnvVar, binary)
+	furrow.Forget()
+	t.Cleanup(furrow.Forget)
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+
+	tree, err := prepareTaskTree(place, repo, "aaaa3333aaaa3333", 15, "the real thing")
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	if tree.rung != GroundRungUniverse {
+		t.Fatalf("rung = %q, want %q — the real furrow would not fork this ground", tree.rung, GroundRungUniverse)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, ".env")); !strings.Contains(got, "SECRET=1") {
+		t.Fatalf("the child's .env is %q", got)
+	}
+	if got := readFile(t, filepath.Join(tree.dir, "node_modules", "left-pad", "index.js")); !strings.Contains(got, "module.exports") {
+		t.Fatalf("the child's node_modules is %q", got)
+	}
+	if status := gitOut(t, tree.dir, "status", "--porcelain"); strings.TrimSpace(status) != "" {
+		t.Fatalf("the child's tree is not clean:\n%s", status)
+	}
+	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
+	if merge, detail := tree.comeHome("the real thing", []string{"done.txt"}); merge != mergeMerged {
+		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
+	}
+	if got := readFile(t, filepath.Join(repo, "done.txt")); !strings.Contains(got, "what the node made") {
+		t.Fatalf("the person's tree has %q; the node's work did not land", got)
+	}
+	status := gitOut(t, repo, "status", "--porcelain")
+	if !strings.Contains(status, "shared.txt") || !strings.Contains(status, "invented.txt") {
+		t.Fatalf("the parent's uncommitted work was taken away from them:\n%s", status)
+	}
+	if strings.Contains(status, ".furrow") {
+		t.Fatalf("furrow's marker is sitting in the person's git status:\n%s", status)
 	}
 }
 
@@ -254,6 +502,11 @@ func TestAUniverseNeverTakesTheBranchAwayFromARepository(t *testing.T) {
 // IT REALLY COPIES THE FOLDER. A fake that only printed furrow's JSON would let
 // this file assert that a fork was asked for and never that a world came back,
 // which is the only claim worth making about the rung.
+//
+// AND IT REALLY ATTACHES. The real program answers `status` only for a folder it
+// has been pointed at, and writes a `.furrow/` directory into that folder when
+// it is — which is the whole reason [hideFurrowMarker] exists, so a fake that
+// skipped it would leave the one thing nobody could test.
 func installFakeFurrow(t *testing.T) {
 	t.Helper()
 	script := filepath.Join(t.TempDir(), "furrow")
@@ -263,7 +516,16 @@ repo="$2"
 shift 3
 case "$1" in
 status)
+  if [ ! -d "$repo/.furrow" ]; then echo "this workspace is not watched" >&2; exit 1; fi
   echo '{"workspace":"'"$repo"'","head":"aaaabbbbcccc0001","watcher_running":true}'
+  ;;
+watch)
+  mkdir -p "$repo/.furrow"
+  echo "workspace" > "$repo/.furrow/workspace-id"
+  echo '{"snapshot":"aaaabbbbcccc0001","workspace":"'"$repo"'"}'
+  ;;
+fork-rm)
+  echo '{"dropped":"'"$2"'"}'
   ;;
 fork)
   name="$2"
