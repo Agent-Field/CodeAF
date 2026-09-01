@@ -596,6 +596,27 @@ const (
 	StopSplit StopReason = "split"
 )
 
+// OutOfRoom reports that this ending is a leaf THAT WAS STILL WORKING when
+// something it could not argue with stopped it: its tokens, its turns, or its
+// clock.
+//
+// It is a method on the reason rather than a rule at each reader because the
+// answer travels: the settlement asks it of an Outcome, and the scheduler asks
+// it of an ExecResult that holds nothing but this string. Two spellings of one
+// question is how a leaf came to be judged done on one side of a seam and cut
+// off on the other.
+//
+// The empty reason answers false, and every caller that carries this across a
+// seam says separately whether an ending was recorded at all — a StopReason is
+// a string, and its zero value must never be readable as "it finished fine".
+func (s StopReason) OutOfRoom() bool {
+	switch s {
+	case StopBudget, StopTurnCap, StopOverrun, StopDeadline:
+		return true
+	}
+	return false
+}
+
 // Abandoned is the node watchdog's own ending: the executor was still inside a
 // worker that had already run past every limit it was given, and the runner
 // stopped waiting for it.
@@ -805,8 +826,9 @@ func Requeued(err error, record func() int) (allowed time.Duration, recorded int
 // answers — the ink run of 2026-08-29 printed a grant of 150,000 beside a leaf
 // that had been landed by a different ceiling at 240,000.
 type Meter struct {
-	// Name is the bound in one word, for a reader and for a grep: "cost",
-	// "turns", "deadline", "no-progress", "reuse", "raw".
+	// Name is the bound in one word, for a reader and for a grep. The four the
+	// loop writes have constants because two files spell them and one of them
+	// decides whether the figures are re-read at land time: see MeterCost.
 	Name string `json:"name,omitempty"`
 	// Reached and Allowed are the bound's own two numbers, in the bound's own
 	// unit. Zero Allowed means the bound has no figure worth printing (a
@@ -818,6 +840,20 @@ type Meter struct {
 	// "turns", "prompt tokens sent".
 	Unit string `json:"unit,omitempty"`
 }
+
+// The bounds the loop writes down, spelled once.
+//
+// MeterCost and MeterDeadline are LIVE: both are read when the landing reserve
+// is granted and both keep moving while the landing turns run, so what they
+// held at the grant is not what the leaf actually reached. They are re-read at
+// land time. MeterTurns and MeterNoProgress are counts of the loop itself and
+// are already final at the moment they are written.
+const (
+	MeterCost       = "cost"
+	MeterDeadline   = "deadline"
+	MeterTurns      = "turns"
+	MeterNoProgress = "no-progress"
+)
 
 // Named reports that a bound actually said something.
 func (m Meter) Named() bool { return strings.TrimSpace(m.Name) != "" }

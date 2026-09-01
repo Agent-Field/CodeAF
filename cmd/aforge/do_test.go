@@ -1205,6 +1205,16 @@ type scriptedBrain struct {
 	// than any single bound on the path can be followed from the worker's
 	// mouth to the person's screen.
 	longAnswer string
+	// runawayLeaf makes every leaf turn ask for another tool call and bill for
+	// turnTokens prompt tokens, so the leaf crosses its grant and is landed by
+	// the budget rather than by finishing. It is the shape the settlement's
+	// exhaustion arm exists for and the only one that reaches it.
+	runawayLeaf bool
+	// turnTokens is what one runaway turn bills. Zero is the ordinary ten.
+	turnTokens int
+	// remainderDone scripts the remainder judge to say a cut leaf left nothing
+	// behind — the adversarial-but-observed answer.
+	remainderDone bool
 	// acceptancePoints, when set, is what the acceptance pass reads out of the
 	// request: the JSON body of one {"points": [...]} answer. It is how a
 	// checklist reaches the gate in a scripted run — nothing else derives one.
@@ -1399,6 +1409,13 @@ func (s *scriptedBrain) reply(body string) string {
 		}
 		return s.say(`{"pass":true,"gaps":"","quote":"","exercised":true}`)
 
+	case strings.Contains(body, "A worker was stopped mid-assignment because it ran out of the room"):
+		s.tally("remainder")
+		if s.remainderDone {
+			return s.say(`{"done":true}`)
+		}
+		return s.say(`{"done":false,"remaining":"finish the migration steps"}`)
+
 	case strings.Contains(body, "You judge whether a finished job taught"):
 		s.tally("distill")
 		return s.say(`{"facts":[]}`)
@@ -1443,6 +1460,10 @@ func gateSubjectFile(body string) string {
 // commissioned.
 func (s *scriptedBrain) leaf(body string) string {
 	switch {
+	case s.runawayLeaf:
+		// It never says it is finished, so what stops it is its own envelope.
+		turn := s.tally("runaway")
+		return s.tool("write", fmt.Sprintf(`{"path":"scratch-%d.txt","text":"still working"}`, turn))
 	case s.longAnswer != "":
 		s.tally("draft")
 		return s.say(s.longAnswer)
@@ -1477,19 +1498,32 @@ func (s *scriptedBrain) leaf(body string) string {
 
 func (s *scriptedBrain) say(content string) string {
 	encoded, _ := json.Marshal(content)
+	prompt := s.billedTokens()
 	return fmt.Sprintf(`{"model":"scripted","choices":[{"index":0,"finish_reason":"stop",`+
 		`"message":{"role":"assistant","content":%s}}],`+
-		`"usage":{"prompt_tokens":10,"completion_tokens":10,"total_tokens":20,"cost":%f}}`,
-		string(encoded), s.leafCost)
+		`"usage":{"prompt_tokens":%d,"completion_tokens":10,"total_tokens":%d,"cost":%f}}`,
+		string(encoded), prompt, prompt+10, s.leafCost)
 }
 
 func (s *scriptedBrain) tool(name, arguments string) string {
 	encoded, _ := json.Marshal(arguments)
+	prompt := s.billedTokens()
 	return fmt.Sprintf(`{"model":"scripted","choices":[{"index":0,"finish_reason":"tool_calls",`+
 		`"message":{"role":"assistant","content":"","tool_calls":[{"id":"call-1","type":"function",`+
 		`"function":{"name":%q,"arguments":%s}}]}}],`+
-		`"usage":{"prompt_tokens":10,"completion_tokens":10,"total_tokens":20,"cost":%f}}`,
-		name, string(encoded), s.leafCost)
+		`"usage":{"prompt_tokens":%d,"completion_tokens":10,"total_tokens":%d,"cost":%f}}`,
+		name, string(encoded), prompt, prompt+10, s.leafCost)
+}
+
+// billedTokens is what one scripted call reports spending. Ten is the ordinary
+// figure every test that is not about budgets reads; a run that has to cross a
+// leaf's grant says how big its turns are instead of taking seven thousand of
+// them to get there.
+func (s *scriptedBrain) billedTokens() int {
+	if s.turnTokens > 0 {
+		return s.turnTokens
+	}
+	return 10
 }
 
 func asExitStatus(err error, status *exitStatus) bool {
