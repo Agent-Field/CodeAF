@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── THE WAITING LAWS, AT THE SEAM THAT SENDS ────────────────────────────────
@@ -192,24 +194,37 @@ func TestAHeartbeatIsReportedAsAHeartbeat(t *testing.T) {
 // and takes the keystroke back. It rides the phase channel that already exists,
 // because a second channel for one sentence is a second thing to keep alive.
 func TestAPinnedLaneCanRaiseAnOffer(t *testing.T) {
-	if !waitingHasIdent(t, "internal/provider/phase.go", "PhaseAsking") {
-		t.Error("there is no phase for a wait a person can end, so a pinned lane that stalls says nothing (lane W3)")
-	}
-	if !waitingHasIdent(t, "internal/provider/offer.go", "AnswerOffer") {
-		t.Error("there is no door for the answer, so `y` has nothing to call (lane W3)")
-	}
-}
+	client, _, model := stubbedRouter(t)
+	primed(t, model,
+		laneBelief(model, "quicksilver", 400, 70, 0.25),
+		laneBelief(model, "brass", 900, 60, 0.30),
+	)
+	pinned(t, LanePin{Lane: "brass"})
 
-// waitingHasIdent reports whether a file exists and declares a name. A missing
-// file is a missing name and not a failure of the law's own machinery: the file
-// is one of the things the build plan creates.
-func waitingHasIdent(t *testing.T, rel, name string) bool {
-	t.Helper()
-	source, err := os.ReadFile(filepath.Join(funnelRepoRoot(t), rel))
-	if err != nil {
-		return false
+	choice, made := client.laneChoiceFor(callKnobs{}, model, &ai.Request{Model: model, Messages: userMessages("hello")})
+	if !made {
+		t.Fatal("a pin made no choice at all, so nothing downstream is watched")
 	}
-	return strings.Contains(string(source), name)
+	// THE PLAN IS WHERE THE OFFER LIVES, and both halves of it have to be true.
+	// Pinned is what turns the act from a rescue into a question; the
+	// alternatives are what the question points at. A plan with the first and
+	// not the second raises `switch to ...?` with nothing after the "to", which
+	// is a question nobody can answer — and the request would then report the
+	// wait and leave a person watching a machine they chose go quiet.
+	plan := lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now())
+	plan.Pinned = len(choice.Only) > 0
+	if !plan.Pinned {
+		t.Fatal("a strict pin did not read as pinned, so a stall would rescue away from a machine a person named")
+	}
+	if len(plan.Alts) == 0 {
+		t.Fatal("a pinned plan names nowhere a `y` would go, so the offer can never be raised")
+	}
+	// AND THE DOORS THE SURFACE ANSWERS THROUGH EXIST AND MEAN "NO OFFER" WHEN
+	// THERE IS NONE. False is a real answer: the lane came good while somebody
+	// was reaching for the key, or the request ended, or the window lapsed.
+	if AnswerOffer("a token nothing was ever raised under", true) {
+		t.Error("a token naming nothing was answered, so a stale keystroke could fire a rescue")
+	}
 }
 
 // TestTheCallLogSaysWhyItWaitedAndWhatItDid is what makes the next autopsy

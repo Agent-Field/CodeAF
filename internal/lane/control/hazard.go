@@ -255,7 +255,6 @@ func (h *hazard) verdict() Act {
 	}
 }
 
-
 // assess is W and A right now, with the machine word for whichever clock is
 // governing. It is the arithmetic of §B and the only place either number is
 // computed.

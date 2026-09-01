@@ -227,7 +227,7 @@ func TestNoHeartbeatAndNoByteIsAPathFaultTheLaneIsNotChargedFor(t *testing.T) {
 	if acted == 0 {
 		t.Fatal("a stream that said nothing at all was never acted on")
 	}
-	if acted < int(deadPathFloor/time.Millisecond) {
+	if acted < int(DeadPathFloor/time.Millisecond) {
 		t.Skipf("the crossing at %dms is inside the dead-path floor, so there is no claim to make", acted)
 	}
 	if !watch.PathFault() {

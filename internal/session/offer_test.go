@@ -51,8 +51,14 @@ func asking(model string, since time.Time) PhaseNews {
 		At:     since,
 		Detail: "coreweave is slow",
 		Then:   "auto",
-		Model:  model,
-		Role:   lane.RoleTalk,
+		// THE TOKEN NAMES THE REQUEST and nothing else. The transport mints it
+		// when it raises the question and the surface hands it back untouched,
+		// so a keystroke lands on the wait somebody is answering rather than on
+		// whichever request is in flight when the key is pressed. A phase that
+		// carried none is a question nobody could answer.
+		Ask:   "offer-1",
+		Model: model,
+		Role:  lane.RoleTalk,
 	}
 }
 

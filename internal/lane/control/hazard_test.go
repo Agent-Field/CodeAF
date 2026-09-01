@@ -361,7 +361,6 @@ func TestAtTheCeilingAnAffordableAlternativeIsTakenAndNotReported(t *testing.T) 
 	}
 }
 
-
 func TestWhichActIsRaised(t *testing.T) {
 	for _, test := range []struct {
 		name string
