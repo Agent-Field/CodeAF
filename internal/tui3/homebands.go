@@ -49,7 +49,17 @@ import (
 // bandClauses lays whole facts into the fewest rows that hold them. THE LAST
 // FACT NEVER PAYS FOR A NARROW CARD: only a fact that cannot fit on an empty
 // row is clipped, because there is no honest boundary inside it to break at.
+//
+// The separator is this surface's own ` · `, which is what a list of facts is
+// joined with everywhere on the card.
 func bandClauses(width, indent int, ink func(string) string, clauses ...string) []string {
+	return bandClausesWithSeparator(width, indent, " · ", ink, clauses...)
+}
+
+// bandClausesWithSeparator is the same packing for a list that is punctuated
+// some other way — the verbs line's comma, which is a sentence about one row
+// rather than a run of independent facts ([app.homeCardVerbs]).
+func bandClausesWithSeparator(width, indent int, separator string, ink func(string) string, clauses ...string) []string {
 	if width < 1 {
 		return nil
 	}
@@ -58,6 +68,22 @@ func bandClauses(width, indent int, ink func(string) string, clauses ...string) 
 		if clause = strings.TrimSpace(clause); clause != "" {
 			kept = append(kept, clause)
 		}
+	}
+	// AND PUNCTUATION STAYS ON THE ROW IT ENDS. A separator that begins with a
+	// space sits BETWEEN two clauses — ` · ` is the dot this surface joins
+	// independent facts with — and a row break stands in for it, so it vanishes
+	// at the fold. One that does not begin with a space belongs to the clause
+	// before it, the way a comma does, and a list that dropped it at the fold
+	// would read as two lists ([app.homeCardVerbs] is the one that wraps).
+	//
+	// SO A ROW THAT WILL BE FOLLOWED BY ANOTHER CLAUSE KEEPS ROOM FOR IT. The
+	// comma is reserved while the row is being packed rather than squeezed in
+	// afterwards: a clause taken up to the last cell would leave the punctuation
+	// that has to follow it with nowhere to go, which is the same missing comma
+	// by a longer road.
+	tail := ""
+	if separator != "" && separator[0] != ' ' {
+		tail = strings.TrimRight(separator, " ")
 	}
 	var rows []string
 	for at := 0; at < len(kept); {
@@ -70,15 +96,30 @@ func bandClauses(width, indent int, ink func(string) string, clauses ...string) 
 			room = width
 			lead = 0
 		}
+		// reserve is the punctuation this row will have to end with, which is
+		// none at all on the row that carries the last clause.
+		reserve := func(taken int) int {
+			if taken < len(kept)-1 {
+				return ansi.StringWidth(tail)
+			}
+			return 0
+		}
 		run := kept[at]
 		at++
 		for at < len(kept) {
-			candidate := run + " · " + kept[at]
-			if ansi.StringWidth(candidate) > room {
+			candidate := run + separator + kept[at]
+			if ansi.StringWidth(candidate)+reserve(at) > room {
 				break
 			}
 			run = candidate
 			at++
+		}
+		// AND WHERE EVEN THAT WILL NOT FIT, THE CLAUSE KEEPS THE CELL. A row
+		// filled to its last column by one clause has nowhere to put the comma,
+		// and clipping a word to make room for its punctuation would be the
+		// wrong thing given up.
+		if at < len(kept) && ansi.StringWidth(run+tail) <= room {
+			run += tail
 		}
 		rows = append(rows, strings.Repeat(" ", lead)+ink(fit(run, room)))
 	}

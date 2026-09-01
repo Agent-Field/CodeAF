@@ -4716,14 +4716,15 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 			kind: bandKindProject, project: line.project,
 			dir: homeProjectPath(line.proj), world: a.home.world,
 		}
-		bands := [][]string{{pal.bold(pal.ink(fit(line.project, width)))}}
+		identity := []string{pal.bold(pal.ink(fit(line.project, width)))}
 		if place := subject.dir; place != "" {
-			bands = append(bands, []string{pal.dim(a.pathLink(place, fitLeft(place, width)))})
+			identity = append(identity, pal.dim(a.pathLink(place, fitLeft(place, width))))
 		}
-		bands = append(bands, a.drawHomeBands(bandContext{
+		bands := cardBandsOf(cardGroupIdentity, identity)
+		bands = append(bands, cardBandsOf(cardGroupActivity, a.drawHomeBands(bandContext{
 			subject: subject, width: width, now: a.home.world.Read, pal: pal,
-		})...)
-		return homeBands(bands, room)
+		})...)...)
+		return homeCardStack(bands, room)
 	}
 	if !ok || line.kind != homeSession {
 		// The action row and a folded tail are not things with a detail; the
@@ -4747,9 +4748,9 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 	}
 	row := line.row
 
-	// The bands, in order, each already painted. The first is the title and is
-	// never dropped; the rest go from the bottom up as the frame shortens.
-	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
+	// The bands, in order, each already painted. The first is the identity and
+	// is never dropped; the rest go from the bottom up as the frame shortens.
+	identity := []string{pal.bold(pal.ink(fit(homeName(row), width)))}
 
 	place := line.project
 	dir := strings.TrimSpace(row.ProjectDir)
@@ -4761,65 +4762,33 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 	// path are two spellings of one directory and a link that stopped at the
 	// second would be a target a narrow right column had already cut off. A
 	// directory that is not on this disk is drawn plain, as it always was.
-	bands = append(bands, []string{pal.dim(a.pathLink(dir, fitLeft(place, width)))})
+	identity = append(identity, pal.dim(a.pathLink(dir, fitLeft(place, width))))
 
 	// EVERYTHING UNDER THE PLACE LINE IS A BAND FROM THE REGISTRY (homebands.go):
 	// each band is its own file, says what it is about, and is drawn in the
 	// order its key gives it. This function owns only the title and the place,
-	// which are the two lines no band may displace.
-	bands = append(bands, a.drawHomeBands(bandContext{
+	// which are the two rows of the identity band no band may displace.
+	bands := cardBandsOf(cardGroupIdentity, identity)
+	bands = append(bands, cardBandsOf(cardGroupActivity, a.drawHomeBands(bandContext{
 		subject: bandSubject{kind: bandKindSession, row: row, project: line.project, dir: dir},
 		width:   width,
 		now:     a.home.world.Read,
 		pal:     pal,
-	})...)
-	return homeBands(bands, room)
+	})...)...)
+	return homeCardStack(bands, room)
 }
 
-// homeBands assembles the card, dropping whole bands from the bottom until it
-// fits and putting one blank line between the ones that survive.
+// homeBands assembles a card whose bands have not been GROUPED — the phone's
+// sheet, and any surface that hands the registry's output straight through. It
+// is [homeCardStack] with every band filed under one reading, which is the flat
+// one-blank-row rhythm this column had everywhere before the groups existed
+// (homecardrhythm.go says why the cards that know their groups now have two).
 //
 // IT DROPS AND NEVER TRUNCATES. Half a band is a band that lies about how much
 // there was; a band that is not there is simply a fact this frame had no room
 // for, and the frame is one keystroke from being taller.
 func homeBands(bands [][]string, room int) []string {
-	// The title is bands[0] and is not up for negotiation.
-	for len(bands) > 1 {
-		if homeBandLines(bands) <= room {
-			break
-		}
-		bands = bands[:len(bands)-1]
-	}
-	var out []string
-	for _, band := range bands {
-		if len(band) == 0 {
-			continue
-		}
-		if len(out) > 0 {
-			out = append(out, "")
-		}
-		out = append(out, band...)
-	}
-	if len(out) > room {
-		out = out[:room]
-	}
-	return out
-}
-
-// homeBandLines is how many screen lines a set of bands takes, blanks included.
-func homeBandLines(bands [][]string) int {
-	total, drawn := 0, 0
-	for _, band := range bands {
-		if len(band) == 0 {
-			continue
-		}
-		if drawn > 0 {
-			total++
-		}
-		total += len(band)
-		drawn++
-	}
-	return total
+	return homeCardStack(cardBandsOf(cardGroupActivity, bands...), room)
 }
 
 // homeFacts is the dim arithmetic under the card: the weight of what this
@@ -4992,6 +4961,12 @@ func (a *app) homeHint() string {
 // is SCREEN 3a's whole clause. The foot does not say it: `alt+.` draws the map
 // that does ([placeMapWords]), and the resting foot is four keys exactly.
 const homeVerbsWord = "→ verbs"
+
+// homeVerbsHang is how far the second row of the verbs list hangs in: exactly
+// under the first word, which is the width of the lead the first row carries.
+// It is derived from that lead rather than typed beside it, so the two can
+// never disagree.
+var homeVerbsHang = ansi.StringWidth(homeVerbsWord + ": ")
 
 // homeHintWords is that line before the tier's own key is put on it.
 func (a *app) homeHintWords() string {

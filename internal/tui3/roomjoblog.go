@@ -34,7 +34,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -231,16 +230,11 @@ func readJobLogTail(path string) []string {
 // A JOB'S LOG IS NOT THIS SURFACE'S TEXT. It is whatever a compiler, a server or
 // a renderer wrote to a pipe, escape sequences and carriage returns and all —
 // and an escape sequence drawn into the frame does not merely look wrong, it
-// repaints rows this surface owns. So the colour is stripped, the tabs become
-// the four spaces every other reader on this surface gives them
-// ([expandTabs]), and the control bytes are dropped.
+// repaints rows this surface owns. That rule is [drawableLine]'s now, because a
+// tool call's own arguments and results arrive with exactly the same bytes in
+// them and were being drawn raw; what is left here is the one thing a log wants
+// on top of it, which is that a line padded out by whatever wrote it does not
+// carry its padding onto the page.
 func jobLogLine(raw string) string {
-	line := expandTabs(ansi.Strip(raw))
-	line = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, line)
-	return strings.TrimRight(line, " ")
+	return strings.TrimRight(drawableLine(raw), " ")
 }

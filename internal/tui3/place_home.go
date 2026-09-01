@@ -521,9 +521,13 @@ func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []stri
 			dir: strings.TrimSpace(row.ProjectDir), world: a.home.world},
 		width: width, now: a.home.world.Read, pal: pal,
 	}
-	bands := [][]string{{pal.bold(pal.ink(fit(homeName(row), width)))}}
-	for _, band := range [][]string{
-		a.homeCardPlace(row, width, pal),
+	// THE FOUR READINGS, AND THE GAP THAT SAYS WHICH IS WHICH
+	// (homecardrhythm.go). What the card is about is one band and not two: the
+	// name and the address are one identity, and a blank row between them was a
+	// paragraph break inside a heading.
+	bands := cardBandsOf(cardGroupIdentity,
+		append([]string{pal.bold(pal.ink(fit(homeName(row), width)))},
+			a.homeCardPlace(row, width, pal)...),
 		// AND WHAT IT IS ABOUT BESIDES, directly under where it is standing,
 		// because the two lines are one question asked twice over
 		// (homeband_folders.go). It is the registry's own band called by hand
@@ -531,17 +535,15 @@ func (a *app) homeSwitchCard(line homeLine, width, room int, pal palette) []stri
 		// explicit list and not the registry, and two spellings of one band
 		// would be two things to keep in step.
 		drawFoldersBand(a, ctx),
+	)
+	bands = append(bands, cardBandsOf(cardGroupActivity,
 		a.homeCardAnswer(ctx),
 		a.homeCardWork(ctx),
 		a.homeCardMade(ctx),
-		a.homeCardFacts(ctx),
-		a.homeCardVerbs(width, pal),
-	} {
-		if len(band) > 0 {
-			bands = append(bands, band)
-		}
-	}
-	return homeBands(bands, room)
+	)...)
+	bands = append(bands, cardBandsOf(cardGroupEconomics, a.homeCardFacts(ctx))...)
+	bands = append(bands, cardBandsOf(cardGroupVerbs, a.homeCardVerbs(width, pal))...)
+	return homeCardStack(bands, room)
 }
 
 // homeCardPlace is the card's second line: WHERE this conversation is, where its
@@ -615,7 +617,7 @@ func (a *app) homeCardAnswer(ctx bandContext) []string {
 	if !ok {
 		return keys
 	}
-	rows := []string{ctx.pal.dim(fit(homeCardStoppedWord, ctx.width))}
+	rows := []string{homeCardHeading(homeCardStoppedWord, ctx.width, ctx.pal)}
 	for _, said := range wrap(switcherFirstLine(question.Text), ctx.width) {
 		rows = append(rows, ctx.pal.ink(said))
 	}
@@ -698,9 +700,13 @@ func (a *app) homeCardWork(ctx bandContext) []string {
 	// than on each row, out at the right margin where every line of this surface
 	// says the thing that is true of what is under it. A first look, with no stamp
 	// to measure from, captions nothing.
-	head := pal.dim(fit(homeCardWorkWord, ctx.width))
+	head := homeCardHeading(homeCardWorkWord, ctx.width, pal)
 	if a.homeFresh(row) > 0 {
-		head = switcherSides(ctx.width, homeCardWorkWord, homeFreshWord, pal.dim, pal.dim)
+		// AND THE CAPTION STAYS DIM UNDER A MUTED HEADING. The word out at the
+		// right margin is a note ABOUT what is under the heading, not a second
+		// heading, and two things at one weight on one row is a row with no
+		// reading order in it.
+		head = switcherSides(ctx.width, homeCardWorkWord, homeFreshWord, pal.muted, pal.dim)
 	}
 	rows := []string{head}
 	shown := drawn
@@ -766,7 +772,7 @@ func (a *app) homeCardMade(ctx bandContext) []string {
 	if len(rows) == 0 {
 		return nil
 	}
-	return append([]string{ctx.pal.dim(fit(homeCardMadeWord, ctx.width))}, rows...)
+	return append([]string{homeCardHeading(homeCardMadeWord, ctx.width, ctx.pal)}, rows...)
 }
 
 // drawHomeBandNamed draws the one registered band with this name, and nothing
@@ -822,6 +828,14 @@ func (a *app) homeCardFacts(ctx bandContext) []string {
 // while the strip naming it is on screen (SCREEN 3a), and a card that printed
 // `t new chat here` would be advertising a keystroke the composer is about to
 // eat. So the card says what can be done and the strip says what to press.
+//
+// AND THE LIST WRAPS RATHER THAN BEING CUT OFF. It was one long string handed to
+// the packer as a single clause, so a card narrower than the whole sentence drew
+// `→ verbs: put it away, new chat here, open folde…` — the one line on the card
+// whose whole job is to say what is possible, ending in an ellipsis over the
+// thing it was about to offer. The words are clauses now, so they pack into as
+// many rows as they need, and the rows after the first hang under the lead so
+// the list reads as one sentence and not as two.
 func (a *app) homeCardVerbs(width int, pal palette) []string {
 	verbs := a.homeRowVerbs()
 	if len(verbs) == 0 {
@@ -831,7 +845,8 @@ func (a *app) homeCardVerbs(width int, pal palette) []string {
 	for _, v := range verbs {
 		words = append(words, v.word)
 	}
-	return bandClauses(width, 0, pal.dim, homeVerbsWord+": "+strings.Join(words, ", "))
+	words[0] = homeVerbsWord + ": " + words[0]
+	return bandClausesWithSeparator(width, homeVerbsHang, ", ", pal.dim, words...)
 }
 
 // ── the place ───────────────────────────────────────────────────────────────

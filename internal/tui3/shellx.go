@@ -312,14 +312,24 @@ func shellRows(pal palette, command string, width int) []string {
 	return out
 }
 
-// shellLines splits a command into its logical lines, tabs expanded. A trailing
-// newline does not open an empty row.
+// shellLines splits a command into its logical lines, each one made drawable. A
+// trailing newline does not open an empty row.
+//
+// The split comes FIRST and the cleaning second, because the newline is the one
+// control byte a command is allowed to keep: it is what says how many rows the
+// command is. Everything else in it — the tabs a heredoc is indented with, an
+// escape a `printf` carries — is dropped by [drawableLine], which is what lets
+// each row be measured by the width it will actually draw at.
 func shellLines(command string) []string {
-	command = strings.TrimRight(expandTabs(command), "\n")
-	if command == "" {
+	command = strings.TrimRight(command, "\n")
+	if strings.TrimSpace(command) == "" {
 		return nil
 	}
-	return strings.Split(command, "\n")
+	out := strings.Split(command, "\n")
+	for i, line := range out {
+		out[i] = drawableLine(line)
+	}
+	return out
 }
 
 // wrapShell folds one line's tokens into rows of at most width cells.

@@ -129,10 +129,16 @@ func targetIsPattern(tool string) bool { return targetField[tool] == "pattern" }
 // clipped one-liner built for a log column, and the arguments are the thing
 // that actually arrived. A call whose target cannot be found either way draws
 // its name alone, which is honest.
+// THE TARGET IS ONE DRAWABLE LINE, always. It is the model's own text — a
+// command it wrote, a pattern it chose — so it arrives with tabs, carriage
+// returns and occasionally escape sequences in it, and every one of those
+// measures nothing and draws something (toolview.go's [drawableLine]). The line
+// is clamped to one row by width, and a width measured over a tab is a clamp
+// that lets the row wrap anyway.
 func toolTarget(tool, args, hint string) string {
 	if field, known := targetField[tool]; known {
 		if value := argString(argsOf(args), field); value != "" {
-			return strings.TrimSpace(firstLine(value))
+			return strings.TrimSpace(drawableLine(firstLine(value)))
 		}
 	}
 	_, gloss := toolWords(tool, hint)
