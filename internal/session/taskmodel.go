@@ -38,6 +38,8 @@ package session
 import (
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 const (
@@ -92,7 +94,23 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 }
 
 // defaultTaskModel is what a proposal that names no model runs on: the
-// configured task model, or the model this conversation is on right now.
+// configured task model, else the crew's worker seat, else the model this
+// conversation is on right now.
+//
+// THE CREW'S WORKER SEAT SITS BETWEEN THE PIN AND THE CONVERSATION. The worker
+// is the seat that pays most of a task's bill, and until it was on the ladder
+// the crew moved everything about a task except its cost: a person on `frugal`
+// talking to a frontier model handed every task to that frontier model. The
+// `task.model` row still wins, because it is the more specific answer — one
+// person pinning one thing — and the conversation is still the floor, because
+// a cleared worker row means "follow the conversation" on every tier
+// (internal/config's TierModelAt).
+//
+// A LEVEL ON THE WORKER ROW IS NOT CARRIED ONTO THE TASK. `vendor/model:high`
+// on a tier row is the notation for the one-shot role calls that ride it, and
+// a task's own thinking depth is its own dial ([Agent.SetTaskEffort], the
+// `effort` row) — so the id travels and the level stays, rather than one row
+// quietly setting two things.
 //
 // It reads the LIVE model rather than the one the session was built with,
 // because /model moves it and a task groomed after the switch belongs on the
@@ -100,8 +118,14 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 func (a *Agent) defaultTaskModel(available []string) string {
 	a.mu.Lock()
 	configured := strings.TrimSpace(a.config.TaskModel)
-	model := a.model
+	source, model := a.config.RolesSource, a.model
 	a.mu.Unlock()
+	if configured == "" {
+		if seat, ok := roles.TierModel(roles.Source(source), roles.TierWorker); ok {
+			id, _ := roles.SplitEffort(seat)
+			configured = strings.TrimSpace(id)
+		}
+	}
 	if configured == "" {
 		return model
 	}

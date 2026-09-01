@@ -391,7 +391,15 @@ func (a *app) doneTail(card *taskDone) string {
 	}
 	switch card.merge {
 	case mergeWordConflicted:
-		tail += " · " + mergeWordConflicted + " · " + card.branch
+		// A FOLDER FAMILY WEARS THIS WORD WITHOUT A BRANCH. Its landing refuses
+		// over the person's own edit to a file it was going to lay, which is the
+		// same fact a conflict is, and there is no branch to send anybody to — the
+		// report names the directory instead. The name is drawn when there is one
+		// and the tail simply ends when there is not.
+		tail += " · " + mergeWordConflicted
+		if card.branch != "" {
+			tail += " · " + card.branch
+		}
 	case mergeWordAborted:
 		// AN UNVERIFIED NODE DID NOT STOP. It ran to the end and its branch was
 		// kept because nothing merges on an answer nobody gave, so it takes the

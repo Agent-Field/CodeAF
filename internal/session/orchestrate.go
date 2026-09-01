@@ -1146,7 +1146,7 @@ func orchestrateBrief(root string, node orchestrate.Node, deps []orchestrate.Nod
 		out.WriteString("\n\nTHIS IS READ-ONLY WORK: find out, do not change anything.")
 	}
 	if !shared {
-		out.WriteString("\nYou are in an isolated worktree; nobody else is working in it.")
+		out.WriteString("\nYou are in a copy of your own; nobody else is working in it.")
 	}
 	// The kind and the rung are the planner's words about the SHAPE of the
 	// work. The only executor here is the session loop, so they ride in the
@@ -1226,13 +1226,25 @@ func orchestrateJournalPath(session, run, node string) string {
 // running in THE SAME working copy cannot collide at all, which is what stands
 // in for the worktree a hand does not get (fork.go).
 //
-// IT BINDS THE HANDS WHOSE TARGET IS A KNOWN PATH, which is edit and write
-// (recovery.go's mutatingTools). bash is deliberately out of reach: a shell
-// command's effects are whatever it did, and a guard that pattern-matched
-// commands would be claiming a guarantee it cannot keep. What bounds a node's
-// shell is the same thing that bounds every other agent's — the approval floor;
-// what bounds a hand's is that a hand's bash cannot write at all (fork.go's
-// [forkBelt]), which is the one place this hole is closed rather than named.
+// IT BINDS THE CALLS WHOSE TARGET IS A KNOWN PATH — edit, write, and the three
+// edit_video actions that write the file they name (recovery.go's [mutatedPath],
+// which is where that condition is stated). It is asked of the CALL rather than
+// of the verb because the newest of the three is four operations behind one
+// name, and while it was bound by name alone it was bound by nothing at all: a
+// node scoped to `assets/` could cut a film straight over `src/release.mp4`,
+// which is a truncation this guard exists to make impossible.
+//
+// TWO THINGS REMAIN OUT OF REACH AND ARE NAMED RATHER THAN PAPERED OVER. bash,
+// because a shell command's effects are whatever it did and a guard that
+// pattern-matched commands would be claiming a guarantee it cannot keep. And a
+// write that names no path — edit_video called without one lands under a
+// timestamped name in the session's own video folder, which nothing can read out
+// of the arguments, so that call goes unscoped exactly as generate_image's does.
+//
+// What bounds a node's shell is the same thing that bounds every other agent's —
+// the approval floor; what bounds a hand's is that a hand's bash cannot write at
+// all (fork.go's [forkBelt]), which is the one place this hole is closed rather
+// than named.
 type writeGuard struct{ agent *Agent }
 
 func (writeGuard) Name() string { return "write-scope" }

@@ -1123,7 +1123,9 @@ nothing.
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
 `ctrl+c` handed back to the door, where two presses quit · everything else does nothing.
 Its row reads
-`[r] revive and send · [m] send to main · [esc] cancel`.
+`[r] revive and send · [m] send to main · [esc] cancel`. When the task is still
+running — refused mid-check, or while its work lands — the guard offers no `r`: its row
+reads `[m] send to main · [esc] cancel`, because reviving live work would duplicate it.
 
 ## Keys in the settings panel and the other panels
 
@@ -2192,7 +2194,7 @@ Two more chords surprise people:
 And over an **empty** box, `left` and `right` are navigation rather than caret
 movement. `ctrl+f` never is — it always moves the caret right.
 
-## ctrl+v — how hard the thing you are looking at thinks
+## ctrl+v — how hard the thing you are looking at thinks, and making this one task think harder
 
 `ctrl+v` moves one step up the thinking ladder — `low`, `medium`, `high`, `xhigh`, `max` —
 and it moves the rung of **the thing you are standing on**. One chord, three scopes:

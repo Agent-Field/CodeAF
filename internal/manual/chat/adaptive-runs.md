@@ -188,8 +188,9 @@ row carries its digest.
 
 **Each node row names the model it runs on, and it is not the planner's.** A run is
 deliberately two classes of model: the root row carries the **mastermind** class that cuts
-the goal, and every node row under it carries the **small work** class that does it — one
-careful call deciding what happens, many cheap ones doing it. So opening a node and reading
+the goal, and every node row under it carries the **worker** class that does it — one
+careful call deciding what happens, many cheaper ones doing it. It is the same class a task
+handed off in conversation runs on. So opening a node and reading
 `task <model>` at the foot of the frame is how you see your crew actually working; the run's
 own row above it will be naming something else, and that is the arrangement rather than a
 disagreement. The id is settled once, when the run starts, so a `/model` half way through
@@ -369,11 +370,14 @@ handed, word for word.
 Each node is a child agent working in your workspace, and two bounds are put on it.
 
 - **A write scope.** The planner says which paths a node may write. That is enforced by the
-  harness, not by asking politely in the brief: a write or an edit outside the scope is
-  refused with a result the node reads, so it can pick another file and carry on. `bash` is
-  deliberately not covered — a shell command's effects are whatever it did, and a guard that
-  pattern-matched commands would be claiming a guarantee it cannot keep. A node with no
-  scope is told it is read-only work.
+  harness, not by asking politely in the brief: a `write`, an `edit`, or an `edit_video`
+  cut, frame or score aimed outside the scope is refused with a result the node reads, so
+  it can pick another file and carry on. Two things are deliberately not covered. `bash`,
+  because a shell command's effects are whatever it did and a guard that pattern-matched
+  commands would be claiming a guarantee it cannot keep. And a saving call that names no
+  path at all — `edit_video` or `generate_image` with no `path` lands under a name of its
+  own in this session's picture or video folder, which is nowhere the scope is about. A
+  node with no scope is told it is read-only work.
 - **A working copy of its own, sometimes.** When the planner judges a node needs isolation,
   it runs in a copy of its own under the session folder. If there is nowhere to put one, the node
   shares the workspace instead and is told so. It degrades; it never fails for this.

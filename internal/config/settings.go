@@ -156,6 +156,13 @@ const (
 	KeyConsentTimeout = "approval.timeout_seconds"
 	KeyTierLowModel   = "models.tiers.low"
 	KeyTierHighModel  = "models.tiers.high"
+	// KeyTierWorkerModel is the seat that does the work — the worker of every
+	// task, the parts it hands out, the nodes of an adaptive run
+	// ([roles.TierWorker]). It reads from the PROFILE ALONE, unlike the two rows
+	// above it, for the reason the task model row does: a repository that could
+	// answer this could send a visitor's work — and their credit — to a model
+	// they never picked, by being cloned.
+	KeyTierWorkerModel = "models.tiers.worker"
 	// KeyTierReflexModel is the third tier, and the only one with a model in it
 	// out of the box. It is read TWICE A TURN by the routing and extraction
 	// calls the reflex tier exists for (internal/reflex), which is a rhythm no
@@ -821,6 +828,8 @@ func WriteLaneRow(profileDir, slot, raw string) error {
 const (
 	ModelTierLow  = "low"
 	ModelTierHigh = "high"
+	// ModelTierWorker is the seat that does the work ([roles.TierWorker]).
+	ModelTierWorker = "worker"
 	// ModelTierReflex is the per-turn tier ([roles.TierReflex]).
 	ModelTierReflex = "reflex"
 	// ModelTierMastermind is the thinking tier ([roles.TierMastermind]).
@@ -830,9 +839,9 @@ const (
 // ModelTiers lists the four tier words in the order a settings surface renders
 // them, cheapest first. It is [roles.Tiers] spelled as the words on disk, and
 // [tierKeyFor] is total over it.
-var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTierMastermind}
+var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
-// THE SHIPPED CREW. All four tiers arrive pointed at a model, and the four
+// THE SHIPPED CREW. All five tiers arrive pointed at a model, and the five
 // together are exactly the `balanced` preset (crew.go) — which is what makes the
 // crew row read "balanced" on a profile nobody has touched instead of reading
 // "custom" about its own defaults.
@@ -845,15 +854,32 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTie
 // purpose reads empty and the roles on it follow the model the person is talking
 // to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
 // here, and that distinction is the whole mechanism ([TierModelAt] says how).
+//
+// The ids are OPEN-WEIGHT MODELS, chosen off the catalog's own published
+// scores (OpenRouter republishes Artificial Analysis's coding and agentic
+// indexes on every row) against the blended price, on 2026-09-01. The low row is
+// pinned to a DATED build on purpose: the bare `deepseek/deepseek-v4-flash` id
+// resolves to the April build, and the July build at the same price scores
+// thirteen coding points higher.
 const (
 	DefaultReflexModel = "mistralai/mistral-nemo"
-	DefaultLowModel    = "deepseek/deepseek-v4-flash"
-	DefaultHighModel   = "qwen/qwen3.8-27b"
+	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
+	// The worker is the seat that pays most of a task's bill, so the balanced
+	// crew puts the best agentic score per dollar on it rather than the best
+	// score: glm-5.3-flash sits one point under glm-5.3 on the agentic index at
+	// a twentieth of the price, and it can see images, which the parent can hand
+	// it without a vision detour.
+	DefaultWorkerModel = "z-ai/glm-5.3-flash"
+	// The careful tier is ALWAYS A DIFFERENT VENDOR FROM THE WORKER, in every
+	// preset, and always a model that sees images: a check from a second family
+	// catches what the first family's blind spots let through, and the vision
+	// role rides this row.
+	DefaultHighModel = "qwen/qwen3.8-27b"
 	// The mastermind ships with a LEVEL on it, which no other tier does. The
 	// balanced crew's whole shape is "one model that thinks, cheaper ones that
 	// work", and a mastermind with no level asked for is the thinking half not
 	// actually thinking.
-	DefaultMastermindModel = "moonshotai/kimi-k3:low"
+	DefaultMastermindModel = "z-ai/glm-5.3:high"
 )
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
@@ -1865,9 +1891,10 @@ func (s *Settings) build() []Setting {
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
 			Label: "task model", EmptyLabel: "follows the conversation",
 			Hint: "the model a task runs on when you have not asked for another one — " +
-				"`anthropic/claude-opus-5`. Leave it blank and a task rides the model you " +
-				"are talking to. You can still say which model a particular piece of work " +
-				"should go to, and the proposal names the one it will start on.",
+				"`anthropic/claude-opus-5`. Leave it blank and a task rides the crew's " +
+				"worker row, and the model you are talking to when that row is blank too. " +
+				"You can still say which model a particular piece of work should go to, and " +
+				"the proposal names the one it will start on.",
 			read:  func() string { return TaskModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyTaskModel, raw) },
 		},
@@ -1910,10 +1937,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
 			Label: "crew", Choices: CrewPresets,
-			Hint: "the four models aforge works with, chosen as one: `frugal` is deepseek " +
-				"everywhere and pennies a day, `balanced` has kimi-k3 think while deepseek " +
-				"works, `max` puts kimi-k3 everywhere and lets it think longer. Change one of " +
-				"the four rows below and this reads `custom`.",
+			Hint: "the five models aforge works with, chosen as one: `frugal` is glm-5.3-flash " +
+				"thinking over deepseek-v4-flash working, `balanced` has glm-5.3 think while " +
+				"glm-5.3-flash works and qwen checks, `max` puts glm-5.3 to work with kimi-k3 " +
+				"thinking and checking. Change one of the five rows below and this reads `custom`.",
 			read:  func() string { return CrewAt(dir) },
 			write: func(raw string) error { return writeCrew(dir, raw) },
 		},
@@ -1929,11 +1956,23 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTierLowModel, Category: CategoryModels, Kind: SettingText,
 			Label: "small work", EmptyLabel: "follows the conversation",
-			Hint: "the cheap model that does the bulk of the work — the nodes of an adaptive " +
-				"run, session names, digests. Leave it blank and they ride the model you are " +
+			Hint: "the cheap model for the small calls — session names, task names, digests, " +
+				"the safety gate's yes-or-no. Leave it blank and they ride the model you are " +
 				"talking to.",
 			read:  func() string { return TierModelAt(dir, ModelTierLow) },
 			write: func(raw string) error { return writeTierModel(dir, ModelTierLow, raw) },
+		},
+		// The worker row is the one most people will change second, after the
+		// crew: it is the seat that does the work and pays most of a task's bill.
+		Setting{
+			Key: KeyTierWorkerModel, Category: CategoryModels, Kind: SettingText,
+			Label: "worker", EmptyLabel: "follows the conversation",
+			Hint: "the model that does the work — every task you hand off, the parts it " +
+				"divides into, and the nodes of an adaptive run. Most of what a task costs " +
+				"is spent here. Leave it blank and tasks ride the model you are talking to; " +
+				"the `task model` row under Tasks, when set, wins over this one.",
+			read:  func() string { return TierModelAt(dir, ModelTierWorker) },
+			write: func(raw string) error { return writeTierModel(dir, ModelTierWorker, raw) },
 		},
 		Setting{
 			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
@@ -1958,7 +1997,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
 			Label: "pinned roles", EmptyLabel: "none",
-			Hint: "exceptions to the four rows above, one per role: `title:openai/gpt-5-mini`. " +
+			Hint: "exceptions to the five rows above, one per role: `title:openai/gpt-5-mini`. " +
 				"A role not named here follows its class.",
 			read:  func() string { return ModelRolesAt(dir) },
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
@@ -3265,6 +3304,8 @@ func tierKeyFor(tier string) string {
 	switch tier {
 	case ModelTierHigh:
 		return KeyTierHighModel
+	case ModelTierWorker:
+		return KeyTierWorkerModel
 	case ModelTierReflex:
 		return KeyTierReflexModel
 	case ModelTierMastermind:
@@ -3274,11 +3315,13 @@ func tierKeyFor(tier string) string {
 }
 
 // defaultTierModel is what a tier answers on a profile that has never held its
-// key. The four together are the balanced crew.
+// key. The five together are the balanced crew.
 func defaultTierModel(tier string) string {
 	switch tier {
 	case ModelTierReflex:
 		return DefaultReflexModel
+	case ModelTierWorker:
+		return DefaultWorkerModel
 	case ModelTierHigh:
 		return DefaultHighModel
 	case ModelTierMastermind:

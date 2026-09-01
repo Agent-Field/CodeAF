@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -388,6 +389,12 @@ const (
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
+	// roomBusyWord is the opener when the node is STILL RUNNING and simply has
+	// nobody inside to read a line — mid-check, or landing. "is parked" would be
+	// a lie about live work, and the revive key is withheld for the same reason:
+	// asking the head to start the work again while the original is minutes from
+	// done manufactures a duplicate task.
+	roomBusyWord    = " cannot read this right now — "
 	roomLoadingWord = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
@@ -1122,7 +1129,7 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 
 	case session.EventToolForming:
 		// THE NODE'S CALL IS ARRIVING, drawn while it arrives — the same event
-		// the conversation draws from (app.go's [app.formTool]). A room without
+		// the conversation draws from (app.go's [feed.formTool]). A room without
 		// this said nothing at all while a node streamed a file out, which is
 		// the exact gap the forming row was built to close, left open in the one
 		// place a person goes BECAUSE they want to watch.
@@ -1216,7 +1223,7 @@ func (a *app) roomThink(text string) {
 }
 
 // roomSettleThought folds the streaming block without letting go of it — the
-// text-delta half of the collapse rule, [app.settleThought] over the room's
+// text-delta half of the collapse rule, [feed.settleThought] over the room's
 // list: the next reasoning delta grows this block rather than opening another
 // and closing the answer mid-word.
 func (a *app) roomSettleThought() {
@@ -1235,7 +1242,7 @@ func (a *app) roomSettleThought() {
 	}
 }
 
-// roomCollapseThought settles the streaming reasoning block ([app.collapseThought]).
+// roomCollapseThought settles the streaming reasoning block ([feed.collapseThought]).
 func (a *app) roomCollapseThought() {
 	room := a.room
 	if room == nil || room.think < 0 {
@@ -1249,7 +1256,7 @@ func (a *app) roomCollapseThought() {
 	a.roomTouched()
 }
 
-// roomCloseLive ends the assistant block being streamed into ([app.closeLive]).
+// roomCloseLive ends the assistant block being streamed into ([feed.closeLive]).
 func (a *app) roomCloseLive() {
 	room := a.room
 	if room == nil {
@@ -1263,7 +1270,7 @@ func (a *app) roomCloseLive() {
 }
 
 // roomFormTool draws — and keeps redrawing — the row for a call the node is
-// STILL SPELLING OUT. It is [app.formTool] over the room's list, down to the
+// STILL SPELLING OUT. It is [feed.formTool] over the room's list, down to the
 // rule that nothing is unmarshaled: the row holds how much has arrived, the
 // gloss session built from the fields that have closed, and the streamed tail of
 // the one field a forming call is previewed by ([formingPreviewField]) — never
@@ -1286,7 +1293,7 @@ func (a *app) roomFormTool(ev session.Event) {
 		})
 		return
 	}
-	// Every field is taken FORWARD only, for [app.formTool]'s reason: a later
+	// Every field is taken FORWARD only, for [feed.formTool]'s reason: a later
 	// fragment that carried less than the one before it must not un-say what the
 	// row already knows.
 	e := &room.entries[at]
@@ -1336,7 +1343,7 @@ func (a *app) roomResolveUnfinished() {
 }
 
 // roomAnnounceTool draws the row for a call the node has finished asking for.
-// It is [app.announceTool] over the room's list, and it exists for the same
+// It is [feed.announceTool] over the room's list, and it exists for the same
 // reason: the change an edit is ABOUT to make is previewed from the arguments,
 // and the moment that preview is worth anything is the moment before it happens.
 //
@@ -1366,7 +1373,7 @@ func (a *app) roomAnnounceTool(ev session.Event) {
 }
 
 // roomBeginTool is EXECUTION STARTED, and it adopts the row the announcement
-// drew ([app.beginTool], whose pairing rule [roomClaimAnnounced] restates).
+// drew ([feed.beginTool], whose pairing rule [roomClaimAnnounced] restates).
 func (a *app) roomBeginTool(ev session.Event) {
 	room := a.room
 	if room == nil {
@@ -1377,7 +1384,7 @@ func (a *app) roomBeginTool(ev session.Event) {
 		// A call that formed and then began with no announcement between them.
 		// The ordering law says that cannot happen, and a row left pulsing at a
 		// call that is already running would be the page believing the law over
-		// the event in its hand ([app.beginTool] says the same).
+		// the event in its hand ([feed.beginTool] says the same).
 		at = claimFormed(room.entries, ev)
 	}
 	if at >= 0 {
@@ -1399,7 +1406,7 @@ func (a *app) roomBeginTool(ev session.Event) {
 
 // roomClaimAnnounced finds the queued row this begin belongs to, or -1. The
 // payload is matched first and the name only after, for the reason
-// [app.claimAnnounced] states: a batch of three edits announces three rows, and
+// [feed.claimAnnounced] states: a batch of three edits announces three rows, and
 // pairing by name alone would start the clock on whichever was drawn first.
 func roomClaimAnnounced(es []entry, ev session.Event) int {
 	fallback := -1
@@ -1448,7 +1455,7 @@ func roomClaimRunning(es []entry, ev session.Event) int {
 }
 
 // roomCloseTool resolves the live line this end belongs to. It is
-// [app.closeTool] over the room's list, failure-opens-itself included: a call
+// [feed.closeTool] over the room's list, failure-opens-itself included: a call
 // that failed is the one row whose detail is the reason the person came in here.
 func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
 	room := a.room
@@ -1482,7 +1489,7 @@ func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
 }
 
 // roomSettleCompaction stops the newest compaction row's clock, or draws one
-// born finished when this page never saw the pass start ([app.settleCompaction]).
+// born finished when this page never saw the pass start ([feed.settleCompaction]).
 func (a *app) roomSettleCompaction(text string) {
 	room := a.room
 	if room == nil {
@@ -1622,6 +1629,15 @@ func (a *app) steer() tea.Cmd {
 		// away the half that says what to do about it. It goes on the guard's
 		// second row rather than into the room, because it is the reason the
 		// question below is being asked.
+		//
+		// AND THE ENGINE SAYS WHICH KEYS ARE HONEST. A refusal that means the
+		// node is still running with no reader inside it withholds revive
+		// (session.ErrNobodyToRead); every other refusal — done, gone, never
+		// started — is exactly what revive is for.
+		if errors.Is(err, session.ErrNobodyToRead) {
+			a.raiseBusyGuard(line, err.Error())
+			return nil
+		}
 		a.raiseGuard(line, err.Error())
 		return nil
 	}
@@ -1710,16 +1726,35 @@ type steerGuard struct {
 	// why is the engine's own sentence about the node, or empty when the room
 	// simply saw its lane close.
 	why string
+	// busy is a node that is STILL RUNNING with nobody inside to read a line —
+	// refused mid-check, or while the work lands (#273). A busy guard offers no
+	// revive: the honest keys are m and esc, because "start it again" about work
+	// that is minutes from done would race the original with a duplicate.
+	busy bool
 }
 
 // raiseGuard puts the question up. The room stays open underneath it: the page
 // is what the person was reading, and the question is about what to do with a
 // line they typed into it.
 func (a *app) raiseGuard(line, why string) {
+	a.raiseGuardOf(line, why, false)
+}
+
+// raiseBusyGuard is the same question about a node that is STILL RUNNING with
+// nobody inside to read the line ([steerGuard.busy]). Only the engine can tell
+// the two apart — this page's own `done` is its record of a close it may not
+// have been told about yet, and reading "still running" off it would withhold
+// revive from a node the engine just said was finished (#273's own test,
+// TestASteerTheEngineRefusedRaisesTheGuardWithItsReason).
+func (a *app) raiseBusyGuard(line, why string) {
+	a.raiseGuardOf(line, why, true)
+}
+
+func (a *app) raiseGuardOf(line, why string, busy bool) {
 	if a.room == nil {
 		return
 	}
-	a.guard = &steerGuard{title: a.room.title, text: line, why: why}
+	a.guard = &steerGuard{title: a.room.title, text: line, why: why, busy: busy}
 	// The typed lists follow the draft, and the draft is spoken for while the
 	// question is up: the same law the approval question states (consent.go).
 	a.closeLists()
@@ -1750,6 +1785,11 @@ func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+c":
 		return nil, false
 	case "r":
+		// A busy guard has no revive (see [steerGuard.busy]): the key does
+		// nothing rather than restarting work that is still running.
+		if a.guard.busy {
+			return nil, true
+		}
 		return a.guardSend(true), true
 	case "m":
 		return a.guardSend(false), true
@@ -1842,6 +1882,11 @@ func (a *app) guardRows(width int) []string {
 	parts := []string{
 		a.guard.title + roomParkedWord, "[r]", " revive and send · ", "[m]",
 		" send to main · ", "[esc]", " cancel",
+	}
+	if a.guard.busy {
+		parts = []string{
+			a.guard.title + roomBusyWord, "[m]", " send to main · ", "[esc]", " cancel",
+		}
 	}
 	line := strings.Join(parts, "")
 	out := make([]string, 0, 2)

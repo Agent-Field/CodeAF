@@ -83,7 +83,7 @@ func TestAnchoringAnOwnedSessionPersistsAndReloadsProjectInstructions(t *testing
 		}
 	}
 
-	tree, err := prepareTaskTreeAt(context.Background(), agent.config.Place, agent.config.Workspace, agent.journalID(), 7, "anchored work", "")
+	tree, err := prepareTaskTreeAt(context.Background(), agent.config.Place, agent.config.Workspace, agent.journalID(), 7, "anchored work", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

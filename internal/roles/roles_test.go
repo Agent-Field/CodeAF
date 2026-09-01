@@ -120,14 +120,17 @@ func TestResolvePrecedence(t *testing.T) {
 			want:     "mastermind-model",
 		},
 		{
-			name: "a worker takes the low tier",
+			// The worker has a tier of its own: the seat that does the work is the
+			// seat that pays the bill, and it is not the small-work tier beside it.
+			name: "a worker takes the worker tier and not the low one",
 			src: settings(map[string]string{
-				"tiers.low":  "low-model",
-				"tiers.high": "high-model",
+				"tiers.low":    "low-model",
+				"tiers.worker": "worker-model",
+				"tiers.high":   "high-model",
 			}),
 			role:     RoleWorker,
 			fallback: "session-model",
-			want:     "low-model",
+			want:     "worker-model",
 		},
 		{
 			name: "a planner pin outranks its tier",
@@ -367,7 +370,7 @@ func TestDefaultAssignment(t *testing.T) {
 		// summary, which made one figure answer two different bills.
 		RolePlanner:  TierMastermind,
 		RoleDesigner: TierMastermind,
-		RoleWorker:   TierLow,
+		RoleWorker:   TierWorker,
 		// The per-turn pair is the third tier's only tenant, and it is the
 		// assignment that would be silently wrong: reflex on the low tier is a
 		// cheap model called twice a turn, which reads as thrift and bills as a
