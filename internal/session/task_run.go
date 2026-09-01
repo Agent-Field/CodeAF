@@ -5846,11 +5846,11 @@ func prepareTaskTreeOn(ctx context.Context, place Place, workspace, session stri
 		if err != nil {
 			return taskTree{}, err
 		}
-		// AND THE FOLDER AS IT STANDS IS WRITTEN DOWN BESIDE THE COPY
-		// (task_mirror_manners.go). It is the only moment the two are known to
-		// hold the same bytes, and without it the landing cannot tell the
-		// person's own edit from the family's work and writes over it in silence.
-		rememberGroundBaseline(ground, tree.dir)
+		// AND THE COPY IS WRITTEN DOWN AS THE FOLDER AS IT STOOD
+		// (task_mirror_manners.go). The bytes in it are the ones the family was
+		// given, and without a record of them the landing cannot tell the person's
+		// own edit from the family's work and writes over it in silence.
+		rememberGroundBaseline(tree.dir)
 		// AND THE COPY IS OPENED AS THE FAMILY'S OWN TREE (task_tree_mirror.go).
 		// A mirror that is a repository is a mirror whose parts cut real
 		// worktrees off it and merge back into it through the one road every

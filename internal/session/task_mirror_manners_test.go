@@ -230,13 +230,22 @@ func TestTheBaselineIsBoundedByTheEntryCap(t *testing.T) {
 	for _, name := range []string{"one.md", "two.md", "three.md"} {
 		writeFile(t, filepath.Join(ground, name), name+"\n")
 	}
-	budget := 2
-	if gatherDigests(ground, "", map[string]string{}, &budget) {
+	if gatherDigests(ground, "", map[string]string{}, &digestWalk{budget: 2}) {
 		t.Fatal("a walk past its cap answered as though it had read the whole folder")
 	}
-	spent := 0
-	if digest := pathDigest(ground, "one.md", &spent); digest != digestUnknown {
+	if digest := pathDigest(ground, "one.md", &digestWalk{}); digest != digestUnknown {
 		t.Fatalf("a path read past the cap answered %q, want it to be unknown", digest)
+	}
+	// AND A DIRECTORY WITH A CORNER IT COULD NOT OPEN IS NEVER CALLED UNCHANGED,
+	// because laying that path would remove what is inside the corner.
+	shut := filepath.Join(ground, "shut")
+	writeFile(t, filepath.Join(shut, "inside.md"), "what nobody can see\n")
+	if err := os.Chmod(shut, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(shut, 0o700) })
+	if digest := pathDigest(ground, "shut", &digestWalk{budget: auditRestoreEntries}); digest != digestUnknown {
+		t.Fatalf("a directory that could not be read answered %q, want it to be unknown", digest)
 	}
 }
 
@@ -250,28 +259,7 @@ func TestARunningFolderFamilyLandsNeedingALookWhenTheFolderMoved(t *testing.T) {
 	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
 	t.Setenv("HOME", t.TempDir())
 
-	said := &scriptedCompleter{steps: []step{
-		writeCall("call-notes", "notes.md", "the line the task wrote\n"),
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			// THE PERSON, IN THEIR OWN EDITOR, WHILE THE WORK IS STILL RUNNING.
-			_ = os.WriteFile(filepath.Join(ground, "notes.md"), []byte("the line the person typed\n"), 0o600)
-			return textResponse("tidied the notes"), nil
-		},
-	}}
-	agent, _ := newTestAgent(t, said, func(config *Config) {
-		config.Workspace = t.TempDir()
-		config.AskConsent = false
-		config.TaskAutoApproveSeconds = 0
-		config.TaskAudit = false
-		config.Divide = false
-	})
-	graph := agent.graph()
-	id := graph.reserve()
-	graph.admit(id, taskSpec{title: "tidy the notes", named: true,
-		brief: "tidy the notes", deliverable: "the notes, tidied", acceptance: "the notes are tidy",
-		ground: ground, mode: TaskModeMirror, depth: 1})
-	node := graph.node(id)
-	waitDoneNode(t, node)
+	node := aRunOnTheFolder(t, ground, true)
 
 	notice := node.notice()
 	if notice.State != TaskUnverified {
@@ -291,6 +279,63 @@ func TestARunningFolderFamilyLandsNeedingALookWhenTheFolderMoved(t *testing.T) {
 	node.graph.mu.Unlock()
 	if got := readFile(t, filepath.Join(dir, "notes.md")); got != "the line the task wrote\n" {
 		t.Fatalf("the family's copy holds %q, want its own work still in it", got)
+	}
+}
+
+// aRunOnTheFolder runs one scripted task whose ground is a plain folder, all the
+// way through the landing every running node takes. When `person` is set,
+// somebody types into their own copy of the same file while the work runs, which
+// is the whole of the defect this file is about.
+func aRunOnTheFolder(t *testing.T, ground string, person bool) *TaskNode {
+	t.Helper()
+	said := &scriptedCompleter{steps: []step{
+		writeCall("call-notes", "notes.md", "the line the task wrote\n"),
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			if person {
+				// THE PERSON, IN THEIR OWN EDITOR, WHILE THE WORK IS STILL RUNNING.
+				_ = os.WriteFile(filepath.Join(ground, "notes.md"), []byte("the line the person typed\n"), 0o600)
+			}
+			return textResponse("tidied the notes"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, said, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+		config.Divide = false
+	})
+	graph := agent.graph()
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "tidy the notes", named: true,
+		brief: "tidy the notes", deliverable: "the notes, tidied", acceptance: "the notes are tidy",
+		ground: ground, mode: TaskModeMirror, depth: 1})
+	node := graph.node(id)
+	waitDoneNode(t, node)
+	return node
+}
+
+// AND THE RUN ROAD'S CONTROL, which is the half that says this cost nothing. The
+// same scripted task over a folder nobody touched lands its file, settles done,
+// wears the ordinary mark and says not one word about any of it.
+func TestARunningFolderFamilyOverAnUntouchedFolderStillLands(t *testing.T) {
+	ground := t.TempDir()
+	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
+	t.Setenv("HOME", t.TempDir())
+
+	notice := aRunOnTheFolder(t, ground, false).notice()
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
+	}
+	if notice.Merge != mergeInPlace {
+		t.Fatalf("merge = %q, want a folder landing to stay in place", notice.Merge)
+	}
+	if strings.Contains(notice.Report, "changed there while this ran") ||
+		strings.Contains(notice.Report, needsLookLead) {
+		t.Fatalf("the report gained a sentence over an untouched folder: %q", notice.Report)
+	}
+	if got := readFile(t, filepath.Join(ground, "notes.md")); got != "the line the task wrote\n" {
+		t.Fatalf("notes.md in the person's folder is %q, want the work laid", got)
 	}
 }
 

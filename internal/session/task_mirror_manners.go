@@ -50,6 +50,13 @@ package session
 // read in full, and it lands exactly as it landed before this file existed. A
 // manners check that turned a missing file into a refusal would make every
 // family carried across an upgrade need somebody's look.
+//
+// AND THE WINDOW IS NARROWED, NOT CLOSED. A plain folder has nothing to lock, so
+// the milliseconds between the last comparison and the copy that follows it
+// belong to whoever writes first — exactly as they do for git, which reads its
+// index and then writes the working tree. What this changes is the size of the
+// window a person can lose work in: it was the whole of a run, and a whole
+// morning on the late roads.
 
 import (
 	"crypto/sha256"
@@ -94,18 +101,19 @@ const (
 // folder as the world the work started in, and an edit made while the process
 // was down would be exactly the edit that disappeared.
 //
-// IT READS THE GROUND RATHER THAN THE COPY. The two hold the same bytes at this
-// moment by construction, but only one of them is the thing being compared
-// against later, and a baseline read off the copy would be a baseline whose
-// truth depended on which rung carved it (groundladder.go).
-func rememberGroundBaseline(ground, dir string) {
-	ground, dir = strings.TrimSpace(ground), strings.TrimSpace(dir)
-	if ground == "" || dir == "" {
+// AND IT READS THE COPY, NOT THE FOLDER, which is the one reading with no race
+// in it. Copying a folder takes time, and a person who saves a file during those
+// seconds would have that save read back as the original if this walked the
+// folder afterwards — and then written over at the landing, which is the whole
+// defect. The copy holds the bytes the family was actually given, so a save made
+// while the copy was being taken lands on the refusing side, where it belongs.
+func rememberGroundBaseline(dir string) {
+	if dir = strings.TrimSpace(dir); dir == "" {
 		return
 	}
 	paths := map[string]string{}
-	budget := auditRestoreEntries
-	if !gatherDigests(ground, "", paths, &budget) {
+	walk := &digestWalk{budget: auditRestoreEntries}
+	if !gatherDigests(dir, "", paths, walk) {
 		// PAST THE CAP THERE IS NO HONEST RECORD TO WRITE. A half-walked folder
 		// would say "absent" about files that are sitting right there, and every
 		// one of them would land as a refusal naming a file nobody touched. No
@@ -161,7 +169,8 @@ func groundChanged(dir, ground string, wrote []string) []string {
 	if base == nil {
 		return nil
 	}
-	budget := auditRestoreEntries
+	recorded := &baselineIndex{paths: base}
+	walk := &digestWalk{budget: auditRestoreEntries}
 	seen := make(map[string]bool, len(wrote))
 	var changed []string
 	for _, raw := range wrote {
@@ -172,11 +181,11 @@ func groundChanged(dir, ground string, wrote []string) []string {
 			continue
 		}
 		seen[relative] = true
-		now := pathDigest(ground, relative, &budget)
-		if now != digestUnknown && now == recordedDigest(base, relative) {
+		now := pathDigest(ground, relative, walk)
+		if now != digestUnknown && now == recorded.digest(relative) {
 			continue
 		}
-		if want := pathDigest(dir, relative, &budget); now != digestUnknown && now == want {
+		if want := pathDigest(dir, relative, walk); now != digestUnknown && now == want {
 			continue
 		}
 		changed = append(changed, relative)
@@ -198,6 +207,18 @@ func groundChangedSentence(dir, ground string, changed []string) string {
 		namedFew(changed, conflictNamesShown) + " changed there while this ran"
 }
 
+// digestWalk is what one reading is allowed to spend and what it could not read.
+//
+// THE SECOND FIELD IS THE ONE THAT MATTERS. A directory this could not open is a
+// directory whose contents nobody knows, and an answer that folded it in as
+// "empty" would let a landing remove files it had never seen. So the trouble is
+// carried out of the walk and turned into [digestUnknown], which is never equal
+// to anything.
+type digestWalk struct {
+	budget int
+	unread bool
+}
+
 // gatherDigests walks a folder from one path down, writing a digest per file
 // under the ROOT-relative name a ledger would use for it. It answers false when
 // it ran past what a folder is worth walking, and the caller decides what that
@@ -207,15 +228,13 @@ func groundChangedSentence(dir, ground string, changed []string) string {
 // [copyOriginal]): a repository's own metadata and the harness's private corner
 // are nobody's deliverable, and a family tree opened inside the mirror would
 // otherwise put its whole object store into the comparison.
-//
-// A DIRECTORY IT CANNOT READ IS SKIPPED RATHER THAN FATAL, which is the same
-// answer [mirrorGround] gives about the same directory. The consequence is
-// precise and small: the paths under it are absent from the record, so a ledger
-// path down there reads as absent-then and is refused if it exists now — the
-// safe direction — while the rest of the folder stays exact.
-func gatherDigests(root, from string, into map[string]string, budget *int) bool {
+func gatherDigests(root, from string, into map[string]string, walk *digestWalk) bool {
 	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(from)))
 	if err != nil {
+		// NOT FATAL, AND NOT SILENT EITHER. [mirrorGround] passes over the same
+		// directory, so refusing here would refuse work that copied perfectly well;
+		// what this owes instead is to say that it did not see it.
+		walk.unread = true
 		return true
 	}
 	for _, entry := range entries {
@@ -226,11 +245,11 @@ func gatherDigests(root, from string, into map[string]string, budget *int) bool 
 		if entry.Name() == ".git" || child == aforgeDroppings {
 			continue
 		}
-		if *budget--; *budget < 0 {
+		if walk.budget--; walk.budget < 0 {
 			return false
 		}
 		if entry.IsDir() {
-			if !gatherDigests(root, child, into, budget) {
+			if !gatherDigests(root, child, into, walk) {
 				return false
 			}
 			continue
@@ -253,7 +272,7 @@ func gatherDigests(root, from string, into map[string]string, budget *int) bool 
 // laid as one — [layWork] removes the target and copies the tree over it — so
 // the question "did this change under us" has to be asked of everything that
 // laying would take away.
-func pathDigest(root, relative string, budget *int) string {
+func pathDigest(root, relative string, walk *digestWalk) string {
 	full := filepath.Join(root, filepath.FromSlash(relative))
 	info, err := os.Lstat(full)
 	if err != nil {
@@ -261,12 +280,16 @@ func pathDigest(root, relative string, budget *int) string {
 	}
 	if info.IsDir() {
 		under := map[string]string{}
-		if !gatherDigests(root, relative, under, budget) {
+		unread := walk.unread
+		// A CORNER OF THIS DIRECTORY THAT COULD NOT BE OPENED MAKES THE WHOLE
+		// ANSWER UNKNOWN, because laying this path removes the directory whole and
+		// what is inside that corner would go with it.
+		if !gatherDigests(root, relative, under, walk) || walk.unread != unread {
 			return digestUnknown
 		}
 		return foldDigests(under)
 	}
-	if *budget--; *budget < 0 {
+	if walk.budget--; walk.budget < 0 {
 		return digestUnknown
 	}
 	digest, ok := oneDigest(full, info)
@@ -276,20 +299,40 @@ func pathDigest(root, relative string, budget *int) string {
 	return digest
 }
 
-// recordedDigest is [pathDigest]'s answer read off the record instead of off the
+// baselineIndex is [pathDigest]'s answer read off the record instead of off the
 // disk, and the two are written to agree: a file is its own digest, a directory
 // is the fold of everything the record holds beneath it, and a path the record
 // never heard of is absent.
-func recordedDigest(base map[string]string, relative string) string {
-	if digest, held := base[relative]; held {
+//
+// THE SORTED KEYS ARE BUILT ONCE AND ONLY WHEN THEY ARE NEEDED. Nearly every
+// ledger path is a file the record names outright, which costs a map lookup; a
+// path that names a whole directory has to find everything beneath it, and
+// walking twenty thousand recorded paths per ledger entry to do that is the
+// quadratic this avoids. One sort, then a binary search per directory.
+type baselineIndex struct {
+	paths  map[string]string
+	sorted []string
+	built  bool
+}
+
+func (b *baselineIndex) digest(relative string) string {
+	if digest, held := b.paths[relative]; held {
 		return digest
 	}
-	under := map[string]string{}
-	prefix := relative + "/"
-	for recorded, digest := range base {
-		if strings.HasPrefix(recorded, prefix) {
-			under[recorded] = digest
+	if !b.built {
+		b.sorted, b.built = make([]string, 0, len(b.paths)), true
+		for recorded := range b.paths {
+			b.sorted = append(b.sorted, recorded)
 		}
+		sort.Strings(b.sorted)
+	}
+	prefix := relative + "/"
+	under := map[string]string{}
+	for at := sort.SearchStrings(b.sorted, prefix); at < len(b.sorted); at++ {
+		if !strings.HasPrefix(b.sorted[at], prefix) {
+			break
+		}
+		under[b.sorted[at]] = b.paths[b.sorted[at]]
 	}
 	return foldDigests(under)
 }
@@ -320,6 +363,14 @@ func foldDigests(paths map[string]string) string {
 // oneDigest is what one file or one link is. The kind is part of the answer, so
 // that a file somebody replaced with a symlink of the same bytes is a change and
 // not a match.
+//
+// THE PERMISSION BITS ARE DELIBERATELY NOT IN IT. They would be the honest thing
+// to compare if they survived the copy, and they do not: [copyPath] creates the
+// mirror's file with the source's mode THROUGH THE UMASK, so a folder holding an
+// ordinary 0664 file is copied to a 0644 one on most machines. A mode in the
+// digest would therefore refuse a landing over files nobody had been near, which
+// is the one failure this whole file must not have. What a person edits is the
+// contents.
 //
 // WHAT CANNOT BE COPIED IS NOT COMPARED. A socket, a device node or a fifo is
 // nobody's deliverable and [copyPath] passes over it without an error, so this
