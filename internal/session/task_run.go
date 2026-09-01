@@ -2148,13 +2148,24 @@ func (n *TaskNode) journalPath() string {
 // markNoted records that this node's completion note has been handed to the
 // steering lane, so no later life of this session says it again.
 func (n *TaskNode) markNoted() {
+	if n.noteHandedOver() {
+		n.graph.checkpoint()
+	}
+}
+
+// noteHandedOver turns the mark on and answers whether THIS call is the one that
+// turned it, which is the caller's cue that the checkpoint is still owed.
+//
+// It is split out of [TaskNode.markNoted] because the delivery road makes this
+// mark inside the news handover ([Agent.handOverTaskNews]), where a parked parent
+// may be waiting to read it — and the checkpoint is a file written to disk, which
+// is not something to hold that seam across.
+func (n *TaskNode) noteHandedOver() bool {
 	n.graph.mu.Lock()
 	already := n.noted
 	n.noted = true
 	n.graph.mu.Unlock()
-	if !already {
-		n.graph.checkpoint()
-	}
+	return !already
 }
 
 // notice copies the node out from under the lock, shaped for an
@@ -2367,8 +2378,22 @@ func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
 	// released by the close below rather than parking on a generation that nothing
 	// is ever going to close again. The old order — deliver, wake, mark — left
 	// exactly that gap, and it is a parent asleep for the rest of the run.
-	node.markNoted()
-	reader.postTaskNews()
+	//
+	// AND THE FACT AND THE WAKE ARE ONE STEP ([Agent.handOverTaskNews]). An order
+	// the writer keeps is only half of the promise: the waiter reads two facts
+	// held under two different locks, so a delivery that could land BETWEEN those
+	// reads is a delivery seen half-done however carefully it was written. Both
+	// sides meet on one lock, and [Agent.taskNewsStanding] is the read.
+	//
+	// THE CHECKPOINT IS WRITTEN AFTER THE SEAM and only by the delivery that
+	// actually moved the mark. It is the same record it always was; what has
+	// changed is that a parked parent is no longer kept waiting on a file while
+	// the two facts it reads disagree.
+	handedOver := false
+	reader.handOverTaskNews(func() { handedOver = node.noteHandedOver() })
+	if handedOver {
+		node.graph.checkpoint()
+	}
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
@@ -4133,7 +4158,17 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := child.taskNewsWait()
-		owed, working := child.taskNewsOwed(), child.childrenOutstanding()
+		// ── AND THE TWO FACTS ARE READ AS ONE ──
+		//
+		// A delivery writes the queue, then the fact, then the wake, and never in
+		// any other order ([Agent.deliverTaskNote]) — and a PAIR of reads defeats
+		// that order whichever way round it is taken, because the last part of a
+		// division can land between them. Read owed first and this node takes its
+		// integration turn holding every report and is then told about news that
+		// turn already carried, which is one model turn spent on an empty request.
+		// Read outstanding first and it leaves this loop with a report nobody has
+		// read. One locked read answers both ([Agent.taskNewsStanding]).
+		owed, working := child.taskNewsStanding()
 		held := child.steeringHeld()
 		if owed == 0 && !held && !working {
 			break

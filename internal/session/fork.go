@@ -385,6 +385,12 @@ func (a *Agent) startHand(index int, part forkPart) (*job, context.Context, erro
 //     was queued would let the node land on top of it.
 //  4. And whoever is PARKED on it is released ([Agent.postTaskNews]), which is
 //     the same release a divided part's report makes.
+//
+// THE LAST TWO ARE ONE STEP, for the reason [Agent.taskNewsStanding] gives: the
+// waiter reads "is anything still out" and "is anything owed" as one fact, so
+// this side has to write them as one. A hand counted home before its news was
+// posted is the same half-delivery a divided part's report would be, and it costs
+// the same wasted turn.
 func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result forkResult) {
 	if listed == nil {
 		return
@@ -393,8 +399,7 @@ func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result 
 	if !requested {
 		a.enqueueSteering(handReport(index, parsed, result))
 	}
-	a.jobs.handHome()
-	a.postTaskNews()
+	a.handOverTaskNews(a.jobs.handHome)
 }
 
 // forkSeed is the copy each hand opens with: the caller's transcript up to this
