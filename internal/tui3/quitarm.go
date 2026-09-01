@@ -128,10 +128,11 @@ func (a *app) quitHint() string {
 // with it, in a person's own words, or "" when there is nothing.
 //
 // IT COUNTS WHAT THE FRAME ALREADY TRUSTS rather than asking anything new. The
-// running task nodes are the strip's own set (taskstrip.go), and the background
-// jobs are the number the ambient segment draws when it is nonzero (render.go's
-// [app.ambientSegment], off a cached sum). A second opinion computed here is how
-// a warning and the screen above it come to disagree about what is alive.
+// running task nodes are the live set's own (taskchip.go's [app.stripNodes]),
+// and the background jobs are the number the ambient segment draws when it is
+// nonzero (render.go's [app.ambientSegment], off a cached sum). A second opinion
+// computed here is how a warning and the screen above it come to disagree about
+// what is alive.
 //
 // ADAPTIVE RUNS ARE NOT COUNTED, and deliberately: [app.orchLive] is the run
 // this surface last HEARD FROM rather than a list of what is running, and a

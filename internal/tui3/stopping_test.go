@@ -281,9 +281,9 @@ func TestAStoppedNodesRoomSaysStoppingRatherThanWorking(t *testing.T) {
 	}
 	// And through the line a person actually reads.
 	a.room = &taskRoom{id: 7, title: "Fix the nil-map crash", unfolded: map[int]bool{}, live: -1, think: -1}
-	head := plain(a.roomHeadWord(120))
+	head := plain(a.topBarWord(120))
 	if !strings.Contains(head, stoppingWord) || strings.Contains(head, stateWorking.String()) {
-		t.Fatalf("the room header is %q", head)
+		t.Fatalf("the top bar is %q", head)
 	}
 	// AND IT LANDS ON THE FACT. Once the engine has moved the node the word is
 	// the one the roster and the card already spell it with.

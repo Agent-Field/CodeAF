@@ -249,7 +249,8 @@ func (a *app) stopHere() stopTarget {
 
 // railFocusNode is the node the roster's cursor is standing on, or nil — while
 // the roster does not hold the keyboard there is no cursor and nothing is being
-// aimed at (taskstrip.go's [app.stripFocused] reads the same two fields).
+// aimed at. Two fields are the whole of that answer, and both have to hold: the
+// column has the keyboard, and its cursor is on a row rather than on nothing.
 func (a *app) railFocusNode() *taskNode {
 	if !a.railHold || a.railWhere.id == 0 {
 		return nil
@@ -584,9 +585,10 @@ const (
 	roomStopMarkASCII = "X"
 )
 
-// roomStopWord is the ✕ as the header draws it, or "" when there is nothing
-// here to stop. It is UNPAINTED, for [app.roomHeadWord]'s reason: the whole line
-// is painted once, and a hue nested inside a hue ends at the inner one's reset.
+// roomStopWord is the ✕ as the top bar draws it, or "" when there is nothing
+// here to stop. It is UNPAINTED, for the reason topbar.go's [app.topBarWord]
+// states: the whole line is painted once, and a hue nested inside a hue ends at
+// the inner one's reset.
 func (a *app) roomStopWord() string {
 	if !a.stopOffered() {
 		return ""

@@ -105,17 +105,28 @@ func TestLeftDoesNothingToARoomAPersonIsTypingIn(t *testing.T) {
 	}
 }
 
-// A PRESS ON THE HEADER IS A PRESS ON THE WAY OUT. The row names esc and ←; a
-// row that named the exits and did nothing when pressed would be the one dead
-// cell on the page.
-func TestPressingTheFocusHeaderLeavesTheRoom(t *testing.T) {
+// A PRESS ON THE WAY OUT IS A PRESS ON THE WAY OUT — and on nothing else along
+// that row. The whole header used to take the click, anywhere on it; the bar is
+// the CONVERSATION'S head now and most of it is a fact rather than a door, so
+// the exit is the `esc/← back` word's own span (topbar.go's [app.topBarPress]).
+// A row that named the exits and did nothing when pressed would be the one dead
+// cell on the page; a row that took the press everywhere would be the crumb and
+// the model promising the exit's job.
+func TestPressingTheWayOutOnTheBarLeavesTheRoom(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
+	// Laying the bar out is what records the columns (topbar.go says why).
+	width, _ := a.size()
+	_ = a.topBarWord(width)
+	if !a.backSpan.pressable() {
+		t.Fatal("the bar drew no way out to press")
+	}
 
-	drive(t, a, tea.MouseClickMsg{X: 2, Y: 0, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: 0, Button: tea.MouseLeft})
+	x := a.backSpan.from + 1
+	drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
 	if a.roomOpen() {
-		t.Fatal("a press on the focus header did not return to the conversation")
+		t.Fatal("a press on the bar's way out did not return to the conversation")
 	}
 }
 
@@ -151,12 +162,15 @@ func TestPressingTheModelNameOpensThePickerAndKeepsTheDraft(t *testing.T) {
 	a.input.setText("half a sentence")
 	a.touch()
 
-	// The name's own columns, as the row that drew it recorded them.
+	// The name's own columns, as the row that drew it recorded them. IT IS THE
+	// TOP BAR'S ROW NOW and not the status line's (ISSUE-126): the model is a
+	// slow fact — it changes only by a deliberate act — and slow facts moved to
+	// the head of the frame. So the press is on row 0.
 	_ = frame(a)
 	if !a.modelSpan.pressable() {
-		t.Fatal("the status row recorded no columns for the model")
+		t.Fatal("the top bar recorded no columns for the model")
 	}
-	x, y := a.modelSpan.from+1, a.height-1
+	x, y := a.modelSpan.from+1, 0
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 

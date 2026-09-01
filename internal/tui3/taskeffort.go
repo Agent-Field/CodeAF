@@ -126,14 +126,14 @@ func (a *app) cycleTaskEffort() bool {
 // taskEffortNextCallWord is that caveat, in the words the manual uses for it.
 const taskEffortNextCallWord = "its next call takes it"
 
-// taskEffortClause is the rung as the room header and the roster's telemetry row
+// taskEffortClause is the rung as the top bar and the roster's telemetry row
 // state it, and "" for a node nobody has set one on.
 //
 // IT DOES NOT WEAR THE EMPHASIS THE CARDS ON HOME WEAR, and that is a property
 // of the two lines rather than a second opinion about the rung. Both are built
-// PLAIN and painted once, whole ([app.roomHeadWord] states the rule: a hue
-// nested inside a hue ends at the inner one's reset and the rest of the line
-// falls back mid-sentence), so there is no way to lift the rung out of them
+// PLAIN and painted once, whole (topbar.go's [app.topBarWord] states the rule:
+// a hue nested inside a hue ends at the inner one's reset and the rest of the
+// line falls back mid-sentence), so there is no way to lift the rung out of them
 // without lifting the clock and the cost with it. What this surface emphasizes a
 // task decision with is the note — the same line a retarget leaves, with the
 // rung painted as the datum in it (payload.go) — and the clause behind it is

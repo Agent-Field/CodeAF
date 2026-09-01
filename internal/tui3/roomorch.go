@@ -212,9 +212,10 @@ type orchSpot struct {
 }
 
 // key is this spot's identity for the pointer, and it is a STRING because an
-// orchestrate node is named "n3" rather than numbered (taskstrip.go says the same
-// about the parent seam). The pointer is held by key rather than by row for the
-// reason the roster's is held by id: this page is re-laid every poll, so a hover
+// orchestrate node is named "n3" rather than numbered (taskchip.go's [stripKey]
+// speaks the same alphabet for the parent seam). The pointer is held by key
+// rather than by row for the reason the roster's is held by id: this page is
+// re-laid every poll, so a hover
 // stored as "row nine" would follow the redraw instead of following the chip
 // (hover.go's [hoverOrch]).
 //
@@ -1103,7 +1104,7 @@ func (a *app) orchCardOpen(id string) {
 //
 // It reuses the page rather than opening a second one, because a nested run is
 // not a second place — it is the same place one level down, and the trail across
-// the top is what says so (room.go's [app.roomTrail] states the rule for a
+// the top is what says so (topbar.go's [app.crumbSegments] states the rule for a
 // task's page).
 func (a *app) orchDescend(id string) {
 	run := a.orchOf()
@@ -1155,8 +1156,8 @@ func (a *app) orchAscend() {
 // orchPress resolves a click on a run's page and reports whether it took it.
 //
 // A chip and a link are targets by ROW AND COLUMN, because a layer is several
-// chips on one line, so this is the same kind of hit-test the strip and the
-// offer rows do (taskstrip.go, harness.go). A press that lands on no target
+// chips on one line, so this is the same kind of hit-test the top bar and the
+// offer rows do (topbar.go, harness.go). A press that lands on no target
 // falls through untouched — the empty parts of this page are still the way out
 // of the room (app.go's [app.press]).
 func (a *app) orchPress(x, y int) bool {
@@ -1936,9 +1937,9 @@ func orchCrumbWord(goal, id string) string {
 	return id
 }
 
-// orchHeadMark is the run's state in the header's one cell, unpainted for
-// [app.roomHeadWord]'s reason: the whole line is painted once, and a hue nested
-// inside a hue ends at the inner one's reset.
+// orchHeadMark is the run's state in the bar's one cell, unpainted for the
+// reason topbar.go's [app.topBarWord] states: the whole line is painted once,
+// and a hue nested inside a hue ends at the inner one's reset.
 func (a *app) orchHeadMark() string {
 	run := a.orchOf()
 	switch {

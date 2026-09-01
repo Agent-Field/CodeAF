@@ -170,6 +170,12 @@ func TestTheBarsBackWordIsTheWayOut(t *testing.T) {
 // — one crumb level up, the same climb esc makes.
 func TestTheCrumbsDoorsAreHomeAndTheWayOut(t *testing.T) {
 	a, _, _ := roomApp(t)
+	// THE CHAT'S STEP NEEDS THE CHAT TO HAVE A NAME. An untitled conversation
+	// draws a one-step crumb — the project alone — because a second step
+	// repeating the folder would be a door beside its twin (topbar.go's
+	// [app.crumbSegments]). Every conversation has a title within a turn or two;
+	// this one is given one so the door under test exists.
+	a.title = "port the lexer"
 	clickRail(t, a, 0)
 	if !a.roomOpen() {
 		t.Fatal("the rail did not open a room")
@@ -210,7 +216,9 @@ func TestAPressOnTheBarsWordsIsAPressOnNothing(t *testing.T) {
 		t.Fatal("the rail did not open a room")
 	}
 	bar := plain(a.topBarWord(a.width))
-	if !strings.Contains(bar, "Fix the nil-map crash") {
+	// The crumb carries the room's own title — the NAME the roster derived, two
+	// or three words, which is what the room was opened with (taskident.go).
+	if !strings.Contains(bar, a.room.title) {
 		t.Fatalf("the bar is %q, want the room's title", bar)
 	}
 

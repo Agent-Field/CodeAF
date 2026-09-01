@@ -180,7 +180,7 @@ type taskNode struct {
 	dependsOn []uint64
 	// parent is the node this one was SPAWNED UNDER, and paused is the gate it
 	// is held at. They are the two facts the roster tree is drawn from and they
-	// are read through the seam that owns their law — taskstrip.go's
+	// are read through the seam that owns their law — taskchip.go's
 	// [taskNode.ParentID] and [taskNode.Paused], which say what fills them and
 	// why the parent is a string. Empty and false is a session that has never
 	// run anything adaptive, which is every session until one does.
@@ -2972,8 +2972,9 @@ type railLine struct {
 	head bool
 	// glyph is the row's STATE CELL in the column's own coordinates, and badge
 	// the ▸ +N a folded root wears. They are written at LAYOUT and read by the
-	// click, which is the bargain the strip's chips make (taskstrip.go): the
-	// geometry is recorded where it is decided, because a hit-test that
+	// click, which is the bargain the top bar's doors make (topbar.go's
+	// [app.topBarWord]): the geometry is recorded where it is decided, because a
+	// hit-test that
 	// recomputed it would be measuring a row the frame has not drawn.
 	glyph hudSpan
 	badge hudSpan
@@ -3288,10 +3289,11 @@ func (a *app) railRows(height int) []string {
 		// header for its name, and then had to read it, because nothing in the
 		// roster beside it said which of these rows they were behind.
 		//
-		// It is [palette.selected] and not a new mark — the same background the strip
-		// puts on the chip of the room a person is standing in (taskstrip.go's
-		// [app.stripChip]), and the same one every selected row on this surface
-		// wears (palette.go). It covers EVERY line of the entry, not just its head:
+		// It is [palette.selected] and not a new mark — the same background every
+		// selected row on this surface wears (palette.go), and the column's half of
+		// the fact the top bar's crumb states across the head of the frame
+		// (topbar.go's [app.crumbSegments]). It covers EVERY line of the entry, not
+		// just its head:
 		// a node's row is two lines tall when it has something to say under its
 		// title, and a band on half of it would read as a row cut in two.
 		//
@@ -3773,12 +3775,13 @@ func (a *app) railWiden(wide bool) {
 //
 // WHAT IS NOT ALLOWED IS WORK GOING QUIET. The column is the whole of what a
 // session says about itself, so closing it hands the job back to the two
-// surfaces that were written for a frame with no column on it: the strip above
-// the conversation, which draws a chip per RUNNING node and stands itself up the
-// moment this one stands down (taskstrip.go's [app.stripShowing]), and the
-// legend's hint slot, which names the key back while there is anything to come
-// back to (render.go's [railBackHint]). Neither says a word about a session that
-// has run nothing, which is the emptiness law and also the truth.
+// surfaces that were written for a frame with no column on it: the top bar,
+// which names the room a person is standing in and the state of the work in it
+// (topbar.go), and the legend's hint slot, which names the key back while there
+// is anything to come back to (render.go's [railBackHint]). At phone width the
+// deck carries the count as well (statusdeck.go's [app.deckRunning]). None of
+// them says a word about a session that has run nothing, which is the emptiness
+// law and also the truth.
 //
 // THE CHOICE IS WRITTEN TO DISK EVERY TIME IT MOVES, and A FAILED WRITE IS
 // DROPPED, exactly as consent.go's is: the column has already moved on screen by
@@ -4410,8 +4413,9 @@ func (a *app) railGlyphRank(node *taskNode) int {
 
 // railTreeGlyph is the row's state in one cell: the roster's own glyph, with the
 // fuel gate's ⏸ in front of it, because a node held at a gate is running as far
-// as the run is concerned and standing still as far as a person is (taskstrip.go
-// keeps the same pair on its chips).
+// as the run is concerned and standing still as far as a person is (taskchip.go
+// owns the pair: [taskNode.Paused] is the fact and [app.stripPausedGlyph] the
+// mark).
 func (a *app) railTreeGlyph(node *taskNode) string {
 	if node.Paused() {
 		return a.stripPausedGlyph()
@@ -4444,9 +4448,9 @@ func railModelWord(node *taskNode) string {
 // a title fitted here and trimmed there would be a row measured twice.
 //
 // THE ROOM A PERSON IS STANDING IN LEADS THE COLUMN, in the accent and bold —
-// which is the strip's own law for the same fact said one row up
-// (taskstrip.go's [app.stripTitle]), because the strip and the roster are the
-// two lists of the same work and a person who learned the mark on one has
+// which is the same fact the top bar's crumb says across the head of the frame
+// (topbar.go's [app.crumbSegments]), because the bar and the roster are the two
+// surfaces that answer "where am I" and a person who learned the mark on one has
 // learned it on the other. It is the TEXT half of that mark; the row's band is
 // the other ([app.railRows]), and this half is the one a sixteen-colour
 // terminal still gets.
@@ -5238,7 +5242,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node.dependsOn = notice.DependsOn
 	}
 	// WHO SPAWNED IT, which is the fact the roster tree is drawn from
-	// (taskstrip.go's parent seam). It is kept and never unset for the reason the
+	// (taskchip.go's parent seam). It is kept and never unset for the reason the
 	// branch and the model are: a run's node was spawned by that run for its whole
 	// life, and an update quiet about it has not changed it. The key is the
 	// parent's own id spelled the way [stripKey] spells a node's.

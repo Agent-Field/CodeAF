@@ -124,7 +124,10 @@ func (a *app) deckTopRow(width int) string {
 	mark := a.linearMark(deckMore, deckMoreASCII)
 	right, plainRight = right+" "+a.pal.dim(mark), plainRight+" "+mark
 
-	left := a.deckTitle()
+	// The crumb is fitted to what the numbers left it, by its own ladder rather
+	// than by a cut — [deckJoin] would truncate the tail, and the tail is the
+	// step this row exists to name.
+	left := a.deckTitle(width - len(deckPad) - ansi.StringWidth(plainRight) - deckGap)
 	// THE CLUSTER GOES ACCENT IN A ROOM, which is the wide row's own law
 	// ([app.statusRows]): the chip is a statement about which page the keyboard
 	// is pointed at, and it wears the accent at both ends of the frame.
@@ -139,13 +142,13 @@ func (a *app) deckTopRow(width int) string {
 //
 // The model is its BASENAME and it sheds its rider here — "via deepinfra · 92
 // tok/s" is nine cells this frame does not have, and the sheet carries it whole
-// along with the full routing address (see [app.identity] for the same trade at
-// every other width).
+// along with the full routing address (see topbar.go's [app.topBarRightFit] for
+// the same trade at every other width).
 func (a *app) deckModelRow(width int) string {
 	right, plainRight := a.deckAmbient(width)
 	chip := modelBase(a.model)
-	// A ROOM RENAMES THIS ROW TOO, which is the wide row's own law at phone width
-	// (render.go's [app.identityParts]): row 1 has already renamed itself to the
+	// A ROOM RENAMES THIS ROW TOO, which is the top bar's own law at phone width
+	// (topbar.go's [app.topBarRightFit]): row 1 has already renamed itself to the
 	// task, and a row 2 still naming the session's model would be the deck's half
 	// of the same lie — the person is looking at a task's page and reading the
 	// conversation's engine. It carries the same "task" lead, the same basename,
@@ -156,8 +159,8 @@ func (a *app) deckModelRow(width int) string {
 	}
 	if chip == "" {
 		// A session that has not been told what is answering has nothing to press
-		// and says nothing rather than saying "no model" — see [app.identityParts]
-		// for the same silence at every other width.
+		// and says nothing rather than saying "no model" — see topbar.go's
+		// [app.topBarRightFit] for the same silence at every other width.
 		return deckJoin(a.pal.dim, "", right, plainRight, width)
 	}
 	room := width - len(deckPad) - ansi.StringWidth(plainRight) - deckGap
@@ -168,7 +171,7 @@ func (a *app) deckModelRow(width int) string {
 		// sheet, which names the conversation's model and the task's on two
 		// labelled lines ([app.deckPress], [app.deckItems]) — rather than to a
 		// picker that would move a dial this chip does not name. The law and its
-		// reasons are the wide row's ([app.identityParts]).
+		// reasons are the top bar's (topbar.go's [app.topBarRightFit]).
 		return deckJoin(a.pal.dim, chip, right, plainRight, width)
 	}
 	// THE CHIP'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is what
@@ -204,23 +207,36 @@ func deckJoin(paint func(string) string, left, right, plainRight string, width i
 	return deckPad + paint(left) + strings.Repeat(" ", gap) + right
 }
 
-// deckTitle is row 1's left: the crumb's current step, which is the whole of
-// the top bar a phone tier draws (ISSUE-126). The bar itself is not drawn
-// below [hudTight] — there is not a crumb and a way out's worth of line down
-// there — so the deck's first row takes the crumb instead, and the crumb at
-// this width is its last step alone: the room's own title and handle where one
-// is open, the conversation's name at rest. The steps above it are one press
-// away in the conversations list, which is what the deck's sheet is for.
-func (a *app) deckTitle() string {
+// deckTitle is row 1's left: THE CRUMB, which is the whole of the top bar a
+// phone tier draws (ISSUE-126). The bar itself is not drawn below [hudTight] —
+// there is not a crumb and a way out's worth of line down there — so this row
+// takes it, and THE TWO GEOMETRIES CONVERGE instead of forking: the same trail
+// off the same [app.crumbSegments], walked down the same give-way ladder
+// (topbar.go's [fitTrail]) until it fits the columns the numbers left.
+//
+// `project › chat` at rest. In a room it is the room's own chip — the title and
+// its handle, which is the crumb's last step said the way this tier has always
+// said it — because at forty-four columns a trail with a room on the end of it
+// is an ellipsis and a handle, and the steps above are one press away in the
+// sheet.
+//
+// It is ONE HUE, unlike the bar's, because [deckJoin] paints the row's left in
+// one: dim, or accent while a room is open. A phone row is read at a glance and
+// a two-hue trail inside forty cells is a distinction nobody makes at that size.
+func (a *app) deckTitle(width int) string {
+	if a.roomOpen() {
+		return a.roomChip()
+	}
 	segs := a.crumbSegments()
 	if len(segs) == 0 {
 		return ""
 	}
-	last := segs[len(segs)-1]
-	if a.roomOpen() {
-		return a.roomChip()
+	for rung := trailFull; ; rung++ {
+		fitted := fitTrail(segs, rung)
+		if rung == trailTitle || trailWidth(fitted, topBarSep) <= width {
+			return crumbWord(fitted, topBarSep)
+		}
 	}
-	return last.text
 }
 
 // deckSpend is row 1's right: the bill and the meter, painted by the same two
@@ -415,7 +431,9 @@ func (a *app) deckItems() []deckItem {
 	}
 	// The model is its FULL routing address here, not its basename: the sheet is
 	// where the thing is recorded and where it is chosen, which is exactly where
-	// [app.identity] says the whole id belongs.
+	// the whole id belongs: every drawn row spends its scarce width on the
+	// basename alone (topbar.go's [app.topBarRightFit] does it too), and a sheet
+	// has the room none of them has.
 	model := a.model
 	if level := a.reasoningFor(a.model); level != "" && model != "" {
 		model += ":" + level
@@ -442,7 +460,7 @@ func (a *app) deckItems() []deckItem {
 	// things are RECORDED and can afford to say both — what the conversation runs
 	// on, and what this node ran on — each under its own label, whole address and
 	// all. Only the conversation's is a door, because the picker moves the
-	// conversation's dial and nothing else (render.go's [app.identityParts]).
+	// conversation's dial and nothing else (topbar.go's [app.topBarPress]).
 	if node := a.roomNode(); node != nil {
 		add("task model", strings.TrimSpace(node.model), deckActNone)
 	}

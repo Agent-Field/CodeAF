@@ -111,16 +111,16 @@ func (a *app) crewUnchangedClause() string {
 	return "the model you talk to is untouched — /model changes that"
 }
 
-// talkingTo is the conversation's model spelled the way the status line's model
+// talkingTo is the conversation's model spelled the way the top bar's model
 // segment spells it: the basename, with the reasoning level riding on it when
-// one is set (render.go's [app.identityParts], view.go's [app.statusRow]).
+// one is set (topbar.go's [app.topBarRightFit] lays that cluster out).
 //
-// It reads a.model and NOT whatever the status row is naming at the moment,
-// because inside a task room the row names the node's model, and the crew
-// confirmation is a fact about the conversation whichever page is open. A person
-// checking the clause against the foot of the frame from outside a room finds
-// the same spelling; from inside one they find the node's, which the room's own
-// lead word already says is a different thing.
+// It reads a.model and NOT whatever the bar is naming at the moment, because
+// inside a task room the bar names the node's model, and the crew confirmation
+// is a fact about the conversation whichever page is open. A person checking the
+// clause against the top of the frame from outside a room finds the same
+// spelling; from inside one they find the node's, which the bar's own crumb
+// already says is a different thing.
 func (a *app) talkingTo() string {
 	id := modelBase(a.model)
 	if id == "" {

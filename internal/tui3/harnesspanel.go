@@ -31,10 +31,13 @@ import (
 //     (subharness.Card) — and the transcript is where prose lives on this
 //     surface, where it can be scrolled, copied and read beside the work it is
 //     about. An overlay would be a worse text viewer than the one on screen.
-//   - THE RUNNING ONE IS A CHIP ON THE STRIP (taskstrip.go), not a bar of its
-//     own. The strip is already the row that says WHAT IS ALIVE; a harness run
-//     is alive for minutes at a time and belongs on it, in front of the tasks,
-//     with the panel as its door.
+//   - THE RUNNING ONE HAS NO BAR OF ITS OWN. It used to be a chip on the task
+//     strip — the row that said WHAT IS ALIVE — and that strip is gone
+//     (ISSUE-126) with nothing put in its place for a harness run. What survives
+//     is the part that matters while one is in flight: it still raises the paint
+//     clock, because the live set counts a running sub-harness beside the
+//     running tasks (taskchip.go's [app.liveShowing]), so the transcript's one
+//     unreturned row keeps its spinner for the minutes the run takes.
 //
 // THE PANEL READS THE DISK AND THE AGENT SEPARATELY, and that is not an
 // accident. What is REGISTERED is a directory, which any window may have written
@@ -324,12 +327,12 @@ func (a *app) harnessAct(at int) {
 	a.noteBlock(card)
 }
 
-// ── the chip ────────────────────────────────────────────────────────────────
+// ── what is running ─────────────────────────────────────────────────────────
 
-// harnessLive is the narrow slice of the session a running chip needs. It is an
+// harnessLive is the narrow slice of the session the live set needs. It is an
 // interface asserted on the agent rather than a method on [Agent] because a
-// surface that cannot answer it should simply not draw the chip — and every test
-// fake in this package is that surface.
+// surface that cannot answer it should simply count no run at all — and every
+// test fake in this package is that surface.
 type harnessLive interface {
 	RunningHarness() (string, bool)
 }

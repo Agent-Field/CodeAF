@@ -11,8 +11,8 @@ import (
 //
 // ── THE DEFECT ──────────────────────────────────────────────────────────────
 //
-// The status row spells the level onto the model segment
-// (view.go's [app.statusRow]), the picker spells it onto every row it lists
+// The top bar spells the level onto the model segment (topbar.go's
+// [app.topBarRightFit]), the picker spells it onto every row it lists
 // (palette.go), and the settings sheet spells it onto its own. All three read
 // it through [app.reasoningFor], and until this file existed that method asked
 // THE AGENT, on the draw path, once per reader per frame.

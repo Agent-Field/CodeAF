@@ -127,8 +127,24 @@ func (a *app) topBarShowing(width int) bool {
 	if a.breathingRows() == 0 {
 		return false
 	}
-	return layoutTier(width) != tierPhone
+	if layoutTier(width) == tierPhone {
+		return false
+	}
+	// AND ON A BRUTALLY SHORT WINDOW THE TRANSCRIPT WINS. The bar is the FIRST
+	// chrome to go and the bottom two rows are the last — so it stands only
+	// where the frame has its own rows and one of the conversation's left over.
+	// Without this a sixty-by-twelve frame under the greeting was charged
+	// thirteen rows for twelve, and the tear came out of the body.
+	//
+	// It asks [app.chromeHeight] and never [app.viewHeight], which is that
+	// function's own standing rule: the body is what is LEFT after this answer,
+	// so a body that helped decide it would be a circle.
+	_, height := a.size()
+	return height-a.chromeHeight() > topBarHeight
 }
+
+// topBarHeight is what the bar costs the body: the row and its rule.
+const topBarHeight = 2
 
 // topBarRows is the bar and its rule, or nothing at all. The rule is the
 // legend's own hairline ([app.rule]) — the same one line this surface has
@@ -398,17 +414,23 @@ func (a *app) recordTopSpan(door topBarDoor, at, w int) {
 func (a *app) topBarLeft(rung trailRung, showGlyph, showState, showClock, showSpend bool, accent func(string) string) []topBarCell {
 	room := a.roomOpen()
 	var cells []topBarCell
-	// THE LEAD GLYPH COLUMN, 2ch: the conversation's own `·` at rest, and the
-	// node's state glyph in a room — the one mark on the bar that moves while
-	// you watch, which is why it is first: the eye lands on the thing that
-	// changes and reads the still things around it.
+	// THE LEAD GLYPH COLUMN, [topBarLead] cells wide: the conversation's own `·`
+	// at rest, and the node's state glyph in a room — the one mark on the bar
+	// that moves while you watch, which is why it is first: the eye lands on the
+	// thing that changes and reads the still things around it.
+	//
+	// The trailing cell is the column's and not a separator's. Every mark that
+	// goes in here is one cell wide (a spinner frame, a ✓, a ✗, the queued ring,
+	// the resting dot), so the crumb after it starts in the same column whichever
+	// of them is drawn — and it is one cell of quiet rather than a ` · `, because
+	// the glyph is not a step of the trail.
 	if showGlyph {
 		if room {
 			if node := a.roomNode(); node != nil {
-				cells = append(cells, topBarCell{text: a.roomMark(node), paint: accent})
+				cells = append(cells, topBarCell{text: a.roomMark(node) + " ", paint: accent})
 			}
 		} else {
-			cells = append(cells, topBarCell{text: "·", paint: a.pal.dim})
+			cells = append(cells, topBarCell{text: topBarRestMark + " ", paint: a.pal.dim})
 		}
 	}
 	// THE CRUMB. Parents dim, current ink — in a room the whole cluster is the
@@ -441,6 +463,14 @@ func (a *app) topBarLeft(rung trailRung, showGlyph, showState, showClock, showSp
 // label on the lit thing rather than a second thing lit. The door tags ride
 // with the cells so the assembly can record the spans without a second walk
 // over the trail's own logic.
+//
+// THE CURRENT STEP IS THE ONE BOLD THING ON THE BAR. Weight is spent on exactly
+// three things across this whole surface — where you are, a region's heading,
+// and a thing that wants you — and this is the first of them: the crumb is read
+// by finding the end of it, and hue alone (ink against dim) is a step a person
+// scanning a peripheral row does not reliably make. It is bold IN ITS OWN HUE
+// rather than in a fourth one, so the accent budget is unchanged and a room's
+// cluster stays one lit element.
 func (a *app) crumbCells(segs []crumbSeg, room bool, accent func(string) string) []topBarCell {
 	var cells []topBarCell
 	for i, seg := range segs {
@@ -459,6 +489,9 @@ func (a *app) crumbCells(segs []crumbSeg, room bool, accent func(string) string)
 		if room {
 			paint = accent
 		}
+		if last {
+			paint = boldIn(a.pal, paint)
+		}
 		cells = append(cells, topBarCell{text: seg.text, paint: a.topBarPaint(seg.door, paint), door: seg.door})
 		if seg.handle != "" {
 			cells = append(cells, topBarCell{text: seg.handle, paint: a.pal.dim})
@@ -470,6 +503,25 @@ func (a *app) crumbCells(segs []crumbSeg, room bool, accent func(string) string)
 // topBarSep is the crumb's separator: the › the crumb is spelled with, padded
 // to read as a step rather than a slash.
 const topBarSep = " › "
+
+// boldIn is one hue worn at weight: the hue's own paint with [palette.bold]
+// around it. The order matters and it is this one — the weight is the OUTER
+// wrapper, so the hue's reset does not end the bold halfway through the word,
+// which is the same nesting rule every other paint on this surface follows.
+func boldIn(pal palette, hue func(string) string) func(string) string {
+	return func(text string) string { return pal.bold(hue(text)) }
+}
+
+const (
+	// topBarLead is the lead glyph column: the mark and one cell of quiet after
+	// it, so the crumb starts in the same column at rest and in a room.
+	topBarLead = 2
+	// topBarRestMark is what stands in that column when nothing is running —
+	// the smallest mark this surface has, which is what a conversation at rest
+	// is owed: the column is held so the crumb does not shift sideways the
+	// moment work starts, and nothing is claimed by holding it.
+	topBarRestMark = "·"
+)
 
 // ── the crumb ───────────────────────────────────────────────────────────────
 //
@@ -496,11 +548,14 @@ type crumbSeg struct {
 // esc makes. The current step has no door — a press on where you already are
 // is a press on nothing.
 func (a *app) crumbSegments() []crumbSeg {
-	name := a.sessionName()
-	if name == "" || name == a.place {
-		return []crumbSeg{{text: a.place, door: topDoorCrumbHome}}
+	segs := []crumbSeg{{text: a.place, door: topDoorCrumbHome}}
+	// THE CHAT'S STEP EXISTS ONLY WHERE THE CHAT HAS A NAME OF ITS OWN. A
+	// conversation nobody has titled yet, and one whose title IS the folder it
+	// stands in, would put the same word on the crumb twice — which is a step
+	// that says nothing and a door that goes where its neighbour goes.
+	if name := a.sessionName(); name != "" && name != a.place {
+		segs = append(segs, crumbSeg{text: name})
 	}
-	segs := []crumbSeg{{text: a.place, door: topDoorCrumbHome}, {text: name}}
 	if !a.roomOpen() {
 		return segs
 	}
@@ -508,7 +563,17 @@ func (a *app) crumbSegments() []crumbSeg {
 	if node == nil {
 		return segs
 	}
-	segs[1].door = topDoorCrumbChat
+	// AND THE ROOM'S OWN STEP IS ADDED WHATEVER IS ABOVE IT. An unnamed
+	// conversation used to collapse the whole trail to the project's one step and
+	// take the task's title down with it — the bar in a room said `lab` and
+	// nothing about the task the person was standing in, which is the one thing a
+	// crumb exists to say.
+	if len(segs) > 1 {
+		// The way out is the chat's step where there is one. Where there is not,
+		// the project step keeps its own door — home — and the back word is the
+		// only way out the pointer has, which is what the back word is for.
+		segs[1].door = topDoorCrumbChat
+	}
 	// THE PARENTS, outermost first, walked up the engine's own parent seam
 	// (taskchip.go's [taskNode.ParentID], indexed once by [app.nodesByKey]).
 	//
@@ -554,6 +619,22 @@ const (
 // standing for everything the trail no longer says, so a shortened crumb
 // still says that it was shortened.
 const trailEllipsis = "…"
+
+// crumbWord is a fitted trail as one plain string, handles attached, for a
+// surface that paints its left cluster in one hue and has no use for cells
+// (statusdeck.go's [app.deckTitle]). It is beside [trailWidth] because the two
+// have to agree: what this writes is what that measures.
+func crumbWord(segs []crumbSeg, sep string) string {
+	var b strings.Builder
+	for i, seg := range segs {
+		if i > 0 {
+			b.WriteString(sep)
+		}
+		b.WriteString(seg.text)
+		b.WriteString(seg.handle)
+	}
+	return b.String()
+}
 
 // trailWidth is what a fitted trail measures, joined with its separator. The
 // ladder's caller needs it to know when to stop walking, and it lives beside
@@ -619,9 +700,10 @@ func fitTrail(segs []crumbSeg, rung trailRung) []crumbSeg {
 // of it — the wire being down is the one fact that rewrites the rest.
 
 // topBarRight is the full right cluster. The model segment is lent its
-// suffixed form for the length of the call, exactly as the status row has
-// always lent it ([app.statusRow]): the level is how this model is being run,
-// not a thing beside it.
+// suffixed form for the length of the call, exactly as the status row's
+// identity cluster always lent it (render.go's [app.statusRows] draws what is
+// left of that row): the level is how this model is being run, not a thing
+// beside it.
 func (a *app) topBarRight(quiet bool, accent func(string) string) []topBarCell {
 	return a.topBarRightFit(quiet, accent, true, true, true, true, true)
 }
@@ -656,17 +738,24 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 	// [app.roomModelMovable]): a node past being moved has no span, so the
 	// press never sees it.
 	//
-	// IT WEARS THE CLUSTER'S OWN HUE AT REST, and that is different in the two
-	// places the bar is drawn: ink in a chat, where the terms are ink and dim,
-	// and accent in a room, where the whole bar is the one lit element. An ink
-	// model amid an accent cluster would be one term deliberately unlike its
-	// neighbours for no fact about it — and it would also be invisible under the
-	// pointer, because ink is exactly what the room's lift raises a door TO
-	// ([app.topBarPaint]). The lift only reads as a lift from the hue beside it.
-	modelRest := a.pal.ink
-	if room {
-		modelRest = accent
-	}
+	// IT WEARS THE CLUSTER'S OWN HUE AT REST, which is [palette.dim] in a chat
+	// and the accent in a room — the same `dim` this function paints every other
+	// term with.
+	//
+	// THE RIGHT CLUSTER IS THE QUIET "ABOUT" VOICE, and the model is not an
+	// exception to it. It used to rest in ink, which made the one word on the bar
+	// that is a CONTROL also the loudest thing on a row whose whole job is to be
+	// peripheral — and loudness is not how this surface says pressable anyway.
+	// The pointer is: the term lifts a step under it ([app.topBarPaint]), which
+	// is exactly what the model's name did at the foot of the frame before it
+	// moved up here. The two terms that stay loud stay loud because of what they
+	// MEAN and not because of what they do — YOLO in [palette.bad], a reconnect
+	// note in the accent.
+	//
+	// An ink model amid an accent cluster would also be invisible under the
+	// pointer, because ink is what a room's lift raises a door TO: a lift only
+	// reads as a lift from the hue beside it.
+	modelRest := dim
 	if showModel {
 		if room {
 			if node := a.roomNode(); node != nil {
@@ -710,7 +799,11 @@ func (a *app) topBarRightFit(quiet bool, accent func(string) string, hostDetail,
 	// one fact that outranks the terms around it.
 	if note := a.linkNote(); note != "" {
 		sep()
-		add(note, a.pal.bad)
+		// ACCENT AND NOT [palette.bad], which is the status row's own ruling about
+		// this sentence carried up here with it (render.go's [app.paintPart]): a
+		// redial is expected, bounded and usually resolves itself, and the words
+		// rather than the paint are what distinguish it from a healthy reading.
+		add(note, a.pal.accent)
 	} else if a.hosted() {
 		sep()
 		if hostDetail {

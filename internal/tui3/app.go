@@ -937,10 +937,11 @@ type app struct {
 	// else — every meter the rate is computed from keeps its exact count.
 	burnShown string
 	burnAt    time.Time
-	// modelSpan is where the model's name was last drawn on the status row, in
-	// columns, and it is the whole of what makes that name PRESSABLE: written by
-	// the layout, read by the click (render.go's [app.identityParts], and
-	// [app.statusPress] below). An empty span means there is nothing to press.
+	// modelSpan is where the model's name was last drawn — on the top bar, or on
+	// the phone tier's deck — in columns, and it is the whole of what makes that
+	// name PRESSABLE: written by the layout, read by the click (topbar.go's
+	// [app.topBarWord], and [app.statusPress] below). An empty span means there
+	// is nothing to press.
 	modelSpan hudSpan
 	// keepSpan is where the `keeping an eye on N` segment was last drawn, and
 	// keepRow which of the status row's rows it landed on — the same bargain
@@ -1203,8 +1204,9 @@ type app struct {
 	askResume       time.Duration
 	askResumePaused bool
 	// askTaps is where the question's answers were last drawn, in columns and
-	// in rows of the block — the same bargain [app.modelSpan] and the strip's
-	// chips make (taskstrip.go's [stripSpan]): the geometry is recorded at
+	// in rows of the block — the same bargain [app.modelSpan] and the top bar's
+	// other doors make (topbar.go's [app.topBarWord] records every one of them
+	// as it lays the row out): the geometry is recorded at
 	// layout, because a hit-test that recomputed it would be measuring a block
 	// the frame has not drawn. It is what makes every answer a TAP as well as a
 	// key, which is the whole of the phone sheet (consent.go).
@@ -2976,8 +2978,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, cmd
 			}
 			// AND THE `keeping an eye on N` SEGMENT IS A DOOR ONTO /standing,
-			// read directly before the model's name because they are two segments
-			// of the same row and neither swallows the other's columns
+			// read directly before the row's other numbers because they are
+			// segments of the same row and none swallows another's columns
 			// (standdoor.go).
 			if a.keepingPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
@@ -2988,9 +2990,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
 				return a, cmd
 			}
-			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
-			// cluster carries the name of what is answering, and pressing a name
-			// is how a person changes it (render.go's [app.identityParts]).
+			// AND THE STATUS ROW'S OWN DOORS ARE THE FOURTH: the model moved to
+			// the top bar with the rest of the identity (topbar.go's
+			// [app.topBarWord]), and what is left on this row is the fast half —
+			// the bill, the meter, the count, what is watching. At phone width the
+			// row is a deck and the deck answers for both of its rows, the model
+			// chip included (statusdeck.go's [app.deckPress]).
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -5465,9 +5470,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// place it should become one.
 		//
 		// THE WAY OUT IS UNCHANGED AND IT IS NAMED WHERE IT ALWAYS WAS: esc and ←,
-		// on the legend at the foot of the frame and on the pinned header at the
-		// top of it — and that header row is pressable in its own right
-		// ([app.roomBackPress]), which is the pointer's share of the same exit.
+		// on the legend at the foot of the frame and on the top bar at the top of
+		// it — and the bar carries the pointer's share of the same exit, though as
+		// two precise spans rather than a whole row: the crumb's chat step and the
+		// `esc/← back` word (topbar.go's [app.topBarPress]).
 		return
 	}
 	// A TASK LINK IS THE ONE TARGET INSIDE A ROW, so it is resolved before the

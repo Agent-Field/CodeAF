@@ -157,12 +157,12 @@ const (
 	// pointer that left the settings panel with a hover on item nine would light
 	// the ninth task the moment this page opened.
 	hoverTaskSheet
-	// hoverStatusModel is the MODEL SEGMENT of the status row — the name of what
-	// is answering, at the foot of the frame, which is a control as well as a
-	// label (render.go's [app.identityParts]). It is asked about the column for the
-	// jump chip's reason: the telemetry beside it is figures rather than controls,
-	// and a name that brightened from forty cells away would be claiming the whole
-	// row is a door.
+	// hoverStatusModel is the MODEL SEGMENT — the name of what is answering, on
+	// the top bar at the head of the frame and on the phone tier's deck, which is
+	// a control as well as a label (topbar.go's [app.topBarWord] records its
+	// columns, statusdeck.go the deck's). It is asked about the column for the
+	// jump chip's reason: not every term beside it is a door, and a name that
+	// brightened from forty cells away would be claiming the whole row is one.
 	//
 	// IT COVERS BOTH SUBJECTS AND NEEDS NO SECOND KIND. Out in the conversation
 	// the segment is the session's model and a press opens the picker; inside a

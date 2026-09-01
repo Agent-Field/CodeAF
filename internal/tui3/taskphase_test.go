@@ -175,12 +175,12 @@ func TestTheRoomHeaderSaysWhichLifeTheNodeIsIn(t *testing.T) {
 		t.Fatalf("the header calls a checked node %q, want %q", got, taskCheckingWord)
 	}
 	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
-	head := plain(a.roomHeadWord(120))
-	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskCheckingWord) {
-		t.Fatalf("the room header is %q", head)
+	head := plain(a.topBarWord(120))
+	if !strings.Contains(head, "Write the report · "+taskCheckingWord) {
+		t.Fatalf("the top bar is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {
-		t.Fatalf("the room header calls a checked node working: %q", head)
+		t.Fatalf("the top bar calls a checked node working: %q", head)
 	}
 
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseRepairing, 1, 1, "not done — nothing was tested")})

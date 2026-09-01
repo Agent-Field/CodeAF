@@ -288,3 +288,106 @@ func TestTopBarQuietUnderTheWelcomeBox(t *testing.T) {
 		t.Fatalf("the quiet bar = %q, want no branch named over the greeting", bar)
 	}
 }
+
+// ── the bar that is not drawn ───────────────────────────────────────────────
+
+// A BAR THAT IS NOT DRAWN LEAVES NO DOORS BEHIND IT.
+//
+// The spans are this surface's whole answer to "was it on the screen"
+// (standdoor.go's law, and the reason [app.topBarWord] clears them before it
+// writes them) — and the early return in [app.topBarRows] skipped the clearing,
+// so the LAST frame's columns stayed live. Open a room at two hundred columns,
+// drag the window under sixty, and a click on the transcript landed on a ✕ that
+// had been gone for three frames: the phone tier draws a deck instead of a bar,
+// and the ✕'s hit box is three rows tall down there, over the top of the body.
+//
+// Two guards, because the failure had two halves: every path out of the bar
+// clears the spans, and [app.stopMarkAt] refuses on a frame with no bar at all.
+func TestABarThatIsNotDrawnLeavesNoDoorsBehindIt(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.title = "port the lexer"
+	clickRail(t, a, 0)
+	if !a.roomOpen() {
+		t.Fatal("the rail did not open a room")
+	}
+	// A wide frame draws the bar, and the bar records its doors.
+	a.width, a.height = 200, 40
+	a.touch()
+	_ = a.topBarRows(a.width)
+	if !a.roomStop.pressable() || !a.crumbHomeSpan.pressable() {
+		t.Fatalf("the wide bar recorded no doors: stop=%+v home=%+v", a.roomStop, a.crumbHomeSpan)
+	}
+
+	// Now shrink under the phone tier, where the deck stands in for the bar.
+	a.width = 44
+	a.touch()
+	if a.topBarShowing(a.width) {
+		t.Fatal("the phone tier drew a top bar")
+	}
+	_ = a.topBarRows(a.width)
+	for what, span := range map[string]hudSpan{
+		"the mark":       a.roomStop,
+		"the crumb home": a.crumbHomeSpan,
+		"the crumb chat": a.crumbChatSpan,
+		"the back word":  a.backSpan,
+		"YOLO":           a.topYoloSpan,
+	} {
+		if span.pressable() {
+			t.Fatalf("%s kept its columns on a frame with no bar: %+v", what, span)
+		}
+	}
+
+	// AND THE MARK REFUSES EVEN IF A SPAN OUTLIVES THE CLEARING. This is the
+	// second guard and it is deliberately independent of the first: the mark is
+	// only ever on the bar, so a frame with no bar has no mark, whatever some
+	// earlier frame left in the field.
+	a.roomStop = hudSpan{from: 40, to: 41}
+	for y := 0; y < 3; y++ {
+		if a.stopMarkAt(40, y) {
+			t.Fatalf("the mark claimed (40, %d) on a frame with no bar", y)
+		}
+	}
+}
+
+// AND THE TWO CLUSTERS NEVER STAND ON EACH OTHER. Both ladders can run out —
+// a long crumb beside YOLO and a ✕ — and the last resort used to be [fit],
+// which cuts from the RIGHT: it took the mark and the YOLO term off a bar whose
+// crumb had already refused to shorten, which is the give-way this file states
+// three times, inverted. The crumb yields last among the things that yield; it
+// does not outrank the safety posture or the way to stop work.
+func TestTheCrumbYieldsBeforeTheSafetyPostureAndTheMark(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.title = "a conversation with a deliberately long name on it"
+	a.approval = "allow"
+	clickRail(t, a, 0)
+	if !a.roomOpen() {
+		t.Fatal("the rail did not open a room")
+	}
+	for _, width := range []int{120, 100, 80, 70, 64, 60} {
+		a.width, a.height = width, 40
+		a.touch()
+		bar := plain(a.topBarWord(width))
+		if got := len([]rune(bar)); got > width {
+			t.Fatalf("at %d columns the bar is %d cells:\n%q", width, got, bar)
+		}
+		if !strings.Contains(bar, "YOLO") {
+			t.Fatalf("at %d columns the open gate was dropped:\n%q", width, bar)
+		}
+		if !strings.Contains(bar, roomStopMark) {
+			t.Fatalf("at %d columns the mark was dropped:\n%q", width, bar)
+		}
+		// AND THE SPANS DO NOT OVERLAP. Two doors sharing a column is one door
+		// answering for the other, which is the same defect the truncation was.
+		spans := []hudSpan{a.crumbHomeSpan, a.crumbChatSpan, a.modelSpan, a.topYoloSpan, a.backSpan, a.roomStop}
+		for i, one := range spans {
+			for _, two := range spans[i+1:] {
+				if !one.pressable() || !two.pressable() {
+					continue
+				}
+				if one.from < two.to && two.from < one.to {
+					t.Fatalf("at %d columns two doors share columns: %+v and %+v", width, one, two)
+				}
+			}
+		}
+	}
+}

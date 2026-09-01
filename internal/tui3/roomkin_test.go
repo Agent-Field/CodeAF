@@ -21,7 +21,13 @@ import (
 // the chat's own name, every parent task between the conversation and this
 // one, and this task's title with its handle.
 func TestTheCrumbCarriesTheRoomsWholeChain(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
+	// THE CHAT'S STEP NEEDS THE CHAT TO HAVE A NAME. An untitled conversation
+	// draws the project's step alone, because a second step repeating the folder
+	// would be a step that says nothing (topbar.go's [app.crumbSegments]). Every
+	// conversation is titled within a turn or two; these are given one so the
+	// chain under test is the one a person actually reads.
+	a.title = "port the lexer"
 	railRun(a)
 	a.openRoom(4, "Cut the goldens")
 
@@ -68,7 +74,8 @@ func TestTheCrumbCarriesTheRoomsWholeChain(t *testing.T) {
 // A ROOM WITH NO PARENTS IS THE CHAT'S OWN CHILD: project › chat › task, and
 // nothing folded in between.
 func TestARootRoomsCrumbIsThreeSteps(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
+	a.title = "port the lexer"
 	railRun(a)
 	a.openRoom(1, "Ship the port")
 
@@ -89,7 +96,8 @@ func TestARootRoomsCrumbIsThreeSteps(t *testing.T) {
 // trail is the same fact worn by the chat, which is the whole of the change:
 // the conversation has a head now.
 func TestTheChatsCrumbIsProjectAndName(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
+	a.title = "port the lexer"
 	railRun(a)
 
 	segs := a.crumbSegments()
@@ -110,7 +118,8 @@ func TestTheChatsCrumbIsProjectAndName(t *testing.T) {
 // and the chat's own name — in a room — is the precise way out, one crumb
 // level up, the same climb esc makes.
 func TestTheCrumbsDoorsAreHomeAndOneLevelUp(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
+	a.title = "port the lexer"
 	railRun(a)
 	a.openRoom(4, "Cut the goldens")
 
@@ -135,7 +144,7 @@ func TestTheCrumbsDoorsAreHomeAndOneLevelUp(t *testing.T) {
 // roster that could not draw it either, and the crumb's guard is the same one:
 // the chain stops rather than walking forever.
 func TestTheCrumbSurvivesARosterThatNamesItsOwnAncestor(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	// 3's child is 4; pointing 3's parent seam back at 4 closes a loop.
 	railKinship(a, 4, 3)
@@ -161,7 +170,7 @@ func TestTheCrumbSurvivesARosterThatNamesItsOwnAncestor(t *testing.T) {
 // current title truncates to its floor last of all — it is the thing the bar
 // exists to confirm, so it is never dropped.
 func TestTheCrumbFoldsInTheOneOrder(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(4, "Cut the goldens")
 	full := a.crumbSegments()
@@ -213,7 +222,7 @@ func TestTheCrumbFoldsInTheOneOrder(t *testing.T) {
 // to fold and no parent to drop, and the ladder leaves them alone until the
 // title itself must give.
 func TestAShortCrumbSkipsTheRungsItHasNothingFor(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(1, "Ship the port")
 	full := a.crumbSegments()
@@ -236,7 +245,7 @@ func TestAShortCrumbSkipsTheRungsItHasNothingFor(t *testing.T) {
 // hairline under it — and the body pays exactly that, through the one door
 // every region asks.
 func TestTheTopBarCostsTheBodyTwoRows(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	a.width, a.height = 120, 24
 	a.touch()
 
@@ -262,7 +271,7 @@ func TestTheTopBarCostsTheBodyTwoRows(t *testing.T) {
 // the blank above the draft stands on is the bar's own floor, and below the
 // phone tier the deck's top row takes the crumb instead.
 func TestAFrameWithoutBreathingRoomHasNoBar(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 
 	// Too SHORT: a terminal too short for the blank above the draft is too
 	// short for a head (view.go's [roomyFloor]).
@@ -297,7 +306,7 @@ func TestAFrameWithoutBreathingRoomHasNoBar(t *testing.T) {
 // give-way is the bar's own, and a row that overflowed would be the ladder
 // lying.
 func TestTheBarFitsAtEveryWidthItStandsAt(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(4, "Cut the goldens")
 	a.height = 24
@@ -324,7 +333,7 @@ func TestTheBarFitsAtEveryWidthItStandsAt(t *testing.T) {
 // published it — an empty segment is not a dim one — and the whole left
 // cluster is one lit element while a room is open.
 func TestTheBarCarriesTheRoomsFactsAsTrimmings(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(3, "Write the tree")
 	a.width, a.height = 160, 24
@@ -358,7 +367,7 @@ func TestTheBarCarriesTheRoomsFactsAsTrimmings(t *testing.T) {
 // surface (roomapproval.go): a harness node at the phase where the only
 // remaining step is the person's, with its design card on the feed.
 func TestAConsentQuestionDropsTheBarsClusterToDim(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	a.width, a.height = 160, 24
 	a.touch()
 
@@ -394,7 +403,7 @@ func TestAConsentQuestionDropsTheBarsClusterToDim(t *testing.T) {
 // THE CHAT AT REST WEARS INK AND DIM AND NEVER ACCENT: nothing about a
 // conversation at rest is lit.
 func TestTheChatsBarIsNeverLit(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	a.width, a.height = 160, 24
 	a.touch()
 
@@ -411,7 +420,7 @@ func TestTheChatsBarIsNeverLit(t *testing.T) {
 // rest, and the node's state glyph in a room — first, because the eye lands on
 // the thing that changes.
 func TestTheBarsLeadGlyphIsTheRoomsMark(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	a.width, a.height = 160, 24
 	a.touch()
 
@@ -430,7 +439,7 @@ func TestTheBarsLeadGlyphIsTheRoomsMark(t *testing.T) {
 // A NODE THAT SETTLED KEEPS ITS MARK ON THE BAR — the same third state the
 // rail draws, on the room's own head.
 func TestTheBarWearsTheSettledMark(t *testing.T) {
-	a, _, _ := taskApp(t)
+	a, _, _ := roomApp(t)
 	railRun(a)
 	a.openRoom(2, "Read the law")
 	a.width, a.height = 160, 24

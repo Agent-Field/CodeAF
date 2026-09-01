@@ -2291,9 +2291,9 @@ type tabSpan struct{ from, to int }
 const (
 	// tabGap is what is left between two chips once each carries its own air.
 	tabGap = 1
-	// tabPad is that air, one cell each side — the same chip the task strip
-	// wears (taskstrip.go), because the two rows are the same object in two
-	// places and a person should not have to learn it twice.
+	// tabPad is that air, one cell each side — enough that the accent arrives on
+	// a BAND rather than as one brighter word, which is the whole of what makes
+	// this row read as a tab bar ([sheetTabBar] says why).
 	tabPad     = " "
 	tabPadCols = 2
 	// tabLead is the bar's left margin, which every other line of this panel
@@ -2328,9 +2328,9 @@ func tabAtColumn(x int) (int, bool) {
 // THE ACCENT NOW ARRIVES ON A BAND, and the band is why the chips are padded.
 // Five words in a row with one of them brighter is a sentence with an emphasis
 // in it; five padded chips with one of them filled is a tab bar, and this panel
-// IS a tab bar — the same object the task strip is, drawn the same way, so that
-// "which page am I on" is one visual question across the app rather than two
-// (taskstrip.go's [app.stripLabel]).
+// IS a tab bar — the same band the roster puts on the row whose page is open
+// (task.go's [app.railRows]), so that "which page am I on" is one visual
+// question across the app rather than two.
 //
 // There is one cursor here and not two. The tab a person has focused is the tab
 // that is open — moving the focus switches the page — so the bar has nothing to

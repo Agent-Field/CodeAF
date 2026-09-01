@@ -68,9 +68,10 @@ const harnessBrowseWord = "Browse the registry"
 // next, said where the thing that is waiting is drawn.
 const harnessPickHint = "— type the request · enter runs it"
 
-// harnessChipCap is how much of a name the chip may spend. It is the strip's
-// own cap plus a little, because this chip is alone on its row rather than one
-// of six on a shared one (taskstrip.go's [stripTitleCap]).
+// harnessChipCap is how much of a name the chip may spend. It is generous
+// because this chip is alone on its row rather than sharing the line with
+// anything else, and a name cut short on a row with room to spare would be a
+// tray that could not say what it is holding.
 const harnessChipCap = 24
 
 // The chip's two marks. The glyph is a COG rather than the registry's diamond:

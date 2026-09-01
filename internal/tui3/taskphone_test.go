@@ -41,61 +41,12 @@ func taskSheetHitY(a *app, want taskSheetHitKind) (int, bool) {
 	return 0, false
 }
 
-// THE STRIP IS ONE DOOR AT PHONE WIDTH. It is not a row of chips a thumb cannot
-// land between — it is a single full-width row that says how many tasks there are
-// and that it opens, and a tap anywhere on it opens the roster PAGE.
-func TestThePhoneStripIsOneTasksDoorThatOpensTheRoster(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.width, a.height = 50, 28
-	railRun(a)
-
-	// railRun leaves two running and two queued nodes live, and done work off the
-	// live set — four tasks, two of them running.
-	door := stripText(a)
-	if !strings.Contains(door, "▸ 4 tasks") {
-		t.Fatalf("the phone strip is not the tasks door:\n%q", door)
-	}
-	if !strings.Contains(door, "2 running") {
-		t.Fatalf("the door does not name the most urgent state:\n%q", door)
-	}
-	// It is one row, and it never draws a chip's name.
-	if strings.Contains(door, "Ship the port") {
-		t.Fatalf("the phone door drew a chip's name:\n%q", door)
-	}
-	if w := ansi.StringWidth(door); w > a.width {
-		t.Fatalf("the door is %d cells wide on a %d-column frame:\n%q", w, a.width, door)
-	}
-
-	// A tap ANYWHERE on the row opens the roster page — not the overlay column —
-	// in one gesture.
-	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.width - 2, Y: a.headHeight(), Button: tea.MouseLeft})
-	if !a.at(pageTasks) {
-		t.Fatal("a tap on the phone door did not open the roster page")
-	}
-	if a.railFull() {
-		t.Fatal("the phone door opened the overlay column instead of the page")
-	}
-}
-
-// ONE TASK IS STILL A DOOR. A person on a phone reaches every task the same way,
-// so the row is drawn — singular — even when there is only one.
-func TestThePhoneStripDrawsTheDoorForASingleTask(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.width, a.height = 50, 28
-	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-
-	door := stripText(a)
-	if !strings.Contains(door, "▸ 1 task ") && !strings.HasSuffix(strings.TrimSpace(door), "▸ 1 task") {
-		// The tail may add the state; the count word is what must be singular.
-		if !strings.Contains(door, "▸ 1 task") {
-			t.Fatalf("one task did not draw a singular door:\n%q", door)
-		}
-	}
-	if strings.Contains(door, "1 tasks") {
-		t.Fatalf("the door pluralised a single task:\n%q", door)
-	}
-}
+// THE STRIP'S OWN PHONE DOOR IS GONE WITH THE STRIP (ISSUE-126). It was a
+// full-width row above the transcript saying `▸ 4 tasks · 2 running`, and it
+// stood where the roster could not; the deck's rows carry the live set at this
+// tier now (statusdeck.go), and the roster page is `ctrl+t` and the rail. The
+// two tests that pinned that row were removed with the surface they pinned —
+// everything below still holds, because none of it was ever the strip's.
 
 // THE ROSTER'S PHONE ROWS ARE TWO-LINE CARDS: the name and its state on top, and
 // what the work came to with how long ago under it, indented as a card's tail.
@@ -277,23 +228,15 @@ func taskCardHitY(a *app, want taskCardHit) (int, bool) {
 	return 0, false
 }
 
-// NONE OF THIS CHANGES AT 80 COLUMNS. The strip is chips, the roster rows are one
-// line, and the foot is the key legend a keyboard reads.
+// NONE OF THIS CHANGES AT 80 COLUMNS: the roster rows are one line, and the
+// foot is the key legend a keyboard reads. (The clause about the strip's chips
+// went with the strip — ISSUE-126.)
 func TestThePhoneTaskFlowChangesNothingAtEightyColumns(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.width, a.height = 80, 28
 	railRun(a)
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("4", "sweep-the-call-sites", "Sweep the call sites", 3*time.Hour),
-	}
-
-	// The strip is still a row of chips with names on it, not a door.
-	door := stripText(a)
-	if strings.Contains(door, "▸ ") && strings.Contains(door, "tasks") {
-		t.Fatalf("the strip became a phone door at 80 columns:\n%q", door)
-	}
-	if !strings.Contains(door, "Ship the port") {
-		t.Fatalf("the wide strip lost its chips:\n%q", door)
 	}
 
 	if !openTaskPlaceWithRows(a) {

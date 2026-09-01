@@ -10,22 +10,66 @@ import (
 // ISSUE-126's plainest cases: a fact that is zero, idle or absent is not a
 // dim fact — it is NOTHING, and the row draws nothing where it would stand.
 
-// A BILL OF ZERO IS NO BILL. The old row printed "$0.00" from the first
-// frame, a number that said "you have spent nothing" in the one place a
-// number means "this is moving". Zero renders as nothing now: the row is
-// silent about money until money has moved.
-func TestDollarsZeroIsNothing(t *testing.T) {
-	// BUG: dollars(0) still returns "$0.00" in app.go — the zero-dies change
-	// has not landed in the source yet. The test is the law; the Skip is the
-	// bug's name.
-	t.Skip("dollars(0) returns \"$0.00\", want \"\" — the zero-dies change has not landed in app.go")
-	if got := dollars(0); got != "" {
-		t.Fatalf("dollars(0) = %q, want nothing — a bill of zero is no bill", got)
+// A BILL OF ZERO IS NO BILL. The old row printed "$0.00" from the first frame,
+// a number that said "you have spent nothing" in the one place a number means
+// "this is moving". It was the emptiness law's one deliberate exception and it
+// was bought with the crowding: the row carried the model, the branch and the
+// host beside the money, so a segment arriving mid-conversation shoved its
+// neighbours sideways. Those facts are the top bar's now, and the exception
+// died with the crowding that justified it.
+//
+// THE LAW IS THE ROW'S AND NOT THE FORMATTER'S. [dollars] still spells a zero,
+// because a gauge with a tank and a ceiling somebody typed are figures where
+// `$0.00` is the true reading; what refuses is [app.costSegment], which is the
+// row deciding a question that belongs to the row.
+func TestTheBillOfZeroIsNoSegment(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.dismissWelcome()
+	a.cost = 0
+	if got := a.costSegment(); got != "" {
+		t.Fatalf("the bill at zero is %q, want nothing", got)
 	}
-	// And a real bill still prints, so the emptiness is the zero's own and not
-	// the function's.
-	if got := dollars(0.42); got != "$0.42" {
-		t.Fatalf("dollars(0.42) = %q, want the bill", got)
+	if strings.Contains(plain(a.status(a.width)), "$") {
+		t.Fatalf("a session that has spent nothing drew money:\n%q", plain(a.status(a.width)))
+	}
+	// And a real bill still prints, so the silence is the zero's own.
+	a.cost = 0.42
+	if got := a.costSegment(); got != "$0.42" {
+		t.Fatalf("the bill at 42 cents is %q, want $0.42", got)
+	}
+	// The formatter is untouched: every surface that wants a zero still gets one.
+	if got := dollars(0); got != "$0.00" {
+		t.Fatalf("dollars(0) = %q — the refusal belongs to the row, not to the formatter", got)
+	}
+}
+
+// EVERY SEGMENT IS ROUTED BY NAME AND NONE FALLS THROUGH. The routing used to
+// be a switch with no default, and six segments were silently discarded by it
+// — including the link, whose own comment said it was never dropped. A switch
+// that forgets is indistinguishable from a switch that decided, so this one
+// cannot forget: [hudLaneOf] answers for every segment there is, and a new one
+// added without a lane stops the surface on the first frame that assembles it.
+func TestEverySegmentHasALane(t *testing.T) {
+	for kind := hudSeg(0); kind < segCount; kind++ {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("segment %d has no lane: %v", kind, r)
+				}
+			}()
+			_ = hudLaneOf(kind)
+		}()
+	}
+	// AND THE TWO THAT LEFT THE ROW ARE ROUTED TO WHERE THEY WENT, which is the
+	// half of this the old switch got wrong by omission.
+	if hudLaneOf(segYolo) != hudTopBar || hudLaneOf(segLink) != hudTopBar {
+		t.Fatal("the safety posture and the wire are the top bar's, not the row's")
+	}
+	if hudLaneOf(segCrew) != hudSheet || hudLaneOf(segBurn) != hudSheet {
+		t.Fatal("the crew word and the burn rate are demoted to the sheet")
+	}
+	if hudLaneOf(segState) != hudTicking || hudLaneOf(segKeeping) != hudPresence {
+		t.Fatal("the state word ticks and the keeping clause is presence")
 	}
 }
 

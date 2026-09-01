@@ -1119,8 +1119,8 @@ func taskLinkInk(pal palette, s string) string { return pal.underline(pal.accent
 // stays and the hue takes one step up, accent to ink.
 //
 // IT IS A BRIGHTENING AND NOT A BACKGROUND BAND, which is the model segment's
-// own decision for the model segment's own reason (render.go's
-// [app.paintIdentity]): a reference is two or three words inside somebody's
+// own decision for the model segment's own reason (topbar.go's
+// [app.topBarPaint]): a reference is two or three words inside somebody's
 // sentence, not a row of a list, and a highlighted rectangle in the middle of a
 // paragraph would be the one boxed thing on a surface with no boxes. It is also
 // the only step that survives every terminal this surface draws on — a background

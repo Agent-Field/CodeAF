@@ -40,6 +40,9 @@ func motionTo(x, y int) tea.MouseMotionMsg { return tea.MouseMotionMsg{X: x, Y: 
 // bar offering a page the hand is not on.
 func TestTheCrumbLightsOneStepAtATimeAndTheCurrentStepNever(t *testing.T) {
 	a, _ := stopApp(t)
+	// The chat's step exists only where the chat has a name of its own
+	// (topbar.go's [app.crumbSegments]); this is the door under test.
+	a.title = "port the lexer"
 	a.openRoomFor(7, "Fix the nil-map crash")
 	a.touch()
 	width, _ := a.size()
@@ -55,11 +58,17 @@ func TestTheCrumbLightsOneStepAtATimeAndTheCurrentStepNever(t *testing.T) {
 		t.Fatalf("the pointer on the project step recorded %+v", a.hot)
 	}
 
-	// The chat's name is the precise way out of the room — one crumb level up,
-	// the same climb esc makes — and it is a different door from home's.
+	// The chat's name leaves the room however deep the trail is, and it is a
+	// different door from home's — AND FROM THE BACK WORD'S beside it, which
+	// climbs exactly one level. At one level down the two land in the same
+	// place and at two they do not, so they light separately (hover.go's
+	// [hoverCrumbChat] says why they are two kinds).
 	drive(t, a, motionTo(a.crumbChatSpan.from, 0))
-	if !a.hoveringRoomBack() {
+	if !a.hoveringCrumbChat() {
 		t.Fatalf("the pointer on the chat's name recorded %+v", a.hot)
+	}
+	if a.hoveringRoomBack() {
+		t.Fatal("the chat's step lit the back word beside it")
 	}
 
 	// THE CURRENT SEGMENT IS WHERE YOU ALREADY ARE, so it carries no span: the

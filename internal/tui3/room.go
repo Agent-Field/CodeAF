@@ -153,8 +153,9 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 // fact — which is exactly the set of moments a press on it would do something.
 //
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
-// records the press target from ([app.identityParts]) rather than something the
-// press checks after the fact. A finished, failed, stopped or unverified node's
+// records the press target from (topbar.go's [app.topBarRightFit]) rather than
+// something the press checks after the fact. A finished, failed, stopped or
+// unverified node's
 // model is a fact about what happened and nothing can move it; a queued node has
 // not started, and the engine refuses it in the same words; a run's page is a
 // fleet rather than one node, and a node belonging to a run is not in the graph
@@ -714,11 +715,11 @@ func (a *app) roomOpen() bool { return a.room != nil }
 // roomStandingOn reports whether this node's row is the door to the page that is
 // on screen right now — "you are in here", asked of one row.
 //
-// IT IS THE ONE ANSWER BOTH LISTS OF THE WORK READ. The strip marks the chip of
-// the room a person is standing in (taskstrip.go) and the roster now marks the
-// row (task.go's [app.railRows]), and a surface where the tab bar and the column
-// could disagree about which door you went through would be a surface with two
-// answers to a question that has one.
+// IT IS THE ONE ANSWER EVERY SURFACE THAT SAYS "YOU ARE HERE" READS. The roster
+// marks the row (task.go's [app.railRows]) and the top bar's crumb names the
+// same place across the head of the frame (topbar.go's [app.crumbSegments]), and
+// a surface where the bar and the column could disagree about which door you
+// went through would be a surface with two answers to a question that has one.
 //
 // A RUN'S PAGE IS NOT A NODE'S, and it is matched by the door rather than by the
 // id: [app.openOrchRoom] builds its room with id zero on purpose, so everything
@@ -2659,9 +2660,9 @@ func (a *app) roomChip() string {
 const roomModelLead = "task "
 
 // roomModelWord is WHAT IS ANSWERING while a room is open: the model the ROOM's
-// node runs on, said the way the status row says a model — its BASENAME, because
-// that law is about the row's scarce width and not about whose model it is
-// (render.go's [app.identity]).
+// node runs on, said the way the top bar says a model — its BASENAME, because
+// that law is about the cluster's scarce width and not about whose model it is
+// (topbar.go's [app.topBarRightFit]).
 //
 // THE LEAD WORD IS PART OF THE FACT. The conversation's cluster reads
 // "<name> · <model>", and a room's reading "<chip> · <model>" would put a second
@@ -2684,8 +2685,9 @@ const roomModelLead = "task "
 //
 // It wears NO REASONING SUFFIX AND NO SERVED RIDER either, for one reason said
 // twice: THE DIAL IS THE CONVERSATION'S. The ":high" is spliced on by lending
-// a.model its suffixed form for the length of one call (view.go's
-// [app.statusRow]) and the rider is keyed on a.model's own sighting, so both are
+// a.model its suffixed form for the length of one call (topbar.go's
+// [app.topBarRight]) and the rider is keyed on a.model's own sighting, so both
+// are
 // facts about the model the SESSION is running — and a task model wearing the
 // session's knob would be the same lie in smaller print. Reading the node's model
 // from the node keeps it out of the splice by construction.

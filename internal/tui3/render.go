@@ -1432,20 +1432,20 @@ const (
 type hudLane uint8
 
 const (
-	// lanePresence is the bottom row's left end, dim: what is alive out there
+	// hudPresence is the bottom row's left end, dim: what is alive out there
 	// that nobody is watching.
-	lanePresence hudLane = iota
-	// laneTicking is the bottom row's right cluster: the facts that MOVE, which
+	hudPresence hudLane = iota
+	// hudTicking is the bottom row's right cluster: the facts that MOVE, which
 	// is the whole of what the bottom row is for.
-	laneTicking
-	// laneTopBar is a fact the top bar draws instead, off the session rather
+	hudTicking
+	// hudTopBar is a fact the top bar draws instead, off the session rather
 	// than off this list (topbar.go). The segment is still assembled, because
 	// the sheet and /status read this list whole.
-	laneTopBar
-	// laneSheet is demoted: /status, the status sheet and the Spending tab, and
+	hudTopBar
+	// hudSheet is demoted: /status, the status sheet and the Spending tab, and
 	// nothing ambient at all. A number in a static bar becomes wallpaper; these
 	// are the ones that had become it.
-	laneSheet
+	hudSheet
 )
 
 // hudLaneOf routes one segment. THE ROUTING IS BY NAME AND IT IS TOTAL: a
@@ -1455,18 +1455,18 @@ const (
 func hudLaneOf(kind hudSeg) hudLane {
 	switch kind {
 	case segAmbient, segKeeping:
-		return lanePresence
+		return hudPresence
 	case segOpen, segCost, segCtx, segETA, segState:
-		return laneTicking
+		return hudTicking
 	case segYolo, segLink:
 		// The safety posture and the wire: two facts about the whole
 		// conversation, both in the bar's right cluster now.
-		return laneTopBar
+		return hudTopBar
 	case segCrew, segDelta, segCache, segBurn:
 		// The crew word, the session's delta, the cache's savings and the burn
 		// rate. Each of them is a real number and none of them is one a person
 		// acts on between keystrokes, which is exactly what a sheet is for.
-		return laneSheet
+		return hudSheet
 	}
 	panic("tui3: status segment " + itoa(int(kind)) + " has no lane — route it in hudLaneOf")
 }
@@ -1579,13 +1579,13 @@ func (a *app) statusLayout(width int) (string, []hudPart, []hudPart, bool) {
 	var leftParts, rightParts, drawn []hudPart
 	for _, p := range a.telemetry(width) {
 		switch hudLaneOf(p.kind) {
-		case lanePresence:
+		case hudPresence:
 			leftParts = append(leftParts, p)
 			drawn = append(drawn, p)
-		case laneTicking:
+		case hudTicking:
 			rightParts = append(rightParts, p)
 			drawn = append(drawn, p)
-		case laneTopBar, laneSheet:
+		case hudTopBar, hudSheet:
 			// Assembled, and not drawn HERE. The bar reads its own facts off the
 			// session rather than off this list (topbar.go) and the sheet reads
 			// this one whole ([app.telemetrySheet]) — so a segment in either lane
@@ -2068,8 +2068,8 @@ func (a *app) paintPart(part hudPart) string {
 		//
 		// AND IT BRIGHTENS UNDER THE POINTER, because it is a door: pressing it
 		// opens /standing, and a label that is also a control has to say so
-		// (standdoor.go, and [app.paintIdentity] for the same decision about the
-		// model's name).
+		// (standdoor.go, and topbar.go's [app.topBarPaint] for the same decision
+		// about the model's name).
 		if a.hoveringKeeping() {
 			return a.pal.accent(a.keepingWord())
 		}

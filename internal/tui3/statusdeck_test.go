@@ -135,7 +135,7 @@ func TestStatusDeckInARoomNamesTheRoom(t *testing.T) {
 func TestStatusDeckSheetCarriesWhatTheRowsGaveUp(t *testing.T) {
 	a := deckApp(t)
 	a.openStatusSheet()
-	if !a.deck.sheet.open {
+	if !a.deck.open {
 		t.Fatal("the sheet did not open")
 	}
 	var lines []string
@@ -255,7 +255,7 @@ func TestStatusDeckPressOpensTheSheet(t *testing.T) {
 	// The press lands on row 1, off the model chip.
 	y := a.height - deckHeight
 	a.deckPress(20, y)
-	if !a.deck.sheet.open {
+	if !a.deck.open {
 		t.Fatal("pressing row 1 did not open the sheet")
 	}
 }
@@ -269,7 +269,7 @@ func TestStatusDeckChipPressOpensThePicker(t *testing.T) {
 	y := a.height - 1 // row 2
 	// The chip starts one cell in (deckPad).
 	a.deckPress(len(deckPad)+1, y)
-	if a.deck.sheet.open {
+	if a.deck.open {
 		t.Fatal("pressing the model chip opened the sheet, want the picker")
 	}
 	if !a.pick.open {
@@ -299,7 +299,7 @@ func TestStatusDeckSheetModelLineIsADoor(t *testing.T) {
 	if !a.pick.open {
 		t.Fatal("answering the sheet's model line opened nothing, want the picker")
 	}
-	if a.deck.sheet.open {
+	if a.deck.open {
 		t.Fatal("the sheet is still open under the picker")
 	}
 }

@@ -143,12 +143,12 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	// through the word: the trail, the state, the clock and the spend are one
 	// sentence and the state is the second thing in it.
 	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
-	head := plain(a.roomHeadWord(120))
-	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskFinishingWord) {
-		t.Fatalf("the room header is %q", head)
+	head := plain(a.topBarWord(120))
+	if !strings.Contains(head, "Write the report · "+taskFinishingWord) {
+		t.Fatalf("the top bar is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {
-		t.Fatalf("the room header calls a finishing node working: %q", head)
+		t.Fatalf("the top bar calls a finishing node working: %q", head)
 	}
 
 	// AND IT GOES BACK TO WORKING when the gap is closed, because nothing about
@@ -329,9 +329,9 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			// trail, the state, the clock and the spend are one sentence and the
 			// state is the second thing in it.
 			a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
-			head := plain(a.roomHeadWord(120))
-			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskHeldWord) {
-				t.Fatalf("the room header is %q", head)
+			head := plain(a.topBarWord(120))
+			if !strings.Contains(head, "Write the report · "+taskHeldWord) {
+				t.Fatalf("the top bar is %q", head)
 			}
 
 			// AND IT GOES BACK to whatever the node was doing when the hold clears,

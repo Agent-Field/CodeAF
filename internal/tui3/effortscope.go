@@ -53,11 +53,12 @@ package tui3
 // (docs/DESIGN-LANGUAGE.md's THE ACCENT BUDGET).
 //
 // HOME'S TWO CARDS CAN; THE TASK LINES CANNOT, and it is the lines and not the
-// rung that decide. The room's header and the roster's telemetry row are built
-// plain and painted once, whole, because a hue nested inside a hue ends at the
-// inner one's reset ([app.roomHeadWord] states it). So the task scope emphasizes
-// a move the way this surface has always emphasized a decision about one piece
-// of work — a note in the conversation, with the rung painted as the datum in it
+// rung that decide. The top bar and the roster's telemetry row are built plain
+// and painted once, whole, because a hue nested inside a hue ends at the inner
+// one's reset (topbar.go's [app.topBarWord] states it). So the task scope
+// emphasizes a move the way this surface has always emphasized a decision about
+// one piece of work — a note in the conversation, with the rung painted as the
+// datum in it
 // (taskeffort.go's [app.cycleTaskEffort], room.go's [app.retargetTask]).
 
 import (

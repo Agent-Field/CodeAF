@@ -116,7 +116,9 @@ const (
 	// chromeStatus is one row of the HUD's status line; index is its position
 	// within that block (0 is the identity's row, 1 the telemetry's on a narrow
 	// frame). It is hoverable by nothing and pressable in one place: the model
-	// segment, whose columns the render records (render.go's [app.identityParts]).
+	// segment on the phone tier's deck, whose columns the render records
+	// (statusdeck.go's [app.deckModelRow]; on a wider frame that segment is on
+	// the top bar, which answers for its own row — topbar.go's [app.topBarPress]).
 	chromeStatus
 	// chromeStop is one row of the stop confirmation (stop.go); index is its
 	// position within the card, and the answers are on index 1. It is the guard's
@@ -658,8 +660,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 //
 // IT REBUILDS THE CHROME RATHER THAN READING A RECORDED COPY OF IT, and that is
 // a choice against the cheaper one. Recording the marks at layout — the bargain
-// [app.modelSpan] and the strip's chips make — would answer in no time at all,
-// and it would answer from the LAST frame: the renderer paints on its own clock,
+// [app.modelSpan] and the top bar's doors make (topbar.go's [app.topBarWord]) —
+// would answer in no time at all, and it would answer from the LAST frame: the
+// renderer paints on its own clock,
 // so an approval question that arrived two messages ago is on the frame the
 // person is looking at and not yet in any recorded list. A pointer resolved
 // against yesterday's chrome brightens the wrong row, which is the one thing
@@ -936,7 +939,7 @@ func (a *app) headHeight() int {
 		return 0
 	}
 	// The bar and its rule, the two rows [app.topBarRows] draws.
-	return 2
+	return topBarHeight
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line
