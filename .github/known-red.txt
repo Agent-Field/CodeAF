@@ -31,12 +31,6 @@ TestEveryMessageWriteUsesThreadPost
 # short TMPDIR, so this line may well be removable — check before trusting it.
 TestTheSocketMovesWithTheStateRoot
 
-# Flake under full-suite load; pass alone. Rerun in isolation before believing a
-# failure here.
-TestOnlyADesignsOwnThreadCarriesTheReviseVerb
-TestInterruptedTurnDoesNotWakeOnTheNoteItDrained
-TestAChangeWithdrawsTheCardRewritesThePageAndAsksAgain
-
 # The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
 # had only been able to say "four cmd/harness-design tests".
 TestTheGuidesRender
