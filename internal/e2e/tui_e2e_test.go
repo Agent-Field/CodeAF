@@ -1124,7 +1124,7 @@ func testOneSpendFigure(t *testing.T) {
 	if fromToday == "" {
 		t.Fatalf("the Spending tab's `today` row carries no figure:\n%s", tab)
 	}
-	fromThisOne := moneyOn(t, tab, say(t, "spendThisOneWord"))
+	fromThisOne := moneyAfter(t, tab, say(t, "spendThisOneWord"))
 	if fromThisOne == "" {
 		t.Fatalf("the Spending tab's `this one` receipt carries no figure:\n%s", tab)
 	}
@@ -1140,24 +1140,44 @@ func testOneSpendFigure(t *testing.T) {
 	}
 }
 
-// moneyOn is the first dollar figure on the screen line carrying `needle`, and
-// the empty string when there is no such line or no figure on it.
+// moneyOn is the FIRST dollar figure on the screen line carrying `needle`, and
+// the empty string when there is no such line or no figure on it. Both rows it
+// is used on lead with what was spent and follow it with the rail — `today
+// $0.0003 of $500` — so the first figure is the spend on each.
 //
-// IT READS THE LINE THE PERSON READS. The whole claim under test is that four
+// IT READS THE LINE THE PERSON READS. The whole claim under test is that these
 // places render one STRING, so the figure is lifted out of the drawn row rather
 // than recomputed from anything.
 func moneyOn(t *testing.T, screen, needle string) string {
 	t.Helper()
+	return moneyIn(t, screen, needle, false)
+}
+
+// moneyAfter is the figure that FOLLOWS `needle` on its line, for the receipt
+// whose row may carry a limit ahead of it — `per conversation  $20 · this one
+// $0.0003`, where the first figure on the line is the rail and not the spend.
+func moneyAfter(t *testing.T, screen, needle string) string {
+	t.Helper()
+	return moneyIn(t, screen, needle, true)
+}
+
+func moneyIn(t *testing.T, screen, needle string, after bool) string {
+	t.Helper()
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, needle) {
+		found := strings.Index(line, needle)
+		if found < 0 {
 			continue
 		}
-		at := strings.Index(line, "$")
+		rest := line
+		if after {
+			rest = line[found+len(needle):]
+		}
+		at := strings.Index(rest, "$")
 		if at < 0 {
 			continue
 		}
 		figure := "$"
-		for _, r := range line[at+1:] {
+		for _, r := range rest[at+1:] {
 			if (r < '0' || r > '9') && r != '.' {
 				break
 			}
