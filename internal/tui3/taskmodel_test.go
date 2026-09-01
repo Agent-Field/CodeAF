@@ -132,14 +132,14 @@ func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
 }
 
 // A DIGIT IS A DIGIT WHILE SOMEBODY IS WRITING. The redirect lane is the same
-// trap the r shortcut avoids, and the models row is not exempt from it.
+// trap bare answer shortcuts once made, and the models row is not exempt from it.
 func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
 
-	drive(t, a, key("r"), key("2"))
+	drive(t, a, key("right"), key("enter"), key("2"))
 	if a.task.model != "anthropic/claude-opus-5" {
 		t.Fatalf("a digit typed into the redirect lane moved the model to %q", a.task.model)
 	}
