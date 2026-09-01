@@ -828,6 +828,42 @@ With it off, the gate stands open, the task's own account merges, the task lands
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
 
+## What the work SAYS it did is checked too — claims, and the ones nothing could settle
+
+**A landing's claims are its checklist.** Everything the work asserts about the world is a
+claim: a clause under `invalidates:` in a note it wrote, and every line of its own account of
+what it did. The check hunts each one against the tree that would land — not against the copy
+the run left lying around it.
+
+Two shapes are settled by looking, and cost nothing:
+
+- **a claim that some exact text is gone** — quoted in backticks or quotes, in the same
+  clause as the absence — is a search of everything that would land. The landing's own notes
+  are not searched: a note saying `` `$0.00` `` is gone contains `$0.00` in the act of saying
+  so;
+- **a claim that things under a named place were updated** is a question about which files the
+  landing wrote. Nothing written there, and the claim is false.
+
+A claim that a **behaviour** changed cannot be settled by looking, so it is handed to the
+checker as a written list, with the instruction to name any it could not settle.
+
+**A claim the tree contradicts fails the check**, and the finding quotes the sentence back:
+`it says "That exception is gone: ``$0.00`` is rendered nowhere." — but $0.00 is still in
+status.go:4`, or `… — but nothing under docs/guide was written`. It reads on the card under
+`incomplete —` like any other gap, and the work goes back for another go with it in front of
+it. No model is asked for this one: the search is the whole of the evidence.
+
+**A claim nothing settled is said out loud rather than passed over.** A check that comes back
+holding, on a landing whose written note declared something nobody examined, adds
+`nothing checked this claim:` and the sentence. Lines of the work's own prose are hunted and
+put to the checker but never named this way — otherwise every card would carry the line.
+
+**A task that handed parts out is checked on the whole tree its parts came home into.** Its
+own files and its parts' files are both staged, both restored, and both named to the checker —
+`Files it wrote:` for its own, `And the parts it handed out wrote, into the same tree:` for the
+parts'. A part that did not land is not counted, because its work is not in the tree. Nothing
+merges upward until that check answers.
+
 ## Which commands the checker is allowed — the task's own check, not a fixed list
 
 **The checker is allowed the checks the work itself names.** There is no list of build tools
