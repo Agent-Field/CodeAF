@@ -427,9 +427,13 @@ func TestNoRepetitionConstantRulesTheLeash(t *testing.T) {
 		t.Fatalf("effects.go weighs repetition against a constant: %q", found)
 	}
 
-	leash, err := os.ReadFile("task_run.go")
+	// The leash is [childRun.trip] and its file is where a node's own run lives
+	// (task_child_run.go). Naming the file rather than walking the package is
+	// deliberate: `sameEffectRun` is declared in effects.go and answered by its
+	// own tests, and a walk would count those as readings of the run.
+	leash, err := os.ReadFile("task_child_run.go")
 	if err != nil {
-		t.Fatalf("read task_run.go: %v", err)
+		t.Fatalf("read task_child_run.go: %v", err)
 	}
 	read := ""
 	for _, line := range strings.Split(string(leash), "\n") {
