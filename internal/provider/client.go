@@ -762,6 +762,12 @@ func (c *Client) completionInOnePiece(
 		c.bill(ctx, c.modelFor(request), &response)
 		return nil, false, cut
 	}
+	reasonWord, servedWell := answerOutcome(&response)
+	// PAST EVERY GUARD, SO THIS LANE SERVED. It is the recovery half of the
+	// quality axis and it is what keeps the axis from being a penalty box: a
+	// lane demoted for one bad stretch walks back up on the answers it gets
+	// right, without waiting for a clock (lanes.go's noteLaneOutcome).
+	c.noteLaneOutcome(c.modelFor(request), served, reasonWord, servedWell)
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it. The caller decides whether to ask again.
 	relearned := c.learnFromAnswer(c.modelFor(request), request, &response)
@@ -916,6 +922,12 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 	cut := &StreamCut{Reason: CutMachinery}
 	c.stampCut(cut, served, began, text)
 	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
+	// the claim the strike above cannot make: a strike expires in five minutes
+	// and says only "not now", while an endpoint serving its model's unparsed
+	// chat template is one whose ANSWERS are wrong, and that is the quality
+	// axis (lanes.go's noteLaneOutcome).
+	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
 	return cut
 }
@@ -1165,6 +1177,12 @@ func (c *Client) completeWithMessagesStreaming(
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
 				cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+				// AND THE BELIEF LEARNS IT TOO. A stream this process gave up on
+				// produced no usable answer, whichever bound decided, and that is
+				// a claim about the lane's ANSWERS rather than about its speed —
+				// so it decays the quality belief and recovers by service, rather
+				// than expiring on a five-minute clock (lanes.go).
+				c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 				// A stream that went quiet is an endpoint failing this lineage,
 				// which is the one thing that moves a pin (affinity.go).
 				c.releaseEndpoint(ctx, c.modelFor(request))
@@ -1206,6 +1224,13 @@ func (c *Client) completeWithMessagesStreaming(
 				// is actually serving; [stallWatch.rewall] does it once and
 				// measures the new bound from when the stream opened.
 				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider))
+				// And it narrows the SILENCE bound the same way, onto what this
+				// lane's measured rate says a gap between two tokens should be
+				// ([stallWatch.regap]). The two travel together because they
+				// answer the same question about the same lane at the same
+				// moment: one about how long a reply may go on, one about how
+				// long it may stop.
+				stall.regap(c.streamGap(c.modelFor(request), chunk.Provider))
 			}
 			served = chunk.Provider
 		}
@@ -1293,6 +1318,10 @@ func (c *Client) completeWithMessagesStreaming(
 					cut := &StreamCut{Reason: CutBabble}
 					c.stampCut(cut, served, began, content.String())
 					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+					// Soup is the plainest possible statement that this lane's
+					// answers cannot be used, so it is the plainest thing the
+					// quality belief can learn (lanes.go's noteLaneOutcome).
+					c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 					// An endpoint producing soup has failed this lineage as
 					// surely as one that went quiet, so the pin moves too.
 					c.releaseEndpoint(ctx, c.modelFor(request))
@@ -1387,6 +1416,11 @@ func (c *Client) completeWithMessagesStreaming(
 		c.bill(ctx, c.modelFor(request), response)
 		return nil, false, cut
 	}
+	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
+	// axis, on both epilogues for the reason the guard above sits on both: the
+	// standing belongs to the endpoint and not to the transport that carried it.
+	servedReason, servedWell := answerOutcome(response)
+	c.noteLaneOutcome(c.modelFor(request), served, servedReason, servedWell)
 	// What the answer itself taught, read before the row is written so the row
 	// can carry it — the same reading [Client.completionInOnePiece] makes about the
 	// same fact.

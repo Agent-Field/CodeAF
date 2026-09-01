@@ -29,6 +29,18 @@ const (
 	ClassPlanEnsemble    CallClass = "plan.ensemble"
 	ClassPlanRecalibrate CallClass = "plan.recalibrate"
 	ClassExecLeaf        CallClass = "exec.leaf"
+
+	// ClassTaskNode is a WHOLE SETTLED PIECE OF WORK in the chat engine: one
+	// task node, from the brief it was handed to the answer its check gave.
+	//
+	// It is not exec.leaf under another name. A leaf is one turn loop inside the
+	// resident's plan and its verdict is the plan's own reading of the answer;
+	// a task node is a worker in its own copy of the repository whose outcome
+	// somebody else already decided — the check at the end of it — and the whole
+	// of what this class exists for is that the decision was already made and
+	// paid for (internal/session's taskgrade.go). Pooling the two would rate a
+	// model's turn-taking and its finished work as one ability.
+	ClassTaskNode CallClass = "task.node"
 )
 
 // Call is one unit of routable work: a single planning call, or a whole exec

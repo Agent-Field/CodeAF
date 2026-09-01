@@ -2152,12 +2152,19 @@ as everywhere else on this screen. Work that is running is pinned to the top and
 scroll away, and the `tasks` label stays with it.
 
 From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
-follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `w` to
+follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
-same: `↑↓ move · →← tree · enter open · w wide · esc`, and it gains `ctrl+v think harder`
+same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`
 before the `esc` while the row under the cursor is work that has not finished — that chord
-moves the task's own thinking rung. While the column holds the keyboard
+moves the task's own thinking rung. And on a row that **needs your look** the whole slot
+becomes `a accept · l look again · n not right · esc`, and those three letters answer that
+landing from the column without opening its room. While the column holds the keyboard
 the wheel walks that cursor instead of the window, so the two never fight.
+
+Widen is `alt+w` and not the bare letter `w`: the roster is read before the message box, so
+a bare `w` there ate the `w` out of every sentence somebody typed with the column still
+holding the keyboard. The bare letter is kept only on the full-frame roster, where there is
+no message box on the screen at all.
 
 There is **one scrollbar-less window and no second one**: the wheel, the arrow keys and a
 landing task all move the same offset. What the window cannot show is said at the foot of

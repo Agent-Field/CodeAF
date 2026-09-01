@@ -7,7 +7,9 @@ earlier life of it — `enter` on its roster row, a `task 7`
 link — and its room replays **the whole transcript**: the instruction it was given, its
 prose between calls, its thinking blocks, every tool call with its arguments and result,
 anything you steered into it, and the report at the end. The foot line reads
-`task finished — esc to return`, exactly as it did the moment the task landed.
+`this task has finished — say it to main`, exactly as it did the moment the task landed —
+and where the task was spawned under another task it names that too:
+`this task has finished — say it to main, or open its parent, Ship the port`.
 
 That works because the task's transcript is a real file on disk, kept beside the
 conversation that commissioned it — `<session folder>/tasks/<YYYYMMDD-HHMMSS>_<task id>.jsonl`
@@ -23,7 +25,7 @@ live edge, and history comes off the same journal as it always did.
 
 ## Task page is empty — I opened a task and there is nothing in it
 
-An open room that shows nothing but `task finished — esc to return` used to be what a
+An open room that shows nothing but `this task has finished — say it to main` used to be what a
 finished task looked like after a restart: the transcript was on disk, but the resumed
 conversation had not kept the file's name and so replayed nothing. That is fixed — the
 name is kept on the checkpoint, and an older checkpoint is filled in by the task's id — so
@@ -34,7 +36,7 @@ says so in one dim line above the foot:
 
 ```
 this task's transcript is not here any more
-task finished — esc to return
+this task has finished — say it to main
 ```
 
 That line means the file itself is gone: a session folder you deleted, or work that
@@ -60,7 +62,7 @@ transcript behind it is gone:
 ```
 Added the guard in parseRow and covered it with a test.
 this task's transcript is not here any more
-task finished — esc to return
+this task has finished — say it to main
 ```
 
 The top bar above the page is drawn from the same record, which is why it stays correct —
@@ -88,7 +90,7 @@ things, and only one of them has a chat inside it.
   has none of that. There is no agent inside a job and nothing was ever journaled for it,
   so its page shows the log line `job 4 · log /path/…` and, under it, the end of that log
   itself: the last 200 lines, newest at the bottom, re-read four times a second while the
-  job runs, under a foot reading `this log grows as the job works — esc to return`. A job
+  job runs, under a foot reading `this log grows as the job works — say it to main`. A job
   whose log is empty or unreadable says `a background job keeps a log, not a transcript`
   and nothing else — never an error over work that is going fine. `jobs output 4` prints
   the log too, and over `--host` it is the only way: a far job's log lives on the far

@@ -62,8 +62,11 @@ until you scroll up.
 
 Three things that look like the same picture and are not:
 
-- **A task that has finished** ends its page with `task finished — esc to return`. There
-  is nothing more coming; scroll up to read what it did.
+- **A task that has finished** ends its page with `this task has finished — say it to main`
+  — and, where it was spawned under another task,
+  `this task has finished — say it to main, or open its parent, Ship the port`. There is
+  nothing more coming; scroll up to read what it did, and the foot names where the words in
+  your box can still go, because the box is still there and the worker is not.
 - **A task that has not started** — one still queued behind the running ones — has a
   page with only its instruction on it, or with no blocks at all when nothing has been
   written for it yet. In that second case the page says
@@ -106,7 +109,7 @@ job 4 · log /Users/you/.aforge/v3/jobs/4.log
   [1/3] fetching sources
   [2/3] building
   frame 640 · 22 fps
-this log grows as the job works — esc to return
+this log grows as the job works — say it to main
 ```
 
 The top line is the path — the same string the roster draws under the row, and the handle
@@ -120,7 +123,7 @@ an empty box to read back, and scrolling to the bottom re-joins the live end.
 
 When the job ends, the page takes **one more reading** — a process writes its last lines
 and then exits, so the reading taken at the moment it exited would be short of the ending —
-and the foot becomes `task finished — esc to return`.
+and the foot becomes `this task has finished — say it to main`.
 
 Two limits worth knowing. `enter` inside a job's page does not steer anything: there is no
 agent in a job to read a line, so the words raise the same question a finished task raises
@@ -131,8 +134,9 @@ no log at all — the path belongs to the other machine, so the page shows the f
 ## Task page says finished but the work is still running
 
 It does not any more. If you are on an older build, this is what you were seeing: a job's
-page drew `task finished — esc to return` while the clock at the top of the frame was still
-counting up — `video · working · 32s` over a foot claiming the work was over.
+page drew `task finished — esc to return` (that was the old wording) while the clock at the
+top of the frame was still counting up — `video · working · 32s` over a foot claiming the
+work was over.
 
 The cause was that a background job is a row and never a task in aforge's own graph, so
 every attempt to open a page for one is refused — which is the **ordinary** answer for a
@@ -142,10 +146,17 @@ is drawn from, and the two cannot disagree.
 
 What each foot means now:
 
-- `this log grows as the job works — esc to return` — a background job that is still
+- `this log grows as the job works — say it to main` — a background job that is still
   running. The lines above it are its log and they are still arriving.
-- `task finished — esc to return` — the work is over, whatever kind it was. Nothing more is
-  coming; scroll up to read what it did.
+- `this task has finished — say it to main` — the work is over, whatever kind it was.
+  Nothing more is coming; scroll up to read what it did. Where the task has a parent the
+  line offers that door too: `…, or open its parent, Ship the port`.
+
+**Every one of those feet names a door, and none of them names `esc`.** A refusal on this
+surface says what is true and then says where the thing can still go — the conversation, and
+the parent task when there is one. `esc` is already on the legend under the transcript
+(`room · esc/←← main`) and on the pinned header above it, so the foot spends its cells on
+the half nothing else on the screen is saying.
 - **no foot at all** — an ordinary task still working. There is nothing to say at the bottom
   of the page, because the next thing to arrive is what happens next.
 

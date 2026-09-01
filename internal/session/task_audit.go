@@ -152,6 +152,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -282,6 +283,8 @@ const auditPrompt = `You are an AUDITOR. Somebody else did a piece of work and s
 You are READ-ONLY. You have read, grep, find and ls, and a bash that runs the repository's own verification and nothing else. You cannot edit, write, install, or fix anything, and you must not try — the work is not yours to repair. Your job is to find out what is true.
 
 Judge the work against its ACCEPTANCE and nothing else: not what you would have written, not what else the code could use, not how the change was made. Run the verification yourself and read the diff. A claim you did not check is a claim you have not verified.
+
+AND WHAT THE WORK SAYS ABOUT THE WORLD IS PART OF WHAT YOU ARE CHECKING. Anything it asserts — a note it wrote listing what stopped being true, its own account of what it did — is a claim, and a claim is checked by going and looking: what something says is a search, what something now does is a thing to run, what was updated somewhere is a question about which files changed. An assertion that is not so is a finding even when the work itself holds. If you could not settle one, say so by name in your evidence rather than passing over it.
 
 A CHECK THAT PASSES ONLY BECAUSE OF SOMETHING THE WORK DID NOT WRITE HAS NOT PASSED. Installing, building and caching are expected — do them freely, they are what your time is for. What may not carry a verdict is state that does not ship: a file put somewhere by hand, a link made so a path would resolve, a directory created outside the change. If what makes the check pass is not in the files the work wrote, REFUTE and name what is missing.
 
@@ -646,8 +649,14 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// judges exactly the change that would merge, so a virtualenv a test run left
 	// behind is neither in the diff it reads nor on the branch it approves
 	// (task_run.go's [stageTaskWork]).
+	//
+	// AND WHAT IS STAGED IS THE WHOLE LANDING, THE PARTS INCLUDED. A node that
+	// handed work out merges a tree its own worker never wrote most of, and until
+	// this line the check was pointed at one worker's files while the assembled
+	// tree went home behind them (task_claims.go's [landingFiles]).
+	files := landingFilesFor(node, changed)
 	if tree.root != "" {
-		stageTaskWork(tree.dir, changed)
+		stageTaskWork(tree.dir, files.all())
 	}
 
 	// AND THE VERDICT IS REACHED SOMEWHERE ELSE. The staged tree above is what the
@@ -656,8 +665,28 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the second half fails on its own (see the section on where a verdict is
 	// reached). It is built ONCE, out here, for the same reason the staging is:
 	// both attempts must judge one tree.
-	ground := auditGroundFor(node, tree, changed, log)
+	ground := auditGroundFor(node, tree, files.all(), log)
 	defer ground.drop()
+
+	// ── THE LANDING'S CLAIMS ARE ITS CHECKLIST ──
+	//
+	// Read before anybody is paid to think, because the two shapes settled here
+	// are settled by LOOKING and looking is free (task_claims.go). A landing that
+	// says a string is gone while the string is still in the tree it would merge
+	// has been answered already: the search is the whole of the evidence, the
+	// finding names the sentence that is not so, and there is nothing a model
+	// could add to it that the person would rather read.
+	//
+	// IT IS HUNTED IN THE GROUND AND NOT IN THE WORKING COPY, which is the same
+	// argument the restore itself rests on: what a claim is about is what would
+	// ship, never what the run happened to leave lying around it.
+	checklist := checklistFor(ground.dir, files.all(), claim)
+	if broken := checklist.broken(); len(broken) > 0 {
+		answer := brokenClaimAnswer(broken)
+		fmt.Fprintf(log, "check: the landing says something the work does not do — %s\n",
+			strings.Join(answer.evidence, " · "))
+		return answer
+	}
 
 	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
 	// may run is the checks the node's own document declares and the ones its
@@ -670,19 +699,23 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 			door.window())
 	}
 
-	verdict, again := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
+	// A CHECK THAT CAME BACK HOLDING STILL OWES THE CLAIMS NOBODY SETTLED. That is
+	// the other half of the law: a claim is a finding, or it holds, or it is said
+	// out loud — never silently passed ([withOpenClaims]).
+	open := checklist.open()
+	verdict, again := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
 	switch {
 	case verdict.answered, !again:
-		return verdict
+		return withOpenClaims(verdict, open)
 	case ctx.Err() != nil:
 		// The NODE was killed, not the audit. There is nobody to ask again and
 		// nothing to ask about; the caller reads ctx itself and tells that story.
 		return verdict
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, door, changed, claim, log)
+	retried, _ := a.auditOnce(ctx, node, tree, ground, door, files, claim, open, log)
 	if retried.answered {
-		return retried
+		return withOpenClaims(retried, open)
 	}
 	return retried.twice()
 }
@@ -696,7 +729,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // burned its whole deadline is not: the auditor already had every minute it was
 // going to get, and a second window buys a second timeout while the node holds
 // its worktree.
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
@@ -723,7 +756,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
-	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, changed, claim))
+	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, files, claim, open))
 	if err != nil {
 		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
@@ -846,7 +879,12 @@ func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTr
 	// the report that a later verdict must carry forward rather than overwrite,
 	// and by the time one lands there is nothing left to recover it from
 	// (task_run.go's [TaskNode.claim], [Agent.landAudit]).
-	defer func() { node.keepClaim(out.claim) }()
+	// AND THE CHECK'S OWN ANSWER IS WRITTEN ON THE NODE, beside the claim and for
+	// the same reason: this is the only moment anybody holds it. By the time the
+	// node settles the whole of the gate is a paragraph of prose in a report, and
+	// what the ratings store needs is the answer itself — the grade a settled
+	// node teaches, at no extra call (taskgrade.go).
+	defer func() { node.keepClaim(out.claim); node.checkSaid(auditGrade(out.verdict), len(out.gaps)) }()
 	rounds := a.config.TaskRepairRounds
 	for round := 1; ; round++ {
 		out.verdict = a.auditNode(ctx, node, tree, out.changed, out.claim, log)
@@ -1099,7 +1137,7 @@ func alsoChanged(changed, more []string) []string {
 // those are — or says plainly that there are none and that reading is the whole
 // of the job. A model that has not been told where the door is spends its
 // window looking for one, which is exactly what was measured.
-func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, changed []string, claim string) string {
+func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door auditDoor, files landingFiles, claim string, open []claimFinding) string {
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
@@ -1109,9 +1147,22 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
 		out.WriteString(claim + "\n\n")
 	}
-	if len(changed) > 0 {
-		out.WriteString("Files it wrote: " + strings.Join(changed, ", ") + "\n\n")
+	if len(files.own) > 0 {
+		out.WriteString("Files it wrote: " + strings.Join(files.own, ", ") + "\n")
 	}
+	// AND A DIVIDER'S PARTS ARE NAMED AS PARTS. The assembled tree is what this
+	// node's landing is, so the parts' files are in front of the checker with the
+	// rest of it — said in a second sentence rather than folded into the first,
+	// because "it wrote" would be a claim about this node that is not true
+	// (task_claims.go's [landingFiles]).
+	if files.divided() {
+		out.WriteString("And the parts it handed out wrote, into the same tree: " +
+			strings.Join(files.parts, ", ") + "\n")
+	}
+	if len(files.own) > 0 || files.divided() {
+		out.WriteString("\n")
+	}
+	out.WriteString(claimsBlock(open))
 	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
 	// WHERE IT IS STANDING IS TOLD TRUTHFULLY, WHICHEVER GROUND IT GOT. The
@@ -1133,6 +1184,17 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 		out.WriteString("Its changes are staged, so `git diff --cached` shows all of them, new files included.\n")
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
+	}
+	// AND THE GROUND'S OWN MANIFEST UNDER IT (taskmanifest.go). The sentence
+	// above is about the diff, and a diff is a view of the TRACKED half of a
+	// tree: the run this was written after turned on files nothing had added, so
+	// no diff showed them and the reading judged the whole against the parts that
+	// happened to be tracked. The manifest is what is staged, what is changed and
+	// not staged, and what is not tracked at all — read from the ground the
+	// reader is standing in, and drawing nothing at all where that ground is not
+	// a repository.
+	if manifest := groundManifest(ground.dir); manifest != "" {
+		out.WriteString("\n" + manifest)
 	}
 	out.WriteString("\n" + door.line())
 	if len(door.checks) == 0 {
@@ -1953,6 +2015,11 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	if err != nil {
 		return err
 	}
+	// A PERSON IS THE CHECK HERE, and the store is told so. Nothing was spent to
+	// learn it and nobody guessed: somebody read the work and said it holds,
+	// which is the same kind of answer the gate gives and belongs in the same
+	// record (taskgrade.go).
+	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
 	report, changed, _, _ := node.leavings()
 	merge, detail := tree.comeHome(node.title(), changed)
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
@@ -1981,6 +2048,9 @@ func (a *Agent) refuteTask(node *TaskNode, why string) error {
 		return err
 	}
 	defer node.releaseSettle()
+	// The same fact in the negative, and it is evidence of exactly the same
+	// weight: a person doing the check's job and finding the work does not hold.
+	node.checkSaid(provider.VerdictSemanticFailure, 0)
 	report, changed, branch, merge := node.leavings()
 	node.end(TaskEndingRefused)
 	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
@@ -2055,6 +2125,9 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 // workTaskNode), and reaches the same three states — the only difference is
 // that this one re-settles a node instead of completing a run.
 func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) {
+	// A LATE VERDICT IS STILL THE CHECK'S VERDICT, so the node carries it into
+	// the settle below exactly as the gate's own road does.
+	node.checkSaid(auditGrade(verdict), 0)
 	report, _, branch, merge := node.leavings()
 	// THE TWO HALVES OF THE CARD, PULLED APART BEFORE EITHER IS REWRITTEN. The
 	// report a landed unverified node carries is the last audit's line with the
@@ -2188,12 +2261,16 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
 		// worktree it was judging (landing.go).
-		droppings:     parent.droppingsPlace(),
-		Workspace:     dir,
-		Model:         judge,
-		APIKey:        parent.APIKey,
-		BaseURL:       parent.BaseURL,
-		ContextWindow: parent.ContextWindow,
+		droppings: parent.droppingsPlace(),
+		Workspace: dir,
+		Model:     judge,
+		APIKey:    parent.APIKey,
+		BaseURL:   parent.BaseURL,
+		// The window of the model the AUDITOR runs, which the roles ladder has
+		// very often made a different one from the node's
+		// (loop.go's [Agent.childWindow]).
+		ContextWindow:    a.childWindow(judge),
+		ContextWindowFor: parent.ContextWindowFor,
 		// The audit is bounded at five minutes and reads what it chooses to
 		// read; a compaction inside that window is a summary of a judgement in
 		// progress, which is the one thing a verdict must not be built on.

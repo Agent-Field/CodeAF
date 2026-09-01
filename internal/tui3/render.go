@@ -2273,7 +2273,7 @@ func (a *app) ctxSpark() string {
 	if a.pal.ascii || a.linear {
 		return ""
 	}
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || len(a.ctxRing) < 2 {
 		return ""
 	}
@@ -2393,7 +2393,7 @@ func (a *app) etaSegment() string {
 const etaHorizon = 5
 
 func (a *app) compactionETA() (int, bool) {
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || len(a.ctxRing) < 2 || a.ctxTokens <= 0 {
 		return 0, false
 	}

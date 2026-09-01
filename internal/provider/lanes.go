@@ -639,3 +639,68 @@ func (c *Client) wireLaneSheet() {
 	}
 	lanes.WireSheet(base, strings.TrimSpace(c.config.APIKey), sheetFetcher{})
 }
+
+// noteLaneOutcome folds one answer's USABILITY into the lane's belief, which is
+// the quality axis internal/lane keeps beside its two timing ones.
+//
+// It is the other half of [Client.noteLane], and the two are separate because
+// speed and usefulness are different claims about a machine. A lane that starts
+// answering in four hundred milliseconds and then writes the model's own chat
+// template out as text is a fast lane and a useless one; until an outcome
+// reached the belief nothing could tell those apart, so the chooser ranked on
+// time alone and sent the next request straight back to it. That is the whole
+// of the measured failure this closes: an endpoint served a reply that had
+// stopped being language, the stream was cut for it, and the retry landed on
+// the same endpoint on equal footing.
+//
+// THE DECAY AND THE RECOVERY ARE THE LEDGER'S OWN AND NOT THIS FILE'S. A
+// refusal ages back toward the lane's prior over [lanes.QualityHalfLife], and a
+// usable answer walks the belief up again — so a bad stretch costs a lane its
+// standing for about an hour rather than for the life of the process, and
+// nothing here needs a penalty box or a timer of its own. The gate that reads
+// it is the frontier's, against the role's own QualityNeed.
+//
+// The attribution law is [Client.noteLane]'s, word for word: an answer whose
+// server did not name itself teaches nothing, because crediting it to a lane is
+// how a belief learns a fact about a machine that was never asked. And it is
+// under the same routing gate, for the reason velocity.go states about strikes:
+// somebody who asked for no steering asked for no demotions either.
+//
+// Reason is a short machine-readable word for the log and never a sentence a
+// person reads ([lanes.Outcome] says so itself).
+func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
+	if c.routing() == RoutingOff {
+		return
+	}
+	served = strings.TrimSpace(served)
+	model = laneModel(model)
+	if !c.isOpenRouter() || model == "" || served == "" {
+		return
+	}
+	lanes.Default().Ledger().NoteOutcome(lanes.Outcome{
+		ID:       lanes.ID{Model: model, Lane: served},
+		Accepted: accepted,
+		Reason:   reason,
+		At:       laneNow(),
+	})
+}
+
+// answerOutcome reads a reply that survived every stream bound for the quality
+// axis: the word the belief records, and whether the answer counts as service.
+//
+// A reply with no words and no tool call is NOT service. It passed every bound —
+// the endpoint answered 200 and closed the connection tidily — and the turn loop
+// has always read it as the failure it is (internal/session's journalError: "that
+// is not a short answer, it is an endpoint that did not answer"). Counting it as
+// a usable answer here would let a lane that returns nothing at speed walk its
+// own standing back up, which is the precise shape of the failure the quality
+// axis exists to catch.
+func answerOutcome(response *ai.Response) (string, bool) {
+	if response == nil {
+		return "empty", false
+	}
+	if strings.TrimSpace(responseText(response)) != "" || len(response.ToolCalls()) > 0 {
+		return "served", true
+	}
+	return "empty", false
+}

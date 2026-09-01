@@ -858,12 +858,18 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// repository, for every fork the conversation itself runs (landing.go).
 		// The caller's answer is the family's answer at any depth: a hand of a
 		// worker of a node inherits what that worker was handed.
-		droppings:     parent.droppingsPlace(),
-		Workspace:     parent.Workspace,
-		Model:         model,
-		APIKey:        parent.APIKey,
-		BaseURL:       parent.BaseURL,
-		ContextWindow: parent.ContextWindow,
+		droppings: parent.droppingsPlace(),
+		Workspace: parent.Workspace,
+		Model:     model,
+		APIKey:    parent.APIKey,
+		BaseURL:   parent.BaseURL,
+		// THE WINDOW OF THE MODEL THIS HAND WILL ACTUALLY RUN, which is the
+		// caller's own except where a careful part lifted it onto another tier
+		// — and then it is that model's card and not this one's
+		// (loop.go's [Agent.childWindow]). Config.ContextWindow alone would also
+		// miss a window the caller LEARNED after it was built.
+		ContextWindow:    a.childWindow(model),
+		ContextWindowFor: parent.ContextWindowFor,
 		// A hand opens on a transcript the caller has already been compacting,
 		// and it appends a short errand to it, so it compacts on the caller's own
 		// terms rather than on a rule of its own.

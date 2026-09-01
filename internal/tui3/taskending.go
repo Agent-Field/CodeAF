@@ -29,6 +29,7 @@ const (
 	endingWordBlocked  = "blocked by another task"
 	endingWordSteps    = "out of steps"
 	endingWordRefused  = "not accepted"
+	endingWordStale    = "its world did not match"
 	endingWordError    = "ended with an error"
 )
 
@@ -49,6 +50,8 @@ func endingWord(ending session.TaskEnding) string {
 		return endingWordSteps
 	case session.TaskEndingRefused:
 		return endingWordRefused
+	case session.TaskEndingStale:
+		return endingWordStale
 	case session.TaskEndingError:
 		return endingWordError
 	}

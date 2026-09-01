@@ -212,7 +212,7 @@ func (a *app) retargetTask(id uint64, model string) {
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other
-// unavailable doors on this surface use (room.go's [roomUnavailableWord],
+// unavailable doors on this surface use (roomrefusal.go's [roomUnavailableRefusal],
 // stop.go's [stopUnavailableWord]).
 const taskModelUnavailableWord = "changing a task's model is unavailable — this session has no door onto it"
 
@@ -359,8 +359,6 @@ const (
 	// exists to avoid.
 	roomRecallHint = "↑↓ history"
 	roomStopHint   = "x stop"
-	// roomFinishedWord is the foot under a node that has landed.
-	roomFinishedWord = "task finished — esc to return"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -393,10 +391,7 @@ const (
 	// roomParkedWord opens the guard's line, after the node's title: what is
 	// wrong, in three words, before the three keys that answer it.
 	roomParkedWord = " is parked — "
-	// roomUnavailableWord is the degraded case: an agent under this surface with
-	// no room doors on it at all.
-	roomUnavailableWord = "room unavailable — this session has no task rooms"
-	roomLoadingWord     = "bringing this task's transcript from the other machine…"
+	roomLoadingWord = "bringing this task's transcript from the other machine…"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
 	// the same box that talks to the model. It names the way out as well —
@@ -471,7 +466,7 @@ func (a *app) openRoom(id uint64, title string) {
 		// THE BUILD GUARD. The doors are an assertion and not a compile-time
 		// requirement, so a surface driven by an agent that has never heard of a
 		// room says so and stays in the conversation.
-		a.note(roomUnavailableWord)
+		a.note(roomUnavailableRefusal.line())
 		return
 	}
 	if title == "" {
@@ -1604,7 +1599,7 @@ func (a *app) steer() tea.Cmd {
 	}
 	doors, ok := a.taskSteerDoors()
 	if !ok {
-		a.roomNote(roomUnavailableWord)
+		a.roomNote(roomUnavailableRefusal.line())
 		return nil
 	}
 	// The worker reads the paste and the room's row keeps the tag (pastechip.go).
@@ -2797,7 +2792,11 @@ func (a *app) roomRows(width int) []row {
 		// foot it has.
 		var asked bool
 		if out, asked = a.roomSettleRows(out, width); !asked {
-			out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
+			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
+			// return` was the whole of what this row said for a year, and esc is
+			// already on the legend and on the focus header above it; where the
+			// words in the box can go was on neither.
+			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(width)), entry: -1})
 		}
 	} else if a.roomIsJob() {
 		// AND A JOB THAT IS STILL WRITING GETS THE SAME FOOT WITH THE TRUE WORD IN
@@ -2808,7 +2807,7 @@ func (a *app) roomRows(width int) []row {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		out = append(out, row{text: a.pal.dim(fit(roomJobRunningWord, width)), entry: -1})
+		out = append(out, row{text: a.pal.dim(roomJobRefusal.fit(width)), entry: -1})
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
@@ -3080,6 +3079,11 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	// segment the placeholder goes back to carrying the name itself, because
 	// something on the row has to.
 	lead := a.roomLead(width)
+	// The cells the placeholder actually has. It is measured before the lane is
+	// chosen because two of the choices below are REFUSALS, and a refusal is
+	// fitted by its own law — the door survives and the fact degrades
+	// (roomrefusal.go) — rather than by a cut from the right.
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	lane := roomSteerLane + a.room.title + roomSteerBack
 	if lead != "" {
 		lane = roomSteerHere + roomSteerBack
@@ -3093,15 +3097,14 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		lane = orchSteerLane + roomSteerBack
 	}
 	if a.room.done {
-		lane = roomFinishedWord
+		lane = a.roomFinishedRefusal().fit(room)
 	} else if a.roomIsJob() {
 		// A JOB HAS NOBODY IN IT TO STEER (roomjoblog.go). The box is the same box,
 		// so it says what the page is instead of offering a worker that does not
 		// exist — the same string the foot carries, because a person reading either
 		// of them is asking the same question.
-		lane = roomJobRunningWord
+		lane = roomJobRefusal.fit(room)
 	}
-	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
 	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
 	return out

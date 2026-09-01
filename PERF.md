@@ -1065,6 +1065,44 @@ never candidates; every replaced result remains readable through its stub path.
 the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
 the line and the unseen-result horizon.
 
+## The compaction threshold, and the ceiling that is no longer a constant
+
+Compaction fires at `window − max(15% of window, 16,384)`
+(`internal/session/loop.go`'s `CompactThreshold`), and the WINDOW it is taken of
+is the model card's own figure.
+
+It used to be clamped first, to twice `defaultContextWindow` — 256,000 — for
+every model alike. That ceiling was put in for a real failure: a catalog row
+claiming 1,310,720 tokens put the trigger at 1,114,112, a conversation grew to
+386,309 tokens without folding once, and what came back at that size was the
+model's own template turned inside out. **The bill for it was paid by every model
+that was telling the truth.** Measured on 2026-08-31: a two-and-a-half-hour run
+on a model advertising 1.3M compacted nineteen times, each pass at around a
+hundred thousand tokens, each one throwing away the prefix cache the run was
+otherwise getting 57–61% of its prompt back from.
+
+So the ceiling is a MEASUREMENT now and not a constant: the narrowest prompt this
+model has actually been refused for being too long, learned from the overflow
+refusal itself and remembered across processes
+(`internal/provider`'s `NoteServedWindow` / `ServedWindow`, applied by
+`session.TrustedWindowFor`). A model nobody has refused is believed; one that has
+refused is capped at what it refused, for good. The 386k incident now costs one
+turn per model per machine instead of every model for ever.
+
+Two guards stand behind that trade and neither is new: `guardOversizeRequest`
+still shrinks a transcript that has grown past the trusted window before it goes
+out, and the reply guard still cuts an answer that has stopped being language.
+
+The other half of the same law is that the window has to REACH the agent doing
+the folding. A child agent — a task node's worker, an adaptive run's worker, a
+forked hand, an auditor — running on a model other than the conversation's used
+to be handed zero outright, and so folded against the 128,000-token default
+whatever its own model claimed. It is handed that model's card figure now
+(`Agent.childWindow`, and `Config.ContextWindowFor` inherited by every child).
+
+Pinned by `internal/session/window_policy_test.go` and
+`internal/session/window_guard_test.go`.
+
 ## The allocation laws
 
 | Law | Where it is pinned |
@@ -1388,8 +1426,9 @@ and the run met none of them.
 | --- | --- | --- |
 | **A completion is asked for as a STREAM whether or not anybody is watching it.** The observer decides who is TOLD; it never decided whether the call is guarded, and until this it silently did. | No bound of its own. It is what arms the three below on a headless call. | `internal/provider/unwatched_test.go` |
 | **A request that has produced no token is cut.** | `firstDeltaBound`, 90s — past every healthy first token this adapter has measured, and under the streaming transport's `responseHeaderTimeout` so a stall is named rather than surfacing as a torn connection. | `internal/provider/streamguard_test.go` |
-| **A stream that has gone quiet is cut**, with keepalives buying bounded patience and no more. | `midStreamGapBound`, 45s, half the first bound because a model that has started writing has finished deciding; `bufferedQuietBound`, 150s, which covers every buffered delivery measured on 2026-08-24. | `internal/provider/streamguard_test.go` |
-| **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallFloor`…`streamWallCeiling`. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go` |
+| **A stream that has gone quiet is cut**, with keepalives buying bounded patience and no more. | `midStreamGapBound`, 45s, is what a lane nothing is known about gets — half the first bound, because a model that has started writing has finished deciding. A lane whose RATE this process has measured is cut at `gapFor(rate)` instead: the time that lane takes to write `streamGapLumpTokens` (3,500 — the fourteen-kilobyte server-side lump of 2026-08-24, at the estimator's four bytes to the token), clamped to `LagGap`…`midStreamGapBound`. So 250 tok/s waits 15s where a stranger waits 45. The keepalive extension window stays the FLAT bound at every rate, and `bufferedQuietBound`, 150s, still caps the total quiet. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
+| **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallMeasuredFloor`…`streamWallCeiling`. A lane with NO history gets `streamWallFloor`, 5m, and that figure is now the outer bound for a stranger rather than the floor under everybody: it used to outrank the derivation, so a lane whose longest finished reply was twenty-four seconds still waited out five whole minutes, and two streams in the dogfood run of 2026-08-31 did exactly that on endpoints sustaining 83–270 tok/s. `streamWallMeasuredFloor` is `bufferedQuietBound` rather than a number of its own: the shortest honest wall is the longest honest silence, or the wall would cut a stream the silence bounds are still being patient with. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
+| **An endpoint whose ANSWERS cannot be used loses standing, and wins it back by serving.** A guard cut — silence, stall, overrun, soup, unparsed tool grammar — and an answer with nothing in it are reported to the lane belief as outcomes that were not accepted; every answer that survives every guard is reported as one that was. The belief decays toward the lane's prior over `lane.QualityHalfLife` and the frontier gate reads it against the role's own `QualityNeed`. | No new number: `lane.Outcome` and `Ledger.NoteOutcome` have existed since the routing wave and had no production caller until this. The decay, the recovery and the gate are all `internal/lane`'s own. | `internal/provider/lanequality_test.go`, `internal/lane/garbage_test.go` |
 | **An endpoint that STALLS is treated exactly like one that REFUSES**: its lane is struck, memoized for `ignoreCooldown`, and every request encoded afterwards routes around it. | `velocityLedger.pace`, per model, sourced from the endpoint the wire itself named. | `internal/provider/unwatched_test.go` |
 | **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/exec/bare/loop.go` |
 

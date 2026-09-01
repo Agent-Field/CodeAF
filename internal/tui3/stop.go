@@ -376,7 +376,7 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	// A LETTER IS A LETTER THE MOMENT THERE IS A SENTENCE. See the header: the
 	// box wins every time, and this key is no exception.
-	if key != stopRaiseKey || !a.input.empty() || a.recalling() {
+	if key != stopRaiseKey || a.chordsStandDown() || a.recalling() {
 		return nil, false
 	}
 	target := a.stopHere()

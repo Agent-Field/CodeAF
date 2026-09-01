@@ -440,11 +440,13 @@ func TestTheWidenHintIsEarnedByTheIndentAndTogglesTheWideTier(t *testing.T) {
 		t.Fatalf("a title cut by its own indent did not offer the wide tier:\n%s", rail)
 	}
 
-	// w takes it, and the column is charged against the conversation like the
-	// other two tiers.
-	drive(t, a, ctrlT(), key("w"))
+	// alt+w takes it, and the column is charged against the conversation like the
+	// other two tiers. It is a chord and no longer the bare letter `w`, because a
+	// bare letter beside a message box is a letter out of somebody's sentence
+	// (chordfocus.go).
+	drive(t, a, ctrlT(), key(railWidenChord))
 	if !a.railWide || a.railWidth() != railWideCols {
-		t.Fatalf("w did not widen the column: wide=%v width=%d", a.railWide, a.railWidth())
+		t.Fatalf("%s did not widen the column: wide=%v width=%d", railWidenChord, a.railWide, a.railWidth())
 	}
 	if a.bodyWidth() != a.width-railWideCols {
 		t.Fatalf("the wide column is not charged against the conversation: body=%d", a.bodyWidth())
@@ -456,9 +458,9 @@ func TestTheWidenHintIsEarnedByTheIndentAndTogglesTheWideTier(t *testing.T) {
 	if strings.Contains(wide, railWideHint) {
 		t.Fatalf("the wide column went on offering to widen:\n%s", wide)
 	}
-	drive(t, a, key("w"))
+	drive(t, a, key(railWidenChord))
 	if a.railWide || a.railWidth() != railCols {
-		t.Fatalf("w did not give the columns back: wide=%v width=%d", a.railWide, a.railWidth())
+		t.Fatalf("%s did not give the columns back: wide=%v width=%d", railWidenChord, a.railWide, a.railWidth())
 	}
 
 	// AND THE HINT IS A BUTTON. A press on that line widens the column.

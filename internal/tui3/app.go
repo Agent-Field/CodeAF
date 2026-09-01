@@ -6858,13 +6858,23 @@ func (a *app) paste(text string) tea.Cmd {
 	// see until home was closed. It goes into the box the caret is actually in
 	// — the exchange pane's while that holds the keyboard, home's own otherwise
 	// — and home's list re-filters exactly as it does for a typed character.
+	//
+	// AND THE DROP DOOR IS ASKED FIRST, BY BOTH OF THOSE BOXES. It used to be
+	// reached only on the fall-through below, which is the conversation's draft
+	// — so a screenshot dragged onto home became the raw escaped path it arrived
+	// as, while the same gesture one screen away became a picture on the tray.
+	// One door, told which box it is writing into (imagepaste.go's
+	// [app.pasteFilesInto]); when it says the text was not files, the text goes
+	// in exactly as it always did.
 	if a.at(pageHome) {
-		if ex := a.paneExchange(); ex != nil && ex.focused {
-			ex.box.insert(text)
-		} else {
-			a.home.box.insert(text)
-			a.home.build()
+		// WHICH OF THE TWO BOXES THAT IS, IS ASKED ONCE AND IN ONE PLACE
+		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
+		// ask the same question of the same keyboard and get the same answer.
+		box, chips := a.keyboardBox()
+		if !a.pasteFilesInto(box, chips, text) {
+			box.insert(text)
 		}
+		a.dropLanded(box)
 		a.touch()
 		return nil
 	}
@@ -7130,7 +7140,7 @@ const (
 )
 
 func (a *app) ctxHeat() ctxHeat {
-	threshold := session.CompactThreshold(a.ctxWindow)
+	threshold := session.CompactThresholdFor(a.model, a.ctxWindow)
 	if threshold <= 0 || a.ctxTokens <= 0 {
 		return ctxCalm
 	}

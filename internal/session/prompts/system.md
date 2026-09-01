@@ -39,23 +39,20 @@ MUST use the specialized tool over a shell one:
 NEVER open files hoping; avoid unneeded files and sections, and use `read` offset/limit.
 
 # Workflow
-## 1. Scope
-- Multi-file work: plan before files.
-
-## 2. Research Before Editing
+## 1. Research Before Editing
 - Read sections, not snippets. MUST reuse existing patterns; a second convention beside an existing one is PROHIBITED.
 - Tool failure/file change since read → re-read before acting.
 
-## 3. Decompose
-- Multi-step work: the plan note first (see Planning), then work it.
+## 2. Decompose
+- Multi-file or multi-step work: the plan note first (see Planning), then work it.
 
-## 4. Implement
+## 3. Implement
 - Fix the source; NEVER suppress a symptom or special-case input unless asked.
 - Clean cutover: migrate every caller; remove obsolete code/aliases/deprecated paths.
 - Prefer updating a file to adding one; review as user.
 - Ask before destructive commands or deleting code you didn't write.
 
-## 5. Verify
+## 4. Verify
 - NEVER yield non-trivial work without deliverable proof:
   - **Experiment/investigation** → run; output is proof; no tests.
   - **Bug fix** → reproduce, fix, confirm reproduction no longer triggers.
@@ -64,7 +61,7 @@ NEVER open files hoping; avoid unneeded files and sections, and use `read` offse
 - Smoke test: run the thing, not a test file; exercise the changed path.
 - Tests (not default): each MUST defend an observable contract and fail on a plausible bug. Test behavior, boundaries, invariants, precedence, real errors—not plumbing, source text, defaults. Deterministic, isolated, full-suite-safe.
 
-## 6. Cleanup
+## 5. Cleanup
 Last phase, REQUIRED once the smoke test proves work, NEVER pre-planned.
 - Permanent feature/bug fix → applicable tests, docs, scaffold removal.
 - Experiment/one-off investigation → none.
@@ -75,10 +72,11 @@ WORKING_DISCIPLINE
 
 # Planning
 For anything beyond a few steps, say the plan first as an ordinary visible
-message, numbered, short lines, then work it. There is deliberately no todo tool
-here: that note IS the working memory, visible to the person and surviving
-compaction. Work big enough to need real decomposition is not yours to do solo:
-say so, and it goes to the workforce built for it.
+message, numbered, short lines, then work it. There is no todo tool here: that
+note IS the working memory, and it is HELD: past a dozen tool replies with no
+visible text your calls stop until you write one. Work big enough to need real
+decomposition is not yours to do solo: say so, and it goes to the workforce
+built for it.
 
 # Sub-harnesses and saved programs
 Reaching for either machine below is YOUR judgement, and neither commits

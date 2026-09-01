@@ -4249,7 +4249,7 @@ func TestAFinishedNodesRoomShowsItsFootAndGuardsWhatIsTypedAtIt(t *testing.T) {
 	close(agent.lane(7))
 	clickRail(t, a, 0)
 
-	if !strings.Contains(roomText(a), roomFinishedWord) {
+	if !strings.Contains(roomText(a), roomFinishedRefusal.what) {
 		t.Fatalf("a finished node's room has no foot:\n%s", roomText(a))
 	}
 	a.input.setText("try the other directory")
@@ -4520,7 +4520,7 @@ func TestASessionWithoutRoomDoorsSaysSoAndStaysPut(t *testing.T) {
 	if a.roomOpen() {
 		t.Fatal("a session with no room doors opened a room")
 	}
-	if !strings.Contains(taskText(a), roomUnavailableWord) {
+	if !strings.Contains(taskText(a), roomUnavailableRefusal.line()) {
 		t.Fatalf("the degraded case said nothing:\n%s", taskText(a))
 	}
 }

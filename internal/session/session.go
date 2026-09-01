@@ -855,6 +855,12 @@ type Config struct {
 
 	// ContextWindow is the model's window in tokens; compaction fires at
 	// window − max(15% of window, 16384). Zero selects a conservative default.
+	//
+	// THE FIGURE IS THE MODEL CARD'S AND IT IS BELIEVED. What was once clamped
+	// to twice the default for every model alike is now capped only by what an
+	// endpoint has actually refused to serve ([TrustedWindowFor]), so a model
+	// with a million tokens of room is no longer folded like one with a hundred
+	// and twenty-eight thousand.
 	ContextWindow int
 	// ContextWindowFor answers from the catalog owned by the machine running
 	// the session. A model switch consults it there so a remote surface's
@@ -1834,6 +1840,12 @@ type Agent struct {
 	// the stream goroutine while a turn holds mu for its own state.
 	turnLane laneWitness
 
+	// processRules is how many times each of the process rules the turn loop
+	// enforces has had to say anything in THIS CONVERSATION (processrule.go). It
+	// sits outside mu holding its own lock for the reason above it does: it is
+	// written from the step boundary while a turn holds mu for its own state.
+	processRules ruleLedger
+
 	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
 	// of this conversation posted into the store's thread as it lands, so that a
 	// stub and a fold point at text somebody can still read. It is nil when there
@@ -2104,6 +2116,18 @@ type Agent struct {
 	// cutPointLocked, which already holds the lock: a second acquisition there
 	// would deadlock the one call — Interrupt — that must always be answerable.
 	contextWindow atomic.Int64
+	// servedWindow is what this process has LEARNED about the window the model
+	// now in use really has, as opposed to the one its catalog row claims: the
+	// narrowest prompt that model has been refused for being too long
+	// (internal/provider's ServedWindow). Zero means nothing has been learned
+	// and the claim stands alone, which is the ordinary case.
+	//
+	// It is a field rather than a call because the memo is keyed by MODEL and
+	// the model is guarded by mu, while the threshold is read from
+	// cutPointLocked with mu already held — so it is atomic for
+	// [Agent.contextWindow]'s reason, word for word, and refreshed wherever the
+	// model or the window moves.
+	servedWindow atomic.Int64
 
 	// compacting serializes compaction passes. One pass reads the transcript,
 	// releases the lock to summarize, then rebuilds; a second pass entering
