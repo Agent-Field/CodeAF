@@ -453,6 +453,16 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// reason everything else on this switch is — the screen is rebuilt from the
 	// agent's own record here, and the bill is part of that record.
 	a.refreshUsage()
+	// AND THE WORK'S HALF OF THE BILL IS READ ON THE WAY IN, through the same
+	// one function every other reading goes through (treespend.go's
+	// [app.readTreeSpend]) rather than a second one, so the row and /cost can
+	// never be two figures. It is taken HERE and not left to the frame clock
+	// because that clock reads the ledger only while the task column has a
+	// roster, and the roster is rebuilt below by a replay that arrives over the
+	// following frames — so the first frame of a conversation whose family is
+	// still working would carry only what its own books hold, which is every
+	// closed node and none of the running ones (#210).
+	a.readTreeSpend()
 	// The rail is rebuilt from the engine's own record rather than carried: the
 	// task lane opens on a replay of the graph's roster (session's
 	// [Agent.WatchTaskUpdates]), so watchTasks re-grows the column row by row

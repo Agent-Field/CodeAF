@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -135,7 +136,18 @@ func TestSwitchingToAResumedConversationTakesUpItsSpend(t *testing.T) {
 	first := t.TempDir()
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: first})
 	a.width, a.height = 200, 40
+	// A CONVERSATION SOMEBODY IS ACTUALLY IN, which is the only kind a switch is
+	// made from: the greeting's own row deliberately carries no bill at all
+	// ([app.statusQuiet]), so a fixture that left it up would be asserting about
+	// a row this defect could never have been seen on.
+	a.dismissWelcome()
 	a.cost = 9.99
+	// AND THE CONVERSATION BEING LEFT HAS WORK OUT, which is the half of this
+	// that #210 found: the figure a person actually reads is not a.cost but the
+	// whole tree's ([app.spendShown]), and the tree was the one meter this reset
+	// walked past. Fifty dollars of a family still running, against the $1.11
+	// the tmux replication used and the $0.44 the arriving journal holds here.
+	a.tree = session.TreeSpend{ConversationUSD: 9.99, TasksUSD: 40.01, Calls: 7}
 
 	second := t.TempDir()
 	agent := resumedAgent(t, second, resumedJournal(t, second))
@@ -144,8 +156,65 @@ func TestSwitchingToAResumedConversationTakesUpItsSpend(t *testing.T) {
 	if got := dollars(a.cost); got != "$0.44" {
 		t.Fatalf("after the switch the status line says %q, want the arriving conversation's own bill", got)
 	}
+	// THE FIGURE THE ROW DRAWS, and not the field under it. Asserting a.cost is
+	// what let the bleed through: a.cost was right the whole time and the row
+	// beside it still read $50.00, because spendShown takes the larger of the
+	// two readings and the tree's was somebody else's.
+	if got := a.spendShown(); !near(got, 0.44) {
+		t.Fatalf("after the switch the row shows %v, want the arriving conversation's own 0.44", got)
+	}
+	if line := plain(a.status(a.width)); !strings.Contains(line, "$0.44") || strings.Contains(line, "$50.00") {
+		t.Fatalf("the status line carries the conversation that was left:\n%s", line)
+	}
 	if a.inputTokens != 48786 || a.outputTokens != 3320 {
 		t.Fatalf("after the switch tokens = %d in / %d out, want the arriving journal's 48786/3320",
 			a.inputTokens, a.outputTokens)
+	}
+}
+
+// AND THE ARRIVING CONVERSATION'S OWN WORK IS ON THE ROW FROM THE FIRST FRAME.
+// Zeroing the tree alone would leave a conversation whose family is still
+// working reading only what its own books hold — every closed node and none of
+// the running ones — until the task column had animated a roster into place, so
+// the switch takes one reading of the ledger on the way in.
+func TestSwitchingToAConversationWithWorkOutReadsItsTreeOnTheFirstFrame(t *testing.T) {
+	root := t.TempDir()
+	ledger := filepath.Join(root, session.UsageLedgerName)
+
+	first := t.TempDir()
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: first, UsageLedger: ledger})
+	a.width, a.height = 200, 40
+	a.dismissWelcome()
+	a.tree = session.TreeSpend{ConversationUSD: 9.99, TasksUSD: 40.01, Calls: 7}
+
+	// The arriving conversation, in the shape the surface reads an id off: the
+	// journal sits in a folder named for the conversation (place.go), which is
+	// what [app.selfSessionID] joins the ledger's rows against.
+	const arriving = "2222222222222222"
+	folder := filepath.Join(root, "projects", "repo", arriving)
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := resumedJournal(t, folder)
+	// One node of the arriving conversation's family, still running: its money is
+	// in the ledger and NOT in the journal, because a node's tally reaches the
+	// conversation's books only when it closes.
+	appendLedger(t, ledger, []session.UsageLine{
+		{At: time.Now(), Session: arriving, Calls: 14, USD: 0.44},
+		{At: time.Now(), Session: "cccc4444cccc4444", Task: "1", Root: arriving, Calls: 3, USD: 9.00},
+	})
+
+	a.attachConversation(Conversation{
+		Agent: resumedAgent(t, folder, file), Workspace: folder, SessionFile: file, Resumed: true,
+	}, nil)
+
+	if got := a.spendShown(); !near(got, 9.44) {
+		t.Fatalf("the first frame after the switch shows %v, want the journal's 0.44 plus the running node's 9.00", got)
+	}
+	// AND THE ROW AND THE NOTE AGREE ON IT, which is the law the bleed broke:
+	// /cost recomputed the tree and the row did not, so for that moment the two
+	// said different things about the same money.
+	if line, note := plain(a.status(a.width)), plain(a.costText()); !strings.Contains(line, "$9.44") || !strings.Contains(note, "$9.44") {
+		t.Fatalf("the row and /cost do not agree:\nrow:  %s\nnote: %s", line, note)
 	}
 }
