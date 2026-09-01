@@ -1710,7 +1710,18 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 		if strings.TrimSpace(dir) == "" {
 			dir = workspace
 		}
-		return taskTree{dir: dir, merge: mergeInPlace}, nil
+		// AND IT CARRIES THE GROUND AND THE MODE, because "nothing to merge" is
+		// not "nothing to do". A MIRROR has no branch either, and its landing is
+		// the ledger laid back over the person's folder by name
+		// ([taskTree.landMirror]) — so a tree rebuilt without those two fields is
+		// one [taskTree.comeHome] reads as an in-place task and returns from
+		// having done nothing at all. An accepted or re-audited folder family laid
+		// NOTHING home, and the check on one restored an empty world. That is this
+		// method's own stated law: a landing is the same landing whenever it
+		// happens ([TaskNode.ladderRecord]). Every other mode still lands in
+		// place, exactly as it did.
+		ground, mode := n.groundNow()
+		return n.ladderRecord(taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}), nil
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to look at — its branch %s is still there", dir, branch)
@@ -3327,7 +3338,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return a.landStopped(ctx, node, tree, changed, report, stopped, log)
 	case ctx.Err() != nil:
 		if node.wasStopped() {
-			merge, changed := keptWork(tree, node.title(), changed)
+			merge, changed := keepHome(node, tree, changed)
 			node.end(TaskEndingStopped)
 			node.finish(withReport("stopped", report), changed, tree.branch, merge)
 			return TaskFailed
@@ -3337,7 +3348,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
 		return ""
 	case runErr != nil:
-		merge, changed := keptWork(tree, node.title(), changed)
+		merge, changed := keepHome(node, tree, changed)
 		// THE WIRE AND AN ERROR ARE DIFFERENT NEWS. Both end the node, but a
 		// person reading "lost the connection" restarts it and a person reading
 		// "ended with an error" goes looking for the fault; the report keeps the
@@ -3366,10 +3377,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// gate stands open and the node's own account merges — marked unaudited,
 	// because 'done' should never wear 'verified's clothes.
 	if !a.config.TaskAudit {
-		// WHAT SHIPS IS THE FAMILY'S, NOT THIS WORKER'S SLICE OF IT, and it is
-		// folded here for the same reason it is folded on the checked road below:
-		// everything past this line — the ground question, the landing, the report
-		// — reads one complete ledger (task_ledger.go).
+		// WHAT SHIPS IS THE FAMILY'S, NOT THIS WORKER'S SLICE OF IT, so the ground
+		// is asked about the same complete ledger the landing carries
+		// (task_ledger.go).
 		changed = absorbedLedger(node, changed)
 		// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE, and with the check off
 		// this is one of the places it would. A person who turned verification off
@@ -3378,7 +3388,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 			return a.landShifted(node, tree, changed,
 				withReport("nothing checked this work: the task.audit setting is off", report), shift, log)
 		}
-		merge, detail := tree.comeHome(node.title(), changed)
+		changed, merge, detail := landHome(node, tree, changed)
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
 		if merge == mergeConflicted {
 			return a.landConflicted(node, tree, changed,
@@ -3419,7 +3429,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// hundred lines above ("paused — it resumes") reasoning about the same fact one
 	// phase later, where there is a claim and possibly a verdict to carry.
 	case ctx.Err() != nil:
-		merge, changed := keptWork(tree, node.title(), changed)
+		merge, changed := keepHome(node, tree, changed)
 		node.finish(withReport(taskCutMidCheck, withReport(report, verdict.checkedSoFar())),
 			changed, tree.branch, merge)
 		return TaskUnverified
@@ -3429,14 +3439,14 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// The node's own claim is kept UNDER the non-answer: whoever is asked to
 		// resolve this needs both halves, what the work says it did and what the
 		// checker said instead of an answer (task_contract.go's TaskUnverified).
-		merge, changed := keptWork(tree, node.title(), changed)
+		merge, changed := keepHome(node, tree, changed)
 		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
 		return TaskUnverified
 	case !verdict.verified:
 		// INCOMPLETE, WITH EVERY ROUND'S GAPS. The node's own claim is dropped
 		// exactly as it was before: somebody looked at the work and said what is
 		// missing, and that answers the claim.
-		merge, changed := keptWork(tree, node.title(), changed)
+		merge, changed := keepHome(node, tree, changed)
 		node.end(TaskEndingRefused)
 		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, merge)
 		return TaskFailed
@@ -3451,15 +3461,16 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// AND THE PARTS' WORK IS THIS LANDING'S WORK. The check above stood on the
 	// assembled tree ([landingFilesFor]); what ships is named the same way from
 	// here on, so a folder family lands its whole product rather than the slice
-	// its own worker happened to write, and the paths this node settles with are
-	// the ones its OWN parent will absorb one level up (task_ledger.go).
+	// its own worker happened to write — and the list this node settles with is
+	// the one its OWN parent, or a person's accept hours later, will land
+	// (task_ledger.go). The ground is asked about that same list.
 	changed = absorbedLedger(node, changed)
 
 	if shift := a.groundShift(node, changed); shift != "" {
 		return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 	}
 
-	merge, detail := tree.comeHome(node.title(), changed)
+	changed, merge, detail := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
 	if merge == mergeConflicted {
 		return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
@@ -3541,7 +3552,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 			if shift := a.groundShift(node, changed); shift != "" {
 				return a.landShifted(node, tree, changed, withReport(report, verdict.doneOutcome()), shift, log)
 			}
-			merge, detail := tree.comeHome(node.title(), changed)
+			changed, merge, detail := landHome(node, tree, changed)
 			fmt.Fprintf(log, "merge: %s %s (%s, and the work holds)\n", merge, detail, stopped)
 			if merge == mergeConflicted {
 				return a.landConflicted(node, tree, changed, withReport(report, verdict.doneOutcome()), detail, log)
@@ -3555,7 +3566,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 		}
 		fmt.Fprintf(log, "landed work was not accepted: %s\n", verdict.report())
 	}
-	merge, changed := keptWork(tree, node.title(), changed)
+	merge, changed := keepHome(node, tree, changed)
 	node.end(TaskEndingSteps)
 	node.finish(withReport(stopped, report), changed, tree.branch, merge)
 	return TaskFailed
@@ -3587,7 +3598,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 // merge that has already happened is not a warning, it is a cleanup. Accepting on
 // the card merges it the ordinary way ([Agent.acceptTask]).
 func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, report, shift string, log io.Writer) TaskState {
-	merge, kept := keptWork(tree, node.title(), changed)
+	merge, kept := keepHome(node, tree, changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
 	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
 	return TaskUnverified

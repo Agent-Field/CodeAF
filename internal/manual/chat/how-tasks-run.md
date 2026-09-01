@@ -352,6 +352,12 @@ to keep it, and a part that wrote nothing adds nothing. A part that did not fini
 the list, because its work never came home into the task's copy; its own branch is kept
 instead and its card says where.
 
+**And the same list lands whenever the landing happens.** A task that landed needing your
+look is settled later — you press accept, or a fresh check comes back holding — and what
+goes home then is the list it settled with. On a plain folder that means the accept lays the
+whole family's files back over your folder, exactly as a task that finished cleanly would
+have; on a repository it merges the branch the ordinary way.
+
 That is why a task's branch is a change you can read. Its checkout is its own to make a
 mess in: it installs what your tests need, it builds, it caches. A `.venv`, a
 `node_modules`, a `target/`, a `.pytest_cache`, a downloaded model — none of those is

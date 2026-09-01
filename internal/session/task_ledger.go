@@ -42,6 +42,38 @@ package session
 // about this node and its parts are named in a sentence of their own
 // (task_audit.go's [auditQuestion]). A landing has no such question to answer —
 // what ships is what the family made — so it reads the whole of it.
+//
+// IT IS IDEMPOTENT, which is what lets a road that runs after a landing call it
+// again without knowing whether an earlier one already did: the parts come from
+// the graph and the rest of the list is left where it is ([landingFilesFor]).
 func absorbedLedger(node *TaskNode, changed []string) []string {
 	return landingFilesFor(node, changed).all()
+}
+
+// landHome is THE ONE PLACE A NODE'S WORK COMES HOME: finalize the ledger, then
+// land it. Every road that merges goes through it — the ordinary finishing line,
+// the threshold's ([Agent.landStopped]), a person's accept and a late verdict
+// (task_audit.go) — and it answers the finalized ledger so that the [TaskNode.finish]
+// under each of them writes the SAME list onto the node.
+//
+// THAT LAST HALF IS NOT A CONVENIENCE. A node's ledger outlives its run: a
+// family that landed unverified is settled hours later by somebody typing
+// `accept`, and that road has nothing to read but what the first landing wrote
+// down. While the fold lived at the merge alone, an accepted mirror family laid
+// the parent's slice over the person's folder and dropped every part's file —
+// the same loss as before, one road further along.
+func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string, string) {
+	ledger := absorbedLedger(node, changed)
+	merge, detail := tree.comeHome(node.title(), ledger)
+	return ledger, merge, detail
+}
+
+// keepHome is [landHome]'s counterpart for a node that settles WITHOUT merging —
+// stopped, errored, turned back at the gate, or landing onto a ground that moved
+// under it. The ledger is finalized for the same two reasons: the branch a
+// person is being offered has to hold the whole family's work ([keptWork] is
+// what commits it), and the list the node settles with is what a later accept
+// will land.
+func keepHome(node *TaskNode, tree taskTree, changed []string) (string, []string) {
+	return keptWork(tree, node.title(), absorbedLedger(node, changed))
 }
