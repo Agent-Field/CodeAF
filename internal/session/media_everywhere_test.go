@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/video"
 )
 
 // theFourGenerationVerbs is what "the media family" means everywhere below.
@@ -214,8 +215,57 @@ func TestTheHarnessBeltCarriesTheMediaVerbsAndLacksThemWithoutModels(t *testing.
 			t.Errorf("a harness on a machine with no media wiring can name %s — absent-not-broken", verb)
 		}
 	}
-	if len(empty) != 7 {
-		t.Fatalf("a harness belt with no media seams carries %d tools, want the seven wire tools: %v", len(empty), empty)
+	// The seven wire tools, and edit_video wherever ffmpeg is — it takes no seam
+	// at all, so no media wiring does not take it away. The count is still exact,
+	// because its whole job is to catch a tool that arrived here by accident.
+	wire := 7
+	if video.Available() {
+		wire++
+		if !empty["edit_video"] {
+			t.Error("a harness on a machine with ffmpeg cannot name edit_video, which needs no seam")
+		}
+	}
+	if len(empty) != wire {
+		t.Fatalf("a harness belt with no media seams carries %d tools, want %d: %v", len(empty), wire, empty)
+	}
+}
+
+// ── (5) the cutting verb, which travels on a different condition ─────────────
+
+// edit_video reaches every one of those surfaces too, and it is worth its own
+// test because its gate is NOT the one above: it buys nothing, so it is on the
+// belt wherever ffmpeg is and nowhere else, with the person's media settings
+// making no difference either way. A surface that carried the four making verbs
+// and not this one could make clips it had no way to assemble.
+func TestTheCuttingVerbTravelsOnFfmpegAndNotOnAnyModel(t *testing.T) {
+	if !video.Available() {
+		t.Skipf("%s is not on PATH; edit_video is absent everywhere without it", video.Missing())
+	}
+	for _, surface := range []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{"a conversation with no media wiring at all", func(*Config) {}},
+		{"a task node", func(config *Config) { config.InTask = true }},
+		{"an adaptive run's node", func(config *Config) {
+			config.InTask = true
+			config.writeScope = []string{"assets/"}
+		}},
+	} {
+		t.Run(surface.name, func(t *testing.T) {
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, surface.mutate)
+			if !hasTool(agent, "edit_video") {
+				t.Errorf("%s is missing edit_video, which needs no model", surface.name)
+			}
+		})
+	}
+
+	// And the landing turn keeps it, for the reason the landing belt exists: a
+	// node ordered to save the film it has been cutting needs the verb that
+	// joins one.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.InTask = true })
+	if !toolNameSet(landingBelt(agent.tools))["edit_video"] {
+		t.Error("the landing belt dropped edit_video — a node landing a cut cannot join one")
 	}
 }
 

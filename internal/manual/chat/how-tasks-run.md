@@ -738,9 +738,11 @@ land now — one final turn to write the deliverable from what it already has �
 then is it stopped, with the threshold and the evidence in the report.
 
 **What the landing turn may still do.** It keeps only the tools that SAVE something
-before the call returns: `write`, `edit`, and — when the task had them — `generate_image`
+before the call returns: `write`, `edit`, `edit_video` where this machine has ffmpeg,
+and — when the task had them — `generate_image`
 and `speak`. Everything else comes off, and the instruction names exactly the hands it
-kept, so a task whose deliverable is a picture or a voiceover can still produce it.
+kept, so a task whose deliverable is a picture, a voiceover or a joined cut can still
+produce it.
 `generate_video` and `generate_music` are **not** kept, even by a task that had them: they
 answer with a background job and land minutes later, and the task is closed the moment
 its landing turn ends — a render started there would be stopped before the file existed.
@@ -821,10 +823,12 @@ only that nothing looked at them.
 The `no_progress` counter resets on any one of three things, and only fires when a step is
 none of them:
 
-**It saved a file.** A successful `edit`, `write`, `generate_image`, `generate_video` or
+**It saved a file.** A successful `edit`, `write`, `edit_video`, `generate_image`,
+`generate_music`, `generate_video` or
 `speak` — every hand that puts a file on disk at a path the call names. Making a picture is
 working; a task asked for two marketing images that generates them, looks at them and
-generates them again has never called `edit` in its life, and is not stuck.
+generates them again has never called `edit` in its life, and is not stuck. The same goes
+for a task cutting a film: joining clips, saving a frame and scoring the cut are all work.
 
 **It changed its working copy.** Any step at all — whatever tool it was — that left the task's
 working copy different from how the step before it found it. This is the backstop under

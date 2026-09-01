@@ -254,11 +254,12 @@ no music was saved`. Like every job, it dies when the conversation ends.
 **There is no length argument**, because the endpoint has none: the model writes
 a piece of its own choosing — half a minute to a minute in practice — and you
 cannot ask for eight seconds, or for three minutes. Nor is there a format
-argument; you get what the model sends. To put a piece under anything timed — a
-video, a slideshow — the file has to be measured and then looped or trimmed to
-fit, which is shell work with ffmpeg that aforge does on request; the tool
-itself neither measures nor trims, because the length is the model's choice,
-not the brief's.
+argument; you get what the model sends. **The length stops mattering the moment
+the piece goes under a video**: `edit_video` with `action: score` loops a piece
+that is shorter than the cut and trims one that is longer, so fitting it needs
+no measuring and no arithmetic — see "Can you put music under a video, or add a
+soundtrack?". The compose tool itself still neither measures nor trims, because
+the length is the model's choice, not the brief's.
 
 **Every call costs the same whatever comes back**, around **$0.08**, because the
 price is per call and not per second. That makes a short clip and a long one the
@@ -342,9 +343,10 @@ saved.
 
 Not in one render, and yes by joining several — a single render is a short
 clip, because the video providers top out around ten seconds; nothing in
-aforge extends one render. A longer video is several
-`generate_video` calls stitched together with ffmpeg in the shell, and whether
-the result hangs together is decided by three facts about the tool:
+aforge extends one render. A longer video is several `generate_video` calls
+joined with **`edit_video`**, whose `join` action lays clips end to end and
+carries every one of their audio streams. Whether the result hangs together is
+decided by three facts about the render tool:
 
 - **Every render is independent.** The video model sees one prompt and the
   pictures passed to that one call — never the conversation, never an earlier
@@ -354,14 +356,17 @@ the result hangs together is decided by three facts about the tool:
 - **Pictures are the only thread between clips.** The same `reference_paths`
   handed to every call keep a face and a costume steady. For clips that should
   **connect** — one shot flowing into the next — the last frame of a finished
-  clip is passed as the next call's opening `frame_paths` entry (in a saved
-  harness step, whose `generate_video` has no `frame_paths`, the same slot is
-  the first `reference_paths` entry). That chain makes connected clips a
-  sequence: they cannot all render in parallel.
-- **Each clip lands with its own sound**, and its note says so. A stitch keeps
-  that sound only if the join carries the audio streams as well as the video,
-  and a continuous score is `generate_music` — a background job of its own,
-  whose file exists only once its note has landed — looped under the whole cut.
+  clip is passed as the next call's opening `frame_paths` entry, and that frame
+  is saved with `edit_video`'s `frame` action, which takes the closing frame by
+  default (in a saved harness step, whose `generate_video` has no `frame_paths`,
+  the same slot is the first `reference_paths` entry). That chain makes connected
+  clips a sequence: they cannot all render in parallel.
+- **Each clip lands with its own sound**, and its note says so. `edit_video`'s
+  join carries all of it: a clip with sound keeps its own, a silent clip is given
+  silence of its own length, so the cut cannot go quiet part-way through. A
+  continuous score is separate — `generate_music`, a background job whose file
+  exists only once its note has landed, laid under the finished cut with
+  `edit_video`'s `score` action.
 
 Even chained, clips are distinct shots with some drift between them — a
 stitched video is a cut, not one continuous take. Fewer scenes in one setting
@@ -382,12 +387,151 @@ once.
 
 **No sound, or no audio after the first clip:** the clips almost certainly
 landed with sound — each clip's landing note says `with sound` or `without
-sound`, measured from the file — and the join dropped it. An ffmpeg filter
-that only crossfades the video streams carries just the first input's audio;
-the stitch has to map or crossfade the audio streams too, or concatenate both
-streams together. Music is separate either way: a score under the whole cut is
-`generate_music` — started early, because it is a background job whose file
-arrives as a note — then measured and looped to fit, mixed in at the join.
+sound`, measured from the file — and the join dropped it. **A cut joined with
+`edit_video` cannot do that**: its join gives every clip an audio stream, real
+or generated, so there is no way for the sound to stop part-way through. A cut
+that *is* silent after the first clip was joined by hand in the shell instead,
+where an ffmpeg filter that only touches the video streams carries just the
+first input's audio and discards the rest without a word. The fix is to join it
+again with `edit_video`, not to repair the command. Music is separate either
+way: a score under the whole cut is `generate_music` — started early, because it
+is a background job whose file arrives as a note — then laid under the joined cut
+with `edit_video`'s `score` action, which loops or trims it to fit by itself.
+
+## Can you join clips together, stitch or concatenate videos into one video?
+
+Yes, with `edit_video` and `action: join`. It is **local, free and instant** —
+nothing about it is a render, and it costs no money at all.
+
+Give it `clips`: the video files to lay end to end, **in the order they should
+play**, at least two of them. Optionally `path` for where to save the result;
+leave it out and the cut lands where this session keeps its video, under a
+timestamped name.
+
+Two things it decides for you, and they are the two a hand-written ffmpeg
+command gets wrong:
+
+- **Every clip's audio is carried.** A clip with sound keeps its own; a clip
+  with none is given silence of its own measured length. So the joined cut has
+  one continuous audio stream and **cannot** go quiet part-way through.
+- **Every clip is fitted to the first clip's frame** — scaled to fit inside it
+  and letterboxed with black, never stretched — and resampled to the first
+  clip's frame rate, because concatenating mixed rates produces a cut whose
+  timing drifts.
+
+The answer is measured off the file that now exists, not claimed:
+
+```
+.aforge-v3/video/20260901-181201-joined-cut-of-4-clips.mp4 — 34.0s with sound, 1280×720 at 24fps, 12.4MB of mp4 video, joined from 4 clips
+```
+
+Limits, in its own words. At most **64 clips** in one call — `a join takes at
+most 64 clips at a time` — and a join of one is refused rather than quietly
+copied: `a join needs at least 2 clips; one clip is already the video`. A file
+with no picture in it is named: `score.mp3 has no video in it, so there is
+nothing to join`. One call is given up on after five minutes — `ffmpeg gave up
+after 5m0s` — and leaves nothing half-written behind.
+
+## How long is this video, and does it have sound?
+
+`edit_video` with `action: measure` answers, for a video file already on disk,
+for nothing, in about a tenth of a second. Give it `video`; it writes nothing.
+
+```
+shots/ferry.mp4 — 8.0s with sound, 1280×720 at 24fps, 4.2MB of mp4 video
+```
+
+Length, sound, frame size, frame rate and file size, each **measured from the
+file** and each simply absent when the file does not state it — a fact nobody
+measured is never guessed at.
+
+**This is not the same question as `read`.** `read` on a video hands the file to
+a video-reading model and answers what *happens* in it: who is in the shot, what
+the text on screen says, whether the cut works. That costs money and takes a
+moment. `measure` answers the arithmetic a cut is planned from — how long the
+clips are, whether the join has any sound to carry — and costs nothing. Ask
+`measure` when the question has a number for an answer.
+
+A clip aforge rendered itself already states both facts in its landing note, so
+measuring one again is only worth it after something has been done to it.
+
+## Can you save a frame, a still or a thumbnail out of a video?
+
+Yes, with `edit_video` and `action: frame`. Give it `video`, optionally `at` and
+`path`.
+
+`at` takes **`closing`** (the default), **`opening`**, or a number of seconds.
+The everyday words work too — `last`, `final`, `end`, `first`, `start`.
+
+**The default is the closing frame because that is the one that connects two
+renders.** Every `generate_video` call is independent and remembers nothing, so
+the only way to make one shot flow out of another is to hand the finished clip's
+final frame to the next call as its opening `frame_paths` entry. Save the frame,
+pass it, and the shots join instead of cutting.
+
+It is saved as a **png** — lossless, because the picture is often handed straight
+back to a render — and lands where this session keeps its pictures. `jpg`, `jpeg`
+and `webp` also work if you name one in `path`; anything else is refused: `a
+frame is saved as a picture — .mp4 is not one of jpeg, jpg, png, webp`.
+
+The answer names the whole absolute path, the picture's measured shape, and which
+frame of which clip it is:
+
+```
+/home/you/work/.aforge-v3/images/20260901-181330-the-closing-frame.png — 1280×720 png, 812.4KB, the closing frame of ferry.mp4
+```
+
+## Can you put music under a video, or add a soundtrack?
+
+Yes, with `edit_video` and `action: score`. Give it `video` and `audio` — an mp3
+from `generate_music` or `speak`, or any file with sound in it.
+
+**The music's own length does not matter.** A piece shorter than the video is
+looped until it fills it; a longer one is trimmed. That is the whole reason
+`generate_music`'s missing length argument stops being a problem: the piece it
+wrote is fitted to the cut, not the other way round. The answer says which
+happened — `score.mp3 looped to fit` or `score.mp3 trimmed to fit`.
+
+**It goes UNDER what is already there.** A video with its own sound keeps it and
+the music is mixed beneath at level `0.3`; a silent video gets the music at full
+level. `level` sets that yourself (1 is as recorded), and `replace: true` drops
+the video's own sound instead of mixing under it. `level: 0` is refused, and the
+refusal points at the argument that meant it: `level is how loud the music is
+and must be above zero; use replace to drop the video's own sound`.
+
+`fade` is seconds to fade the music out at the end, and it is worth naming when
+the piece was looped: a loop that stops dead mid-phrase sounds like a mistake
+somebody made. Left out, the score ends where the picture does.
+
+The picture is **copied, not re-encoded**, so scoring a finished cut takes
+seconds and loses no quality.
+
+## Can you edit video without a video model — and what if this machine has no ffmpeg?
+
+Two separate answers, and the first is the useful one.
+
+**`edit_video` needs no model, no key and no money.** It is the one media verb
+that is not gated on your settings: it is there on a machine that cannot
+generate a single frame, because measuring, framing, joining and scoring footage
+you already have is real video work that needs nothing bought. Drop a screen
+recording or a camera clip in the folder and all four actions apply to it.
+
+**What it does need is ffmpeg and ffprobe on the machine.** They are not
+downloaded on demand. Without them the verb is **absent** rather than present and
+refusing — aforge simply does not have it, the same way it does not have
+`generate_video` without a video model — so asking gets an honest "I do not have
+that here" rather than a failed attempt. Install ffmpeg (it carries ffprobe with
+it) and the verb appears on the next conversation.
+
+The four actions are `measure`, `frame`, `join` and `score`; anything else is
+refused by name: `Unknown action: transcode. Use measure, frame, join, score.`
+There is deliberately no trim, no crop, no speed change and no transition —
+those are `bash` and ffmpeg directly, and they always were. What lives here are
+the four operations a *generated* film is assembled from, where getting them
+wrong is silent.
+
+**`edit_video` works in tasks, in adaptive runs and inside saved harnesses**
+under the same one condition, exactly as the making verbs do.
 
 ## Where do the pictures, audio, music and video you make end up?
 

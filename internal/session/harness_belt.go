@@ -111,7 +111,12 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 	if seams.Seer != nil {
 		tools = append(tools, agent.viewTools()...)
 	}
-	return tools
+	// edit_video needs NO SEAM AT ALL — no client, no resolver, no seer — because
+	// it buys nothing: it is ffmpeg on this machine, and its gate is PATH. So a
+	// saved procedure that assembles generated clips into one film can name it on
+	// its whitelist wherever ffmpeg is, including on a machine that has no video
+	// model to generate a clip with in the first place.
+	return append(tools, agent.videoEditTools()...)
 }
 
 // HarnessBeltNames is the same belt as a set, for the lint that checks a

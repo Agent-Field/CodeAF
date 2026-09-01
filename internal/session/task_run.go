@@ -4700,9 +4700,19 @@ const aforgeDroppings = ".aforge-v3"
 // question asked twice — and reading it off one map is what stops the two
 // answers drifting apart, which is exactly what happened when the landing pass
 // spelled out `write` and `edit` by hand (design-law §ONE SOURCE OF TRUTH).
+//
+// edit_video (tools_editvideo.go) is here for the LANDING half above all, and it
+// is the one name on this list that does not always save: three of its four
+// actions write a file — a joined cut, a saved frame, a scored cut — and
+// `measure` writes nothing. The trade is deliberate and it is not close. Leaving
+// it off would take the joining verb away from a node ordered to land the film
+// it spent its life cutting, which is the precise defect the landing belt was
+// rebuilt to end; putting it on means a node that only ever measured the same
+// clip is not caught by THIS reset, and it is still caught by the other two.
 var savingTools = map[string]bool{
 	"edit":           true,
 	"write":          true,
+	"edit_video":     true,
 	"generate_image": true,
 	"generate_music": true,
 	"generate_video": true,
