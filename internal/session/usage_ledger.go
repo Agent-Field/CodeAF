@@ -56,9 +56,9 @@ package session
 //     see is a bill that reads as smaller than it was: the spend surfaces say
 //     how many records went missing rather than quietly under-reporting.
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
-//     file: an instantly-cancelled turn and a zero-token seal leave no row, so a
-//     day with no line in it is a day nothing was spent, rather than a day whose
-//     rows all say zero.
+//     file: a call cut before its final chunk, and every request a provider
+//     reported nothing about, leave no row — so a day with no line in it is a
+//     day nothing was spent, rather than a day whose rows all say zero.
 //   - IT IS READ THROUGH A CACHE THAT READS THE TAIL. Home's clock beats every
 //     three seconds and this file grows by a line per call, so a reader that
 //     re-parsed the whole file whenever it changed would re-parse it after every
@@ -133,7 +133,7 @@ type UsageLine struct {
 	Model string `json:"model,omitempty"`
 	// Role is WHAT the call was for — "title", "taskname", "intake" — on the
 	// three auxiliary calls in the program that name themselves, and empty on
-	// every other line including every turn's own seal. It is internal/roles'
+	// every other line including every call a turn makes for itself. It is internal/roles'
 	// vocabulary and NOT the five router slots (execution, conversation,
 	// verification, naming, planning): nothing in the program records which slot
 	// a call ran under, and a page that labelled this column with those words
@@ -281,11 +281,12 @@ func usageFromResponse(line UsageLine, lane string, ttft, gen time.Duration, out
 // ── WHAT ONE AGENT'S OWN CALL WAS SERVED BY ─────────────────────────────────
 //
 // The five fields above are known at two different moments and the row is
-// written at a third. The lane and the hedge are known when the answer lands;
-// the first-token wait is known while the answer is still arriving; the row is
-// written when the turn is sealed, from a function with no request in front of
-// it. So something has to hold what was seen until there is a row to put it
-// on, and that is the whole of what a witness is.
+// written at the second. The first-token wait is known while the answer is
+// still arriving, spread across chunks that reach the loop one at a time; the
+// lane and the hedge are known when the answer lands, and the row goes out in
+// that same breath ([Agent.addUsage]). So something has to hold what was seen
+// ACROSS THE STREAM until the answer closes it, and that is the whole of what a
+// witness is.
 //
 // IT BELONGS TO ONE AGENT AND IS FILLED ONLY BY THAT AGENT'S OWN REQUESTS.
 // `internal/provider` folds every finished stream into a ledger keyed by MODEL
