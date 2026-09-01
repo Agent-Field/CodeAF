@@ -66,7 +66,7 @@ func TestAJobsRoomDrawsWhatTheRowKnowsInsteadOfAVoid(t *testing.T) {
 	if !strings.Contains(text, log) {
 		t.Fatalf("the room drew nothing of what the row already knew:\n%s", text)
 	}
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("the landed foot went missing:\n%s", text)
 	}
 }
@@ -92,7 +92,7 @@ func TestALandedRoomNeverDrawsAnEmptyBody(t *testing.T) {
 	if strings.Contains(text, roomGoneWord) {
 		t.Fatalf("a job's room claims a transcript went missing; it never had one:\n%s", text)
 	}
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("the landed foot went missing:\n%s", text)
 	}
 }
@@ -122,7 +122,7 @@ func TestALandedRoomFallsBackToTheReportOnTheRecord(t *testing.T) {
 	if !strings.Contains(text, roomGoneWord) {
 		t.Fatalf("the room drew a report with no word on the missing transcript:\n%s", text)
 	}
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("the landed foot went missing:\n%s", text)
 	}
 }

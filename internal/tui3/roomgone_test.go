@@ -22,10 +22,10 @@ func TestALandedRoomWithNothingToReplaySaysTheTranscriptIsGone(t *testing.T) {
 	if !strings.Contains(text, roomGoneWord) {
 		t.Fatalf("an empty landed room draws no reason for the blank:\n%s", text)
 	}
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("the foot went missing under the empty room:\n%s", text)
 	}
-	if strings.Index(text, roomGoneWord) > strings.Index(text, roomFinishedWord) {
+	if strings.Index(text, roomGoneWord) > strings.Index(text, roomFinishedRefusal.what) {
 		t.Fatalf("the reason is drawn under the foot, want it above:\n%s", text)
 	}
 }
@@ -48,7 +48,7 @@ func TestALandedRoomWithATranscriptDoesNotSayItIsGone(t *testing.T) {
 	if !strings.Contains(text, "Added the guard in parseRow.") {
 		t.Fatalf("the transcript did not replay:\n%s", text)
 	}
-	if !strings.Contains(text, roomFinishedWord) {
+	if !strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("a landed room lost its foot:\n%s", text)
 	}
 }

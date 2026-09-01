@@ -1179,6 +1179,17 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
 	}
+	// AND THE GROUND'S OWN MANIFEST UNDER IT (taskmanifest.go). The sentence
+	// above is about the diff, and a diff is a view of the TRACKED half of a
+	// tree: the run this was written after turned on files nothing had added, so
+	// no diff showed them and the reading judged the whole against the parts that
+	// happened to be tracked. The manifest is what is staged, what is changed and
+	// not staged, and what is not tracked at all — read from the ground the
+	// reader is standing in, and drawing nothing at all where that ground is not
+	// a repository.
+	if manifest := groundManifest(ground.dir); manifest != "" {
+		out.WriteString("\n" + manifest)
+	}
 	out.WriteString("\n" + door.line())
 	if len(door.checks) == 0 {
 		out.WriteString("\nRead the change. Then give your verdict.")

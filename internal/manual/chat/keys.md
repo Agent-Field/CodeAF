@@ -1635,11 +1635,21 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 **While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
-`w` widens the column and narrows it again. Its hint reads exactly
-`↑↓ move · →← tree · enter open · w wide · esc`. On a row whose work is still running or
+`alt+w` widens the column and narrows it again. Its hint reads exactly
+`↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
 still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
 moves that task's thinking rung; a finished row does not offer it, because a finished
 task's rung is a fact about what happened.
+
+**Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
+before the message box: a sentence typed while the roster still held the keyboard came out
+as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
+modal page with no message box, or an answer to a question drawn on screen, pressed over an
+empty box — and widening a column is neither, so it took a chord. The bare `w` still works
+on the **full-frame roster** (`ctrl+t` under about 100 columns, where the roster is drawn
+over the whole frame and there is no message box on screen). The column's own footer says
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and dragging or clicking the
+seam does the same thing with the pointer.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's
@@ -1785,9 +1795,17 @@ the work.
 
 **Inside the task's room the same four keys need no selection.** The room is the task, so
 `a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
-at the foot of the page where `task finished — esc to return` would otherwise be, and the
-hint slot reads `a accept · l look again · n not right` while the question stands. The room
-and the card are one question: answer in either and both show the receipt.
+at the foot of the page where `this task has finished — say it to main` would otherwise be,
+and the hint slot reads `a accept · l look again · n not right` while the question stands.
+The room and the card are one question: answer in either and both show the receipt.
+
+**And the roster's row answers them too.** With the roster holding the keyboard (`ctrl+t`)
+and the cursor on a row that **needs your look**, the hint slot reads
+`a accept · l look again · n not right · esc` in place of the move keys, and those three
+letters answer that row's landing without opening its room. Same card, same answers, same
+receipt — the column, the card and the room cannot disagree, because there is one card
+behind all three. `d` works there too and is left off the hint for the room's own reason:
+it is a preference and not an answer to the question in front of you.
 
 ## The mouse: what you can click
 

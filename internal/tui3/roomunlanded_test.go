@@ -37,7 +37,7 @@ func TestARunningRoomWithNothingToReplayIsNeverAnEmptyPage(t *testing.T) {
 	if strings.Contains(text, roomGoneWord) {
 		t.Fatalf("a running node's page claims its transcript is gone:\n%s", text)
 	}
-	if strings.Contains(text, roomFinishedWord) {
+	if strings.Contains(text, roomFinishedRefusal.what) {
 		t.Fatalf("a running node's page says the task finished:\n%s", text)
 	}
 }

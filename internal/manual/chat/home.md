@@ -495,7 +495,7 @@ something the ground already says.
 **A project heading is never marked.** Under `alt+g` the project names are dim and stay
 dim — they are grouping rather than a place the keyboard can be.
 
-## Why is the needs you heading highlighted — it is not there any more
+## Why is the needs you heading highlighted, why is one project name darker than the others — it is not there any more
 
 **There is no `needs you` heading and no `moving` heading.** Both were labels over strips,
 and the strips are gone; what needs you is the top of the one list, wearing an amber `?`,
@@ -506,8 +506,9 @@ section line — `20 chats · what wants you first` — and, under `alt+g`, the 
 **None of them ever brightens** and none of them is a cursor stop. The one thing on the
 frame that is lifted out of the dim is the row your cursor is on.
 
-If a **project name** looks different from the others it is because `alt+g` is grouping the
-list and this window's own project sorts first. Press `alt+g` again for the flat list.
+If **one project name is darker** than the others, or looks different from them in any way,
+it is because `alt+g` is grouping the list: under it the project names are dim headings, and
+this window's own project sorts first. Press `alt+g` again for the flat list.
 
 ## Why are most projects collapsed on home — they are not, there is one list
 

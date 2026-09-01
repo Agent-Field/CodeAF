@@ -381,7 +381,7 @@ func (a *app) hoveringSettle(entry int) int {
 // strength of the first word of a paragraph.
 func (a *app) settleCardKey(msg tea.KeyPressMsg) bool {
 	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
-		a.roomOpen() || !a.input.empty() {
+		a.roomOpen() || a.chordsStandDown() {
 		return false
 	}
 	// The selection indexes WHICHEVER LIST THE BODY IS DRAWING, and a room's page
@@ -507,7 +507,7 @@ func (a *app) settleCardOf(entry int) *taskDone {
 // answered. It reports false when the room's foot is not this file's to draw.
 //
 // THE ROWS CARRY NO ENTRY, which is the room's own convention for a foot
-// (room.go's [roomFinishedWord]) and what makes the pointer resolve them to the
+// (room.go's [roomFinishedRefusal]) and what makes the pointer resolve them to the
 // room's node rather than to an index into a list that is not on screen.
 func (a *app) roomSettleRows(out []row, width int) ([]row, bool) {
 	card := a.roomSettleCard()
@@ -536,11 +536,69 @@ func (a *app) roomSettleRows(out []row, width int) ([]row, bool) {
 // they stay refused: this route sits beside the room's other keys rather than
 // loosening the conversation path's selection rule.
 func (a *app) roomSettleKey(msg tea.KeyPressMsg) bool {
-	if a.room == nil || !a.input.empty() || a.recalling() || a.rew.on {
+	if a.room == nil || a.chordsStandDown() || a.recalling() || a.rew.on {
 		return false
 	}
 	card := a.roomSettleCard()
 	if !a.settleAsking(card) {
+		return false
+	}
+	answer, ok := settleAnswerFor(msg.String())
+	if !ok {
+		return false
+	}
+	a.settleCard(card, answer)
+	return true
+}
+
+// ── the same question, answered from the column ─────────────────────────────
+//
+// THE `!` SUMMONS SOMEBODY TO THE COLUMN AND THE COLUMN TOLD THEM NOTHING. A
+// node lands `needs your look`, the roster's row says `finished — look it over`
+// in the warn hue, and until this the three words that answer it — accept, look
+// again, not right — existed only on the card back in the conversation and at
+// the foot of the node's own room. A person standing on the row with the
+// keyboard in their hand had to learn, from somewhere else, that entering the
+// room was the way to answer; a key that only acts once you have found out what
+// it is for is a key that is not there.
+//
+// SO THE ROW ANSWERS, and it answers with the same letters, through the same
+// [app.settleCard], to the same card. There is no second state: [railSettleCard]
+// finds the conversation's own card by the focused node's id, exactly as
+// [app.roomSettleCard] finds it by the open room's, so answering from the
+// column marks the card and the room's foot on the very next frame.
+//
+// THE GUARD IS THE GUARD EVERY BARE LETTER ON THIS SURFACE HAS (chordfocus.go):
+// the roster must have been handed the keyboard, the box must be empty, and no
+// history walk or rewind may be on. These letters are an answer to a question
+// the surface is blocked on and drawn on screen — which is the one thing that
+// earns a bare letter here — and the hint slot names them for as long as they
+// work ([app.railHoldHintWord]).
+
+// railSettleCard is the card the roster's FOCUSED ROW is asking with, or nil.
+// It is nil unless the roster holds the keyboard, because without a hold there
+// is no cursor and nothing is being aimed at ([app.railFocusNode] says the same
+// about `x`).
+func (a *app) railSettleCard() *taskDone {
+	node := a.railFocusNode()
+	if node == nil {
+		return nil
+	}
+	card := a.doneCardFor(node.id)
+	if !a.settleAsking(card) {
+		return nil
+	}
+	return card
+}
+
+// railSettleKey routes the settle letters on the roster's focused row and
+// reports whether it took one.
+func (a *app) railSettleKey(msg tea.KeyPressMsg) bool {
+	if a.chordsStandDown() || a.recalling() || a.rew.on || a.roomOpen() {
+		return false
+	}
+	card := a.railSettleCard()
+	if card == nil {
 		return false
 	}
 	answer, ok := settleAnswerFor(msg.String())

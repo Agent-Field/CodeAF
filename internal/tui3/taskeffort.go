@@ -155,11 +155,26 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // adaptive run is not in the graph this door reaches at all.
 // railHoldHintWord is [railHoldHint] with the rung's chord named in it while the
 // row under the cursor can take one, and [railHoldHint] itself otherwise.
+//
+// AND A ROW THAT IS ASKING TAKES THE WHOLE LINE. A node that landed `needs your
+// look` is the surface standing still waiting for a person, and the three words
+// that answer it were reachable only from inside the node's room — so the `!`
+// summoned somebody to a column that told them nothing about what to press
+// (tasksettle.go's [app.railSettleKey] is the other half). While the cursor is
+// on such a row the slot says the answers and nothing else: the move keys are
+// still there, they are still the keys a person already knows, and the one thing
+// they do not know is the one thing this line is for.
+//
+// It is spelled from [roomSettleHint], so the roster, the card and the room
+// cannot name three different letters for one question.
 func (a *app) railHoldHintWord() string {
-	if !a.taskRungMovable(a.railFocusNode()) {
-		return railHoldHint
+	if a.railSettleCard() != nil {
+		return roomSettleHint + " · esc"
 	}
-	return railHoldKeys + " · " + effortKeyClause + " · esc"
+	if !a.taskRungMovable(a.railFocusNode()) {
+		return a.chords.say(railHoldHint)
+	}
+	return a.chords.say(railHoldKeys + " · " + effortKeyClause + " · esc")
 }
 
 func (a *app) taskRungMovable(node *taskNode) bool {

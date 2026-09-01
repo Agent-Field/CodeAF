@@ -274,7 +274,7 @@ func (a *app) harnessPageHead(name, head string, room int, selected bool) string
 // never reached the box a person was typing into.
 func (a *app) harnessCardKey(msg tea.KeyPressMsg) bool {
 	if a.at(pageSettings) || a.at(pageHome) || a.pick.open || a.copy.on || a.rew.on ||
-		a.roomOpen() || !a.input.empty() {
+		a.roomOpen() || a.chordsStandDown() {
 		return false
 	}
 	if a.sel < 0 || a.sel >= len(a.entries) {

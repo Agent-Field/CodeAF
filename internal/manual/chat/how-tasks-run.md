@@ -1017,6 +1017,27 @@ settle a refusal outright (a check that failed, or a check nobody ever ran, need
 run to be believed) while anything that could pass there and fail in the restore has to be
 settled in the restore. A task that never ran a tool leaves this out of the packet entirely.
 
+## What the checker is shown of the ground itself — untracked files, and why a diff is not enough
+
+The checker is also handed the **full manifest of the tree it is standing in**, headed
+`THE GROUND, AS GIT SEES IT (\`git status --porcelain --untracked-files=all\`)`: every path
+that is staged, every path changed and not staged, and every path that is **not tracked at
+all**, one per line in git's own two-letter notation.
+
+It is there because a diff is a view of the **tracked half** of a tree. A run was checked
+against `git diff --cached` alone and the files the work turned on were untracked — nothing
+had ever added them — so no diff showed them and the reading judged the whole change against
+the parts that happened to be tracked. The manifest closes that: lines beginning `??` are
+untracked, the block says so in as many words, and the checker is told to open them with
+`read` if they matter to the acceptance.
+
+Two things bound it. The listing stops at 100 paths and then says how many more there are,
+so a checker knows it is looking at a prefix and can run the command itself. And aforge's
+own metadata directory (`.aforge-v3`, where a job's log lives) is left out — that is this
+program's droppings and never the work's. A workspace that is not a repository gets no
+manifest at all, and the packet already says so in its own sentence: `this workspace is not
+a repository, so there is no diff to read: check the files themselves`.
+
 ## What happens when the work is not right yet
 
 When the second look says what is missing, the task gets a **fresh worker in the same
