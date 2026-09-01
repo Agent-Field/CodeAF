@@ -46,7 +46,22 @@ import (
 func (h *homeView) spinAt() int { return h.newestMoving() }
 
 // newestMoving is the freshest moving row on the column.
+//
+// A CONVERSATION BEING MOVED HERE TAKES THE SPINNER OUTRIGHT, and that is this
+// file's own rule rather than an exception to it: the row somebody just pressed
+// enter on is by construction the most recently started thing on the machine,
+// and "the thing they just did" is exactly what the block above says the one
+// moving cell is for. It is answered before the stamps because a claim has no
+// stamp any of the rows can be compared on — it is a fact about THIS window,
+// not about anything the world file recorded (takeovervoice.go).
 func (h *homeView) newestMoving() int {
+	if h.claim != "" {
+		for at, line := range h.lines {
+			if line.kind == homeSession && line.row.Transcript == h.claim {
+				return at
+			}
+		}
+	}
 	best, when := homeNoLine, time.Time{}
 	for at, line := range h.lines {
 		stamp, moving := homeMovingAt(line)

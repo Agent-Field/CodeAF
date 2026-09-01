@@ -195,7 +195,17 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	line, keep := a.toolLineLayout(e, i, last, width)
 	out := []row{{text: line, entry: i, hit: hit, keep: keep}}
 	stem := a.pal.railCont()
-	room := width - ansi.StringWidth(stem)
+	// THE INDENT LAW COSTS THE BLOCK ITS TWO CELLS TOO, and it is subtracted here
+	// for the reason [app.toolLine] subtracts it: render.go's pass shoves every
+	// work row two columns right AFTER layout, so a block laid out to the frame's
+	// whole width is drawn two columns wider than the column it lives in — and a
+	// row two cells over the frame does not get an ellipsis from the terminal, it
+	// gets a second visual row. That is what made one open `bash` call eat four
+	// rows: every wrapped line of its output was folded by the terminal rather
+	// than fitted by us. The tier is still asked of the FRAME's width, because a
+	// block that picked its tier from its own indent would take the phone's cap
+	// two cells early.
+	room := width - workIndentCols(width) - ansi.StringWidth(stem)
 	// The BLOCK's rows answer the pointer even where the line does not: a
 	// replayed row's line is inert because there is nothing behind it to open,
 	// and a row with a block hanging under it has by definition got something.
@@ -1866,8 +1876,13 @@ func (a *app) bashRows(e *entry, width int) []string {
 // back, which is the honest floor.
 func (a *app) genericRows(e *entry, width int) []string {
 	var out []string
+	// THE ARGUMENTS ARE ONE ROW. They are a payload of unknown shape — a model
+	// that pretty-printed its JSON hands this line four newlines — and a row that
+	// is drawn as one row and measured as one row must be one line before it is
+	// fitted ([drawableLine] drops the newline with the rest of the control
+	// bytes).
 	if args := strings.TrimSpace(e.detail.Args); args != "" {
-		out = append(out, a.pal.dim(fit(expandTabs(args), width)))
+		out = append(out, a.pal.dim(fit(drawableLine(args), width)))
 	}
 	return append(out, a.plainRows(resultText(e.detail.Output), width)...)
 }
@@ -1881,7 +1896,7 @@ func (a *app) plainRows(text string, width int) []string {
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		out = append(out, a.pal.dim(fit(expandTabs(line), width)))
+		out = append(out, a.pal.dim(fit(drawableLine(line), width)))
 	}
 	return out
 }
@@ -1896,14 +1911,44 @@ func resultText(output string) string {
 
 func expandTabs(s string) string { return strings.ReplaceAll(s, "\t", "    ") }
 
+// drawableLine is one line of SOMEBODY ELSE'S BYTES made safe to draw as exactly
+// one row.
+//
+// A TOOL'S ARGUMENTS AND A TOOL'S OUTPUT ARE NOT THIS SURFACE'S TEXT. They are
+// whatever a model wrote into a command and whatever a compiler, a server or a
+// test runner wrote back down a pipe — colour, tabs, carriage returns and all —
+// and every one of those lies to the fitter. A tab measures nothing and draws up
+// to eight cells, so a command with four of them in it is laid out to the frame
+// and then wraps; a carriage return measures nothing and sends the cursor back
+// to column one, so the tail of a row overwrites its own head; and an escape
+// sequence drawn into the frame does not merely look wrong, it repaints rows
+// this surface owns. The clamp to one row is only true of text that has been
+// through here first.
+//
+// It is [jobLogLine]'s rule, lifted to where the transcript can reach it, and it
+// is deliberately per-LINE: the newline is a control byte like any other, so a
+// caller with a whole payload splits it first and decides for itself how many
+// rows that payload is allowed.
+func drawableLine(raw string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, expandTabs(ansi.Strip(raw)))
+}
+
 // toolWords splits a call into the two things a line says: the tool's NAME and
 // a gloss of what it was pointed at. Session hints usually lead with the tool's
 // own name ("read internal/session/session.go"), so the name is stripped from
 // the front of the gloss — a line that printed both would say "read read
 // internal/session/session.go". The gloss is the FALLBACK target: the payload
 // is asked first (see [toolTarget]).
+// Both halves come back DRAWABLE, on [toolTarget]'s reason: a hint is session's
+// summary of somebody else's text and the fallback target is cut straight out of
+// it, so it reaches the line with whatever the tool put in it.
 func toolWords(tool, hint string) (string, string) {
-	tool, hint = strings.TrimSpace(tool), strings.TrimSpace(firstLine(hint))
+	tool, hint = strings.TrimSpace(drawableLine(tool)), strings.TrimSpace(drawableLine(firstLine(hint)))
 	if tool == "" {
 		return hint, ""
 	}

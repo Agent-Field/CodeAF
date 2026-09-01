@@ -27,12 +27,13 @@ const (
 )
 
 type webExecutionOptions struct {
-	client      *http.Client
-	exaURL      string
-	parallelURL string
-	outputDir   string
-	version     string
-	resolveHost func(context.Context, string) ([]net.IP, error)
+	client       *http.Client
+	exaURL       string
+	parallelURL  string
+	firecrawlURL string
+	outputDir    string
+	version      string
+	resolveHost  func(context.Context, string) ([]net.IP, error)
 }
 
 // WithWebHostResolver injects redirect-boundary DNS resolution for hermetic
@@ -58,10 +59,12 @@ func WithWebHTTPClient(ctx context.Context, client *http.Client) context.Context
 
 // WithWebSearchEndpoints redirects the provider MCP endpoints. It exists so
 // tests can exercise the complete registry path without external network I/O.
-func WithWebSearchEndpoints(ctx context.Context, exaURL, parallelURL string) context.Context {
+// aforge-embed: D13 — the seam includes Firecrawl beside the two upstream URLs.
+func WithWebSearchEndpoints(ctx context.Context, exaURL, parallelURL, firecrawlURL string) context.Context {
 	options := webOptions(ctx)
 	options.exaURL = exaURL
 	options.parallelURL = parallelURL
+	options.firecrawlURL = firecrawlURL
 	return context.WithValue(ctx, webExecutionOptionsKey{}, options)
 }
 

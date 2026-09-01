@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/openrouterauth"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -50,6 +51,19 @@ func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 // where they asked to be. A launcher that opened on an empty session instead
 // would make "resume" the one command that can leave you with nothing.
 func runResumeV3(args []string) error { return openChatV3("resume", args, true) }
+
+// v3OpenRouterConnection is the default provider's browser door. Comparing the
+// resolved endpoint, rather than merely looking for AFORGE_BASE_URL, also does
+// the right thing for a caller that explicitly names the built-in address and
+// for one that carries a harmless trailing slash.
+func v3OpenRouterConnection(settings config.Config, interactive bool) func(context.Context) (tui3.OpenRouterFlow, error) {
+	if !interactive || !v3UsesDefaultOpenRouter(settings) {
+		return nil
+	}
+	return func(ctx context.Context) (tui3.OpenRouterFlow, error) {
+		return openrouterauth.Begin(ctx, openrouterauth.Options{})
+	}
+}
 
 func openChatV3(name string, args []string, pickSession bool) error {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -226,12 +240,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// no particular conversation in mind — a TTY on stdin, no --once (which
 	// returned above, but the flag is the honest test), no --session and no
 	// picker — and it is the one launch that may open with no key and ask for
-	// one on its first screen (internal/tui3's firstrun.go). Everything else
-	// meets the old refusal at the door. --host forked above and never reaches
-	// here; the far machine's key is the far machine's business.
-	setup := stdinIsTerminal(os.Stdin) && strings.TrimSpace(*once) == "" &&
-		strings.TrimSpace(*file) == "" && !pickSession
-	proc, err := openV3ProcessWith("chat", setup)
+	// one on screen (internal/tui3's firstrun.go). A named or picked conversation
+	// may connect too — it cannot talk without the same key — while --once still
+	// meets the refusal at the door. --host forked above and never reaches here;
+	// the far machine's key is the far machine's business.
+	interactive := stdinIsTerminal(os.Stdin) && strings.TrimSpace(*once) == ""
+	setup := interactive && strings.TrimSpace(*file) == "" && !pickSession
+	proc, err := openV3ProcessWith("chat", interactive)
 	if err != nil {
 		return err
 	}
@@ -531,6 +546,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// holds starts talking with it on its next request, and every one opened
 		// later is built with it (chatv3_process.go's [v3Process.setAPIKey]).
 		ApplyAPIKey: proc.setAPIKey,
+		// With no endpoint named, OpenRouter is the model provider and a missing
+		// key has a direct browser door. A custom OpenAI-compatible endpoint gets
+		// no OpenRouter offer, and a non-interactive launch has nobody to finish
+		// one, so both honestly leave this seam absent.
+		ConnectOpenRouter: v3OpenRouterConnection(settings, interactive),
 		// The accounts panel, and the sign-in a pressed row starts. It is the
 		// SAME manager the belt reaches through (cfg.Connect), so an account
 		// connected on the panel is connected for the model in the same breath
@@ -1304,7 +1324,7 @@ func v3LanePin(profileDir string) provider.LanePin {
 }
 
 // v3Search resolves the web-search pair this session's belt calls through: the
-// three settings rows in, [search.Resolve]'s answer out.
+// four settings rows in, [search.Resolve]'s answer out.
 //
 // IT RETURNS NO ERROR, and that is a statement about the layer rather than an
 // omission. Every rung of the resolution ladder ends in a plug that needs no
@@ -1331,7 +1351,7 @@ func v3Search(profileDir string) (search.Provider, search.Fetcher) {
 
 // v3SearchOptions is the mapping itself, split out so it can be read and tested
 // without a registry: the pin from the choice row (auto meaning no pin, which
-// internal/search spells as the empty string), and the two credentials from the
+// internal/search spells as the empty string), and the three credentials from the
 // environment or the sheet.
 func v3SearchOptions(profileDir string) search.Options {
 	pin := config.SearchProviderAt(profileDir)
@@ -1339,9 +1359,10 @@ func v3SearchOptions(profileDir string) search.Options {
 		pin = ""
 	}
 	return search.Options{
-		Provider: pin,
-		ExaKey:   config.ExaKeyAt(profileDir),
-		JinaKey:  config.JinaKeyAt(profileDir),
+		Provider:     pin,
+		ExaKey:       config.ExaKeyAt(profileDir),
+		FirecrawlKey: config.FirecrawlKeyAt(profileDir),
+		JinaKey:      config.JinaKeyAt(profileDir),
 	}
 }
 
