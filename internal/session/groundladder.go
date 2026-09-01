@@ -302,7 +302,10 @@ func universeReaches(order groundOrder) bool {
 // construction.
 func universeBranch(ctx context.Context, workspace *furrow.Workspace, order groundOrder, fork furrow.Fork) (taskTree, bool) {
 	drop := func() {
-		workspace.DropFork(ctx, fork.Name)
+		// The fork is being abandoned before anything was written in it, so a
+		// record furrow will not let go of is the same one line in a listing a
+		// landing's is: there is nothing here to report it to.
+		_ = workspace.DropFork(ctx, fork.Name)
 		_ = os.RemoveAll(order.dir)
 	}
 	// AND THE FORK IS ASKED WHOSE `.git` IT IS BEFORE ANYTHING IS WRITTEN IN IT.
@@ -700,23 +703,63 @@ func (t taskTree) releaseLanded() {
 	// being asked. Without it every conversation that ever ran a task would leave
 	// an empty directory behind forever.
 	_ = os.Remove(filepath.Dir(t.dir))
-	// The work is in, so the universe that carried it is furrow's to forget.
-	t.dropUniverse()
+	// The work is in, so the universe that carried it is furrow's to forget. A
+	// refusal is nothing this caller can act on and nothing it reports: what a
+	// landing leaves behind when furrow will not drop the record is one line in a
+	// listing, which is the reading [furrow.Workspace.DropFork] leaves to whoever
+	// asked. The sweep's reading is the other one.
+	_ = t.dropUniverse()
 }
 
-// dropUniverse tells furrow to forget a fork whose work has come home. The
-// files are the session's to remove and are left alone; what is dropped is the
-// record, so that `furrow forks` in somebody's project does not accumulate one
-// line per task this machine has ever run.
-func (t taskTree) dropUniverse() {
+// dropUniverse tells furrow to forget a fork. The files are the session's to
+// remove and are left alone; what is dropped is the record, so that `furrow
+// forks` in somebody's project does not accumulate one line per task this
+// machine has ever run.
+//
+// IT IS THE ONE DOOR ONTO FURROW'S FORK RECORDS and it has two callers with two
+// different stakes in the answer: [taskTree.releaseLanded], for a fork whose
+// work has come home, and the sweep that reaps a session killed mid-run
+// (sweep.go's [dropSweptForks]). So it reports what happened rather than
+// deciding what a miss is worth — a fork nothing will ever name again is a
+// different kind of leftover from one whose work is safely in.
+//
+// A node that was never grounded in a universe has no record to drop and this
+// says so with a nil, which is why every caller may ask unconditionally.
+func (t taskTree) dropUniverse() error {
 	if t.rung != GroundRungUniverse || strings.TrimSpace(t.universe) == "" || strings.TrimSpace(t.ground) == "" {
-		return
+		return nil
 	}
 	workspace := furrow.Open(context.Background(), t.ground)
 	if workspace == nil {
-		return
+		// Furrow is not on this machine any more, or the ground has been deleted,
+		// moved or detached since the fork was made. The record, wherever it is,
+		// is out of reach from here.
+		return errors.New("furrow is not here to forget the fork " + t.universe + " of " + t.ground)
 	}
-	workspace.DropFork(context.Background(), t.universe)
+	return workspace.DropFork(context.Background(), t.universe)
+}
+
+// universeInRecord is the tree a caller holding ONLY WHAT WAS WRITTEN DOWN can
+// forget a fork with, and false for a node that never had one.
+//
+// THE SWEEP IS WHY IT EXISTS. A landing holds the whole tree it carved; a
+// session killed mid-run leaves nothing but its checkpoint, and the reaper that
+// removes that session's folder (sweep.go's [reapSession]) is the last thing on
+// this machine that will ever know the fork's name. Rebuilding the three fields
+// [taskTree.dropUniverse] reads — rather than calling furrow from the sweep —
+// is what keeps one door onto those records: whatever a landing does to forget a
+// fork, a sweep does exactly the same thing, and a fourth rung added to the
+// ladder changes both at once or neither.
+func universeInRecord(record taskRecord) (taskTree, bool) {
+	tree := taskTree{
+		rung:     record.Rung,
+		ground:   strings.TrimSpace(record.Ground),
+		universe: strings.TrimSpace(record.Universe),
+	}
+	if tree.rung != GroundRungUniverse || tree.ground == "" || tree.universe == "" {
+		return taskTree{}, false
+	}
+	return tree, true
 }
 
 // world is the one line that says what a task worked in, for the node's log and
