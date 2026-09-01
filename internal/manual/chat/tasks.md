@@ -1930,9 +1930,9 @@ conversation the same page tails that log live.
 | what `esc` does | interrupts the running turn | leaves the room. It never interrupts and never stops work |
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
-| box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
+| box placeholder | the draft prompt | `Steer this task…`, or `Steer <title>…` where the frame is too narrow for the segment. It says who is listening and nothing else — the way out is on the legend a row above it |
 | top bar | the crumb ends at the conversation's name | the crumb grows the task's title and the room's facts, and the right end gains `esc/← back · ✕` |
-| legend left end | empty at rest | empty at rest — the way back is named in the top bar |
+| legend left end | empty at rest | `room · esc/← back` — the way out, said one row above the box, at every width a room can be drawn at |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model in the top bar | the conversation's model | the task's own model |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next turn — and does nothing at all once the task has landed |

@@ -33,11 +33,14 @@ is in it.
 
 ## Every hint aforge can show, and what makes each one go away
 
-There are eight at the moment. Each one names the moment it first appears and the gesture
+There are seven at the moment. Each one names the moment it first appears and the gesture
 that retires it.
 
-- `/ shows every command` — after your first turn ends. Retired when you open the command
-  list by typing `/`.
+There is no tip about `/`. There used to be one — `/ shows every command`, from the end of
+your first turn — and it was removed because the resting line under your box already ends in
+`/ commands`, on every frame, from the first one. A tip has to teach something the frame is
+not already saying; this one stood in the slot and took the other three doors down with it.
+
 - `ctrl+. sees every task this project has run` — after the first task starts. Retired when
   you open the task page, by `ctrl+.` or `/history`.
 - `esc esc takes back the last message` — after an answer of about 1,500 characters or more.
@@ -52,7 +55,7 @@ that retires it.
   ten cents. Retired when you run `/cost`.
 - `/standing keeps something always true` — once this directory has three or more earlier
   conversations. Retired when you open `/standing` or make a standing order. It is the
-  quietest of the eight and yields to every other.
+  quietest of the seven and yields to every other.
 
 When two are relevant at once the more useful one wins — the compact tip over the cost tip,
 the cost tip over the task page tip — and the other waits its turn.
@@ -63,8 +66,13 @@ the cost tip over the task page tip — and the other waits its turn.
 key advertising, `space space home · tab last · ctrl+k switch · / commands`, which the
 resting slot draws over an empty box. It is the same kind of thing as a tip — a nudge
 towards a gesture you have not used yet — so it lives and dies with them. While any of the
-eight tips is still un-retired the advertising is drawn; once every one of them has been
+seven tips is still un-retired the advertising is drawn; once every one of them has been
 retired, that line is quiet too and the rule above the box is the plain rule it always was.
+
+**It does not go quiet before then, and it survives your first answer.** Each clause is
+under its own condition, so you see only the ones that would act: on a machine holding one
+conversation there is nowhere for `tab last` to go and nothing for `ctrl+k switch` to list,
+so the line reads `space space home · / commands` until there is.
 
 **Only the advertising decays; the doors do not.** `space space` still opens home, `tab`
 still goes back to the last conversation, `ctrl+k` still opens the switcher, `/` still
