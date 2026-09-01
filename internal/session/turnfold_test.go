@@ -12,6 +12,12 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// bigTestWindow is a roomy window for the fold fixtures below. It was once
+// spelled maxTrustedWindow, the flat ceiling the compaction law used to clamp
+// every claim to; that ceiling is gone (loop.go), and what these tests actually
+// wanted from it was "a window big enough that nothing folds by accident".
+const bigTestWindow = 256_000
+
 const turnFoldResultTokens = 3_000
 
 func turnFoldOutput() string {
@@ -46,7 +52,7 @@ func TestALongTurnsToolWorkingSetStaysBounded(t *testing.T) {
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
 	completer := &scriptedCompleter{steps: turnFoldScript(rounds)}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
-		config.ContextWindow = maxTrustedWindow
+		config.ContextWindow = bigTestWindow
 		config.CompactEnabled = false
 		config.SessionFile = journal
 	})
@@ -130,7 +136,7 @@ func TestALongTurnsToolWorkingSetStaysBounded(t *testing.T) {
 	}
 	resumed, err := newAgent(Config{
 		Workspace: workspace, Model: "test/model", System: "SYSTEM",
-		SessionFile: journal, ContextWindow: maxTrustedWindow,
+		SessionFile: journal, ContextWindow: bigTestWindow,
 	}, &refusingCompleter{t: t})
 	if err != nil {
 		t.Fatalf("resume folded turn: %v", err)
@@ -153,7 +159,7 @@ func TestTurnFoldDoesNothingBelowTheWorkingSetLine(t *testing.T) {
 	output := turnFoldOutput()
 	completer := &scriptedCompleter{steps: turnFoldScript(3)}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.ContextWindow = maxTrustedWindow
+		config.ContextWindow = bigTestWindow
 		config.CompactEnabled = false
 	})
 	agent.tools = append(agent.tools, staticTool("fat", output))
@@ -182,7 +188,7 @@ func TestTurnFoldDoesNothingBelowTheWorkingSetLine(t *testing.T) {
 // may be replaced.
 func TestTurnFoldNeverRewritesAnUnseenResult(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.ContextWindow = maxTrustedWindow
+		config.ContextWindow = bigTestWindow
 	})
 	output := turnFoldOutput()
 

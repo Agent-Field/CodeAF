@@ -127,11 +127,12 @@ func TestOneStepOfGrowthAfterAPassDoesNotCompactAgain(t *testing.T) {
 // The chain CompactThreshold > compactTarget > keepRecent has to hold at every
 // window this surface can meet: tiny ones where the 16k floor and the
 // half-window clamp collide with the quarter-window tail, the default, real
-// 200k models, and claims past the ceiling that TrustedWindow clamps.
+// 200k models, and the million-token claims that are now believed rather than
+// clamped.
 func TestTheTargetSitsBetweenTheThresholdAndTheKeptTail(t *testing.T) {
 	for _, window := range []int{
 		8_192, 16_384, 21_000, 21_800, 32_768, 40_000, 64_000,
-		128_000, 200_000, maxTrustedWindow, 300_000, 1_310_720,
+		128_000, 200_000, 256_000, 300_000, 1_310_720, 2_000_000,
 	} {
 		threshold, target, keep := CompactThreshold(window), compactTarget(window), keepRecent(window)
 		if !(threshold > target) {

@@ -601,6 +601,16 @@ func (c *Client) streamWall(model, served string) time.Duration {
 	return c.velocity.wall(model, served)
 }
 
+// streamGap is how long the stream about to be opened, or the one now known to
+// be served by `served`, may go quiet between two tokens. See streamguard.go's
+// [gapFor] for the law.
+func (c *Client) streamGap(model, served string) time.Duration {
+	if c.velocity == nil {
+		return gapFor(0)
+	}
+	return gapFor(c.velocity.rate(model, served))
+}
+
 // completionWall is the wall a reply that is NOT streamed is held to, and
 // whether there is one. A stream on a lane nothing is known about gets the
 // floor, because silence bounds it as well; a completion has only its total
@@ -928,6 +938,41 @@ func (l *velocityLedger) wall(model, served string) time.Duration {
 		}
 	}
 	return wallFor(widest)
+}
+
+// rate is the output rate, in tokens per second, that this process has last
+// measured for one (model, endpoint) — the same figure the status line prints
+// (velocity.go's [Sighting.Rate]), read here so that patience can be stated in
+// it. Zero is a lane nothing has been rated for.
+//
+// A NAMED LANE IS ASKED ABOUT ITSELF FIRST, and falls back to the SLOWEST rate
+// any endpoint of this model has shown. That fallback is the mirror image of
+// [velocityLedger.wall]'s, and for the same reason: before the first chunk names
+// who is serving, the most generous honest answer is the one that grants the
+// most patience, and on a rate the most generous answer is the smallest number.
+func (l *velocityLedger) rate(model, served string) float64 {
+	if l == nil {
+		return 0
+	}
+	key := normalizeModel(model)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byLane := l.lanes[key]
+	if len(byLane) == 0 {
+		return 0
+	}
+	if served = strings.TrimSpace(served); served != "" {
+		if entry, seen := byLane[served]; seen && entry.last.Rate > 0 {
+			return entry.last.Rate
+		}
+	}
+	slowest := 0.0
+	for _, entry := range byLane {
+		if rate := entry.last.Rate; rate > 0 && (slowest == 0 || rate < slowest) {
+			slowest = rate
+		}
+	}
+	return slowest
 }
 
 // sharedVelocity is the ledger every client built by [NewClient] folds into.

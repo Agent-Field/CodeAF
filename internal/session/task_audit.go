@@ -2244,12 +2244,16 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
 		// worktree it was judging (landing.go).
-		droppings:     parent.droppingsPlace(),
-		Workspace:     dir,
-		Model:         judge,
-		APIKey:        parent.APIKey,
-		BaseURL:       parent.BaseURL,
-		ContextWindow: parent.ContextWindow,
+		droppings: parent.droppingsPlace(),
+		Workspace: dir,
+		Model:     judge,
+		APIKey:    parent.APIKey,
+		BaseURL:   parent.BaseURL,
+		// The window of the model the AUDITOR runs, which the roles ladder has
+		// very often made a different one from the node's
+		// (loop.go's [Agent.childWindow]).
+		ContextWindow:    a.childWindow(judge),
+		ContextWindowFor: parent.ContextWindowFor,
 		// The audit is bounded at five minutes and reads what it chooses to
 		// read; a compaction inside that window is a summary of a judgement in
 		// progress, which is the one thing a verdict must not be built on.

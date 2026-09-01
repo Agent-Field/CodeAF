@@ -535,3 +535,11 @@ func TestTheUsageFrameTeachesTheLedgerWhatWasCached(t *testing.T) {
 		t.Fatalf("a frame that said nothing about caching taught %d cached tokens", got)
 	}
 }
+
+// judged is the outcomes half of [recordingLedger.sightings]: what the transport
+// told the belief about whether its answers could be used.
+func (l *recordingLedger) judged() []lanes.Outcome {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]lanes.Outcome(nil), l.outcomes...)
+}

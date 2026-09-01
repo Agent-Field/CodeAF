@@ -122,6 +122,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		id: NewSessionID(),
 	}
 	agent.cacheKey = sessionCacheKey(agent.id)
+	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
+	// check. The memo survives processes (internal/provider's ServedWindow), so
+	// a model that refused an over-long prompt last week is capped from this
+	// session's first turn rather than from its first refusal (loop.go).
+	agent.noteModelWindow(agent.model)
 	// AND WHO THIS SESSION IS WORKING FOR, before anything else is built
 	// (principal.go). It is written once here and never again, which is what
 	// lets every road that consults it read the field without the lock; the
@@ -537,6 +542,10 @@ func (a *Agent) SetModel(model string) {
 			a.contextWindow.Store(int64(window))
 		}
 	}
+	// AND WHAT IS KNOWN ABOUT THE NEW MODEL'S REAL WINDOW, which is a different
+	// fact from the card's figure above and travels with the model rather than
+	// with the session (loop.go's [Agent.noteModelWindow]).
+	a.noteModelWindow(model)
 	a.scrubBlindImagePartsLocked(model)
 	a.mu.Unlock()
 }

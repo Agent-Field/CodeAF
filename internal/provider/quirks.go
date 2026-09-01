@@ -76,7 +76,29 @@ type quirksStore struct {
 	// one-object verdict, and a memo that pooled them would raise the ceiling
 	// on every call in the system because one of them is wide.
 	answerCut map[string]int
-	loaded    bool
+	// servedWindow is the seventh learned fact and the second that is a NUMBER:
+	// the largest prompt, in tokens, that a model was REFUSED for being too
+	// long, keyed by model alone.
+	//
+	// It is the same kind of fact as its neighbours — something a provider will
+	// not publish and only a call's answer can teach — and it exists because the
+	// published figure is sometimes wrong by an order of magnitude. The catalog
+	// row for ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens; the
+	// endpoint serving it did not serve anything like that, and the compaction
+	// law believed the row. What an overflow refusal says is not a claim but a
+	// measurement: THIS many tokens was too many, here, today.
+	//
+	// It is keyed by model and not by lane, which is the one place it differs
+	// from answerCut above. A window is a property of the model's serving
+	// weights rather than of one replica's completion budget, and a memo that
+	// re-learned it per endpoint would spend one over-long request per endpoint
+	// discovering the same fact.
+	//
+	// It only ever SHRINKS, and it is written down for the same reason every
+	// other fact here is: so that the next process does not have to be told
+	// again.
+	servedWindow map[string]int
+	loaded       bool
 
 	// writes counts saves in flight. The save is deliberately off the request
 	// path — the call that learned the fact is waiting to be re-sent and must
@@ -95,6 +117,7 @@ var quirks = &quirksStore{
 	noReasoningBudget: map[string]time.Time{},
 	noReasoningReplay: map[string]time.Time{},
 	answerCut:         map[string]int{},
+	servedWindow:      map[string]int{},
 }
 
 // LoadQuirks seeds the process from a profile directory and names the file
@@ -150,6 +173,11 @@ type quirksWire struct {
 	// seam that sizes a structured request asks it what actually happened here
 	// and refuses to send a ceiling it has already watched this model overrun.
 	AnswerCutAt map[string]int `json:"answer_cut_at,omitempty"`
+
+	// ServedWindow maps a model to the largest prompt, in tokens, it has been
+	// refused for. It only ever shrinks, and it is read as a CEILING on what the
+	// catalog claims rather than as a window in its own right.
+	ServedWindow map[string]int `json:"served_window,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -173,6 +201,16 @@ func (q *quirksStore) load(path string) {
 	for key, spent := range wire.AnswerCutAt {
 		if spent > q.answerCut[key] {
 			q.answerCut[key] = spent
+		}
+	}
+	// The narrower reading wins here, which is the opposite of the line above
+	// and for the opposite reason: an answer cut is evidence of how much room a
+	// model NEEDS and a refused prompt is evidence of how little it HAS.
+	for key, tokens := range wire.ServedWindow {
+		if name := normalizeModel(key); name != "" && tokens > 0 {
+			if known, seen := q.servedWindow[name]; !seen || tokens < known {
+				q.servedWindow[name] = tokens
+			}
 		}
 	}
 }
@@ -274,6 +312,50 @@ func WidestAnswerCut(model, lane string) int {
 	return quirks.answerCut[key]
 }
 
+// NoteServedWindow records that a model REFUSED a prompt of this many tokens for
+// being too long, and reports whether that narrows what was already known.
+//
+// It is the one way a published window is ever contradicted, and the evidence
+// bar is deliberately high: not a slow answer, not a bad answer, but the
+// endpoint saying in as many words that the request would not fit. Anything
+// less is a claim this process cannot check, and a ceiling built on a guess is
+// how a model with real room gets folded like a small one.
+//
+// Only a NARROWER figure is worth a write, so a session that keeps overrunning
+// the same wall costs the profile one save rather than one per turn.
+func NoteServedWindow(model string, tokens int) bool {
+	key := normalizeModel(model)
+	if key == "" || tokens <= 0 {
+		return false
+	}
+	quirks.mutex.Lock()
+	if known, seen := quirks.servedWindow[key]; seen && known <= tokens {
+		quirks.mutex.Unlock()
+		return false
+	}
+	quirks.servedWindow[key] = tokens
+	quirks.mutex.Unlock()
+	quirks.persist()
+	return true
+}
+
+// ServedWindow answers the narrowest prompt this model has ever been refused
+// for, in tokens, and zero when it has never been refused for length.
+//
+// ZERO MEANS NOTHING WAS LEARNED, which is the honest reading and the one that
+// leaves the model card's own figure standing alone. A caller must not read it
+// as "this model has no window" — that is the emptiness law applied to a
+// measurement, and internal/session's TrustedWindowFor is written to it.
+func ServedWindow(model string) int {
+	key := normalizeModel(model)
+	if key == "" {
+		return 0
+	}
+	quirks.mutex.Lock()
+	defer quirks.mutex.Unlock()
+	return quirks.servedWindow[key]
+}
+
 // answerCutKey joins the two halves of the memo's key. A call with no model
 // named — every path that runs without a router — has nothing to learn about and
 // nothing to remember, so it keys to nothing and both sides above no-op.
@@ -325,9 +407,13 @@ func (q *quirksStore) snapshot() (string, quirksWire) {
 		ReasoningBudgetRejected: make(map[string]time.Time, len(q.noReasoningBudget)),
 		ReasoningReplayRejected: make(map[string]time.Time, len(q.noReasoningReplay)),
 		AnswerCutAt:             make(map[string]int, len(q.answerCut)),
+		ServedWindow:            make(map[string]int, len(q.servedWindow)),
 	}
 	for key, spent := range q.answerCut {
 		wire.AnswerCutAt[key] = spent
+	}
+	for model, tokens := range q.servedWindow {
+		wire.ServedWindow[model] = tokens
 	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt

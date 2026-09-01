@@ -413,6 +413,12 @@ func prime(belief, prior Posterior, k float64) Posterior {
 // the one fact on the sheet that predicts a lane returning tool-call JSON the
 // decoder refuses, and starting it optimistic means paying for that discovery
 // on somebody's real turn.
+// QualityPrior is [qualityPrior] for a caller outside this package: the surface
+// that DRAWS a lane's standing has to age the belief exactly as the chooser
+// does, and ageing needs the prior it decays toward. A surface that invented its
+// own would be describing a different rule from the one doing the dropping.
+func QualityPrior(quant string) Beta { return qualityPrior(quant) }
+
 func qualityPrior(quant string) Beta {
 	if fourBit(strings.ToLower(strings.TrimSpace(quant))) {
 		return Beta{A: 2, B: 2}

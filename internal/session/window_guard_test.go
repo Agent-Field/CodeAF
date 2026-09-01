@@ -8,42 +8,45 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// TestAnAbsurdClaimedWindowStillCompacts is the whole of the 386k incident,
-// written down.
+// TestAClaimedWindowIsBelievedUntilAnEndpointRefusesIt is the 386k incident
+// written down a second time, now that the answer to it has changed.
 //
 // The catalog row for ~deepseek/deepseek-v4-flash-latest claims 1,310,720
-// tokens. Before the ceiling existed the threshold followed that claim to
-// 1,114,112, so a session grew to 386,309 tokens with the automatic pass
-// checking after every single step and never once firing — and the answer that
-// came back at that size was the model's own template turned inside out rather
-// than an error the loop could see.
+// tokens. The threshold followed that claim to 1,114,112, a session grew to
+// 386,309 tokens with the automatic pass checking after every step and never
+// once firing, and what came back at that size was the model's own template
+// turned inside out.
 //
-// The claim is the thing that was wrong, so the claim is what is clamped.
-func TestAnAbsurdClaimedWindowStillCompacts(t *testing.T) {
+// The first answer was a flat ceiling over every claim, and it cost every model
+// that was telling the truth. The answer now is that the claim IS believed —
+// and that the refusal, when one comes, is believed harder and for good.
+func TestAClaimedWindowIsBelievedUntilAnEndpointRefusesIt(t *testing.T) {
 	// The exact figure the row published, and the exact size the session
 	// reached. Neither is a round number because neither was invented here.
 	const claimed = 1_310_720
 	const reached = 386_309
 
-	if got := TrustedWindow(claimed); got != maxTrustedWindow {
-		t.Fatalf("TrustedWindow(%d) = %d, want the ceiling %d", claimed, got, maxTrustedWindow)
+	// BELIEVED: nothing has been learned about this model, so its claim stands
+	// and the threshold follows it.
+	if got := TrustedWindow(claimed); got != claimed {
+		t.Fatalf("TrustedWindow(%d) = %d, want the claim believed", claimed, got)
 	}
-	threshold := CompactThreshold(claimed)
-	if threshold >= reached {
-		t.Fatalf("threshold on the claimed window is %d; a transcript of %d tokens would still sail past it",
+	if threshold := CompactThreshold(claimed); threshold <= reached {
+		t.Fatalf("threshold on the claimed window is %d; the run that reached %d would have folded",
 			threshold, reached)
 	}
-	if threshold != CompactThreshold(maxTrustedWindow) {
-		t.Fatalf("a claimed %d gives threshold %d but the ceiling itself gives %d — the clamp is not the whole answer",
-			claimed, threshold, CompactThreshold(maxTrustedWindow))
-	}
 
-	// A window that fits under the ceiling is untouched: this is a guard
-	// against an absurd claim, not a new policy for models with real room.
-	for _, window := range []int{128_000, 200_000, maxTrustedWindow} {
-		if got := TrustedWindow(window); got != window {
-			t.Fatalf("TrustedWindow(%d) = %d, want it left alone", window, got)
-		}
+	// REFUSED: an endpoint has said that much did not fit, so that is the
+	// ceiling from here on — for this session and for every later one.
+	if got := trustedWindow(claimed, reached); got != reached {
+		t.Fatalf("trustedWindow(%d, refused %d) = %d, want the refusal", claimed, reached, got)
+	}
+	if got := trustedWindow(claimed, 0); got != claimed {
+		t.Fatalf("trustedWindow(%d, nothing learned) = %d, want the claim", claimed, got)
+	}
+	// A refusal WIDER than the claim teaches nothing: the cap may only narrow.
+	if got := trustedWindow(200_000, 900_000); got != 200_000 {
+		t.Fatalf("trustedWindow(200k, refused 900k) = %d, want the smaller of the two", got)
 	}
 
 	// An unknown window is still unknown — zero is "nobody said", and a
@@ -55,16 +58,21 @@ func TestAnAbsurdClaimedWindowStillCompacts(t *testing.T) {
 		t.Fatalf("CompactThreshold(0) = %d, want 0", got)
 	}
 
-	// And the agent's own threshold follows, whichever road the claim came in
-	// by: the configured window at construction, or a mid-session /model switch.
+	// And the agent's own threshold follows the refusal, whichever road the
+	// claim came in by: the configured window at construction, or a /model
+	// switch mid-session.
 	configured := &Agent{config: Config{ContextWindow: claimed}}
-	if got := configured.compactThreshold(); got != threshold {
-		t.Fatalf("a session configured with the claim thresholds at %d, want %d", got, threshold)
+	configured.servedWindow.Store(reached)
+	if got := configured.compactThreshold(); got != CompactThresholdFor("", reached) {
+		t.Fatalf("a session configured with the claim thresholds at %d, want %d",
+			got, CompactThresholdFor("", reached))
 	}
 	switched := &Agent{config: Config{ContextWindow: 128_000}}
 	switched.SetContextWindow(claimed)
-	if got := switched.compactThreshold(); got != threshold {
-		t.Fatalf("a session switched onto the claim thresholds at %d, want %d", got, threshold)
+	switched.servedWindow.Store(reached)
+	if got := switched.compactThreshold(); got != CompactThresholdFor("", reached) {
+		t.Fatalf("a session switched onto the claim thresholds at %d, want %d",
+			got, CompactThresholdFor("", reached))
 	}
 	// The claim itself is still reported honestly: the status meter is
 	// describing the model, and the model really does say that.
@@ -81,13 +89,18 @@ func TestAnAbsurdClaimedWindowStillCompacts(t *testing.T) {
 // out whole and the loop learned its size from the refusal — or, on an endpoint
 // that neither refused nor served it, did not learn at all.
 func TestAnOversizeRequestIsNeverSentBlind(t *testing.T) {
+	// The claim that started all this, capped by what an endpoint has since
+	// refused — which is where the guard's bar now comes from.
+	const claimed = 1_310_720
+	const refused = 256_000
 	completer := &scriptedCompleter{}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		// The claim that started all this, and the automatic pass switched off
-		// the way a person can switch it off.
-		config.ContextWindow = 1_310_720
+		// The claim, and the automatic pass switched off the way a person can
+		// switch it off.
+		config.ContextWindow = claimed
 		config.CompactEnabled = false
 	})
+	agent.servedWindow.Store(refused)
 
 	// A transcript comfortably past the ceiling: 300k tokens of estimator at
 	// four bytes each, which is under the claimed window and over the guard.
@@ -100,9 +113,9 @@ func TestAnOversizeRequestIsNeverSentBlind(t *testing.T) {
 	}
 	before := agent.estimateTokensLocked()
 	agent.mu.Unlock()
-	if before <= maxTrustedWindow {
-		t.Fatalf("the fixture is only %d tokens; it has to exceed the ceiling %d to prove anything",
-			before, maxTrustedWindow)
+	if before <= refused {
+		t.Fatalf("the fixture is only %d tokens; it has to exceed the learned ceiling %d to prove anything",
+			before, refused)
 	}
 
 	collect(t, mustSubmit(t, agent, "and now?"))
@@ -117,9 +130,9 @@ func TestAnOversizeRequestIsNeverSentBlind(t *testing.T) {
 	for _, message := range seen[0] {
 		sent += messageBytes(message)
 	}
-	if sent/bytesPerToken > maxTrustedWindow {
+	if sent/bytesPerToken > refused {
 		t.Fatalf("the first request carried ~%d tokens, past the ceiling %d — it went out blind",
-			sent/bytesPerToken, maxTrustedWindow)
+			sent/bytesPerToken, refused)
 	}
 
 	// The pass really was the compaction pass and not a truncation somewhere

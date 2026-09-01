@@ -214,6 +214,15 @@ type laneView struct {
 	// could judge and the score could not is still a row — the facts are true —
 	// but it draws no numbers.
 	Known bool
+	// Poor says this lane's ANSWERS have been going wrong: enough replies this
+	// process could not use that the belief's quality bound has fallen under
+	// what a conversation asks for.
+	//
+	// It is a bool rather than a share because a row is not the place to argue
+	// with a posterior — a person wants to know whether to send work here, and
+	// "0.71" is not that answer. False for a lane nobody has judged, which is
+	// the emptiness law: an unjudged lane is not a suspect.
+	Poor bool
 	// Sightings is our own recent first-token waits on this lane, in
 	// milliseconds and oldest first — the sparkline's readings, and the count
 	// the why line names. Empty for a lane the sheet alone knows.
@@ -253,6 +262,7 @@ func laneViews(model string, now time.Time) []laneView {
 			MaxOut:    belief.Facts.MaxOut,
 			Tools:     belief.Facts.Tools,
 			Known:     belief.Known(),
+			Poor:      poorlyServing(belief, now),
 			Sightings: laneSpark(model, belief.ID.Lane),
 		}
 		view.TTFT = ttft.Mean() / 1000
@@ -279,6 +289,12 @@ const (
 	// laneWaitZ is the ninetieth percentile, which is what [laneView.Wait]
 	// orders on.
 	laneWaitZ = 1.2816
+	// laneQualityZ is the same ninetieth percentile read on the QUALITY belief,
+	// and it is the gate's own figure: the frontier drops a lane when
+	// Quality.Upper(z90) falls under the role's need, so a row that used the
+	// mean would be describing a different rule from the one doing the
+	// dropping (internal/lane's frontier.go).
+	laneQualityZ = 1.2816
 )
 
 // sortLanes puts the lane a talk turn would feel fastest on first.
@@ -619,14 +635,38 @@ func laneRowText(view laneView, room int) (string, string) {
 // machine did.
 const laneMaxOutFloor = 131_072
 
+// poorlyServing reports whether this lane's ANSWERS have been failing, aged to
+// this moment the way the chooser ages them.
+//
+// IT IS THE GATE'S OWN QUESTION AND NOT A SECOND OPINION. The frontier drops a
+// lane when the ninetieth-percentile bound on its quality falls under the role's
+// need, so this asks exactly that, of the role a conversation runs in — and a
+// lane the surface says nothing about is one the chooser would still send to.
+//
+// The two live in different packages and must not drift, which is why the need
+// is read off the role's own facts rather than written down here.
+func poorlyServing(belief lane.Belief, now time.Time) bool {
+	quality := belief.Quality
+	if !quality.Known() {
+		return false
+	}
+	if since := now.Sub(belief.QualityAt); since > 0 && !belief.QualityAt.IsZero() {
+		quality = quality.Toward(lane.QualityPrior(belief.Facts.Quant), since, lane.QualityHalfLife)
+	}
+	return quality.Upper(laneQualityZ) < lane.RoleTalk.Facts().QualityNeed
+}
+
 // laneNote is the ONE thing worth saying about a lane past its numbers, and it
 // is one thing on purpose: a row carrying four warnings is a row nobody reads.
 //
-// The order is what would ruin the answer first. A lane that drops the tool
-// call gives a WRONG answer; one that truncates gives half an answer; one
-// serving four-bit weights gives a worse answer; a tail only makes you wait.
+// The order is what would ruin the answer first. A lane whose replies cannot be
+// used gives NO answer at all; one that drops the tool call gives a WRONG
+// answer; one that truncates gives half an answer; one serving four-bit weights
+// gives a worse answer; a tail only makes you wait.
 func laneNote(view laneView) string {
 	switch {
+	case view.Poor:
+		return "bad replies"
 	case !view.Tools:
 		return "no tools"
 	case view.MaxOut > 0 && view.MaxOut < laneMaxOutFloor:

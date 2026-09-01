@@ -649,7 +649,7 @@ token of thinking, a piece of a tool call.
 | The clock | How long | What it catches |
 | --- | --- | --- |
 | first word | **1m30s** | accepted the request and never started |
-| a gap mid-reply | **45s** | started writing and stopped |
+| a gap mid-reply | **45s** on an endpoint aforge has not timed, less on one it has | started writing and stopped |
 
 There is a third clock for the opposite problem — a reply that keeps writing and never
 finishes. It is not a fixed number, so it has its own section below: *A reply that never
@@ -659,6 +659,15 @@ The first bound is generous on purpose: a reasoning model at a long context legi
 thinks for a minute before its first token, and cutting a request that was about to answer
 costs the whole prompt again. The second is shorter because the question is different — a
 model that has started writing has finished deciding.
+
+**And the second one gets shorter still on an endpoint aforge has measured.** Forty-five
+seconds is what a stranger gets. Once aforge knows how fast an endpoint writes — the
+`t/s` figure the status line shows you — the gap it will sit through is how long *that*
+endpoint would take to write about three and a half thousand tokens: roughly **15 seconds**
+on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
+an endpoint that has been writing two hundred and fifty words a second is not patience, it
+is a dead stream, and waiting it out costs the same minute on every retry. It never goes
+the other way: a slow endpoint gets the full 45 seconds and no more is ever granted.
 
 **Keepalives buy patience, never progress.** Some endpoints assemble a whole answer — most
 often one large tool call — on their own side and deliver it in one piece, sending
@@ -726,11 +735,21 @@ or not it is still writing.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
-than **5 minutes** and never more than **20 minutes**. Two endpoints serving the same model
+than **2m30s** and never more than **20 minutes**. Two endpoints serving the same model
 therefore get two different walls, and one that routinely writes long answers earns a
-longer one by writing them. A model aforge has not spoken to yet gets the 5-minute floor,
-because there is nothing measured to work from; the numbers are forgotten when aforge
-closes, so a fresh session starts from the floor again.
+longer one by writing them.
+
+**A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
+to work from. That figure used to be the floor under *everybody*, which meant the
+measurement could never make anything shorter than what a stranger got: an endpoint whose
+longest finished reply was twenty-four seconds still sat there for five whole minutes, and
+two hung streams in one measured run did exactly that. It is the outer bound for a stranger
+now, and an endpoint you have timed is held to its own history instead. The numbers are
+forgotten when aforge closes, so a fresh session starts from the 5-minute bound again.
+
+The lower clamp is 2m30s and not less, because that is the longest an endpoint is allowed to
+go quiet while assembling an answer on its own side (above). A wall shorter than that would
+cut a reply the silence clocks were still being patient with.
 
 When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
 the endpoint is avoided on the retry, and a dim line lands:
@@ -914,11 +933,21 @@ is a reply that is simply multilingual: switching language between words is ordi
 writing, and only switching *inside* words counts. A short repetitive answer is never cut
 either — there has to be several kilobytes of it.
 
+**The endpoint that served it loses standing.** A reply that had to be cut — because it lost
+its thread, because it came back as tool markup, or because it went quiet and never came
+back — is recorded against the endpoint that served it as an answer aforge could not use,
+and that endpoint drops down the order for the requests that follow. So does an answer that
+came back with nothing in it at all. Its row in the lane fold then reads `bad replies` (see
+*What the note on a lane row means*). It is not a ban: the mark fades on its own over about
+an hour, and every usable answer it serves afterwards walks it back up. Recovery is by
+serving properly, which is the only evidence there could be.
+
 **Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
 or `off`, and the default is **on**. Off means you see whatever arrives. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
-reading.
+reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
+at all, and with it stops any of this being recorded.
 
 ## Strange tags instead of an answer — the reply was tool markup, odd tokens like `<|...|>` on the screen
 
@@ -1224,26 +1253,37 @@ since the last response is already visible to the threshold.
 
 An unknown window has no threshold at all.
 
-## The most tokens one request can carry — the 256,000-token ceiling
+## The most tokens one request can carry — the model's own window, and the ceiling an endpoint puts on it
 
-**Whatever a model claims, this conversation never carries more than 256,000 tokens into a
-single request.** That is a hard ceiling, twice the 128,000 default, and the threshold above
-is worked out from the smaller of it and the model's own window. On a model claiming
-1,310,720 tokens, compaction therefore fires at **217,600**, not at 1,114,112.
+**The threshold follows the model's own window.** On a model claiming 1,310,720 tokens,
+compaction fires at **1,114,112** — not at some smaller figure of aforge's choosing. On the
+default 128,000-token window it fires at 108,800. The line is always
+`window − max(15% of window, 16384)`, and `window` is what the model card says.
 
-It exists because the claim is published by the provider and a published number can be
-enormous. A session on `~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens —
-grew to 386,309 tokens with compaction checked after every step and never once firing, and
-what came back at that size was the model's own template turned inside out rather than an
-answer.
+There used to be a flat ceiling of 256,000 over every model alike, and it made a
+million-token model fold exactly like a small one — nineteen passes in one two-and-a-half
+hour run, each at around a hundred thousand tokens, each one throwing the provider's prompt
+cache away. That ceiling is gone.
 
-A model with a real 200,000 or 400,000-token window is not affected: only a claim above
-256,000 is clamped. What the status line reports is still the model's own window, because
-that line is describing the model.
+**What can still lower it is an endpoint refusing.** If a provider answers that a request
+would not fit, aforge writes down how big that request was and never trusts that model past
+that size again — in this conversation from the next check onward, and on this machine for
+good, because the note is kept in `model-quirks.json` beside your other settings. That is
+the one thing allowed to contradict a model card, and it is the only thing: a published
+window is a claim, and a refusal is a measurement.
+
+It exists because a claim can be very wrong. A session on
+`~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens — grew to 386,309 tokens
+without compaction firing once, and what came back at that size was the model's own template
+turned inside out rather than an answer. That now costs one turn on that model on this
+machine, instead of costing every model with real room every turn for ever.
+
+What the status line reports is still the model's own window, because that line is
+describing the model.
 
 **A request that would not fit is never sent.** Immediately before each request goes out,
-a transcript already past the ceiling is compacted first — and unlike the ordinary pass,
-this one runs **even when automatic compaction is switched off**. Fitting is not a
+a transcript already past the trusted window is compacted first — and unlike the ordinary
+pass, this one runs **even when automatic compaction is switched off**. Fitting is not a
 preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
 `/compact` runs, and every message you typed survives it.
 
@@ -1251,6 +1291,22 @@ preference. Nothing is truncated and nothing of yours is dropped; it is the same
 a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
 consumer is the sub-harness leaf sizing elsewhere in aforge. The chat's own law is the one
 above — do not describe this conversation as filling to 60%.
+
+## A task or a worker on another model gets that model's window
+
+Work that leaves the conversation — a task's worker, an adaptive run's worker, a fork, the
+reader that checks a task — often runs on a different model from the one you are talking
+to. Each of those asks the same model catalog the conversation asks, for **its own** model,
+so a worker on a million-token model folds at a million-token model's line.
+
+Before this it was handed nothing at all whenever its model differed from yours, and so
+fell back to the conservative 128,000-token default however much room its model really had.
+That was the whole of why a long run could fold its work again and again while every model
+in it advertised ten times the space.
+
+When nothing can say — a model the catalog has never carried, a machine that has not
+reached the catalog yet — the answer is still the 128,000-token default, which is the
+smallest window this surface routes to and the safe direction for a guess to be wrong in.
 
 ## What happens before the conversation is summarized
 
@@ -1679,12 +1735,18 @@ One note at most, and it is the thing that would spoil the answer soonest:
 
 | Note | What it means |
 |---|---|
+| `bad replies` | enough of its answers came back unusable that aforge would rather ask elsewhere |
 | `no tools` | the lane does not honour a tool call — a fast wrong answer |
 | `out ≤ 65k` | it stops writing well before other lanes do, so a long answer is cut |
 | `fp4` | it serves weights at a lower precision than the others |
 | `tail 12s` | its worst answers start about that late — five times its own median |
 
-A lane with none of those shows no note.
+A lane with none of those shows no note, and a lane whose answers nobody has judged never
+shows `bad replies` — an untried lane is not a suspect.
+
+`bad replies` counts a reply that lost its thread, one that came back as tool markup, one
+that went quiet and had to be cut, and one that arrived with nothing in it. It fades over
+about an hour on its own, and every usable answer the lane serves takes it further off.
 
 ## Where the numbers on a lane row come from — the sheet, and your own answers
 
@@ -1695,7 +1757,10 @@ what that lane did for **you**, from where you are, with the prompts you send.
 
 The belief also **forgets**: with nothing new arriving, aforge's confidence in it halves
 about every ten minutes, so a lane that misbehaved once at breakfast is not held to it
-all day and there is no penalty box to let anything out of.
+all day and there is no penalty box to let anything out of. What aforge believes about a
+lane's **answers** rather than its speed forgets more slowly — about an hour — because real
+requests are minutes apart and a belief that forgot faster than the evidence arrived would
+never be worth anything.
 
 The dim line under the cursor says both halves out loud:
 
