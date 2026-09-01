@@ -2302,6 +2302,64 @@ func (a *Agent) taskNewsOwed() int {
 	return a.taskNotes
 }
 
+// taskNewsStanding answers BOTH of the questions a parked parent asks of one
+// instant — is anything this agent handed out still outstanding, and is anything
+// owed to the model that no request has carried — and answers them AS ONE FACT.
+//
+// ── THE PAIR IS ONE READING, BECAUSE THE DELIVERY IS ONE WRITING ──
+//
+// [Agent.deliverTaskNote] states the law from the writing side: THE QUEUE, THEN
+// THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER — so that a waiter which
+// sees a child no longer outstanding also sees its note owed. Two separate reads
+// cannot hold that promise in EITHER order, because the delivery's writes live
+// under two different locks and one landing between the reads is seen half-done:
+//
+//	owed, then outstanding    the mark arrives between them, so the runner reads
+//	                          "a note owed, nothing outstanding", takes its
+//	                          integration turn carrying every report — correctly —
+//	                          and is then told about news that turn already
+//	                          carried. One model turn spent on an empty request,
+//	                          which is real money and a blank exchange in the room.
+//	outstanding, then owed    the same tear the other way up: the wake has not
+//	                          landed yet, so the runner reads "nothing
+//	                          outstanding, nothing owed" and leaves its loop with
+//	                          a report sitting unread on the queue.
+//
+// So the two writes are made under this lock ([Agent.handOverTaskNews]) and the
+// two reads are taken under it here, and no reader can see half a delivery. The
+// reads are still taken in the law's own order, so that the pair reads the way
+// the delivery writes even to somebody who arrives at this line knowing nothing
+// about the lock.
+func (a *Agent) taskNewsStanding() (owed int, working bool) {
+	a.handover.Lock()
+	defer a.handover.Unlock()
+	working = a.childrenOutstanding()
+	owed = a.taskNewsOwed()
+	return owed, working
+}
+
+// handOverTaskNews makes the last two writes of a delivery — the fact that a
+// piece of work is no longer outstanding, and the news that its report is owed
+// to the model — one step as far as [Agent.taskNewsStanding] is concerned.
+//
+// THE FACT DIFFERS BY ROAD AND THE WAKE DOES NOT. A divided part's report marks
+// its node reported ([TaskNode.noteHandedOver]); a forked hand's report counts
+// the hand home ([jobRegistry.handHome]). The parent parked on them cannot tell
+// the two apart and must not have to, so both roads hand their news over here.
+//
+// NOTHING SLOW GOES INSIDE. The seam holds two writes and the small locks they
+// take; the checkpoint a mark owes the disk is written by the caller after this
+// returns, because a lock a parked runner takes on every pass is not a lock to
+// write a file under.
+func (a *Agent) handOverTaskNews(settled func()) {
+	a.handover.Lock()
+	defer a.handover.Unlock()
+	if settled != nil {
+		settled()
+	}
+	a.postTaskNews()
+}
+
 // resumeTurn starts one turn on what is ALREADY on the steering queue and hands
 // back its stream, for the one caller whose turns are driven from outside: a
 // task node's runner, re-entering the model with its sub-tasks' reports.
