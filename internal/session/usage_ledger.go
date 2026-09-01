@@ -19,8 +19,21 @@ package session
 // artifacts.jsonl's reason: "what has this machine been spending on" is a
 // cross-project question, and a per-project answer to it is not an answer.
 //
-// ── FOUR RULES ──
+// ── FIVE RULES ──
 //
+//   - ONE ROW PER CALL, WRITTEN AS THE CALL IS DECODED. The provider's usage
+//     block is in hand at exactly one moment — [Agent.addUsage], the same line
+//     that banks the money into the session's own meter — and the row goes out
+//     from there. It used to be written at the END OF A TURN instead
+//     ([Agent.sealTurn]), which meant a turn that never sealed — interrupted,
+//     stopped, crashed, or simply still running while somebody looked — was
+//     money the meter had and this file never got. One measured chat held
+//     $0.087 of it, every call of a final interrupted turn, invisible to every
+//     surface but the status line (issue #269). [Agent.bank] is now the ONE
+//     door: nothing can move the meter without offering this file a row, so the
+//     two cannot come apart. The turn's seal still stamps the TRANSCRIPT — the
+//     duration and the turn's own shape are facts about a turn — and writes
+//     nothing here.
 //   - IT IS WRITTEN WHERE THE CALL WAS MADE, AND A FOLD IS NOT A CALL. A task
 //     node journals its own turns and then its whole tally is folded into the
 //     conversation that spawned it (task_run.go's [Agent.foldTaskUsage]), which
@@ -38,7 +51,10 @@ package session
 //     queue drops the row rather than waiting on it, and so does a write that
 //     fails. A home directory on a stalled mount therefore costs a spending
 //     record and never a person's turn — which the older shape, an
-//     open-write-close under a process-wide mutex, could not promise.
+//     open-write-close under a process-wide mutex, could not promise. AND THE
+//     DROP IS COUNTED WHERE IT HAPPENS ([UsageDrops]), because a gap nobody can
+//     see is a bill that reads as smaller than it was: the spend surfaces say
+//     how many records went missing rather than quietly under-reporting.
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
 //     file: an instantly-cancelled turn and a zero-token seal leave no row, so a
 //     day with no line in it is a day nothing was spent, rather than a day whose
@@ -69,6 +85,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
@@ -122,8 +139,11 @@ type UsageLine struct {
 	// a call ran under, and a page that labelled this column with those words
 	// would be inventing the join.
 	Role string `json:"role,omitempty"`
-	// Calls is how many provider requests this line covers — one for an
-	// ordinary call, and a whole turn's worth for a turn's seal.
+	// Calls is how many provider requests this line covers, and it is ONE. The
+	// field is kept rather than dropped because rows written before issue #269
+	// carry a whole turn's worth on one line — an observed `calls: 41` — and a
+	// reader summing a year of this file has to be able to add those honestly.
+	// Nothing this build writes says anything but 1.
 	Calls int `json:"calls,omitempty"`
 	// Input and Output are the tokens. The cache split is deliberately not here:
 	// this file answers "how much and on what", and the four-way breakdown with
@@ -349,11 +369,15 @@ type laneWitness struct {
 	// first and the latest chunk of the answer to it. They are the session's OWN
 	// clock on its OWN stream, which is the only clock in this program that can
 	// time one agent's call without borrowing another agent's.
+	//
+	// NOTHING IS HELD BEYOND THEM. The witness used to keep the finished row
+	// until the turn's seal came for it, because the seal was where the ledger
+	// was written; the row is now written on the call itself
+	// ([laneWitness.answered] hands it straight to [Agent.addUsage]), so there is
+	// no measurement waiting here for a later writer to mis-file.
 	began time.Time
 	first time.Time
 	last  time.Time
-	// row is what the finished request taught us, held until a row is written.
-	row laneFacts
 }
 
 // reset forgets the turn before. A turn is the scope a measurement is true in,
@@ -362,7 +386,7 @@ type laneWitness struct {
 func (w *laneWitness) reset() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.began, w.first, w.last, w.row = time.Time{}, time.Time{}, time.Time{}, laneFacts{}
+	w.began, w.first, w.last = time.Time{}, time.Time{}, time.Time{}
 }
 
 // sent starts the first-token clock, and it is called where the request
@@ -398,32 +422,21 @@ func (w *laneWitness) token(now time.Time) {
 // timing is dropped here exactly as internal/provider's [streamWatch.sighting]
 // refuses to fold it into a belief. What the call spent and whether it hedged
 // are still true and stay.
-// It hands back what it wrote, because two readers want the same row at two
-// different moments: the turn's seal writes it to the ledger when the turn
-// ends ([laneWitness.take]), and the surface is told about it now — an answer
-// whose lane arrives on the status line a minute later is a fact about a turn
-// nobody is looking at any more.
+// IT HANDS THE ROW BACK AND KEEPS NOTHING, which is what makes a measurement
+// belong to exactly one call. Both readers want it in the same breath: the
+// ledger row this call is about ([Agent.addUsage]) and the status line, which
+// has to hear who answered now — an answer whose lane arrives a minute later is
+// a fact about a turn nobody is looking at any more.
 func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.row = laneFacts{Lane: seen.lane, Hedged: seen.hedged, Waste: seen.waste}
+	row := laneFacts{Lane: seen.lane, Hedged: seen.hedged, Waste: seen.waste}
 	if !seen.fault && !w.began.IsZero() && !w.first.IsZero() {
-		w.row.TTFT = w.first.Sub(w.began)
-		w.row.Gen = w.last.Sub(w.first)
-		w.row.Output = output
+		row.TTFT = w.first.Sub(w.began)
+		row.Gen = w.last.Sub(w.first)
+		row.Output = output
 	}
 	w.began, w.first, w.last = time.Time{}, time.Time{}, time.Time{}
-	return w.row
-}
-
-// take is the row's read, and it CONSUMES what it read. A measurement belongs
-// to exactly one row: a second seal that found the first one's figures still
-// sitting here would write a lane and a wait that nobody measured for it.
-func (w *laneWitness) take() laneFacts {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	row := w.row
-	w.row = laneFacts{}
 	return row
 }
 
@@ -463,6 +476,30 @@ type usageWrite struct {
 type usageWriter struct {
 	queue chan usageWrite
 }
+
+// usageDropped is how many rows this process could not get onto a ledger — a
+// queue full because the disk stopped answering, a directory that would not be
+// made, a write that failed. It is process-wide rather than per-path because
+// every reader of it asks one question — "is what I am looking at short, and by
+// how much" — and a person reading a spending page does not hold a mental map
+// of which ledger a row was bound for.
+//
+// IT EXISTS BECAUSE THE DROP ITSELF IS RIGHT AND THE SILENCE WAS NOT. The
+// bargain above stands: a spending record is worth less than the turn that
+// earned it, so the row gives way. But a ledger that quietly loses rows reads
+// as a machine that spent less, which is the flattering direction and the one
+// direction a bill must never be wrong in. So the drop is counted and the spend
+// surfaces say so ([UsageDrops], and issue #161's unbilled-call marker, which is
+// the same sentence about a different gap).
+var usageDropped atomic.Int64
+
+// UsageDrops is how many spending records this process failed to write down.
+// Zero is the ordinary answer and a surface says nothing about it; anything
+// else means every total taken off a ledger is short by that many calls.
+func UsageDrops() int64 { return usageDropped.Load() }
+
+// dropUsageRow counts one row that never reached a file.
+func dropUsageRow() { usageDropped.Add(1) }
 
 // usageWriters is the writer per path, and usageWritersMu guards the map ALONE.
 // It is never held across a file operation, so [RecordUsage] can never be made
@@ -513,6 +550,7 @@ func (w *usageWriter) run(path string) {
 		if file == nil {
 			file = openUsageLedger(path)
 			if file == nil {
+				dropUsageRow()
 				continue
 			}
 		}
@@ -521,6 +559,7 @@ func (w *usageWriter) run(path string) {
 		// before the last newline are whole lines, and what keeps two processes
 		// appending to one ledger from interleaving halves of two rows.
 		if _, err := file.Write(work.line); err != nil {
+			dropUsageRow()
 			_ = file.Close()
 			file = nil
 		}
@@ -613,6 +652,7 @@ func RecordUsage(path string, line UsageLine) {
 	}
 	payload, err := json.Marshal(line)
 	if err != nil {
+		dropUsageRow()
 		return
 	}
 	// THE ENQUEUE IS NON-BLOCKING AND THE ROW IS THE THING THAT GIVES WAY. A
@@ -622,6 +662,7 @@ func RecordUsage(path string, line UsageLine) {
 	select {
 	case usageWriterFor(path).queue <- usageWrite{line: append(payload, '\n')}:
 	default:
+		dropUsageRow()
 	}
 }
 
@@ -714,11 +755,14 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // recordUsageLine is the engine's one door onto the ledger: the figures a
 // journal line already carries, plus the four ids that say whose they are.
 //
-// IT IS CALLED FROM THE TWO PLACES THAT JOURNAL A COST and from nowhere else —
-// the turn's seal ([Agent.sealTurn]) and an auxiliary call
-// ([Agent.addAuxiliaryUsageAs]) — so the ledger and the transcripts can never
-// come to hold different money. A fold goes through a door of its own and does
-// not reach here ([Agent.addFoldedUsage] says why).
+// IT IS CALLED FROM ONE PLACE — [Agent.bank], the door every call's money goes
+// through on its way into the session's own meter — so the meter and this file
+// can never come to hold different money. A fold passes through that door with
+// nothing to write here ([Agent.addFoldedUsage] says why).
+//
+// THE GRAIN IS ONE CALL. It used to be one TURN, written at the seal, and a turn
+// that never sealed was money the meter had and this file never got (issue
+// #269). The seal now stamps the transcript alone.
 //
 // The record is made outside a.mu for [Agent.sealTurn]'s reason: nothing that
 // can touch a file belongs under the agent's lock, and although the write itself

@@ -241,6 +241,26 @@ var tuiWords = map[string]tuiWord{
 		why:    "what the `since you left` block says about a watch that went off while nobody was here",
 	},
 
+	// ── the money, said the same way wherever it is read ─────────────────────
+	"spendRailsHint": {
+		screen: "/budget sets the limits",
+		why:    "the /spend place's own pointer line, which carries the day's figure and the door to the rails",
+	},
+	"spendTodayResets": {
+		screen: " · resets at midnight",
+		source: " · resets at midnight",
+		why:    "the Spending tab's `today` reading, the row the money segment's door lands above",
+	},
+	"spendThisOneWord": {
+		screen: "this one ",
+		pkg:    "internal/config",
+		why:    "the receipt beside the per-conversation ceiling — the ENGINE's registry writes it and the tab only relays it",
+	},
+	"spendConversationRow": {
+		screen: "per conversation",
+		why:    "the Spending row the `this one` receipt hangs off",
+	},
+
 	// ── a question answered from another window ──────────────────────────────
 	"consentAskWord": {
 		screen: "allow? ",

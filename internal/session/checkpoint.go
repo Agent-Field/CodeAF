@@ -2900,8 +2900,13 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// auxiliary pocket, because this is the conversation's own model reading the
 	// conversation's own transcript — the errand pocket is for the session's
 	// side-calls, and this is the last step of the answer.
+	//
+	// AND ITS ROW CARRIES NO LANE. This request was not streamed and nothing
+	// watched it, and the turn's own figures filed against it would be a
+	// measurement of one request written down about another (usage_ledger.go's
+	// emptiness law for the five lane keys).
 	turn.Turns++
-	a.addUsage(turn, response, provider.ServedEndpointFrom(ctx).Name())
+	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{})
 
 	brief := strings.TrimSpace(response.Text())
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that
