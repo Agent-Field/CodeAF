@@ -272,6 +272,11 @@ func ClipError(message string) string {
 // directory when there is one, the state root otherwise — with the environment
 // pin on top, so a person debugging one run can put its log somewhere they can
 // watch without moving anything else aforge owns.
+//
+// UNDER `go test` it answers "" for anything that would land inside the state
+// root the environment named, so that a test binary cannot write into the
+// ledger of the person who started it (undertest.go says why, and what a test
+// that wants a log does instead).
 func PathFor(dir string) string {
 	if pinned := strings.TrimSpace(os.Getenv(EnvVar)); pinned != "" {
 		if strings.EqualFold(pinned, OffValue) {
@@ -280,9 +285,9 @@ func PathFor(dir string) string {
 		return pinned
 	}
 	if dir = strings.TrimSpace(dir); dir != "" {
-		return filepath.Join(dir, DirName, FileName)
+		return chosenPath(filepath.Join(dir, DirName, FileName))
 	}
-	return homeJoin(DirName, FileName)
+	return chosenPath(homeJoin(DirName, FileName))
 }
 
 // Bodies reports whether this process was asked to record the request and
@@ -436,9 +441,11 @@ func (l *log) write(record Record) {
 		return
 	}
 	if !l.resolved {
-		// Nobody called Open — a test binary, a surface that never loaded a
-		// config — and the log is still ON, because always-on is the whole
-		// point. It resolves to the same place a loaded process would put it.
+		// Nobody called Open — a surface that never loaded a config, a tool
+		// reaching a model before startup finished — and the log is still ON,
+		// because always-on is the whole point. It resolves to the same place a
+		// loaded process would put it, except in a test binary, where that
+		// place belongs to the person who started the test (undertest.go).
 		l.path = PathFor("")
 		l.resolved = true
 	}
