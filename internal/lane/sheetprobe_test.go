@@ -31,6 +31,19 @@ type answering struct {
 	calls int
 }
 
+// waitingAnswer holds one fetch in flight until the test has moved the sheet
+// to another base.
+type waitingAnswer struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (w *waitingAnswer) Fetch(context.Context, string, string) (io.ReadCloser, error) {
+	close(w.started)
+	<-w.release
+	return io.NopCloser(strings.NewReader(onePage)), nil
+}
+
 func (a *answering) Fetch(context.Context, string, string) (io.ReadCloser, error) {
 	a.mu.Lock()
 	a.calls++
@@ -233,6 +246,44 @@ func TestAMovedBaseForgetsWhatTheOldOneAnswered(t *testing.T) {
 	}
 	if s.answer() != answerServes {
 		t.Fatalf("the new base's page was not remembered: %v", s.answer())
+	}
+}
+
+// TestAMovedBaseDoesNotFileAnAnswerThatWasAlreadyInFlight closes the window
+// between fetching a page from one base and filing it under the next one.
+func TestAMovedBaseDoesNotFileAnAnswerThatWasAlreadyInFlight(t *testing.T) {
+	const (
+		baseA = "http://127.0.0.1:1/api/v1"
+		baseB = "http://127.0.0.1:2/api/v1"
+	)
+	now := time.Date(2026, time.August, 25, 9, 0, 0, 0, time.UTC)
+	waiting := &waitingAnswer{started: make(chan struct{}), release: make(chan struct{})}
+	s := newSheet()
+	s.now = func() time.Time { return now }
+	s.wire(baseA, "", waiting, false)
+	s.cacheIn(t.TempDir())
+
+	done := make(chan error, 1)
+	go func() { done <- s.Refresh(context.Background(), scriptedModel) }()
+	<-waiting.started
+	serving := &answering{reply: servesAPage}
+	s.wire(baseB, "", serving, false)
+	close(waiting.release)
+	if err := <-done; !errors.Is(err, errSheetMoved) {
+		t.Fatalf("the old base's in-flight page came back as %v", err)
+	}
+	if s.answer() != answerUnasked {
+		t.Fatalf("the new base inherited the old one's answer: %v", s.answer())
+	}
+	if s.Rows(scriptedModel) != nil {
+		t.Fatal("the old base's rows were filed under the new base")
+	}
+
+	if err := s.Refresh(context.Background(), scriptedModel); err != nil {
+		t.Fatalf("the new base's refresh: %v", err)
+	}
+	if s.answer() != answerServes || len(s.Rows(scriptedModel)) != 1 {
+		t.Fatalf("the new base was filed as %v with %d rows", s.answer(), len(s.Rows(scriptedModel)))
 	}
 }
 

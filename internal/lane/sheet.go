@@ -316,15 +316,26 @@ func (s *sheet) askable(now time.Time) bool {
 // take that back. Anything that is not [ErrNoSheetHere] leaves the answer where
 // it was, so a bad afternoon is a bad afternoon and not a verdict about the
 // address.
-func (s *sheet) heard(err error, now time.Time) {
+func (s *sheet) heard(base string, err error, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.heardLocked(base, err, now)
+}
+
+// heardLocked files an answer only while the sheet still names the base that
+// was asked. AN ANSWER IS FILED UNDER THE BASE IT WAS ASKED OF, AND UNDER NO
+// OTHER.
+func (s *sheet) heardLocked(base string, err error, now time.Time) bool {
+	if s.base != base {
+		return false
+	}
 	switch {
 	case err == nil:
 		s.answered, s.askedAt = answerServes, now
 	case errors.Is(err, ErrNoSheetHere) && s.answered != answerServes:
 		s.answered, s.askedAt = answerSheetless, now
 	}
+	return true
 }
 
 // cacheIn moves this sheet's cache directory. It exists for tests, which must
@@ -638,7 +649,7 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 	}
 	body, err := fetch.Fetch(ctx, base+"/models/"+model+"/endpoints", key)
 	if err != nil {
-		s.heard(err, s.clock())
+		s.heard(base, err, s.clock())
 		return err
 	}
 	defer body.Close()
@@ -653,16 +664,18 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 		return errSheetEmpty
 	}
 	at := time.Now()
-	// A PAGE CAME BACK, so this base is a router and is remembered as one. It
-	// is filed before the rows are, because it is the cheaper fact and the one
-	// every later refresh reads.
-	s.heard(nil, at)
 	// Every row carries the moment it was read, so that the ledger can age a
 	// belief to it before folding it in ([Row.At]).
 	for i := range rows {
 		rows[i].At = at
 	}
 	s.mu.Lock()
+	// The answer and its rows are one reading of one router. AN ANSWER IS FILED
+	// UNDER THE BASE IT WAS ASKED OF, AND UNDER NO OTHER.
+	if !s.heardLocked(base, nil, at) {
+		s.mu.Unlock()
+		return errSheetMoved
+	}
 	s.rows[model], s.at[model], s.looked[model] = rows, at, true
 	for id, tag := range tags {
 		s.tags[id] = tag
@@ -673,6 +686,9 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 
 // errSheetEmpty is a sheet that decoded to no lanes at all.
 var errSheetEmpty = errors.New("lane: the sheet named no lanes")
+
+// errSheetMoved is a reading whose base changed while it was in flight.
+var errSheetMoved = errors.New("lane: the sheet moved while it was being read")
 
 // ── THE BEAT ────────────────────────────────────────────────────────────────
 
