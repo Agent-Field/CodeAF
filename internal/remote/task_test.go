@@ -25,7 +25,7 @@ func TestTaskDoorsRunOnTheEngineAgent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 
-	id, title, err := loop.Client.Agent().StartTask(context.Background(), "fix it")
+	id, title, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it")
 	if err != nil || id != 17 || title != "far task" {
 		t.Fatalf("start = %d %q %v", id, title, err)
 	}
@@ -86,7 +86,7 @@ func TestTaskDoorRefusesWhenTheEngineDoesNotCarryIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = loop.Close() })
-	if _, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it"); err == nil {
+	if _, _, _, err := loop.Client.Agent().StartTask(context.Background(), "fix it"); err == nil {
 		t.Fatal("a taskless engine accepted Task.Start")
 	}
 }

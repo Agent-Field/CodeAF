@@ -352,7 +352,7 @@ func TestATaskWhoseShapingFailedIsNamedAnyway(t *testing.T) {
 	})
 	agent, ran := shapeAgent(t, client)
 
-	id, title, _, err := agent.StartTask(t.Context(), ask)
+	id, title, err := agent.StartTask(t.Context(), ask)
 	if err != nil {
 		t.Fatal(err)
 	}

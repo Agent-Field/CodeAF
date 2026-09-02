@@ -13,7 +13,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 type taskCommandFake struct {
@@ -26,10 +25,10 @@ type taskCommandFake struct {
 	err                     error
 }
 
-func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, string, string, error) {
+func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, string, error) {
 	f.singleCalls++
 	f.brief = brief
-	return 7, "named work", "", f.err
+	return 7, "named work", f.err
 }
 func (f *taskCommandFake) JudgeDecomposable(context.Context, string) (bool, []string, string) {
 	f.judgeCalls++
@@ -213,26 +212,6 @@ func TestTaskNoStartsSingleAndErrorsBecomeNotes(t *testing.T) {
 	_, _ = a.Update(started)
 	if got := lastNote(t, a); !strings.Contains(got, "unknown brief") {
 		t.Fatalf("error note = %q", got)
-	}
-}
-
-// THE CUT SHAPER GETS ONE DIM LINE BESIDE THE STARTED ROW, and only there
-// (path (a) of issue #133, internal/session's [TaskShapeFallbackNote]). An
-// ordinary start carries nothing: empty is the absence law, and the line is
-// never said about a start whose shaper never ran.
-func TestAStartedTaskCarriesTheFallbackLineOnlyWhenTheShaperWasCut(t *testing.T) {
-	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
-	a := newTestApp(f)
-	_, _ = a.Update(taskStartedMsg{kind: "single", id: "7", title: "port the parser", note: session.TaskShapeFallbackNote})
-	if got := lastNote(t, a); !strings.Contains(got, session.TaskShapeFallbackNote) {
-		t.Fatalf("started note = %q, want the fallback line carried", got)
-	}
-
-	// AND NOT ON AN ORDINARY START.
-	a = newTestApp(f)
-	_, _ = a.Update(taskStartedMsg{kind: "single", id: "7", title: "port the parser"})
-	if got := lastNote(t, a); strings.Contains(got, session.TaskShapeFallbackNote) {
-		t.Fatalf("an ordinary start said %q", got)
 	}
 }
 

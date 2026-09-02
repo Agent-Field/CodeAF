@@ -96,9 +96,9 @@ func (f *fakeAgent) Cancel(id string) (string, error) {
 	return "stopping task 17", f.failing
 }
 
-func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, error) {
+func (f *fakeAgent) StartTask(_ context.Context, brief string) (uint64, string, string, error) {
 	f.tasks = append(f.tasks, brief)
-	return 17, "far task", f.failing
+	return 17, "far task", "", f.failing
 }
 
 func (f *fakeAgent) StartPlannerRun(_ context.Context, brief, hint string) (string, string, error) {
