@@ -1,6 +1,6 @@
 ---
 kind: added
-title: every canary chat row counts the check rounds that failed and the steward's carry-ons, beside done-to-wall
+title: every canary chat row counts failed check rounds and steward carry-ons, beside done-to-wall
 pr: 505
 surface: [build, chat]
 invalidates:
