@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -270,6 +271,66 @@ func (n *notices) kinds(kind StreamEventKind) []StreamEvent {
 		}
 	}
 	return found
+}
+
+// TestTwoArmsRecordingAtOnceDoNotDeadlock is the call-log race from issue
+// #330 without a model or a wire. Each arm's row asks its own watch for local
+// timing and the race for shared lane and spend facts. If facts ever holds a
+// watch lock while asking the race, one arm can meet spend walking the watches
+// in the opposite order and neither row — nor the turn — can finish.
+//
+// The barrier puts both arms at that seam together on every round. Repeating it
+// turns the narrow scheduling window that happened on the wire into a stable
+// regression under both the ordinary scheduler and the race detector.
+func TestTwoArmsRecordingAtOnceDoNotDeadlock(t *testing.T) {
+	race := &hedgeRace{plan: control.Plan{Lane: "A"}}
+	race.arms = []*hedgeArm{
+		{index: 0, lane: "A"},
+		{index: 1, lane: "B"},
+	}
+	for _, arm := range race.arms {
+		arm.watch = &streamWatch{race: race, arm: arm.index}
+	}
+
+	const rounds = 500
+	ready := make(chan struct{}, len(race.arms))
+	release := make([]chan struct{}, len(race.arms))
+	done := make(chan struct{}, len(race.arms))
+	for index, arm := range race.arms {
+		watch := arm.watch
+		release[index] = make(chan struct{})
+		gate := release[index]
+		go func() {
+			for range rounds {
+				ready <- struct{}{}
+				<-gate
+				watch.facts()
+				done <- struct{}{}
+			}
+		}()
+	}
+
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	wait := func(stage string) {
+		t.Helper()
+		select {
+		case <-done:
+		case <-timer.C:
+			t.Fatalf("two arms recording their rows deadlocked while %s", stage)
+		}
+	}
+	for round := range rounds {
+		for range race.arms {
+			<-ready
+		}
+		for _, gate := range release {
+			gate <- struct{}{}
+		}
+		for range race.arms {
+			wait("finishing round " + strconv.Itoa(round+1))
+		}
+	}
 }
 
 func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testing.T) {

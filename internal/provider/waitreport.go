@@ -257,9 +257,16 @@ func (w *streamWatch) facts() (waitFacts, bool) {
 	if w == nil || w.race == nil {
 		return waitFacts{}, false
 	}
+	// RACE FACTS ARE READ OUTSIDE THE WATCH LOCK. [hedgeRace.spend] holds the
+	// race lock while reading the other watches, so taking that same pair in
+	// the opposite order here lets two arms recording at once each wait for the
+	// lock the other owns. The lane belongs to the race and does not need the
+	// watch's protection; read it before entering this critical section, just as
+	// spend is read after leaving it below.
+	lane := w.race.askedLane(w.arm)
 	w.mu.Lock()
 	facts := waitFacts{
-		lane:     w.race.askedLane(w.arm),
+		lane:     lane,
 		deadline: w.armed,
 		silence:  w.silence,
 		action:   actionWord(w.acted.Kind),
