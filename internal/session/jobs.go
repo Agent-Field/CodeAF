@@ -174,7 +174,13 @@ type job struct {
 	// waits without polling.
 	done chan struct{}
 
-	mu    sync.Mutex
+	mu sync.Mutex
+	// name is the short name this job is CALLED, and it is under the lock because
+	// it arrives LATE: the namer is an errand on a goroutine of its own
+	// (jobname.go) and answers, when it answers, well after the job started
+	// saying things. It is empty for a job that has a label already, and for one
+	// whose namer never came back.
+	name  string
 	state jobState
 	// exitCode is meaningful only in jobExited.
 	exitCode int
@@ -195,14 +201,23 @@ type jobInfo struct {
 	kind    jobKind
 	label   string
 	detail  string
+	// name is the short name the job is CALLED — the label where the registry
+	// minted one, and otherwise whatever the cheap namer answered (jobname.go).
+	// It is empty until there is one: naming is an errand and the work never
+	// waits on it.
+	name string
 	// logPath is where everything this job wrote is spooled. It is copied out
 	// with the rest because a job's row has no transcript, no branch and no
 	// report to point a person at, and the log is what it points at instead
-	// (jobrow.go).
+	// (jobnotice.go).
 	logPath string
 	state   jobState
 	code    int
 	ticks   int
+	// started is when the process forked, copied out beside elapsed so a surface
+	// can count a live job's clock up on its own beat rather than re-asking the
+	// engine for a duration four times a second (jobnotice.go says why both).
+	started time.Time
 	elapsed time.Duration
 }
 
@@ -215,9 +230,33 @@ func (j *job) info() jobInfo {
 	}
 	return jobInfo{
 		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
+		name:    j.name,
 		logPath: j.logPath,
-		state:   j.state, code: j.exitCode, ticks: j.ticks, elapsed: elapsed,
+		state:   j.state, code: j.exitCode, ticks: j.ticks,
+		started: j.started, elapsed: elapsed,
 	}
+}
+
+// setName gives the job the short name it is called, and reports whether that
+// changed anything.
+//
+// A NAME ARRIVES LATE OR NOT AT ALL, and both are ordinary. The namer is an
+// errand on its own goroutine with its own deadline (jobname.go), so this is
+// called — if it is called — some seconds after the job started, and the answer
+// is dropped when it is empty or when it says what the job is already called.
+// The report is what lets the caller publish only when there is news, which is
+// the rule every other row on every other surface here is published under.
+func (j *job) setName(name string) bool {
+	if name == "" {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.name == name {
+		return false
+	}
+	j.name = name
+	return true
 }
 
 // countTick records one completed run of a watch's command and reports which
