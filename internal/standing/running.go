@@ -28,12 +28,11 @@ package standing
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 // RunningPath is the marker's place: <root>/<id>/running, inside the item's own
@@ -116,13 +115,11 @@ func markLive(mark RunningMark, now time.Time) bool {
 	return pidAlive(mark.PID)
 }
 
-// pidAlive asks the kernel whether a process is still there. Signal zero is the
-// question with no consequence; EPERM is a yes, because a process this user may
-// not signal is still a process that exists.
+// pidAlive asks the kernel whether a process is still there, through the one
+// package that already knows how to ask on every platform this program builds
+// for (internal/processgroup): signal zero where there are signals, an
+// open-process handle where there are not, and "may not look" read as "exists"
+// on both.
 func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := unix.Kill(pid, 0)
-	return err == nil || errors.Is(err, unix.EPERM)
+	return pid > 0 && processgroup.ProcessAlive(pid)
 }
