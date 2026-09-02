@@ -25,6 +25,14 @@ import (
 //
 // It asserts on the FILE rather than on a double, because the file is what the
 // next session opens.
+//
+// ITS TURN IS UNHEDGED, AND THAT IS A LIMIT WORTH NAMING. `internal/provider`
+// has a third writer of the ledger's model id — hedge.go's race carries
+// `config.Model` raw and its settle overwrites that with the answer's own
+// `model` field, neither of them through [laneModel] — so a RACED call can
+// still file a losing arm under a spelling nobody folded. That seam is
+// hedge.go's and the general fold's, not this one's, and staging it here would
+// assert something this change does not fix.
 
 // storedLanes is what `~/.aforge/v3/lanes.json` holds, read back the way another
 // process would read it. Belief carries no json tags, so the field names are the
