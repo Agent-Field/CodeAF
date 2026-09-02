@@ -6644,14 +6644,11 @@ const stopGrace = 10 * time.Second
 // too, so the ordinary settle is now the time a cancelled call needs to unwind.
 // The window survives because the turn goroutine does not close its
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
-// the context until the tool batch it is inside has finished. Two ordinary calls
-// outlast the cancel by seconds: a `bash` whose command left a grandchild
-// holding the output pipe waits the exec package's own three-second `WaitDelay`
-// before the pipes are forced shut, and a `jobs` kill spends two seconds on a
-// SIGTERM grace and two more on the SIGKILL that follows. Three to four seconds
-// of "nothing appears to have happened" is what this window is worth avoiding —
-// and past [stopGrace] it is bounded rather than waited out, which is the block
-// above.
+// the context until the tool batch it is inside has finished. What can still
+// outlast the cancel is the context-blind class — a wait that never looks at the
+// context it was given — and that is what the bound is for. [stopGrace] above
+// carries the argument in full; it is not repeated here, so that moving the
+// reasoning cannot leave two versions of it disagreeing.
 //
 // It is DERIVED and not stored, from the two facts that already exist: the state
 // word is only [stateInterrupted] because [app.interrupt] put it there, and the
