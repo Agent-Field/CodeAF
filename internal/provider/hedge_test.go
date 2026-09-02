@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1023,5 +1024,70 @@ func TestAtTheCeilingAnErrandNobodyIsWatchingIsStillRescued(t *testing.T) {
 	}
 	if tokens := answerTokens(response); tokens != 24 {
 		t.Fatalf("the answer is %d tokens, want the rescuer's 24", tokens)
+	}
+}
+
+// TestAFencedRunOfThoughtIsHiddenToTheController is the seam between #234's
+// answer split and this build's waiting policy, and it is the one place the two
+// have to agree.
+//
+// A gateway that does not strip its model's working delivers it on the CONTENT
+// channel inside `<think>` tags. `answer.go` carves it back out so it never
+// reaches the transcript — and the SAME carving has to reach the controller,
+// because the silence clock is about what a person can read. If fenced working
+// counted as visible progress it would reset the clock on every delta, and a
+// model that fenced its thoughts could hold a turn open forever by thinking out
+// loud: the very defect this design was written from, wearing a different hat.
+//
+// So: a lane that streams a long fenced thought and never a word of answer must
+// still be acted on inside the role's ceiling. Nothing else in this file can
+// tell that apart from a lane that was writing all along.
+func TestAFencedRunOfThoughtIsHiddenToTheController(t *testing.T) {
+	rig := newLaneRig(t, "fenced/think",
+		// A whole run of thought on the content channel, slowly, and nothing
+		// else: no visible word ever arrives from A.
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 40, Tokens: 0,
+			Reasoning: 40, Fenced: true,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 2, 250)
+
+	watched := &notices{}
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(talking(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
+	ctx = WithStreamObserver(ctx, watched.observe)
+
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	// THE CLOCK RAN. Had the fenced deltas been read as visible progress, every
+	// one of them would have reset the silence and nothing would ever have been
+	// acted on.
+	if !report.Hedged() {
+		t.Fatal("a lane that only ever wrote fenced working was never acted on — " +
+			"its thinking is being counted as a person's reading")
+	}
+
+	// AND THE WORKING NEVER BECAME THE ANSWER, which is answer.go's half of the
+	// same seam: it rides the reasoning events, marked as carved out of the
+	// answer channel, and no delta of it is offered as text.
+	for _, event := range watched.kinds(StreamDelta) {
+		if strings.Contains(event.Delta, "<think>") || strings.Contains(event.Delta, "r0 ") {
+			t.Fatalf("fenced working reached the answer channel as a delta: %q", event.Delta)
+		}
+	}
+	fenced := 0
+	for _, event := range watched.kinds(StreamReasoning) {
+		if event.FromAnswer {
+			fenced++
+		}
+	}
+	if fenced == 0 {
+		t.Fatal("no reasoning event was marked FromAnswer, so the split never carved the fence out " +
+			"and this test proved nothing about the seam")
 	}
 }
