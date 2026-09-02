@@ -2,18 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/head"
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -40,86 +37,6 @@ type gateCaptureClient struct {
 	class        provider.CallClass
 	responseMode bool
 	response     string
-}
-
-func TestChatCommanderResolvesJobWorkspaceFilesAndDirectory(t *testing.T) {
-	root := t.TempDir()
-	graph, err := store.Open(filepath.Join(root, "graph.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "job", Brief: "produce the artifact", Stage: 0},
-		{ID: "leaf", Parent: "job", Brief: "write it", Stage: 1},
-	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
-		t.Fatal(err)
-	}
-	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
-	jobDir := filepath.Join(workspaceRoot, "job")
-	if err := os.MkdirAll(jobDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	deliverable := filepath.Join(jobDir, "deliverable.md")
-	if err := os.WriteFile(deliverable, []byte("done"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
-		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
-	if target, ok := commander.ResolveWorkspacePath("leaf", "deliverable.md"); !ok || target != deliverable {
-		t.Fatalf("workspace file = (%q, %v), want (%q, true)", target, ok, deliverable)
-	}
-	if _, ok := commander.ResolveWorkspacePath("leaf", "missing.md"); ok {
-		t.Fatal("nonexistent workspace file resolved")
-	}
-	if _, ok := commander.ResolveWorkspacePath("leaf", "../outside.md"); ok {
-		t.Fatal("workspace traversal escaped the job directory")
-	}
-	if target, ok := commander.WorkspacePath("leaf"); !ok || target != jobDir {
-		t.Fatalf("workspace directory = (%q, %v), want (%q, true)", target, ok, jobDir)
-	}
-}
-
-func TestChatCommanderKeepsFoldedJobWorkspaceAfterTerritoryReparent(t *testing.T) {
-	root := t.TempDir()
-	graph, err := store.Open(filepath.Join(root, "graph.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "job", Brief: "produce the artifact", Stage: 0},
-	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
-		t.Fatal(err)
-	}
-	claim, won, err := graph.Claim("job", "worker")
-	if err != nil || !won {
-		t.Fatalf("claim job: won=%t err=%v", won, err)
-	}
-	if err := graph.Complete(claim, "artifact delivered"); err != nil {
-		t.Fatal(err)
-	}
-	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
-	jobDir := filepath.Join(workspaceRoot, "job")
-	if err := os.MkdirAll(jobDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	pointer := filepath.Join(jobDir, "deliverable.md")
-	if err := os.WriteFile(pointer, []byte("done"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.Fold("job", "artifact delivered", []string{pointer}); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.FormTerritory("territory", "Artifacts", "related artifact work", nil, []string{"job"}); err != nil {
-		t.Fatal(err)
-	}
-
-	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
-		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
-	if target, ok := commander.WorkspacePath("job"); !ok || target != jobDir {
-		t.Fatalf("reparented workspace = (%q, %v), want (%q, true)", target, ok, jobDir)
-	}
 }
 
 func (c *gateCaptureClient) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -592,15 +509,6 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &gateCaptureClient{model: "talk/model"}
 	client := adoptLiveClient(settings, capture.model, capture)
-	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
-		Goal: "prepare the report",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	wantNarrator := narratorSystemPrompt + "\n\n" + resident.VoiceRegister
-	if got := capture.messages[0].Content[0].Text; got != wantNarrator {
-		t.Fatalf("empty-notebook narrator prompt changed:\n got %q\nwant %q", got, wantNarrator)
-	}
 
 	node := store.Node{
 		ID: "job", Parent: store.RootID, Brief: "assemble the finished report",
@@ -652,17 +560,6 @@ func TestResidentDeliveryAndPolishBriefShareLearnedVoice(t *testing.T) {
 		if !strings.Contains(brief, preference) {
 			t.Fatalf("%s brief omitted learned voice: %q", name, brief)
 		}
-	}
-	settings := config.Config{Model: "talk/model"}
-	capture := &gateCaptureClient{model: "talk/model"}
-	client := adoptLiveClient(settings, capture.model, capture)
-	if _, err := narrateProgress(settings, client, graph)(context.Background(), resident.Narration{
-		Goal: node.Provenance.Intent,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if system := capture.messages[0].Content[0].Text; !strings.Contains(system, preference) {
-		t.Fatalf("narrator prompt omitted learned voice: %q", system)
 	}
 	child := node
 	child.Parent = node.ID
@@ -720,155 +617,6 @@ func TestAttachedDocumentsAreNamedInTheBrief(t *testing.T) {
 	}
 	if plain := withDocumentAttachmentBrief("Summarise the filing.", nil); plain != "Summarise the filing." {
 		t.Fatalf("unattached brief changed: %q", plain)
-	}
-}
-
-// A visitor holds no provider clients. Every Commander capability the TUI can
-// reach must still answer honestly instead of dereferencing a client that this
-// process never built, and the ones that would need a head must refuse in
-// words rather than panic.
-func TestVisitorCommanderServesTheSurfaceWithoutClients(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "graph.db")
-	graph, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	if err := saveChatPrefs(root, chatPrefs{ChatModel: "talk/remembered", TaskModel: "work/remembered"}); err != nil {
-		t.Fatal(err)
-	}
-
-	attached := ""
-	commander := newVisitorCommander(path, "visitor-session", graph, func(id string) error {
-		attached = id
-		return nil
-	})
-	var _ tui.Commander = commander
-
-	if got := commander.CurrentModel("talk"); got != "talk/remembered" {
-		t.Fatalf("visitor talk model = %q, want the recorded preference", got)
-	}
-	if got := commander.CurrentModel("work"); got != "work/remembered" {
-		t.Fatalf("visitor work model = %q, want the recorded preference", got)
-	}
-	for _, role := range []string{"talk", "work", "boost", "voice", "image", "speech", "music", "video"} {
-		commander.CurrentModel(role)
-		commander.CatalogFor(role)
-		commander.ImageInputSupportFor(role)
-		commander.ModelFollows(role)
-	}
-	if len(commander.Models()) == 0 || len(commander.Catalog()) == 0 {
-		t.Fatal("visitor offered no models to pick from")
-	}
-	for _, role := range []string{"talk", "work"} {
-		if err := commander.SetModel(role, "some/other"); err == nil {
-			t.Fatalf("visitor was allowed to switch the %s model", role)
-		}
-	}
-	if commander.StreamEvents() != nil {
-		t.Fatal("visitor exposed a stream it does not produce")
-	}
-	commander.Notebook(5)
-	commander.SearchNotebook("anything", 5)
-	commander.NodeTrace("missing", 128)
-	commander.SplitPct()
-	if commander.DatabasePath() != path {
-		t.Fatalf("visitor database path = %q", commander.DatabasePath())
-	}
-
-	// A visitor's session is real: it may open a new one, and its messages and
-	// cancellations reach the elected resident through the journal.
-	session, err := commander.NewSession()
-	if err != nil || session == "" || attached != session {
-		t.Fatalf("visitor new session = %q, attached %q, err %v", session, attached, err)
-	}
-	if _, err := graph.PostMessage(store.Message{
-		SessionID: session, Role: store.RoleUser, Body: "visitor asks",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.Splice(store.RootID, store.Subtree{
-		Nodes: []store.NodeSpec{{ID: "visitor-job", Brief: "visitor asks", Stage: 1}},
-	}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "visitor asks"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := commander.Cancel("visitor-job"); err != nil {
-		t.Fatal(err)
-	}
-	pending, err := graph.PendingCommands(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 1 || pending[0].Kind != store.CommandCancel || pending[0].SessionID != session {
-		t.Fatalf("visitor cancel did not reach the journal: %+v", pending)
-	}
-}
-
-// A job whose plan is not in hand cannot be revised, and saying so is the whole
-// point. An empty Redirection with a nil error is byte-for-byte what "the
-// sentinel read the plan and found nothing to change" looks like to the caller,
-// so the user was handed that receipt — "nothing in the remaining plan needed
-// to change" — while every pending leaf went on building the version they had
-// just asked to replace. The error is what routes the caller to its honest
-// branch instead.
-func TestReviseForUserWithoutARetainedPlanSaysSo(t *testing.T) {
-	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "task-1", Brief: "write a client for the v1 API", Stage: 1},
-	}}, store.Provenance{Origin: store.OriginUser, Intent: "write a client for the v1 API"}); err != nil {
-		t.Fatal(err)
-	}
-	job, _, err := graph.Node("task-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	plans := &jobPlans{graphs: map[string]plannedJob{}}
-	revision, err := plans.reviseForUser(context.Background(), config.Config{}, nil, graph, job,
-		"no, use the v2 API not v1", resident.RevisionRedirect)
-	if !errors.Is(err, errNoRetainedPlan) {
-		t.Fatalf("revise without a retained plan returned %v; the caller cannot tell this from a no-op", err)
-	}
-	if revision.Added != 0 || revision.Dropped != 0 || revision.Amended != 0 ||
-		len(revision.Notes) != 0 || len(revision.RunningRemovals) != 0 {
-		t.Fatalf("revision = %+v", revision)
-	}
-	// The reconciler's own receipt has to reach its "I could not revise" arm.
-	reconciler := resident.New(graph, nil, nil).WithRedirector(
-		func(context.Context, store.Node, string, resident.RevisionFlavor) (resident.Redirection, error) {
-			return resident.Redirection{}, errNoRetainedPlan
-		})
-	if _, err := graph.RequestCommand(store.Command{
-		SessionID: "s1", Kind: store.CommandRedirect, Target: "task-1",
-		Instruction: "no, use the v2 API not v1",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := reconciler.Tick(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	// The receipt is filed on the job, not said again (13.18): the head speaks
-	// for a redirect in its own voice, so the applied line is the record's.
-	messages, err := graph.NodeMessages("task-1", 0, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipts string
-	for _, message := range messages {
-		if message.SessionID != "" {
-			t.Fatalf("an applied redirect receipt reached the thread: %+v", message)
-		}
-		receipts += message.Body + "\n"
-	}
-	if strings.Contains(receipts, "nothing in the remaining plan needed to change") {
-		t.Fatalf("the receipt claims the plan was examined:\n%s", receipts)
-	}
-	if !strings.Contains(receipts, "could not revise the remaining plan") {
-		t.Fatalf("the receipt never says the plan could not be read:\n%s", receipts)
 	}
 }
 
@@ -985,78 +733,6 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 			t.Fatalf("the revision contract no longer says where the answer goes: %q missing", required)
 		}
 	}
-}
-
-// blockedHeadClient is a provider call that only ends when the turn's context
-// does — the one state in which an interrupt is a real thing.
-type blockedHeadClient struct{ entered chan struct{} }
-
-func (client blockedHeadClient) CompleteWithMessages(ctx context.Context, _ []ai.Message,
-	_ ...ai.Option) (*ai.Response, error) {
-	select {
-	case client.entered <- struct{}{}:
-	default:
-	}
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-
-// The surface's stop key has to reach the loop that is answering, and the turn
-// it stops still has to end in words. This is that wire, end to end: the
-// commander the window holds, the head the brain serves, and the durable line
-// the thread keeps.
-func TestChatCommanderInterruptReachesTheHeadAndTheTurnStillSpeaks(t *testing.T) {
-	var _ interface{ Interrupt(partial string) bool } = (*chatCommander)(nil)
-	if command.New(command.Options{}).Interrupt("nothing to stop") {
-		t.Fatal("a window with no head behind it claimed to stop a turn")
-	}
-
-	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	client := blockedHeadClient{entered: make(chan struct{}, 1)}
-	loop := head.New(client, graph)
-	commander := command.New(command.Options{Store: graph, Head: loop})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = loop.Serve(ctx) }()
-
-	user, err := graph.PostMessage(store.Message{
-		SessionID: "stop", Role: store.RoleUser, Body: "how is the report coming along?",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-client.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the head never reached the provider")
-	}
-	if !commander.Interrupt("the report is") {
-		t.Fatal("the commander found no turn to stop")
-	}
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		messages, readErr := graph.Messages("stop", user.Seq, 0)
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		for _, message := range messages {
-			if message.Role != store.RoleAgent {
-				continue
-			}
-			if !strings.Contains(message.Body, "the report is") ||
-				!strings.Contains(message.Body, "interrupted") {
-				t.Fatalf("the stopped turn ended in %q", message.Body)
-			}
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("the stopped turn never said anything")
 }
 
 // The trace window is the last sixty-four kilobytes of a file the worker keeps

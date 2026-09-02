@@ -18,7 +18,7 @@ import (
 var _ interface {
 	Restart(nodeID string) error
 	ConfirmSurgery(kind store.CommandKind, nodeID string) (bool, error)
-} = (*chatCommander)(nil)
+} = (*command.Commander)(nil)
 
 // The whole journey the restart was built for and never actually had: the user
 // stops a worker mid-turn, what it had already written survives the landing,

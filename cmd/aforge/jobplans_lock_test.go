@@ -8,7 +8,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
-	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -99,8 +98,7 @@ func TestRevisionDoesNotBlockLeavesWhileTheModelThinks(t *testing.T) {
 	revised := make(chan struct{})
 	go func() {
 		defer close(revised)
-		_, _ = plans.reviseForUser(context.Background(), config.Config{}, client, graph, revising,
-			"use the v2 API", resident.RevisionRedirect)
+		reviseOne(t, plans, client, graph, revising)
 	}()
 	awaitSentinel(t, sentinel, "the revision")
 
@@ -146,8 +144,7 @@ func TestRevisionsOfOnePlanStayInSingleFile(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			_, _ = plans.reviseForUser(context.Background(), config.Config{}, client, graph, job,
-				"use the v2 API", resident.RevisionRedirect)
+			reviseOne(t, plans, client, graph, job)
 		}()
 		return done
 	}
@@ -175,4 +172,26 @@ func TestRevisionsOfOnePlanStayInSingleFile(t *testing.T) {
 	awaitClose(t, firstDone, "the first revision")
 	awaitClose(t, secondDone, "the second job's revision")
 	awaitClose(t, queuedDone, "the queued revision")
+}
+
+// reviseOne drives a revision the way the live road does. The registry lock is
+// what this file is about, and every caller that still exists reaches it
+// through reviseOn: reviseAfterCancel is the one a stopped leaf takes, and it
+// takes the same two locks in the same order as any other.
+func reviseOne(t *testing.T, plans *jobPlans, client *liveClient, graph *store.Store, job store.Node) {
+	t.Helper()
+	entry, ok := plans.get(job.ID)
+	if !ok {
+		t.Errorf("no retained plan for %s", job.ID)
+		return
+	}
+	// A revision is asked ABOUT a leaf and never about the root — reviseOn
+	// refuses the root outright, since a job cannot be replanned around itself.
+	leaf, found, err := graph.Node(job.ID + "-n1")
+	if err != nil || !found {
+		t.Errorf("leaf of %s: found=%t err=%v", job.ID, found, err)
+		return
+	}
+	plans.reviseAfterCancel(context.Background(), config.Config{}, client, graph, leaf, job.ID,
+		entry.graph, "half of it was written", "cancelled by user", "work/model")
 }

@@ -58,7 +58,7 @@ func TestReportFaultSaysOneCalmThingAndLogsTheStack(t *testing.T) {
 
 	stderr := &bytes.Buffer{}
 	code := reportFault(stderr, "runtime error: slice bounds out of range [:-1]",
-		[]byte("goroutine 1 [running]:\nmain.runChat(...)\n"))
+		[]byte("goroutine 1 [running]:\nmain.runDo(...)\n"))
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)

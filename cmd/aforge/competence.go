@@ -14,8 +14,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-const competenceGroundingBytes = 4 << 10
-
 func runCompetence(args []string) error {
 	return runCompetenceTo(args, os.Stdout, time.Now().UTC())
 }
@@ -63,14 +61,6 @@ func measureCompetence(graph *store.Store, profileDir, model string, now time.Ti
 		return store.CompetenceMap{}, fmt.Errorf("load competence profile: %w", err)
 	}
 	return graph.CompetenceMap(store.CompetenceOptions{Profile: measured, Now: now})
-}
-
-func competenceGrounding(graph *store.Store, profileDir, model string) string {
-	competence, err := measureCompetence(graph, profileDir, model, time.Now().UTC())
-	if err != nil {
-		return ""
-	}
-	return store.FormatCompetence(competence, competenceGroundingBytes)
 }
 
 func writeCompetence(output io.Writer, competence store.CompetenceMap, now time.Time) error {

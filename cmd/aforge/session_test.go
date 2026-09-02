@@ -1,9 +1,7 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -119,7 +117,7 @@ func TestChatSessionStartsFreshOnlyWhenAsked(t *testing.T) {
 // is what a relaunch is.
 func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")
-	first, err := openChatWindow(path, path, "")
+	first, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +128,7 @@ func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
 	}
 	first.close()
 
-	second, err := openChatWindow(path, path, "")
+	second, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +231,7 @@ func TestALaunchReapsTheRoomsThatPiledUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	window, err := openChatWindow(path, path, "")
+	window, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,20 +263,5 @@ func TestChatSessionMintsOnAFreshGraph(t *testing.T) {
 	}
 	if first == "" {
 		t.Fatal("a fresh graph produced an empty session id")
-	}
-}
-
-// The scribe is a capability the head is HANDED, so the one place it can be
-// lost is this construction site — and losing it is invisible: every room goes
-// on working and every room goes on being called "untitled room", which is the
-// P0 this wave closed. The wiring is read here for the same reason the executor
-// lanes read theirs.
-func TestTheChatBrainHandsTheHeadTheNamingClerk(t *testing.T) {
-	raw, err := os.ReadFile("chat.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), "WithRoomNaming(true)") {
-		t.Fatal("chat.go builds a head that will never name a room")
 	}
 }
