@@ -1,9 +1,104 @@
-# Reading a task's page — scrolling, earlier tool calls, and a page that looks stuck
+# Reading a task's page — what folds, what never does, and a page that looks stuck
 
 A task's page is the whole of what the task did, drawn with the conversation's own
-blocks: its instruction, its prose, every tool call, and its report. This page is about
-reading a long one — where the earlier calls went, how scrolling reaches them, and what
-to do when the page seems empty or stuck at the top.
+blocks: its instruction, its prose, its tool calls, and its report. It is built for the
+visit people actually make — a glance to see whether the work is going right, and a
+correction if it is not — so the settled work is folded and the machinery is one gesture
+away. This page is about what is folded, how to open it, and what to do when the page
+seems empty or stuck at the top.
+
+## What a task's page folds by default
+
+Settled work. Between each paragraph the task wrote is the thinking and the calls that
+led to it, and that stretch collapses to one dim chip:
+
+```
+▸ worked 2m · thought 10s · 14 tool calls · ctrl+e
+```
+
+The figures are counted from the rows the chip covers — how long that stretch took, the
+thinking time when there was any, and the real call count. Nothing on a chip is a summary
+of the work; a summary can be wrong and a count cannot.
+
+**Every paragraph the task wrote stays standing**, above the chip that covers the work
+before it, and so does the report at the end. So the page reads as the story of the work
+with the machinery filed, rather than as a scroll of calls you have to read to find out
+what happened.
+
+**What the task is doing right now never folds.** Everything after the last paragraph it
+wrote is the live edge, and that keeps as many of the newest calls as your window is tall
+— you came to watch, so there is nothing hidden from you there.
+
+**These never fold either**, wherever they are on the page: your instruction, every
+correction you typed into the running work, every call that failed, and every question the
+task asked you. They are the record of what you asked for and what you decided, and a
+fold may never hide your own words.
+
+## See the tool calls a task made — ctrl+e, a click, or scroll up
+
+Three ways open a chip, and any of them works on a page that has already finished:
+
+- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
+- **click** the chip.
+- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
+  opens the chip nearest the top and keeps your place: the rows you were reading stay on
+  the same screen lines and the work appears above them. Nothing jumps. The same gesture
+  opens a folded tool cluster, so scrolling up keeps reaching further back rather than
+  stopping dead.
+
+An opened chip stays open, and the chip line stays with it so you can close it again.
+`ctrl+o` inside a task's page is a different key: it opens or folds the long instruction
+at the top, and the tool cluster's own `↳ N earlier tool calls` line.
+
+**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
+in a task's page exactly as in the conversation.
+
+## See earlier tool calls in one long cluster — scroll up, or ctrl+o
+
+When one stretch of a task's page has made more calls than fit, the calls show a screenful
+of the newest ones above a dim line reading:
+
+```
+↳ 87 earlier tool calls · scroll up or ctrl+o
+```
+
+Three ways open it: **scroll up** at the top of the page, **`ctrl+o`** with an empty box,
+or **click** the line. Scrolling back down to the newest line re-joins the live edge — the
+page follows the task again as it works — and the opened calls stay open. A task's page
+keeps its own fold state, separate from the conversation's; `ctrl+o` inside a task never
+folds or unfolds anything in the conversation you left behind.
+
+## How many calls a task's page keeps on screen
+
+As many as your window is tall, and never fewer than three. The number is taken from
+the window at the moment the page is drawn, so resizing the terminal, growing the draft
+by a line, or the task roster changing its width all re-fit it. Only the overflow folds.
+
+The conversation is different on purpose. Out there the page folds **by turn** — one chip
+per question you asked, hiding the work between the question and its answer — and a
+folded cluster keeps exactly the last **3** calls above a line reading `N earlier tool
+calls · ctrl+o`. Scrolling the conversation never opens a fold; `ctrl+o` or a click does.
+A task's page folds **by phase** instead, because a task is one long question and folding
+it by turn would put the whole page behind one chip.
+
+## What the line at the top of a task's page tells you
+
+The pinned header is the whole glance, and it says as much of this as your frame is wide
+enough for, in this order:
+
+```
+⠙ main › Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
+```
+
+The task's name first — that never gets cut while there is room for it — then what it is
+doing, how long it has been going, what it has cost, how many calls it has made, and what
+is running right now. A stretch where nothing has arrived for ten seconds says `still
+working`, which is the truest thing the page can say about a silence.
+
+**Anything nobody has published is simply absent.** A task that has cost nothing shows no
+cost, one that has called nothing shows no count, and a queued one has no clock — a figure
+that is zero is a figure nobody measured. On a narrow terminal the line gives up facts
+from the end, in that order, and never cuts the name.
 
 ## Can't scroll in a task — the wheel and pgup do nothing
 
@@ -12,46 +107,8 @@ recall all scroll a task's page. If the page is short — the task has said less
 screen's worth — there is nothing to scroll and the page hangs from the top with the
 slack under it, exactly as a young conversation does.
 
-A page whose one turn made many tool calls used to be the case where the wheel really did
-nothing: only the last three calls were on the page and the rest sat behind one fold line
-with nowhere to scroll to. That is no longer how a task's page folds. The page keeps as
-many of the newest calls as your window is tall, so it fills the frame — and scrolling up
-at the very top opens the rest (next section).
-
-## See earlier tool calls in a task — scroll up, or ctrl+o
-
-When a turn on a task's page has made more calls than fit, the page shows a screenful
-of the newest ones above a dim line reading:
-
-```
-↳ 87 earlier tool calls · scroll up or ctrl+o
-```
-
-Three ways open it, and they all do the same thing:
-
-- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. The
-  page opens the turn and keeps your place: the call that was under the fold line stays
-  on the same screen line, the earlier calls appear above it, and the next tick up walks
-  into them. Nothing jumps.
-- **`ctrl+o`** with an empty box, which is the same key that opens the fold in the
-  conversation. Press it again and the turn folds back to a screenful.
-- **click** the fold line.
-
-Scrolling back down to the newest line re-joins the live edge as usual — the page follows
-the task again as it works — and the opened calls stay open. A task's page keeps its own
-fold state, separate from the conversation's; `ctrl+o` inside a task never folds or
-unfolds anything in the conversation you left behind.
-
-## How many calls a task's page keeps on screen
-
-As many as your window is tall, and never fewer than three. The number is taken from
-the window at the moment the page is drawn, so resizing the terminal, growing the draft
-by a line, or the task roster changing its width all re-fit it. Only the overflow folds.
-
-The conversation is different on purpose: there the fold sits among the prose, and it
-keeps exactly the last **3** calls of a turn above a line reading `N earlier tool calls ·
-ctrl+o`. Scrolling the conversation never opens a fold — `ctrl+o` or a click does — because
-in the conversation the fold is one block among many rather than the whole page.
+If the page looks short because most of it is behind chips, that is the fold doing its
+job: `ctrl+e` or a scroll up at the top opens it.
 
 ## Task page is empty, looks stuck, or hangs at the top with a blank below it
 

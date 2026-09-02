@@ -2369,21 +2369,26 @@ The task's elapsed clock freezes while you stand in its room. That number exists
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
 
-## Seeing the whole conversation inside a task — a room never folds its work away
+## Seeing the whole conversation inside a task — what folds and what opens it
 
-**A room shows everything the task said and did, and it stays shown.** Out in the main
-thread a finished turn's machinery collapses into one chip —
+**A room holds everything the task said and did, and the settled work is one gesture
+away.** Out in the main thread a finished turn's machinery collapses into one chip —
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
-you asked and the answer you got. **That never happens inside a room.** A task's whole life
-is one long stretch of work ending in a report, so a chip there would hide the entire page
-and leave you the report you already had. There is no `▸ worked` line in a room, nothing to
-click open, and the `ui.work` setting does not reach one.
+you asked and the answer you got. A room does the same thing cut differently: a task's
+whole life is one long stretch of work, so folding it by turn would put the entire page
+behind one chip. It folds **by phase** instead — the work before each paragraph the task
+wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
+
+`ctrl+e` over an empty box opens the newest chip, a click opens any of them, scrolling up
+at the top of the page opens the one nearest the top, and `ui.work = open` opens them all.
+**What the task is doing right now never folds**, and neither do your instruction, your
+corrections, any call that failed, any question it asked you, or the report at the end.
 
 So a room you walk into — a running task, a task that has landed, a piece of a recursive
-task, a harness being designed — reads top to bottom as the discussion it was: the
-instruction it was given, its prose between calls, its thinking blocks, every tool call with
-its arguments and result, anything you steered into it, and the report at the end. A landed
-task's room is the whole transcript, not the summary.
+task, a harness being designed — reads top to bottom as the story of the work: the
+instruction it was given, its prose between calls, a chip over the machinery behind each
+paragraph, anything you steered into it, and the report at the end. Everything the page
+folded is still there, and one keypress brings it back.
 
 Three bounded things do still hold something back, and every one of them names itself and
 opens:
