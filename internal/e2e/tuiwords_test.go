@@ -75,6 +75,20 @@ const tui3Pkg = "internal/tui3"
 // order — the suite's own file header states the law and this table is where it
 // is kept. Nothing here was remembered.
 var tuiWords = map[string]tuiWord{
+	// ── the bounded stop ─────────────────────────────────────────────────────
+	"stoppingWord": {
+		screen: "stopping",
+		why:    "the status word between a person's esc and the engine letting go of the turn",
+	},
+	"stopDetachWord": {
+		screen: "detaching in ",
+		why:    "the bound on the stopping window, stated on the status line BEFORE it fires (issue #265)",
+	},
+	"stopDetachedWord": {
+		screen: "detached — the turn was let go of and nothing is waiting for it",
+		why:    "the note a turn let go of at the bound leaves in the conversation",
+	},
+
 	// ── home at rest ─────────────────────────────────────────────────────────
 	"homeFootWord": {
 		screen: "type to search or start something new · ↑↓ pick · enter open",

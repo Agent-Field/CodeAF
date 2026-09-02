@@ -230,6 +230,11 @@ type sessionEntry struct {
 	// written before it existed.
 	Rule *journalRule `json:"rule,omitempty"`
 
+	// Abandoned is ONE TURN THIS SESSION LET GO OF (see [journalAbandoned]).
+	// Absent from every line that is not one, and from every file written before
+	// it existed.
+	Abandoned *journalAbandoned `json:"abandoned,omitempty"`
+
 	// Created is ONE FILE THIS SESSION MADE THAT WAS NOT THERE BEFORE (see
 	// [journalCreated]). It is a line of its own rather than a field on the
 	// message that wrote it because the fact it carries — DID THIS EXIST BEFORE
@@ -297,6 +302,39 @@ type journalRule struct {
 	Rule  string `json:"rule,omitempty"`
 	Event string `json:"event,omitempty"`
 	Count int    `json:"count,omitempty"`
+}
+
+// journalAbandoned is ONE TURN NOBODY WAITED FOR THE END OF.
+//
+// IT IS THE ONE LINE THAT COULD NOT BE RECONSTRUCTED. Every other record of what
+// a turn did is written when the turn ENDS — the seal carries its cost, the
+// principal line carries its decision — and the whole definition of an abandoned
+// turn is that its ending never came. Before this line a turn let go of at a
+// bound was indistinguishable in this file from a turn that simply stopped
+// talking, which is exactly the reading that made issue #265's four minutes
+// unaccountable: the surface was freed, the person moved on, and the file said a
+// turn had been stopped and nothing about the fact that something may still have
+// been running under it.
+//
+// Reason is why the turn was let go of ([AbandonReason]); today the only one is
+// the stop bound. The token and money figures are THE TURN'S LAST KNOWN SPEND —
+// what [Agent.bank] had moved by the moment the door was opened — and they are
+// EVIDENCE AND NEVER SPEND, for [journalCall]'s reason exactly: every one of
+// those calls already wrote its own line and moved the machine's ledger, so a
+// replay that summed this one too would bill the abandoned turn twice.
+//
+// A turn abandoned before it had spent anything writes the line with no figures
+// on it, which is the emptiness law: the fact worth recording is that the turn
+// was let go of, and zeroes would read as a measurement.
+type journalAbandoned struct {
+	Reason     string  `json:"reason,omitempty"`
+	Input      int     `json:"input,omitempty"`
+	Output     int     `json:"output,omitempty"`
+	CacheRead  int     `json:"cacheRead,omitempty"`
+	CacheWrite int     `json:"cacheWrite,omitempty"`
+	CostUSD    float64 `json:"costUsd,omitempty"`
+	Calls      int     `json:"calls,omitempty"`
+	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
 // journalCreated is ONE FILE THIS SESSION MADE.
@@ -1371,6 +1409,15 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// transcript. It is evidence for whoever reads the file afterwards,
 			// and replaying it would put a provider's refusal into somebody's
 			// conversation as though the model had said it.
+		case "abandoned":
+			// DROPPED ON PURPOSE, for the reason a call line is and one of its
+			// own. Every dollar on it is already counted — the calls it sums each
+			// wrote their own line and each moved the machine's ledger when they
+			// were made (usage_ledger.go) — so folding it in would bill the
+			// abandoned turn twice. And it is not a message: what the turn had
+			// said before it was let go of is already in the transcript above it,
+			// and a resumed session must open on that rather than on a note about
+			// how the last one ended. The line is for whoever reads the file.
 		case "mark", "ceiling", "division", "carry", "failure":
 			// DROPPED ON PURPOSE, for the reason a call line is: these are the
 			// RECORD of a decision the harness took mid-turn, and a decision is
@@ -2190,6 +2237,26 @@ func (s *sessionFile) appendRule(moment journalRule) {
 		return
 	}
 	s.writeLine(sessionEntry{Type: "rule", Rule: &moment, Timestamp: stamp()})
+}
+
+// appendAbandoned writes down ONE TURN THAT WAS LET GO OF (see
+// [journalAbandoned]).
+//
+// AN ABANDONMENT ALWAYS WRITES, which is where this parts company with the
+// emptiness law the appends above keep. The line's whole content is the fact
+// that it happened: a turn let go of before it had spent a cent is exactly the
+// case a reader most needs to be able to see, and a guard on the figures would
+// suppress it. The one thing that writes nothing is the nil receiver, as
+// everywhere in this file.
+//
+// AND IT IS WRITTEN ONCE PER TURN, which is [Agent.Abandon]'s guarantee and not
+// this function's: the door reports false for a session with no turn in flight,
+// so a second deadline landing on an already-abandoned turn never reaches here.
+func (s *sessionFile) appendAbandoned(turn journalAbandoned) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "abandoned", Abandoned: &turn, Timestamp: stamp()})
 }
 
 // appendCreated writes down one file the session made (see [journalCreated]). A

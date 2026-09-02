@@ -1,0 +1,395 @@
+//go:build e2e
+
+package e2e
+
+// THE STOP IS BOUNDED, END TO END: the real binary, a real terminal, and two
+// turns that genuinely cannot be ended any other way.
+//
+// This is issue #265's acceptance. Both scenarios park a turn on something no
+// cancellation reaches, press esc, and assert that the surface says when it will
+// detach, detaches inside the bound, writes exactly one `abandoned` line with
+// the turn's spend, and takes the next prompt.
+//
+// ── WHY THE MODEL IS A STUB AND THE WAIT IS NOT ─────────────────────────────
+//
+// The thing under test is a BOUND, so the run has to be able to state exactly
+// when the clock started and exactly what the turn was parked on. A real model
+// can do neither: it decides when to stop streaming and it decides whether to
+// call the tool that parks. So the model is a scripted endpoint in this process
+// and the WAITS ARE REAL — an HTTP stream that never ends, and a named pipe with
+// no writer, which `read` enters through os.ReadFile and cannot come back out
+// of, whatever anybody does to its context.
+//
+// ── AND IT IS DELIBERATELY NOT A FLOCK ──────────────────────────────────────
+//
+// #264 removed the one flock this program held on the turn path, and a test that
+// re-created that flock would prove only that the fix for #264 works. What is
+// being proved here is the GENERAL guarantee — that the stop no longer depends
+// on every wait being cancellable — so the wait is a different one, of a shape
+// nothing in this build has any special knowledge of.
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
+)
+
+// stopBoundPatience is how long a scenario waits for the detach. The bound is
+// ten seconds from the keypress; the slack is for a machine under load and for
+// the frame that draws the note.
+const stopBoundPatience = 25 * time.Second
+
+// ── the scripted endpoint ───────────────────────────────────────────────────
+
+// parkKind is what the stub does with a turn: which of the two uncancellable
+// waits it steers the session into.
+type parkKind int
+
+const (
+	// parkOnStream answers the second request by streaming for ever and never
+	// finishing — the provider that goes on writing after the person has left.
+	parkOnStream parkKind = iota
+	// parkOnPipe answers the first request with a `read` on a named pipe that
+	// has no writer, which blocks inside os.ReadFile with no context anywhere
+	// near it.
+	parkOnPipe
+)
+
+// stopStub is the scripted model this suite drives against.
+//
+// THE FIRST ANSWER ALWAYS SPENDS SOMETHING. The journal line an abandoned turn
+// writes carries its LAST KNOWN SPEND, and a turn that was abandoned before it
+// had spent anything would make that assertion vacuous — so the first response
+// reports usage and a cost, and the turn is parked on the second leg.
+type stopStub struct {
+	kind  parkKind
+	path  string
+	calls atomic.Int64
+	// releases is closed at the end of the test so a stream that is deliberately
+	// endless does not outlive the server it is written by.
+	releases chan struct{}
+	once     sync.Once
+}
+
+func (s *stopStub) stop() { s.once.Do(func() { close(s.releases) }) }
+
+// released reports that the scenario is over and this endpoint should behave
+// like an ordinary model again. It is what makes the LAST assertion possible:
+// "the next prompt is usable" has to be answered by a turn that ends, and a stub
+// still parking every turn could never show that.
+func (s *stopStub) released() bool {
+	select {
+	case <-s.releases:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *stopStub) models(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"data":[{
+		"id":"stub/bounded",
+		"canonical_slug":"stub/bounded",
+		"name":"Bounded stop stub",
+		"context_length":200000,
+		"architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+		"pricing":{"prompt":"0","completion":"0","request":"0","input_cache_read":"0"},
+		"supported_parameters":["tools","tool_choice","max_tokens"]
+	}]}`))
+}
+
+func (s *stopStub) completions(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Messages []struct {
+			Role string `json:"role"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	answered := false
+	for _, message := range body.Messages {
+		if strings.EqualFold(message.Role, "tool") {
+			answered = true
+		}
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "the stub needs a flushable writer", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	id := fmt.Sprintf("stub-%d", s.calls.Add(1))
+	send := func(payload string) bool {
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	send(stopChunk(id, `{"role":"assistant","content":""}`, ""))
+
+	// THE SCENARIO IS OVER: an ordinary turn, so the run can show that the box
+	// still works after a detach.
+	if s.released() {
+		send(stopChunk(id, fmt.Sprintf(`{"content":%q}`, stopStubDone), ""))
+		send(stopFinish(id, "stop"))
+		send("[DONE]")
+		return
+	}
+
+	// LEG ONE: a tool call, with a bill on it.
+	if s.kind == parkOnPipe && !answered {
+		send(stopChunk(id, fmt.Sprintf(
+			`{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read","arguments":%q}}]}`,
+			fmt.Sprintf(`{"path":%q}`, s.path)), ""))
+		send(stopFinish(id, "tool_calls"))
+		send("[DONE]")
+		return
+	}
+	if s.kind == parkOnStream && !answered {
+		send(stopChunk(id, `{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo warming\"}"}}]}`, ""))
+		send(stopFinish(id, "tool_calls"))
+		send("[DONE]")
+		return
+	}
+
+	// LEG TWO: the stream that never ends. It keeps writing so the connection is
+	// healthy by every measure the client has — this is a provider that will not
+	// stop, not one that has died.
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-s.releases:
+			return
+		case <-time.After(300 * time.Millisecond):
+			if !send(stopChunk(id, fmt.Sprintf(`{"content":%q}`, stopStubStreaming+" "), "")) {
+				return
+			}
+		}
+	}
+}
+
+func stopChunk(id, delta, reason string) string {
+	if reason == "" {
+		reason = "null"
+	} else {
+		reason = fmt.Sprintf("%q", reason)
+	}
+	return fmt.Sprintf(
+		`{"id":%q,"object":"chat.completion.chunk","created":%d,"model":"stub/bounded","provider":"stub",`+
+			`"choices":[{"index":0,"delta":%s,"finish_reason":%s}]}`,
+		id, time.Now().Unix(), delta, reason)
+}
+
+// stopFinish carries the usage block, and the COST IS NOT ZERO on purpose. The
+// container stub next door reports zero because it is genuinely free and a
+// ledger taught otherwise would be a ledger taught a lie; here the money is the
+// measurement — "the abandoned turn's cost still reaches the ledger" is one of
+// the issue's three acceptances — so the endpoint states a price and the run
+// checks that it lands.
+func stopFinish(id, reason string) string {
+	return fmt.Sprintf(
+		`{"id":%q,"object":"chat.completion.chunk","created":%d,"model":"stub/bounded","provider":"stub",`+
+			`"choices":[{"index":0,"delta":{},"finish_reason":%q}],`+
+			`"usage":{"prompt_tokens":1200,"completion_tokens":40,"total_tokens":1240,"cost":0.0123}}`,
+		id, time.Now().Unix(), reason)
+}
+
+// serveStopStub opens the scripted endpoint on a loopback port and answers with
+// its base URL, in the shape internal/config expects (`<base>/chat/completions`).
+func serveStopStub(t *testing.T, stub *stopStub) string {
+	t.Helper()
+	stub.releases = make(chan struct{})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/chat/completions", stub.completions)
+	mux.HandleFunc("/api/v1/models", stub.models)
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		stub.stop()
+		_ = server.Close()
+	})
+	return "http://" + listener.Addr().String() + "/api/v1"
+}
+
+// ── the runs ────────────────────────────────────────────────────────────────
+
+// TestBoundedStopE2E is the two scenarios, side by side, because they are one
+// law read twice: a wait inside the provider, and a wait inside a tool.
+func TestBoundedStopE2E(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
+	}
+
+	// A PROVIDER STREAM THAT NEVER ENDS. The connection is healthy, bytes keep
+	// arriving, and nothing in the client has any reason to give up on it — which
+	// is exactly the turn a person has to be able to end from the keyboard.
+	t.Run("a stream that never ends", func(t *testing.T) {
+		stub := &stopStub{kind: parkOnStream}
+		runBoundedStop(t, stub, "stopstream", "stream on for ever please")
+	})
+
+	// AND A WAIT NO CANCELLATION REACHES, which is the generalisation #264's
+	// flock test was a single instance of. `read` is os.ReadFile; a named pipe
+	// with no writer never returns from it; no context exists anywhere on that
+	// path and none could help if it did.
+	t.Run("a wait that cannot be cancelled", func(t *testing.T) {
+		if _, err := exec.LookPath("mkfifo"); err != nil {
+			t.Skip("no mkfifo: this scenario needs a named pipe to park on")
+		}
+		stub := &stopStub{kind: parkOnPipe}
+		runBoundedStop(t, stub, "stoppipe", "read the pipe please")
+	})
+}
+
+// runBoundedStop drives one scenario end to end and asserts the whole law.
+func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
+	t.Helper()
+	workspace := newWorkspace(t, name, false)
+	if stub.kind == parkOnPipe {
+		stub.path = filepath.Join(workspace, "wedge.fifo")
+		if out, err := exec.Command("mkfifo", stub.path).CombinedOutput(); err != nil {
+			t.Fatalf("mkfifo: %v\n%s", err, out)
+		}
+	}
+	base := serveStopStub(t, stub)
+	home := newHome(t, map[string]any{
+		"model.talk":         "stub/bounded",
+		"tools.approvalMode": "allow",
+		// AND THE FRONT DOOR IS ALREADY BEHIND THIS PROFILE. A machine that has
+		// never run aforge is shown the setup first (#322), which is a screen
+		// this run is not about and which would eat the sentence it types.
+		config.KeySetupSeen: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	rig := startWithEnv(t,
+		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + base, "AFORGE_PROFILE_DIR="},
+		name, home, workspace, 120, 40)
+
+	rig.lit(ask)
+	rig.keys("Enter")
+	// The turn has to be genuinely parked before the key is pressed, or the run
+	// would be timing a stop of a turn that was about to end anyway.
+	waitUntilParked(t, rig, stub)
+
+	pressed := time.Now()
+	rig.keys("Escape")
+
+	// 1. THE BOUND IS ON THE SCREEN BEFORE IT FIRES.
+	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
+	if !strings.Contains(stopping, say(t, "stoppingWord")) {
+		t.Fatalf("the countdown is drawn without the word it belongs to:\n%s", stopping)
+	}
+	t.Logf("=== pane after esc (the bound, stated) ===\n%s", stopping)
+
+	// 2. AND IT FIRES INSIDE THE BOUND.
+	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
+	took := time.Since(pressed)
+	t.Logf("=== pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
+	if took > stopBoundPatience {
+		t.Fatalf("the turn took %s to detach, which is past the bound", took)
+	}
+
+	// 3. ONE JOURNAL LINE, WITH THE TURN'S SPEND ON IT.
+	line := onlyAbandonedLine(t, home)
+	if line.CostUSD <= 0 && line.Input == 0 && line.Output == 0 {
+		t.Fatalf("the abandoned line carries no spend at all: %+v", line)
+	}
+	t.Logf("the abandoned line: %+v", line)
+
+	// 4. AND THE NEXT PROMPT IS USABLE. This is the whole of what the person
+	// wanted when they pressed the key.
+	stub.stop()
+	rig.lit("say hello")
+	rig.keys("Enter")
+	rig.waitFor(60*time.Second, stopStubDone)
+}
+
+// waitUntilParked holds until the session is inside the wait the scenario is
+// about, which each kind knows by its own evidence.
+func waitUntilParked(t *testing.T, rig *rig, stub *stopStub) {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		switch stub.kind {
+		case parkOnStream:
+			// The second request is out and its text is arriving.
+			if strings.Contains(rig.capture(), stopStubStreaming) {
+				return
+			}
+		case parkOnPipe:
+			// The `read` call is on screen and it is not coming back.
+			if stub.calls.Load() >= 1 && strings.Contains(rig.capture(), "read") {
+				time.Sleep(2 * time.Second)
+				return
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("the turn never parked:\n%s", rig.capture())
+}
+
+// abandonedLine is the journal's `abandoned` record as this suite reads it back.
+type abandonedLine struct {
+	Reason     string  `json:"reason"`
+	Input      int     `json:"input"`
+	Output     int     `json:"output"`
+	CacheRead  int     `json:"cacheRead"`
+	CacheWrite int     `json:"cacheWrite"`
+	CostUSD    float64 `json:"costUsd"`
+	Calls      int     `json:"calls"`
+}
+
+// onlyAbandonedLine fails unless this home's journals hold EXACTLY ONE of them.
+// The count is the assertion: a turn is let go of once, and a second line would
+// mean a deadline that fired twice on one turn.
+func onlyAbandonedLine(t *testing.T, home string) abandonedLine {
+	t.Helper()
+	var found []abandonedLine
+	for _, transcript := range sessionTranscripts(t, home) {
+		for _, raw := range strings.Split(transcript, "\n") {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			var entry struct {
+				Type      string         `json:"type"`
+				Abandoned *abandonedLine `json:"abandoned"`
+			}
+			if err := json.Unmarshal([]byte(raw), &entry); err != nil {
+				continue
+			}
+			if entry.Type == "abandoned" && entry.Abandoned != nil {
+				found = append(found, *entry.Abandoned)
+			}
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want exactly one abandoned line in %s, found %d: %+v", home, len(found), found)
+	}
+	return found[0]
+}
+
+// The two sentences the scripted endpoint itself writes. They are the stub's own
+// words and not the surface's, so they belong here rather than in the words
+// table beside it — that table is a gate on what internal/tui3 still spells.
+const (
+	stopStubStreaming = "still going."
+	stopStubDone      = "all done here."
+)

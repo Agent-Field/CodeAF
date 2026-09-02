@@ -1821,17 +1821,9 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		defer a.endPhase()
 	}
 
-	results := make([]toolResult, len(calls))
+	slots := newBatchSlots(calls)
 	var wg sync.WaitGroup
 	for index, call := range calls {
-		// The slot is seeded BEFORE the goroutine that fills it. A tool that
-		// panics leaves its slot untouched, and the zero result is an empty
-		// SUCCESS — the model reads a tool that ran and returned nothing,
-		// which is the one story about the fault that is not true.
-		results[index] = toolResult{
-			text:    "tool panicked: " + call.Function.Name + " did not return a result",
-			isError: true,
-		}
 		// A call the stream already started is not started again — the warm
 		// entry is claimed by id, so no call in this batch can run twice — and
 		// waiting for it is one more goroutine in the same batch, so a read that
@@ -1846,7 +1838,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				// here — and a slot abandoned on a cancelled context would be the
 				// one difference an early start was allowed to make.
 				<-running.done
-				results[idx] = running.result
+				slots.put(idx, running.result)
 			}(index, started)
 			continue
 		}
@@ -1858,10 +1850,28 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			// returns.
 			defer wg.Done()
 			defer guard.Recover("session tool " + c.Function.Name)
-			results[idx] = a.executeTool(ctx, ep, hub, c, args)
+			slots.put(idx, a.executeTool(ctx, ep, hub, c, args))
 		}(index, call, rendered[index])
 	}
-	wg.Wait()
+	// THE BATCH IS WAITED FOR, AND THE WAIT HAS A SECOND STAGE. See the header:
+	// this wait must not be cut by the turn's own cancellation, because a
+	// cancelled tool is entitled to the seconds it takes to hand back what it
+	// actually did, and cutting it there would throw that away on every ordinary
+	// stop. What it IS cut by is the abandon signal, which is closed only once a
+	// person's stop has been given its whole settling window and the turn still
+	// has not let go (abandon.go's [waitBatch], and issue #265 for the four
+	// minutes that is worth).
+	//
+	// The goroutines are NOT waited for after that and are not stopped either —
+	// there is no way to stop them, which is the entire reason this exists. They
+	// write into slots that are safe to write into behind us ([batchSlots]) and
+	// they send into a hub that has already closed, which ignores them.
+	finished := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(finished)
+	}()
+	results := slots.taken(waitBatch(ctx, finished))
 
 	// The end events carry Args as well as Output. Carrying the arguments rather
 	// than making the surface remember the begin event costs nothing — the
@@ -2446,6 +2456,17 @@ func (a *Agent) bank(call bankedCall) {
 	a.usage.CostUSD += call.used.CostUSD
 	a.usage.Calls += call.used.Calls
 	a.usage.EmptyReflex += call.used.EmptyReflex
+	// AND THE RUNNING TURN'S OWN SHARE MOVES ON THE SAME CALL, for this door's
+	// own reason: an abandoned turn never writes the seal that would carry its
+	// cost, so the only honest figure to journal it with is the one accumulated
+	// here (abandon.go's [Agent.Abandon]). It is reset when a turn opens and is
+	// meaningless outside one, which is why it is not exported.
+	a.turnSpend.Input += call.used.Input
+	a.turnSpend.Output += call.used.Output
+	a.turnSpend.CacheRead += call.used.CacheRead
+	a.turnSpend.CacheWrite += call.used.CacheWrite
+	a.turnSpend.CostUSD += call.used.CostUSD
+	a.turnSpend.Calls += call.used.Calls
 	if call.turn {
 		a.usage.Turns++
 	}

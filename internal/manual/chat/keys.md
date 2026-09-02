@@ -307,7 +307,7 @@ time straight away does not quit either: the press that stopped the turn does no
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
 
-## Why is the turn still finishing after esc — the stopping window
+## Why is the turn still finishing after esc — the stopping window, and the 10-second bound
 
 `esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
 `bash` call whose command left something holding its output waits up to three seconds
@@ -315,6 +315,12 @@ before the pipes are forced shut, and a `jobs` kill spends two seconds on a poli
 and two more on the one that is not polite. For those seconds the status line reads
 `stopping` rather than `interrupted`, and that is the honest word: the work is being let
 go rather than gone.
+
+**That window is bounded at 10 seconds and the screen says so.** The status line reads
+`stopping · detaching in 7s`, counting down from the moment you pressed the key. If the
+engine lets go inside the window — which is what almost always happens, because the longest
+ordinary wait is about four seconds — the countdown simply disappears and the status word
+becomes `interrupted`.
 
 **Nothing moves in that window and nothing new is drawn.** The spinners are already gone
 from the status line and from every tool row. Any consent question, account offer or
@@ -325,11 +331,28 @@ becomes a row. Two things do still land, because neither can draw anything new: 
 that was **already** on screen reports its own result if it returns in that moment, and
 what the turn spent is still counted.
 
-**No key makes it stop harder, and there is no second stage.** A second `esc` inside half
-a second is the rewind's door and `ctrl+c` is the quit arm, so neither is free — and there
-would be nothing behind a third key: the waits that make this window long are inside a
-tool that has already been cancelled. If something genuinely will not let go, `ctrl+c`
-twice quits and takes it with it.
+**No key makes it stop harder, because the second stage is a clock and not a key.** A
+second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit arm, so
+neither is free — and you do not need one. The `esc` you already pressed started the
+10-second window, and when it runs out aforge stops waiting on its own.
+
+**What happens at 10 seconds.** aforge detaches from the turn: the background waits are
+ended, whatever request was still open to the model is aborted, the conversation gets the
+note `detached — the turn was let go of and nothing is waiting for it`, and the box is
+yours again — you can type the next thing straight away. If the turn had spent anything,
+the note names it, for example `detached — the turn was let go of and nothing is waiting
+for it — it spent $0.04`.
+
+**Nothing is silently orphaned.** A turn that had to be detached is written into the
+conversation's own journal file as `abandoned`, with the tokens and the money it had spent
+by then, so a turn nobody waited for is never a turn nobody can account for. What it cost
+is already on your spending page either way: aforge counts money as each request is
+answered rather than when a turn ends.
+
+**You should almost never see this.** Ten seconds is well above the longest ordinary
+letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
+something is wedged even further down, `ctrl+c` twice still quits and takes the whole
+process with it — but you no longer have to reach for that just to get your prompt back.
 
 ## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
