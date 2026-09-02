@@ -74,7 +74,7 @@ func TestAClosedTableIsProsesOwnBytesAndOneMoreRow(t *testing.T) {
 	// Every width under the table's natural size — which is where the cutting
 	// happens, and so where the door belongs.
 	for _, width := range []int{60, 61, 72, 80, 90} {
-		want := trimBlanks(renderMarkdown(e.text, width))
+		want := trimBlanks(renderMarkdownWith(a.styler(), e.text, width))
 		got := a.settledMarkdown(0, e, width)
 		at, word := footAt(got)
 		if at < 0 {
@@ -108,7 +108,7 @@ func TestATableThatFitsGrowsNoFoot(t *testing.T) {
 		// 200 cells is wider than either table's natural size, so neither of them
 		// was cut and neither has anything to offer.
 		for _, width := range []int{120, 200} {
-			want := trimBlanks(renderMarkdown(e.text, width))
+			want := trimBlanks(renderMarkdownWith(a.styler(), e.text, width))
 			got := a.settledMarkdown(0, e, width)
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Fatalf("at %d cells a fitting table was touched:\n%s\n---\n%s",
@@ -121,7 +121,7 @@ func TestATableThatFitsGrowsNoFoot(t *testing.T) {
 	}
 	a, e := tableLab(t, tblFits)
 	for _, width := range []int{60, 80, 120, 200} {
-		want := trimBlanks(renderMarkdown(e.text, width))
+		want := trimBlanks(renderMarkdownWith(a.styler(), e.text, width))
 		got := a.settledMarkdown(0, e, width)
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Fatalf("at %d cells a fitting table was touched:\n%s\n---\n%s",
@@ -375,7 +375,7 @@ func TestThePhoneTierGrowsNoFoot(t *testing.T) {
 	if at, word := footAt(rows); at >= 0 {
 		t.Fatalf("a phone-width table grew %q:\n%s", word, plain(strings.Join(rows, "\n")))
 	}
-	if strings.Join(rows, "\n") != strings.Join(trimBlanks(renderMarkdown(e.text, phoneCols)), "\n") {
+	if strings.Join(rows, "\n") != strings.Join(trimBlanks(renderMarkdownWith(a.styler(), e.text, phoneCols)), "\n") {
 		t.Fatal("the phone tier no longer renders what renderMarkdown renders")
 	}
 }

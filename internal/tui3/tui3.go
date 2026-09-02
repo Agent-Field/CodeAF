@@ -775,6 +775,26 @@ type Options struct {
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
 	Width, Height int
+
+	// Env is THE ONE PLACE THIS SURFACE READS THE ENVIRONMENT. Every fact the
+	// surface takes from the shell that launched it — whether TERM names a
+	// multiplexer (copymode.go's [tmuxTerm]), whether SSH_CONNECTION says the
+	// terminal is on the far side of a link (link.go's [remoteLink]), which
+	// emulator is running so a chord can be spelled its way (chords.go's
+	// [detectChords]), and whether TERM has said enough for a path to be written
+	// as an OSC 8 link at all (pathlink.go's [terminalTakesLinks]) — is read
+	// through this closure at construction and nowhere else. So are the three
+	// facts that used to be read at package boot: which colour profile the
+	// palette and the markdown painter draw in (styles.go's [detectPalette],
+	// markdown.go's [stylerFor]), and whether the process is inside WSL so a
+	// Windows path can be translated (attach.go's [bootWSLPaths]).
+	//
+	// Nil is os.Getenv, which is what every door passes by saying nothing. The
+	// field exists so that a TEST CAN HAND IT A TABLE: a suite that read the
+	// developer's own TERM was a suite that wrote links inside tmux and none on
+	// a CI runner with no TERM at all, and four assertions about the bytes on
+	// the screen failed on exactly the machine where nobody was watching.
+	Env func(string) string
 }
 
 // ErrandOrders is what the composer layer settled before the sentence left it,

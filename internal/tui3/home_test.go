@@ -3419,9 +3419,6 @@ func TestHomeLinksTheProjectDirectoryItNames(t *testing.T) {
 
 	a := lab.app(mine)
 	a.width, a.height = 200, 24
-	// Whether a link is written at all is read off TERM at construction, and
-	// TERM belongs to whoever ran the tests.
-	a.pathLinks = true
 	openHomeOn(a, mine)
 
 	width, height := a.size()

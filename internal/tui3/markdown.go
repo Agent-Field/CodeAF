@@ -73,6 +73,26 @@ func markdownStyler() *tokens.Styler {
 	return styler
 }
 
+// stylerFor is the painter an app is handed at construction, and it is where
+// the once above and the environment seam ([Options.Env]) meet.
+//
+// The once is a memo of exactly one computation, newMarkdownStyler(os.Getenv).
+// An app that was handed no table — nil, which is what every door passes — reads
+// the memo, because it would compute the same bytes and a surface with nothing
+// measured should share one painter with every other caller in the process
+// ([app.styler] says why that identity matters). An app that WAS handed a table
+// builds its own from it, because the memo answers a different environment: a
+// suite run on a CI runner with no TERM at all reached the once, found a dumb
+// profile, and drew every reply as its markdown source — three assertions about
+// rendered rows failing on exactly the machine where nobody was watching, while
+// the same suite passed at any developer's own terminal.
+func stylerFor(env func(string) string) *tokens.Styler {
+	if env == nil {
+		return markdownStyler()
+	}
+	return newMarkdownStyler(env)
+}
+
 // newMarkdownStyler is that construction as a PURE FUNCTION of the environment,
 // which is the same shape [newThemedPalette] already has and for the same
 // reason: the two decisions below are both read off variables, and a test that
@@ -124,14 +144,30 @@ func newMarkdownStyler(env func(string) string) *tokens.Styler {
 //
 // So the door is a METHOD rather than a package function: a surface with a
 // measured ground reads its own styler, and every surface without one — which is
-// most of them, and every test that never answers — reads the process-wide one
-// and pays nothing. The rebuild happens once per measurement, in
-// [app.repaintPalette], because a Styler is a value worth caching per pane and
-// not per frame ([tokens.Styler]) and a streaming reply asks for one thirty
-// times a second.
+// most of them, and every test that never answers — reads the one its
+// environment built ([app.baseStyler]) and pays nothing. The rebuild happens
+// once per measurement, in [app.repaintPalette], because a Styler is a value
+// worth caching per pane and not per frame ([tokens.Styler]) and a streaming
+// reply asks for one thirty times a second.
 func (a *app) styler() *tokens.Styler {
 	if a.mdStyler != nil {
 		return a.mdStyler
+	}
+	return a.baseStyler()
+}
+
+// baseStyler is the painter this surface's ENVIRONMENT built, before any
+// measurement of the ground has had a word: [stylerFor] over [Options.Env],
+// stored at construction. It is the base [app.repaintPalette] re-inks from, so
+// a measured ground moves the ink and never the profile — the profile is the
+// terminal's answer to what it can say, and the ground does not change it.
+//
+// The fallback is for an app assembled by hand as a bare literal, which a few
+// labs do to test one drawing function in isolation; it reads the process-wide
+// memo exactly as it did before the seam existed.
+func (a *app) baseStyler() *tokens.Styler {
+	if a.mdBase != nil {
+		return a.mdBase
 	}
 	return markdownStyler()
 }

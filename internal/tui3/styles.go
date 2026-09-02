@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"os"
 	"strconv"
 	"strings"
 
@@ -1154,10 +1153,13 @@ func (p palette) onPlaces() palette {
 	return p
 }
 
-// detectPalette reads the terminal the way the rest of the tree does.
-func detectPalette() palette {
+// detectPalette reads the terminal the way the rest of the tree does — through
+// the environment the app was given ([Options.Env]), never the process's own,
+// so the profile, the glyph veto and the theme all come from the same table as
+// every other fact the surface takes from the shell.
+func detectPalette(env func(string) string) palette {
 	return newThemedPalette(
-		tokens.DetectProfile(os.Getenv), detectASCII(os.Getenv), themeAuto, os.Getenv)
+		tokens.DetectProfile(env), detectASCII(env), themeAuto, env)
 }
 
 // detectASCII decides whether this surface may draw box-drawing characters.

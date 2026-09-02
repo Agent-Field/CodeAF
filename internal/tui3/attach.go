@@ -398,10 +398,19 @@ type wslPaths struct {
 	root   string
 }
 
-// bootWSLPaths is deliberately read at package boot. A process either is WSL
-// or is not, and its automount root does not become a per-file question merely
-// because several conversations are open in it.
-var bootWSLPaths = detectWSLPathsAt(os.Getenv, procVersionPath, wslConfigPath)
+// bootWSLPaths is deliberately read once, at the app's construction, and never
+// again. A process either is WSL or is not, and its automount root does not
+// become a per-file question merely because several conversations are open in
+// it.
+//
+// It was a package-level var over os.Getenv until the surface got one door onto
+// the environment ([Options.Env]); it is a function of that door now, so a suite
+// that hands [newApp] a table is told whether it is inside WSL by the table and
+// not by the developer's shell. The two boot files are still read the way they
+// were, once per app, which in a running aforge is once.
+func bootWSLPaths(env func(string) string) wslPaths {
+	return detectWSLPathsAt(env, procVersionPath, wslConfigPath)
+}
 
 // detectWSLPathsAt reads the two boot files once and returns the immutable fact
 // every app caches. The paths are parameters so the contract runs unchanged on

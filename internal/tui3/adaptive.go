@@ -824,7 +824,7 @@ func (a *app) repaintPalette() {
 	// rows stale below remains useful for the other painted memos, while this
 	// number makes the entry cache correct on its own terms.
 	a.inkState++
-	a.mdStyler = markdownStyler().WithBodyInk(a.pal.ramp.ink.tokenColor())
+	a.mdStyler = a.baseStyler().WithBodyInk(a.pal.ramp.ink.tokenColor())
 	stale := func(entries []entry) {
 		for i := range entries {
 			entries[i].stale = true
