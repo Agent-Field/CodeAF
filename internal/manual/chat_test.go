@@ -33,6 +33,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// left out, which is the first thing somebody greps for when a line has
 		// a sentence where a cost should be.
 		{"why is cost_s missing on a call log row", "models-and-cost"},
+		// And the money on a headless run's last line, asked both ways people
+		// meet it: reading the figure, and finding it beside the call log.
+		{"what does the total at the end of aforge do include", "models-and-cost"},
+		{"why is the printed cost different from the call log", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
@@ -57,6 +61,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// screen is actually showing them.
 		{"I clicked on the task and there is nothing there at all", "task-rooms-after-restart"},
 		{"nothing on this page yet", "reading-a-task-page"},
+		// Escape pressed on a turn that keeps going, asked the three ways people
+		// say it: the key that seemed to do nothing, how long the wait lasts, and
+		// what happens when it will not let go.
+		{"I pressed escape and it is still running", "keys"},
+		{"how long does stop take", "keys"},
+		{"what happens if it will not stop", "keys"},
+		// A machine that refused the work, asked in the word the screen puts on
+		// the row: the provider named in the refusal, the model nothing will
+		// serve, and why that word is not the one for slow.
+		{"it says coreweave refused", "models-and-cost"},
+		{"a machine will not serve my model", "lanes"},
+		{"why does it say refused instead of slow", "models-and-cost"},
 		// The switcher, asked in the words people bring to it: the gesture they
 		// already know from every other program, the thing they are looking for,
 		// and the two spellings of the key.
@@ -349,6 +365,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happened to the earlier messages", "compacting-over-and-over"},
 		{"does it work on a narrow phone width terminal", "screen"},
 		{"why is my table cut off", "screen"},
+		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
+		{"the run said empty goal and did nothing", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
@@ -454,6 +472,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I give it a longer context", "models-and-cost"},
 		{"how do I make it think harder", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
+		// A thought that has gone quiet, asked the way somebody asks it: the
+		// patience is measured against how the model usually thinks, so
+		// the question has to reach the lanes page rather than the model one.
+		{"how does aforge choose its patience for a model that is thinking?", "lanes"},
 		// The echo and the push, in the words somebody actually types when they
 		// notice either one.
 		{"why is my message dimmer than usual over --host", "running-on-another-machine"},
@@ -1104,6 +1126,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// who watched the old voice continue asks why.
 		{"I changed the model but my task is still on the old one", "models-and-cost"},
 		{"does /model change the model my running task uses", "models-and-cost"},
+		{"why does the via name keep changing on the model list", "models-and-cost"},
+		{"why does the model picker keep jumping", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

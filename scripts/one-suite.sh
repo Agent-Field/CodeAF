@@ -71,10 +71,41 @@ fi
 printf '%s\n' "$$" >"$lock/pid"
 date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 
+# AND THIS SCRIPT EXPORTS NO STATE ROOT OF ITS OWN.
+#
+# An empty AFORGE_HOME for the whole run is the obvious answer to a test that
+# reads the machine's real state, and it was tried and dropped, on clean dev,
+# with the measurement: an empty home turns `internal/lane` green and
+# `internal/rtk` red (its resolution order wants the managed `~/.aforge/bin/rtk`
+# to be there), and `internal/resident` red as well (a recurring-skill check
+# that fails only when the package runs in sequence under the override). The
+# packages disagree about what a state root should hold, and each is right about
+# its own subject, so no one environment satisfies them all: a wrapper that
+# picked one would trade a red somebody understands for a red nobody does.
+# Isolation belongs at each package's own resolution seam, which is where #475
+# put it for `internal/lane`.
+
+# WHAT THE WRAPPER DOES OWE THE RUN IS THAT IT REALLY RAN.
+#
+# `go test` answers a package it has already run with the same inputs out of its
+# cache, so a full suite can report an earlier tree: a package whose red was
+# fixed by something the cache key does not cover still reads red, and one whose
+# green was cached reads as a proof nobody performed. A whole-tree run is what a
+# person quotes; it says nothing unless every package in it actually ran. The
+# caller may say otherwise — only a caller that named no count gets this one.
+suite=("$@")
+if [ "${suite[0]:-}" = go ] && [ "${suite[1]:-}" = test ]; then
+	counted=
+	for arg in "${suite[@]}"; do
+		case "$arg" in -count | -count=* | --count | --count=*) counted=yes ;; esac
+	done
+	[ -n "$counted" ] || suite=(go test -count=1 "${suite[@]:2}")
+fi
+
 # THE SCRIPT STAYS ALIVE AS THE HOLDER. An exec would make the holder's command
 # line the suite's own, and the check above would read its lock as stale; so
 # the suite runs as a child, a stop reaches it, and the lock goes when it ends.
-"$@" &
+"${suite[@]}" &
 child=$!
 trap 'rm -rf "$lock"' EXIT
 trap 'kill -INT "$child" 2>/dev/null || true' INT

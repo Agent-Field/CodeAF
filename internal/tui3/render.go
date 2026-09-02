@@ -2699,7 +2699,10 @@ func (a *app) stateWord() (string, string) {
 	// holding up a turn they themselves stopped. What is true and actionable at
 	// that moment is neither — it is that the work is being let go.
 	if a.windingDown() {
-		return stoppingWord, a.pal.dim(stoppingWord)
+		// AND THE BOUND ON IT IS ON THE LINE BESIDE THE WORD (app.go's
+		// [app.stoppingSegment]). The composition lives there because the
+		// deadline, the clock it runs against and the door behind it all do.
+		return a.stoppingSegment()
 	}
 	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
 	// of view: the turn is technically working — the propose_task call is parked
@@ -2740,8 +2743,16 @@ const waitingWord = "waiting · your call"
 // carries no colour — [app.stateSegment] draws the mark only in stateWorking, so
 // the line stills on the key and stays stilled, which is the whole point.
 //
-// IT NAMES NO KEY, and there is no line about it in the hint slot, because there
-// is no second key to name. See [app.interrupt] for why there is no hard stop.
+// IT NAMES NO KEY, and there is no line about it in the hint slot, because THE
+// SECOND STAGE IS A CLOCK AND NOT A KEY. There is nothing for a person to press:
+// the esc they already pressed started a bounded window, and past that bound the
+// surface lets go of the turn on its own — the waits are ended, the request is
+// aborted, and the turn is marked abandoned in the journal with what it spent
+// (app.go's block below [app.windingDown], and session's abandon.go).
+//
+// WHAT IT DOES NAME IS THE BOUND. [app.stoppingSegment] draws this word and,
+// while there is a door behind the deadline, how long until the surface detaches
+// — because a countdown a person cannot see is a stop they cannot trust.
 const stoppingWord = "stopping"
 
 // ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE CONVERSATION IN IT ─────────

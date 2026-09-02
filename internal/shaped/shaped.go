@@ -232,7 +232,7 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 		}
 		note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairContinued,
 			Round: round, Spent: spent, Ceiling: ceiling})
-		more, err := client.CompleteWithMessages(ctx, continuation(ask, partial), ask.request(ceiling)...)
+		more, err := client.CompleteWithMessages(ctx, continuation(ask, partial), ask.continuationRequest(ceiling)...)
 		if err != nil {
 			return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
 		}
@@ -294,6 +294,22 @@ func (a Ask) request(ceiling int) []ai.Option {
 		options = append(options, ai.WithJSONMode())
 	}
 	return append(options, ai.WithMaxTokens(ceiling))
+}
+
+// continuationRequest is the option list a continuation goes out with: the
+// room, and no shape.
+//
+// A FRAGMENT HAS NO SHAPE. The continuation prompt asks for the characters
+// that come next in an object already half written, and the rest of a cut
+// string is not a JSON object — so a shape hint on that send contradicts the
+// prompt, and the wire wins. Measured 2026-09-02 on the intent compile: a reply
+// cut inside the goal, the longest field, was continued in JSON mode; the model
+// obeyed the format it was bound to, restarted a whole object from the field
+// AFTER the cut, and that object — complete, valid, and missing the one field
+// the fragment held — was taken whole and ended the run with a blank goal. The
+// re-ask keeps its hint: it asks for the whole object again, which has a shape.
+func (a Ask) continuationRequest(ceiling int) []ai.Option {
+	return []ai.Option{ai.WithMaxTokens(ceiling)}
 }
 
 // laneWords is how this seam names itself in an error a person may read. The
@@ -469,6 +485,11 @@ func withText(response *ai.Response, joined string) *ai.Response {
 // a refused one both arrive as empty text, and only the finish reason tells them
 // apart — on a reasoning model the usual cause is the whole budget being spent
 // thinking, which the completion count makes obvious.
+//
+// The head of the reply rides along when there is one, because the error is
+// often the only record of it: a streamed call's row in the model-call log
+// carries no response body, so a compile that failed here and took the run with
+// it used to leave nothing anyone could read afterwards (#335).
 func detail(response *ai.Response) string {
 	if response == nil || len(response.Choices) == 0 {
 		return ""
@@ -477,8 +498,16 @@ func detail(response *ai.Response) string {
 	if usage := response.Usage; usage != nil {
 		words += fmt.Sprintf(" completion_tokens=%d", usage.CompletionTokens)
 	}
+	if said := strings.TrimSpace(text(response)); said != "" {
+		words += fmt.Sprintf(" reply=%q", clip(said, replyDetailBytes))
+	}
 	return words + ")"
 }
+
+// replyDetailBytes bounds the reply quoted in a fault. A sentence of it says
+// which door refused and what shape the answer took; a page of it would put a
+// whole wrong answer into every receipt that carries the error.
+const replyDetailBytes = 200
 
 // why is the reader's own account of what was wrong with an answer, bounded to
 // one line and a sentence's worth of bytes.

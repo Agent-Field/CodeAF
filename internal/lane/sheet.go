@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // ── THE SHEET: A PRIOR NOBODY HAD TO PAY FOR ────────────────────────────────
@@ -339,6 +337,101 @@ func (s *sheet) Roster() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// ── THE NEGATIVE HALF OF THE SERVING SET ────────────────────────────────────
+//
+// A sheet says which machines the router PUBLISHES for a model. It does not say
+// which machines the router will actually SERVE it from, and on 2026-09-01
+// those were two different sets: three of the five tool-capable lanes on the
+// sheet were not in the serving set the completion resolved against, so every
+// request that pinned one of them came back
+// `…but your request's provider.only preference permits only: coreweave`, six
+// times in one run, and the lane was chosen again three separate times because
+// nothing anywhere wrote the refusal down (issue #266).
+//
+// THE FIX IS NOT A BETTER SHEET. A sheet is fetched every few minutes and a
+// wire refusal is a fact about this second; the honest shape is a positive half
+// that is fetched and a NEGATIVE half that is learned, with the gate reading
+// both. [RefuseServing] is the write and [Serves] the read, and [capable] in
+// frontier.go is the one reader that matters: a lane the wire has refused
+// leaves the candidate set, so the next pin cannot be chosen from it.
+//
+// IT IS FILED UNDER THE LEDGER KEY and never under the spelling that happened
+// to be on the wire ([LedgerModel]). The whole defect had the bare id and the
+// dated slug disagreeing about who serves a model; a refusal written under one
+// of them and read under the other would reproduce that disagreement inside
+// this file.
+
+// servingRefusalHold is how long a wire refusal keeps a lane out of a model's
+// candidate set.
+//
+// LONG ENOUGH THAT NO RUN ASKS TWICE, SHORT ENOUGH THAT NOTHING IS LOST FOR
+// GOOD. A router's serving set really does change — a model is rolled out to a
+// new endpoint, an account's policy is edited — and a permanent ban earned by
+// one 404 would mean a process that is wrong once is wrong until it is
+// restarted. Half an hour outlives any single conversation and is a fraction of
+// the life of a session that stays open all day.
+const servingRefusalHold = 30 * time.Minute
+
+// refusedLanes is every lane the wire has refused, by ledger key, with the
+// moment its refusal stops counting.
+//
+// It is package state rather than a field on [sheet] because a refusal is a
+// fact about the ROUTER and not about whichever sheet implementation a build
+// installed: a bench that swaps the sheet for its own must not thereby lose the
+// refusals the transport has already collected.
+var refusedLanes struct {
+	sync.RWMutex
+	until map[string]map[string]time.Time
+}
+
+// RefuseServing writes one lane OUT of the set known to serve a model, because
+// the router said on the wire that it does not.
+//
+// It is called by the layer that saw the refusal (internal/provider's refusal
+// classifier) and by nothing else. An unnamed model or lane writes nothing: a
+// refusal credited to nobody would take a machine away from every model at
+// once.
+func RefuseServing(model, lane string) {
+	key, name := LedgerModel(model), strings.ToLower(strings.TrimSpace(lane))
+	if key == "" || name == "" {
+		return
+	}
+	refusedLanes.Lock()
+	defer refusedLanes.Unlock()
+	if refusedLanes.until == nil {
+		refusedLanes.until = map[string]map[string]time.Time{}
+	}
+	if refusedLanes.until[key] == nil {
+		refusedLanes.until[key] = map[string]time.Time{}
+	}
+	refusedLanes.until[key][name] = time.Now().Add(servingRefusalHold)
+}
+
+// Serves reports whether a lane is still believed to serve a model on the wire.
+//
+// UNKNOWN IS YES, which is the same reading [capable] takes of every other
+// field it gates on: this half of the serving set holds refusals and nothing
+// else, so a lane nobody has been refused by has said nothing and passes. Only
+// a refusal this process actually collected can take a machine away.
+func Serves(model, lane string) bool {
+	name := strings.ToLower(strings.TrimSpace(lane))
+	if name == "" {
+		return true
+	}
+	refusedLanes.RLock()
+	until, refused := refusedLanes.until[LedgerModel(model)][name]
+	refusedLanes.RUnlock()
+	return !refused || !time.Now().Before(until)
+}
+
+// ForgetRefusals empties the negative half. It is for tests, which must not
+// inherit another test's refusals.
+func ForgetRefusals() {
+	refusedLanes.Lock()
+	defer refusedLanes.Unlock()
+	refusedLanes.until = nil
 }
 
 // WantSheet asks the beat to fetch one model's sheet once, at once. It returns
@@ -755,9 +848,17 @@ func (s *sheet) cachePath(model string) string {
 // It is keyed on the ledger's name for the model, so that a sheet fetched under
 // the alias and a sheet fetched under the served id are one file rather than
 // two accounts of one endpoints page.
+//
+// The fallback resolves through [stateFile], so a test binary that was handed a
+// home rather than choosing one gets no cache at all rather than the sheet of
+// whoever started the run: a chooser built with a fake ledger used to be
+// answered out of a person's own cached lanes (#475). "" is already "there is
+// nothing there" to both readers of this path. See undertest.go.
 func cachePathIn(dir, model string) string {
 	if strings.TrimSpace(dir) == "" {
-		dir = home.Join("v3", "lanes")
+		if dir = stateFile("v3", "lanes"); dir == "" {
+			return ""
+		}
 	}
 	return filepath.Join(dir, url.PathEscape(LedgerModel(model))+".json")
 }
@@ -792,6 +893,12 @@ func readCache(path string) ([]Row, map[ID]string, time.Time, error) {
 // half-written is worse than no cache: the reader of it is a cold process
 // deciding where to send its first request.
 func writeCache(path, model string, rows []Row, tags map[ID]string, at time.Time) error {
+	// A sheet with nowhere to sleep is not a failed refresh: the rows are in
+	// memory and this process will use them. Only a test binary reaches this,
+	// and only for the cache it was never entitled to write (undertest.go).
+	if path == "" {
+		return nil
+	}
 	cached := cachedSheet{Model: model, At: at, Lanes: make([]cachedRow, 0, len(rows))}
 	for _, row := range rows {
 		cached.Lanes = append(cached.Lanes, cachedRow{Row: row, Tag: tags[row.ID]})

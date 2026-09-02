@@ -132,6 +132,20 @@ func (l *fakeLedger) Beliefs(model string) []Belief {
 
 const testModel = "deepseek/deepseek-v4-flash"
 
+// chooserOn is the chooser these tests ask their questions of: the ledger the
+// test built, and a sheet of its own.
+//
+// THE SHEET IS THE POINT. A chooser handed no sheet falls back to the live
+// registry's, which reads one cache file per model out of the state root — so a
+// test that named a fake ledger and nothing else was answered out of the real
+// lanes of whoever ran it, and every one of these assertions held only until
+// somebody on the box routed the model this file measures (#475). The gate in
+// undertest.go makes that unreachable; saying it here as well means the reader
+// of a test can see what the chooser knows without leaving the file.
+func chooserOn(beliefs Ledger) *chooser {
+	return &chooser{ledger: beliefs, pages: newFakeSheet()}
+}
+
 // measured is a ledger holding the whole table, each lane worth sightings
 // observations.
 func measured(sightings float64, at time.Time) *fakeLedger {
@@ -315,7 +329,7 @@ func TestAnUncertainLaneIsJudgedAtTheQuartileAndNotAtItsMean(t *testing.T) {
 // they can be read, so throughput above the reading rate buys nothing and the
 // dear fast lane loses to a cheap one that starts just as soon.
 func TestAVisibleAnswerIsWorthNoMoreThanReadingSpeed(t *testing.T) {
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	choice := chooser.Choose(talk())
 	if len(choice.Order) == 0 {
 		t.Fatal("a ledger full of measured lanes produced no order")
@@ -340,13 +354,34 @@ func TestAVisibleAnswerIsWorthNoMoreThanReadingSpeed(t *testing.T) {
 	}
 }
 
+// A TYPICAL CHOICE IS THE DISPLAY QUESTION: same beliefs, different Now, the
+// same machine. Sampling seeds on the nanosecond; a list that asked that
+// question on every paint named a different via each frame.
+func TestATypicalChoiceDoesNotMoveWithTheClock(t *testing.T) {
+	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	first := talk()
+	first.Typical = true
+	want := chooser.Choose(first)
+	if len(want.Order) == 0 {
+		t.Fatal("typical choice named no lane")
+	}
+	for i := 0; i < 40; i++ {
+		req := first
+		req.Now = noon.Add(time.Duration(i) * time.Millisecond)
+		got := chooser.Choose(req)
+		if len(got.Order) == 0 || got.Order[0] != want.Order[0] {
+			t.Fatalf("typical choice moved from %q to %q at +%dms", want.Order[0], got.Order[0], i)
+		}
+	}
+}
+
 // TestHiddenTokensPayForThroughput is the other side of the same mechanism: a
 // tool loop's tokens are pure waiting, so throughput is worth its full rate and
 // a slow-writing lane loses however cheap it is.
 func TestHiddenTokensPayForThroughput(t *testing.T) {
 	request := talk()
 	request.Visible, request.Hidden = 0, 2000
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	choice := chooser.Choose(request)
 	if len(choice.Order) == 0 {
 		t.Fatal("no order for a request with two thousand hidden tokens")
@@ -367,7 +402,7 @@ func TestWithNobodyWaitingTheCheapestSurvivorWins(t *testing.T) {
 	request := talk()
 	request.ValueOfTime = 0
 	request.Visible, request.Hidden = 0, 2000
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	choice := chooser.Choose(request)
 	if len(choice.Order) == 0 {
 		t.Fatal("no order for a background call")
@@ -388,7 +423,7 @@ func TestWithNobodyWaitingTheCheapestSurvivorWins(t *testing.T) {
 // halves of the refusal rule: it takes a sure belief and a person whose time
 // the slowness is costing.
 func TestALaneSureToBeFarSlowerIsRefusedOnlyWhenSomebodyIsWaiting(t *testing.T) {
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	watched := chooser.Choose(talk())
 	if !named(watched.Ignore, "DigitalOcean") {
 		t.Fatalf("a lane believed to start three times later than the best was not refused: %v", watched.Ignore)
@@ -404,7 +439,7 @@ func TestALaneSureToBeFarSlowerIsRefusedOnlyWhenSomebodyIsWaiting(t *testing.T) 
 // random and the seed is the request's own moment, so the same request twice
 // gives the same answer and a test can pin one.
 func TestTheChoiceIsReproducible(t *testing.T) {
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	first, second := chooser.Choose(talk()), chooser.Choose(talk())
 	if len(first.Order) == 0 || len(first.Order) != len(second.Order) {
 		t.Fatalf("orders of different lengths: %v and %v", first.Order, second.Order)
@@ -426,7 +461,7 @@ func TestAShortSessionDoesNotExplore(t *testing.T) {
 	ledger := measured(1, noon.Add(-time.Minute))
 	short, long := talk(), talk()
 	short.Horizon, long.Horizon = 2, 500
-	chooser := &chooser{ledger: ledger}
+	chooser := chooserOn(ledger)
 	seen := map[string]bool{}
 	for minute := range 12 {
 		moment := noon.Add(time.Duration(minute) * time.Minute)
@@ -491,7 +526,7 @@ func TestTheLaneHoldingThePrefixIsCheaperByExactlyTheDiscount(t *testing.T) {
 // the frontier: the candidate set, already gated and already scored, so that
 // the moment a rescue is wanted is not the moment somebody starts choosing one.
 func TestAChoiceCarriesTheFrontierAndNothingAboutTime(t *testing.T) {
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	choice := chooser.Choose(talk())
 	if len(choice.Frontier) < 2 {
 		t.Fatalf("the frontier named %d lanes, so a rescue has nowhere to be chosen from", len(choice.Frontier))
@@ -515,7 +550,7 @@ func TestAChoiceCarriesTheFrontierAndNothingAboutTime(t *testing.T) {
 // fresh machine: the transport sends exactly what it sent before this package
 // existed.
 func TestAnEmptyLedgerIsAnEmptyChoice(t *testing.T) {
-	chooser := &chooser{ledger: &fakeLedger{}}
+	chooser := chooserOn(&fakeLedger{})
 	choice := chooser.Choose(talk())
 	if !choice.Empty() || choice.Why != "" || len(choice.Frontier) != 0 {
 		t.Fatalf("an empty ledger produced an opinion: %+v", choice)
@@ -529,7 +564,7 @@ func TestAGateThatEmptiesTheSetIsAnEmptyChoice(t *testing.T) {
 	request := talk()
 	request.Tools = true
 	request.MaxTokens = 900_000
-	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	chooser := chooserOn(measured(20, noon.Add(-time.Minute)))
 	choice := chooser.Choose(request)
 	for _, row := range choice.Frontier {
 		if !named([]string{"CoreWeave", "DigitalOcean"}, row.ID.Lane) {
@@ -624,6 +659,10 @@ func (h fakeHierarchy) Shifted(ID) bool { return false }
 // variability is the prior — which is what a pair the sheet does not carry gets
 // from the real ledger too.
 func (h fakeHierarchy) Draw(ID) (float64, float64) { return SpreadFloor, SpreadFloor }
+
+// And nothing has been WATCHED thinking either, which is the same statement
+// about the one quantity no sheet carries.
+func (h fakeHierarchy) ThinkDraw(string, string) float64 { return SpreadFloor }
 
 // It learns nothing: this double is a WORLD, scripted, and a fold here would be
 // the test rewriting the fixture it is asserting against.

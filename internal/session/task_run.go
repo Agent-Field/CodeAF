@@ -6283,6 +6283,24 @@ func git(dir string, args ...string) (string, error) {
 // second copy of the pager and editor settings beside it would be the drift the
 // one-source-of-truth law forbids.
 func gitWith(dir string, environment []string, args ...string) (string, error) {
+	// A COMMAND WITH NO DIRECTORY RUNS WHEREVER THE PROCESS HAPPENS TO BE.
+	//
+	// exec.Cmd reads an empty Dir as "the calling process's working directory",
+	// so a caller whose ground was never made — a tree with no working copy, a
+	// node landing before it stood anywhere — does not fail here: it commits
+	// into whatever repository the person's shell is sitting in. That is not a
+	// theory. One `go test ./internal/session/` run wrote "task: Rewrite",
+	// "task: Measure" and "task: Paint" onto the branch of the checkout it was
+	// launched from, over work somebody else was doing, and they reached the
+	// remote before a rebase surfaced them.
+	//
+	// Every call site here names a directory, so one that ever answers "" is a
+	// defect, and a defect is an error rather than a commit in somebody else's
+	// tree. The witness is hermetic_checkout_test.go, which fails the run if
+	// this package's own checkout moved while the suite was running.
+	if strings.TrimSpace(dir) == "" {
+		return "", errors.New("git: no directory to run in")
+	}
 	command := exec.Command("git", args...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on

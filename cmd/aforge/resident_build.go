@@ -142,7 +142,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 			plans.noteReading(brief.Goal, brief.Structure)
 		}
 		return resident.Compiled{
-			Accept:          acceptanceChecklist(ctx, settings, planClient, instruction),
+			Accept:          acceptanceChecklist(ctx, settings, planClient, plans, graph, instruction),
 			Goal:            brief.Goal,
 			Title:           brief.Title,
 			Contract:        brief.Contract,
@@ -157,6 +157,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 			ServiceIntent:   brief.ServiceIntent,
 			WorkModel:       brief.WorkModel,
 			ModelNote:       brief.ModelNote,
+			Note:            brief.Note,
 		}, nil
 	}
 }
@@ -169,10 +170,16 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 // empty checklist behaves exactly as it did before this existed. A CAPABILITY
 // THAT CANNOT WORK IS ABSENT, NOT BROKEN.
 //
-// The spend is journaled with the rest of the plan's, because reading the ask is
-// part of what structuring this job cost.
+// The spend is billed through journalPlanSpend like every other planning pass,
+// against the spine, which is where the compile's own row lands. It used to be
+// dropped: the plan client's snapshot is the router behind a wall and NOT
+// behind the pool's usage journal, so nothing wrote this call's row, and a
+// comment here claimed the compile's context billed it. Measured 2026-09-02: a
+// run printed $0.0041 against $0.0076 in its call log, and the one row the
+// usage table lacked was this call (#380). A ledger a call can miss is not the
+// one ledger, and the receipt was honest about a bill that was short.
 func acceptanceChecklist(ctx context.Context, settings config.Config, planClient *liveClient,
-	request string) []plan.Point {
+	plans *jobPlans, graph *store.Store, request string) []plan.Point {
 	if planClient == nil || strings.TrimSpace(request) == "" {
 		return nil
 	}
@@ -180,12 +187,8 @@ func acceptanceChecklist(ctx context.Context, settings config.Config, planClient
 	if structuring == nil {
 		return nil
 	}
-	// The call runs on the compile's own context, so what it spends is already
-	// billed where the compile's spend is billed and there is no second ledger
-	// to write it into. The returned usage is the plan package's running total
-	// for a caller assembling a whole plan's cost; this caller is assembling
-	// one call.
-	points, _, err := plan.Acceptance(settings.Context(ctx, "compile"), structuring, request)
+	points, usage, err := plan.Acceptance(settings.Context(ctx, "compile"), structuring, request)
+	journalPlanSpend(graph, plans, planClient, "", usage)
 	if err != nil {
 		log.Printf("note: could not read what the request asks for: %v", err)
 		return nil

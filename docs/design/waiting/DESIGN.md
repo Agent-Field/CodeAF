@@ -970,32 +970,45 @@ carrying the numbers:
 | spend, total | — | every arm, against the no-policy baseline |
 | long think ≥ 95% | **warmed arms, at full force** | **cold arms** |
 
-**And why the long think splits that way, which is a defect rather than a
-convenience.** §B's second test asks whether a wait is past the `1 − p` quantile
-of the survival its clock reads. For the duration clock that survival is the
-model's whole thinking phase — and **a thinking phase has no published
-dispersion**, so `Chain.Survival` floors its spread at `SpreadFloor` and the
-quantile settles at about `median · e^(z·SpreadFloor)`: roughly fifteen times
-the believed median, which for a ten-second ceiling is **eighty-three seconds**.
+**And why the long think splits that way.** §B's second test asks whether a wait
+is past the `1 − p` quantile of the survival its clock reads. For the duration
+clock that survival is the model's whole thinking phase, and **a thinking phase
+has no published dispersion** — so `Chain.Survival` stood on `SpreadFloor` and
+the quantile settled at about `median · e^(z·SpreadFloor)`: roughly fifteen
+times the believed median, which against a ten-second ceiling is **eighty-three
+seconds**. The gate could not close at any amount of evidence, and on an arm
+with no timing belief the long-think rate therefore stopped being a fact about
+the controller: it counted how often the world's own thinking phase outlasts the
+ceiling, which is a property of the model and of the role's patience and which
+no correct policy changes. On a warmed arm the first-token and gap clocks are
+sharp, the arms that land inside a thought are ones a policy really does decide,
+and the criterion is about the build again — so that is where it binds.
 
-**That floor never lifts — issue #316.** The spread is the larger of the estimate's and the
-draw's, and there is no published draw for the estimate ever to beat, so no
-amount of evidence moves it — measured at 0, 1, 2, 3, 4, 5, 10, 20 and 60
-observations, σ is exactly `SpreadFloor` at every one. **So the duration clock
-can never act before the ceiling for any model that deliberates for more than
-about two thirds of a second** — the other two clocks warm normally, and the
-permanent part is only that a legitimate long think cannot be told from a stall
-by duration —, and on an arm with no timing belief the
-long-think rate stops being a fact about the controller: it counts how often the
-world's own thinking phase outlasts the ceiling. That is a property of the model
-and of the role's patience, and no correct policy changes it. On a warmed arm
-the first-token and gap clocks are sharp, the arms that land inside a thought
-are ones a policy really does decide, and the criterion is about the build
-again — so that is where it binds.
+**The floor now lifts — issue #316, closed by the first of its two candidates.**
+Nobody publishes how much one run of thought varies; something **observes** it,
+because every `NoteThinking` is one draw of exactly that quantity. So the think
+chain keeps its own dispersion account per (model, rung) — Welford's count, mean
+and sum of squared deviations, folded on the same lock as the belief — and
+`Thinks` passes THAT to `Chain.Survival` instead of the constant. The law is the
+sample spread pooled with the prior at one observation's weight,
+`σ² = (SpreadFloor² + Σ(z − z̄)²) / n`, floored at `SpreadTightest` so a tail is
+never called impossible. Measured through the real door on the proof rows' own
+model, **the gate closes at n = 31** and σ settles at 0.174 against the 1.0
+prior; a model whose thinking really varies by 0.9 nats keeps σ = 0.909 and its
+gate stays open, which is the half that makes the close safe.
 
-**The fix is named and not taken here**: seed the think chain from the
-hierarchy's own prior so the estimate can beat the floor, or give the duration
-clock a drift quantile of its own. Both change a mechanism.
+**What the close does NOT recover, and the arithmetic that says so.** #316's
+acceptance asked for the 4.95 s p50 time-to-action on a stalled thought that
+this design trades for the 10 s ceiling. It is not recovered and it cannot be by
+this candidate, because the gate is only half of §B. The duration clock's payoff
+term prices leaving a thought at **a whole fresh thought** —
+`A = cost + Think.Mean()` — so `W(s) > A + m` needs the remaining life of THIS
+thought to exceed an entire new one, and for a log-normal that happens only far
+into the tail: at σ = 0.15 and a 5.5 s median it first happens at **15.8 s**,
+past the ceiling, and there is **no σ at all** at which both tests pass before a
+10 s ceiling for a model with that median. A stopped thought is abnormal in its
+GAP, not in its duration, which is candidate 2 of #316 — a think-phase drift
+quantile — and it remains open.
 
 ### The live A/B
 

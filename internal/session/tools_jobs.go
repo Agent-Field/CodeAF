@@ -307,7 +307,11 @@ func (a *Agent) jobsTool() bare.Tool {
 				if parsed.ID == nil {
 					return "Invalid arguments: id is required for kill", true, nil
 				}
-				text, isError := a.jobs.kill(*parsed.ID)
+				// THE CALL'S OWN CONTEXT RIDES INTO THE GRACES, so a kill
+				// caught inside a turn somebody stopped does not spend four
+				// seconds waiting for an exit nobody is waiting for (jobs.go's
+				// [waitDoneUnder]). The signals are sent either way.
+				text, isError := a.jobs.kill(ctx, *parsed.ID)
 				return text, isError, nil
 			case "":
 				return "Invalid arguments: action is required (list, output, or kill)", true, nil

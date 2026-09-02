@@ -949,6 +949,82 @@ func TestDoAssumesTheCompilerQuestionNobodyIsHereToAnswerAndRunsTheWork(t *testi
 	assertErrandIsHonest(t, outcome, err)
 }
 
+// THE PERSON'S OWN WORDS ARE ALWAYS A VALID GOAL. A compile that decoded with
+// no goal in it used to end the run at the first call — 229 s and $0.021 for
+// zero nodes on a 416-word brief — while the instruction sat in the request the
+// whole time. Now the request stands as the goal, the work runs, and the one
+// line of news is said on stderr where this surface narrates: a substitution
+// nobody can see is the defect #311 and #314 closed (#335).
+func TestDoRunsTheWorkWhenTheCompileSuppliesNoGoalAndSaysSo(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.compileBlankGoal = true
+	script.gatePasses = true
+
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:    "write the release note and include the migration steps",
+		asJSON:  true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err != nil {
+		t.Fatalf("a blank goal ended the run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if strings.Contains(outcome.Deliverable, "couldn't apply") || !strings.Contains(outcome.Deliverable, firstDraftAnswer) {
+		t.Fatalf("the deliverable is not the work product: %q", outcome.Deliverable)
+	}
+	if !strings.Contains(stderr.String(), "your request stands as the goal, word for word") {
+		t.Fatalf("stderr never said the compiler supplied no reading:\n%s", stderr.String())
+	}
+	assertErrandIsHonest(t, outcome, err)
+}
+
+// ONE LEDGER, ONE NUMBER. The acceptance pass — the plan model reading the
+// request for the behaviours it states — ran on the plan client's snapshot,
+// which carries no usage journal, and its usage was thrown away; a run's
+// printed total was short by exactly that call (#380). Every call the run
+// makes before its job exists is billed to the spine, so the spine's rows
+// number the compile and the acceptance pass together.
+func TestTheAcceptancePassIsBilledToTheSpine(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.gatePasses = true
+	script.acceptancePoints = `{"points":[{"text":"the count is written to count.txt"}]}`
+
+	database := filepath.Join(t.TempDir(), "graph.db")
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:     "count the lines in notes.txt and write the count to count.txt",
+		database: database, asJSON: true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if script.count("acceptance") != 1 {
+		t.Fatalf("the acceptance pass ran %d times, want 1", script.count("acceptance"))
+	}
+	graph, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	spend, err := graph.SpendSinceSeq("", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every other scripted call completes ten tokens, so the acceptance pass's
+	// own figure is visible in the spine's sum exactly once.
+	rest := spend.Spine.CompletionTokens - acceptanceCompletionTokens
+	if rest < 0 || rest%10 != 0 {
+		t.Fatalf("the spine's completion tokens are %d; the acceptance pass's %d are not among them",
+			spend.Spine.CompletionTokens, acceptanceCompletionTokens)
+	}
+}
+
 // The other half of the contract, which the law above narrows but does not
 // repeal: a question that does reach the end of a headless run must not end it
 // in silence. Three seconds, five thousandths of a cent and an empty stdout is
@@ -1197,6 +1273,10 @@ type scriptedBrain struct {
 	compileDraftsCharter bool
 	// compilerAsks makes the compiler stop on a question instead of compiling.
 	compilerAsks string
+	// compileBlankGoal makes the compiler answer a well-formed object with no
+	// goal in it — the shape a continuation restarted from the field after a
+	// cut left behind, which used to end the run with "empty goal" (#335).
+	compileBlankGoal bool
 	// gatePasses lets a deliverable through on the first look, for the runs
 	// whose subject is not the gate.
 	gatePasses bool
@@ -1327,6 +1407,10 @@ func (s *scriptedBrain) reply(body string) string {
 			return s.say(fmt.Sprintf(`{"goal":"","scale":"task","builds_on":[],"assumptions":[],`+
 				`"question":%q,"question_options":[],"trial_of":0}`, s.compilerAsks))
 		}
+		if s.compileBlankGoal {
+			return s.say(`{"title":"Release note and migration","scale":"task",` +
+				`"builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
+		}
 		if s.compileDraftsCharter {
 			return s.say(`{"goal":"","scale":"task","builds_on":[],"assumptions":[],` +
 				`"question":"Stand this rule up?","question_options":[` +
@@ -1342,10 +1426,14 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You read one request and list the behaviours it states"):
 		s.tally("acceptance")
-		if s.acceptancePoints == "" {
-			return s.say(`{"points":[]}`)
+		points := s.acceptancePoints
+		if points == "" {
+			points = `{"points":[]}`
 		}
-		return s.say(s.acceptancePoints)
+		// Billed with a figure no other scripted call reports, so a test can
+		// see this one row in a sum (TestTheAcceptancePassIsBilledToTheSpine).
+		return strings.Replace(s.say(points), `"completion_tokens":10`,
+			fmt.Sprintf(`"completion_tokens":%d`, acceptanceCompletionTokens), 1)
 
 	case strings.Contains(body, "You decide whether a job still needs work added to it"):
 		s.tally("satisfied")
@@ -1495,6 +1583,10 @@ func (s *scriptedBrain) leaf(body string) string {
 		return s.say(firstDraftAnswer)
 	}
 }
+
+// acceptanceCompletionTokens is what the scripted acceptance pass reports
+// completing: a figure that is not ten, so its row is visible in a total.
+const acceptanceCompletionTokens = 777
 
 func (s *scriptedBrain) say(content string) string {
 	encoded, _ := json.Marshal(content)

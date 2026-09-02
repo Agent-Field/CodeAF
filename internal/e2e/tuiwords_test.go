@@ -75,6 +75,24 @@ const tui3Pkg = "internal/tui3"
 // order — the suite's own file header states the law and this table is where it
 // is kept. Nothing here was remembered.
 var tuiWords = map[string]tuiWord{
+	// ── the bounded stop ─────────────────────────────────────────────────────
+	"stoppingWord": {
+		screen: "stopping",
+		why:    "the status word between a person's esc and the engine letting go of the turn",
+	},
+	"stopDetachWord": {
+		screen: "detaching in ",
+		why:    "the bound on the stopping window, stated on the status line BEFORE it fires (issue #265)",
+	},
+	"interruptedWord": {
+		screen: "interrupted",
+		why:    "the status word once a stopped turn is genuinely over — what the bound is measured against",
+	},
+	"stopDetachedWord": {
+		screen: "detached — the turn was let go of and nothing is waiting for it",
+		why:    "the note a turn let go of at the bound leaves in the conversation",
+	},
+
 	// ── home at rest ─────────────────────────────────────────────────────────
 	"homeFootWord": {
 		screen: "type to search or start something new · ↑↓ pick · enter open",
@@ -291,6 +309,30 @@ var tuiWords = map[string]tuiWord{
 	"phaseWaitingWord": {
 		screen: "still waiting",
 		why:    "the other half of that report — acting would buy nothing, and saying so IS the act",
+	},
+
+	// ── a machine that will not serve this model ─────────────────────────────
+	//
+	// THE SURFACE SAYS WHAT THE WIRE SAID, and for a whole measured run it did
+	// not: a 404 meaning `your request's provider.only preference permits only:
+	// coreweave` was drawn as `· slow · trying nextbit…`, which is a sentence
+	// about a wait rather than about a machine, and it stayed on the row for
+	// ten minutes after the arm it described had died (issue #266). All three
+	// rows are internal/tui3's own literals, written out rather than composed,
+	// so this gate can find them.
+	"laneRefusedTrying": {
+		screen: " · refused · trying ",
+		why:    "a lane said no and the answer is already on its way somewhere else",
+	},
+	"laneRefusedTail": {
+		screen: " refused",
+		why: "the retraction: the rescue this row was promising has itself been refused, " +
+			"so the promise comes off and the fact is what is left",
+	},
+	"laneSlowTrying": {
+		screen: " · slow · trying ",
+		why: "the same row about a lane that was merely LATE — waited for as an ABSENCE " +
+			"by the refusal subtest, which is how a wrong word is caught rather than a missing one",
 	},
 
 	// ── a question answered from another window ──────────────────────────────
