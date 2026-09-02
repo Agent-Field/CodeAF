@@ -44,12 +44,11 @@ const (
 	// defaultDoWall is a wall, not a schedule. Real work runs for minutes;
 	// this is the length of rope at which a wedged run is more useful dead.
 	//
-	// It is fifteen minutes written as seconds on purpose: the spelling
-	// `15 * time.Minute` is the leaf deadline's own shape, which internal/exec's
-	// structural law reserves for the subharness table alone, and this wall
-	// is the run's, not a leaf's. The first landing of this figure (#379) was
-	// reverted for exactly that spelling.
-	defaultDoWall = 900 * time.Second
+	// It is the RUN's wall and not a leaf's room, so the leaf-room law in
+	// internal/exec — one place sizes a worker's budget — does not reach it.
+	// That the two figures happen to be the same fifteen minutes is a
+	// coincidence of what a reasonable length of rope is, not a shared source.
+	defaultDoWall = 15 * time.Minute
 	// settlementBeat paces the watcher. It reads a watermark first and only
 	// looks at the graph when the journal has moved, so an idle beat is one
 	// integer read.
