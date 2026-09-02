@@ -711,7 +711,7 @@ of any place overflows its frame at any of the three. The fold ladder in
   check task work                                                             on
   who settles work that needs a look                                         ask
   memory                                                                      on
-  task countdown                                                              15
+  task countdown                                                               5
   task repair rounds                                                           1
   tasks at once                                                         no limit
   busy machine                                                               1.5

@@ -19,7 +19,6 @@ type railAgent struct {
 	roster  []session.Event
 	lanes   []chan session.Event
 	pending []uint64
-	held    []uint64
 	watches int
 }
 
@@ -64,27 +63,6 @@ func (r *railAgent) PendingTasks() []uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]uint64(nil), r.pending...)
-}
-
-func (r *railAgent) HoldTask(id uint64) {
-	r.mu.Lock()
-	r.held = append(r.held, id)
-	lanes := append([]chan session.Event(nil), r.lanes...)
-	r.mu.Unlock()
-	held := session.Event{
-		Kind: session.EventTaskProposal,
-		Tool: "propose_task",
-		Task: &session.TaskNotice{ID: id},
-	}
-	for _, lane := range lanes {
-		lane <- held
-	}
-}
-
-func (r *railAgent) heldTask(id uint64) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.held) == 1 && r.held[0] == id
 }
 
 func (r *railAgent) opened() int {
@@ -242,34 +220,6 @@ func TestPendingTasksSaysWhenTheFarEndDidNotAnswer(t *testing.T) {
 	_ = loop.Close()
 	if ids, known := loop.Client.Agent().TaskProposalsPending(); known || ids != nil {
 		t.Fatalf("a dead connection answered %v %v", ids, known)
-	}
-}
-
-// V5: Protocol version 10 carries a proposal hold to the far engine without
-// making the surface's key path wait for the round trip, and the far engine's
-// zero-deadline proposal returns to the watching surface.
-func TestTaskHoldCrossesTheVersionTenWire(t *testing.T) {
-	if Version != 10 {
-		t.Fatalf("task hold protocol version = %d, want 10", Version)
-	}
-	far := &railAgent{fakeAgent: &fakeAgent{}}
-	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
-		return &Engine{Agent: far}, nil
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loop.Close() })
-
-	lane, stop := loop.Client.Agent().WatchTaskUpdates()
-	t.Cleanup(stop)
-	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
-
-	loop.Client.Agent().HoldTask(17)
-	waitFor(t, "the far engine held proposal 17", func() bool { return far.heldTask(17) })
-	held := nextTask(t, lane)
-	if held.Kind != session.EventTaskProposal || held.Task == nil || held.Task.ID != 17 || !held.Task.Deadline.IsZero() {
-		t.Fatalf("held proposal returning over the wire = kind %v task %+v", held.Kind, held.Task)
 	}
 }
 

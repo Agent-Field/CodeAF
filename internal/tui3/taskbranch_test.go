@@ -49,7 +49,7 @@ func TestASettledProposalDropsTheBranchPoint(t *testing.T) {
 	a.branch = "work"
 	agent.pending = []uint64{7}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
-	drive(t, a, key("enter"))
+	drive(t, a, key("y"))
 
 	if text := taskText(a); strings.Contains(text, taskBranchPointWord) {
 		t.Fatalf("a settled card is still naming its branch point:\n%s", text)
