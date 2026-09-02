@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -22,6 +23,28 @@ func theErrand() Grounds {
 
 func errandNode() store.Node {
 	return store.Node{ID: "task-1", Provenance: store.Provenance{Intent: theErrand().Intent}}
+}
+
+func TestAStatedRuleIsNeverPutToTheRequestQuestion(t *testing.T) {
+	judgment := Judgment{Constraint: []string{"Change no files."}}
+	if RequestQuestionable(judgment) {
+		t.Fatal("a broken stated rule was offered to the request question")
+	}
+
+	evidence := Evidence{Constraints: []plan.Constraint{
+		{Text: "Change no files.", Kind: plan.ConstraintNoWrites},
+		{Text: "Do not use the network.", Kind: plan.ConstraintOther},
+	}}
+	want := []string{"Change no files.", "Do not use the network."}
+	got := statedRules(Grounds{}, evidence)
+	if len(got) != len(want) {
+		t.Fatalf("stated rules: got %q, want %q", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("stated rule %d: got %q, want %q", index, got[index], want[index])
+		}
+	}
 }
 
 // THE ONE QUESTION, ANSWERED YES. The deliverable is the final line, wrapped in

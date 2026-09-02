@@ -177,7 +177,7 @@ func TestAMeasuredFailureIsNeverOverturnedAtTheGatesDoor(t *testing.T) {
 		"a check this work broke": {Pass: false, Checked: true, Sourced: true,
 			Gaps: "this work broke checks that were passing before it"},
 		"a behaviour nothing exercises": {Pass: false, Checked: true,
-			Gaps: "1 behaviour the request states has no check that exercises it",
+			Gaps:        "1 behaviour the request states has no check that exercises it",
 			Unexercised: []string{"the final line is reported"}},
 		"the checks this work wrote, red": {Pass: false, Checked: true,
 			Gaps: "the checks this work wrote fail", OwnFailing: []string{"test_probe"}},

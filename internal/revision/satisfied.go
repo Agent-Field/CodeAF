@@ -183,7 +183,15 @@ func statedRulesBlock(grounds Grounds, evidence Evidence) string {
 
 // statedRules is the list itself. Today nothing on the record carries one and
 // this names none.
-func statedRules(Grounds, Evidence) []string { return nil }
+//
+// The seam is now filled by the constraints field on the evidence.
+func statedRules(_ Grounds, evidence Evidence) []string {
+	rules := make([]string, 0, len(evidence.Constraints))
+	for _, constraint := range evidence.Constraints {
+		rules = append(rules, constraint.Text)
+	}
+	return rules
+}
 
 // MeasuredFinding says this verdict rests on A MEASUREMENT OF THE WORLD rather
 // than on a reading of the request, and it is the whole of what the question
@@ -244,7 +252,9 @@ func requestQuestion(settings config.Config, client *pool.Client, node store.Nod
 // deliverable and the record would say yes. Today no judgement carries its
 // constraints and this is always false; the change that gives a judgement its
 // constraints is the one line that fills it in.
-func ConstraintFinding(Judgment) bool { return false }
+//
+// The seam is now filled by the constraints field on the judgement.
+func ConstraintFinding(judgment Judgment) bool { return len(judgment.Constraint) > 0 }
 
 // metExtension is the extension a request already satisfied earns: none, and a
 // receipt saying why none was owed.
