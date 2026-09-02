@@ -8,9 +8,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// /crew — THE FOUR MODELS AFORGE WORKS WITH, ANSWERED IN ONE WORD.
+// /crew — THE FIVE MODELS AFORGE WORKS WITH, ANSWERED IN ONE WORD.
 //
-// The settings panel has the same four rows and a crew row above them, and this
+// The settings panel has the same five rows and a crew row above them, and this
 // command exists anyway for the reason /model exists beside the model slot: the
 // panel is where you go to READ a decision, and a command is where you go to
 // CHANGE one you have already made up your mind about. Somebody whose planner is
@@ -249,7 +249,7 @@ func (p *crewPicker) height() int {
 // and what they do not, then seat one on a line of its own — labelled, with no
 // lead and no ground, so it cannot be mistaken for a row enter would apply —
 // then the three presets exactly as before, and a closing note pointing at the
-// settings row where any one of the four can be pinned by itself. Per-seat
+// settings row where any one of the five can be pinned by itself. Per-seat
 // picking is NOT built in here: settings already owns it, and a chooser that
 // both applied presets and moved single seats would be two controls wearing one
 // set of keys.
