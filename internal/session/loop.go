@@ -620,8 +620,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// with a fresh request after the ordinary drain at its head.
 			if errors.Is(err, errSteerCut) {
 				turn.Turns++
-				a.addUsage(&turn, response, served.Name())
-				a.tellLaneNews(model, a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response)), hedge)
+				// THE LANE IS READ BEFORE THE MONEY IS BANKED, because the row the
+				// money writes is this call's and the witness is what measured it.
+				facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
+				a.addUsage(&turn, response, model, served.Name(), facts)
+				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall)
 				warm.reset()
@@ -669,16 +672,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 
 		turn.Turns++
-		a.addUsage(&turn, response, served.Name())
 		// WHO ANSWERED, AND WHAT THE RESCUE COST, folded onto what was timed
-		// above. It is beside [Agent.addUsage] because it is the same grain —
-		// one response — and the row it eventually reaches is the turn's seal,
-		// which keeps the most recent answer and nothing else.
+		// above. It is read here, before the money is banked, because it is the
+		// same grain — one response — and it is now the very row that response's
+		// ledger line carries ([Agent.addUsage]) rather than something held back
+		// for the turn's seal to collect.
+		facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
+		a.addUsage(&turn, response, model, served.Name(), facts)
 		// AND THE SURFACE IS TOLD WHO ANSWERED, on the same line and at the same
 		// grain (lanenews.go). It is the push half of a seam whose pull half
 		// cannot exist: a status line cannot see a stream, and the arrow between
 		// this package and a surface only points one way.
-		a.tellLaneNews(model, a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response)), hedge)
+		a.tellLaneNews(model, facts, hedge)
 
 		calls := response.ToolCalls()
 
@@ -990,6 +995,12 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // and on both failing ones. A write anywhere else would be a turn shape that
 // silently kept no record.
 //
+// AND IT IS NOT WHERE THE MACHINE'S LEDGER IS WRITTEN, which is the whole of
+// issue #269. A seal is the shape of a TURN — its duration, its place in the
+// conversation — and every turn that never got to seal was money the meter had
+// and the ledger never saw. The ledger's grain is the CALL and its door is
+// [Agent.bank]; nothing here.
+//
 // The model is the CALLER'S rather than a.model, for the reason runTurn latches
 // it: a mid-turn /model swap must not be attributed backwards to work another
 // model did. The write happens with a.mu released — the file takes its own lock
@@ -1001,13 +1012,6 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.usage.Duration += turn.Duration
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false, "")
-	// AND THE MACHINE'S LEDGER GETS THE SAME LINE, because the transcript's copy
-	// of it is unreachable from anywhere but this conversation (usage_ledger.go
-	// opens with the whole argument). It is written here rather than inside
-	// [sessionFile.appendUsage] because the file knows the figures and this knows
-	// WHOSE they are — the session, the node, the standing item, the workspace —
-	// and a ledger row without those is a row nothing can be asked of.
-	a.recordUsageLine(turn, model, "", a.turnLane.take())
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
@@ -2360,9 +2364,76 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
 // ── usage ───────────────────────────────────────────────────────────────────
 
+// bankedCall is one call's money on its way into the books: what it cost, who
+// answered, what for, how the lane behind it behaved, and the two things that
+// differ between the doors — whether the machine's ledger is owed a row (a fold
+// is not a call) and whether this was a step of the conversation.
+type bankedCall struct {
+	used   Usage
+	model  string
+	role   string
+	lane   laneFacts
+	ledger bool
+	// turn says this call was a STEP OF THE CONVERSATION and not an errand run
+	// beside it, which is the whole of what [Usage.Turns] counts.
+	turn bool
+	// context is the provider's own count of the request just served — the
+	// honest number the compaction threshold prefers over an estimate — and
+	// zero where nobody said.
+	context int
+}
+
+// bank is THE ONE DOOR MONEY GOES THROUGH, and it is the fix for issue #269.
+//
+// Before it there were two: one that moved the session's meter per call and one
+// that wrote the machine's ledger per TURN, and every turn that failed to seal —
+// interrupted, stopped, crashed, or simply still running while somebody looked —
+// was money the first door had and the second never heard about. Four surfaces
+// then quoted four numbers for the same instant.
+//
+// So the meter and the ledger row move on ONE call, and a caller cannot have the
+// first without offering the second. The ledger's own fold rule is the single
+// bit of difference: a tally a child agent already wrote down for itself moves
+// this session's books and writes nothing here, or the machine's day would be
+// double (usage_ledger.go's second rule).
+//
+// THE ROW IS RECORDED OUTSIDE a.mu. Nothing that can touch a file belongs under
+// the agent's lock, and although the write itself happens on a writer goroutine
+// ([RecordUsage]), the lock is released before the hand-off so no reader of the
+// session's totals ever queues behind the ledger at all.
+func (a *Agent) bank(call bankedCall) {
+	a.mu.Lock()
+	a.usage.Input += call.used.Input
+	a.usage.Output += call.used.Output
+	// The cache figures follow the tokens they belong to. An errand is paid for
+	// out of the same pocket, so leaving them out would make the session's
+	// cached share a fraction of only part of its input.
+	a.usage.CacheRead += call.used.CacheRead
+	a.usage.CacheWrite += call.used.CacheWrite
+	a.usage.CostUSD += call.used.CostUSD
+	a.usage.Calls += call.used.Calls
+	a.usage.EmptyReflex += call.used.EmptyReflex
+	if call.turn {
+		a.usage.Turns++
+	}
+	if call.context > 0 {
+		a.contextTokens = call.context
+	}
+	a.mu.Unlock()
+	if call.ledger {
+		a.recordUsageLine(call.used, call.model, call.role, call.lane)
+	}
+}
+
 // addUsage folds one response's accounting into the turn and the session, and
 // remembers the provider's own context size — the honest number the compaction
 // threshold prefers over an estimate.
+//
+// AND THIS IS WHERE THE MACHINE'S LEDGER LEARNS ABOUT THE CALL, because this is
+// where the provider's usage block is in hand. It used to learn at the end of
+// the turn instead and lost every unsealed turn's money (issue #269,
+// usage_ledger.go's first rule). The row goes out through [Agent.bank] with the
+// meter, so nothing can move one without the other.
 //
 // It also writes ONE JOURNAL LINE PER RESPONSE, after the folds and changing
 // none of them. The seal at the end of the turn is a sum of sixty-odd calls
@@ -2372,49 +2443,56 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // once; the line below is so it never has to be again. See
 // [sessionFile.appendCall] for why it is evidence and never spend.
 //
+// `model` is the turn's own latched model, which is what a mid-turn hop leaves
+// standing (runTurn re-latches on an answer from further down the chain), and
 // `served` is the endpoint the router says answered, "" when nothing said.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response, served string) {
+// `lane` is what the witness measured about THIS request and nothing else.
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts) {
 	if response == nil || response.Usage == nil {
 		return
 	}
 	usage := response.Usage
-	turn.Input += usage.PromptTokens
-	turn.Output += usage.CompletionTokens
-	// The cache figures are the provider's own, in whichever dialect it speaks
-	// them (ai.Usage reconciles the two spellings). They are recorded on the
-	// turn AND on the session because they answer two different questions: what
-	// this exchange cost against what it would have, and how warm the lineage
-	// has been all day.
-	turn.CacheRead += usage.CacheReadTokens()
-	turn.CacheWrite += usage.CacheCreationTokens()
-	// Calls counts THIS request, and every other one the session makes. It is
-	// the honest denominator Turns cannot be: Turns is the conversation's own
-	// steps by law, and an auxiliary call is not one of them (see
-	// [Agent.addAuxiliaryUsage]).
-	turn.Calls++
-	if usage.Cost != nil {
-		turn.CostUSD += *usage.Cost
+	call := Usage{
+		Input:  usage.PromptTokens,
+		Output: usage.CompletionTokens,
+		// The cache figures are the provider's own, in whichever dialect it
+		// speaks them (ai.Usage reconciles the two spellings). They are recorded
+		// on the turn AND on the session because they answer two different
+		// questions: what this exchange cost against what it would have, and how
+		// warm the lineage has been all day.
+		CacheRead:  usage.CacheReadTokens(),
+		CacheWrite: usage.CacheCreationTokens(),
+		// Calls counts THIS request, and every other one the session makes. It is
+		// the honest denominator Turns cannot be: Turns is the conversation's own
+		// steps by law, and an auxiliary call is not one of them (see
+		// [Agent.addAuxiliaryUsage]).
+		Calls: 1,
 	}
+	if usage.Cost != nil {
+		call.CostUSD = *usage.Cost
+	}
+	turn.Input += call.Input
+	turn.Output += call.Output
+	turn.CacheRead += call.CacheRead
+	turn.CacheWrite += call.CacheWrite
+	turn.Calls += call.Calls
+	turn.CostUSD += call.CostUSD
 
 	context := usage.TotalTokens
 	if context == 0 {
 		context = usage.PromptTokens + usage.CompletionTokens + usage.CacheReadTokens()
 	}
 
-	a.mu.Lock()
-	a.usage.Input += usage.PromptTokens
-	a.usage.Output += usage.CompletionTokens
-	a.usage.CacheRead += usage.CacheReadTokens()
-	a.usage.CacheWrite += usage.CacheCreationTokens()
-	a.usage.Turns++
-	a.usage.Calls++
-	if usage.Cost != nil {
-		a.usage.CostUSD += *usage.Cost
+	// THE ROW NAMES THE MODEL THAT ANSWERED and falls back to the turn's own
+	// latch. A provider that names itself in the response is the better answer;
+	// one that names nothing would otherwise leave the row saying only that
+	// somebody was paid (auxiliary.go's [Agent.journalRoleCall] makes the same
+	// choice for the same reason).
+	answered := strings.TrimSpace(response.Model)
+	if answered == "" {
+		answered = strings.TrimSpace(model)
 	}
-	if context > 0 {
-		a.contextTokens = context
-	}
-	a.mu.Unlock()
+	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context})
 
 	a.file.appendCall(journalCall{
 		Model:      strings.TrimSpace(response.Model),
@@ -3529,26 +3607,12 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	if emptyReflex {
 		aux.EmptyReflex = calls
 	}
-	a.mu.Lock()
-	a.usage.Input += aux.Input
-	a.usage.Output += aux.Output
-	// The cache figures follow the tokens they belong to. An auxiliary call is
-	// paid for out of the same pocket, so leaving them out would make the
-	// session's cached share a fraction of only part of its input.
-	a.usage.CacheRead += aux.CacheRead
-	a.usage.CacheWrite += aux.CacheWrite
-	a.usage.CostUSD += aux.CostUSD
-	a.usage.Calls += aux.Calls
-	a.usage.EmptyReflex += aux.EmptyReflex
-	a.mu.Unlock()
+	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
+	// watches the turn's own stream — and the turn's figures on this row would be
+	// a measurement of one request filed against another.
+	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role)
-	if ledger {
-		// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
-		// watches the turn's own stream — and the turn's figures on this row
-		// would be a measurement of one request filed against another.
-		a.recordUsageLine(aux, model, role, laneFacts{})
-	}
 }

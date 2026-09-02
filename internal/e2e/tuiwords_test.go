@@ -241,6 +241,25 @@ var tuiWords = map[string]tuiWord{
 		why:    "what the `since you left` block says about a watch that went off while nobody was here",
 	},
 
+	// ── the money, said the same way wherever it is read ─────────────────────
+	"spendRailsHint": {
+		screen: "/budget sets the limits",
+		why:    "the /spend place's own pointer line, which carries the day's figure and the door to the rails",
+	},
+	"spendTodayResets": {
+		screen: " · resets at midnight",
+		why:    "the Spending tab's `today` reading, the row the money segment's door lands above",
+	},
+	"spendThisOneWord": {
+		screen: "this one ",
+		pkg:    "internal/config",
+		why:    "the receipt beside the per-conversation ceiling — the ENGINE's registry writes it and the tab only relays it",
+	},
+	"spendConversationRow": {
+		screen: "per conversation",
+		why:    "the Spending row the `this one` receipt hangs off",
+	},
+
 	// ── a question answered from another window ──────────────────────────────
 	"consentAskWord": {
 		screen: "allow? ",
@@ -250,6 +269,30 @@ var tuiWords = map[string]tuiWord{
 		screen: "allow once",
 		pkg:    "internal/session",
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
+	},
+
+	// ── a landing that needs somebody's look (#268) ───────────────────────────
+	"settleAskWord": {
+		screen: "finished, but nobody has checked it — your call",
+		why:    "the line above the answers on a landing nobody could check; the gate is only a gate if it is drawn",
+	},
+	"settleAccept": {
+		screen: "[a] accept",
+		source: " accept",
+		why:    "the answer a person presses, drawn from two constants — the key and the word beside it",
+	},
+	"settleTookLine": {
+		screen: "you took this as done",
+		why:    "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed",
+	},
+	"taskLookWord": {
+		screen: "needs your look",
+		why:    "the person's own words for a landing nobody could check, on the card's own head line",
+	},
+	"unverifiedGlyph": {
+		screen: "?",
+		why: "the one cell that asks the question on the roster row (internal/tui3's glyphUnverified); " +
+			"it is one character, so the frame it is read in is held together by the three sentences beside it",
 	},
 }
 

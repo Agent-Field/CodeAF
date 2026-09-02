@@ -69,6 +69,48 @@ type ExecResult struct {
 	// check above asks this field as well: a fully banked run has nothing left
 	// to sum and its turn ledger still has to reach the journal.
 	SpendBanked bool
+
+	// HOW THE WORK ENDED, WHICH IS A DIFFERENT FACT FROM WHAT IT PRODUCED.
+	//
+	// A leaf that ran out of its tokens mid-edit and a leaf that finished
+	// reached this seam wearing the same three fields — a summary, some money,
+	// some turns — so the scheduler saw err == nil and settled the node done.
+	// A judge's "nothing is left" then stood as the whole account of a worker
+	// that had been cut off with a red build: measured on 2026-09-01, a leaf
+	// stopped at `⏳ ran out of tokens — 33 turns` and was ✓ two seconds later,
+	// its summary its own last sentence, and its siblings briefed on truncated
+	// work. Nothing that runs after that ✓ can recover the cut work.
+	//
+	// Stopped is asked BEFORE Stop, and it is not redundant with it. A
+	// StopReason is a string; its zero value is the empty string; and a result
+	// built by any caller that does not fill these in would otherwise read as a
+	// leaf that stopped for no reason, which is indistinguishable from one that
+	// finished. Absence is said out loud.
+	Stopped bool
+	// Stop is the executor's own word for the ending — "budget", "turn-cap",
+	// "deadline", "done".
+	Stop executor.StopReason
+	// Meter is what ran out and how far the leaf got, read at land time. It is
+	// carried for the record rather than for the decision: the decision is
+	// RanOut, and this is what a person and an autopsy are owed about it.
+	Meter executor.Meter
+	// Continued says something else is already carrying this leaf's remaining
+	// work — a spliced continuation, a repair journaled against the daily rail.
+	// A leaf that ran out and HAS a successor is finished with; one that ran out
+	// with nothing behind it has no account, and the scheduler must not write
+	// one for it. See Runner.runOne.
+	Continued bool
+}
+
+// RanOut reports that this leaf STOPPED BECAUSE IT RAN OUT, and that nothing is
+// carrying the rest of its work.
+//
+// A LEAF THAT RAN OUT HAS NO ACCOUNT. Its work is evidence for the next
+// attempt, never a result: only a leaf that itself reported done, inside its
+// budget, settles a node. Exhaustion is a measured fact and doneness is a claim,
+// and a measured fact is never overturned by an unmeasured claim.
+func (r ExecResult) RanOut() bool {
+	return r.Stopped && !r.Continued && r.Stop.OutOfRoom()
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -1327,6 +1369,28 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 	// Spend is recorded before completion settles: a refused completion is
 	// still money spent, and the journal should say so.
 	r.recordSpend(node, result)
+	// AND A LEAF THAT RAN OUT IS NEVER COMPLETED HERE. It reached this arm with
+	// err == nil because running out of room is not an error — the executor
+	// grants a landing reserve and the leaf lands — but landing is not
+	// finishing, and the summary it carries is its own last sentence. So the
+	// ending goes back through the rule the error arm already applies: the node
+	// returns to pending with its banked turns on the release, and the next
+	// claim carries on from them. See ExecResult.RanOut, and the sibling law in
+	// revision.coverageRefused — a measured fact is not overturned by a claim.
+	//
+	// IT IS BOUNDED BY THE SAME THREE EVERY OTHER GROWTH IS. The attempt column
+	// is incremented at the claim, so a node that has run out on three claims
+	// with nothing able to continue it has said all it is going to say, and it
+	// is failed with the ending named rather than handed round again for ever.
+	if result.RanOut() {
+		_, recorded := BankedRun(r.graph, node.ID)
+		if node.Attempt < MaxOverrunRounds && recorded > 0 {
+			_ = r.graph.ReleaseWithRecord(claim, outOfRoomClaimReason(result, recorded), recorded)
+			return
+		}
+		_ = r.graph.Fail(claim, outOfRoomFailure(result))
+		return
+	}
 	var settleErr error
 	if result.Promote && node.Group == ReflexGroup {
 		_, settleErr = r.graph.CompleteAndRequestFollowup(claim, summary, store.Command{
@@ -1641,6 +1705,28 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 // pick up where this one stopped, and the turn count is the evidence that it
 // can. The headless stream prints it beside the node (see cmd/aforge's
 // narrateOne on store.EventNodeReleased).
+// outOfRoomClaimReason is what a person reads when a leaf that ran out goes back
+// on the queue: what ran out, how far it got, and that its work is kept.
+func outOfRoomClaimReason(result ExecResult, recorded int) string {
+	reason := "it was still working when it ran out"
+	if words := result.Meter.Words(); words != "" {
+		reason += " (" + words + ")"
+	}
+	return reason + " — " + pluralTurns(recorded) + " of its work is recorded, and the next attempt carries on from there"
+}
+
+// outOfRoomFailure is the same fact when there is no next attempt left: the leaf
+// ran out on every claim it was given and nothing could continue it, so the node
+// says so rather than settling on a summary written by a worker that was cut off
+// mid-sentence.
+func outOfRoomFailure(result ExecResult) string {
+	words := result.Meter.Words()
+	if words == "" {
+		words = string(result.Stop)
+	}
+	return "it ran out of room on every attempt and was never able to finish (" + words + ")"
+}
+
 func exhaustedClaimReason(allowed time.Duration, recorded int) string {
 	return fmt.Sprintf("the worker did not come back within %s and was stopped — %s of its work is recorded, and the next one carries on from there",
 		allowed.Round(time.Second), pluralTurns(recorded))

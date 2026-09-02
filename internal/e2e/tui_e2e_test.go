@@ -74,6 +74,57 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("the_fold_at_the_foot_opens_and_shuts", testFold)
 	t.Run("narrow_window_ask_here", testNarrow)
 	t.Run("alt_g_groups_the_list_by_project", testGrouped)
+	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
+	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
+}
+
+// ── 11 ──────────────────────────────────────────────────────────────────────
+
+// testNestedGate is issue #268's acceptance, on the real screen: a part one
+// level down that nobody could check ASKS, in one frame, and a key answers it.
+//
+// THE MEASURED FAILURE IS WHY IT IS HERE. A nested part landed needing somebody
+// to decide, and a fifteen-second capture of the whole run shows no answers row
+// for it, ever — the card was written for ROOT nodes only, and the roster filed
+// the node under `done` while its parent still ran. So the gate expired without
+// a person ever being able to see it, let alone answer it.
+//
+// AND IT COSTS NOTHING. The family is seeded as the graph the process left
+// behind ([seedDecidedFamily]); the surface replays it on attach. No model is
+// asked anything, so what this subtest measures is the surface and the engine's
+// settle door and nothing else — which is exactly what went wrong.
+func testNestedGate(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "gatews", false)
+	seedDecidedFamily(t, home, ws)
+	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
+
+	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
+	// workspace opens home; one that has the seeded conversation opens straight
+	// into it — both are the product behaving, and esc from the first is the
+	// second.
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
+	r.keys("Escape")
+
+	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
+	// on a person, and the answers row on the card — all on screen at once, which
+	// is the whole of what "answerable" means here.
+	screen := r.waitFor(20*time.Second,
+		say(t, "settleAskWord"), say(t, "settleAccept"),
+		say(t, "taskLookWord"), say(t, "unverifiedGlyph"))
+	t.Logf("a nested landing asking on every surface:\n%s", screen)
+	if !strings.Contains(screen, "Port the parser") {
+		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
+	}
+
+	// AND A KEY ANSWERS IT. The four letters work on the SELECTED card and only
+	// over an empty message box, exactly as `x` does — so ↑ walks to the card the
+	// landing just wrote, and `a` is the accept.
+	r.keys("Up")
+	r.lit("a")
+	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
+	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+	r.quit()
 }
 
 // ── 1 ───────────────────────────────────────────────────────────────────────
@@ -1046,4 +1097,145 @@ func toolRows(screens []string) []string {
 		out = append(out[:12], fmt.Sprintf("… and %d more", len(out)-12))
 	}
 	return out
+}
+
+// ── 10 ──────────────────────────────────────────────────────────────────────
+
+// testOneSpendFigure is issue #269 end to end: run a turn, press escape in the
+// middle of it, and read the money back on both spend surfaces. They must say
+// the same thing.
+//
+// WHY AN INTERRUPTED TURN AND NOT AN ORDINARY ONE. Money is banked from the
+// provider's own usage block as each call is decoded, and the machine's ledger
+// used to be written only when a turn SEALED — so a turn nobody let finish was
+// money the status line had and the file never got. On the measured chat that
+// was $0.087 missing from `/spend` and from Settings→Spending, with the status
+// line reading the truth beside them. Escape is the cheapest way to make a real
+// binary produce exactly that state.
+//
+// WHAT IS ASSERTED IS A STRING AND NOT A NUMBER. Two surfaces agreeing to
+// within a cent is two surfaces disagreeing; the point of the fix is that they
+// are one reading of one total, so they are compared as the characters a person
+// reads off the screen.
+func testOneSpendFigure(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "spendws", false)
+	r := start(t, "afe2e_spend", home, ws, tuiPlain, 40)
+
+	// A machine with no conversations on it opens straight into one, which is
+	// the state this scenario wants: one conversation, so the machine's day and
+	// this conversation's total are the same money read two ways. The wait is
+	// on the WORKSPACE's own name in the status line rather than on a product
+	// sentence, because the welcome screen a fresh machine opens on draws none
+	// of the rules the other subtests wait for.
+	r.waitFor(20*time.Second, "spendws")
+
+	// A question with a long answer, so there is a middle to interrupt.
+	r.lit("count slowly from one to two hundred, one number per line")
+	time.Sleep(600 * time.Millisecond)
+	r.keys("Enter")
+	if caught, ok := r.glimpse(modelPatience,
+		say(t, "homeAskThinkWord"), say(t, "homeAskWriteWord")); ok {
+		t.Logf("the turn was in flight when escape was pressed:\n%s", caught)
+	} else {
+		t.Logf("FINDING: the live strip was never caught — the turn may have finished first")
+	}
+	r.keys("Escape")
+	// The ledger's writer is a background goroutine and both places read the
+	// file on a three-second beat, so the reading is taken after one beat has
+	// certainly turned rather than in the same instant as the keystroke.
+	time.Sleep(5 * time.Second)
+
+	// ── the /spend place ──────────────────────────────────────────────────
+	//
+	// `alt+5` and not `/spend`: the place's doors are the chord, `tab`, and the
+	// word typed at home — `/spend` is an alias of `/cost`, which is this
+	// conversation's own note rather than the machine's page. The chord arrives
+	// as esc-then-5, which is what internal/tui3's placeDigit reads.
+	r.lit("\x1b5")
+	place := r.waitFor(25*time.Second, say(t, "spendRailsHint"))
+	t.Logf("the spend place after the interrupted turn:\n%s", place)
+	fromPlace := moneyOn(t, place, say(t, "spendRailsHint"))
+	if fromPlace == "" {
+		t.Fatalf("the spend place's pointer line carries no figure:\n%s", place)
+	}
+	t.Logf("the /spend place says %s", fromPlace)
+
+	// ── Settings → Spending ───────────────────────────────────────────────
+	r.keys("Escape")
+	time.Sleep(600 * time.Millisecond)
+	r.lit("/budget")
+	time.Sleep(600 * time.Millisecond)
+	r.keys("Enter")
+	tab := r.waitFor(25*time.Second, say(t, "spendConversationRow"))
+	t.Logf("the Spending tab after the interrupted turn:\n%s", tab)
+
+	fromToday := moneyOn(t, tab, say(t, "spendTodayResets"))
+	if fromToday == "" {
+		t.Fatalf("the Spending tab's `today` row carries no figure:\n%s", tab)
+	}
+	fromThisOne := moneyAfter(t, tab, say(t, "spendThisOneWord"))
+	if fromThisOne == "" {
+		t.Fatalf("the Spending tab's `this one` receipt carries no figure:\n%s", tab)
+	}
+	t.Logf("Settings→Spending says today %s and this one %s", fromToday, fromThisOne)
+
+	if fromPlace != fromToday {
+		t.Errorf("the /spend place says %s and Settings→Spending's `today` says %s — "+
+			"one machine, one day, two numbers (issue #269)", fromPlace, fromToday)
+	}
+	if fromThisOne != fromToday {
+		t.Errorf("Settings→Spending says today %s and this one %s on a machine holding "+
+			"exactly one conversation", fromToday, fromThisOne)
+	}
+}
+
+// moneyOn is the FIRST dollar figure on the screen line carrying `needle`, and
+// the empty string when there is no such line or no figure on it. Both rows it
+// is used on lead with what was spent and follow it with the rail — `today
+// $0.0003 of $500` — so the first figure is the spend on each.
+//
+// IT READS THE LINE THE PERSON READS. The whole claim under test is that these
+// places render one STRING, so the figure is lifted out of the drawn row rather
+// than recomputed from anything.
+func moneyOn(t *testing.T, screen, needle string) string {
+	t.Helper()
+	return moneyIn(t, screen, needle, false)
+}
+
+// moneyAfter is the figure that FOLLOWS `needle` on its line, for the receipt
+// whose row may carry a limit ahead of it — `per conversation  $20 · this one
+// $0.0003`, where the first figure on the line is the rail and not the spend.
+func moneyAfter(t *testing.T, screen, needle string) string {
+	t.Helper()
+	return moneyIn(t, screen, needle, true)
+}
+
+func moneyIn(t *testing.T, screen, needle string, after bool) string {
+	t.Helper()
+	for _, line := range strings.Split(screen, "\n") {
+		found := strings.Index(line, needle)
+		if found < 0 {
+			continue
+		}
+		rest := line
+		if after {
+			rest = line[found+len(needle):]
+		}
+		at := strings.Index(rest, "$")
+		if at < 0 {
+			continue
+		}
+		figure := "$"
+		for _, r := range rest[at+1:] {
+			if (r < '0' || r > '9') && r != '.' {
+				break
+			}
+			figure += string(r)
+		}
+		if len(figure) > 1 {
+			return figure
+		}
+	}
+	return ""
 }

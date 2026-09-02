@@ -1280,6 +1280,11 @@ const (
 	checkpointDecisionSplit    = "split"
 	checkpointDecisionContinue = "continue"
 	checkpointDecisionFailed   = "failed"
+	// checkpointDecisionWrote is the write seam's own word (writeseam.go). It is
+	// distinct from the ceiling's because the two moments are different facts
+	// about a turn — one outran the reading, one outran the small edit — and a
+	// bench that spelled them the same could not tell them apart afterwards.
+	checkpointDecisionWrote = "wrote"
 
 	checkpointCeilingMoved   = "moved"
 	checkpointCeilingNothing = "dropped:nothing-left"
@@ -1911,6 +1916,14 @@ func checkpointLastSaid(messages []ai.Message) string {
 func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string) bool {
 	if !a.checkpoints(ctx, user) {
 		return false
+	}
+	// THE WRITE SEAM IS ASKED FIRST, and it is asked at every boundary rather
+	// than at a mark: the allowance is a count of what this turn has DONE to the
+	// disk, and a turn that crosses it on round three must not wait until round
+	// ten to be noticed (writeseam.go). It fires once, and past it the marks and
+	// the ceiling govern the turn exactly as they always did.
+	if a.writeMeterNow().pastAllowance() {
+		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced)
 	}
 	mark := meter.round()
 	if mark == 0 {
@@ -2900,8 +2913,13 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// auxiliary pocket, because this is the conversation's own model reading the
 	// conversation's own transcript — the errand pocket is for the session's
 	// side-calls, and this is the last step of the answer.
+	//
+	// AND ITS ROW CARRIES NO LANE. This request was not streamed and nothing
+	// watched it, and the turn's own figures filed against it would be a
+	// measurement of one request written down about another (usage_ledger.go's
+	// emptiness law for the five lane keys).
 	turn.Turns++
-	a.addUsage(turn, response, provider.ServedEndpointFrom(ctx).Name())
+	a.addUsage(turn, response, model, provider.ServedEndpointFrom(ctx).Name(), laneFacts{})
 
 	brief := strings.TrimSpace(response.Text())
 	// THE REMAINS CONTRACT IS READ FIRST, because it is the only answer here that

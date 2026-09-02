@@ -2394,17 +2394,15 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		// than left to the merge test below, which would file a node whose branch
 		// went nowhere under "done".
 		//
-		// EXCEPT INSIDE A FAMILY WHOSE HEAD IS STILL WORKING ([app.taskParentDeciding]).
-		// A sub-task's landing note goes to its PARENT'S agent and not to the
-		// person (session's deliverTaskNote), so while the parent is alive the
-		// decision already has a decider — and a column that put "needs you" over
-		// a family the machine is still working through would be asking somebody
-		// to do a job that is being done. It becomes theirs the moment the parent
-		// settles, and the engine says so on the same lane every other landing
-		// rides (session's bubbleUnverifiedChildren).
-		if a.taskParentDeciding(node) {
-			return railDone
-		}
+		// AND A PARENT'S RUNNING IS A FOLD, NOT A MUTE. This used to answer
+		// [railDone] for a child under a working head, on the argument that the
+		// parent's own agent is the decider while it lives — which is true about
+		// WHO is being asked and says nothing at all about WHETHER anybody is. The
+		// cost of reading it the other way was measured: the footer counted a node
+		// nobody had decided under `done`, and the one column that could have shown
+		// the demand did not (#268). The demand stays visible here; what folds is
+		// how LOUD it is ([app.railGlyphRank] demotes a child whose head is still
+		// holding the question), which is the honest version of the same idea.
 		return railAttention
 	case session.TaskQueued:
 		if a.railWaits(node) != "" {
@@ -2457,14 +2455,21 @@ func taskAwaitsPerson(node *taskNode) bool {
 // and is therefore the one being asked about work under it that nobody could
 // check.
 //
-// ATTENTION SURFACES AT THE ROOT AND NOWHERE ELSE. The engine routes a
-// sub-task's landing note to its parent node's own agent, which has the `tasks`
-// tool and the diff and every reason to answer it (session's deliverTaskNote);
-// what a person is owed is the top of the family, once. So this is asked about
-// exactly one thing — is the parent unsettled — and everything else answers
-// "no": a node with no parent is a root and is the person's, a node whose parent
-// this session has never heard of has nobody above it that could decide, and a
-// node whose parent has landed has been orphaned and is the person's again.
+// IT IS A FOLD AND NOT A MUTE, and the difference is the whole of #268. The
+// engine routes a sub-task's landing note to its parent node's own agent, which
+// has the `tasks` tool and the diff and every reason to answer it (session's
+// deliverTaskNote) — so while the parent lives, the top of the family is what a
+// person should be reading first. That is an argument about LOUDNESS and it was
+// once read as an argument about presence: the child was filed under `done` and
+// drew no card, so a nested question could expire with nobody able to see it.
+// What this answers now is only [app.railGlyphRank]'s question — how loud —
+// while [app.railGroupOf] keeps the demand where it belongs.
+//
+// It is asked about exactly one thing — is the parent unsettled — and everything
+// else answers "no": a node with no parent is a root and is the person's, a node
+// whose parent this session has never heard of has nobody above it that could
+// decide, and a node whose parent has landed has been orphaned and is the
+// person's again.
 //
 // It is deliberately not a walk up the whole family. The immediate parent is the
 // only node that is ever handed this child's news, so a grandparent's state says
@@ -5594,7 +5599,18 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// exit, and the model is already told both on the steering lane, so a card
 		// built from the empty half of a notice would push a block of nothing into
 		// the conversation every time a `sleep 5` came home.
-		if node.parent == "" && node.kind != session.TaskKindJob {
+		//
+		// EXCEPT THAT A DECISION IS NEVER MUTE, WHATEVER ITS DEPTH. A node that
+		// landed needing somebody's look is a QUESTION, and the card is the only
+		// place on this surface the answers row exists (tasksettle.go). While that
+		// card was root-only, a nested part could land needing a look, sit there
+		// for the whole run and expire with nobody ever able to see it — measured,
+		// on a part two levels down (#268, and session's pending.go carries the
+		// law). So the roster-only rule holds for work that came home DECIDED, and
+		// a decision is written wherever it is. It may fold under its family; it
+		// may not be absent.
+		if node.kind != session.TaskKindJob &&
+			(node.parent == "" || node.state == session.TaskUnverified) {
 			a.landedCard(node)
 		}
 	}

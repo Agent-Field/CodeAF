@@ -47,9 +47,10 @@ package session
 //	git status, git show, pwd, wc, head, cat
 //
 // It could not run the build either. So it read source files until its five
-// minutes ran out — 21 calls, 300 seconds, six cents — and the node landed on
-// "no answer in 5m0s, so nothing was accepted", which is "finished, but needs
-// your look", which is a run stalled waiting for a person. That happened on
+// minutes ran out — 21 calls, 300 seconds, six cents — and the node landed on the
+// window running out, which is "finished, but needs your look", which is a run
+// stalled waiting for a person. (The sentence that says so is [checkerRanOut]
+// now, and it says only what a clock knows.) That happened on
 // EVERY ONE of the six audits of that run's main task. A gate that can only
 // verify one language is not a gate, it is a coincidence.
 //

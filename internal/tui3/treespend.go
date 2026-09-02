@@ -29,10 +29,16 @@ import (
 // reads once.
 //
 // THE FIGURE COMES OFF THE LEDGER THE LIMITS ARE READ FROM, and no second
-// accumulator exists anywhere. Every model call writes one line there where it
-// was made, a fold writes none, and a node's line now names the conversation the
-// work is rooted in ([session.UsageLine.Root]) — so the tree is one sum over
-// rows that are each there exactly once, running or closed.
+// accumulator exists anywhere. Every model call writes one line there AS IT IS
+// MADE (issue #269 — it used to be written at the turn's seal, so an interrupted
+// turn's money reached no surface but the meter), a fold writes none, and a
+// node's line names the conversation the work is rooted in
+// ([session.UsageLine.Root]) — so the tree is one sum over rows that are each
+// there exactly once, running or closed.
+//
+// AND THE SUM IS MADE ONCE, in [session.UsageTree], which hands back the one
+// [session.Receipt] every surface here reads. This file chooses what to SHOW;
+// it never chooses what to add.
 //
 // IT IS READ ONLY WHILE THERE IS WORK TO READ ABOUT. A conversation that has
 // never started a task never touches the file: its own books are the whole
@@ -88,7 +94,7 @@ func (a *app) readTreeSpend() {
 // that dropped when a person opened yesterday's work would be worse than the
 // figure that was too small.
 func (a *app) spendShown() float64 {
-	if total := a.tree.TotalUSD(); total > a.cost {
+	if total := a.tree.Folded(); total > a.cost {
 		return total
 	}
 	return a.cost
@@ -106,10 +112,10 @@ func (a *app) spendShown() float64 {
 // nothing in all three cases is the same rule: this surface draws a division
 // only where it knows one.
 func (a *app) spendSplit() (conversation, tasks float64, ok bool) {
-	if a.tree.TasksUSD <= 0 || a.tree.ConversationUSD <= 0 || a.tree.TotalUSD() < a.cost {
+	if a.tree.Children <= 0 || a.tree.Direct <= 0 || a.tree.Folded() < a.cost {
 		return 0, 0, false
 	}
-	return a.tree.ConversationUSD, a.tree.TasksUSD, true
+	return a.tree.Direct, a.tree.Children, true
 }
 
 // selfSessionID is this conversation's own 16-hex id: the name of the folder its

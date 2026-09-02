@@ -1102,6 +1102,13 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.openTool(a.sel)
 		return nil
 	}
+	// A WINDOWS DROP DOES NOT BEGIN WITH THE SLASH THAT REACHES THE OLDER ENTER
+	// NET. Once enter says the gesture is finished, a complete drive or WSL UNC
+	// path takes that same door: a real file lands on the tray and a missing one
+	// keeps its text and says so, with neither becoming a model message.
+	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
+		return a.edited()
+	}
 	// A MODEL MESSAGE WITH NO DEFAULT-PROVIDER KEY OPENS THE CONNECTION BEFORE
 	// THE DRAFT IS CLEARED. This is the returning half of the key gate: a person
 	// who pressed esc to read an existing conversation can still type naturally,

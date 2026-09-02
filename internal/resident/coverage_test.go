@@ -147,3 +147,89 @@ func TestEveryKindOfStandingEvidenceStopsACoverageRefusal(t *testing.T) {
 		})
 	}
 }
+
+// A FINDING IN THE HAND IS STANDING EVIDENCE, WHATEVER THE JOURNAL HOLDS.
+//
+// This is the same table as the test above with one thing taken away: the gate
+// row is NOT recorded. That is the production order — the delivery gate asks
+// for its repair round and records its row one event later — and it is what
+// made the package test pass while the run it covers acquitted a true finding.
+// The finding rides the context the growth call already travels on, so the
+// governor reads it out of the hand it is in.
+func TestALiveFindingStopsACoverageRefusalWithNothingInTheJournal(t *testing.T) {
+	for _, probe := range []struct {
+		kind    string
+		finding Finding
+	}{
+		{EvidenceUnexercised, Finding{Kind: FindingUnexercised,
+			Names: []string{"the display style property accepts \"grid\""}}},
+		{EvidenceUnasserted, Finding{Kind: FindingUnasserted,
+			Names: []string{"gridTemplateColumns accepts fr units"}}},
+		{EvidenceFailing, Finding{Kind: FindingOwnFailing, Names: []string{"grid lays out box children"}}},
+		{EvidenceMechanical, Finding{Kind: FindingMechanical, Names: []string{"src/grid.ts"}}},
+		{EvidenceFinding, Finding{Kind: FindingReview, Names: []string{"the blocker is discarded at construction"}}},
+	} {
+		t.Run(probe.kind, func(t *testing.T) {
+			graph := judgedJob(t)
+			gates, err := graph.DeliveryGateLineage("task-2")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(gates) != 0 {
+				t.Fatalf("the journal already holds a gate row, so this proves nothing: %+v", gates)
+			}
+			node := jobNode(t, graph, "task-2-x1")
+			verdict, err := growJob(WithFinding(context.Background(), probe.finding), graph, alwaysCovered,
+				GrowRequest{JobRoot: "task-2-x1", Node: node, Lineage: "task-2",
+					Reason: GrowGap, Round: 2,
+					Criterion: plan.Done{Produces: []string{"a grid that lays out"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !verdict.Allow {
+				t.Fatalf("a live %s finding was refused as already covered: %+v", probe.kind, verdict)
+			}
+			if !strings.Contains(strings.Join(verdict.CoveredDespite, " "), probe.kind) {
+				t.Fatalf("covered despite = %v, want %s", verdict.CoveredDespite, probe.kind)
+			}
+		})
+	}
+}
+
+// And a round nobody bought for a finding keeps exactly the governor it had:
+// coverage may still refuse a job the world has nothing standing against, which
+// is the question it was built for.
+func TestCoverageStillRefusesWhenNoFindingIsInHand(t *testing.T) {
+	graph := judgedJob(t)
+	node := jobNode(t, graph, "task-2-x1")
+	verdict, err := growJob(WithFinding(context.Background(), Finding{}), graph, alwaysCovered,
+		GrowRequest{JobRoot: "task-2-x1", Node: node, Lineage: "task-2", Reason: GrowOverrun, Round: 2,
+			Criterion: plan.Done{Produces: []string{"a grid that lays out"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verdict.Allow || verdict.Cause != CauseCovered {
+		t.Fatalf("coverage may still refuse a job nothing stands against: %+v", verdict)
+	}
+}
+
+// AND THE PERSON IS TOLD A GOVERNOR DECLINED TO FUND WHAT A REVIEW ASKED FOR.
+// A coverage refusal used to say nothing at the end of the run: the closing line
+// fell through to the gate's own words, so a run that stopped because one
+// reading of its plan said there was nothing left read as a run that simply
+// finished short.
+func TestTheClosingLineNamesACoverageRefusal(t *testing.T) {
+	graph := judgedJob(t)
+	if err := graph.RecordJobGrowth("task-2", store.JobGrowth{Reason: GrowGap,
+		Lineage: "task-2", Round: 2, Allowed: false, Cause: CauseCovered,
+		Refused: RefusedCovered}); err != nil {
+		t.Fatal(err)
+	}
+	standing, ok := GovernorStanding(graph, "task-2")
+	if !ok {
+		t.Fatal("a governor refused the round a review asked for and the run said nothing")
+	}
+	if !strings.Contains(standing, "nothing left to add") {
+		t.Fatalf("the closing line does not say what was declined: %q", standing)
+	}
+}
