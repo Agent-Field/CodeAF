@@ -342,7 +342,16 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// whose expansion the acceptance check is going to throw away anyway.
 	// Skipping it here saves the whole fan-out — one run burned 17,000 output
 	// tokens producing splits that were all rejected.
-	if len(node.Parts) < 2 {
+	//
+	// An oversized node is the one exception, and the sizing prompt is why: it
+	// is told to name the ordered stages of a node whose inside is a sequence,
+	// and a node it has ALSO put beyond one worker's reach with nothing named is
+	// a node it could not name a division of at all. Neither is a reason to leave
+	// it whole — the burden's second discharge stands either way — so it goes to
+	// the stage question, which costs one call and no fan-out. Everything else
+	// keeps the pre-check: atomic-and-run is still the null hypothesis, and a
+	// node within one worker's reach is never staged.
+	if len(node.Parts) < 2 && node.Size != SizeOversized {
 		return SplitVerdict{Reason: RefusalUnnamed}
 	}
 	switch node.Size {
@@ -398,12 +407,19 @@ func selectForExpansion(graph *Graph, options Options) []int {
 			JournalRefusal(node, verdict.Reason)
 			continue
 		}
-		switch node.Size {
-		case SizeOversized:
+		// EVERY ADMISSION LANDS IN A LIST. An oversized node is the strong claim
+		// and always qualifies; everything else JudgeSplit admits — a borderline
+		// node, and an atomic one admitted on measured capacity because the
+		// journal says work this size overruns — is the weaker claim and queues
+		// where the ties queue, behind the oversized and only while there is
+		// room. Switching on the size alone dropped the measured admission on the
+		// floor: the node was neither divided nor refused, so nothing divided it
+		// and nothing could say why.
+		if node.Size == SizeOversized {
 			oversized = append(oversized, node.ID)
-		case SizeBorderline:
-			borderline = append(borderline, node.ID)
+			continue
 		}
+		borderline = append(borderline, node.ID)
 	}
 
 	// Each expansion adds roughly a handful of nodes; budgeting at four keeps
@@ -518,6 +534,15 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
 		NextID:  1,
 	}
+	// AN OVERSIZED NODE WITH NO SIMULTANEOUS PIECES NAMED IS EVIDENCE OF A
+	// SEQUENCE, NOT A REASON TO LEAVE IT WHOLE. The ruler has already been asked
+	// which pieces of this node could run at the same time and has answered with
+	// none, so buying a fan-out to ask a second time is buying the answer twice.
+	// The stage question is asked directly, and the whole expansion is one call.
+	if node.Size == SizeOversized && len(node.Parts) < 2 {
+		return expandAsStages(ctx, client, sub, node, goal, Usage{})
+	}
+
 	nodes, fanUsage, err := FanOutWith(ctx, client, sub.context(), sub.Stages, sub.Settled)
 	usage := fanUsage
 	if len(nodes) == 0 {
@@ -535,11 +560,13 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	for _, child := range nodes {
 		sub.Add(child)
 	}
-	sizeUsage, sizeErr := SizeNodes(ctx, client, sub)
+	// A failed sizing pass leaves every child unjudged, which sizeApply reads as
+	// atomic, so the division stands as it was drawn. It is deliberately not
+	// carried out as this expansion's error: an expansion that returns one would
+	// be thrown away whole, and a ruler that could not answer is no reason to
+	// discard a division that has already been paid for.
+	sizeUsage, _ := SizeNodes(ctx, client, sub)
 	usage.merge(sizeUsage)
-	if sizeErr != nil {
-		err = joinErrors([]error{err, sizeErr})
-	}
 	sub.Goal = node.Title
 	return expansion{nodeID: nodeID, sub: sub, usage: usage}
 }

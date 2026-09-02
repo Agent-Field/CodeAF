@@ -112,6 +112,57 @@ func TestAnOversizedNodeThatCannotRunAtOnceIsDividedIntoStages(t *testing.T) {
 	}
 }
 
+// AN OVERSIZED NODE WITH NO PIECES NAMED IS A SEQUENCE, AND THE RULER HAS
+// ALREADY SAID SO. It goes straight to the stage question: the simultaneity
+// question was asked once, at sizing, and buying a fan-out to ask it again is
+// buying one answer twice.
+func TestAnOversizedNodeWithNoNamedPartsIsStagedWithoutAFanOut(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		stages  string
+		spliced int
+		refusal string
+	}{
+		{
+			name: "stages it is made of",
+			stages: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+				`{"title":"Change","summary":"Make the change.","needs":[1]}]}`,
+			spliced: 1,
+		},
+		{
+			name:    "one stage is the node again",
+			stages:  `{"stages":[{"title":"Work","summary":"Carry the whole thing to an end.","needs":[]}]}`,
+			refusal: RefusalOnePiece,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &stagePlanner{
+				stages: test.stages,
+				sizes:  `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`,
+			}
+			graph := &Graph{Goal: "carry the whole thing to an end", Stages: []Stage{{Title: "Work"}}, NextID: 1}
+			// No parts: the ruler was asked which pieces of this could run at
+			// the same time and answered with none.
+			parent := graph.Add(Node{Stage: 1, Title: "Work", Summary: "Carry the whole thing to an end",
+				Size: SizeOversized})
+
+			spliced, _, err := ExpandLevel(t.Context(), client, graph, Options{MaxDepth: 2, NodeBudget: 40})
+			if err != nil {
+				t.Fatalf("ExpandLevel: %v", err)
+			}
+			if spliced != test.spliced {
+				t.Fatalf("spliced %d nodes, want %d", spliced, test.spliced)
+			}
+			if got := graph.Node(parent).Undivided; got != test.refusal {
+				t.Errorf("undivided = %q, want %q", got, test.refusal)
+			}
+			if made := client.count("fanout"); made != 0 {
+				t.Errorf("the stage question bought %d fan-outs, want none — the answer was already in hand", made)
+			}
+		})
+	}
+}
+
 // A stage answer that comes back as one stage is the node in different words,
 // and that refusal already has its wording. Nothing is sized: the single link's
 // own title has already said what a sizing call would be paid to say.
@@ -211,8 +262,19 @@ func TestTheStagePromptAsksTheSizePromptsSecondQuestion(t *testing.T) {
 		}
 	}
 	// The burden is quoted from the ruler, not paraphrased beside it.
-	if !strings.Contains(sizePromptWith(sizeAnchors), "brought to an end inside what one worker can hold") {
+	ruler := sizePromptWith(sizeAnchors)
+	if !strings.Contains(ruler, "brought to an end inside what one worker can hold") {
 		t.Error("the sizing prompt no longer states the burden the stage prompt discharges")
+	}
+	// And the ruler sends a sequence to its stages rather than telling the model
+	// it has nothing to name. That sentence was the prompt half of the same
+	// defect: an oversized node was taught to answer "no pieces", and "no pieces"
+	// was read as "leave it whole".
+	if !strings.Contains(ruler, "name the ordered stages it\n  passes through instead") {
+		t.Error("the sizing prompt no longer asks a sequence for its ordered stages")
+	}
+	if strings.Contains(ruler, "If the inside of the\n  node is a sequence") {
+		t.Error("the sizing prompt still tells a sequence it has no pieces")
 	}
 	// The ceiling the prompt states is the room the reply is given.
 	if sequenceDepthWord != "4" || sequenceDepth != 4 {
