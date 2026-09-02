@@ -154,11 +154,13 @@ locally.
   run actually produced, not every path it mentioned. It is a one-shot and
   schedules nothing for later: an errand never practices, whatever store it is
   pointed at with `--db`. Without `--db` it works in a private store of its
-  own, deleted when the run leaves with 0 and **kept when it does not** —
-  the last line on the error stream is `record kept at <path>`, and that
-  directory holds the whole record as `graph.db`. `--keep` keeps it whatever
-  happened, and so does `AFORGE_DEBUG` set to anything but `0`, `false` or
-  `off`. It runs on this profile's crew unless `--model`,
+  own under `runs/` in the state root — `~/.aforge/runs/`, or wherever
+  `AFORGE_HOME` points, never the machine's temporary directory. It is deleted
+  when the run leaves with 0 and **kept when it does not**, including a run you
+  stop with Ctrl+C: the last line on the error stream is `record kept at
+  <path>`, and that directory holds the whole record as `graph.db`. `--keep`
+  keeps it whatever happened, and so does `AFORGE_DEBUG` set to anything but
+  `0`, `false` or `off`. It runs on this profile's crew unless `--model`,
   `--plan-model` or the matching variables name something else, and it opens by
   saying which of those chose its two models.
 - `aforge wake` — run one bounded pass and exit. This is what the standing watch

@@ -9,17 +9,20 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -453,12 +456,28 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		settle = brain.stop
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), request.timeout)
+	// AN INTERRUPT MUST LAND THE RUN, NOT VANISH IT — the same law `aforge run`
+	// keeps, and it is the keep-on-failure rule that made a headless errand need
+	// it too. A Go process dies on Ctrl+C and on SIGTERM with nothing written,
+	// which is indistinguishable from a crash; now that the store survives such
+	// an ending, dying silently would leave a folder on disk that nothing ever
+	// told the person about. Routed through the context, the watcher returns the
+	// partial it returns for the wall, the workers are settled, and the closing
+	// lines — the receipt and `record kept at` — still print.
+	//
+	// The handler is released the moment the wait is over, so a second signal
+	// during the unwind kills the process the way it always did. SIGKILL is
+	// outside all of this and stays correct by accident: no defer runs, so
+	// nothing deletes the store either.
+	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
 	watcher := &settlementWatch{
 		graph: graph, session: session, commandSeq: command.Seq,
 		refused: refused, progress: request.stderr, started: started,
 		produced: produced,
+		stopped:  func() bool { return signalled.Err() != nil },
 	}
 	if brain != nil {
 		// A GATE ALWAYS PRECEDES THE WALL, and this is the half of that law
@@ -471,6 +490,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 		watcher.closeOut = brain.runner.CloseOut
 	}
 	outcome, err = watcher.wait(ctx)
+	stopSignals()
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -705,6 +725,17 @@ func debugRecordOn(getenv func(string) string) bool {
 // a task run this way must not inherit half a conversation's assumptions, and a
 // store that survives it is what `aforge chat` already is. What survives a run
 // that did NOT go cleanly is keepPrivateStore's answer, not this one's.
+//
+// It is made under the state root's `runs/` and NOT in the operating system's
+// temporary directory. Both were private and both were deleted on a clean run,
+// so for as long as every run's home died with it the difference was invisible.
+// It stops being invisible the moment a failed run keeps its own: a record in
+// /tmp is a record the system's own reaper is entitled to delete out from under
+// the person who was told where to find it, and on a machine that clears /tmp at
+// boot the answer to "where is yesterday's failure" is nowhere. THE RECORD STAYS
+// UNDER THE STATE ROOT, which is the one directory aforge owns and nothing else
+// prunes. AFORGE_HOME moves it with everything else, so a disposable run is
+// still disposable in one word.
 func headlessStore(database string) (path, home string, ephemeral bool, err error) {
 	if database = strings.TrimSpace(database); database != "" {
 		path, err = expandHome(database)
@@ -713,7 +744,14 @@ func headlessStore(database string) (path, home string, ephemeral bool, err erro
 		}
 		return path, filepath.Dir(path), false, nil
 	}
-	home, err = os.MkdirTemp("", "aforge-do-")
+	runs := homepkg.Join("runs")
+	// 0700 for the reason every directory under the state root is: what a run
+	// keeps is the person's own prompts, replies and deliverables, and a record
+	// kept for their benefit must not become one the rest of the machine can read.
+	if err = os.MkdirAll(runs, 0o700); err != nil {
+		return "", "", false, fmt.Errorf("create a private store: %w", err)
+	}
+	home, err = os.MkdirTemp(runs, "aforge-do-")
 	if err != nil {
 		return "", "", false, fmt.Errorf("create a private store: %w", err)
 	}
@@ -750,6 +788,12 @@ type settlementWatch struct {
 	// empty, is the deferred run — the work happened in the resident's process
 	// — and compose reads the workers' prose instead.
 	produced *errandRegistry
+
+	// stopped reports whether a signal ended this run rather than its wall. It
+	// is a function rather than a bool because the answer is only true at the
+	// end, and nil is the ordinary case in every test that builds a watcher by
+	// hand — see stoppedByHand.
+	stopped func() bool
 
 	watermark int64
 	// saidStanding remembers that the closing reservation has been printed. The
@@ -916,7 +960,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			}
 			outcome.BlockedOn = asked
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
-				outcome.Deliverable = wallWords(outcome.Artifacts)
+				outcome.Deliverable = wallWords(outcome.Artifacts, w.stoppedByHand())
 			}
 			// AND THE WALL SAYS WHAT THE GOVERNOR KNEW. A run that reaches its
 			// deadline having already been told it stopped making progress must
@@ -2144,6 +2188,13 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 // deliverable at a wall — the run was killed mid-round, so nothing composed a
 // final node — and the fact worth saying belongs to whichever job stopped
 // moving.
+// stoppedByHand says whether the person ended this run. A watcher nobody told
+// how to answer says no, which is the reading every caller had before signals
+// were routed through the context at all.
+func (w *settlementWatch) stoppedByHand() bool {
+	return w.stopped != nil && w.stopped()
+}
+
 func (w *settlementWatch) sayWallStanding() {
 	if w.saidStanding || w.progress == nil {
 		return
@@ -2230,11 +2281,20 @@ func midFlightWords(artifacts []string) string {
 
 // wallWords is the same honesty at the wall: "before anything finished" is a
 // claim about the record, and it may only be made when the record agrees.
-func wallWords(artifacts []string) string {
-	if len(artifacts) == 0 {
-		return "The time limit was reached before anything finished."
+// A RUN'S OWN ACCOUNT OF ITSELF MAY NOT CONTRADICT WHAT ENDED IT. The two
+// endings that reach here look identical from inside the watcher — the context
+// is done either way — and they are not the same news: one is a clock the
+// person set, the other is the person themselves, and telling somebody who
+// pressed Ctrl+C that they ran out of time is a sentence they know to be false.
+func wallWords(artifacts []string, stopped bool) string {
+	reason := "The time limit was reached"
+	if stopped {
+		reason = "The run was stopped"
 	}
-	return "The time limit was reached before the work was summarised. " + producedWords(artifacts)
+	if len(artifacts) == 0 {
+		return reason + " before anything finished."
+	}
+	return reason + " before the work was summarised. " + producedWords(artifacts)
 }
 
 // errandRegistry is this errand's own record of what its workers wrote.

@@ -612,18 +612,26 @@ check what it did, not a run that ran out of time.
 
 - **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
   which is the point of a one-shot.
-- **It did not** — exit 1, or the partial exit 2 above — and the store is **kept**, with no
-  flag and nothing decided in advance. The last thing the run writes on the error stream is
-  where it is:
+- **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
+  and the store is **kept**, with no flag and nothing decided in advance. The last thing the
+  run writes on the error stream is where it is:
 
   ```
-  record kept at /var/folders/xy/T/aforge-do-3f81c2
+  record kept at ~/.aforge/runs/aforge-do-3f81c2
   ```
 
-That directory holds `graph.db`: the journal every worker wrote to, the plan as it stood,
-the deliverables, the receipts and the spend. Hand it back with `aforge do --db
-<that path>/graph.db "…"` to work in it again, and it is an ordinary directory otherwise —
-read it, copy it, delete it when you are done with it.
+Kept records live under `runs/` in aforge's own folder — `~/.aforge/runs/`, or wherever
+`AFORGE_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
+one away before you go looking for it. That directory holds `graph.db`: the journal every
+worker wrote to, the plan as it stood, the deliverables, the receipts and the spend. Hand it
+back with `aforge do --db <that path>/graph.db "…"` to work in it again, and it is an
+ordinary directory otherwise — read it, copy it, delete it when you are done with it.
+
+Stopping a run yourself keeps it too. Ctrl+C — or a `SIGTERM` from whatever launched it —
+lands the run rather than vanishing it: the work in flight is settled, what it produced is
+reported, and the `record kept at` line is printed on the way out. Press Ctrl+C a second time
+and the process dies immediately; the folder is still there, because nothing got as far as
+deleting it.
 
 Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
 `AFORGE_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
