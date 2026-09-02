@@ -90,18 +90,19 @@ func sectionCutNotice(shown, total int) string {
 func boundedList(items []string) string {
 	var list strings.Builder
 	for index, item := range items {
-		if list.Len()+len(item)+listItemPrefixBytes > manualListCap {
+		if list.Len()+len(item)+len(listItemPrefix) > manualListCap {
 			return list.String() + fmt.Sprintf("\n(… and %d more)", len(items)-index)
 		}
-		list.WriteString("\n- ")
+		list.WriteString(listItemPrefix)
 		list.WriteString(item)
 	}
 	return list.String()
 }
 
-// listItemPrefixBytes is the "\n- " every item is written behind, counted so
-// the budget above is the size of what is actually written.
-const listItemPrefixBytes = 3
+// listItemPrefix is what every item is written behind. The budget above counts
+// it by measuring it, so the two cannot say different things about the same
+// three bytes.
+const listItemPrefix = "\n- "
 
 // cutAtLineBoundary keeps the last whole line inside the budget, so the part
 // that arrives ends where the writing does rather than mid-word, and never ends
