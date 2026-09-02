@@ -605,7 +605,7 @@ because its wall could not hold another round of work says `partial — no time 
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
 
-## My headless run failed — where is its record, where did the run go, can I look at it afterwards
+## My headless run failed — where is its record, why is there a folder left behind after `aforge do`, how do I keep the run's files with `--keep`
 
 `aforge do` works in a private store of its own unless you point it somewhere durable with
 `--db`. What becomes of that store depends on how the run ended:
