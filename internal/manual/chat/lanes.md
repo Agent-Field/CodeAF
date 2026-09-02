@@ -14,7 +14,36 @@ has ever timed — and it tells you which one served you, in the status line:
 via cloudflare · 0.6s · 61 t/s
 ```
 
-## Auto, and which lanes it is choosing between
+## A model name that ends in latest, and the tilde in front of it — what the pointer names, and what via says instead
+
+The model aforge ships with is spelled `~deepseek/deepseek-v4-flash-latest`, and that is
+the name on the model picker and on the status line. Two things about it are worth
+knowing, because neither is guessable.
+
+**The leading `~` is not a typo and not a home directory.** It is the router's own marker
+for a *floating* name: one that does not point at a fixed build of a model but at
+whichever build is current. Everywhere else on a terminal a leading `~` means your home
+folder, and aforge still reads it that way when it is followed by a slash — `~/` is a
+path, `~deepseek/…` is a model.
+
+**A pointer is not a machine, so what is learned is filed under what it points at.**
+`…-latest` names whichever dated build the model's makers published most recently — today
+`deepseek/deepseek-v4-flash-0731` — and it is that dated build the router publishes
+machines for. So the lanes aforge asks about, the speeds it writes down, and the row it
+keeps in `~/.aforge/v3/lanes.json` are all filed under the dated name, never under the
+pointer.
+
+That name is not something the screen says back to you, which is why it surprises people
+who go looking. The picker and the status line show the name **you** chose, and `via
+cloudflare` names the machine that answered rather than the model it answered for.
+
+**When the pointer moves, nothing is carried across.** The newer build is a different
+model with its own machines and its own speeds, so it starts its own record from the sheet
+the router publishes for it, and the older build's record stays where it is instead of
+being spent on a model nobody has measured. That is the same rule as everywhere else here:
+a measured thing is about the thing that was measured.
+
+## Auto, and which lanes it is choosing between — how it picks a provider on the very first message, and whether aforge do routes too
 
 Left alone, aforge is on **auto**. Before each request it drops every endpoint
 that cannot do the job at all — no tool calls when you sent tools, too small an
@@ -26,6 +55,14 @@ with the money converted into seconds by how much your waiting is worth.
 Nothing is waiting on this when nobody is waiting on you. A background errand is
 ranked on price, because a second saved for a machine is a second nobody spends.
 
+**A run started from a terminal is routed on the same terms.** `aforge do`, `aforge run`
+and `aforge run subharness` open no conversation and draw no status line, and they used to
+take whatever machine the router happened to hand them. They fetch the same sheet now and
+rank it with the same arithmetic — so a headless machine, one that only ever runs work
+from a terminal, is choosing between endpoints rather than between none, and every run
+leaves a record the next one starts from. Nobody is sitting in front of an errand, so it is
+the price ranking above that applies to it.
+
 **A model it has never sent to is not a model it knows nothing about.** The
 public sheet names every endpoint serving it, and what aforge has learned about
 a *company* — that this one is quick, that one queues — carries across every
@@ -33,7 +70,7 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
-## Pinning one lane yourself
+## Pinning one lane yourself — naming the machine that answers, and whether a pin is honoured
 
 You can name the lane yourself. In the model picker, the lanes under a model are
 its endpoints; picking one pins it, and every request for that model goes
@@ -43,7 +80,7 @@ means "no opinion from me — let the router balance it".
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
 
-## When a pinned lane goes quiet
+## When a pinned lane goes quiet — the `switch to auto?` question, and how to say no to it
 
 It still has to do something about a wait, and what it does is **ask you**:
 
@@ -55,6 +92,12 @@ Press **y** and the answer is fetched from somewhere else, at once, from the
 endpoint that was already ranked second — no new decision made at the worst
 possible moment. The question is asked **once** per answer, and it disappears
 the moment your answer starts arriving, because by then it is moot.
+
+**`y` is the only key the question takes.** There is nothing to press to say no, because
+there is nothing to decline — the wait is happening either way, and refusing would only
+leave you in it. So the question is not a card you have to clear: it takes itself down the
+moment an answer starts arriving, or when the request ends, and every other key you press
+is still your own.
 
 Two things it does not do. It does **not** take the `y` out of a sentence you
 are typing: the key only counts while the box is empty, and while you are
@@ -75,12 +118,18 @@ believed slow at once, which happens when a whole region is having a bad
 afternoon. Switching would buy nothing, so aforge says the true thing instead:
 
 ```
-all lanes slow · still waiting
+all lanes slow · still waiting · 12s
 ```
 
 That line means the wait is real, it is not a stall this build can end, and
 nothing is being spent trying. It is the one honest thing left to say, and
 saying nothing was the old behaviour.
+
+**The number on the end is how long you have been waiting**, counting up from the moment
+this request went out — whole seconds, and `1m 20s` once it is past a minute. It is not a
+countdown, and there is nothing behind it about when the answer will come: it is there so
+that a line which cannot promise you anything can at least be honest about the size of what
+it is asking you to sit through.
 
 ## What the status line is telling you
 
@@ -90,7 +139,7 @@ saying nothing was the old behaviour.
 | `slow · trying parasail…` | a second request is out; the first one to answer wins |
 | `via parasail · rescued` | it worked, for this answer only |
 | `coreweave is slow · switch to auto? (y)` | your pinned machine is quiet, and you can end the wait |
-| `all lanes slow · still waiting` | everywhere is slow; nothing to be done but tell you |
+| `all lanes slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
 
 ## Turning lane routing off
 
@@ -99,3 +148,11 @@ request with no opinion at all. It still will not let you wait forever — a
 ceiling on how long a silence runs before *something* is said about it is not
 steering, it is the promise this surface makes — but it stops choosing endpoints
 for you, stops sending second requests, and stops spending anything on speed.
+
+**The row has three answers, not two, and the third is not off.** Left alone, aforge asks
+for the fastest machine on the turns you are waiting through and the cheapest on the work
+you are not — the split the rest of this page describes. Writing a word in the row
+overrides that everywhere: `latency` asks for the fastest one on every call, background
+work included; `price` ranks on price alone on every call, your own turns included, which
+is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
+`price` still measures machines and still chooses between them. Only `off` stops both.
