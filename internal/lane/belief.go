@@ -321,12 +321,28 @@ func (l *ledger) replay(entry record) {
 	}
 }
 
-// keep writes one observation down. It is called with the lock held, after an
-// answer or on the beat, and never on a send path.
+// keep writes one observation down. It is called with the lock held.
 //
 // A journal line is one small append; the whole set is written only when the
 // journal has grown long enough to be worth compacting, and once at the start
 // so that a session which learns anything leaves a state file behind it.
+//
+// ── AND THE COMPACTION IS STILL IN FRONT OF SOMEBODY, SOMETIMES ─────────────
+//
+// This comment used to say "never on a send path" and that was not true.
+// [ledger.compact] replays the journal under the store's EXCLUSIVE lock, and
+// this function calls it on the first record of a process and on every
+// [journalLimit]th after — while `internal/provider`'s stream loop calls
+// [NoteThought] mid-answer, on the first visible word after a run of thought
+// (client.go, "THE FIRST WORD OF ANSWER IS WHAT ENDS A THOUGHT"). So one
+// request in five hundred and twelve, and the first one of every process, can
+// block on a file lock with a person watching the stream.
+//
+// The per-observation `save()` is gone and that was the big one — every
+// sighting used to marshal every belief and rename a file. What is left is
+// issue #264: an off-path writer and a non-blocking lock. It is recorded here
+// rather than fixed here because it is a change to who owns the writing, and
+// this lane may not take it.
 func (l *ledger) keep(entry record) {
 	if l.keeper == nil {
 		return
