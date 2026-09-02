@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -153,5 +154,33 @@ func TestAnUnwritableRecordIsNotRepairedIntoSomethingElse(t *testing.T) {
 	}
 	if record.Note != "" {
 		t.Errorf("and nothing is written on it: %q", record.Note)
+	}
+}
+
+// THE TABLE IN finite.go IS THE RECORD'S FLOATS AND NOTHING ELSE. A number
+// added to Record and not to the table would be a row dropped again, quietly
+// and for the same reason as #334, so the two are checked against each other
+// here rather than by eye.
+func TestEveryNumberARecordCarriesIsOneTheLogCanRescue(t *testing.T) {
+	var record Record
+	known := map[string]bool{}
+	for _, field := range measured(&record) {
+		known[field.name] = true
+	}
+	shape := reflect.TypeOf(record)
+	floats := 0
+	for index := range shape.NumField() {
+		field := shape.Field(index)
+		if field.Type.Kind() != reflect.Float64 {
+			continue
+		}
+		floats++
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if !known[name] {
+			t.Errorf("Record.%s (%q) is a number JSON can refuse and finite.go does not know it: a row carrying it is still dropped", field.Name, name)
+		}
+	}
+	if floats != len(known) {
+		t.Errorf("the table names %d numbers and the record carries %d", len(known), floats)
 	}
 }
