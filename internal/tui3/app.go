@@ -1175,11 +1175,18 @@ type app struct {
 	sizing bool
 
 	pal palette
+	// mdBase is the painter this surface's environment built at construction
+	// ([stylerFor] over [Options.Env]), and the one every measurement re-inks
+	// from. It is a field rather than a package once so that the profile prose
+	// paints in comes from the same table as every other fact the surface reads
+	// off the shell — a suite that hands [newApp] a TERM is handed a styler that
+	// believes it (markdown.go says what went wrong when it was not).
+	mdBase *tokens.Styler
 	// mdStyler is the painter prose is handed when this surface has MEASURED its
 	// terminal, and nil is the whole of "it has not" — every surface that never
-	// hears back from its terminal reads [markdownStyler]'s process-wide one, for
-	// the reasons that function states. See [app.styler]: this field is the seam
-	// THE GLARE LAW crosses when the ground stops being assumed.
+	// hears back from its terminal reads [app.baseStyler]'s, for the reasons
+	// markdown.go states. See [app.styler]: this field is the seam THE GLARE LAW
+	// crosses when the ground stops being assumed.
 	mdStyler *tokens.Styler
 	// codeCache is the painted rows of the last few source blocks this surface
 	// lexed (codeview.go). Tool rows are drawn fresh on every frame by design, and
@@ -2162,11 +2169,12 @@ func newApp(ctx context.Context, opts Options) *app {
 		stick:               true,
 		width:               80,
 		height:              24,
-		pal:                 detectPalette(),
+		pal:                 detectPalette(env),
+		mdBase:              stylerFor(opts.Env),
 		linear:              opts.Linear,
 		tmux:                tmuxTerm(env),
 		remote:              remoteLink(env),
-		wsl:                 bootWSLPaths,
+		wsl:                 bootWSLPaths(env),
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
 		// whether the modifier is called `alt+` or `⌥`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the

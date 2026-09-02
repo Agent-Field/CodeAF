@@ -783,7 +783,11 @@ type Options struct {
 	// emulator is running so a chord can be spelled its way (chords.go's
 	// [detectChords]), and whether TERM has said enough for a path to be written
 	// as an OSC 8 link at all (pathlink.go's [terminalTakesLinks]) — is read
-	// through this closure at construction and nowhere else.
+	// through this closure at construction and nowhere else. So are the three
+	// facts that used to be read at package boot: which colour profile the
+	// palette and the markdown painter draw in (styles.go's [detectPalette],
+	// markdown.go's [stylerFor]), and whether the process is inside WSL so a
+	// Windows path can be translated (attach.go's [bootWSLPaths]).
 	//
 	// Nil is os.Getenv, which is what every door passes by saying nothing. The
 	// field exists so that a TEST CAN HAND IT A TABLE: a suite that read the

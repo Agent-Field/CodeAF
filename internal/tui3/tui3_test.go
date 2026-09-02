@@ -1129,7 +1129,7 @@ func TestMarkdownArrivesOnSettle(t *testing.T) {
 	if !a.entries[at].settled {
 		t.Fatal("the reply did not settle")
 	}
-	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(renderMarkdown(body, a.width)); !sameRows(got, want) {
+	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(renderMarkdownWith(a.styler(), body, a.width)); !sameRows(got, want) {
 		t.Fatalf("a settled reply is not rendered markdown:\n%#v\n%#v", got, want)
 	}
 }
