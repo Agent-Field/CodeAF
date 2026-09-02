@@ -1,0 +1,4 @@
+{
+  "name": "aforge-v2",
+  "install": "go mod download && make build"
+}
