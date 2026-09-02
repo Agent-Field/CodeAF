@@ -2177,8 +2177,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
 	// difference between a chat's transcript and any other (feed.go states the
 	// law the hooks exist to keep). It is built here and not in the literal above
-	// because the hooks dispatch through this app's own methods.
-	a.feed = newFeed(a.feedHooks())
+	// because the hooks dispatch through this app's own methods, and the POSTURE
+	// is named at the same moment for the same reason (lens.go): what a page
+	// does with an event is a fact about the page, so the page says which it is.
+	a.feed = newFeed(a.feedHooks(participantLens))
 	a.gitProbe = gitHead
 	if a.hosted() {
 		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
@@ -3968,41 +3970,22 @@ func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 // feedHooks is the conversation's whole declaration of what it is, as far as the
 // reducer that grows its transcript is concerned (feed.go).
 //
-// FOUR OF THESE ARE THE PAGE AND TWO ARE THE CHAT. The clock, the follow and the
-// touch are what any surface with a screen owes the reducer; the spawn card and
-// the ambient counts are things THIS page has and the task room does not, and
-// they are installed here — rather than known in there — so that the room can
-// adopt the same reducer without inheriting a card it has nowhere to draw.
+// THREE OF THESE ARE THE PAGE AND THE REST ARE THE POSTURE. The clock, the
+// follow and the touch are what any surface with a screen owes the reducer; the
+// spawn card is something a page either draws or does not, and THE LENS SAYS
+// WHICH (lens.go's [lens.spawnCards]) — installed here rather than known in
+// there, so that a room can adopt the same reducer without inheriting a card it
+// has nowhere to draw. The event itself is ingested either way: a lens may lower
+// salience and may not drop a fact.
 //
 // It is read once, at construction, and the closures dispatch through the
 // methods rather than capturing what they answer: a test that pins the clock
 // after the app is built still gets its clock ([app.now]).
-func (a *app) feedHooks() feedHooks {
-	return feedHooks{
+func (a *app) feedHooks(l lens) feedHooks {
+	hooks := feedHooks{
 		now:    a.now,
 		follow: a.follow,
 		touch:  a.touch,
-		// A PROPOSAL FORMS AS A BLOCK, not as a row (task.go). Only propose_task
-		// earns one, which is a fact about this page's vocabulary rather than
-		// about the event, so the test for it lives on this side of the seam.
-		forming: func(ev session.Event) {
-			if ev.Tool == taskTool {
-				a.formTask(ev)
-			}
-		},
-		// AND ITS RESULT ARRIVING WITH THE CARD STILL FORMING IS A REFUSAL, for
-		// the reason [feed.closeTool] states: a proposal that landed has already
-		// replaced the block with its question.
-		closing: func(ev session.Event) {
-			if ev.Tool == taskTool {
-				a.refuseFormingCard()
-			}
-		},
-		// AND A CUT ATTEMPT TAKES ITS HALF-ARRIVED PROPOSAL WITH IT: the session
-		// throws away a partial call before it asks again, so keeping the card
-		// would join fragments from two different requests into one proposal
-		// ([feedHooks.retrying], task.go).
-		retrying: a.dropRetryingFormingCard,
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
@@ -4011,6 +3994,36 @@ func (a *app) feedHooks() feedHooks {
 			a.hudStale = true
 		},
 	}
+	if !l.spawnCards {
+		return hooks
+	}
+	// A PROPOSAL FORMS AS A BLOCK, not as a row (task.go). Only propose_task
+	// earns one, which is a fact about this page's vocabulary rather than about
+	// the event, so the test for it lives on this side of the seam.
+	hooks.forming = func(ev session.Event) {
+		if ev.Tool == taskTool {
+			a.formTask(ev)
+		}
+	}
+	// AND ITS RESULT ARRIVING WITH THE CARD STILL FORMING IS A REFUSAL, for the
+	// reason [feed.closeTool] states: a proposal that landed has already replaced
+	// the block with its question.
+	hooks.closing = func(ev session.Event) {
+		if ev.Tool == taskTool {
+			a.refuseFormingCard()
+		}
+	}
+	// AND A CUT ATTEMPT TAKES ITS HALF-ARRIVED PROPOSAL WITH IT: the session
+	// throws away a partial call before it asks again, so keeping the card would
+	// join fragments from two different requests into one proposal
+	// ([feedHooks.retrying], task.go).
+	//
+	// IT IS ONE OF THE CARD'S THREE AND NOT ONE OF THE PAGE'S, which is why it
+	// sits below the gate with the other two: the whole of what it does is throw
+	// a forming CARD away, and a page that never draws one has nothing to throw.
+	// The retry itself is still ingested by the same reducer for everybody.
+	hooks.retrying = a.dropRetryingFormingCard
+	return hooks
 }
 
 // event folds one session event into the conversation and waits on the stream

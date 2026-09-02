@@ -61,15 +61,14 @@ import (
 // What a room still owns is what a room IS: which node, where the reader is in
 // it, and the two doors — steering in, esc out.
 //
-// WITH ONE THING THE CONVERSATION DOES THAT A ROOM MUST NOT: FOLD THE WORK
-// AWAY. Out in the thread a finished turn's machinery collapses to
-// "▸ worked · 10 tool calls · ctrl+e", because the person asked a question and
-// what they were owed is the answer. In here that same rule ate the page: a
-// node's life is one long turn ending in a report, so the moment it stopped
-// running everything it had said and done went behind the chip and the only
-// thing left was the report — the exact thing somebody opens a room to see past.
-// [taskRoom.deck] therefore says [deck.showsWork], and workfold.go states the
-// law where the chips are derived.
+// WITH ONE THING IT DOES DIFFERENTLY, AND IT IS DECLARED RATHER THAN SCATTERED:
+// [taskRoom.deck] takes [overseerLens] (lens.go). Out in the thread a finished
+// turn's machinery collapses to "▸ worked · 10 tool calls · ctrl+e"; in here
+// the same chip is spent per SETTLED PHASE instead of per turn, because a
+// node's life is one long turn and folding by turn swallowed the whole page the
+// instant it stopped running. The live frontier never folds and keeps a whole
+// screenful of calls. workfold.go states the law where the chips are derived,
+// with the reversal it went through boxed beside it.
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
@@ -309,12 +308,13 @@ func (r *taskRoom) deck() deck {
 	if r.lane != nil && !r.done {
 		running = r.turn
 	}
-	// showsWork is the room's whole reason for existing, said to the renderer:
-	// this page is the machinery, so none of it collapses into a chip
-	// (workfold.go's [app.deckFolds]).
+	// THE LENS IS THE WHOLE OF WHAT MAKES THIS PAGE A ROOM (lens.go): settled
+	// phases fold to chips, the numbers gather in the header rather than under
+	// each turn, the session's clock does not run over a node's turns, and a
+	// folded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen,
-		showsWork: true, runningTurn: running,
+		lens: overseerLens, runningTurn: running,
 	}
 }
 
@@ -2445,9 +2445,7 @@ func (a *app) roomRows(width int) []row {
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
-	d := room.deck()
-	d.toolTail = a.roomToolTail()
-	out, closed := a.deckRows(d, width)
+	out, closed := a.deckRows(room.deck(), width)
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
 		closed = false
@@ -2683,22 +2681,50 @@ func (a *app) roomUnfoldAtTop(total, height int) bool {
 	room := a.room
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
-	fold := -1
-	for i := 0; i < end; i++ {
-		if rows[i].hit == hitFold {
-			fold = i
-			break
-		}
+	var open func()
+	for i := 0; i < end && open == nil; i++ {
+		open = a.roomFoldDoor(rows[i])
 	}
-	if fold < 0 {
+	if open == nil {
 		return false
 	}
-	a.unfold(rows[fold].turn)
+	open()
 	grown := len(a.roomRows(a.bodyWidth())) - total
 	room.offset = max(grown, 0)
 	room.stick = false
 	a.touch()
 	return true
+}
+
+// roomFoldDoor is what a row on a room's page OPENS, or nil for a row that
+// opens nothing. It is the whole of what [app.roomUnfoldAtTop] knows about the
+// two kinds of fold a room draws, said once.
+//
+// TWO KINDS, ONE GESTURE. A cluster's `↳ N earlier tool calls` line and a
+// phase's `▸ worked …` chip are both history a person came into a room to read,
+// and scroll is the universal read-history gesture — so the wheel opens
+// whichever of them it reaches first. A ladder that opened one and stopped dead
+// at the other would dead-end exactly where the ruling that put the chips there
+// promised it would not (workfold.go's [app.deckFolds]).
+//
+// AND IT ONLY EVER OPENS. A cluster's fold line exists only while it is folded,
+// so toggling it was the same as opening it; a chip is drawn open OR shut, so a
+// toggle would have made the wheel close the phase it had just opened and the
+// next tick open it again. The chip already showing its work is not a door, and
+// the scan walks past it to the next one that is.
+func (a *app) roomFoldDoor(r row) func() {
+	switch r.hit {
+	case hitFold:
+		return func() { a.unfold(r.turn) }
+	case hitWorkFold:
+		// A CHIP ALREADY SHOWING ITS WORK IS NOT A DOOR — whether the reader
+		// opened it or `ui.work = open` did (render.go's [app.deckRows]).
+		if a.room == nil || a.workFoldOpen(a.room.deck(), r.turn) {
+			return nil
+		}
+		return func() { a.openWorkfold(r.turn) }
+	}
+	return nil
 }
 
 // roomSteerLaneRows is the box's placeholder while a room is open: who the

@@ -337,14 +337,13 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 	if r := find("reads the length prefix twice"); strings.HasPrefix(plain(r.text), " ") {
 		t.Fatalf("a room demoted its answer: %q", plain(r.text))
 	}
-	if strings.Contains(strings.Join(func() []string {
-		out := make([]string, 0, len(drawn))
-		for _, r := range drawn {
-			out = append(out, plain(r.text))
-		}
-		return out
-	}(), "\n"), "▸ ") {
-		t.Fatal("a room folded its work into a chip")
+	// AND THE ROOM DOES FOLD ITS SETTLED WORK NOW (issue #252, ruling 1): the
+	// thinking and the two calls between the two paragraphs are behind a chip,
+	// and the hierarchy above and below it is untouched — which is the point of
+	// asking it here. A chip is a fold, and the hierarchy is a property of the
+	// prose.
+	if r := find("▸ worked"); r.hit != hitWorkFold {
+		t.Fatalf("the room drew no phase chip over its settled work: %q", plain(r.text))
 	}
 }
 
