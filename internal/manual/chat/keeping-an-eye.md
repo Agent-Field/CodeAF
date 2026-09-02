@@ -275,7 +275,7 @@ its digit takes it outright from wherever the cursor is. A click takes it too.
 On a narrow window the words shorten to `yes`, `change`, `once` and `no` rather than any
 answer being dropped, and **the `no` is never the one that goes**.
 
-## How do I decline a standing card or say no to a reminder — 0, esc, or the no on the card
+## How do I say no to a reminder — 0, esc, or the no on the card
 
 `0 no` is the way out, and it is one keystroke and **one visible chip** everywhere
 a card like this is drawn: in the conversation, on home's answer row, and in

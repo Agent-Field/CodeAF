@@ -248,7 +248,7 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"esc again to rewind", []string{"esc"}},
 		{"↑↓ recent · enter open", []string{"↑↓", "enter"}},
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
-		{"enter answer · esc no", []string{"enter", "esc"}},
+		{"y yes · r redirect · n no", []string{"y", "r", "n"}},
 		// `0 or esc, no` names two keys for one answer, and the comma after the
 		// second is punctuation rather than part of it. The line is built from
 		// the chips a card drew rather than written down (standing.go's

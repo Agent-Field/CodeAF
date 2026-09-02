@@ -399,8 +399,8 @@ type TaskNotice struct {
 	// says the wrong thing about what is waiting for what.
 	Parent uint64
 	// Deadline is when silence becomes approval — now plus the configured
-	// countdown (task.autoapprove_seconds). A zero Deadline means the clock is
-	// off or has been held by typing, and only an answer resolves the proposal.
+	// countdown (task.autoapprove_seconds). A zero Deadline means the clock
+	// is off and only an answer resolves the proposal.
 	Deadline time.Time
 
 	// ModelOptions is the shortlist a `model` argument raised that fits more

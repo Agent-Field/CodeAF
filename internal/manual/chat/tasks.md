@@ -732,23 +732,25 @@ rounds of its own work, which is exactly the reply that point was written for.
 
 | key | when | what it does |
 | --- | --- | --- |
-| `enter` | always | submits a typed answer, or answers the focused option when the box is empty |
+| `enter` | always | answers the focused option |
 | `esc` | always | outright **no** — declines |
 | `ctrl+e` | box empty | opens or closes the brief |
 | `←` `→` | box empty, picker closed | move the focus between the three options |
+| `y` | box empty, redirect not asked for | approve |
+| `r` | same | ask for the redirect lane |
+| `n` | same | decline |
 | `1`–`4` | same | pick that model from the models row |
 
 The card opens with `yes` focused, because that is what the block is proposing and what the
 clock will do. `←`/`→` clamp at the ends and never wrap. You can also click any chip.
 
-The digits are given straight back the moment there is a sentence in the box, or the moment
-the redirect lane has been asked for. Every bare letter is ordinary answer text: type the
-whole answer, then press `enter`. This is why `no`, `run tests first`, `yes`, and "yes, but
-keep the tests" can all begin in an empty proposal box without losing or acting on their
-first letter. `←`/`→` still work in the redirect lane, because there is no caret to move in
-an empty box.
+The letters and digits are given straight back the moment there is a sentence in the box,
+or the moment the redirect lane has been asked for. "yes, but keep the tests" starts with a
+`y`, and a surface that read that as approval would approve the thing you were in the
+middle of correcting. `←`/`→` still work in the redirect lane, because there is no caret to
+move in an empty box.
 
-While the card is up, the legend hint reads `enter answer · esc no`. A question the
+While the card is up, the legend hint reads `y yes · r redirect · n no`. A question the
 session is blocked on outranks the roster, any open room, every overlay and the draft.
 
 Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a card you selected with
@@ -768,8 +770,8 @@ appended, and the card settles as `approved · the clock`. This is the opposite 
 permission card's countdown, which runs toward denying. A task proposal is not a permission
 gate — it is your window to redirect the work or wave it off before it starts.
 
-The default window is 15 seconds. It is the setting `task.autoapprove_seconds`, in the
-"Safety" category of the settings panel (`ctrl+,` or `/settings`).
+The default window is 5 seconds. It is the setting `task.autoapprove_seconds`, under
+`task.` in the "spending" category of the settings panel (`ctrl+,` or `/settings`).
 
 **This is one of the rows aforge will not change for you.** It decides how long you get
 before work starts on its own, so `change_setting` refuses it and points you back at
@@ -779,30 +781,19 @@ family — the permissions page lists them.
 Set that window to 0 and there is no clock at all: no bar is drawn and the row reads
 `waiting on you`. The card then waits until you answer it, however long that takes.
 
-Typing the first character in the message box also stops a running proposal clock. The
-bar changes to `waiting on you` immediately and the task cannot start while you finish
-your answer. Deleting everything you typed does not restart the clock: `esc` still says
-no, empty `enter` says yes, and `enter` with words answers from those words.
-
 ## What yes, redirect and no each do
 
 **yes** admits the work exactly as briefed.
 
 **redirect** with an empty box does not answer — it takes the focus and waits for your
 words. The `enter` after it carries the sentence. Your words travel verbatim and are
-appended to the brief; this is the last moment the brief may change. Only `enter` reads a
-typed answer. Clicking `yes` approves as briefed, clicking `no` declines, and clicking
-`redirect` focuses the lane regardless of what the box already holds. The box is cleared
-on an answer, so your next `enter` does not send the correction to the model as a message.
+appended to the brief; this is the last moment the brief may change. With something already
+typed, `yes` and `redirect` converge: a correction in the box is a correction whichever one
+you reached for. The box is cleared on any answer, so your next `enter` does not send the
+correction to the model as a message.
 
 **no** (or `esc`) declines. Nothing is spawned, no row appears on the roster, and no room
 exists. This is a normal answer, not an error.
-
-A complete answer typed in the box is also understood. `no`, `nope`, `n`, `stop`,
-`cancel`, `don't` and `dont` decline. `yes`, `y`, `ok`, `okay`, `go` and `sure` approve
-without adding a redirect. Case does not matter, and a final `.` or `!` is ignored. Only
-the whole answer counts: `no, use the flag` is a redirect and approves the corrected
-brief rather than declining it.
 
 Once answered, the card collapses to its head and one foot line that keeps both halves —
 what you reached for and what it came to, joined by ` · `:
@@ -821,35 +812,6 @@ line — it is the only place your own pick is recorded.
 **Honest limit:** once a card has been answered, its brief is no longer reachable from the
 card. `ctrl+e` and `ctrl+o` on a settled card do nothing you can see. The whole of a task's
 life is in its room instead.
-
-## The task started before I could say no
-
-A proposal starts on silence only while its countdown is still moving. The default window
-is 15 seconds. Typing the first character in the message box stops that clock immediately;
-the meter changes to `waiting on you`, and deleting the character does not restart it.
-Press `esc` to decline, or type a complete no answer and press `enter`.
-
-If nothing was typed before the meter reached zero, the work was already admitted and a
-later answer cannot pull it back. Use `task.autoapprove_seconds` in the Safety settings to
-give yourself a longer window, or set it to 0 so every watched proposal waits for you.
-
-## I typed no and it started anyway
-
-Type a complete no answer and press `enter`: `no`, `nope`, `n`, `stop`, `cancel`, `don't`
-and `dont` all decline a proposed task. Case does not matter, and a final `.` or `!` is
-ignored. The first character also stops the countdown, so the task waits while you finish.
-
-Only a bare answer declines. A longer sentence such as `no, use the flag` is treated as a
-correction, so the task is approved with those words appended to its brief. Press `esc` for
-an unconditional no from any proposal.
-
-## How do I stop a proposed task from starting?
-
-Press `esc`, choose `no`, or type one of the complete no answers — `no`, `nope`, `n`,
-`stop`, `cancel`, `don't`, `dont` — and press `enter`. Typing the first character stops a
-running countdown and changes the meter to `waiting on you`; erasing your draft does not
-restart it. Set `task.autoapprove_seconds` to 0 in Safety settings if every proposal on a
-watched session should wait until you answer.
 
 ## Why it warned me another window is already in these files — two windows working on the same files
 

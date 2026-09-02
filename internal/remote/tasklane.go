@@ -320,17 +320,6 @@ func (a *Agent) ResolveTask(id uint64, answer session.TaskAnswer) {
 	}()
 }
 
-// HoldTask stops one proposal clock on the far machine without making a key
-// wait for the connection. The engine broadcasts the zero-deadline proposal
-// back to every surface after it accepts the hold.
-func (a *Agent) HoldTask(id uint64) {
-	c := a.c
-	go func() {
-		defer guard.Recover("remote/task hold")
-		_, _ = c.call(nil, MethodTaskHold, TaskHoldArgs{ID: id})
-	}()
-}
-
 // TaskProposalsPending is the far engine's open proposals, AND WHETHER IT SAID.
 //
 // IT IS ASKED AND NOT REPLICATED because of when it is asked: a turn ending

@@ -238,9 +238,7 @@ func TestPresenceWaitingOutranksWorking(t *testing.T) {
 	}
 
 	agent.mu.Lock()
-	agent.taskAnswers = map[uint64]*taskQuestion{9: {
-		answer: make(chan TaskAnswer, 1), hold: make(chan struct{}),
-	}}
+	agent.taskAnswers = map[uint64]chan TaskAnswer{9: make(chan TaskAnswer, 1)}
 	agent.mu.Unlock()
 	if state := agent.presenceSnapshot(time.Now()).State; state != PresenceWaiting {
 		t.Fatalf("a turn blocked on a proposal says %q, want %q", state, PresenceWaiting)

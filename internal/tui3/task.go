@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -94,8 +93,8 @@ type taskCard struct {
 	// would otherwise have found out at merge time.
 	elsewhere string
 	// deadline is when silence becomes approval, or zero when the clock is off
-	// or held (session's TaskNotice.Deadline). A zero deadline draws no countdown:
-	// a number counting down to nothing is a promise the engine did not make.
+	// (session's TaskNotice.Deadline). A zero deadline draws no countdown: a
+	// number counting down to nothing is a promise the engine did not make.
 	deadline time.Time
 	// born is when this phase of the card arrived. While it forms, the count-up
 	// measures from the call's first fragment. Once the question lands, the
@@ -562,8 +561,6 @@ type taskAgent interface {
 	// ResolveTask answers one proposal: approved as briefed, approved with a
 	// correction appended, or denied.
 	ResolveTask(id uint64, answer session.TaskAnswer)
-	// HoldTask removes the proposal's clock while leaving its answer pending.
-	HoldTask(id uint64)
 	// TaskUpdates is the STANDING subscription — one channel for the session's
 	// whole life, because a node's most important event happens when no turn is
 	// open (session's task_run.go).
@@ -979,15 +976,6 @@ func (a *app) proposeTask(ev session.Event) {
 	if notice == nil {
 		return
 	}
-	// Holding a clock is an update to the proposal every surface already has,
-	// not a second proposal. Reusing the card preserves its draft and focus while
-	// the zero deadline changes the meter to the engine's new state.
-	if a.task != nil && !a.task.settled() && a.task.id == notice.ID {
-		a.task.deadline = notice.Deadline
-		a.markCardStale(a.task)
-		a.touch()
-		return
-	}
 	if a.task != nil && !a.task.settled() {
 		a.task.verdict = taskExpiredWord
 	}
@@ -1075,7 +1063,7 @@ const (
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
 	taskRedirectLane = "redirect this task… (enter sends it, esc declines)"
-	taskProposalHint = "enter answer · esc no"
+	taskProposalHint = "y yes · r redirect · n no"
 	taskExpandHint   = "ctrl+e for the brief"
 	// taskModelTag labels the one fact a proposal carries that nobody can find
 	// out afterwards: whose hands the work is going into.
@@ -1123,9 +1111,13 @@ const (
 // in the legend, forty rows away from the question. A decision moment with
 // nothing to point at is a decision moment a person answers by guessing — so the
 // options are drawn where the question is, in the consent block's own bracket
-// idiom, and every one of them is reachable by pointer or by ←/→ and enter.
-// A bare letter cannot name one: the empty box is also the start of the redirect
-// lane, so its first letter has to remain a letter.
+// idiom, and every one of them is reachable three ways: the pointer, ←/→ and
+// enter, and the letter each option starts with.
+//
+// The letters are the option's own initials — y, r, n — which is what makes them
+// learnable without a legend. They are taken only while the box is EMPTY and the
+// redirect lane has not been asked for (see [app.taskKey]): the moment a person
+// is writing a correction, a letter is a letter.
 const (
 	choiceYes = iota
 	choiceRedirect
@@ -1149,14 +1141,15 @@ func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 // box:
 //
 //	always      enter answers the focused option · esc declines · ctrl+e the brief
-//	empty box   ←/→ move the focus · 1–4 pick a model when offered
+//	empty box   ←/→ move the focus · y, r, n pick an option outright
 //
 // The second tier is given back the moment there is a sentence in the box, and
-// the moment the redirect lane has been asked for. Bare letters are never in
-// that tier: "run tests first" begins with an r, and a surface that read it as
-// the redirect-focus shortcut would silently drop the first letter. ←/→ survive
-// the redirect lane because there is no caret to move in an empty box, and
-// because a focus a person can enter and not leave is a trap.
+// the moment the redirect lane has been asked for. That is the whole guard
+// against the obvious defect: "yes, but keep the tests" begins with a y, and a
+// surface that read that as approval would have approved something the person
+// was in the middle of correcting. ←/→ survive the redirect lane because there
+// is no caret to move in an empty box, and because a focus a person can enter
+// and not leave is a trap.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.awaitingTask() {
 		return nil, false
@@ -1164,7 +1157,7 @@ func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	card := a.task
 	switch msg.String() {
 	case "enter":
-		return a.submitTaskAnswer(), true
+		return a.takeChoice(card.choice), true
 	case "esc":
 		// esc is the dismiss key everywhere on this surface, so it stays the
 		// outright no — from the lane as well as from the row.
@@ -1195,8 +1188,16 @@ func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if card.typing {
 		return nil, false
 	}
+	switch msg.String() {
+	case "y":
+		return a.takeChoice(choiceYes), true
+	case "r":
+		return a.takeChoice(choiceRedirect), true
+	case "n":
+		return a.takeChoice(choiceNo), true
+	}
 	// THE DIGITS BELONG TO THE MODELS ROW, on the one card that has one, and they
-	// are taken in the empty-box tier and under its guard:
+	// are taken in the same tier as the three letters and under the same guard:
 	// a person writing "3 files should change" is writing, not choosing.
 	if at, ok := taskModelKey(msg.String()); ok && at < len(card.options) {
 		a.takeModel(at)
@@ -1235,82 +1236,36 @@ func (a *app) takeModel(at int) {
 	a.touch()
 }
 
-// submitTaskAnswer is the only door that reads the proposal's box. A pointer or
-// focused choice means exactly the visible option it names; enter instead means
-// the sentence the person finished typing when there is one.
-func (a *app) submitTaskAnswer() tea.Cmd {
-	text := a.input.String()
-	if strings.TrimSpace(text) == "" {
-		return a.takeChoice(a.task.choice)
-	}
-	approve, redirect := taskAnswerFromText(a.pastesUnfolded(text))
-	a.answerTask(approve, redirect)
-	a.pastes = nil
-	return a.edited()
-}
-
-// takeChoice acts on one explicit option, whether a key, an arrow's enter or a
-// click asked for it.
+// takeChoice acts on one option, whether a key, an arrow's enter or a click
+// asked for it.
 //
 // REDIRECT IS THE ONE OPTION THAT DOES NOT ANSWER. It is a request for the box —
 // the placeholder is already down there saying what the box is for — so it takes
-// the focus and waits; the enter that follows carries the words. The other two
-// options answer exactly what they say even when the box holds a draft: only
-// enter submits that draft.
+// the focus and waits; the enter that follows carries the words. Yes and
+// redirect converge the moment something IS typed, which is the behaviour the
+// bare lane always had: a correction in the box is a correction whichever of the
+// two a person reached for.
 func (a *app) takeChoice(at int) tea.Cmd {
 	card := a.task
 	if card == nil || card.settled() || at < 0 || at >= len(taskChoiceWords) {
 		return nil
 	}
 	card.choice = at
+	text := strings.TrimSpace(a.input.String())
 	if at == choiceNo {
 		a.answerTask(false, "")
 		return nil
 	}
-	if at == choiceRedirect {
+	if at == choiceRedirect && text == "" {
 		card.typing = true
 		a.markCardStale(card)
 		a.touch()
 		return nil
 	}
-	a.answerTask(true, "")
+	// The engine reads the paste and the card's row keeps the tag (pastechip.go).
+	a.answerTask(true, a.pastesUnfolded(text))
+	a.pastes = nil
 	return a.edited()
-}
-
-// taskBareAnswers is the whole vocabulary that can answer a proposal without
-// using its choice row. Keeping both yes and no in one table prevents the input
-// lane and its tests from growing separate dialects.
-var taskBareAnswers = []struct {
-	word    string
-	approve bool
-}{
-	{word: "no"},
-	{word: "nope"},
-	{word: "n"},
-	{word: "stop"},
-	{word: "cancel"},
-	{word: "don't"},
-	{word: "dont"},
-	{word: "yes", approve: true},
-	{word: "y", approve: true},
-	{word: "ok", approve: true},
-	{word: "okay", approve: true},
-	{word: "go", approve: true},
-	{word: "sure", approve: true},
-}
-
-// taskAnswerFromText reserves only a complete bare answer. Any longer sentence
-// is a correction to the brief, even when its first word happens to be no.
-func taskAnswerFromText(text string) (bool, string) {
-	answer := strings.ToLower(strings.TrimRightFunc(strings.TrimSpace(text), func(r rune) bool {
-		return unicode.IsSpace(r) || r == '.' || r == '!'
-	}))
-	for _, bare := range taskBareAnswers {
-		if answer == bare.word {
-			return bare.approve, ""
-		}
-	}
-	return true, text
 }
 
 // moveChoice walks the row and STOPS at its ends rather than wrapping. Three
@@ -1389,22 +1344,6 @@ func (a *app) answerTask(approve bool, redirect string) {
 	a.closeLists()
 	a.markCardStale(card)
 	a.touch()
-}
-
-// holdTask makes the first typed rune visible locally before it crosses any
-// connection, then tells the engine once. A zero deadline is also the memory
-// that deleting the draft must not restart the clock.
-func (a *app) holdTask() {
-	card := a.task
-	if card == nil || card.settled() || card.deadline.IsZero() {
-		return
-	}
-	card.deadline = time.Time{}
-	a.markCardStale(card)
-	a.touch()
-	if agent, ok := a.tasker(); ok {
-		agent.HoldTask(card.id)
-	}
 }
 
 // toggleCard opens or closes the open proposal's brief.

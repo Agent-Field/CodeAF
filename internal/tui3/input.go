@@ -1037,10 +1037,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))
-		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
-		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy.
-		a.holdTask()
 		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
 		// It is here, on the one line every typed character passes through,
 		// because that is exactly what it is for: seconds before a request is

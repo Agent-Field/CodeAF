@@ -452,9 +452,7 @@ func TestNeedsPersonAgreesWithPresence(t *testing.T) {
 		}},
 		{"a task proposal", func(a *Agent) {
 			a.mu.Lock()
-			a.taskAnswers = map[uint64]*taskQuestion{1: {
-				answer: make(chan TaskAnswer, 1), hold: make(chan struct{}),
-			}}
+			a.taskAnswers = map[uint64]chan TaskAnswer{1: make(chan TaskAnswer, 1)}
 			a.mu.Unlock()
 		}},
 		{"an adaptive run out of fuel", func(a *Agent) {

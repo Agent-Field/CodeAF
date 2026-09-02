@@ -76,7 +76,7 @@ func TestAnAmbiguousProposalOffersTheModelsAndPicksTheClosest(t *testing.T) {
 	}
 
 	// And the answer carries it, so the node is admitted on what was picked.
-	drive(t, a, key("enter"))
+	drive(t, a, key("y"))
 	if len(agent.answered) != 1 {
 		t.Fatalf("the proposal was not answered: %+v", agent.answered)
 	}
@@ -132,14 +132,14 @@ func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
 }
 
 // A DIGIT IS A DIGIT WHILE SOMEBODY IS WRITING. The redirect lane is the same
-// trap bare answer shortcuts once made, and the models row is not exempt from it.
+// trap the y/r/n keys avoid, and the models row is not exempt from it.
 func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
 
-	drive(t, a, key("right"), key("enter"), key("2"))
+	drive(t, a, key("r"), key("2"))
 	if a.task.model != "anthropic/claude-opus-5" {
 		t.Fatalf("a digit typed into the redirect lane moved the model to %q", a.task.model)
 	}
@@ -154,7 +154,7 @@ func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
 func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	a, _, advance := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 0, "openai/gpt-5", nil)})
-	drive(t, a, key("enter"))
+	drive(t, a, key("y"))
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "Fix the nil-map crash", session.TaskRunning,
 		session.TaskNotice{Model: "openai/gpt-5"})})
 

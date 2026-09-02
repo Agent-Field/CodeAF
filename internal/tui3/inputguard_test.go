@@ -140,12 +140,12 @@ func TestAPasteDismissesTheWelcomeBox(t *testing.T) {
 
 // A QUESTION NOBODY CAN SEE IS A QUESTION NOBODY CAN ANSWER.
 //
-// Three rungs of the router sit above home: the connect offer and the harness
-// offer swallow every key while they are up, and the proposal takes answer and
-// model keys whenever the CONVERSATION's box is empty — which says nothing about
-// home's box, the one a person on that screen is actually typing into. So a key
-// meant for a search on home could answer a question that was off screen, and
-// every other letter did nothing at all.
+// Three rungs of the router sit above home and each of them takes bare letters:
+// the connect offer and the harness offer swallow every key while they are up,
+// and the proposal takes y, r, n and the digits whenever the CONVERSATION's box
+// is empty — which says nothing about home's box, the one a person on that
+// screen is actually typing into. So a `y` meant for a search on home answered a
+// question that was off screen, and every other letter did nothing at all.
 //
 // The rule is one rule and it is stated in both directions: a question that
 // ARRIVES takes home down, exactly as the approval question always has
@@ -202,19 +202,11 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 				t.Fatalf("the letter reached home's box as %q, want %q", got, "y")
 			}
 
-			// With home closed it answers in that question's own grammar. A task
-			// proposal keeps the y in its box until enter sees the complete answer;
-			// the two modal offers still answer on their single key.
+			// With home closed it is the answer it has always been.
 			a, ev, answered = tc.start(t)
 			drive(t, a, streamOf(a, ev), key("y"))
-			if tc.name == "the task proposal" {
-				if answered() {
-					t.Fatal("y answered the task proposal before enter")
-				}
-				drive(t, a, key("enter"))
-			}
 			if !answered() {
-				t.Fatal("the visible question did not take its answer with home closed")
+				t.Fatal("y stopped answering the question with home closed")
 			}
 		})
 	}

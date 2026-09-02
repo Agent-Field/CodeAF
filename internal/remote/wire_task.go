@@ -20,10 +20,6 @@ const (
 	// worked, and `y` went nowhere — so the whole task seam failed to assert on
 	// a hosted surface and the rail was never even subscribed.
 	MethodTaskResolve = "Task.Resolve"
-	// MethodTaskHold removes one proposal's admission clock while keeping the
-	// question open. It travels separately from Resolve because typing is not an
-	// answer and a deleted draft must leave the hold in force.
-	MethodTaskHold = "Task.Hold"
 	// MethodTaskPending is the proposals the far engine is still waiting on. A
 	// surface asks it where the local one reads [session.Agent.PendingTasks] —
 	// when a turn ends with a proposal card still on screen — because a card
@@ -107,9 +103,4 @@ type TaskResolveArgs struct {
 	Approved bool   `json:"approved,omitempty"`
 	Redirect string `json:"redirect,omitempty"`
 	Model    string `json:"model,omitempty"`
-}
-
-// TaskHoldArgs names the proposal whose first typed rune stopped its clock.
-type TaskHoldArgs struct {
-	ID uint64 `json:"id"`
 }
