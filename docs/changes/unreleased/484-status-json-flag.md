@@ -1,6 +1,3 @@
-<!-- PLACEHOLDER PR NUMBER: rename this file and the `pr:` field with the real
-     PR number before the pull request's first CI run — `make check` and the
-     check job fail on a number that does not match an open pull request. -->
 ---
 kind: added
 title: /status --json prints the status note as one JSON object
