@@ -167,13 +167,15 @@ func focusOf(task Task) verify.Focus {
 // onto the outcome.
 //
 // changed is the workspace's own account of whether THIS leaf moved anything.
-// moved says an earlier round of the same job already did. Either is reason
-// enough to take the second reading: a continuation that only rewrote its
-// account still hands over a tree an earlier round may have broken, and the
-// whole reason the baseline is the job's is so that breakage is still visible
-// here. A first leaf that changed nothing cannot have regressed anything, and
-// re-running a suite to prove it costs an eighth of the wall for an answer that
-// is already known.
+// moved says the JOB had already moved the tree before this leaf's reading was
+// taken (verify.TreeState, by way of PhotographBefore). Either is reason enough
+// to take the second reading: a continuation that only rewrote its account still
+// hands over a tree an earlier round may have broken, and the whole reason the
+// baseline is the job's is so that breakage is still visible here. Neither is
+// the case for a leaf that changed nothing in a tree nothing had changed — it
+// cannot have regressed anything, and the reading it is holding is a reading of
+// the very bytes in front of it, so it stands rather than being taken again for
+// an eighth of the wall.
 //
 // It belongs at whatever single point a belt lands through, and it runs on an
 // EXHAUSTED landing exactly as on a chosen one: a leaf ordered to stop still
