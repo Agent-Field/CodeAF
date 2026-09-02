@@ -2,6 +2,7 @@ package subharness
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -91,4 +92,49 @@ func wrapCatalog(text string, width int) []string {
 		text = strings.TrimLeft(text[at:], " ")
 	}
 	return append(lines, text)
+}
+
+// BeltEntry is one line of the tool list a designer is shown: a name and a
+// sentence. Each door brings its own belt — the standalone rig's few tools, the
+// chat's wire tools plus whichever media verbs this machine has models for — and
+// everything else in the guide's machinery is this package's.
+type BeltEntry struct {
+	Name  string
+	About string
+}
+
+// Machinery is every value the designer's guide leaves a hole for: this
+// package's caps, both ladders, the kind catalog and the tool belt. It is the ONE
+// map both doors that render the guide read — cmd/harness-design and
+// internal/session — and it lives HERE, beside the numbers, because when each
+// door kept its own copy a placeholder renamed in the guide was fixed in one and
+// silently broke the other: the standalone tool could not render a brief for a
+// fortnight after «kinds» arrived and «max_turns» left. prompts.Render refuses a
+// hole nobody filled and a value nothing reads, so this map and that guide cannot
+// drift apart without the next render saying so — and now there is one map to
+// drift.
+//
+// The name column is sized from the belt rather than fixed, because
+// generate_image is thirteen characters and a fixed width turns the list the
+// designer reads into a ragged one the moment a media verb is present.
+func Machinery(belt []BeltEntry) map[string]string {
+	width := 0
+	for _, tool := range belt {
+		if len(tool.Name) > width {
+			width = len(tool.Name)
+		}
+	}
+	lines := make([]string, 0, len(belt))
+	for _, tool := range belt {
+		lines = append(lines, fmt.Sprintf("%-*s %s", width, tool.Name, tool.About))
+	}
+	return map[string]string{
+		"kinds":         strings.TrimRight(Catalog(), "\n"),
+		"max_nodes":     strconv.Itoa(MaxNodes),
+		"max_id_bytes":  strconv.Itoa(MaxIdBytes),
+		"max_dyn_cap":   strconv.Itoa(MaxDynCap),
+		"verify_ladder": strings.Join(VerifyLadder(), " < "),
+		"dyn_ladder":    strings.Join(DynLadder(), " < "),
+		"tools":         strings.Join(lines, "\n"),
+	}
 }

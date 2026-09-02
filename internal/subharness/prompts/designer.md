@@ -521,6 +521,13 @@ Reply with ONE JSON object and NOTHING else — no prose, no code fence:
 
 Omit `id.version` — the store mints it. No other keys anywhere, at any depth.
 
+One rule about the characters, not the design: JSON delimiters and syntax are
+ASCII. The quotes around every key and every string value are `"` (U+0022), never
+a typographic quote, and the braces, brackets, colons and commas are their plain
+ASCII forms. Prose
+may use any character INSIDE a string value: an em-dash in a brief is content and
+stays.
+
 The `justification` is the derivation, compressed. It must say, in a few tight
 paragraphs and with no restating of the goal:
 
