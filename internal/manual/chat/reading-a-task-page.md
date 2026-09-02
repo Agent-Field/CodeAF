@@ -195,7 +195,7 @@ Every word it draws:
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
 
-## How long a call took on a task's page, and the dim lines between its calls
+## How long did a call take in a task — the 1.4s at the end of a call's row on a task's page, and the dim lines between its calls
 
 A task's page draws the same facts about work in flight that the conversation
 draws, and until recently it drew none of them: the page was built from a
