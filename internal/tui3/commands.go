@@ -280,6 +280,7 @@ var commands = []command{
 	// lines it prints: somebody who wanted the money and typed the general word
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
+	{name: "status", args: "--json", desc: "…everything the status line knows, as one JSON object"},
 	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
 	// AND DIRECTLY UNDER WHAT IT HAS SPENT, WHAT IT MAY. /cost is the reading and
 	// this is the editor, and they sit together because a person who has just

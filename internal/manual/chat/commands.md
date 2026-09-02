@@ -208,6 +208,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
+| `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -608,6 +609,12 @@ machine.
   showing `$0.00`; a note in the transcript must not.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
+
+`/status --json` prints the same facts as **one JSON object** instead of aligned
+columns. The labels are the keys, the values are strings, and the keys come in
+the same order the text form prints them — `session`, `model`, `spend`, `context`,
+`file` and the rest. The whole note is that object followed by a single newline,
+with nothing around it, so the JSON is valid as-is.
 
 ## /cost — what this conversation has spent
 
