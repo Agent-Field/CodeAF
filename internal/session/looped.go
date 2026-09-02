@@ -886,7 +886,7 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 	if a.checkpoints(ctx, user) {
 		rounds := meter.rounds + 1
 		read := a.readMark(ctx)
-		a.journalMarkRead(read, checkpointMarks, rounds, checkpointDecisionContinue)
+		a.journalMarkRead(read, checkpointMarks, rounds, read.sketch.carryOnDecision())
 		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read) {
 			return true
 		}
