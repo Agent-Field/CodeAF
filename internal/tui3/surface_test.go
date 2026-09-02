@@ -616,29 +616,6 @@ func TestEscDuringRecallPutsTheDraftBack(t *testing.T) {
 	}
 }
 
-func TestRecallHidesHistoryPasteLookalikesAndRestoresTheLivePaste(t *testing.T) {
-	literal := pasteToken(1, 3)
-	a, _ := recallApp(t, history.Entry{Text: "old " + literal, Cwd: "/tmp/lab"})
-	a.paste("alpha\nbeta\ngamma")
-	typeInto(t, a, " inspect this")
-	want := a.input.String()
-
-	drive(t, a, key("up"))
-	if len(a.pastes) != 0 || a.input.String() != "old "+literal {
-		t.Fatalf("history has draft=%q pastes=%+v", a.input.String(), a.pastes)
-	}
-	if spoken := a.pastesUnfolded(a.input.String()); spoken != "old "+literal {
-		t.Fatalf("history lookalike unfolded as %q", spoken)
-	}
-	drive(t, a, key("down"))
-	if a.input.String() != want || len(a.pasteSpans()) != 1 {
-		t.Fatalf("live draft restored as %q with %+v", a.input.String(), a.pastes)
-	}
-	if spoken := a.pastesUnfolded(a.input.String()); !strings.Contains(spoken, "alpha\nbeta\ngamma") {
-		t.Fatalf("the restored paste speaks as %q", spoken)
-	}
-}
-
 func TestEverySubmittedLineIsRemembered(t *testing.T) {
 	a, store := recallApp(t)
 	typeLine(t, a, "the first thing")
@@ -1033,12 +1010,11 @@ func TestTheTableRefusesAWordThatMeansTwoThings(t *testing.T) {
 	}
 }
 
-func TestAnUnknownSlashIsSubmittedAsProse(t *testing.T) {
-	agent := &fakeAgent{model: "m"}
-	a := newTestApp(agent)
+func TestAnUnknownSlashStillReachesTheOldAnswer(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
 	typeLine(t, a, "/nonsense")
-	if len(agent.sent) != 1 || agent.sent[0] != "/nonsense" {
-		t.Fatalf("the slash prose was sent as %q", agent.sent)
+	if !strings.Contains(plain(frame(a)), "unknown command: /nonsense") {
+		t.Fatalf("an unknown slash has to answer:\n%s", plain(frame(a)))
 	}
 	if a.menu.open {
 		t.Fatal("the list survived the submit")

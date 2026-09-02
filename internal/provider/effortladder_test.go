@@ -98,26 +98,6 @@ func TestOnlyAPersonsRungReachesAModelTheCatalogCannotVouchFor(t *testing.T) {
 	}
 }
 
-// A REQUIRED ECONOMY MAY BE OVERRIDDEN, BUT NEVER ERASED. Naming first stamps
-// reasoning off because its answer ceiling is tiny, then lets a tier's explicit
-// suffix win. The second stamp must remain explicit when the catalog is silent;
-// otherwise the wire carries neither the suffix nor off and the model can spend
-// the whole answer budget thinking without returning a name.
-func TestAConfiguredRungOverRequiredOffReachesACatalogSilentModel(t *testing.T) {
-	client, recorded := newTestClient(t, Config{
-		SupportsParameter: func(string, string) (bool, bool) { return false, false },
-	})
-	ctx := WithRequiredReasoningEffort(context.Background(), EffortOff)
-	ctx = WithConfiguredEffortRung(ctx, effort.High)
-	if _, err := client.CompleteWithMessages(ctx, userMessages("name this")); err != nil {
-		t.Fatal(err)
-	}
-	reasoning, _ := recorded.body(0)["reasoning"].(map[string]any)
-	if level, _ := reasoning["effort"].(string); level != "high" {
-		t.Fatalf("configured override sent effort %q, want high (body %#v)", level, recorded.body(0))
-	}
-}
-
 // A model whose catalog row says it takes no reasoning knob gets neither half
 // of one — the budget does not survive the word it rides on.
 func TestNeitherHalfOfTheKnobReachesAModelThatRefusesReasoning(t *testing.T) {

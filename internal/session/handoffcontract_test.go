@@ -304,14 +304,7 @@ func TestTheWorkerIsToldWhatItsHandoffAssumed(t *testing.T) {
 // test that counted it would fail on the machine that scheduled it quickly.
 func askedAbout(completer *scriptedCompleter, phrase string) bool {
 	for index := 0; index < completer.requests(); index++ {
-		request := completer.request(index)
-		// A rejected proposal title may be named asynchronously from the same
-		// brief. That auxiliary call is not a worker starting the task and must
-		// not defeat the preflight contract this helper measures.
-		if isNameCall(request) {
-			continue
-		}
-		for _, message := range request {
+		for _, message := range completer.request(index) {
 			if strings.Contains(messageText(message), phrase) {
 				return true
 			}

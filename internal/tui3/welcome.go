@@ -342,7 +342,10 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// the promise /new already makes in those words ([app.renew]: "the sentence
 	// in the box is the person's next one"). /resume closed a session; the
 	// sentence somebody was part way through typing is still theirs.
-	a.restoreAsideDraft(side)
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
 	a.resumed = true
 	a.note("resumed " + a.hostedPath(a.file))
 	if conv.Notice != "" {
@@ -648,7 +651,7 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		// the unit and the status row have taken theirs.
 		_, height := a.size()
 		box := max(1, min(draftRows, height-a.statusHeight(width)-8))
-		block, x, row := a.pasteDraftBlockWith(pal, unit, box)
+		block, x, row := draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
 		caretX, caretRow = lead+x, len(rows)+row
 		for _, line := range block {
 			add(line, welcomeMark{kind: welcomeRowInput})

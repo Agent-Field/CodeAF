@@ -150,7 +150,6 @@ type rewindMode struct {
 	// draft and cursor are the person's own sentence, held for them.
 	draft  []rune
 	cursor int
-	pastes []pasteChip
 	// said is the mode bar's feedback line: the engine's refusal, in the engine's
 	// own words, until a key moves the cut.
 	said string
@@ -184,14 +183,12 @@ func (a *app) enterRewind() tea.Cmd {
 		anchors: a.rewindAnchors(points),
 		draft:   append([]rune(nil), a.input.value...),
 		cursor:  a.input.cursor,
-		pastes:  append([]pasteChip(nil), a.pastes...),
 	}
 	// THE CUT STARTS AT THE LAST THING THE PERSON SAID, because that is what a
 	// person reaching for this means nine times out of ten: take back the message
 	// I just sent. Everything older is one ↑ away.
 	a.rew.at = lastTurnPoint(points)
 	a.input.reset()
-	a.pastes = nil
 	a.sel = -1
 	a.reveal(a.rewindAnchor(a.rew.at))
 	a.touch()
@@ -219,7 +216,6 @@ func (a *app) leaveRewind(restore bool) {
 	if restore {
 		a.input.value = append(a.input.value[:0], a.rew.draft...)
 		a.input.cursor = min(a.rew.cursor, len(a.input.value))
-		a.pastes = a.rew.pastes
 	}
 	a.rew = rewindMode{}
 	a.dropHover()
@@ -456,8 +452,8 @@ func (a *app) commitRewind() {
 	// The count is taken BEFORE the cut, because after it the blocks it counted
 	// are gone.
 	word := a.rewindDropWord()
-	stash, cursor, pastes := a.rew.draft, a.rew.cursor, a.rew.pastes
-	if err := a.rewindLand(point, word, stash, cursor, pastes, func() { a.rew = rewindMode{} }); err != nil {
+	stash, cursor := a.rew.draft, a.rew.cursor
+	if err := a.rewindLand(point, word, stash, cursor, func() { a.rew = rewindMode{} }); err != nil {
 		a.rew.said = errText(err)
 		a.touch()
 	}
@@ -473,7 +469,7 @@ func (a *app) commitRewind() {
 // leave is the caller's own way out, and it is called AFTER the engine has said
 // yes and never before: a refused cut leaves the surface exactly as it was, with
 // the mode still up and the sentence to press again in a moment.
-func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, caret int, pastes []pasteChip, leave func()) error {
+func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, caret int, leave func()) error {
 	agent, ok := a.rewinder()
 	if !ok {
 		return session.ErrNothingToRewind
@@ -497,11 +493,9 @@ func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, c
 		// stop using it — the point of a rewind is almost always to say the same
 		// thing better.
 		a.input.setText(point.Said)
-		a.pastes = nil
 	} else {
 		a.input.value = append(a.input.value[:0], stash...)
 		a.input.cursor = min(caret, len(a.input.value))
-		a.pastes = pastes
 	}
 	a.stick = true
 	a.follow()

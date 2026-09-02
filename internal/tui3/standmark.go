@@ -229,13 +229,8 @@ func (a *app) standingSayShown(text, shown string) tea.Cmd {
 		return nil
 	}
 	if a.parking() {
-		// shown is the editable message. In the ordinary marked-send road
-		// it equals text; for a leading /standing command it retains compact
-		// paste chips whose identities were rebased to the argument.
-		return a.park(shown, true)
+		return a.park(text, true)
 	}
-	// A command that sends immediately has spent any rebased identities.
-	a.pastes = nil
 	return a.submitStandingShown(text, shown)
 }
 
