@@ -1123,6 +1123,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// who watched the old voice continue asks why.
 		{"I changed the model but my task is still on the old one", "models-and-cost"},
 		{"does /model change the model my running task uses", "models-and-cost"},
+		{"why does the via name keep changing on the model list", "models-and-cost"},
+		{"why does the model picker keep jumping", "models-and-cost"},
 		{"how do I turn off the reply guard", "models-and-cost"},
 		{"the model stopped answering halfway through", "models-and-cost"},
 		// Asked from a bill rather than from a screen: a cost autopsy found one

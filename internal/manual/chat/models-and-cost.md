@@ -119,6 +119,23 @@ publishes `["image","text"]` out (a drawing model that captions) is excluded, an
 transcription model (audio in, text out). A row that publishes nothing about itself is judged
 by its id against a narrow list of generation and sidecar words.
 
+## Why the via name keeps changing on the model list
+
+It does not, not while the list is open. `via <machine>` on a `/model` row is which
+provider would typically serve that model, frozen when the list opened — so a turn
+running underneath cannot make the names jump, and the `▲0.5s` and `58t/s` next to them
+stay still too. Close the list and open it again to see the latest.
+
+The status line's `via` is a different fact: that one is who is answering the turn that
+is in flight (`via deepinfra · 92 tok/s`), and it is allowed to move.
+
+## Why does the model picker keep jumping
+
+The `/model` list you are reading is a snapshot. Typing in the filter still narrows it;
+the `via` and the speeds do not rewrite themselves while you look. A turn running
+underneath can still update the status line. Close the list and open it again if you
+want the latest machines.
+
 ## What "sees", "draws", "speaks", "films", "hears" mean on a model row
 
 The dim tail of a picker row ends with what the model can do besides hold a conversation,

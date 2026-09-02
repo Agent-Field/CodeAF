@@ -354,6 +354,27 @@ func TestAVisibleAnswerIsWorthNoMoreThanReadingSpeed(t *testing.T) {
 	}
 }
 
+// A TYPICAL CHOICE IS THE DISPLAY QUESTION: same beliefs, different Now, the
+// same machine. Sampling seeds on the nanosecond; a list that asked that
+// question on every paint named a different via each frame.
+func TestATypicalChoiceDoesNotMoveWithTheClock(t *testing.T) {
+	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
+	first := talk()
+	first.Typical = true
+	want := chooser.Choose(first)
+	if len(want.Order) == 0 {
+		t.Fatal("typical choice named no lane")
+	}
+	for i := 0; i < 40; i++ {
+		req := first
+		req.Now = noon.Add(time.Duration(i) * time.Millisecond)
+		got := chooser.Choose(req)
+		if len(got.Order) == 0 || got.Order[0] != want.Order[0] {
+			t.Fatalf("typical choice moved from %q to %q at +%dms", want.Order[0], got.Order[0], i)
+		}
+	}
+}
+
 // TestHiddenTokensPayForThroughput is the other side of the same mechanism: a
 // tool loop's tokens are pure waiting, so throughput is worth its full rate and
 // a slow-writing lane loses however cheap it is.

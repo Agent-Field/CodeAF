@@ -145,14 +145,10 @@ func TestArrowUnfoldsTheLanesTheLedgerBelievesIn(t *testing.T) {
 }
 
 // AND THE MODEL'S OWN ROW GAINS THE SPEED, which is the same belief said in one
-// line: the first token of the lane that would answer, its rate, and its name.
-//
-// THE INVARIANT IS THAT THE THREE ARE ONE LANE'S, and it is asserted rather than
-// a lane name, because WHICH lane answers is a sampled decision the chooser
-// makes afresh at every moment ([lane.Choose] seeds on the request's own Now).
-// A test that named cloudflare passed only while nothing was choosing; what a
-// person can be promised is that the numbers on the row belong to the machine
-// the row names, whichever machine that turns out to be.
+// line: the first token of the lane that would typically answer, its rate, and
+// its name. Display asks typically ([lane.Request.Typical]), so two paints of
+// the same beliefs name the same machine; the numbers still have to belong to
+// the machine the row names.
 func TestTheModelRowCarriesTheSpeedOfTheLaneItNames(t *testing.T) {
 	laneLab(t, threeLanes())
 	note := modelNote(Model{ID: flash, ContextLength: 1_000_000})
@@ -172,6 +168,50 @@ func TestTheModelRowCarriesTheSpeedOfTheLaneItNames(t *testing.T) {
 		t.Fatalf("the row says %q, want %s %s — the numbers of the lane it names",
 			note, wantTTFT, wantRate)
 	}
+	if again := modelNote(Model{ID: flash, ContextLength: 1_000_000}); again != note {
+		t.Fatalf("a second paint rewrote the row:\n%s\n→\n%s", note, again)
+	}
+}
+
+// AN OPEN LIST DOES NOT REWRITE ITS ROWS. The ledger can learn a faster
+// machine while a turn is running under the overlay; the rows a person is
+// reading stay the ones they opened onto. Close and open again to see the
+// new via.
+func TestAnOpenPickerKeepsTheViaItOpenedWith(t *testing.T) {
+	rows := threeLanes()
+	laneLab(t, rows)
+	a := laneApp(t)
+	a.width = 120
+	typeLine(t, a, "/model")
+	before := plain(frame(a))
+	via := pickerVia(before, flash)
+	if via == "" {
+		t.Fatalf("the open list named no via:\n%s", before)
+	}
+	rows[flash] = []lane.Belief{
+		laneBelief(flash, "Friendli", 100, 200, 0.01, lane.Facts{
+			Uptime5m: 100, PriceOut: 0.1e-6, Tools: true, MaxOut: 345_000,
+		}),
+	}
+	after := plain(frame(a))
+	if got := pickerVia(after, flash); got != via {
+		t.Fatalf("an open picker rewrote via %q → %q:\n%s", via, got, after)
+	}
+	if strings.Contains(after, "via friendli") {
+		t.Fatalf("the open list picked up a ledger that arrived after it opened:\n%s", after)
+	}
+}
+
+func pickerVia(screen, id string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if !strings.Contains(line, id) || !strings.Contains(line, "via ") {
+			continue
+		}
+		_, rest, _ := strings.Cut(line, "via ")
+		named, _, _ := strings.Cut(rest, " · ")
+		return strings.TrimSpace(named)
+	}
+	return ""
 }
 
 // ── 2. the emptiness law ────────────────────────────────────────────────────

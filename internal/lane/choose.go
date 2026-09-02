@@ -498,6 +498,13 @@ func (c *chooser) Choose(req Request) Choice {
 	if width < 0 {
 		width = 0
 	}
+	if req.Typical {
+		// A LIST IS NOT A REQUEST. Typical is the display question: rank
+		// on the posterior means, the way a short session already does
+		// when it has nothing left to learn. Sampling here is what made
+		// every /model frame name a different machine.
+		width = 0
+	}
 	scored := make([]Scored, 0, len(survivors))
 	perceived := make(map[ID]float64, len(survivors))
 	for _, candidate := range survivors {

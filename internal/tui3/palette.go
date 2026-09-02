@@ -118,6 +118,12 @@ type picker struct {
 	// which cannot change while a modal overlay owns the keyboard.
 	current string
 
+	// held is each model's row facts, frozen the first time this list drew
+	// them. The chooser used to sample a fresh via on every frame; a running
+	// turn still updates the ledger. Neither may rewrite a row somebody is
+	// reading — the same snapshot law as current and pin.
+	held map[string][]rowField
+
 	// task is the NODE this list is being chosen for, and 0 is the conversation —
 	// which is every /model, every press on the status row out in the thread, and
 	// every settings row. It is set only by [app.openTaskPicker], and what it
@@ -1270,7 +1276,7 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 		// a question about the LIST and not about the model, so the list
 		// answers it once when it opens ([picker.shared]).
 		author: !p.shared[rowSlug(model.ID)],
-		fields: modelFields(model, pin),
+		fields: p.rowFields(model, pin),
 	}
 	// THE LEVEL RIDES THE NAME AND IS NEVER CUT. It is the one thing on the row
 	// that is not a fact about the model — it is what THIS person asked for, and
@@ -1280,6 +1286,22 @@ func (p *picker) rowText(model Model, level string, width int) (string, string) 
 		plan.suffix = ":" + level
 	}
 	return rowHalves(plan, width, 0)
+}
+
+// rowFields is the tail of one model, frozen the first time this list drew
+// it. A second paint — a frame tick, a token arriving under the overlay —
+// must not re-ask the chooser or re-age the ledger: that is the flicker
+// `/model` used to show, `via` hopping and the speed rewriting itself.
+func (p *picker) rowFields(model Model, pin string) []rowField {
+	if p.held == nil {
+		p.held = make(map[string][]rowField)
+	}
+	if fields, ok := p.held[model.ID]; ok {
+		return fields
+	}
+	fields := modelFields(model, pin)
+	p.held[model.ID] = fields
+	return fields
 }
 
 // ── reasoning strength, from the row it belongs to ──────────────────────────

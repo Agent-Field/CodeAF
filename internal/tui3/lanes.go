@@ -411,7 +411,15 @@ func laneAuto(model string, views []laneView, now time.Time) string {
 	// asks — and the row then named a machine the very next turn did not use.
 	// One shape, stated where the wire states it, so the `auto` row and the
 	// request it predicts cannot drift.
-	choice := lane.Default().Chooser().Choose(provider.LaneTalkAsk(model, now))
+	//
+	// AND IT ASKS TYPICALLY, not for this nanosecond's exploration draw.
+	// Choose seeds on Now; a picker that asked the send-path question on
+	// every frame named a different `via` each time, and the numbers
+	// beside it jumped with it. The send still samples. The list shows
+	// the machine auto would pick if it were not exploring this turn.
+	ask := provider.LaneTalkAsk(model, now)
+	ask.Typical = true
+	choice := lane.Default().Chooser().Choose(ask)
 	if len(choice.Order) > 0 && choice.Order[0] != "" {
 		return choice.Order[0]
 	}
