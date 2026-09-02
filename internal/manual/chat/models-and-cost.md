@@ -536,7 +536,8 @@ status line shows the chat model on the left and `crew max` — or `crew balance
 `crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
 on the right. That segment is a setting, not a measurement, so it is among the first things
 a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
-width. A session opened without a profile has no crew and shows no `crew` segment at all.
+width. The one session with no `crew` segment at all is a **remote** one opened with
+`--host`: that crew lives on the other machine.
 
 ## Asking a class to think harder — a level on a class value
 
@@ -1451,8 +1452,9 @@ crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
 the head of the telemetry beside the model, and among the first a narrow row gives up; the
-`crew` line here and on the phone's status sheet is the full reading. A session opened
-without a profile directory has no crew to read and gets no `crew` line or segment at all.
+`crew` line here and on the phone's status sheet is the full reading. A **remote** session
+opened with `--host` has no crew of its own to read — it is the other machine's — and gets
+no `crew` line or segment at all.
 
 Two things differ deliberately from the status line on screen:
 

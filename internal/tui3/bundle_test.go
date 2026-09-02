@@ -2178,7 +2178,9 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 
 	a.state = stateIdle
 	a.pick.open = true
-	if got := a.hintWord(); got != "enter switch · esc" {
+	// The crew rides the end of the picker's hint (crew.go's [app.crewHint]),
+	// and an ordinary launch has one.
+	if got := a.hintWord(); got != "enter switch · esc · crew "+config.DefaultCrew {
 		t.Fatalf("an open picker offered %q", got)
 	}
 	a.pick.open = false

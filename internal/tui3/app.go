@@ -1808,6 +1808,10 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
+	// crew is the profile's crew as this surface last read it, so the status
+	// line can name it without reading four settings rows off the disk on every
+	// frame (crew.go's [app.crewReading]).
+	crew crewReading
 	// workSeatSaid is whether this session has already asked whether its work
 	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
 	// SESSION and not about the profile: the line is a receipt for work that is

@@ -365,21 +365,46 @@ func TestStatusSaysCustomOverAHandSetClass(t *testing.T) {
 	}
 }
 
-// THE EMPTINESS LAW: a door opened without a profile directory has no four tier
-// rows to read, so there is no crew line at all — not a label with a default
-// beside it, which would be a claim about a file nobody is writing.
-func TestStatusSaysNothingAboutACrewWithNoProfile(t *testing.T) {
+// THE EMPTINESS LAW, AIMED AT THE RIGHT FACT: a window with no four tier rows
+// to read has no crew line at all — not a label with a default beside it, which
+// would be a claim about a file nobody is writing. That window is the HOSTED
+// one, where the crew lives on the far machine.
+func TestStatusSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.model = "m"
-	if a.profileDir != "" {
-		t.Fatalf("this app has a profile at %q and cannot test the empty case", a.profileDir)
-	}
+	a.host = "devbox"
 
 	a.slash("/status")
 	for _, line := range strings.Split(lastNote(t, a), "\n") {
 		if strings.HasPrefix(line, "crew") {
-			t.Fatalf("a session with no profile grew a crew line: %q", line)
+			t.Fatalf("a hosted window grew a crew line: %q", line)
 		}
+	}
+}
+
+// AND AN EMPTY PROFILE DIRECTORY IS THE ORDINARY LAUNCH, WHICH HAS A CREW.
+//
+// AFORGE_PROFILE_DIR is exported by almost nobody, so the empty string is what
+// nearly every launch carries and internal/config resolves it to this process's
+// own profile in the state root. The guard that read it as "no profile" left the
+// crew off /status, off the status line and out of the picker's hint on every
+// one of those launches (#315).
+func TestAnEmptyProfileDirectoryIsTheOrdinaryProfileAndStillHasACrew(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.model = "m"
+	if a.profileDir != "" {
+		t.Fatalf("this app names a profile at %q and cannot test the ordinary launch", a.profileDir)
+	}
+
+	if word := a.crewWord(); !strings.HasPrefix(word, config.CrewBalanced+" ·") {
+		t.Fatalf("the ordinary launch reads its crew as %q", word)
+	}
+	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
+		t.Fatalf("the ordinary launch's crew segment reads %q", got)
+	}
+	a.slash("/status")
+	if !strings.Contains(lastNote(t, a), "\ncrew     "+config.CrewBalanced+" ·") {
+		t.Fatalf("/status says nothing about the crew on an ordinary launch:\n%s", lastNote(t, a))
 	}
 }
 
@@ -397,11 +422,13 @@ func TestTheModelPickerNamesTheCrewInTheHintSlot(t *testing.T) {
 		t.Fatalf("the picker's hint reads %q", got)
 	}
 
-	// And a door with no profile is the hint exactly as it was.
-	bare := newTestApp(&fakeAgent{model: "m"})
-	bare.pick.open = true
-	if got := bare.hintWord(); got != "enter switch · esc" {
-		t.Fatalf("the hint on a session with no profile reads %q", got)
+	// And a hosted window — the one window with no crew of its own — is the hint
+	// exactly as it was.
+	hostedWindow := newTestApp(&fakeAgent{model: "m"})
+	hostedWindow.host = "devbox"
+	hostedWindow.pick.open = true
+	if got := hostedWindow.hintWord(); got != "enter switch · esc" {
+		t.Fatalf("the hint in a hosted window reads %q", got)
 	}
 }
 
@@ -561,20 +588,53 @@ func TestTheCrewSegmentYieldsBeforeTheNumbers(t *testing.T) {
 	}
 }
 
-// THE EMPTINESS LAW ON THE ROW: a door opened without a profile has no crew to
-// read, and the status line says nothing rather than guessing a word.
-func TestTheStatusLineSaysNothingAboutACrewWithNoProfile(t *testing.T) {
+// THE EMPTINESS LAW ON THE ROW: a hosted window has no crew to read — it is on
+// the far machine — and the status line says nothing rather than guessing a word.
+func TestTheStatusLineSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.model = "m"
-	if a.profileDir != "" {
-		t.Fatalf("this app has a profile at %q and cannot test the empty case", a.profileDir)
-	}
+	a.host = "devbox"
 	if line := plain(a.status(200)); strings.Contains(line, "crew") {
-		t.Fatalf("a session with no profile grew a crew segment:\n%q", line)
+		t.Fatalf("a hosted window grew a crew segment:\n%q", line)
 	}
 	for _, part := range a.telemetry(200) {
 		if part.kind == segCrew {
-			t.Fatalf("a session with no profile assembled a crew segment: %+v", part)
+			t.Fatalf("a hosted window assembled a crew segment: %+v", part)
+		}
+	}
+}
+
+// AND THE WHOLE FRAME CARRIES IT ON AN ORDINARY LAUNCH, at both the widths a
+// person actually sits at.
+//
+// This is the issue's headline said the way a person meets it: not a segment
+// asked for by name, but the frame [app.View] draws, with a crew picked in a
+// profile of this test's own and nothing exported into the environment. It was
+// red at every width before #315 and is green at both after it, and a hosted
+// window at the same widths still shows none.
+func TestTheFrameCarriesTheCrewOnAnOrdinaryLaunchAtEveryWidth(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.ApplyCrew(dir, config.CrewMax); err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []int{80, 120} {
+		a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
+		a.profileDir = dir
+		a.model = "openai/gpt-4.1-mini"
+		a.width, a.height = width, 24
+		painted, _, _ := a.frame()
+		if frame := plain(painted); !strings.Contains(frame, "crew "+config.CrewMax) {
+			t.Fatalf("the %d-column frame of an ordinary launch does not carry the crew:\n%s", width, frame)
+		}
+
+		hostedWindow := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
+		hostedWindow.profileDir = dir
+		hostedWindow.host = "devbox"
+		hostedWindow.model = "openai/gpt-4.1-mini"
+		hostedWindow.width, hostedWindow.height = width, 24
+		hostedPaint, _, _ := hostedWindow.frame()
+		if frame := plain(hostedPaint); strings.Contains(frame, "crew ") {
+			t.Fatalf("the %d-column frame of a hosted window carries a crew:\n%s", width, frame)
 		}
 	}
 }

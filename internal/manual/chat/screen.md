@@ -449,8 +449,9 @@ is the keyboard door onto the same tab.
 Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
 `crew frugal`, or `crew custom` when you pinned one of the five yourself — so the two model
 dials sit side by side: the model you talk to on the left, the preset the five models aforge
-uses on its own behalf are on to its right. It is absent on a session with no profile, and
-it is one of the first segments a narrow row drops.
+uses on its own behalf are on to its right. It is absent only on a **remote** session
+opened with `--host`, whose crew lives on the other machine, and it is one of the first
+segments a narrow row drops.
 
 While a task **room** is open the cluster renames itself to the room chip and the room's
 model — `task <model>` — and **pressing it moves that task**, not the conversation: the
@@ -471,7 +472,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
-| 0 | crew | `crew max` | which preset the five models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent on a session with no profile |
+| 0 | crew | `crew max` | which preset the five models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent only on a remote (`--host`) session, whose crew is the other machine's |
 | 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
 | 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |

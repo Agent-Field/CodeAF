@@ -177,16 +177,30 @@ func SettingsGeneration() uint64 { return settingsGeneration.Load() }
 
 func bumpSettingsGeneration() { settingsGeneration.Add(1) }
 
+// ProfilePath names a file this profile keeps, and is THE ONE PLACE THAT KNOWS
+// WHAT AN EMPTY PROFILE DIRECTORY MEANS.
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW. [ProfileDir] carries AFORGE_PROFILE_DIR, which
+// almost nobody exports, so the empty string is what very nearly every launch
+// passes down here — and it has always meant "the profile where it always is",
+// aforge's own state root, which internal/home owns and AFORGE_HOME moves. A
+// caller that reads emptiness as "there is no profile" and goes quiet is
+// therefore silent on the ordinary launch and loud only on the rare one, which
+// is the exact inversion this function exists to stop being retyped: it has
+// cost the model picker's lane pin, the settings pair on the belt, the status
+// line's crew segment and the notices' own memory, each found separately.
+func ProfilePath(profileDir, name string) string {
+	if profileDir = strings.TrimSpace(profileDir); profileDir != "" {
+		return filepath.Join(profileDir, name)
+	}
+	return home.Join(name)
+}
+
 // BudgetConfigPath is config.json in aforge's state root unless
 // AFORGE_PROFILE_DIR supplies the same alternate root used by measured
 // profiles.
-func BudgetConfigPath(profileDir string) string {
-	profileDir = strings.TrimSpace(profileDir)
-	if profileDir != "" {
-		return filepath.Join(profileDir, "config.json")
-	}
-	return home.Join("config.json")
-}
+func BudgetConfigPath(profileDir string) string { return ProfilePath(profileDir, "config.json") }
 
 func parseDailyBudget(raw, source string) (float64, error) {
 	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)

@@ -294,13 +294,18 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 // THE BYTES, PINNED. The wave's promise is that a frame wide enough for the
 // status row renders exactly what it rendered before the deck existed, escape
 // sequences and all — so the row is asserted against its literal self.
+//
+// The crew joined the row in #315, which is the one deliberate change to this
+// literal since the deck: the segment was written to stand at the head of the
+// telemetry and drew for nobody, because it was guarded on an empty profile
+// directory — the ordinary launch (crew.go's [app.crewReading]).
 func TestTheWideStatusRowIsByteForByteWhatItWas(t *testing.T) {
 	a, _ := deckApp(t)
 	a.width = 120
 	a.touch()
 
 	const want = "Fix the nil-map crash · deepseek-v4-flash" +
-		"                                                  $0.31 · 24k/200k · 12% · idle"
+		"                                  crew balanced · $0.31 · 24k/200k · 12% · idle"
 	if got := plain(strings.Join(a.statusRows(120), "\n")); got != want {
 		t.Fatalf("the wide status row changed:\n got %q\nwant %q", got, want)
 	}

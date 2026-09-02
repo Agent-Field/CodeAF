@@ -190,7 +190,9 @@ func TestTheHintSlotFollowsTheKeyboard(t *testing.T) {
 	// The picker is read ABOVE copy mode (input.go reads it before ctrl+c), so
 	// it wins the slot when both are somehow up.
 	a.pick.open = true
-	if got := a.hintWord(); got != "enter switch · esc" {
+	// And the crew rides the end of it on any launch that has one (crew.go's
+	// [app.crewHint]).
+	if got := a.hintWord(); got != "enter switch · esc · crew "+config.DefaultCrew {
 		t.Fatalf("an open picker offered %q", got)
 	}
 	a.pick.open, a.copy.on = false, false

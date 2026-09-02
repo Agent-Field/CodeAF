@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // faultMessage is what the user reads when aforge could not keep going. It is
@@ -41,19 +41,14 @@ func reportFault(stderr io.Writer, detail string, stack []byte) int {
 // fallback is [config.BudgetConfigPath]'s, spelled the same way for the same
 // reason: internal/home is the one place that knows where state lives, and
 // AFORGE_HOME moves this with the rest of it (chatv3_layout.go).
-func chatLogPath(profileDir string) string {
-	if profileDir = strings.TrimSpace(profileDir); profileDir != "" {
-		return filepath.Join(profileDir, "chat.log")
-	}
-	return home.Join("chat.log")
-}
+func chatLogPath(profileDir string) string { return config.ProfilePath(profileDir, "chat.log") }
 
 // displayPath prefers the ~ form: it is what the user typed to get here and
 // what they will type to read the log.
 func displayPath(path string) string {
-	// `base` and not `home`: internal/home is imported into this file now, and a
-	// local shadowing a package is the kind of thing that reads fine until
-	// somebody adds a line under it.
+	// `base` and not `home`: this file has carried an internal/home import
+	// before, and a local shadowing a package is the kind of thing that reads
+	// fine until somebody adds a line under it.
 	base, err := os.UserHomeDir()
 	if err != nil || base == "" {
 		return path

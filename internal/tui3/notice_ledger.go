@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // THE LEDGER: what this profile has already been told.
@@ -24,13 +26,28 @@ import (
 // noticeLedgerName is the file, beside config.json in the profile directory.
 const noticeLedgerName = "notices.json"
 
-// noticeLedgerPath is where the ledger lives for a profile, or "" for a door
-// that has no profile directory — in which case nothing is written.
+// noticeLedgerPath is where the ledger lives, resolved the way config.json
+// beside it is resolved ([config.ProfilePath]).
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW. This function used to answer "" for an empty
+// directory and the board then held its memory in RAM for the session — which,
+// because AFORGE_PROFILE_DIR is set on almost no launch, is what happened on
+// almost every launch: a hint that is meant to age out after three sessions was
+// on its first session every time, a hint retired by the gesture it teaches came
+// back at the next start, and the news channel never had an older build to
+// compare against, so a shipped feature could not announce itself. The ledger is
+// four small keys beside the settings they are about, and it belongs wherever
+// those settings are.
+//
+// A CONNECTION CHANGES NOTHING HERE, which is what makes this different from the
+// crew (crew.go). What the ledger remembers is which KEYS the person at this
+// keyboard has already been taught, and the keyboard is this machine's however
+// far away the engine is — so a hosted window keeps its hints in this laptop's
+// own state root, like every other thing this surface remembers about its own
+// chrome.
 func noticeLedgerPath(profileDir string) string {
-	if profileDir == "" {
-		return ""
-	}
-	return filepath.Join(profileDir, noticeLedgerName)
+	return config.ProfilePath(profileDir, noticeLedgerName)
 }
 
 // noticeLedger is the file's shape. Every field is omitted when empty, so a
