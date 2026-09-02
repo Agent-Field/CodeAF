@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // A SURFACE THAT OWNS THE TERMINAL OWNS THE LOGGER, AND IT OWNS IT FROM ONE
@@ -155,3 +157,40 @@ var errSurfaceTest = errSurface("the surface stopped")
 type errSurface string
 
 func (e errSurface) Error() string { return string(e) }
+
+// THE CRASH LOG AND THE RUNNING LOG ARE ONE FILE, under a profile too. A person
+// who moved their profile with AFORGE_PROFILE_DIR has the surface's warnings
+// written inside it; the fatal fault's "Details: <path>" has to name the same
+// file, or the one place to look becomes two.
+func TestTheCrashLogAndTheRunningLogAreOneFileUnderAProfile(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	t.Setenv("AFORGE_HOME", filepath.Join(t.TempDir(), "state"))
+
+	previous := log.Writer()
+	t.Cleanup(func() { log.SetOutput(previous) })
+	if err := withSurfaceLogger(config.ProfileDir(), func() error {
+		log.Print("a warning while the surface is up")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stderr := &bytes.Buffer{}
+	reportFault(stderr, "runtime error: nil pointer", []byte("goroutine 1 [running]:\n"))
+
+	want := filepath.Join(profile, "chat.log")
+	raw, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatalf("the profile's chat.log was not written: %v", err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, "a warning while the surface is up") {
+		t.Fatalf("the running log did not land in the profile:\n%s", got)
+	}
+	if !strings.Contains(got, "fatal fault: runtime error: nil pointer") {
+		t.Fatalf("the crash append did not land in the same file:\n%s", got)
+	}
+	if !strings.Contains(stderr.String(), want) && !strings.Contains(stderr.String(), displayPath(want)) {
+		t.Fatalf("the sentence on screen names %q, not the file both wrote: %s", stderr.String(), want)
+	}
+}

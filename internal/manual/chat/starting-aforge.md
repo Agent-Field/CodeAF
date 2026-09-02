@@ -284,9 +284,7 @@ background — all four write to `chat.log` in this machine's profile, the machi
 sitting at.
 
 If aforge stops with `aforge hit an internal fault and had to stop`, the details it points
-you at are appended to the `chat.log` under aforge's state root — the same file unless
-`AFORGE_PROFILE_DIR` has moved the running log into a profile folder, in which case the
-sentence on screen names the file it wrote. In the
+you at are appended to that same file, so there is one place to look either way. In the
 rare case aforge cannot write there at all — a profile folder it has no permission for —
 it leaves the log on the terminal rather than dropping it, on the grounds that a torn
 frame is better than a lost warning.

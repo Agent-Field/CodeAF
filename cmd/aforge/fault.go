@@ -20,9 +20,13 @@ const faultMessage = "aforge hit an internal fault and had to stop. Nothing is l
 // read, and answers with the process exit code.
 func reportFault(stderr io.Writer, detail string, stack []byte) int {
 	// A fault has no settings to read — it is what is left when the launch did
-	// not get that far — so it names the file the way a launch with no profile
-	// of its own does.
-	path := chatLogPath("")
+	// not get that far — but the profile is an environment pin and is still
+	// readable, and it is read HERE for the reason the running log reads it: the
+	// surface's log and the crash's append are one file, and a profile that moved
+	// the first has to move the second, or "Details: <path>" names a file the
+	// running log never touched (chatv3_surface.go's [withSurfaceLogger] is the
+	// other reader of this path).
+	path := chatLogPath(config.ProfileDir())
 	writeFaultLog(path, detail, stack)
 	fmt.Fprintf(stderr, faultMessage, displayPath(path))
 	return 1
