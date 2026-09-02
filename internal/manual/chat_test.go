@@ -29,6 +29,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// asks what was on the wire.
 		{"where are the logs", "models-and-cost"},
 		{"what did you send the model", "models-and-cost"},
+		// And the row that is short of a figure: the note names the number it
+		// left out, which is the first thing somebody greps for when a line has
+		// a sentence where a cost should be.
+		{"why is cost_s missing on a call log row", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
@@ -1481,6 +1485,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+// #334: a row of the model-call log may be short of a number JSON cannot spell,
+// and it says which one in its note. The page-level probe above is not enough
+// to hold that: the whole page is about calls and costs, so it reaches
+// models-and-cost with or without the sentence. This pins the sentence itself
+// to the section a person asking the question is actually handed.
+func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
+	const said = "cost_s was +Inf"
+	for _, section := range Chat().Search("why is cost_s missing on a call log row", DefaultResults) {
+		if section.Page == "models-and-cost" && strings.Contains(section.Body, said) {
+			return
+		}
+	}
+	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
 }
 
 func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
