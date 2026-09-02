@@ -582,7 +582,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 				continue
 			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
-			// "· " row this surface says everything of its own in ([app.note]) —
+			// "· " row this surface says everything of its own in ([feed.note]) —
 			// and NOT above a "›" as though somebody had typed it.
 			//
 			// The commonest one is the note that wakes a turn: work landed while

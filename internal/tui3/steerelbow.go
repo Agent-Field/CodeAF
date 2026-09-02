@@ -222,9 +222,9 @@ type steerElbow struct {
 // steerAccepted puts one correction into the transcript, at the point in it
 // where the person said it.
 //
-// IT GOES THROUGH [app.said] and not through a bare append, for that door's own
+// IT GOES THROUGH [feed.said] and not through a bare append, for that door's own
 // reason: a block appended while the model is mid-paragraph must not cut the
-// live paragraph in two, and [app.said] is the one place that keeps the live
+// live paragraph in two, and [feed.said] is the one place that keeps the live
 // index pointing at the block the next delta will grow. What the reader sees is
 // the answer so far, whole, then the correction under it.
 //
@@ -326,7 +326,7 @@ func (a *app) settleSteers() {
 // withdrawSteer takes one correction off the page.
 //
 // THE BLOCK IS TRUNCATED WHEN IT IS LAST AND EMPTIED OTHERWISE, which is
-// [app.dropLive]'s rule and echo.go's, and it is here for their reason:
+// [feed.dropLive]'s rule and echo.go's, and it is here for their reason:
 // removing an entry from the middle would move every index after it, and the
 // live block, the forming rows, the selection and the thought marker are all
 // held by index. An emptied block renders nothing at all and is stepped over by

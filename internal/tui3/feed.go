@@ -19,19 +19,25 @@ import (
 // The law is stated here because this codebase has already paid for breaking
 // it. The task room grew a hand-copy of this whole family — roomFormTool,
 // roomAnnounceTool, roomBeginTool, roomCloseTool, roomSettleCompaction and the
-// rest of the eleven in room.go — and being the copy is exactly why a room
-// still does not learn that a tool FINISHED, and why a retry inside a task is
-// invisible: every event kind added since had to be wired twice, and the second
-// wiring is the one nobody remembers. So a surface that needs the reducer to do
-// something extra installs a [feedHooks] function; it does not write a second
-// reducer, which agrees with this one on the day it is written and drifts from
-// it by the next wave.
+// rest of the eleven in room.go — and being the copy is exactly why a room did
+// not learn that a tool FINISHED, why a retry inside a task was invisible, and
+// why an end event paired by one rule out in the conversation and another in
+// there: every event kind added since had to be wired twice, and the second
+// wiring is the one nobody remembers. The copies are gone
+// (docs/design/lens/DESIGN.md, Decision 1), and a surface that needs the
+// reducer to do something extra installs a [feedHooks] function instead; it
+// does not write a second reducer, which agrees with this one on the day it is
+// written and drifts from it by the next wave.
 //
-// IT IS EMBEDDED IN [app] RATHER THAN HELD BESIDE IT, which is what keeps the
-// several hundred existing readers of `a.entries`, `a.live`, `a.think` and
-// `a.turn` spelled the way they have always been spelled: the fields moved
-// house, not name. The room adopts the same reducer in the lane that deletes
-// its mirrors (docs/design/lens/DESIGN.md, Decision 1).
+// IT IS EMBEDDED IN [app] AND IN [taskRoom] RATHER THAN HELD BESIDE THEM, which
+// is what keeps the several hundred existing readers of `entries`, `live`,
+// `think` and `turn` spelled the way they have always been spelled on both
+// surfaces: the fields moved house, not name.
+//
+// THE LENS MAY LOWER SALIENCE; IT MAY NOT DROP A FACT. What a page does with an
+// entry — folds it, dims it, puts it behind a keypress — is the page's; whether
+// the entry EXISTS is this file's, for every surface at once, and
+// salience_test.go walks every event kind through both to hold it.
 type feed struct {
 	entries []entry
 	// live is the assistant entry currently being streamed into, or -1.
@@ -41,9 +47,54 @@ type feed struct {
 	// turn counts the person's messages. It groups tool calls into clusters
 	// and is what ctrl+o folds and unfolds.
 	turn int
+	// mdAt is when the live block's prefix was last promoted to markdown
+	// (render.go's [promoteBlock]). It belongs beside `live` because it is that
+	// block's clock and nothing else's: it is set where the block is opened, and
+	// a surface holding its own copy would be a second answer to "how old is this
+	// rendering" for one block.
+	mdAt time.Time
+	// settledTurn is the last turn whose BOUNDARY HAS PASSED — the turn
+	// [app.settleTurn] has walked — and it is what makes a delta arriving after
+	// that boundary land settled rather than opening a block nothing owns.
+	//
+	// THE DEFECT IT CLOSES (#225). A turn ends twice on a surface and, in
+	// between, a stream can still speak: the tail of a reply the provider had
+	// already buffered, a straggler behind a stop. That delta found no live
+	// block, opened a second one under the answer, and the two costs landed
+	// together — the new block was live with no boundary left to settle it, and
+	// its mere presence demoted the answer above it into narration, which is
+	// drawn PLAIN (hierarchy.go). What the person read was their markdown reply
+	// come back as the characters it was typed as, until they asked something
+	// else. It is zero until the first turn ends, and turn numbers count from
+	// one, so nothing is settled by accident.
+	//
+	// A SURFACE THAT NEVER ARMS IT NEVER TAKES THE LATE ROAD, which is the task
+	// room today: a node's page has one ending per step and no second one to fall
+	// between, so it leaves this at zero and every delta grows the live block.
+	settledTurn int
+	// pendingReplyTags arrived before the first words of the answer they label.
+	pendingReplyTags []session.TaskReplyTag
 	// hooks is what this view asked the reducer to do on its behalf, and is the
 	// only thing in here that differs between one surface and another.
 	hooks feedHooks
+}
+
+// newFeed is the ONE way a feed is built, and it exists because THE ZERO VALUE
+// OF THIS STRUCT IS NOT AN EMPTY TRANSCRIPT — it is a broken one.
+//
+// `live` and `think` are indices into the entry list and -1 is the sentinel for
+// "no block is streaming", so a feed made by struct literal points both of them
+// at entry zero. Every guard in here is written as `live >= 0 && live <
+// len(entries) && kind == …`, which a zero index passes the moment anything at
+// all has been appended: the first reasoning delta of the session grows whatever
+// entry zero turned out to be, and the person's own opening question comes back
+// with the model's working written into it.
+//
+// It was hand-spelled at four sites before the room adopted the reducer, which
+// is three chances to forget and one silent failure when somebody does — so the
+// sentinel is stated once, here, and a second surface cannot be built wrong.
+func newFeed(hooks feedHooks) feed {
+	return feed{live: -1, think: -1, hooks: hooks}
 }
 
 // feedHooks are the things a reducer cannot know on its own: what time it is,
@@ -87,7 +138,23 @@ type feedHooks struct {
 	// backgrounded bash from it (background.go) and drops the cache behind its
 	// ambient counts (app.go's hudStats), and both of those are sums over
 	// finished calls that the transcript itself knows nothing about.
+	//
+	// IT IS HANDED A POINTER INTO THE ENTRY LIST AND MAY NOT APPEND TO IT. A
+	// growing slice reallocates, and the row [feed.closeTool] is still writing
+	// would then be a row in the list nobody is drawing any more — the failure
+	// would be a call that silently stopped opening itself. The one hook that
+	// does append is [feedHooks.forming], which fires before any row is claimed
+	// and is safe for that reason.
 	closed func(e *entry, ev session.Event)
+	// retrying fires when a cut request is about to be asked again, after the
+	// dead attempt's rows have gone and before the reason is written down. The
+	// chat throws away the half-arrived proposal card there (task.go), which is
+	// a block only the chat has; a node draws no card and installs nothing.
+	//
+	// ITS POSITION IN [feed.retry] IS THE WHOLE OF ITS CONTRACT: the card is
+	// removed by truncating the last entry wherever it IS the last entry, so a
+	// note written first would leave a hollow row behind it.
+	retrying func()
 }
 
 // now is the reducer's clock, or the wall clock when no view installed one —
@@ -135,6 +202,31 @@ func (f *feed) touch() {
 // nothing, deliberately: the caller has already decided what else it means.
 func (f *feed) ingest(ev session.Event) {
 	switch ev.Kind {
+	case session.EventTextDelta:
+		f.say(ev.Text)
+
+	case session.EventReasoning:
+		f.reason(ev.Text)
+
+	case session.EventTaskReplyTags:
+		f.takeReplyTags(ev.TaskReplyTags)
+
+	case session.EventNudge:
+		// The loop caught itself repeating a call: a dim one-liner, never an
+		// interruption — the model is already being told, the person only needs
+		// to see that it was.
+		f.note(firstNonEmpty(ev.Hint, "stuck? nudged · "+ev.Tool))
+
+	case session.EventNotice:
+		// The adapter had to reshape the request to get it accepted — which
+		// attempt it is on, and what it took off (internal/provider's
+		// endpoints.go). Same dim one-liner as the nudge, and for the same
+		// reason: it is already being handled, the person only needs to see it.
+		f.note(ev.Text)
+
+	case session.EventRetrying:
+		f.retry(ev)
+
 	case session.EventToolForming:
 		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
 		// model writing the instruction, drawn while it writes it.
@@ -370,6 +462,12 @@ func (f *feed) announceTool(ev session.Event) {
 	if at := claimFormed(f.entries, ev); at >= 0 {
 		e := &f.entries[at]
 		e.status = toolQueued
+		// THE ID IS KEPT AT THE ONE MOMENT IT IS OFFERED. A row that formed
+		// before the wire said an id has none, and the announcement is where
+		// session first names the call (its loop.go) — dropping it here left two
+		// concurrent calls of one name with nothing to tell them apart, so
+		// whichever finished first took the other's "took 4s".
+		e.callID = firstNonEmpty(ev.CallID, e.callID)
 		e.tool = firstNonEmpty(ev.Tool, e.tool)
 		e.text = firstNonEmpty(ev.Hint, e.text)
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
@@ -409,6 +507,10 @@ func (f *feed) beginTool(ev session.Event) {
 		e := &f.entries[at]
 		e.status = toolRunning
 		e.began = f.now()
+		// The id is taken here for [feed.announceTool]'s reason — this is the
+		// other door a forming row leaves by, and a surface that attached
+		// mid-batch sees this event and never the announcement.
+		e.callID = firstNonEmpty(ev.CallID, e.callID)
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.text = firstNonEmpty(ev.Hint, e.text)
 		// Let the streamed tail go, for [feed.announceTool]'s reason — this is the
@@ -451,10 +553,39 @@ func (f *feed) claimAnnounced(ev session.Event) int {
 	return fallback
 }
 
-// closeTool marks the oldest still-running line for that tool. Oldest rather
-// than newest because tools run in parallel and finish in any order, and the
-// first one begun is the first one a person watching the column expects to
-// resolve.
+// claimRunning finds the live row an END belongs to, or -1.
+//
+// ARGS MATCH FIRST, THEN OLDEST-OF-THAT-NAME. The payload is a PREFERENCE and
+// not a key: session renders a call's arguments for the end event and a room
+// renders them again off the node's journal, which agree for an ordinary call
+// and can differ on one long enough to be clipped — so the walk by name is what
+// is left, exactly as it is for an announcement ([feed.claimAnnounced]).
+//
+// It is the law on BOTH surfaces as of the lens design's ruling 3
+// (docs/design/lens/DESIGN.md). The chat took the oldest row of that name and
+// nothing else, which is right by convention and wrong half the time the
+// convention does not hold: two `bash` calls running at once resolve in whatever
+// order they finish, and the room already had to solve this because its page can
+// hold one row off the journal and one off the live lane at the same time.
+func claimRunning(es []entry, ev session.Event) int {
+	fallback := -1
+	for i := range es {
+		e := &es[i]
+		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
+			continue
+		}
+		if ev.Args != "" && e.detail.Args == ev.Args {
+			return i
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	return fallback
+}
+
+// closeTool resolves the live line this result belongs to ([claimRunning] says
+// which one, and why).
 //
 // The end event carries the call's Args as well as its Output — session sends
 // a self-contained end — so both are taken from it here rather than kept from
@@ -471,11 +602,8 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 	if f.hooks.closing != nil {
 		f.hooks.closing(ev)
 	}
-	for i := range f.entries {
-		e := &f.entries[i]
-		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
-			continue
-		}
+	if at := claimRunning(f.entries, ev); at >= 0 {
+		e := &f.entries[at]
 		e.status = status
 		e.ended = f.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
@@ -486,6 +614,12 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 		// view's arithmetic and not the transcript's ([feedHooks.closed]).
 		if f.hooks.closed != nil {
 			f.hooks.closed(e, ev)
+			// AND THE ROW IS FOUND AGAIN AFTERWARDS. The hook is handed a pointer
+			// into a slice it is forbidden to grow ([feedHooks.closed] states the
+			// rule), and this is the belt beside that brace: an append anywhere
+			// under the hook would move the list out from under the writes below,
+			// and A FAILURE OPENS ITSELF is not a law worth losing silently.
+			e = &f.entries[at]
 		}
 		if why != "" && status == toolFailed {
 			e.text = strings.TrimSpace(e.text + " — " + why)
@@ -582,19 +716,27 @@ func (f *feed) settleCompaction(text string) {
 		}
 		e.text, e.ended = text, f.now()
 		e.stale = true
+		// AND THE PAGE IS TOLD, HERE. Ingest is the whole of what an event does
+		// (see [feed.ingest]), so a settle that left the repaint to its caller was
+		// a divider that painted in the chat — where the pump happened to touch
+		// afterwards for its own reasons — and did not paint anywhere else.
+		f.touch()
 		return
 	}
 	now := f.now()
 	f.entries = append(f.entries, entry{
 		kind: entryCompact, text: text, turn: f.turn, began: now, ended: now,
 	})
+	f.follow()
+	f.touch()
 }
 
 // resolveUnfinished stops the clock on every call that was still in the air when
-// the turn ended. It is [app.dropForming] widened by two states, and it is the
-// law room.go still keeps a hand-copy of at a node's lane close
-// ([app.roomResolveUnfinished]) — one of the eleven this reducer exists to
-// replace.
+// the turn ended. It is [app.dropForming] widened by two states, and it is what
+// a node's page runs when its lane closes: a lane that has ended is the last
+// word there will ever be about the calls on it — no announcement, no begin, no
+// end is coming — so a row left in a live state is a page animating work that is
+// over.
 //
 // THE DEFECT IT CLOSES IS A ROW THAT COMES BACK TO LIFE. A row that never got
 // its end — an interrupt between the begin and the result, a retry that threw
@@ -609,10 +751,10 @@ func (f *feed) settleCompaction(text string) {
 // The end stamp is what makes it permanent: both of those renderers stop at a
 // row that has an end on it, whatever the session is doing afterwards.
 //
-// Every row is RESOLVED, never removed, and the STATUS IS LEFT ALONE, for
-// [app.roomResolveUnfinished]'s reasons exactly: the call was asked for, which
-// is a fact about what happened, and "failed" would be a claim about something
-// nobody watched.
+// Every row is RESOLVED, never removed, and the STATUS IS LEFT ALONE: the call
+// was asked for, which is a fact about what happened, and a row that vanished
+// would take that fact with it — while "failed" would be a claim about
+// something nobody watched.
 func (f *feed) resolveUnfinished() {
 	now := f.now()
 	for i := range f.entries {
@@ -693,5 +835,315 @@ func (f *feed) collapseThought() {
 		}
 	}
 	f.think = -1
+	f.touch()
+}
+
+// ── WHAT THE MODEL SAYS ─────────────────────────────────────────────────────
+
+// say grows the assistant block the turn is streaming into, opening one when the
+// last thing on the page was anything else.
+//
+// IT DOES NOT ASK FOR A REPAINT. Deltas are the flood and the frame clock is
+// what turns a flood into a frame ([app.paint]); what this marks is the block
+// stale and the view following, and the surface decides when to draw. A page
+// whose row cache is keyed on one dirty flag says so in its own [feedHooks.follow]
+// and gets its repaint that way (room.go).
+//
+// A DELTA THAT ARRIVES AFTER ITS TURN'S BOUNDARY IS APPENDED TO WHAT IT BELONGS
+// TO, AND LANDS SETTLED (#225, [feed.settledTurn]). Between a turn's two endings
+// a stream can still speak — the tail of a reply the provider had already
+// buffered, a straggler behind a stop — and the obvious thing to do with those
+// words opened a SECOND block under the answer. That was two defects in one
+// line: the new block was live with no boundary left to settle it, so it drew
+// its markdown raw until the next question closed it; and its presence demoted
+// the answer above it into narration, which is drawn plain (hierarchy.go). The
+// words belonged to the paragraph above them the whole time, which is [feed.said]'s
+// law read from the other end — a page is the only record anybody reads back.
+func (f *feed) say(text string) {
+	if text == "" {
+		return
+	}
+	// Turn numbers count from one, so the zero this field holds before the
+	// first turn ends cannot match the turn a delta belongs to.
+	if late := f.settledTurn > 0 && f.turn == f.settledTurn; late {
+		f.growSettledAnswer(text)
+		return
+	}
+	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn,
+			replyTags: append([]session.TaskReplyTag(nil), f.pendingReplyTags...)})
+		f.pendingReplyTags = nil
+		f.live = len(f.entries) - 1
+		f.mdAt = f.now()
+	}
+	e := &f.entries[f.live]
+	e.text += text
+	e.stale = true
+	f.follow()
+}
+
+// growSettledAnswer is where a late delta goes: onto the LAST assistant block of
+// the turn that has already ended, still settled.
+//
+// NOTHING IS LEFT LIVE, which is the whole point — [feed.live] stays -1, so the
+// next boundary has nothing to find and the next question settles nothing that
+// was not already settled. The block is marked stale because its text changed
+// and [app.entryRows] hands back what it drew last time until something says
+// otherwise ([feed.closeLive] states that law).
+//
+// WHICH BLOCK IT IS, IS THE CLASSIFIER'S OWN QUESTION ASKED BACKWARDS. The walk
+// steps over exactly what [workEntry] steps over — a note, a divider, a
+// withdrawn correction — because those are the lines the SURFACE wrote at the
+// boundary and not work the model did: the two lines a turn ends with (what it
+// changed, what it cost) sit under the reply on purpose, and a walk that stopped
+// on them would append a second block under the answer and demote it, which is
+// the defect this exists to close. Anything else — a tool row, a card — stops
+// the walk: words after a call belong after the call, and gluing them onto the
+// narration in front of it would put them in the wrong place on the page.
+//
+// A turn whose tail is not an answer — a call that failed, a stopped turn that
+// never spoke — gets a block of its own, settled on arrival: the words did
+// happen, and the alternative is a surface quietly dropping something a person
+// watched arrive.
+func (f *feed) growSettledAnswer(text string) {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn {
+			break
+		}
+		if e.kind == entryNote || e.kind == entryDivider || entryWithdrawn(e) {
+			continue
+		}
+		if e.kind != entryAssistant {
+			break
+		}
+		e.text += text
+		e.settled, e.stale = true, true
+		f.follow()
+		f.touch()
+		return
+	}
+	f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, text: text,
+		settled: true, stale: true,
+		replyTags: append([]session.TaskReplyTag(nil), f.pendingReplyTags...)})
+	f.pendingReplyTags = nil
+	f.follow()
+	f.touch()
+}
+
+// reason grows the turn's reasoning block, opening one on the first delta.
+//
+// IT IS CALLED `reason` AND NOT `think` because [feed.think] is the index of the
+// block it grows, and one name cannot be both. The two are the same story from
+// the two ends the code needs it from: the field is where the block is, this is
+// what puts words in it.
+//
+// Like a text delta it does NOT ask for a repaint per chunk — it marks the block
+// stale and lets the frame clock decide when a flood becomes a frame. The one
+// exception is the block's first delta, which appends an ENTRY: a structural
+// change the layout has to see.
+func (f *feed) reason(text string) {
+	if text == "" {
+		return
+	}
+	if f.think < 0 || f.think >= len(f.entries) || f.entries[f.think].kind != entryThinking {
+		// The reply in progress is closed first, so the block lands above the
+		// answer rather than splitting a paragraph that is still being written.
+		f.closeLive()
+		now := f.now()
+		f.entries = append(f.entries, entry{
+			kind: entryThinking, turn: f.turn, began: now, ended: now,
+			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
+			// [feed.settledTurn]). The boundary that would have closed it has
+			// already gone by, and a thought block left open would stay expanded
+			// over the next turn — the very thing [feed.collapseThought] runs at
+			// the settle to prevent.
+			settled: f.settledTurn > 0 && f.turn == f.settledTurn,
+		})
+		f.think = len(f.entries) - 1
+		f.follow()
+		f.touch()
+	}
+	e := &f.entries[f.think]
+	e.text += text
+	e.ended = f.now()
+	e.stale = true
+	f.follow()
+}
+
+// takeReplyTags labels the answer with the task reports it is written from
+// (render.go's reply-tag row: cause above consequence).
+//
+// TAGS CAN ARRIVE BEFORE THE FIRST WORD THEY LABEL, which is why they are held
+// rather than dropped: the engine names the reports the turn is about to answer
+// from as it picks them up, and the block that carries them may not exist yet.
+// [feed.say] empties the held list onto the block it opens.
+func (f *feed) takeReplyTags(tags []session.TaskReplyTag) {
+	f.pendingReplyTags = append(f.pendingReplyTags, tags...)
+	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
+		return
+	}
+	e := &f.entries[f.live]
+	e.replyTags = append(e.replyTags, f.pendingReplyTags...)
+	e.stale = true
+	f.pendingReplyTags = nil
+}
+
+// ── WHAT THE SURFACE ITSELF SAYS ────────────────────────────────────────────
+
+// said puts one of the PERSON'S OWN lines — or one of the surface's — into the
+// transcript without cutting the answer that is still streaming in two.
+//
+// THE DEFECT IT FIXES. A message sent while a reply was streaming went in the
+// obvious way — close the live block, append the line — and the very next delta
+// found no live block and opened a second one under it. What the reader saw was
+// one flowing answer with somebody else's sentence wedged between two of its
+// paragraphs, as though the model had quoted them mid-thought. The words were in
+// the right place in TIME and in the wrong place on the PAGE, and the page is
+// the only record anybody reads back.
+//
+// SO THE STREAMED BLOCK STAYS WHOLE. The line is appended after it and the live
+// index is left where it was, which is still valid — appending never moves an
+// earlier entry — so the next delta grows the block it was already growing and
+// the person's line stays below it. A tool row is deliberately NOT treated this
+// way: a call lands in place, between two paragraphs, because that is where it
+// happened and the reply is written around it.
+func (f *feed) said(e entry) {
+	live := f.live
+	f.entries = append(f.entries, e)
+	if live < 0 || live >= len(f.entries)-1 || f.entries[live].kind != entryAssistant {
+		f.live = -1
+		return
+	}
+	f.live = live
+}
+
+// note appends a surface-side line — a nudge, a notice, a slash command's
+// answer, an error. It is never sent anywhere.
+//
+// THE SAME SENTENCE TWICE RUNNING IS ONE SENTENCE. Half the lines in this lane
+// are the surface answering an act a person repeats while they work out what to
+// do next: /files on a machine that has made nothing answers [filesNothingWord]
+// every single time, /subharness on a build with none answers [subNothingWord],
+// and a refusal answers whatever it refused.
+// Four presses used to leave four identical lines stacked in the transcript,
+// which is the emptiness law's own complaint said about repetition — the screen
+// counting how many times it had nothing to report. So a note whose words are
+// already the last thing in the transcript is not written again; it is brought
+// back into view, which is the whole of what the person was going to read.
+//
+// IT ASKS ABOUT THE LAST ENTRY AND NEVER ABOUT THE WHOLE TRANSCRIPT. Anything at
+// all landing in between — an answer, a tool call, another note — puts the
+// repeat in a new place, where it is news again: "nothing stands here yet" under
+// the reply that just talked about standing orders is a different sentence from
+// the one four lines up, and a transcript that swallowed it would be answering a
+// deliberate command with silence.
+func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
+
+// noteWritten is the one body behind [feed.note] and the chat's two richer doors
+// ([app.noteFacts], [app.noteBlock]), so the repeat rule, the fact list and the
+// block flag cannot disagree about what a note is.
+//
+// A NOTE DOES NOT CUT THE REPLY IN TWO (#225). It used to close the live block,
+// so a line the surface wrote in the middle of a streaming answer — a notice
+// about a reshaped request, a nudge — sent the very next delta into a SECOND
+// assistant block. The reader then got a reply in two halves with the first one
+// demoted into narration and drawn plain (hierarchy.go, workfold.go's
+// [workEntry]). It is exactly the shape [feed.said] already closes for the
+// person's own line, and it takes the same door: the note lands after the block
+// and the block goes on growing.
+func (f *feed) noteWritten(text string, block bool, facts []string) {
+	if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote && f.entries[n-1].text == text {
+		// The repeat is brought back into view rather than written again (above),
+		// and its data are refreshed with it: the same sentence built a second time
+		// may have been built from a different reading, and a stale fact list would
+		// lift the words of the frame before this one.
+		f.entries[n-1].facts, f.entries[n-1].block = facts, block
+		f.follow()
+		f.touch()
+		return
+	}
+	f.said(entry{kind: entryNote, text: text, turn: f.turn, facts: facts, block: block})
+	f.follow()
+	f.touch()
+}
+
+// ── AN ATTEMPT THAT NEVER HAPPENED ──────────────────────────────────────────
+
+// retry is a cut request being asked again (internal/provider's streamguard.go).
+//
+// EVERYTHING THE DEAD ATTEMPT DREW GOES, because the engine has already thrown
+// away everything the dead attempt SAID: the text belongs to a response that
+// will never exist, and half a dead answer sitting above the live one is the
+// surface telling a story the transcript does not contain.
+//
+// It is one method rather than the four calls it used to be at each pump,
+// because a room that had three of the four would be a room drawing an attempt
+// that never ran — which is exactly what a room did, by having none of them.
+func (f *feed) retry(ev session.Event) {
+	f.dropLive()
+	f.dropRetryingFormingTools()
+	f.resolveUnfinished()
+	// A PARTIAL PROPOSAL BELONGS TO THE DEAD ATTEMPT TOO, and it is the view's
+	// because a card is ([feedHooks.retrying], which states why it fires here and
+	// not after the note).
+	if f.hooks.retrying != nil {
+		f.hooks.retrying()
+	}
+	f.note(ev.Text)
+}
+
+// dropLive throws away the assistant block the CURRENT attempt was streaming
+// into, because that attempt has been cut and its text is void.
+//
+// It is the one place on this surface where something a person watched arrive is
+// REMOVED rather than settled, and the asymmetry is the point: an interrupt
+// leaves the partial reply on screen because the engine keeps it in the
+// transcript, while a cut stream leaves nothing anywhere. A row the transcript
+// does not contain must not stay on the page — the next question would be
+// answered underneath somebody else's abandoned sentence, and the person would
+// have no way of telling which of the two the model actually read.
+//
+// The block is truncated when it is the last thing on screen, which is what a
+// cut mid-text always leaves, and emptied otherwise: removing an entry from the
+// middle would move every index after it, and the forming rows, the selection
+// and the thought marker are all held by index.
+func (f *feed) dropLive() {
+	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
+		f.live = -1
+		return
+	}
+	if f.live == len(f.entries)-1 {
+		f.entries = f.entries[:f.live]
+	} else {
+		f.entries[f.live].text = ""
+		f.entries[f.live].stale = true
+	}
+	f.live = -1
+	f.touch()
+}
+
+// dropRetryingFormingTools removes calls that were still being spelled when a
+// provider request was cut. The session discards those partial calls rather
+// than recording them, so settling their rows as cancelled would leave a call
+// on screen that never existed in the transcript.
+//
+// Forming rows are normally the newest entries. The empty assistant fallback is
+// the same one [feed.dropLive] uses when a later row holds an index in place.
+func (f *feed) dropRetryingFormingTools() {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn {
+			break
+		}
+		if e.kind != entryTool || e.status != toolForming {
+			continue
+		}
+		if i == len(f.entries)-1 {
+			f.entries = f.entries[:i]
+			continue
+		}
+		f.entries[i] = entry{kind: entryAssistant, turn: f.turn, stale: true}
+	}
 	f.touch()
 }

@@ -32,7 +32,7 @@ func designRoomAt(t *testing.T, context string) *app {
 		Doing:   session.HarnessPhaseAsking,
 		Context: context,
 	}))
-	a.room = &taskRoom{id: 4, title: "harness · flake triage", unfolded: map[int]bool{}, live: -1, think: -1, dirty: true}
+	a.room = a.newRoom(4, "harness · flake triage")
 	return a
 }
 

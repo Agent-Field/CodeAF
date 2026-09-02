@@ -142,7 +142,7 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	// The header is asserted through the line a person actually reads, not only
 	// through the word: the trail, the state, the clock and the spend are one
 	// sentence and the state is the second thing in it.
-	a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
+	a.room = a.newRoom(7, "Write the report")
 	head := plain(a.roomHeadWord(120))
 	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskFinishingWord) {
 		t.Fatalf("the room header is %q", head)
@@ -328,7 +328,7 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			// The header is asserted through the line a person actually reads: the
 			// trail, the state, the clock and the spend are one sentence and the
 			// state is the second thing in it.
-			a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
+			a.room = a.newRoom(7, "Write the report")
 			head := plain(a.roomHeadWord(120))
 			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskHeldWord) {
 				t.Fatalf("the room header is %q", head)

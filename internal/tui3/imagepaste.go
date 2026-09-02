@@ -210,7 +210,7 @@ func notOnThisMachine(name string, missing int) string {
 
 // trayNote is where this door's refusals are said, and it picks the voice by
 // WHERE THE PERSON IS STANDING. A note is a line in the conversation
-// ([app.note]), and while home has the frame the conversation is not on the
+// ([feed.note]), and while home has the frame the conversation is not on the
 // screen at all — so a folder refused there would be a sentence written
 // somewhere nobody can read it. Home has a line of its own under the rule
 // ([homeView.say], drawn by pages.go's [app.placeMsgLine]).

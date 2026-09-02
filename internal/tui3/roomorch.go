@@ -396,26 +396,17 @@ func (a *app) openOrchRoom(id, goal string) {
 		a.note(orchUnavailableWord)
 		return
 	}
-	a.roomGen++
 	run := &orchRun{
 		id: id, goal: goal,
 		seen:  map[string]bool{},
 		fresh: map[string]bool{},
 	}
-	a.room = &taskRoom{
-		// A RUN IS NOT A NODE, so the page carries no node id: the room's id is
-		// the tasker's counter and this page belongs to no row of it. Everything
-		// keyed on that id — the frozen clock, the model word, the rail's
-		// highlight — reads zero and draws nothing, which is the honest answer.
-		id: 0, title: firstNonEmpty(goal, id), gen: a.roomGen,
-		unfolded: map[int]bool{},
-		live:     -1,
-		think:    -1,
-		mdAt:     a.now(),
-		stick:    true,
-		dirty:    true,
-		orch:     run,
-	}
+	// A RUN IS NOT A NODE, so the page carries no node id: the room's id is the
+	// tasker's counter and this page belongs to no row of it. Everything keyed on
+	// that id — the frozen clock, the model word, the rail's highlight — reads
+	// zero and draws nothing, which is the honest answer.
+	a.room = a.newRoom(0, firstNonEmpty(goal, id))
+	a.room.orch = run
 	a.orchLive = id
 	a.sel = -1
 	a.dropHover()

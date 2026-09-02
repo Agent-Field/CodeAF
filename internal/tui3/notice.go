@@ -57,7 +57,7 @@ const (
 	// notice standing in it is the LOWEST RUNG THERE IS: every state key and every
 	// existing hint outranks it, so a tip is only ever drawn over an idle box.
 	slotHint noticeSlot = iota
-	// slotNote is one calm transcript line through [app.note]. It is reserved
+	// slotNote is one calm transcript line through [feed.note]. It is reserved
 	// for news: a hint belongs beside the box it is about, and a line in the
 	// conversation is for something that is true once.
 	slotNote
