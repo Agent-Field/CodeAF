@@ -35,11 +35,11 @@ import "sync"
 // because a comment in this package once got it wrong the other way round.
 // [LedgerModel] takes an ordinary in-process mutex around its memo — one
 // uncontended lock and a map lookup, held for no I/O — which is a different
-// thing from the store's EXCLUSIVE FILE lock that [ledger.keep] documents
-// itself as still sometimes taking in front of a stream (issue #264, open).
-// What this seam promises is that resolving a name never waits on a disk, a
-// network or another process; it does not promise that nothing on the send path
-// ever takes a lock, because something still does.
+// thing from the EXCLUSIVE FILE lock the store takes to compact. That one is
+// no longer taken in front of a stream: it belongs to the writer goroutine
+// alone ([ledger.Persist]), and every lock in this package is now asked for
+// without waiting (issue #264, store.go). What this seam promises is that
+// resolving a name never waits on a disk, a network or another process.
 type Servable func(model string) string
 
 var servable struct {

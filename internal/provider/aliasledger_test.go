@@ -176,6 +176,12 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 		t.Fatal(err)
 	}
 
+	// THE STATE FILE IS WRITTEN BY THE WRITER AND NOT BY THE TURN (issue #264):
+	// an observation appends to the journal, and the compaction that folds the
+	// journal into `lanes.json` happens off the send path. This is the door a
+	// real process runs at its own exit (`cmd/aforge`'s execute).
+	lanes.Flush()
+
 	// ONE MODEL, ONE KEY. The file is what the next session opens, so it is what
 	// the assertion is made against.
 	names := map[string]bool{}
