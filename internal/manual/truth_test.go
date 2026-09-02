@@ -485,7 +485,7 @@ func sourceNumber(t *testing.T, path, name string) int {
 // what the command's own help prints and what a page quoting it must agree with.
 func flagNumber(t *testing.T, path, name string) int {
 	t.Helper()
-	match := regexp.MustCompile(`Int\(\s*"`+regexp.QuoteMeta(name)+`"\s*,\s*(\d+)`).
+	match := regexp.MustCompile(`Int\(\s*"` + regexp.QuoteMeta(name) + `"\s*,\s*(\d+)`).
 		FindStringSubmatch(sourceText(t, path))
 	if match == nil {
 		t.Fatalf("%s no longer declares a --%s flag with a number for its default", path, name)
