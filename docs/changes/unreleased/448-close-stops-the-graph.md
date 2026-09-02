@@ -8,6 +8,8 @@ invalidates:
   - "TaskGraph.stop used to learn whether anybody was running a node by asking whether its cancel was nil. That no longer means anything — every running node has a handle now — and the fact is written down as TaskNode.claimed instead, taken by TaskNode.claimRun under the same lock the stop reads it under."
   - "Agent.Close used to reach running nodes only through the jobs round, which walks the job registry. It calls TaskGraph.stopAll(jobShutdownGrace) beside that round now, and a closed session has no running nodes."
   - "jobRegistry.newJob used to accept a job at any time. After jobRegistry.shutdown it refuses with 'this session has closed; nothing new starts in it', so nothing registers into a session that has left."
+  - "jobRegistry.add used to return nothing and always append. It returns an error now, and the check for a closed registry happens under the SAME hold of the lock as the append (jobRegistry.join) — newJob's check cannot be the one that makes the law true, because it releases the lock to create the log. A job refused at that door removes the log it had claimed, and every caller undoes what it had already done: the forked process is killed, a hand's out-count is lowered, a watch's slot is released."
+  - "TaskGraph.stop used to hand no slot back on any road, and its own comment said so. That is still true of a queued node, which never took one; a RUNNING node no runner had claimed did take one, and the stop now returns it through TaskGraph.handBackSlotLocked — the slot arithmetic TaskGraph.complete already had, now shared by both."
 ---
 
 Ask for a harness and quit, and the design used to run on as an orphan: two model
