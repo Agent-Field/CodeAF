@@ -8,7 +8,8 @@ invalidates:
     green. It was exact on the questions the pages were written to answer and not on the
     questions people bring: twenty-five plain questions, each paired with the page whose NAME
     is the topic, landed their page first 11 times of 25 and reached it at all 17 times of 25.
-    The floor is now 21 and 25, held by internal/manual/plainquestions_test.go."
+    It is now 21 first and 25 within four, held above a floor of 20 and 25 by
+    internal/manual/plainquestions_test.go."
   - "Section length was believed to be why plain questions miss. It is not: sweeping bm25B
     over 0.75, 0.5, 0.3 and 0 makes the numbers worse at every step, and saturating an
     over-long section's length costs probes without moving either question set. An over-long

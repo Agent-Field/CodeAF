@@ -174,16 +174,27 @@ func (c *Corpus) build() {
 			counts[word]++
 			length++
 		}
+		// Document frequency is counted from the section's own words, before the
+		// page title joins them, and each page adds one below. Otherwise a page
+		// title would be in as many documents as the page has sections, so
+		// splitting one long section in two would move the IDF of that title's
+		// words for every question in the corpus — a page's shape is not
+		// evidence about its vocabulary.
+		for word := range counts {
+			c.documents[word]++
+		}
 		for _, word := range c.pageTitle[section.Page] {
 			counts[word] += topicWeight
 			length += topicWeight
 		}
-		for word := range counts {
-			c.documents[word]++
-		}
 		c.terms = append(c.terms, counts)
 		c.lengths = append(c.lengths, float64(length))
 		c.average += float64(length)
+	}
+	for _, name := range c.order {
+		for _, word := range unique(c.pageTitle[name]) {
+			c.documents[word]++
+		}
 	}
 	if len(c.sections) > 0 {
 		c.average /= float64(len(c.sections))
@@ -195,12 +206,32 @@ func (c *Corpus) build() {
 // the page carries it, because a question that names the page is asking for the
 // page and should not also have to land on whichever section repeats the word.
 func pageTitle(text string) []string {
-	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "## ") {
-			return tokenize(strings.TrimPrefix(line, "# "))
+	for len(text) > 0 {
+		line, rest, _ := strings.Cut(text, "\n")
+		if strings.HasPrefix(line, "# ") {
+			return unique(tokenize(line[2:]))
 		}
+		text = rest
 	}
 	return nil
+}
+
+// unique keeps the first of each word. A title that says a word twice is still
+// one statement about the page, and counting it twice in every section would
+// make a long title louder than a short one for no reason anybody wrote down.
+func unique(words []string) []string {
+	if len(words) < 2 {
+		return words
+	}
+	seen := make(map[string]bool, len(words))
+	kept := words[:0]
+	for _, word := range words {
+		if !seen[word] {
+			seen[word] = true
+			kept = append(kept, word)
+		}
+	}
+	return kept
 }
 
 // split cuts one page at its headings. A `# ` line names the page; every `## `

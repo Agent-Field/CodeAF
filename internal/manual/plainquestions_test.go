@@ -128,10 +128,11 @@ func reach(t *testing.T, set []struct{ ask, want string }) (first, within int) {
 	return first, within
 }
 
-// The floors are the measurement, not an aspiration: 21 of 25 came first and 25
-// of 25 were among the four sections when this landed. CI fails on a drop
-// because a page that stops being reachable is a page the chat talks over the
-// top of, and nothing else in the build notices.
+// The floor is 20 and 25 because that is what #293 asked for; the measurement
+// when this landed was 21 and 25, so there is one first place of slack and none
+// at all on reaching the page. CI fails on a drop because a page that stops
+// being reachable is a page the chat talks over the top of, and nothing else in
+// the build notices.
 func TestPlainQuestionsReachThePageThatAnswersThem(t *testing.T) {
 	const (
 		firstFloor  = 20
