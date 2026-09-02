@@ -21,6 +21,15 @@ package session
 // data-loss case is the same path written twice, and a prefix rule over prose
 // read out of a brief would refuse honest divisions to catch a case nobody has
 // seen. If real usage produces one, it is a change to make then.
+//
+// THE DIMNESS IS WHY THE CLAIM IS ONE SENTENCE AND NOT TWO. A part's brief was
+// read as a claim until #281, and a brief is prose: it names the material the
+// part works on, which includes everything the part must READ. Two parts told to
+// read one plan and write a file each — the ordinary shape of divided work —
+// were refused on the plan, and the road's own end-to-end suite worked around it
+// by leaving the ground empty. The answer is not a grammar over the prose,
+// which is the machinery this file already refused to build. It is to read the
+// sentence that was always about the finished tree: the DONE-CONDITION.
 
 import (
 	"sort"
@@ -28,24 +37,38 @@ import (
 )
 
 // scopeCollisions is every path more than one part of this division claims,
-// spelled the way the briefs spell it and in a stable order.
+// spelled the way the parts spell it and in a stable order.
 //
-// WHAT COUNTS AS A CLAIM is a path named in the part's brief or its
-// done-condition, which are the two sentences that say what the part is for.
+// WHAT COUNTS AS A CLAIM is a path named in the part's DONE-CONDITION, and
+// nothing named anywhere else. The done-condition is the one sentence of a part
+// that describes the tree AFTER the part is finished — what somebody else could
+// check without taking the worker's word for it — so it is the sentence that
+// says what this part produces. The brief is context and is read for nothing
+// here: what the part works on, what its author already learned, the material
+// every part reads. The schema and prompts/divide.md teach exactly that, so a
+// worker naming a shared input in its brief is doing what it was asked to.
+//
+// THE OTHER ROAD IS COVERED BY CONSTRUCTION. A part the harness drew out of a
+// sketch has no done-condition of its own, so task_divide_sketch.go's
+// [divisionStandInDone] writes one out of that part's scope — which means the
+// scope a drawing gave a part is still read here, and a sketch that put two
+// parts on one file is refused exactly as it was.
+//
 // [pathTokens] does the reading and [groundHolds] does the judging, exactly as
 // the ground ladder does it (taskstands.go): a word only counts when it really
 // lands under the family tree, which is what keeps ordinary prose — a sentence
 // that happens to end in a full stop, an interpreter named in passing — from
-// reading as somebody's scope.
+// reading as somebody's claim.
 //
 // THE PATHS ARE NORMALISED BEFORE THEY ARE COMPARED, because `report.md` and
-// `/…/tree/report.md` in two briefs are one file and a comparison on the words
-// would say they were two. [resolvePath] is the same reading a shell standing in
+// `/…/tree/report.md` in two done-conditions are one file and a comparison on
+// the words would say they were two. [resolvePath] is the same reading a shell standing in
 // that directory would make.
 //
 // It is one pass over the parts with a set, not a comparison of every part
-// against every other: a division may carry a dozen parts and each brief a
-// dozen paths, and the honest shape of "who else claimed this" is a lookup.
+// against every other: a division may carry a dozen parts and each
+// done-condition a dozen paths, and the honest shape of "who else claimed this"
+// is a lookup.
 func scopeCollisions(parts []dividePart, tree string) []string {
 	if strings.TrimSpace(tree) == "" || len(parts) < 2 {
 		return nil
@@ -54,7 +77,7 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 	said := make(map[string]bool, 4)
 	var shared []string
 	for index, part := range parts {
-		for _, token := range pathTokens(partScope(part)) {
+		for _, token := range pathTokens(part.Acceptance) {
 			if !groundHolds(tree, token) {
 				continue
 			}
@@ -64,7 +87,7 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 				owner[path] = index
 				continue
 			}
-			// TWO SPELLINGS INSIDE ONE BRIEF ARE NOT A COLLISION, and neither is
+			// TWO SPELLINGS INSIDE ONE PART ARE NOT A COLLISION, and neither is
 			// a third part arriving at a path already reported: a part is
 			// allowed to name its own file twice, and a person reading the
 			// refusal wants the path once.
@@ -77,31 +100,6 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 	}
 	sort.Strings(shared)
 	return shared
-}
-
-// partScope is the text in which this part says what it owns, and it is NOT the
-// whole of the brief.
-//
-// A PART'S BRIEF CARRIES FAMILY CONTEXT THAT IS NOT A CLAIM. Where the harness
-// composed the brief (task_divide_sketch.go's [sketchBrief]) it wrote the
-// PARENT'S own brief above the part's scope — the same paragraphs in every
-// sibling — and its siblings' scopes below it, so that a part knows what not to
-// touch. Reading either as this part's claim would make every division of that
-// shape collide with itself on the first path the parent ever mentioned, which
-// is the road refusing its own best case.
-//
-// So the boundary the harness wrote is the boundary this reads to. The markers
-// are the ones it wrote and there is one source of them; a brief a worker wrote
-// itself carries neither, and is its own scope whole.
-func partScope(part dividePart) string {
-	own := part.Brief
-	if at := strings.Index(own, divisionThisPart); at >= 0 {
-		own = own[at+len(divisionThisPart):]
-	}
-	if at := strings.Index(own, divisionOtherParts); at >= 0 {
-		own = own[:at]
-	}
-	return own + "\n" + part.Acceptance
 }
 
 // scopeRefusal is the whole of the ownership check at one call site: the refusal
@@ -158,7 +156,7 @@ const (
 // well be right the moment they are redrawn.
 func divisionScopesOverlap(shared []string, ending string) string {
 	return "not split: " + scopeClaimedTwice(shared) +
-		", and the parts of one division cannot share a file — everything they write goes into one deliverable, so whichever finished last would quietly replace the other's work. Give each part files of its own, say in its brief which ones it owns, and ask again; " + ending
+		", and the parts of one division cannot share a file — everything they write goes into one deliverable, so whichever finished last would quietly replace the other's work. Give each part files of its own, say in each part's done-condition which ones it produces, and ask again; " + ending
 }
 
 // scopeClaimedTwice spells the colliding paths as the head of that sentence. The

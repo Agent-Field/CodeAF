@@ -2555,7 +2555,8 @@ waived by anything.
 every task opens on: your own message word for word, then the work being divided as the
 task itself was given it, then one line — `THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS
 RIGHT NOW:` — naming what each of its siblings owns and telling it to leave them alone.
-Last comes `WHAT THIS PART OWNS`, and that part alone is what the splitting worker wrote.
+Last comes `WHAT THIS PART WORKS ON`, and that part alone is what the splitting worker wrote.
+What the part OWNS is under `DONE WHEN`, which is the done-condition its author gave it.
 **The harness writes everything but the scope**, and it writes the same thing for a part a
 worker split out and a part a second model drew — so a part never depends on the model
 doing the splitting remembering to restate the job once per part. Your own sentence still
@@ -2586,18 +2587,35 @@ this, has refused a division and the worker carries on with the work exactly as 
 ## Two parts cannot own the same file — a division refused over an overlap
 
 **No two parts may own the same file, and that one is not a judgement — it is
-enforced.** The files each part's brief and done-condition name are checked against each
-other, and if the same file is claimed by more than one part the division is **refused
-before anything is handed out**: no part starts and no working copy is made.
+enforced.** What a part owns is what its **done-condition** names — the sentence that says
+what must be true once that part is finished — so those are the files that are checked
+against each other, and if the same file is named by more than one part's done-condition
+the division is **refused before anything is handed out**: no part starts and no working
+copy is made. A part's brief is read for none of this: it names the material that part
+works on, which includes everything it only reads, and **a file two briefs both name is
+not an overlap** — the plan they all start from, the notes they all draw on, the sibling's
+file one brief mentions so that its worker leaves it alone.
 The worker is told which file — "`report.md` is claimed by more than one part" — and can
-redraw the boundary and ask again. The reason is that everything the parts write goes
+redraw the boundary — give each part a file of its own and say so in its done-condition —
+and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
 version of it would simply be gone, with no conflict for anybody to notice.
+
+**Shared material is read, never written — and that half is not enforced.** A file every
+part reads is nobody's to change: everything the parts write goes into one deliverable, so
+a shared file two of them edited is kept once and the other's edit is simply gone, which is
+the same loss the rule above exists to stop. A part that finds something wrong in shared
+material says so in its report and leaves the file as it stands. Nothing checks this: the
+reading compares the parts **with each other**, never a part against the work it started
+from. What holds it is what the parts are told — the splitting worker is asked to say it in
+the brief of any part it hands shared material to, and the mastermind that reads the plan is
+asked to write the file a part produces into that part's done-condition where the brief names
+files and the done-condition names none.
 
 **It is checked twice, and the first one is free.** The parts as the worker wrote them are
 read before the mastermind is, so the commonest case — a worker that drew its own
 boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts
-the mastermind settled are read again afterwards, because it can sharpen a brief onto a
+the mastermind settled are read again afterwards, because it can sharpen a part onto a
 file its sibling already owns; a refusal there has cost that one reading and nothing else,
 and its wording does not pretend otherwise. Only the **same file** counts either time. Two
 parts working in one directory on different files are independent and always were, and so

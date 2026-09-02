@@ -274,8 +274,9 @@ message are split **by author, not by road**:
   names what actually got handed out. `divisionOtherParts` is its marker,
   `divisionScopeLimit` bounds one sibling's line at 320 bytes because every part
   carries every other part's.
-- **The scope** (worker, per part): what this one part owns, under
-  `divisionThisPart` — `WHAT THIS PART OWNS`.
+- **The scope** (worker, per part): what this one part works on, under
+  `divisionThisPart` — `WHAT THIS PART WORKS ON`. What it OWNS is its
+  done-condition, which travels in the contract's own `DONE WHEN` section (#281).
 
 `familyOf(request, brief, parts)` computes the context once for the whole division;
 `divisionFamily.partBrief(index, scope)` writes one part's whole world out of it.

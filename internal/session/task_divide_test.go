@@ -1833,16 +1833,30 @@ func TestTheDivisionSchemaCarriesTheGrade(t *testing.T) {
 
 // ── NO TWO PARTS OWN THE SAME PATH ──────────────────────────────────────────
 
-// divideScopedArgs is one well-formed call whose parts carry the briefs named,
-// which is where a part says what it owns.
-func divideScopedArgs(evidence string, briefs ...string) json.RawMessage {
-	parts := make([]string, 0, len(briefs))
-	for i, brief := range briefs {
-		parts = append(parts, fmt.Sprintf(
-			`{"title":"part %d","summary":"s","brief":%q,"acceptance":"a"}`, i+1, brief))
+// divideScopedArgs is one well-formed call whose parts carry the DONE-CONDITIONS
+// named, which is where a part says what it owns (task_divide_scope.go). Their
+// briefs say nothing, because a brief claims nothing.
+func divideScopedArgs(evidence string, dones ...string) json.RawMessage {
+	parts := make([]dividePart, 0, len(dones))
+	for i, done := range dones {
+		parts = append(parts, dividePart{
+			Title:      fmt.Sprintf("part %d", i+1),
+			Summary:    "s",
+			Brief:      "b",
+			Acceptance: done,
+		})
 	}
-	return json.RawMessage(fmt.Sprintf(`{"evidence":%q,"parts":[%s]}`,
-		evidence, strings.Join(parts, ",")))
+	return divideArgsFor(evidence, parts...)
+}
+
+// divideArgsFor is the same call with the parts written out in full, for the
+// tests that care what the brief says as well as what the done-condition does.
+func divideArgsFor(evidence string, parts ...dividePart) json.RawMessage {
+	raw, err := json.Marshal(divideArguments{Evidence: evidence, Parts: parts})
+	if err != nil {
+		panic(err)
+	}
+	return raw
 }
 
 // THE MEASURED DATA-LOSS CASE. The ledger is the contract of what ships and it
@@ -1859,8 +1873,8 @@ func TestTwoPartsClaimingOneFileAreRefusedBeforeAnyPartExists(t *testing.T) {
 		`{"title":"two","summary":"s","brief":"b","acceptance":"a"}]}`}
 	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
 	answer := nest.divide(t, divideScopedArgs(wideEvidence,
-		"write the northern figures into report.md",
-		"write the southern figures into report.md"))
+		"report.md holds the northern figures",
+		"report.md holds the southern figures"))
 
 	if reviewer.reads() != 0 {
 		t.Fatalf("the plan was read %d times, want a refusal that cost no model call", reviewer.reads())
@@ -1916,8 +1930,8 @@ func TestPartsThatShareADirectoryButNoFileAreAdmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	answer := nest.divide(t, divideScopedArgs(wideEvidence,
-		"write the northern figures into reports/a.md",
-		"write the southern figures into reports/b.md"))
+		"reports/a.md holds the northern figures",
+		"reports/b.md holds the southern figures"))
 
 	if !strings.HasPrefix(answer, "split into 2 parts:") {
 		t.Fatalf("the worker was told %q, want the division taken", answer)
@@ -1928,7 +1942,8 @@ func TestPartsThatShareADirectoryButNoFileAreAdmitted(t *testing.T) {
 }
 
 // THE READING IS OF PATHS AND NOT OF WORDS, so one file named two ways is one
-// file — and a word that is nobody's file is nobody's claim.
+// file — and a word that is nobody's file is nobody's claim. It is also a
+// reading of ONE SENTENCE: the done-condition, which is what a part produces.
 func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 	tree := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tree, "reports"), 0o755); err != nil {
@@ -1940,25 +1955,33 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 		want  []string
 	}{
 		{"the same file spelled relative and absolute", []dividePart{
-			{Brief: "own reports/a.md"},
-			{Brief: "own " + filepath.Join(tree, "reports", "a.md")},
+			{Acceptance: "reports/a.md holds the north"},
+			{Acceptance: filepath.Join(tree, "reports", "a.md") + " holds the south"},
 		}, []string{filepath.Join(tree, "reports", "a.md")}},
 		{"one part naming its own file twice", []dividePart{
-			{Brief: "own reports/a.md", Acceptance: "reports/a.md holds the figures"},
-			{Brief: "own reports/b.md"},
+			{Acceptance: "reports/a.md is written, and reports/a.md holds the figures"},
+			{Acceptance: "reports/b.md holds the figures"},
 		}, nil},
 		{"words that are nobody's file", []dividePart{
-			{Brief: "decide whether the northern regions belong together."},
-			{Brief: "decide whether the southern regions belong together."},
+			{Acceptance: "the northern regions are decided."},
+			{Acceptance: "the southern regions are decided."},
 		}, nil},
 		{"a file outside the family tree is not this division's to own", []dividePart{
-			{Brief: "read /usr/bin/python3 for the version"},
-			{Brief: "read /usr/bin/python3 for the version"},
+			{Acceptance: "/usr/bin/python3 reports the version"},
+			{Acceptance: "/usr/bin/python3 reports the version"},
 		}, nil},
-		{"the done-condition claims too", []dividePart{
-			{Brief: "write the northern figures", Acceptance: "reports/a.md holds them"},
-			{Brief: "write the southern figures", Acceptance: "reports/a.md holds them"},
-		}, []string{"reports/a.md"}},
+		// AND THE BRIEF CLAIMS NOTHING (#281). A brief names the material the
+		// part works on, which is everything it must READ — the plan both parts
+		// start from, the sibling file it must not disturb. Reading that as a
+		// claim refused the ordinary shape of divided work.
+		{"a shared input in both briefs is not a claim", []dividePart{
+			{Brief: "read reports/plan.md for the shape", Acceptance: "reports/a.md holds the north"},
+			{Brief: "read reports/plan.md for the shape", Acceptance: "reports/b.md holds the south"},
+		}, nil},
+		{"a file two briefs name is not a claim either", []dividePart{
+			{Brief: "the figures go towards reports/a.md", Acceptance: "reports/a.md holds the north"},
+			{Brief: "reports/a.md is another part's; do not touch it", Acceptance: "reports/b.md holds the south"},
+		}, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := scopeCollisions(test.parts, tree)
@@ -1974,21 +1997,63 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 	}
 }
 
+// TWO PARTS THAT READ ONE FILE AND WRITE THEIR OWN ARE ADMITTED, which is the
+// ordinary shape of divided work and was refused until #281: a folder holding
+// one plan, two parts told to read it, and a division that could not be made at
+// all. The floor is unmoved underneath it — the second half of this test asks
+// for the same output twice and is refused by name.
+func TestPartsSharingOneInputAreAdmittedAndOneOutputIsStillRefused(t *testing.T) {
+	admitted := newDivideNest(t, wideBrief, 0)
+	// The plan has to really be there for a name in prose to read as a path at
+	// all ([groundHolds]), which is the ground this division stands on.
+	if err := os.WriteFile(filepath.Join(admitted.node.config.Workspace, "plan.md"), []byte("the plan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	answer := admitted.divide(t, divideArgsFor(wideEvidence,
+		dividePart{Title: "the north", Summary: "s", Brief: "read plan.md, write a.md", Acceptance: "a.md holds the northern figures"},
+		dividePart{Title: "the south", Summary: "s", Brief: "read plan.md, write b.md", Acceptance: "b.md holds the southern figures"}))
+
+	if !strings.HasPrefix(answer, "split into 2 parts:") {
+		t.Fatalf("the worker was told %q, want the division taken; a file both parts only READ is nobody's claim", answer)
+	}
+	if kids := admitted.graph.children(admitted.parent.id); len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+
+	refused := newDivideNest(t, wideBrief, 0)
+	if err := os.WriteFile(filepath.Join(refused.node.config.Workspace, "plan.md"), []byte("the plan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	answer = refused.divide(t, divideArgsFor(wideEvidence,
+		dividePart{Title: "the north", Summary: "s", Brief: "read plan.md, write the north", Acceptance: "report.md holds the northern figures"},
+		dividePart{Title: "the south", Summary: "s", Brief: "read plan.md, write the south", Acceptance: "report.md holds the southern figures"}))
+
+	if !strings.HasPrefix(answer, "not split:") || !strings.Contains(answer, "report.md") {
+		t.Fatalf("the worker was told %q, want the shared output refused and named", answer)
+	}
+	if strings.Contains(answer, "plan.md") {
+		t.Fatalf("the refusal names the file both parts only read: %q", answer)
+	}
+	if kids := refused.graph.children(refused.parent.id); len(kids) != 0 {
+		t.Fatalf("%d parts exist after a refusal, want none admitted", len(kids))
+	}
+}
+
 // AND THE SAME RULE OVER THE PARTS THE REVIEWER SETTLED, because the settled
 // parts are the ones that would exist. A reviewer sharpening a brief onto a file
 // its sibling already owns writes the overlap the worker never wrote, and a rule
 // enforced only on the asked-for shape is a rule the settled shape walks around.
 func TestAReviewerThatSharpensTwoPartsOntoOneFileIsRefusedToo(t *testing.T) {
 	reviewer := &divideReviewer{answer: `{"parts":[` +
-		`{"title":"the northern figures","summary":"s","brief":"write the north into report.md","acceptance":"a"},` +
-		`{"title":"the southern figures","summary":"s","brief":"write the south into report.md","acceptance":"a"}]}`}
+		`{"title":"the northern figures","summary":"s","brief":"b","acceptance":"report.md holds the north"},` +
+		`{"title":"the southern figures","summary":"s","brief":"b","acceptance":"report.md holds the south"}]}`}
 	nest := newDivideNestOn(t, wideBrief, 0, reviewer, nil)
 
 	// The worker's own parts own separate files, so nothing above the reading
 	// refuses this: the overlap arrives with the reviewer's answer.
 	answer := nest.divide(t, divideScopedArgs(wideEvidence,
-		"write the northern figures into north.md",
-		"write the southern figures into south.md"))
+		"north.md holds the northern figures",
+		"south.md holds the southern figures"))
 
 	if reviewer.reads() != 1 {
 		t.Fatalf("the plan was read %d times, want the once this test is about", reviewer.reads())
