@@ -4,7 +4,7 @@
 ---
 kind: added
 title: /status --json prints the status note as one JSON object
-pr: 0
+pr: 484
 surface: [chat]
 ---
 
