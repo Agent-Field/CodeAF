@@ -52,30 +52,43 @@ func (c *Corpus) Listing() string {
 	return strings.Join(rows, "\n")
 }
 
-// RenderWhole is [Render] for a person rather than for a model: the same label
-// over each section — the page and the heading it came from, so a quoted line
-// can be traced back to the page that authorized it — and NOTHING CUT under it.
+// RenderWhole is [Render] for a person rather than for a model: a Markdown
+// heading over each section — the page and the heading it came from, so a
+// quoted line can be traced back to the page that authorized it — and NOTHING
+// CUT under it.
 //
 // Render's [SectionBodyCap] is a budget, and it is the model's: a context window
 // is paid for by the token, so a long section degrades there by truncation. A
 // person reading their own manual is paying for none of that, and a page cut
 // short on the surface where the whole of it is free would be a limit wearing a
 // reason it does not have.
-func RenderWhole(sections []Section) string { return renderSections(sections, 0) }
+func RenderWhole(sections []Section) string {
+	return renderSections(sections, 0, personSectionLabel)
+}
+
+func personSectionLabel(section Section) string {
+	return fmt.Sprintf("## %s · %s", section.Page, section.Title)
+}
+
+func modelSectionLabel(section Section) string {
+	return fmt.Sprintf("[%s · %s]", section.Page, section.Title)
+}
 
 // renderSections is the arrangement itself, and there is one of it because the
-// two readers differ only in whether a body is cut. Two builders would be two
-// places for the label to change in, and a person who quoted a section to
-// somebody reading the model's copy would be quoting a different shape. A cap at
-// or below zero cuts nothing.
-func renderSections(sections []Section, cap int) string {
+// two readers differ only in their label and whether a body is cut. A cap at or
+// below zero cuts nothing. BY CONSTRUCTION NO SECTION BODY LINE BEGINS WITH
+// `## `: split cuts a page at exactly that prefix, so the Markdown heading is
+// the only such line in a person's answer. A `[` line is not unique — the
+// compacting page quotes `[folded 31 messages · grep or read /home/x/...]`
+// from the screen.
+func renderSections(sections []Section, cap int, label func(Section) string) string {
 	blocks := make([]string, 0, len(sections))
 	for _, section := range sections {
 		body := section.Body
 		if cap > 0 && len(body) > cap {
 			body = body[:cap] + "…"
 		}
-		blocks = append(blocks, fmt.Sprintf("[%s · %s]\n%s", section.Page, section.Title, body))
+		blocks = append(blocks, label(section)+"\n"+body)
 	}
 	return strings.Join(blocks, "\n\n")
 }

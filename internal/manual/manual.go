@@ -95,4 +95,6 @@ func Cues() []string { return resident.Cues() }
 // Render turns sections into the block a model reads. Page and heading stay
 // attached so a quoted answer can be traced back to the page that authorized
 // it. It belongs to no corpus — sections carry their own provenance.
-func Render(sections []Section) string { return renderSections(sections, SectionBodyCap) }
+func Render(sections []Section) string {
+	return renderSections(sections, SectionBodyCap, modelSectionLabel)
+}
