@@ -222,7 +222,6 @@ func TestTheFrameClockRunsForTheWholeStoppingWindow(t *testing.T) {
 	}
 }
 
-
 // A TURN DETACHED AT THE BOUND IS A TURN THAT SETTLED, AND IS OWED THE SETTLE'S
 // OWN COMMANDS.
 //
