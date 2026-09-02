@@ -222,3 +222,41 @@ func TestTheFrameClockRunsForTheWholeStoppingWindow(t *testing.T) {
 	}
 }
 
+
+// A TURN DETACHED AT THE BOUND IS A TURN THAT SETTLED, AND IS OWED THE SETTLE'S
+// OWN COMMANDS.
+//
+// [app.settle] hands its caller two things every finished turn is owed — the
+// repository probe, because a turn may have committed, branched or dirtied the
+// tree, and the bounded fade ticks. [app.stopSweep] settles the turn it detaches
+// and must therefore CARRY those out to the frame's batch rather than drop them
+// on the floor.
+//
+// IT IS PINNED HERE BECAUSE NOTHING ELSE WOULD SAY. The rest of this file asks
+// whether the surface was freed, and a sweep whose return value is discarded
+// frees the surface perfectly: the whole suite stayed green through exactly that
+// mistake, which was found by reading the diff. The probe is the observable half
+// — it runs through a seam a test can hold — so holding it is what turns the
+// next dropped return into a failure somebody is told about.
+func TestADetachedTurnIsOwedTheSameSettleAsAnyOtherFinishedTurn(t *testing.T) {
+	a, _, advance := boundedStopApp(t)
+	probed := make(chan struct{}, 1)
+	a.workspace = t.TempDir()
+	a.gitProbe = func(string) (string, bool, bool) {
+		select {
+		case probed <- struct{}{}:
+		default:
+		}
+		return "main", false, true
+	}
+
+	advance(stopGrace)
+	drive(t, a, frameMsg{})
+
+	select {
+	case <-probed:
+	default:
+		t.Fatal("the detached turn settled without the repository probe: " +
+			"[app.stopSweep]'s commands are being dropped rather than batched")
+	}
+}
