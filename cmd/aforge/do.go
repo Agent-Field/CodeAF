@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/head"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -1220,6 +1221,12 @@ func (w *settlementWatch) narrate(nodes []store.Node) {
 			said = w.narrateRepair(event) || said
 			continue
 		}
+		// So is the compile's receipt, filed against no node at all, and read
+		// here for the one line of it that is news on this surface.
+		if event.Kind == store.EventMessagePosted && w.narrateCompileNote(event) {
+			said = true
+			continue
+		}
 		node, ours := member[event.NodeID]
 		if !ours {
 			continue
@@ -1233,6 +1240,25 @@ func (w *settlementWatch) narrate(nodes []store.Node) {
 	if said {
 		w.lastSaid = time.Now()
 	}
+}
+
+// narrateCompileNote says when the compile supplied no reading of its own.
+//
+// The compile's receipt is filed, never printed, on this surface — the goal
+// here is the person's own words whatever the compiler wrote — so the one line
+// of it that is news has to be said by itself. A substitution the person cannot
+// see is the defect #311 and #314 closed, and this would be one in miniature
+// (#335). The note is recognised by its one spelling, head.NoGlossNote, which
+// is the same constant the receipt was written from.
+func (w *settlementWatch) narrateCompileNote(event store.Event) bool {
+	var message struct {
+		Body string `json:"body"`
+	}
+	if json.Unmarshal(event.Payload, &message) != nil || !strings.Contains(message.Body, head.NoGlossNote) {
+		return false
+	}
+	w.note("compile", "no reading of its own — your request stands as the goal, word for word")
+	return true
 }
 
 // narrateOne writes the line for one journal row, and answers whether it wrote
