@@ -71,9 +71,12 @@ jobs:
       # and the default runner path is long enough to overflow the 104-byte
       # sun_path limit. Cheaper to give it room than to skip the test.
       #
-      # The eight-minute -timeout is per test binary and exists so that a hang
-      # says which package hung — the alternative was the thirteen silent
-      # minutes above, which named nothing.
+      # THE SKIP LIST AND THE TIMEOUT ARE THE MAKEFILE'S, through `make test`,
+      # so this run and a laptop's `make check` are one proof. The old eight
+      # minutes here was a guess, and internal/tui3 takes about 485 seconds on
+      # this runner: the 2026-09-02 nightly cut it off at the finish line and
+      # reported a test that had been running for two seconds as a hang (#372).
+      # The Makefile's TEST_TIMEOUT is measured with headroom instead.
       - name: Test
         env:
           TMPDIR: /tmp/aforge-ci
@@ -81,9 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$TMPDIR"
-          skip="$(grep -v -e '^#' -e '^[[:space:]]*$' .github/known-red.txt | paste -sd'|' -)"
-          pkgs="$(go list ./... | awk -v s="$SHARD" 'NR % 3 == s')"
-          echo "shard ${SHARD}: $(echo "$pkgs" | wc -l) packages, skipping ${skip}"
+          pkgs="$(go list ./... | awk -v s="$SHARD" 'NR % 3 == s' | paste -sd' ' -)"
+          echo "shard ${SHARD}: $(echo "$pkgs" | wc -w) packages"
           # -p 1: ONE PACKAGE AT A TIME WITHIN A SHARD. The second full run died
           # the same way as the first — a runner shutdown with slow packages in
           # flight and no Go timeout — after sharding had already cut each
@@ -92,7 +94,7 @@ jobs:
           # still dies at -p 1, it is not, and the package that was running is
           # the suspect by name. The shards keep the wall clock acceptable
           # while each one runs serial.
-          go test -p 1 -timeout 8m -skip "^(${skip})$" $pkgs
+          make test TEST_FLAGS='-p 1' PKGS="$pkgs"
 
   # ONE NAME FOR THE THREE, for the same reason cross build has one below: a
   # branch rule can only require a name it can spell, and a matrix's legs are
@@ -175,6 +177,38 @@ jobs:
           cache: true
       - name: Two machines
         run: make test-remote
+
+  # A RED NIGHTLY IS A PAGE, NOT A LOG LINE. Every nightly this repository had
+  # run before 2026-09-02 was red, and nobody knew, because a scheduled run
+  # reports to nobody — there is no pull request to decorate and no push to
+  # notify. So a red night opens one issue, or adds the night's run to the one
+  # already open, and the issue is what somebody sees in the morning. Green
+  # nights say nothing; the issue is closed by the person who fixed it.
+  page:
+    name: page on a red nightly
+    needs: [full-tests, cross-build, remote]
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          RESULTS: "full tests: ${{ needs.full-tests.result }}, cross build: ${{ needs.cross-build.result }}, remote: ${{ needs.remote.result }}"
+        run: |
+          set -euo pipefail
+          title='ci: the nightly full check is red on dev'
+          body="$(printf 'The nightly full check failed on `%s`.\n\n%s\n\nRun: %s\n\nThis issue is opened by ci-full.yml and closed by whoever makes the nightly green. docs/rules/ci.md says what runs there.' "${SHA:0:8}" "$RESULTS" "$RUN_URL")"
+          number="$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --label bug --body "$body"
+          fi
 
   # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET was set on
   # linux/arm64 with the toolchain of the day, and this runner is linux/amd64,

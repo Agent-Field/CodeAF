@@ -4,10 +4,20 @@ name: PR gate
 # times a day, much of it written by agents, and a gate that takes fifteen
 # minutes is a gate people learn to route around. So this one asks only the
 # questions whose answer is always the same on every machine and whose failure
-# always means somebody broke something: does the tree compile, does vet find a
-# real bug, and does the manual still know about the feature that just landed.
+# always means somebody broke something: does the tree compile, is it
+# formatted, does vet find a real bug, do the laws hold, and does the manual
+# still know about the feature that just landed.
 #
-# The whole suite is not here. It runs on the way into `staging`, and nightly
+# THE LAWS ARE HERE BECAUSE THEY WERE NOT. Until 2026-09-02 this gate's one
+# test step was `go test -run 'Manual'` over two packages — a filter nobody
+# remembered — and the endings ratchet in internal/session went red on dev
+# through two merged pull requests while every check here was green (#372).
+# A structural test decides in under a second and the same on every machine;
+# it belongs on the light gate by the light gate's own definition, and now
+# `make test-laws` finds every one of them without anybody keeping a list.
+#
+# The whole suite is not here. The packages a change touched run in full in the
+# second job below; everything else runs on the way into `staging`, and nightly
 # against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
 # in that place and what has to be true before it moves.
 on:
@@ -55,6 +65,12 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      # A file gofmt would rewrite is a file the next editor's save rewrites,
+      # and that diff lands in somebody else's pull request. Two files had
+      # drifted by the time anybody looked (#372).
+      - name: gofmt
+        run: make fmt-check
 
       # THE PACKED CORPORA ARE GENERATED FROM THE FOLDERS. The manuals are
       # ignored build products because committing one shared binary made every
@@ -130,3 +146,59 @@ jobs:
           set -euo pipefail
           go test ./internal/manual/
           go test -run 'Manual' ./internal/tui3/ ./internal/session/
+
+      # THE LAWS HOLD. Every test that reads the tree itself — the endings
+      # ratchet, the guard, the taxonomy, the known-red ratchet, the words the
+      # e2e suite waits for — found by what it does (scripts/laws.sh) and run as
+      # one target, about twenty seconds after the link. This is the step that
+      # would have stopped #279 at the door.
+      - name: The laws hold
+        run: make test-laws
+
+  # THE PACKAGES THIS CHANGE TOUCHED, IN FULL. The laws catch a shape; this
+  # catches a behaviour, in the one place a change can have broken it. It is a
+  # job of its own so that the light gate's answer arrives in its few minutes
+  # while this one takes as long as the slowest touched package — internal/tui3
+  # is about eight minutes on this runner — and the two run side by side rather
+  # than one after the other.
+  #
+  # It reads the same ledger and the same timeout as `make test`, through
+  # `make test`, so a red here is a red on a clean laptop too. It reports rather
+  # than blocks today, for the reason docs/rules/ci.md gives for `full tests`:
+  # a required check that has never been seen green blocks all work on its
+  # first day. Promote it the same way, once it has been green twice in a row.
+  touched:
+    name: touched packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test the packages this change touched
+        env:
+          # A pull request diffs against its base; a push against what the
+          # branch was before it. A first push has no before, and diffs one
+          # commit.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TMPDIR: /tmp/aforge-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
+          dirs="$(git diff --name-only "$BASE" HEAD -- '*.go' | xargs -r -n1 dirname | sort -u)"
+          pkgs=""
+          for dir in $dirs; do
+            # A directory the change emptied has no package left to test.
+            if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
+          done
+          if [ -z "$pkgs" ]; then
+            echo 'No Go file changed; nothing to run.'
+            exit 0
+          fi
+          echo "touched:$pkgs"
+          make test PKGS="$pkgs"
