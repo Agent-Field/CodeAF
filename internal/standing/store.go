@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
@@ -349,10 +349,10 @@ func (s *Store) underItemLock(id string, write func() error) error {
 		return err
 	}
 	defer lock.Close()
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+	if err := filelock.Lock(lock, true, false); err != nil {
 		return err
 	}
-	defer func() { _ = unix.Flock(int(lock.Fd()), unix.LOCK_UN) }()
+	defer func() { _ = filelock.Unlock(lock) }()
 	return write()
 }
 
@@ -370,15 +370,15 @@ func (s *Store) takeTickLock() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := filelock.Lock(lock, true, true); err != nil {
 		lock.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) {
+		if filelock.IsBusy(err) {
 			return nil, ErrHeld
 		}
 		return nil, err
 	}
 	return func() {
-		_ = unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+		_ = filelock.Unlock(lock)
 		_ = lock.Close()
 	}, nil
 }
