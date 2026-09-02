@@ -41,8 +41,10 @@ you on the OpenRouter step; another `enter` tries again.
 Already have a key? Paste it on the same first screen instead of pressing `enter` on an
 empty box. The key is masked while it is typed, and the manual-key address remains on the
 screen: `https://openrouter.ai/settings/keys`. A pasted key is checked for **shape only** —
-it has to start with `sk-` and hold no spaces. One that fails the shape check leaves this
-line under the box and stays on the step:
+it has to start with `sk-`, be at least 20 characters long, and hold no spaces. Nothing is
+sent anywhere to find out whether it works; a key of the right shape that the provider does
+not accept is discovered by the first message you send. One that fails the shape check
+leaves this line under the box and stays on the step:
 `not the shape of an openrouter key — they start with sk-or-`.
 
 What it writes: the `api_key` field of your profile's `config.json` (under `~/.aforge`),
