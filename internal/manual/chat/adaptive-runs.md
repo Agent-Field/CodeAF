@@ -100,7 +100,7 @@ keyboard decides for itself and says on the record that it decided.
 | `--db <path>` | work in this durable store instead of a private one |
 | `--keep` | keep the private store instead of deleting it on the way out |
 | `-w <dir>` | the directory to work in, edited in place — the current directory by default |
-| `--timeout <seconds>` | a hard wall in seconds |
+| `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |
 | `--yes-spend` | approve a plan whose price crosses the consent threshold |
 | `--model <slug>` | the work model for this run |
