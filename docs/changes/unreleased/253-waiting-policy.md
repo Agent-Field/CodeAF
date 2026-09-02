@@ -91,8 +91,11 @@ Nothing was tuned in response and `docs/design/waiting/DESIGN.md` §K is
 unchanged: the ruling's premise is not what the measurement says, and the
 decision is the owner's.
 
-**A named limitation, and it is not a footnote: for the duration clock there is
-no warm-up period.** §B's abnormality test compares a wait against the quantile
+**A named limitation, and it is not a footnote — filed as issue #316. The wire
+clocks warm; the permanent part is only that a legitimate long think cannot be
+told from a stall by DURATION.** The first-token and gap clocks sharpen with
+evidence as designed, because the sheet publishes a dispersion each estimate can
+beat. For the duration clock there is no warm-up period. §B's abnormality test compares a wait against the quantile
 of the survival its clock reads. A thinking phase has no published dispersion,
 so `Chain.Survival` floors that survival's spread at `lane.SpreadFloor` and the
 larger of the two is always the floor — **σ never falls below 1.0 nat however
@@ -100,9 +103,9 @@ many thoughts are folded in**, measured at 0, 1, 2, 5, 10, 20 and 60
 observations. The quantile settles at about fifteen times the believed median:
 **82.9 s against a 10 s ceiling**. So the duration clock can act before the
 ceiling only for a model believed to think for under **0.663 s**, and **a person
-using any model that deliberates for longer is in the ungated regime on their
-first answer and on their ten-thousandth — only the role's ceiling protects a
-long think.** Swept in the rig as well as read off the code: the long-think rate
+using any model that deliberates for longer is in that one clock's ungated
+regime on their first answer and on their ten-thousandth — only the role's
+ceiling protects a long think.** Swept in the rig as well as read off the code: the long-think rate
 at n = 0, 1, 2, 5, 10, 20, 60 reads 96.85 / 94.64 / 96.85 / 97.74 / 95.41 /
 95.48 / 93.72 — no trend, the largest n the lowest reading.
 
@@ -111,8 +114,11 @@ the hierarchy's own prior** so the estimate can beat the floor the way the
 first-token and gap clocks already do, or **give the duration clock a drift
 quantile of its own** — a stopped thought judged against the gap between
 reasoning deltas rather than against the whole phase. Both are mechanism changes
-and neither is taken here. `TestWhenTheThinkGateCloses` fails the build if the
-floor ever stops binding, so the limitation cannot go stale unnoticed. The
+and neither is taken here; **issue #316** carries both, the runnable
+replication, and the acceptance line — which includes recovering the 4.95 s p50
+action on stalled thought this build trades to 10.00 s on 0.93% of requests.
+`TestWhenTheThinkGateCloses` fails the build if the floor ever stops binding, so
+the limitation cannot go stale unnoticed. The
 long-think criterion is gated at full force on warmed arms for this reason and
 reported on cold ones, where what it counts is the world's own think-tail rather
 than anything a controller decides.

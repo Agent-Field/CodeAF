@@ -1959,7 +1959,7 @@ Nothing here chooses between them.
 tiebreaker is disclosed in full** — all four figures above travel together
 wherever this arm is reported.
 
-## The long-think gate, restated — and the ungated regime is permanent
+## The long-think gate, restated — and what stays ungated (issue #316)
 
 **The gate is now: ≥95% enforced at full force on every WARMED arm, and
 REPORTED on cold ones.** Not an allowance for being cold. What follows is the
@@ -2037,16 +2037,21 @@ the world's think-tail rather than anything a warmed chain would sharpen.
 
 ### THE LIMITATION, NAMED
 
-**For the duration clock there is no warm-up period: the ungated regime is
-permanent.** A person using any model that deliberates for more than about two
-thirds of a second is in it on their first answer and on their ten-thousandth,
-and **only the role's 10 s ceiling protects a long think** — the abnormality
-test that was supposed to tell a deliberating model from a hung one cannot fire
-before that ceiling at any amount of evidence. On a `talk` turn that is a
+**The wire clocks warm; the permanent part is only that a legitimate long
+think cannot be told from a stall by DURATION.** The first-token and gap clocks
+sharpen with evidence exactly as designed — the sheet publishes a dispersion for
+each, so their estimates beat the floor and their gates close. The duration
+clock has no such draw to beat, so **for it there is no warm-up period**: a
+person using any model that deliberates for more than about two thirds of a
+second is in the ungated regime on their first answer and on their
+ten-thousandth, and **only the role's 10 s ceiling protects a long think**. That
+is the whole of what is permanent here, and it is one of three clocks. On a `talk` turn that is a
 bounded, ordinary wait; on the roles whose ceilings are 30 and 60 seconds it is
 the same structure with a longer bound.
 
-**What would shrink it, named:** (1) **seed the think chain's spread from the
+**Filed as issue #316**, with both halves of this measurement, the two
+candidate closes below, and an acceptance line that includes recovering the
+4.95 s action on stalled thought. **What would shrink it, named:** (1) **seed the think chain's spread from the
 hierarchy's own prior** so the estimate can beat `SpreadFloor` and σ falls with
 evidence, which is what already happens for the first-token and gap clocks
 because the sheet publishes a dispersion for them; or (2) **give the duration

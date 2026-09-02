@@ -978,12 +978,14 @@ dispersion**, so `Chain.Survival` floors its spread at `SpreadFloor` and the
 quantile settles at about `median · e^(z·SpreadFloor)`: roughly fifteen times
 the believed median, which for a ten-second ceiling is **eighty-three seconds**.
 
-**That floor never lifts.** The spread is the larger of the estimate's and the
+**That floor never lifts — issue #316.** The spread is the larger of the estimate's and the
 draw's, and there is no published draw for the estimate ever to beat, so no
 amount of evidence moves it — measured at 0, 1, 2, 3, 4, 5, 10, 20 and 60
 observations, σ is exactly `SpreadFloor` at every one. **So the duration clock
 can never act before the ceiling for any model that deliberates for more than
-about two thirds of a second**, and on an arm with no timing belief the
+about two thirds of a second** — the other two clocks warm normally, and the
+permanent part is only that a legitimate long think cannot be told from a stall
+by duration —, and on an arm with no timing belief the
 long-think rate stops being a fact about the controller: it counts how often the
 world's own thinking phase outlasts the ceiling. That is a property of the model
 and of the role's patience, and no correct policy changes it. On a warmed arm
