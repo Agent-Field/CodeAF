@@ -715,6 +715,33 @@ no turns at all is not offered again either, because there is nothing for a next
 carry on from, and it says that instead: `…with none of its work recorded, so there was
 nothing for another attempt to carry on from`.
 
+## How long a headless run gets — the `-timeout` wall, how long does aforge do wait, can I write 5m or 2h
+
+`aforge do` runs under a hard wall, and `-timeout` is where you set it. **Left alone it is
+`15m`.** The flag's own help line is the whole rule: `hard wall, as a duration such as 15m
+or 2h (a bare number is seconds, kept for one release)`.
+
+    aforge do "…" -timeout 5m     five minutes
+    aforge do "…" -timeout 2h     two hours
+    aforge do "…" -timeout 90s    ninety seconds
+    aforge do "…" -timeout 900    fifteen minutes — a bare number is still seconds
+
+So a length of time is written here the way it is written everywhere else in aforge, with
+a unit on it. A bare number keeps its old meaning for one more release, which is there so
+that a script already passing `-timeout 900` goes on working untouched; anything new should
+carry the unit.
+
+**Two spellings are refused, and the run does not start.** Something aforge cannot read as
+a length of time — `-timeout 5 minutes`, `-timeout soon` — comes back as `a duration such
+as 15m or 2h, or a number of seconds`. Zero or less — `-timeout 0`, `-timeout -1`,
+`-timeout -5m` — comes back as `must be positive`. Both name the flag you typed, so there
+is nothing to hunt for.
+
+It is a wall and not a schedule: the length of rope at which a wedged run is more useful
+dead. Work is not simply cut off when it arrives, either — aforge stops buying new work
+while there is still room to check what has been done, and *When the wall gets close* on
+this page says what that looks like.
+
 ## When the wall gets close — the work is checked before the clock stops
 
 A job that has not finished when its wall arrives is a job nothing ever judged: the review
