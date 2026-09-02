@@ -52,6 +52,14 @@ that stays open. The `warmed · shipped · natural` arm's stalled-think p50 is
 therefore 10.00 s before and after, and the §K bounds it must not have bought
 speed with are unmoved.
 
+**The manual says it too.** `internal/manual/chat/lanes.md` gains "Waiting on a
+model that is thinking": a model that is deliberating is given patience measured
+from how long IT usually thinks, learned from every thought aforge has timed for
+it; a thought that has gone quiet for far longer than that is rescued the way a
+slow lane is, and a long but live thought is left alone. The probe that has to
+reach it — *"how long does aforge wait on a model that is thinking?"* — is in
+`internal/manual/chat_test.go`.
+
 **One more bound worth writing down, because it decides where the effect is
 visible at all.** `hazard.verdict`'s payoff branch is `wait > cost + margin`, and
 `cost` is `+Inf` for a call with no alternative lane or with λ at zero — every

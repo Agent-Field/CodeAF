@@ -2149,3 +2149,65 @@ observations with a real 0.9-nat spread around the same median:
 | identical | 0.174 | 8.82 s | closed |
 | varying by 0.9 nats | 0.909 | 68.25 s | **open** |
 
+#### (e) In the rig: every §K bound unmoved, on both seed sets
+
+`go run ./bench/lanelab/gosim -proof -store warmed`, before at `bcd098e4` and
+after with this change on top of it, 150 requests per row per seed, 2,250 trials
+an arm. **Every gated bound passes on every warmed arm on both seed sets, before
+and after.**
+
+| arm | long think ≥95% | false hedges ≤2% | avoidable ≤0.90% | purse ≤10% |
+|---|---|---|---|---|
+| **familiar 7/9/11** | before → after | before → after | before → after | before → after |
+| warmed · shipped · stress | 98.65% → **98.21%** of 223 | 0.53% → 0.80% | 0.21% → 0.34% | 4.29% → 4.42% |
+| warmed · flat · stress | 98.22% of 225 → 97.77% of 224 | 0.62% → 0.71% | 0.39% → 0.27% | 4.34% → 4.80% |
+| warmed · shipped · natural | 98.13% of 427 → 98.12% of 425 | 0.65% → 0.56% | 0.63% → 0.43% | — |
+| warmed · flat · natural | 97.66% → 98.12% of 426 | 0.65% → 0.51% | 0.53% → 0.44% | — |
+| **held out 23/25/27** | | | | |
+| warmed · shipped · stress | 99.56% → **97.78%** of 225 | 0.44% → 0.53% | 0.22% → 0.33% | 4.54% → 4.20% |
+| warmed · flat · stress | 98.22% → 97.78% of 225 | 0.36% → 0.62% | 0.27% → 0.23% | 4.24% → 4.31% |
+| warmed · shipped · natural | 97.89% of 426 → 98.14% of 429 | 0.51% → 0.47% | 0.43% → 0.37% | — |
+| warmed · flat · natural | 98.37% of 429 → 98.36% of 427 | 0.37% → 0.42% | 0.28% → 0.34% | — |
+
+**The two `shipped · stress` rows are from a re-run and the reason is written
+down here rather than left out.** The first after-run of those arms read 95.98%
+and 96.00% — still passing, two points lower — and it was taken while the box
+was carrying thirty-odd other test runs: the rig's own `alarm late` maximum was
+**7.8 s and 6.9 s** on those rows against **≤0.7 s** on the baseline pair. A
+bench alarm eight seconds late reads a healthy five-and-a-half-second thought as
+a thirteen-second one, so the reading was of the machine and not of the change.
+Both sides of the row above were re-taken one at a time on an idle box (`alarm
+late` max ≤1.3 s) and the gap does not reproduce. The natural-mix rows, which
+were clean in both runs (`alarm late` max ≤3 ms), never moved at all.
+
+#### (f) What the close does NOT buy, and the arithmetic that says so
+
+**The stalled-think p50 is 10.00 s before and after, on every arm.** #316's
+acceptance asked for the 4.95 s it was traded for; this candidate cannot return
+it, and the reason is that the gate is only half of §B.
+
+The duration clock's payoff term prices leaving a thought at **a whole fresh
+thought**: `A = cost + Think.Mean()`, so acting needs `W(s) > A + m` — the
+remaining life of THIS thought has to exceed an entire new one. For a log-normal
+that happens only far into the tail. Swept against the real
+`control.Survival` at a 5.5 s median and the proof rows' own cost:
+
+| σ | quantile at z = 2.7131 (the gate) | first s where the payoff test also passes |
+|---:|---:|---:|
+| 1.00 (the old floor) | 82.92 s | never inside 40 s |
+| 0.50 | 21.36 s | never inside 40 s |
+| 0.22 | 9.99 s | 25.86 s |
+| 0.15 | 8.26 s | 15.80 s |
+| 0.10 | 7.21 s | 11.12 s |
+
+**There is no σ at which both tests pass before a 10 s ceiling** for a model with
+that median: tightening σ closes the gate and moves the payoff crossing further
+out at the same time. The rig row confirms it — the thinking row's clocks read
+`ceiling 236` after the change exactly as they read `ceiling 232` before, with
+no `long think` act anywhere.
+
+So a stopped thought is abnormal in its **GAP**, not in its duration, which is
+#316's second candidate — a think-phase drift quantile — and it stays open. What
+this close buys is the gate: a duration clock that CAN be abnormal, which is the
+precondition for anything else being built on it, and a model whose thinking
+really varies keeping its patience.
