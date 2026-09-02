@@ -2408,15 +2408,33 @@ func firstLine(text string) string {
 }
 
 // clip bounds a string to n bytes on a rune boundary, marking the cut.
+//
+// A STRING THAT IS ALREADY MARKED KEEPS ONE MARK. [TaskGraph.inheritedLocked]
+// fits each prerequisite report with this function, and [familyOf] then fits
+// the whole inherited brief as its ground — a second pass over the same text.
+// Stacking a second `…` on a cut that already carried one would read as two
+// fragments, or as a fragment of a fragment, which is how a worker loses the
+// plot of whether it is holding the report or a stub of it. The mark MOVES to
+// the new cut; it is never doubled.
 func clip(text string, n int) string {
+	if n < 0 {
+		n = 0
+	}
 	if len(text) <= n {
 		return text
 	}
 	cut := n - len("…")
+	if cut < 0 {
+		return "…"
+	}
 	for cut > 0 && !utf8RuneStart(text[cut]) {
 		cut--
 	}
-	return text[:cut] + "…"
+	out := text[:cut]
+	if strings.HasSuffix(out, "…") {
+		return out
+	}
+	return out + "…"
 }
 
 func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
