@@ -10,8 +10,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -441,6 +443,14 @@ func TestConcurrentMintsNeverShareAVersion(t *testing.T) {
 					return
 				}
 				lost++
+				// A LOSER LOSES THE CLAIM, NEVER THE GATE. Twenty-four writers
+				// contending for one name drain in milliseconds, so nothing here
+				// comes close to mintGateBound — and if one of them were ever
+				// refused with ErrMintBusy the bound would be too mean for real
+				// contention, which is the thing this line is watching for.
+				if errors.Is(err, ErrMintBusy) {
+					t.Errorf("round %d: real contention was refused by the gate bound: %v", round, err)
+				}
 				if !errors.Is(err, ErrExists) && !strings.Contains(err.Error(), "moved on") {
 					t.Errorf("round %d: a losing writer was told something else: %v", round, err)
 				}
@@ -476,6 +486,68 @@ func TestConcurrentMintsNeverShareAVersion(t *testing.T) {
 			if _, err := store.Load("weekly-marketing", version); err != nil {
 				t.Fatalf("round %d: v%d does not load: %v", round, version, err)
 			}
+		}
+	}
+}
+
+// A mint that cannot have the gate is REFUSED INSIDE THE BOUND, and it writes
+// nothing on the way out.
+//
+// The holder here is a second os.OpenFile of the same path. flock is per open
+// file description rather than per process, so this contends with Store.gated's
+// own handle exactly as another process would — which the test proves rather
+// than assumes: the mint below has to be refused, and it could only be refused
+// by a lock this test is holding.
+//
+// This is the scripted verification for the whole change: a blocking acquire
+// would sit here until the deferred unlock, and there is no unlock before the
+// assertion.
+func TestAMintRefusesRatherThanWaitForAGateSomebodyElseHolds(t *testing.T) {
+	store := storeAt(t)
+	first, err := store.Mint(weekly(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gate, err := os.OpenFile(store.gatePath("weekly-marketing"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	if err := filelock.Lock(gate, true, true); err != nil {
+		t.Skipf("this filesystem does not take an advisory lock, so there is no gate to hold: %v", err)
+	}
+	defer filelock.Unlock(gate)
+
+	files := weekly()
+	files.Program = []byte("// the one that finds the gate held\n")
+	started := time.Now()
+	_, err = store.Mint(files, first.Hash, "while somebody else holds the gate")
+	waited := time.Since(started)
+
+	if !errors.Is(err, ErrMintBusy) {
+		t.Fatalf("a mint against a held gate answered %v, want ErrMintBusy", err)
+	}
+	if waited >= mintGateBound+time.Second {
+		t.Fatalf("the refusal took %s, which is not inside the %s bound", waited, mintGateBound)
+	}
+	// A REFUSAL LEAVES NOTHING BEHIND. Not a second version, not a record whose
+	// bundle never landed, and not a staging directory: the gate is taken before
+	// anything is read, so a refused mint has not touched the store at all.
+	versions, err := store.Versions("weekly-marketing")
+	if err != nil || len(versions) != 1 || versions[0] != 1 {
+		t.Fatalf("the refused mint left %v: %v", versions, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(store.Dir(), "weekly-marketing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), mintPrefix) {
+			t.Fatalf("the refused mint left %s behind", entry.Name())
+		}
+		if recorded, ok := recordVersion(entry.Name()); ok && recorded != 1 {
+			t.Fatalf("the refused mint claimed v%d", recorded)
 		}
 	}
 }
