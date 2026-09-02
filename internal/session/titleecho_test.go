@@ -70,55 +70,12 @@ func TestTheOpenerIsStrippedAndAnEmptyOneRefused(t *testing.T) {
 	}
 }
 
-func TestFencedAndGenericTitleAnswersAreNotMistakenForNames(t *testing.T) {
-	for _, row := range []struct{ said, want string }{
-		{"```text\ntokenizer speed\n```", "tokenizer speed"},
-		{"~~~markdown\nparser recovery\n~~~", "parser recovery"},
-		{"```tokenizer speed```", "tokenizer speed"},
-		{"```text\n```", ""},
-		{"paste 1", ""},
-		{"Step-2", ""},
-		// A number can be the subject of a real name. Only generic numbered
-		// containers are refused.
-		{"issue 376", "issue 376"},
-		{"phase 2", "phase 2"},
-		{"step 2 parser", "step 2 parser"},
-	} {
-		if got := cleanTitle(row.said); got != row.want {
-			t.Errorf("cleanTitle(%q) = %q, want %q", row.said, got, row.want)
-		}
-	}
-}
-
-func TestNamingTextKeepsPasteBodiesAndDropsOnlyTheirTransport(t *testing.T) {
-	wrapped := "summary before the pastes\n\npaste 1:\n```text\nalpha parser body\n```\n\npaste 2:\n~~~go\nbetaHandler()\n~~~\n\nbrief after them"
-	got := namingText(wrapped)
-	for _, want := range []string{"summary before the pastes", "alpha parser body", "betaHandler()", "brief after them"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("naming view lost %q:\n%s", want, got)
-		}
-	}
-	for _, wrapper := range []string{"paste 1:", "paste 2:", "```", "~~~"} {
-		if strings.Contains(got, wrapper) {
-			t.Errorf("naming view kept wrapper %q:\n%s", wrapper, got)
-		}
-	}
-	// Similar prose is not a synthetic wrapper and must survive.
-	if got := namingText("compare paste 1: with paste 2"); got != "compare paste 1: with paste 2" {
-		t.Fatalf("ordinary prose became %q", got)
-	}
-	if got := placeholderTitle("paste 1:\n```text\nrepair the tokenizer race\n```"); got != "repair the tokenizer race" {
-		t.Fatalf("paste placeholder = %q", got)
-	}
-}
-
 // THE INSTRUCTION IS ASKED WHERE A SMALL MODEL READS IT: last in the user
 // message, after the exchange, with the system line saying only who is asked.
 func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {
 	completer := &scriptedCompleter{steps: titleTurn("the parser is fine", "tokenizer speed")}
 	agent, _ := titleAgent(t, completer, nil)
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
-	waitTitleJob(t, agent)
 
 	asked := completer.request(1)
 	if len(asked) != 2 {
@@ -147,7 +104,6 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	})
 
 	events := collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
-	waitTitleJob(t, agent)
 
 	if countKind(events, EventTitleChanged) != 0 {
 		t.Fatal("the session announced the instruction as its name")
@@ -181,7 +137,6 @@ func TestARefusedNameIsNotRetriedWithinTheSession(t *testing.T) {
 	agent, _ := titleAgent(t, completer, nil)
 
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
-	waitTitleJob(t, agent)
 	collect(t, mustSubmit(t, agent, "and the parser?"))
 
 	if completer.requests() != 3 {
@@ -293,13 +248,12 @@ func TestAHealedSessionNamesItselfOnItsNextTurn(t *testing.T) {
 	if got := agent.Title(); got != "" {
 		t.Fatalf("the resumed session opened titled %q", got)
 	}
-	lane, stop := agent.WatchTaskUpdates()
-	defer stop()
 	events := collect(t, mustSubmit(t, agent, "and now?"))
-	if _, onTurn := firstOfKind(events, EventTitleChanged); onTurn {
-		t.Fatal("the healed session's title rode the completed turn")
+
+	changed, ok := firstOfKind(events, EventTitleChanged)
+	if !ok {
+		t.Fatalf("the healed session did not name itself; got %v", kinds(events))
 	}
-	changed := waitTitleChanged(t, lane)
 	if changed.Text != "tokenizer speed" {
 		t.Fatalf("the healed session named itself %q", changed.Text)
 	}

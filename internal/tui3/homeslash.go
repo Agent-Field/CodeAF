@@ -79,8 +79,8 @@ func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 // homeSlash is what enter does with a slash line on the action row: the line
 // is consumed the way chat's enter consumes it (input.go's [app.enterLine]) —
 // the box is emptied, and the words go to the one dispatcher. A command that
-// stays on this screen (/home) therefore leaves the composer empty. Unknown
-// slash prose never reaches this door; home's ordinary start carries it.
+// stays on this screen (/home, an unknown word) therefore leaves the composer
+// empty rather than leaving the person to erase what they said.
 func (a *app) homeSlash(line string) tea.Cmd {
 	h := &a.home
 	h.box.reset()
@@ -108,7 +108,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 // the drop-up is built from it.
 func (a *app) homeRunCommand(line homeLine) tea.Cmd {
 	h := &a.home
-	word, run := chooseCommand(&h.box, &h.cmd, *line.cmd, nil)
+	word, run := chooseCommand(&h.box, &h.cmd, *line.cmd)
 	h.build()
 	if !run {
 		return nil

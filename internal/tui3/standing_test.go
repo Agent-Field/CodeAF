@@ -30,21 +30,6 @@ type standFake struct {
 	answered []standReply
 }
 
-func TestDecliningAStandingCardClearsPasteMetadata(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.stand = &standingCard{id: 9}
-	a.paste("alpha\nbeta\ngamma")
-	literal := a.input.String()
-	a.answerStanding(session.StandingAnswer{}, standNoWord, "")
-	if len(a.pastes) != 0 {
-		t.Fatalf("declining left paste metadata %+v", a.pastes)
-	}
-	a.input.setText(literal)
-	if got := a.pastesUnfolded(literal); got != literal {
-		t.Fatalf("a later literal token unfolded as %q", got)
-	}
-}
-
 type standReply struct {
 	id     uint64
 	answer session.StandingAnswer

@@ -7,7 +7,6 @@ package session
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -204,29 +203,5 @@ func TestAProposalMustSayWhatMustExistWhenItIsOver(t *testing.T) {
 	if _, ok := parseTaskArguments([]byte(
 		`{"title":"t","summary":"s","brief":"b","deliverable":"d","acceptance":"a"}`)); ok != "" {
 		t.Fatalf("a whole contract was refused: %q", ok)
-	}
-}
-
-func TestAProposalPlaceholderIsRetainedButMarkedForAsyncNaming(t *testing.T) {
-	for _, title := range []string{"paste 1", "step-2", "/tmp/parser.go", "too many words for one narrow title"} {
-		args := []byte(`{"title":` + strconv.Quote(title) + `,"summary":"s","brief":"b","deliverable":"d","acceptance":"a"}`)
-		spec, problem := parseTaskArguments(args)
-		if problem != "" {
-			t.Errorf("proposal titled %q was refused: %s", title, problem)
-			continue
-		}
-		if spec.title == "" {
-			t.Errorf("proposal titled %q lost the required-field fallback", title)
-		}
-		if spec.named {
-			t.Errorf("proposal titled %q suppresses async naming", title)
-		}
-	}
-	for _, title := range []string{"issue 376", "phase 2", "parser audit"} {
-		args := []byte(`{"title":` + strconv.Quote(title) + `,"summary":"s","brief":"b","deliverable":"d","acceptance":"a"}`)
-		spec, problem := parseTaskArguments(args)
-		if problem != "" || !spec.named {
-			t.Errorf("semantic numbered title %q was not preserved: named=%v, problem=%q", title, spec.named, problem)
-		}
 	}
 }

@@ -94,7 +94,7 @@ func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 	// surface whose whole job is to take a path. The same is true of `/export `.
 	// It is THIS box that is asked, because the command is in the box the drop
 	// landed in and nowhere else.
-	if isCommandLine(strings.TrimSpace(box.String())) {
+	if strings.HasPrefix(strings.TrimSpace(box.String()), "/") {
 		return false
 	}
 	hits, _ := a.pasteResolve(text, false)
@@ -143,7 +143,7 @@ func (a *app) pasteFilesInto(box *editor, chips *[]chip, text string) bool {
 		inserted := box.spacedTokens(marks)
 		at := box.cursor
 		box.insert(inserted)
-		a.editBoxTags(box, at, at, len([]rune(inserted)))
+		box.editTags(at, at, len([]rune(inserted)))
 	}
 	a.touch()
 	return true
@@ -516,27 +516,23 @@ func pastedPath(word string) string {
 // number is lower than the old one and lower than every number still to be
 // visited, so no rewrite can be rewritten again.
 func (a *app) forgetToken(gone, held int) {
-	if !strings.Contains(a.input.String(), imageTokenHead) {
+	text := a.input.String()
+	if !strings.Contains(text, imageTokenHead) {
 		return
 	}
-	cursor := a.input.cursor
 	// The space that was holding the token apart from the words goes with it, in
 	// whichever of the three places it can be: between two words, at the front of
 	// the line, or at the end of one. What is left is the sentence the person
 	// would have typed if they had never dropped that picture.
 	token := imageToken(gone)
-	a.replaceAllInput(" "+token+" ", " ")
-	if strings.HasPrefix(a.input.String(), token+" ") {
-		a.replaceInput(0, len([]rune(token+" ")), "")
-	}
-	a.replaceAllInput(" "+token, "")
-	a.replaceAllInput(token, "")
+	text = strings.ReplaceAll(text, " "+token+" ", " ")
+	text = strings.TrimPrefix(text, token+" ")
+	text = strings.ReplaceAll(text, " "+token, "")
+	text = strings.ReplaceAll(text, token, "")
 	for n := gone + 1; n <= held; n++ {
-		a.replaceAllInput(imageToken(n), imageToken(n-1))
+		text = strings.ReplaceAll(text, imageToken(n), imageToken(n-1))
 	}
-	// Renumbering is a programmatic edit and historically left the caret at its
-	// absolute column. Keep that behavior while the identities take the edits.
-	a.input.cursor = min(cursor, len(a.input.value))
+	a.input.rewrite(text)
 }
 
 // imageSentence is the text an image-bearing message actually sends, and it is

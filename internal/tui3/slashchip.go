@@ -1,9 +1,6 @@
 package tui3
 
-import (
-	"strings"
-	"unicode"
-)
+import "strings"
 
 // THE COMMAND CHIP: a slash command does not look like a word.
 //
@@ -86,35 +83,6 @@ func knownCommand(word string) bool {
 	return false
 }
 
-// splitCommandLine recognizes the one kind of leading slash line the surface
-// owns: a command from [commands]. Unknown slash words are prose, including
-// absolute paths and API-shaped text, and therefore do not pass the dispatcher.
-//
-// The composer trims the OUTSIDE of a submitted line before asking this
-// question. Inside it, every Unicode whitespace rune may separate the command
-// word from its argument. The separator run is trimmed, but the argument's
-// quotes, slashes, backslashes, code fences and internal whitespace are bytes
-// the person wrote and are returned unchanged.
-func splitCommandLine(line string) (word, rest string, ok bool) {
-	if !strings.HasPrefix(line, "/") {
-		return "", "", false
-	}
-	body := strings.TrimPrefix(line, "/")
-	at := strings.IndexFunc(body, unicode.IsSpace)
-	if at < 0 {
-		word = body
-	} else {
-		word = body[:at]
-		rest = strings.TrimSpace(body[at:])
-	}
-	return word, rest, knownCommand(word)
-}
-
-func isCommandLine(line string) bool {
-	_, _, ok := splitCommandLine(line)
-	return ok
-}
-
 // commandSpans finds every recognized slash command in value, as rune ranges,
 // left to right.
 //
@@ -138,11 +106,11 @@ func recognizedCommandSpans(value []rune, boundary bool) []segment {
 			if !boundary {
 				continue
 			}
-		case !unicode.IsSpace(value[i-1]):
+		case value[i-1] != ' ' && value[i-1] != '\n':
 			continue
 		}
 		end := i + 1
-		for end < len(value) && !unicode.IsSpace(value[end]) {
+		for end < len(value) && value[end] != ' ' && value[end] != '\n' {
 			end++
 		}
 		if knownCommand(string(value[i+1 : end])) {
@@ -197,19 +165,7 @@ func (a *app) liveTags() []segment {
 // editTags carries demotions through an edit. An edit before a tag shifts its
 // range; an edit that overlaps or enters the word dissolves it, allowing the
 // scanner to recognize the resulting spelling afresh.
-func (a *app) editTags(from, to, inserted int) {
-	a.editBoxTags(&a.input, from, to, inserted)
-}
-
-// editBoxTags carries hidden identities through an edit to whichever composer
-// owns the keyboard. Slash-tag demotions belong to every editor; held paste
-// identities belong only to the conversation's main draft.
-func (a *app) editBoxTags(box *editor, from, to, inserted int) {
-	box.editTags(from, to, inserted)
-	if box == &a.input {
-		a.editPastes(from, to, inserted)
-	}
-}
+func (a *app) editTags(from, to, inserted int) { a.input.editTags(from, to, inserted) }
 
 // editTags is that shift on ANY box, because the drop door now writes tokens
 // into home's line and the errand pane's as well as into the draft

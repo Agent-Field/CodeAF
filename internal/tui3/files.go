@@ -581,7 +581,9 @@ func (a *app) completeFile() {
 	}
 	e := &a.input
 	if !a.comp.arg && isImagePath(path) {
-		a.replaceInput(a.comp.at, e.cursor, "")
+		head := append([]rune(nil), e.value[:a.comp.at]...)
+		tail := append([]rune(nil), e.value[e.cursor:]...)
+		e.value = append(head, tail...)
 		e.cursor = a.comp.at
 		a.attach(a.resolvePath(path))
 		a.comp.done = ""
@@ -594,7 +596,9 @@ func (a *app) completeFile() {
 	if a.comp.arg {
 		keep = 0
 	}
-	a.replaceInput(a.comp.at+keep, e.cursor, path)
+	head := append([]rune(nil), e.value[:a.comp.at+keep]...)
+	tail := append([]rune(nil), e.value[e.cursor:]...)
+	e.value = append(append(head, []rune(path)...), tail...)
 	e.cursor = a.comp.at + keep + len([]rune(path))
 	a.comp.done = path
 	a.comp.close()

@@ -43,7 +43,6 @@ var ladderStampers = map[string]string{
 // site cannot join it by accident, because joining it means editing this map and
 // writing down which of the two things the call is.
 var legacyEffortStampers = map[string]string{
-	"auxiliary.go":      "naming roles require reasoning off so their tiny answer ceiling remains usable",
 	"harness_build.go":  "a design round's role call, from the designer tier's own suffix",
 	"harness_task.go":   "carries a design's phase effort onto its node",
 	"task_shape.go":     "the shaper's role call, from the shaper tier's own suffix",

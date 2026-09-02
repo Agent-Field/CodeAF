@@ -2986,9 +2986,8 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// both lines as dim notes.
 	a.record(textMessage("assistant", line+"\n"+said))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
-	// Schedule the name on the post-turn lifetime lane, on the same terms every
-	// other completed turn shape takes it (title.go).
-	a.maybeTitle(ctx)
+	// And the name, on the terms every other turn shape takes it (title.go).
+	a.maybeTitle(ctx, hub)
 	return checkpointHandover{moved: true, decision: checkpointCeilingMoved, taskID: id, carry: carried}
 }
 

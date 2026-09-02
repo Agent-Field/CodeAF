@@ -5696,8 +5696,8 @@ func (a *app) selectTool(delta int) bool {
 }
 
 // slash consumes a command line. Everything starting with "/" is answered
-// here after [app.enterLine] or home has proved that the word belongs to the
-// command table. An unknown leading slash is prose and never reaches this door.
+// here and nothing starting with "/" is ever sent to the model — including a
+// command nobody defined, which gets a hint instead of a turn.
 //
 // THE WORD IS RESOLVED THROUGH THE TABLE BEFORE IT IS SWITCHED ON. The other
 // words a command answers to — /clear for /new, /exit and /q for /quit, /? for
@@ -5707,12 +5707,8 @@ func (a *app) selectTool(delta int) bool {
 // that is typed in full and entered arrives here too, so an alias typed out and
 // an alias chosen from the list run the same road.
 func (a *app) slash(line string) tea.Cmd {
-	name, rest, known := splitCommandLine(line)
-	if !known {
-		// Menu and programmatic callers share this defensive seam. User text is
-		// routed before it reaches here, so silence here cannot swallow a draft.
-		return nil
-	}
+	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
+	rest = strings.TrimSpace(rest)
 	// The unknown-command hint below says back what was typed and not what it
 	// resolved to, so the name as written is kept.
 	switch canonicalCommand(name) {
@@ -6092,6 +6088,18 @@ func (a *app) slash(line string) tea.Cmd {
 		return cmd
 
 	default:
+		// A DROPPED FILE IS NOT AN UNKNOWN COMMAND. A terminal that delivers a
+		// drop as keystrokes writes the path straight into the box, its leading
+		// `/` puts the composer into command mode, and this arm used to answer
+		// `unknown command: /var/folders/…/Screenshot · try /help` — a surface
+		// telling somebody their screenshot does not exist. dropkeys.go's fold
+		// catches nearly all of those before enter; this is the net under it,
+		// and it is the last one there is: if the whole line names files that
+		// are really on this disk, it was a drop and it becomes chips.
+		if a.droppedLine(line) {
+			return a.edited()
+		}
+		a.note("unknown command: /" + name + " · try /help")
 		return nil
 	}
 }
@@ -6304,7 +6312,10 @@ func (a *app) renew() (tea.Cmd, bool) {
 	// were parked behind a turn come with it, in the order they would have been
 	// sent — nobody is left to send them, and they are still what somebody typed
 	// (park.go, quitarm.go's [app.leavingDraft]).
-	a.restoreAsideDraft(side)
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
 	// AND THE NOTE SAYS WHICH OF THE TWO HAPPENED. A count appearing on the
 	// status line is not enough on its own to tell somebody whether the
 	// conversation they were in is still running.

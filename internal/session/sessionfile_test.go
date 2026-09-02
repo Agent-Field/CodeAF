@@ -30,7 +30,6 @@ func TestSessionFileRoundTrip(t *testing.T) {
 	}}
 	first, _ := newTestAgent(t, writer, func(config *Config) { config.SessionFile = path })
 	collect(t, mustSubmit(t, first, "what is in the workspace?"))
-	waitTitleJob(t, first)
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

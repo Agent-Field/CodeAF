@@ -30,9 +30,8 @@ func (f *taskCommandFake) StartTask(_ context.Context, brief string) (uint64, st
 	f.brief = brief
 	return 7, "named work", f.err
 }
-func (f *taskCommandFake) JudgeDecomposable(_ context.Context, brief string) (bool, []string, string) {
+func (f *taskCommandFake) JudgeDecomposable(context.Context, string) (bool, []string, string) {
 	f.judgeCalls++
-	f.brief = brief
 	return f.yes, f.parts, f.why
 }
 
@@ -609,17 +608,8 @@ func TestADeclinedProposalRaisesNoFormingBlock(t *testing.T) {
 	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
 	a.task = &taskCard{id: 42, title: "index the adapters", name: "adapter index"}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
-	a.paste("alpha\nbeta\ngamma")
-	literal := a.input.String()
 	a.answerTask(false, "")
 	if a.waiting() {
 		t.Fatal("a declined proposal left a forming block on screen")
-	}
-	if len(a.pastes) != 0 {
-		t.Fatalf("declining left paste metadata %+v", a.pastes)
-	}
-	a.input.setText(literal)
-	if got := a.pastesUnfolded(literal); got != literal {
-		t.Fatalf("a later literal token unfolded as %q", got)
 	}
 }

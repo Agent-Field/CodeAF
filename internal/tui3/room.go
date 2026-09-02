@@ -1779,13 +1779,10 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 	if guard == nil {
 		return nil
 	}
-	spoken, shown := a.composed(guard.text)
-	line, shownLine := spoken, shown
+	line := guard.text
 	if revive {
-		head := "The task \"" + guard.title + "\" is no longer running. " +
-			"Start it again with this instruction: "
-		line = head + spoken
-		shownLine = head + shown
+		line = "The task \"" + guard.title + "\" is no longer running. " +
+			"Start it again with this instruction: " + guard.text
 	}
 	a.dropGuard()
 	a.closeRoom()
@@ -1797,7 +1794,7 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 	// wrapper this surface put around it: ↑ is for getting back what you typed.
 	a.remember(guard.text)
 	a.dropDraft()
-	return a.submitShown(line, shownLine)
+	return a.submit(line)
 }
 
 // ── the guard, drawn ────────────────────────────────────────────────────────

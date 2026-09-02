@@ -250,10 +250,7 @@ func parseShapedBrief(text string) (shapedBrief, bool) {
 	if shaped.Acceptance == "" {
 		shaped.Acceptance = taskPersonAcceptance
 	}
-	// A shaper is still a naming model at this boundary. Hold its title to the
-	// same two-or-three-word, non-path, non-placeholder contract as the dedicated
-	// task namer so a confident JSON answer cannot bypass the shared validator.
-	shaped.Title = cleanTaskName(shaped.Title)
+	shaped.Title = cleanTitle(shaped.Title)
 	shaped.Where = strings.TrimSpace(shaped.Where)
 	return shaped, true
 }

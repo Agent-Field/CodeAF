@@ -62,9 +62,6 @@ type routedCompleter struct {
 }
 
 func (c *routedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
-	if isNameCall(messages) {
-		return textResponse("background work"), nil
-	}
 	lane := "parent"
 	if len(messages) > 0 && messages[0].Role == "system" &&
 		strings.Contains(messageText(messages[0]), "You are an AUDITOR") {
