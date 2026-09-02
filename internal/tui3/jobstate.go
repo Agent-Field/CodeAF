@@ -94,6 +94,45 @@ func (a *app) jobsRunning() int {
 
 func (a *app) jobsOver() int { return len(a.jobs) - a.jobsRunning() }
 
+// ── THE SEAM BETWEEN THE COLUMN AND THE PAGE ────────────────────────────────
+//
+// The column's section (jobsection.go) is where a person presses enter, and a
+// job's page (jobpage.go) is what opens. Neither reaches into the other: the
+// section asks to go there and the page draws whatever this says is open, which
+// is why the one fact they share lives here with the rest of the state.
+
+// showJobPage opens one job's page, or does nothing at all for a job this window
+// has never been told about.
+//
+// A PAGE IS NEVER OPENED ONTO NOTHING. An id with no job behind it is a row that
+// was drawn from a reading this window no longer holds, and a page opened on it
+// would draw a header with no name, a clock with no start and a log with no
+// path — three absences the emptiness law would have to explain one at a time.
+// Refusing here means the page can be written as though its job exists, because
+// it does.
+func (a *app) showJobPage(id int) bool {
+	if a.jobAt(id) == nil {
+		return false
+	}
+	a.jobPage = id
+	return true
+}
+
+// closeJobPage comes back out to whatever was underneath.
+func (a *app) closeJobPage() { a.jobPage = 0 }
+
+// jobPageOpen reports whether a job's page is on the frame, and jobPageJob is
+// the job it is about — nil once that job has gone, which is the reading every
+// draw on that page hangs off.
+func (a *app) jobPageOpen() bool { return a.jobPage != 0 }
+
+func (a *app) jobPageJob() *session.JobNotice {
+	if a.jobPage == 0 {
+		return nil
+	}
+	return a.jobAt(a.jobPage)
+}
+
 // jobsLive is this conversation's running jobs, oldest first, and jobsSettled is
 // the ones that have ended, NEWEST first.
 //

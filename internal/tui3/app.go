@@ -1475,6 +1475,11 @@ type app struct {
 	// truth instead of a map and a slice kept in step with each other.
 	jobs     []session.JobNotice
 	jobsOpen bool
+	// jobPage is the id of the job whose page is open, and 0 is every frame that
+	// is not on one. It is a JOB'S OWN NUMBER and not a roster id, which is the
+	// point of the whole change: one thing, one number, the same one `jobs kill`
+	// takes.
+	jobPage int
 	taskLane    <-chan session.Event
 	taskGen     int
 	// railStamp counts the times this window's own row-space MOVED — a node
