@@ -2,9 +2,11 @@ package guard
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -35,18 +37,6 @@ var spawnAllowlist = map[string]string{
 	"internal/voice/recorder.go:go r.read(command, output, r.done, r.chunks, r.quit)":            "read recovers and still writes done and closes chunks, which Stop and the caption consumer wait on",
 }
 
-// spawn matches a goroutine launch at the start of a statement.
-var spawn = regexp.MustCompile(`^\s*go [a-zA-Z_(]`)
-
-// guarded matches the idiom that makes a spawn safe: the guard's own spawner,
-// its deferred recover, or a hand-written recover in the same few lines.
-var guarded = regexp.MustCompile(`guard\.Recover\(|guard\.Go\(|recover\(\)`)
-
-// guardWindow is how far below a `go` statement the sweep looks for the idiom.
-// The guard is always the first thing in the goroutine's body, so this is
-// generous rather than tuned.
-const guardWindow = 10
-
 // TestEveryGoroutineInTheGuardedTreeIsGuarded is the standing check behind the
 // law that the terminal surface never dies from a panic. A new goroutine either
 // starts with a guard or is named here with a reason.
@@ -70,21 +60,19 @@ func TestEveryGoroutineInTheGuardedTreeIsGuarded(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			lines := strings.Split(string(raw), "\n")
-			for index, line := range lines {
-				if !spawn.MatchString(line) {
+			relative = filepath.ToSlash(relative)
+			sites, err := scanSpawns(raw)
+			if err != nil {
+				return fmt.Errorf("%s: %w", relative, err)
+			}
+			for _, site := range sites {
+				if site.guarded {
 					continue
 				}
-				key := filepath.ToSlash(relative) + ":" + strings.TrimSpace(line)
-				if _, allowed := spawnAllowlist[key]; allowed {
+				if _, allowed := spawnAllowlist[relative+":"+site.statement]; allowed {
 					continue
 				}
-				window := strings.Join(lines[index:min(index+guardWindow, len(lines))], "\n")
-				if guarded.MatchString(window) {
-					continue
-				}
-				unguarded = append(unguarded, fmt.Sprintf("%s:%d: %s",
-					filepath.ToSlash(relative), index+1, strings.TrimSpace(line)))
+				unguarded = append(unguarded, fmt.Sprintf("%s:%d: %s", relative, site.line, site.statement))
 			}
 			return nil
 		})
@@ -118,6 +106,231 @@ func TestSpawnAllowlistIsStillReal(t *testing.T) {
 			t.Fatalf("allowlisted spawn is gone from %s: %q", file, statement)
 		}
 	}
+}
+
+// TestSpawnSweepReadsTheDefersNotTheDistance pins the rule the sweep applies,
+// on the shapes that taught it. The first fixture is internal/plan/plan.go's
+// spine opener as a042286f left it: the recover is the third defer, behind a
+// wait-group release, a cancel that must run after it, and a paragraph of
+// prose, which put it past the ten text lines the old sweep read and had a
+// guarded goroutine reported as bare. The second is spine.go's sampler, whose
+// recover reads a flag declared just above it. The rest are the ways a
+// goroutine is honestly open or honestly not, so a change to the checker has to
+// keep every verdict rather than just the one that was wrong.
+func TestSpawnSweepReadsTheDefersNotTheDistance(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		guarded bool
+	}{
+		{
+			name: "a recover deferred after another defer and a comment, more than ten lines in",
+			body: `go func() {
+		defer opening.Done()
+		defer func() {
+			if spineErr != nil {
+				stopGrounding()
+			}
+		}()
+		// Both openers carry their fault out in the error the caller below
+		// already reads: a faulted spine fails the build, as a failed one does,
+		// and a faulted grounding is joined into the returned error while the
+		// plan carries on without it.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
+			}
+		}()
+		choice, spineErr = spine(ctx)
+	}()`,
+			guarded: true,
+		},
+		{
+			name: "a recover deferred after a flag it reads, which is a statement but not work",
+			body: `go func(index int) {
+		defer group.Done()
+		landed := false
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if !landed {
+					results[index] = result{err: guard.Note("plan/spine sample", recovered)}
+				}
+			}
+		}()
+		results[index] = sample(ctx)
+		landed = true
+	}(index)`,
+			guarded: true,
+		},
+		{
+			name:    "a recover deferred only after a call has been made",
+			body:    "go func() {\n\tstarted := time.Now()\n\tdefer func() { _ = recover(); _ = started }()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "the guard's own deferred recover",
+			body:    "go func() {\n\tdefer guard.Recover(\"fixture\")\n\twork()\n}()",
+			guarded: true,
+		},
+		{
+			name:    "a recover deferred only after the work has started",
+			body:    "go func() {\n\twork()\n\tdefer func() { _ = recover() }()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "a recover that belongs to a nested literal, not to the goroutine",
+			body:    "go func() {\n\tdefer func() {\n\t\tinner := func() { _ = recover() }\n\t\t_ = inner\n\t}()\n\twork()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "the word recover in a comment where the old window would have read it",
+			body:    "go func() {\n\t// nothing here can panic, so no recover()\n\twork()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "a named function with no literal to open",
+			body:    "go work()",
+			guarded: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sites, err := scanSpawns([]byte("package fixture\n\nfunc spawn() {\n\t" + tc.body + "\n}\n"))
+			if err != nil {
+				t.Fatalf("fixture does not parse: %v", err)
+			}
+			if len(sites) != 1 {
+				t.Fatalf("fixture holds %d spawns, want exactly one", len(sites))
+			}
+			if sites[0].guarded != tc.guarded {
+				t.Fatalf("guarded = %v, want %v for:\n%s", sites[0].guarded, tc.guarded, tc.body)
+			}
+		})
+	}
+}
+
+// spawnSite is one `go` statement: the line it starts on, its first line of
+// source text, which is how the allowlist names it and how the failure reads,
+// and whether the goroutine opens with a guard.
+type spawnSite struct {
+	line      int
+	statement string
+	guarded   bool
+}
+
+// scanSpawns parses one file and reads every `go` statement in it. It works on
+// the syntax alone, for the same reason scanLocks does: a sweep that needed
+// types would need the tree to build, and this one runs on code that may not.
+func scanSpawns(source []byte) ([]spawnSite, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", source, 0)
+	if err != nil {
+		return nil, err
+	}
+	var sites []spawnSite
+	ast.Inspect(file, func(node ast.Node) bool {
+		spawn, ok := node.(*ast.GoStmt)
+		if !ok {
+			return true
+		}
+		from, to := fset.Position(spawn.Pos()).Offset, fset.Position(spawn.End()).Offset
+		statement, _, _ := strings.Cut(string(source[from:to]), "\n")
+		sites = append(sites, spawnSite{
+			line:      fset.Position(spawn.Pos()).Line,
+			statement: strings.TrimSpace(statement),
+			guarded:   spawnGuarded(spawn),
+		})
+		return true
+	})
+	return sites, nil
+}
+
+// spawnGuarded is the rule. A `go` statement is guarded when it spawns
+// guard.Go itself, or when its function literal registers a recover in its
+// OPENING: the run of statements before the first one that does any work,
+// where work is any statement that makes a call. A recover is `defer
+// guard.Recover(...)` or a deferred literal that calls recover() in its own
+// body.
+//
+// The opening may be any length, and comments do not count, because a recover
+// has to be registered before the work and is otherwise free to sit behind
+// other defers — plan.go's spine opener needs its recover registered LAST so it
+// runs first and settles the error a sibling defer then reads — or behind a
+// flag the recover will read, which is the `landed := false` in spine.go. A
+// recover registered after a call has been made protects only what came after
+// it, so a defer that follows one is not read at all. A defer is registration
+// rather than a call, and is read for its recover and then stepped over.
+func spawnGuarded(spawn *ast.GoStmt) bool {
+	if guardCall(spawn.Call, "Go") {
+		return true
+	}
+	literal, ok := spawn.Call.Fun.(*ast.FuncLit)
+	if !ok {
+		return false
+	}
+	for _, statement := range literal.Body.List {
+		deferred, isDefer := statement.(*ast.DeferStmt)
+		if isDefer && recovers(deferred.Call) {
+			return true
+		}
+		if !isDefer && calls(statement) {
+			return false
+		}
+	}
+	return false
+}
+
+// calls reports whether a statement makes any call at all. It is the sweep's
+// whole notion of work: a panic in a goroutine's own opening arrives through a
+// call, and a statement that makes none — a flag, a counter, a zero value — is
+// set-up the recover may follow.
+func calls(statement ast.Stmt) bool {
+	found := false
+	ast.Inspect(statement, func(node ast.Node) bool {
+		if _, isCall := node.(*ast.CallExpr); isCall {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// recovers reports whether a deferred call absorbs a panic: it is the guard's
+// own Recover, or a literal whose body calls the builtin. A recover inside a
+// nested literal is not counted, because a recover only stops a panic when it
+// is called by the deferred function itself, and the sweep should not believe
+// a guard the runtime would not honour.
+func recovers(call *ast.CallExpr) bool {
+	if guardCall(call, "Recover") {
+		return true
+	}
+	literal, ok := call.Fun.(*ast.FuncLit)
+	if !ok {
+		return false
+	}
+	found := false
+	ast.Inspect(literal.Body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		if inner, isCall := node.(*ast.CallExpr); isCall {
+			if name, isIdent := inner.Fun.(*ast.Ident); isIdent && name.Name == "recover" {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// guardCall reports a call spelled `guard.<method>(...)`.
+func guardCall(call *ast.CallExpr, method string) bool {
+	chosen, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, isIdent := chosen.X.(*ast.Ident)
+	return isIdent && pkg.Name == "guard" && chosen.Sel.Name == method
 }
 
 func repositoryRoot(t *testing.T) string {
