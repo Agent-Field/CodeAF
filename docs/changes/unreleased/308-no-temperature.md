@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: No call sets a temperature — every request leaves sampling to the provider
-pr: 304
+pr: 308
 surface: [engine, chat]
 invalidates:
   - "Every request carried `temperature: 0.2` — a base default in config, sent on the wire by the provider adapter on every call. No call sets a sampling parameter now; the field is absent from the request and the provider's own default answers, exactly as OpenRouter documents for an omitted parameter."
