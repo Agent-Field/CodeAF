@@ -1474,7 +1474,11 @@ and is not — one holding only blank lines, from a `ctrl+j` or an `alt+enter` y
 mean, or from `ctrl+enter`/`shift+enter` on a terminal that cannot send them. The gesture
 used to ask for exactly one space and refuse those, so the foot advertised `space space
 home` over a chord that could not fire; it does not any more, and the blank lines go with
-the draft when home opens.
+the draft when home opens. It also includes the other places: the same two spaces, typed
+into a place's own empty box — the tasks roster's filter, the memory filter, the search
+and spend composers — open home from there. The door still loses to a space that already
+means something where you are standing: on the settings panel space is the row's
+`activate` verb, and on home itself two spaces type into home's own filter.
 
 It works with a turn running. Home takes the frame the way the settings panel does, and the
 answer goes on streaming underneath — `esc` puts you back in it, still running.

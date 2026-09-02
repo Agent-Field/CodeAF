@@ -3784,3 +3784,139 @@ func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
 		t.Fatal("two spellings of one far transcript keyed differently")
 	}
 }
+
+// ── the door from every place ───────────────────────────────────────────────
+//
+// THE DOOR IS UNIVERSAL. The gesture used to live past the rung where a place
+// takes the whole keyboard, so `space space` only ever opened home from inside
+// a conversation; these tests hold the law on the place side, one test per
+// shape of room rather than one per tab: the places that type into their own
+// box (tasks, memory, spend, search), the panel whose space is already a verb
+// (settings), and home itself, where the door is a no-op.
+
+// driveToPlace lands a session, then stands the person on `where` the way the
+// router does — [app.showPage] — and answers the place's box.
+func driveToPlace(t *testing.T, lab *homeLab, standing string, where page) (*app, *editor) {
+	t.Helper()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", time.Now())
+	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", time.Now().Add(-time.Hour))
+	a := lab.door(mine)
+	if cmd := a.showPage(where); cmd == nil && !a.at(where) {
+		t.Fatalf("%v did not open", where)
+	}
+	return a, a.placeBox()
+}
+
+// TWO SPACES IN A PLACE'S OWN EMPTY BOX GO HOME — every place that types into
+// that box. The first space types itself into the place's own filter, exactly
+// as it does into a conversation's draft, and the second opens home and leaves
+// nothing behind in the box.
+func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
+	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+		lab := newHomeLab(t)
+		a, box := driveToPlace(t, lab, "", where)
+		if box == nil {
+			t.Fatalf("%v has no box to type into", where)
+		}
+		a.key(key(" "))
+		if got := box.String(); got != " " {
+			t.Fatalf("%v: the first space did not type itself: %q", where, got)
+		}
+		if a.at(pageHome) {
+			t.Fatalf("%v: one space opened home", where)
+		}
+		a.key(key(" "))
+		if !a.at(pageHome) {
+			t.Fatalf("%v: two spaces did not open home", where)
+		}
+		if got := box.String(); got != "" {
+			t.Fatalf("%v: the gesture left %q behind in the box", where, got)
+		}
+	}
+}
+
+// AND ON THE PLACES THE DOOR ALREADY READS, WALKING THERE KEEPS IT WORKING.
+// Standing's box is the one place box the place's own keys never type into, so
+// the test drives the box to the armed state the way an earlier room leaves it
+// — one space behind the caret — and holds the door open from there.
+func TestDoubleSpaceFromStandingGoesHome(t *testing.T) {
+	lab := newHomeLab(t)
+	a, box := driveToPlace(t, lab, "", pageStanding)
+	if box == nil {
+		t.Fatal("standing has no box to type into")
+	}
+	box.insert(" ")
+	a.key(key(" "))
+	if !a.at(pageHome) {
+		t.Fatal("two spaces did not open home from the standing place")
+	}
+	if got := box.String(); got != "" {
+		t.Fatalf("the gesture left %q behind in the box", got)
+	}
+}
+
+// SPACE IS SETTINGS' OWN VERB, and the door loses to it: `activate` is what the
+// panel draws space meaning on every row, and a door that swallowed the key
+// under it would be a door that decided somebody's setting was activated. The
+// panel's search box refuses space characters outright (settings.go), so the
+// door cannot arm there at all — which is the whole of why this is honest.
+func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
+	lab := newHomeLab(t)
+	a, _ := driveToPlace(t, lab, "", pageSettings)
+	a.key(key(" "))
+	a.key(key(" "))
+	if a.at(pageHome) {
+		t.Fatal("the door opened home over settings, where space is a verb on a row")
+	}
+	if got := a.sheet.query.String(); got != "" {
+		t.Fatalf("the panel's search box picked up %q", got)
+	}
+}
+
+// SPACE THEN A LETTER ON A PLACE TYPES NORMALLY. The door reads the box the
+// place types into and no other: a sentence aimed at a filter is nobody's way
+// of asking for home.
+func TestASingleSpaceThenALetterTypesNormallyOnAPlace(t *testing.T) {
+	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
+		lab := newHomeLab(t)
+		a, box := driveToPlace(t, lab, "", where)
+		a.key(key(" "))
+		a.key(key("x"))
+		if got := box.String(); got != " x" {
+			t.Fatalf("%v: the box holds %q, want %q", where, got, " x")
+		}
+		if a.at(pageHome) {
+			t.Fatalf("%v: typing a space and a letter opened home", where)
+		}
+		// And a space in a box that already has words in it is just a space.
+		a.key(key(" "))
+		a.key(key(" "))
+		if a.at(pageHome) {
+			t.Fatalf("%v: the gesture fired in a box that had text in it", where)
+		}
+	}
+}
+
+// AND ON HOME ITSELF THE DOOR IS A NO-OP: the foot draws no door there, and
+// two spaces into home's own filter type two spaces, the way they always did.
+func TestThePlaceDoorIsShutOnHome(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", time.Now())
+	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", time.Now().Add(-time.Hour))
+	a := lab.door(mine)
+	a.openHome()
+	if !a.at(pageHome) {
+		t.Fatal("home did not open")
+	}
+	if a.homeDoorOpen() {
+		t.Fatal("the door advertised itself on home")
+	}
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.at(pageHome) {
+		t.Fatal("home moved")
+	}
+	if got := a.home.box.String(); got != "  " {
+		t.Fatalf("home's own filter holds %q, want the two spaces typed plainly", got)
+	}
+}
