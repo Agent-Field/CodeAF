@@ -138,6 +138,12 @@ func (a *Agent) cancelTask(id uint64) (string, error) {
 // moves, `done` closes, the checkpoint is written, and NO SLOT IS HANDED BACK,
 // because a node that never ran never took one and a decrement here would be
 // this node quietly raising the concurrency cap for everybody else.
+//
+// AND A RUNNING NODE NOBODY HAS TAKEN UP YET IS DROPPED IN THIS FUNCTION TOO,
+// for the same reason the queued one is — no runner holds it, so no landing is
+// coming to settle it. That node DID take a slot, at the moment the frontier
+// marked it running, and this is the one road out of it that has to hand the
+// slot back by hand ([TaskGraph.handBackSlotLocked]).
 func (g *TaskGraph) stop(id uint64) (string, error) {
 	g.mu.Lock()
 	node := g.nodes[id]
@@ -176,6 +182,17 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		dropped = !node.claimed
 		if dropped {
 			node.state, node.report, node.held = TaskFailed, taskStoppedWord, ""
+			// AND THE SLOT COMES BACK HERE, because nothing else is going to
+			// bring it. This node took one when the frontier marked it running
+			// (task_run.go's [TaskGraph.runFrontier]). The runner that would
+			// normally hand it back on its way out cannot: the goroutine on its
+			// way to this node does call [TaskGraph.handBackLane], but that
+			// parks a node only while it is still RUNNING, and the line above
+			// has just failed it. A slot held by a node nobody is running is
+			// the person's task.parallel cap quietly shrinking by one for the
+			// rest of the session — which is the same fault, in the other
+			// direction, as the decrement the queued road refuses.
+			g.handBackSlotLocked(node)
 			line = "stopped " + name
 			break
 		}

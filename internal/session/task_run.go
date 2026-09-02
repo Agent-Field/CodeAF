@@ -1559,16 +1559,7 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 		// have finished work ageing on disk.
 		node.elapsed = time.Since(node.started)
 	}
-	// A PARKED NODE HAS ALREADY GIVEN ITS LANE BACK ([TaskGraph.park]), so
-	// landing it must not give the same one back twice. And a node that never
-	// took one — a design (see [TaskNode.takesSlot]) — must not hand one back
-	// either: both would be quietly raising the cap for everybody else, which
-	// is the same fault [TaskGraph.resettle] refuses one function down.
-	if node.parked {
-		node.parked = false
-	} else if g.running > 0 && node.takesSlot() {
-		g.running--
-	}
+	g.handBackSlotLocked(node)
 	g.mu.Unlock()
 	close(node.done)
 
@@ -1576,6 +1567,30 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.grade(node)
 	g.announce(node)
 	g.runFrontier()
+}
+
+// handBackSlotLocked returns one node's slot to the graph, and it is the ONE
+// place that arithmetic is written.
+//
+// A PARKED NODE HAS ALREADY GIVEN ITS LANE BACK ([TaskGraph.park]), so landing
+// it must not give the same one back twice. And a node that never took one — a
+// design (see [TaskNode.takesSlot]) — must not hand one back either: both would
+// be quietly raising the cap for everybody else, which is the same fault
+// [TaskGraph.resettle] refuses one function down.
+//
+// ITS TWO CALLERS ARE THE TWO WAYS A NODE STOPS HOLDING A SLOT IT TOOK.
+// [TaskGraph.complete] is the ordinary one: the runner landed the node. The
+// other is cancel.go's [TaskGraph.stop], for a running node no runner had taken
+// up yet — there, nobody is coming to land it, so the stop that settles it must
+// also give its lane back. The lock is the caller's.
+func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
+	if node.parked {
+		node.parked = false
+		return
+	}
+	if g.running > 0 && node.takesSlot() {
+		g.running--
+	}
 }
 
 // resettle moves a node that has ALREADY landed to a new final state: an

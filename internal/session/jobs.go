@@ -43,6 +43,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -423,8 +424,22 @@ func newJobRegistry(workspace string, place Place, notify func(string), watch ..
 	return registry
 }
 
+// errSessionClosed is what BOTH doors of a shut registry say, and they say it
+// in one voice on purpose: a caller cannot tell whether it was refused before
+// its log was made or after, and has no reason to want to. Every caller answers
+// it the same way — carry on without a log.
+var errSessionClosed = errors.New("this session has closed; nothing new starts in it")
+
 // newJob makes the shell every job shares — an id, a log file on disk, a sink
 // over it — without deciding what will run in the middle.
+//
+// ITS REFUSAL IS THE CHEAP ONE AND NOT THE LOAD-BEARING ONE. This check cannot
+// be what makes the law true, because the lock goes down again before the log
+// is created and the job does not JOIN the registry until its caller adds it;
+// a quit landing in that gap would walk the slice and finish before the job
+// arrived. [jobRegistry.join] is where the law is actually kept. This is here
+// so that the overwhelmingly common case — a session already closed when the
+// call is made — costs nothing and creates no directory.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// NOTHING STARTS IN A SESSION THAT HAS LEFT. The refusal is here, ahead of
 	// the directory, because the first thing this function does is CREATE one:
@@ -435,7 +450,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	closed := r.closed
 	r.mu.Unlock()
 	if closed {
-		return nil, fmt.Errorf("this session has closed; nothing new starts in it")
+		return nil, errSessionClosed
 	}
 
 	directory := droppingsDir(r.place, r.workspace, droppingJobs)
@@ -499,14 +514,47 @@ func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, erro
 	return 0, "", nil, fmt.Errorf("could not open the job log: %s is full of them", directory)
 }
 
-// add puts a job in the registry. It is called once the job is actually
-// running — a list between the id reservation and this append shows one fewer
-// job, which is the honest answer for work that does not exist yet.
-func (r *jobRegistry) add(started *job) {
+// join is the ONE door into the registry's slice, and the place the closed
+// session's law is actually kept.
+//
+// THE CHECK AND THE APPEND HAPPEN UNDER ONE HOLD OF THE LOCK. That is the whole
+// reason this is a function. [jobRegistry.newJob] also refuses a closed
+// registry, but it must let the lock go to create the log, and a job does not
+// arrive here until its caller has filled it in — so a quit landing in that gap
+// sets `closed`, walks the slice, and returns before the job appends itself.
+// The job would then be running in a session that had left, behind the one
+// round that would ever have killed it, which is the defect the flag was added
+// to close and not a smaller one (issue #381).
+//
+// A JOB THAT CANNOT JOIN TAKES ITS LOG BACK OUT OF THE FOLDER. Nothing will
+// ever read it — no row, no id anybody was given, no round that will settle
+// it — and leaving the file behind would put the jobs directory back a moment
+// after the quit took it away, which is the visible half of the same bug.
+func (r *jobRegistry) join(started *job) error {
 	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		started.sink.close()
+		if started.logPath != "" {
+			_ = os.Remove(started.logPath)
+		}
+		return errSessionClosed
+	}
 	r.jobs = append(r.jobs, started)
 	r.mu.Unlock()
+	return nil
+}
+
+// add puts a job in the registry and publishes its row. It is called once the
+// job is actually running — a list between the id reservation and this append
+// shows one fewer job, which is the honest answer for work that does not exist
+// yet. A refused job gets no row, because there is no job to have one.
+func (r *jobRegistry) add(started *job) error {
+	if err := r.join(started); err != nil {
+		return err
+	}
 	r.announceRow(started)
+	return nil
 }
 
 // announceRow publishes one job's row, and it is the ONE PLACE that decides
@@ -578,7 +626,14 @@ func (r *jobRegistry) start(command string) (*job, error) {
 		return nil, fmt.Errorf("could not start the command: %w", err)
 	}
 	started.cmd = process
-	r.add(started)
+	// A JOB REFUSED AT THE DOOR TAKES ITS PROCESS WITH IT. This one is already
+	// forked, so simply returning the error would leave exactly the orphan the
+	// refusal exists to prevent — a process running for a session that has
+	// left, with no row, no id and no round that will ever kill it.
+	if err := r.add(started); err != nil {
+		signalGroup(process, syscall.SIGKILL)
+		return nil, err
+	}
 
 	go r.reap(started)
 	return started, nil
@@ -603,7 +658,9 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 	if len(explicit) > 0 {
 		started.explicitStop = explicit[0]
 	}
-	r.add(started)
+	if err := r.add(started); err != nil {
+		return nil, err
+	}
 	return started, nil
 }
 
@@ -630,7 +687,13 @@ func (r *jobRegistry) startRender(label, prompt string) (*job, context.Context, 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	started.stop = cancel
-	r.add(started)
+	if err := r.add(started); err != nil {
+		// The context is cut rather than dropped: the caller is about to be
+		// handed an error instead of it, and a live cancel nobody holds is a
+		// leak vet will name.
+		cancel()
+		return nil, nil, err
+	}
 	return started, ctx, nil
 }
 
@@ -660,7 +723,15 @@ func (r *jobRegistry) startHand(label, role string) (*job, context.Context, erro
 	r.mu.Lock()
 	r.hands++
 	r.mu.Unlock()
-	r.add(started)
+	if err := r.add(started); err != nil {
+		// THE HAND COMES BACK IN. It was counted OUT a line ago, and this one is
+		// never going anywhere; a count left raised would be a node's landing
+		// waiting forever on a report from a hand that was refused at the door
+		// (see [jobRegistry.hands]).
+		r.handHome()
+		cancel()
+		return nil, nil, err
+	}
 	return started, ctx, nil
 }
 
@@ -754,14 +825,18 @@ func (r *jobRegistry) adopt(taken *bare.BashCall, quiet ...bool) (*job, error) {
 	// started it with Setpgid, so a kill still reaches the whole tree exactly as
 	// it does for a job this registry forked itself.
 	started.cmd = taken.Process()
-	taken.Attach(started.sink)
+	// THE JOIN COMES BEFORE THE ATTACH, so that a refused adoption never points
+	// bash's streams at a sink this registry has just closed and a log it has
+	// just removed. A quiet adoption takes the same door — it only declines the
+	// ROW, never the check.
+	join := r.add
 	if len(quiet) > 0 && quiet[0] {
-		r.mu.Lock()
-		r.jobs = append(r.jobs, started)
-		r.mu.Unlock()
-	} else {
-		r.add(started)
+		join = r.join
 	}
+	if err := join(started); err != nil {
+		return nil, err
+	}
+	taken.Attach(started.sink)
 
 	// The receive happens INSIDE the goroutine: written as an argument it would
 	// be evaluated here, and the adoption would block until the process exited.
