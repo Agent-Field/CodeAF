@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -193,6 +194,8 @@ func main() {
 	requests := flag.Int("requests", 2000, "requests per cell per seed")
 	seeds := flag.Int("seeds", 8, "how many seeds")
 	seed0 := flag.Int("seed", 7, "the first seed; the rest are seed+2k, as sim.py's sweep does")
+	seedList := flag.String("seeds-are", "",
+		"the exact seeds to run, comma separated, instead of the seed+2k progression")
 	only := flag.String("scenario", "", "run one scenario only: talk, work or offpath")
 	arm := flag.String("policy", "", "run one policy only: default, belief or belief+hedge")
 	speedup := flag.Int("speedup", 100, "how many times faster the wire runs than the world it describes")
@@ -254,9 +257,23 @@ func main() {
 		}
 	}
 
-	seedList := make([]int, 0, *seeds)
-	for k := 0; k < *seeds; k++ {
-		seedList = append(seedList, *seed0+2*k)
+	// THE EXACT SEEDS, WHEN A RULE NAMES THEM. A tiebreaker is only a
+	// tiebreaker if the seeds it runs on are the ones that were written down
+	// before it ran, and the progression above cannot express an arbitrary
+	// three. It changes no default: unsaid, the sweep is exactly as it was.
+	seedsRun := make([]int, 0, *seeds)
+	if *seedList != "" {
+		for _, word := range strings.Split(*seedList, ",") {
+			seed, err := strconv.Atoi(strings.TrimSpace(word))
+			if err != nil {
+				log.Fatalf("gosim: %q is not a seed: %v", word, err)
+			}
+			seedsRun = append(seedsRun, seed)
+		}
+	} else {
+		for k := 0; k < *seeds; k++ {
+			seedsRun = append(seedsRun, *seed0+2*k)
+		}
 	}
 
 	rel, _ := filepath.Rel(here, *sheetPath)
@@ -269,12 +286,12 @@ func main() {
 	fmt.Printf("fetched:  %s\n", world.fetched)
 	fmt.Printf("lanes:    %d on the sheet, %d with p50 timing\n", world.total, len(world.lanes))
 	fmt.Printf("seeds:    %v    requests per cell per seed: %d    pooled per cell: %d\n",
-		seedList, *requests, *requests*len(seedList))
+		seedsRun, *requests, *requests*len(seedsRun))
 	fmt.Printf("prompt:   %d tokens every request; read rate %g tok/s\n", promptTokens, lane.ReadRate)
 	fmt.Printf("wire:     %d× faster than the world; %d tokens streamed per answer "+
 		"(the rate filter's floor is %d)\n", *speedup, streamTokens, 32)
 	if *proof {
-		proveIt(world, seedList, *requests, *speedup, *trace,
+		proveIt(world, seedsRun, *requests, *speedup, *trace,
 			pacesFrom(*pace), storesFrom(*store), mixesFrom(*mix), *jsonOut, began)
 		return
 	}
@@ -310,7 +327,7 @@ func main() {
 		perScenario := map[string]cell{}
 		bySeed := map[string][]cell{}
 		for _, p := range policies {
-			pooled, seedCells := runCell(world, s, p, seedList, *requests, *speedup, *trace)
+			pooled, seedCells := runCell(world, s, p, seedsRun, *requests, *speedup, *trace)
 			rows = append(rows, pooled)
 			perScenario[p] = pooled
 			bySeed[p] = seedCells
@@ -354,7 +371,7 @@ func main() {
 				if p == baseline {
 					continue
 				}
-				for k, sd := range seedList {
+				for k, sd := range seedsRun {
 					v := gateOne(s, bySeed[baseline][k], bySeed[p][k])
 					v.Policy = fmt.Sprintf("%s@%d", p, sd)
 					perSeed = append(perSeed, v)
@@ -465,7 +482,7 @@ func main() {
 	if *jsonOut != "" {
 		payload := map[string]any{
 			"sheet": filepath.Base(*sheetPath), "fetched_at": world.fetched,
-			"model": world.model, "seeds": seedList, "n_per_seed": *requests,
+			"model": world.model, "seeds": seedsRun, "n_per_seed": *requests,
 			"speedup": *speedup, "stream_tokens": streamTokens,
 			"baseline": baseline, "strike_note": strikeNote,
 			"rows": rows, "ship_gate": gates, "per_seed_gate": perSeed,

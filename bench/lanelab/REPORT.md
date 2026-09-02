@@ -1832,3 +1832,28 @@ be. That is a mechanism change and it is not taken here.
   serial-retry half is therefore exercised by no row in this run, and a rig whose
   fault outlasted the guard would show the baseline paying for two streams AND
   waiting longer. What is measured here is the cheaper, slower half of it.
+
+### The tiebreaker on the one red gate — the rule, written down before the run
+
+**This section was committed BEFORE the run it describes.** The point of a
+tiebreaker is that the rule cannot be chosen after the number, so the rule is
+here, in the file, at a commit that precedes the measurement.
+
+The disputed quantity is one arm's long-think rate: `cold · shipped · stress`
+read **94.67% of 225** on the familiar seeds and **97.33% of 225** on the
+held-out ones, against a bound of **≥95%**. At 225 phases, 95% is 213.75, so
+94.67% is **213 phases where 214 would have passed** — one phase.
+
+**The rule.** That one arm is run again, alone, on three seeds never used
+anywhere in this lane: **31 / 37 / 41**, at the same 150 requests per row per
+seed. The verdict is taken on **the new seeds' pooled long-think rate alone**:
+
+- **≥ 95%** — the arm passes, and every earlier number in this file stands
+  exactly as reported.
+- **< 95%** — the red is real, the lane stops, and it goes back to the owner.
+
+**No pooling with the earlier runs.** Combining three seed sets after seeing two
+of them is choosing a denominator that gives the answer one wants, and it is the
+one thing this rule exists to forbid. **No other arm is re-run and no constant
+is touched.** All three results — familiar 94.67, held out 97.33, and the
+tiebreaker — are recorded below whichever way it goes.
