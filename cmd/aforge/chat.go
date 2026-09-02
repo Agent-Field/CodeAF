@@ -1088,13 +1088,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// is no change; the store refuses everything else. A failure goes in as
 		// its own words: "it failed" says the next steps have nothing to
 		// consume, while the reason says which assumption died.
+		// THE SETTLEMENT IS DECIDED BEFORE ANYTHING IS TOLD HOW THIS LEAF ENDED.
+		//
+		// It used to be decided below the sentinel, and that left a job holding
+		// two answers about one leaf: the sentinel had been handed "FAILED" and
+		// given licence to rewrite or drop the unstarted remainder, and then the
+		// tree overturned the failure and the leaf delivered. A plan edited on a
+		// failure that did not stand is a sibling cancelled for a reason nobody
+		// can point at afterwards. So the question is asked here, once, and every
+		// reader below is told the one ending that is actually true.
+		settledDelivery, settledOnTree := "", false
+		if err != nil {
+			settledDelivery, settledOnTree = settledOnTheTree(ctx, settings, planClient, graph,
+				node, task, outcome, opts.produced, absolute, jobDir, workerModel)
+		}
+		// Result-driven revision: each landed leaf is shown to the sentinel,
+		// which edits the job's unstarted remainder only when this result
+		// contradicts a specific assumption in a specific node. A leaf the tree
+		// settled reaches it the way a delivered leaf does — no failure, because
+		// there is none to report.
 		if !isReflex && planGraph != nil && outcome != nil {
-			failure := ""
-			if err != nil {
-				failure = err.Error()
-			}
 			plans.reviseAfter(ctx, settings, planClient, graph, node, planPrefix, planGraph,
-				outcome.Text, absolute, failure, workerModel)
+				outcome.Text, absolute, leafFailureForThePlan(err, settledOnTree), workerModel)
 		}
 		if err != nil {
 			// Preserve failed-attempt evidence even though no delivery reaches the
@@ -1123,16 +1138,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 			// THE WIRE'S WORD IS NOT THE TREE'S. A leaf whose last call never
 			// landed failed at SAYING it had finished; whether it finished is a
-			// question about the repository, and the repository is still there.
-			// So work that is on the tree behind a transport failure is put to
-			// the gate a delivered leaf faces, and a request met as stated ends
-			// the run delivered — with the profile evidence above already
-			// preserved, because the attempt really did end on the wire. See
-			// settledOnTheTree for what this refuses to widen into.
-			if delivery, settled := settledOnTheTree(ctx, settings, planClient, graph, node,
-				task, outcome, opts.produced, absolute, jobDir, workerModel); settled {
+			// question about the repository, and the repository is still there —
+			// so work on the tree behind a transport failure was put to the gate
+			// a delivered leaf faces, above, and a request met as stated delivers
+			// here. The profile evidence above is kept either way, because the
+			// attempt really did end on the wire, and the job's own graph is
+			// taken off the registry there exactly as a failure would take it.
+			// See settledOnTheTree for what this refuses to widen into.
+			if settledOnTree {
 				result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, false)
-				result.Summary = delivery
+				result.Summary = settledDelivery
 				return result, nil
 			}
 			// A failed leaf usually leaves something behind. The files are on
@@ -2865,6 +2880,70 @@ func treeShortWords(short string) string {
 	return said + "."
 }
 
+// unrecordedSettlementWords is the other way this settlement ends short, and it
+// is a different sentence because it is a different fact: the tree DID do what
+// was asked, and the run is failing anyway because the record of that could not
+// be written.
+//
+// It says so plainly rather than hiding behind the wire's own ending, because a
+// person whose work is on disk and whose run says it failed is owed the reason
+// that is actually true.
+const unrecordedSettlementWords = "the last message from the model never arrived, and what " +
+	"the work left on the tree could not be written down — so this stands as it was."
+
+// leafFailureForThePlan is what the plan sentinel is told about how this leaf
+// ended, and it is a function so that the answer cannot be given twice.
+//
+// A LEAF THE TREE SETTLED IS NOT A FAILURE TO THE PLAN. The sentinel edits a
+// job's UNSTARTED remainder, and the word it edits under is the one
+// resident.RevisionEvent builds this string into: "FAILED:" is licence to
+// rewrite or drop a sibling, "finished" is not. So a wire failure that the tree
+// then overturns must never reach it as one — otherwise the job holds two
+// answers about a single leaf, and a sibling is cancelled for a reason nobody
+// can point at once the delivery lands thirty lines later.
+//
+// It takes the settlement as a fact rather than recomputing it, because the
+// settlement costs a gate call and a run that paid for one answer must not buy
+// a second. Its caller therefore decides it above this line; see the comment on
+// settledDelivery for why that order is the fix and not an accident of layout.
+func leafFailureForThePlan(err error, settledOnTree bool) string {
+	if err == nil || settledOnTree {
+		return ""
+	}
+	return err.Error()
+}
+
+// settlementStands is the whole of what it takes for work on the tree to end a
+// run the wire had already failed, and it is one function because it is one
+// decision assembled from two facts that arrive from different places.
+//
+// The first is the receipt: the request was met as stated, in the words the
+// record keeps. The second is that the row saying so WAS ACTUALLY WRITTEN.
+//
+// A SETTLEMENT NOBODY COULD RECORD IS A SETTLEMENT NOTHING DOWNSTREAM CAN READ,
+// so this fails closed on it. The exit code, the closing line and every later
+// reading of the run come off that row and off nothing else — do.go's
+// deliveredWhole asks the store for it by node — so a leaf that returned success
+// over a row that never landed would hand back a delivery no reader could find
+// any account of, on top of a failure it had just thrown away. The failure is
+// already true and already recorded; only a settlement that is itself on the
+// record may overturn one.
+func settlementStands(receipt string, recorded error) bool {
+	return strings.TrimSpace(receipt) != "" && recorded == nil
+}
+
+// settlementShortWords is why the failure stood, and there are exactly two
+// reasons: the tree did not do what was asked, or it did and the saying of it
+// did not survive. The receipt tells them apart on its own — it is the thing the
+// first one never earns — so nothing else has to be passed in to know which of
+// the two happened.
+func settlementShortWords(evidence store.DeliveryGate) string {
+	if strings.TrimSpace(evidence.Receipt) == "" {
+		return treeShortWords(firstNonEmptyString(evidence.Missing, evidence.Gap))
+	}
+	return unrecordedSettlementWords
+}
+
 // settledOnTheTree decides a run whose leaf failed ON THE WIRE over work that is
 // already ON THE TREE, and answers with the delivery the run may end on.
 //
@@ -2890,7 +2969,8 @@ func treeShortWords(short string) string {
 // errored was judged by the work and fails exactly as it did. And a gate that
 // could not be reached leaves the failure standing, because the failure is
 // already there and only a positive answer may overturn it — which is the
-// opposite of the gate's own fail-open direction, and deliberately so.
+// opposite of the gate's own fail-open direction, and deliberately so. So does a
+// settlement whose journal row could not be written: see settlementStands.
 func settledOnTheTree(ctx context.Context, settings config.Config, client *pool.Client,
 	graph *store.Store, node store.Node, task exec.Task, outcome *exec.Outcome,
 	record artifactRecord, artifacts []string, jobDir, workerModel string,
@@ -2923,12 +3003,12 @@ func settledOnTheTree(ctx context.Context, settings config.Config, client *pool.
 	// rule the person set and the work broke — so the photograph taken above
 	// decides before the question is ever put.
 	requestSettled(gateCtx, settings, client, graph, node, delivery, records, &gate, &evidence)
-	if err := graph.RecordDeliveryGate(node.ID, evidence); err != nil {
-		log.Printf("note: could not journal what the tree said about %s: %v", node.ID, err)
+	recordErr := graph.RecordDeliveryGate(node.ID, evidence)
+	if recordErr != nil {
+		log.Printf("note: could not journal what the tree said about %s: %v", node.ID, recordErr)
 	}
-	if strings.TrimSpace(evidence.Receipt) == "" {
-		recordOnNode(graph, node.ID,
-			treeShortWords(firstNonEmptyString(evidence.Missing, evidence.Gap)), store.RoleSystem)
+	if !settlementStands(evidence.Receipt, recordErr) {
+		recordOnNode(graph, node.ID, settlementShortWords(evidence), store.RoleSystem)
 		return "", false
 	}
 	// And the plain words, on the one channel that carries a fact out of the
