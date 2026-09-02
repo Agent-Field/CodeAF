@@ -162,6 +162,15 @@ func TestARoomSteerIsAnElbowAndTheRecordKeepsIt(t *testing.T) {
 	r.quit()
 }
 
+// The two spellings of "the column has the keyboard", quoted from where they are
+// drawn (internal/tui3's task.go railHoldKeys and tasksettle.go roomSettleHint).
+// The hint slot names the keys THAT ROW can answer, so which of the two stands
+// is a fact about the work, not about the column.
+const (
+	railHoldWalk      = "↑↓ move"
+	railHoldNeedsLook = "a accept · l look again · n not right"
+)
+
 // openRoom walks into the first node's page the way a keyboard does: the roster
 // takes the keyboard, `enter` opens the row's room, and `esc` hands the keyboard
 // back to the box — which is what makes the next thing typed a steer rather than
@@ -169,10 +178,18 @@ func TestARoomSteerIsAnElbowAndTheRecordKeepsIt(t *testing.T) {
 func openRoom(t *testing.T, r *rig) {
 	t.Helper()
 	// THE COLUMN TAKES THE KEYBOARD FIRST, then `enter` opens the focused row's
-	// page. The pause is for the column and not for the model: what is being
-	// waited on is one frame, and the page's own header below is the assertion.
+	// page. What is waited on is the column SAYING it has the keyboard, and there
+	// are two honest spellings of that because the hint slot belongs to the row
+	// under the cursor (internal/tui3's [app.railHoldHintWord]): an ordinary held
+	// row offers the walk, and a row whose work has landed and wants a look offers
+	// the answers to that question instead.
+	//
+	// A SLEEP HERE ASSERTED NOTHING AND MISREAD THE SURFACE. Waiting a second and
+	// carrying on made a run's outcome a function of how loaded the machine was,
+	// and waiting for the walk's own words alone read the settle row — a perfectly
+	// ordinary frame — as the column having failed to take the keyboard.
 	r.keys("C-t")
-	time.Sleep(time.Second)
+	r.waitForAny(20*time.Second, railHoldWalk, railHoldNeedsLook)
 	r.keys("Enter")
 	r.waitFor(30*time.Second, "esc/← main")
 	// AND THE KEYBOARD GOES BACK TO THE BOX. The column keeps it after it opens a
