@@ -245,7 +245,10 @@ var forkSchemaJSON = `{"type":"object","properties":{` +
 // a chat turn and a task worker both fork, because both are minds mid-work with
 // a context worth copying.
 func (a *Agent) forkTools() []bare.Tool {
-	if a.config.inHand {
+	// [Config.mayFork] is the one reading of it, and the page's own `fork`
+	// bullet is composed from the same predicate (beltfacts.go), so a hand is
+	// never offered a verb this line has just withheld.
+	if !a.config.mayFork() {
 		return nil
 	}
 	return []bare.Tool{{

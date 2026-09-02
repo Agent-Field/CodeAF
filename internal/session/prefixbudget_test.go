@@ -99,11 +99,16 @@ const fixedPrefixBudget = 48_000
 // is also the page the person's own conversation reads, which is the one that
 // is paid for on every turn of every day.
 func widestPage() string {
-	widest := make([]string, 0, len(beltFacts))
-	for _, fact := range beltFacts {
-		widest = append(widest, fact.present)
+	widest := func(facts []beltFact, join string) string {
+		lines := make([]string, 0, len(facts))
+		for _, fact := range facts {
+			lines = append(lines, fact.present)
+		}
+		return strings.Join(lines, join)
 	}
-	return strings.Replace(systemPrompt, beltFactsToken, strings.Join(widest, "\n"), 1)
+	page := strings.Replace(systemPrompt, beltFactsToken, widest(beltFacts, "\n"), 1)
+	page = strings.Replace(page, handoffFactsToken, widest(handoffFacts, "\n"), 1)
+	return strings.Replace(page, programFactsToken, widest(programFacts, "\n\n"), 1)
 }
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before

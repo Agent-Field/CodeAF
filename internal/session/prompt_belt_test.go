@@ -208,15 +208,17 @@ func TestEveryToolThePromptNamesIsOnThatShapesBelt(t *testing.T) {
 			continue
 		}
 		belt, page := beltShapeAgent(t, shape)
-		if strings.Contains(page, beltFactsToken) {
-			t.Fatalf("%s: the page still carries %s, so its tool-naming facts were never composed", shape.name, beltFactsToken)
+		for _, token := range []string{beltFactsToken, handoffFactsToken, programFactsToken} {
+			if strings.Contains(page, token) {
+				t.Fatalf("%s: the page still carries %s, so its tool-naming facts were never composed", shape.name, token)
+			}
 		}
 		carried := beltNameSet(belt)
 		// A SENTENCE THAT NAMES A TOOL IN ORDER TO SAY IT IS NOT HERE IS NOT A
 		// PROMISE. The absent-case fragments are exactly that ("There is no
 		// `watch` here"), so they come out before the page is read for names.
 		residue := page
-		for _, fact := range beltFacts {
+		for _, fact := range allBeltFacts() {
 			if !fact.holds(agentConfigFor(t, shape)) && fact.absent != "" {
 				residue = strings.Replace(residue, fact.absent, "", 1)
 			}
@@ -260,7 +262,7 @@ func toolUniverse(t *testing.T) map[string]bool {
 			universe[name] = true
 		}
 	}
-	for _, fact := range beltFacts {
+	for _, fact := range allBeltFacts() {
 		for _, name := range fact.tools {
 			universe[name] = true
 		}
@@ -294,7 +296,7 @@ func TestEveryConditionalToolThePageNamesHasAFragment(t *testing.T) {
 	}
 
 	composed := map[string]bool{}
-	for _, fact := range beltFacts {
+	for _, fact := range allBeltFacts() {
 		for _, name := range fact.tools {
 			composed[name] = true
 		}

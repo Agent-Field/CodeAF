@@ -31,7 +31,17 @@ import "strings"
 //
 // prompt_belt_test.go is the both-ways proof, over every agent shape this
 // package builds.
-const beltFactsToken = "BELT_FACTS"
+//
+// THERE ARE THREE PLACES THE PAGE HANDS OVER, and they are three because the
+// sentences are three runs of prose the page needs kept where they are: the
+// session facts, the list of ways work leaves this turn, and the two
+// paragraphs that say what a saved recipe and a saved program ARE. A page
+// assembled anywhere else would read as an appendix.
+const (
+	beltFactsToken    = "BELT_FACTS"
+	handoffFactsToken = "HANDOFF_FACTS"
+	programFactsToken = "PROGRAM_FACTS"
+)
 
 // ── the predicates ──────────────────────────────────────────────────────────
 //
@@ -80,6 +90,34 @@ func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
 // the agent at the moment the prompt is rendered.
 func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 
+// mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
+// hand and nowhere else, which is the whole of the depth-one law: a chat turn
+// and a task worker are both minds mid-work with a context worth copying, and a
+// hand is not, because the fork is one deep.
+func (c Config) mayFork() bool { return !c.inHand }
+
+// mayDesignHarness says whether the two harness hands belong on this belt
+// (tools_harness.go): a store to write the page into, a runner to run what was
+// written, and somebody watching who can answer the card. A design nobody can
+// approve is two model calls spent on a page that will be dropped.
+func (c Config) mayDesignHarness() bool {
+	return c.HarnessStore != nil && c.RunHarness != nil && c.AskConsent
+}
+
+// mayProposeSubharness says whether the saved-programs pair belongs on this
+// belt (tools_subharness.go): somebody watching, a surface holding the harness
+// lane the card goes out on, and at least one program on the registry.
+//
+// THE THIRD QUESTION IS ASKED OF THE REGISTRY ITSELF, at the moment it is
+// asked, by the same reader the belt counts ([Config.subharnessRows]) — so
+// this is a live fact and a config fact at once, and the page and the belt read
+// it within microseconds of each other in newAgent. An empty registry is no
+// verb and no sentence: a model handed a propose verb over an empty list would
+// offer programs it invented.
+func (c Config) mayProposeSubharness() bool {
+	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
+}
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with
@@ -105,10 +143,10 @@ var beltFacts = []beltFact{{
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering, and `tasks` with `scope: \"everywhere\"` groups every OTHER project holding live work.\n" +
-		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and say so when a row prints no transcript.\n" +
+		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
 		"- `tasks` with `id` shows the call in flight, the steps, the spend and the last of what a running task said and did: pull it to SEE inside a run. Steer with `id` and `say`.\n" +
 		"- `needs your look`: not done or failed, branch kept; settle with `tasks` id and `resolve`, the choice theirs unless told to decide. `lost the connection`, `went in circles`, `was blocked by another task`, `ran out of steps` mean halted, not failed: offer a rerun.",
-	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see.",
+	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},
 	holds:   Config.hasStore,
@@ -138,10 +176,91 @@ var beltFacts = []beltFact{{
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
 }}
 
+// handoffFacts is `## Work or words`: the ways work leaves this turn, one row
+// per verb, so that the list a model reads is the list of verbs it has.
+//
+// THE LEAD-IN RIDES `propose_task` AND NOT THE LIST. "Launch first, then
+// answer" is the instruction of an agent that has somewhere to launch at; on
+// the floor of the tree there is nowhere, and the truth there is the opposite
+// instruction — the work is yours, so open it. Everything else in the section
+// names no verb and stays in the page for everybody: what a hand-off costs,
+// that the question is asked again while you work, and that what you learned
+// goes with it.
+var handoffFacts = []beltFact{{
+	tools: []string{"propose_task"},
+	holds: Config.mayProposeTask,
+	present: "WORK — research across sources, changes across files, anything with several\n" +
+		"independent parts, anything they would otherwise watch a spinner for — is NOT\n" +
+		"yours to do inline. Launch first, then answer:\n" +
+		"  - WIDE WORK — a sweep across many files, research across many sources, the\n" +
+		"    same change over many independent items: ONE `propose_task` with `wide`\n" +
+		"    set. That is the default road: the worker opens the material and hands the\n" +
+		"    real parts out under itself, each a worker in a copy of its own,\n" +
+		"    folding their reports into one deliverable. Do not decompose it\n" +
+		"    here, since the parts are only visible from inside, and never split related\n" +
+		"    work, which shards the context it shares.\n" +
+		"  - One self-contained linear job: `propose_task`, without `wide`.",
+	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
+		"stand, so a sweep across many files, research across many sources or the same\n" +
+		"change over many items is work you open and carry yourself, in the order that\n" +
+		"finishes it.",
+}, {
+	tools: []string{"fork"},
+	holds: Config.mayFork,
+	present: "  - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not\n" +
+		"    touch: `fork`, mid-work only, once you can name the slices.",
+	// A hand is told nothing, because the fork is one deep and there is no
+	// second-best road to point it at (fork.go's forkTools).
+	absent: "",
+}, {
+	tools:   []string{"build_harness"},
+	holds:   Config.mayDesignHarness,
+	present: "  - A shape of work that will recur: `build_harness`.",
+	absent:  "",
+}, {
+	tools:   []string{"propose_subharness"},
+	holds:   Config.mayProposeSubharness,
+	present: "  - A shape of work a saved program ALREADY does: `propose_subharness`.",
+	absent:  "",
+}}
+
+// programFacts is what a saved recipe and a saved program ARE. Each paragraph
+// exists to make its own two verbs usable, so it travels with them: a build
+// that cannot design one has no reason to carry the definition, and a worker
+// paid for both paragraphs on every request of every turn.
+var programFacts = []beltFact{{
+	tools: []string{"list_harnesses", "build_harness"},
+	holds: Config.mayDesignHarness,
+	present: "A **sub-harness** is a reusable recipe: a named, versioned procedure saved\n" +
+		"here, and offered by the turn when somebody's words match. `list_harnesses`\n" +
+		"lists them, `build_harness` designs one.",
+	absent: "",
+}, {
+	tools: []string{"list_subharnesses", "propose_subharness"},
+	holds: Config.mayProposeSubharness,
+	present: "A **subharness** is a saved PROGRAM rather than a recipe: typed input, a typed\n" +
+		"answer, only the tools it declared. `list_subharnesses` lists them and\n" +
+		"`propose_subharness` offers one with your line about why it matched. NOTHING\n" +
+		"RUNS BECAUSE YOU PROPOSED IT: the person answers that card, so propose only when\n" +
+		"the work IS what a program is for.",
+	absent: "",
+}}
+
+// allBeltFacts is every row, for the tests that hold the whole table to the
+// law rather than one section of it.
+func allBeltFacts() []beltFact {
+	all := make([]beltFact, 0, len(beltFacts)+len(handoffFacts)+len(programFacts))
+	all = append(all, beltFacts...)
+	all = append(all, handoffFacts...)
+	return append(all, programFacts...)
+}
+
 // renderBeltFacts composes the section for one shape.
-func renderBeltFacts(config Config) string {
-	lines := make([]string, 0, len(beltFacts))
-	for _, fact := range beltFacts {
+// The separator is the page's own: bullets sit on consecutive lines, whole
+// paragraphs are parted by a blank one.
+func renderBeltFacts(config Config, facts []beltFact, join string) string {
+	lines := make([]string, 0, len(facts))
+	for _, fact := range facts {
 		text := fact.absent
 		if fact.holds(config) {
 			text = fact.present
@@ -150,14 +269,26 @@ func renderBeltFacts(config Config) string {
 			lines = append(lines, text)
 		}
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, join)
 }
 
 // promptWithBeltFacts is the embedded page as THIS agent reads it. It is the
 // whole of the fixed prefix that depends on the shape, which is why
 // prefixbudget_test.go weighs this and not [systemPrompt].
 func promptWithBeltFacts(config Config) string {
-	return strings.Replace(systemPrompt, beltFactsToken, renderBeltFacts(config), 1)
+	page := strings.Replace(systemPrompt, beltFactsToken, renderBeltFacts(config, beltFacts, "\n"), 1)
+	page = strings.Replace(page, handoffFactsToken, renderBeltFacts(config, handoffFacts, "\n"), 1)
+	page = strings.Replace(page, programFactsToken, renderBeltFacts(config, programFacts, "\n\n"), 1)
+	// AND THE HOLE A WHOLE SECTION LEFT IS CLOSED. A table that renders nothing
+	// — the saved-programs paragraphs on a worker, which has neither verb —
+	// leaves its blank line behind, and the page would open a paragraph gap of
+	// three newlines where a reader expects one. prompts/system.md contains no
+	// triple newline of its own, so this is unambiguous and is done once here
+	// rather than by giving every token a hand-tuned surrounding.
+	for strings.Contains(page, "\n\n\n") {
+		page = strings.ReplaceAll(page, "\n\n\n", "\n\n")
+	}
+	return page
 }
 
 // promptNamesBeyondTheBelt is the DEBT LEDGER, and it exists so that the
@@ -173,25 +304,14 @@ func promptWithBeltFacts(config Config) string {
 //     window closes". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
-//   - STILL UNCONDITIONAL, which is the same defect issue #434 fixed for five
-//     families and did not fix here. The `## Work or words` section names
-//     `propose_task`, `fork`, `build_harness`, `propose_subharness`,
-//     `list_harnesses` and `list_subharnesses` to every agent, and a node is
-//     handed no registry and no harness runner, so most of that section is
-//     false on the floor of the tree. Composing it is the follow-on: the whole
-//     section is about handing work out, so it is a page that travels on a
-//     predicate rather than a bullet that does, which is why it was not folded
-//     into the fragments above.
 //
-// The value is the marker the test looks for in the absent case, or "" for the
-// class that has no such sentence yet.
+// THE LEDGER IS FOR WHAT PREDATES THE SEAM AND NOTHING ELSE. A tool whose
+// sentence could be composed is composed; an entry added here for one that
+// could would be a way of not doing the work, and the reverse test is written
+// so that the next conditional tool cannot take that road quietly.
+//
+// The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember":           "Without `remember`, say plainly that memory is off",
-	"stand":              "Without `stand` this build cannot watch anything",
-	"propose_task":       "",
-	"fork":               "",
-	"build_harness":      "",
-	"propose_subharness": "",
-	"list_harnesses":     "",
-	"list_subharnesses":  "",
+	"remember": "Without `remember`, say plainly that memory is off",
+	"stand":    "Without `stand` this build cannot watch anything",
 }

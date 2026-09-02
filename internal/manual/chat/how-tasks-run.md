@@ -546,10 +546,23 @@ from a worker's belt, and its instructions say what to do instead:
   where it stands, and to say so plainly when you refer to something it cannot
   see, rather than inventing it.
 
+And **it cannot design or offer a saved shape of work.** `build_harness` and
+`list_harnesses` want a store to write the page into, a runner, and somebody
+watching who can answer the card; `propose_subharness` and `list_subharnesses`
+want a saved program on this machine and that same watcher. A worker has none of
+it, so those verbs are off its belt and the paragraphs explaining what a recipe
+and a saved program ARE do not ride in its instructions either — it is not shown
+a road it cannot take.
+
 None of these is a refusal you will see as an error. **A capability a worker
 cannot have is absent from its belt rather than present and failing**, and its
 instructions are composed to match the belt it was actually given — so it is
-never told to call a verb it does not have.
+never told to call a verb it does not have. **The exception is a hand.** A hand
+is this mind copied inside one turn, and it opens on the caller's own
+transcript, system page and all, because that shared prefix is the whole reason
+forking is cheap — so what a hand reads about tools is its caller's and not its
+own. Giving a hand its own tail, naming the nine tools that are actually its,
+is the change tracked as #434b.
 
 ## How a task is told to spend its time — the measure, a zero, and not remaking what exists
 
