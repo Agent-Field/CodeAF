@@ -7121,8 +7121,25 @@ func (a *app) measureContext() {
 	// is drawn — which is the snap rule, not an exception to it.
 	was := a.ctxTokens
 	a.ctxTokens = a.agent.ContextTokens()
-	if a.ctxTokens != was {
+	switch {
+	case a.ctxTokens > was:
+		// A WEIGHT THAT GREW IS TELEMETRY AND WALKS, from the reading that is on
+		// the screen right now. This is the only place the weight ever changes,
+		// so it is the only place that can arm the walk for it: [app.take]'s
+		// arming cannot, because a turn's usage lands long before the pass that
+		// changes what the conversation weighs.
 		a.armMeters(a.spendShown(), a.tokens, was)
+	case a.ctxTokens < was:
+		// A WEIGHT THAT FELL IS AN EVENT, AND THE EVENT IS THE POINT. Only a
+		// compaction takes weight off a conversation, and the whole reason this
+		// is re-read there rather than at the end of the turn is that the figure
+		// must say so AT ONCE — a meter easing down from 168k over a third of a
+		// second is a meter animating the one fact a person is waiting to see
+		// ([TestCompactionRereadsTheContextMeterImmediately]). It is written past
+		// any walk already in flight rather than through [app.armMeters], because
+		// a chase the usage started is holding the old figure and would go on
+		// drawing it.
+		a.shownCtx = a.ctxTokens
 	}
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog

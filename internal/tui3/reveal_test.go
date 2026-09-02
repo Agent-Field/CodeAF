@@ -421,3 +421,37 @@ func TestAWidePaintStillEases(t *testing.T) {
 		}
 	}
 }
+
+// A WEIGHT THAT FELL IS SHOWN AT ONCE, EVEN MID-WALK.
+//
+// [TestCompactionRereadsTheContextMeterImmediately] pins the ordinary case; this
+// pins the one that is easy to break, because a chase started by the turn's
+// usage is holding the OLD weight and will go on drawing it unless the drop is
+// written past the walk. Easing down from 168k is animating the one fact the
+// person is waiting to see.
+func TestACompactedWeightIsDrawnAtOnceMidWalk(t *testing.T) {
+	agent := &fakeAgent{model: "m", weight: 168_000}
+	a := newTestApp(agent)
+	a.clock = func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) }
+	a.ctxWindow, a.ctxTokens = 200_000, 168_000
+	a.state = stateWorking
+
+	// A turn's usage lands and starts a walk the compaction will interrupt.
+	a.take(session.Usage{CostUSD: 0.02, Input: 9000, Output: 1000})
+	if !a.meterChasing {
+		t.Fatal("the usage did not start a walk for the compaction to interrupt")
+	}
+	agent.weight = 12_000
+	a.measureContext()
+	if got := a.ctxDrawn(); got != 12_000 {
+		t.Fatalf("the meter drew %d with a walk in flight, want the pass's 12000", got)
+	}
+
+	// AND A WEIGHT THAT GREW STILL WALKS, so the snap is about the direction and
+	// not about giving up on the ease.
+	agent.weight = 60_000
+	a.measureContext()
+	if got := a.ctxDrawn(); got != 12_000 {
+		t.Fatalf("a growing weight jumped to %d instead of walking from 12000", got)
+	}
+}
