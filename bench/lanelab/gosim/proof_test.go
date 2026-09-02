@@ -242,11 +242,15 @@ func TestTheWasteAndTheRescueAreCountedApart(t *testing.T) {
 		{"arms on a healthy lane", float64(got.FalseArm), 2},
 		{"arms on a staged fault", float64(got.RescueArm), 3},
 		{"stalled runs of thought", float64(got.StallThinks), 3},
-		{"time-to-action on a stalled thought, p50", got.StallP50, 5},
 	} {
 		if math.Abs(want.got-want.want) > 1e-9 {
 			t.Errorf("%s: got %g, want %g", want.what, want.got, want.want)
 		}
+	}
+	// A percentile of the stalled thoughts alone, and NOT of the row: the three
+	// staged faults acted on at 3, 5 and 10 seconds have a median of five.
+	if got.StallP50 == nil || *got.StallP50 != 5 {
+		t.Errorf("time-to-action on a stalled thought, p50: got %v, want 5", got.StallP50)
 	}
 	// The two halves are the whole, which is what makes the split a reading of
 	// one number rather than a second accounting of it.

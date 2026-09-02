@@ -494,8 +494,14 @@ type proofRow struct {
 	// reported: a run of thought that stopped. They are the fault window of the
 	// thinking row and nothing else, kept separately because the row's own
 	// percentiles pool them with the requests that never reached a thought.
-	StallP50 float64 `json:"stalled_think_action_p50_s"`
-	StallP90 float64 `json:"stalled_think_action_p90_s"`
+	//
+	// THEY ARE POINTERS BECAUSE FOUR ROWS OF FIVE HAVE NO SUCH CASE AT ALL, and
+	// a percentile of nothing is not zero. Zero would read as "acted instantly",
+	// which is the opposite of "never happened"; nil is `null` in the file and
+	// nothing in the table, which is what [share] does with an empty denominator
+	// and for the same reason.
+	StallP50 *float64 `json:"stalled_think_action_p50_s"`
+	StallP90 *float64 `json:"stalled_think_action_p90_s"`
 
 	// Kinds is how many acts of each kind fired and Whys which clock decided
 	// them, both in the controller's own words.
@@ -563,7 +569,10 @@ func summariseProof(c proofCase, got []trial) proofRow {
 	out.ActionP50, out.ActionP90, out.ActionMax = pct(action, 0.50), pct(action, 0.90), pct(action, 1.0)
 	out.SilenceP50, out.SilenceP90, out.SilenceMax = pct(silence, 0.50), pct(silence, 0.90), pct(silence, 1.0)
 	out.LateMedian, out.LateMax = pct(late, 0.50), pct(late, 1.0)
-	out.StallP50, out.StallP90 = pct(stalled, 0.50), pct(stalled, 0.90)
+	if len(stalled) > 0 {
+		fifty, ninety := pct(stalled, 0.50), pct(stalled, 0.90)
+		out.StallP50, out.StallP90 = &fifty, &ninety
+	}
 	out.FalseHedgePct = share(out.FalseArm, out.Well)
 	out.ReportPct = share(out.Kinds[kindWords[control.Report]], out.Acts)
 	out.ThinkKeptPct = share(out.ThinkKept, out.Thinks)
@@ -1611,7 +1620,12 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 		proofRole, proofRole.Ceiling(), seeds, n, n*len(seeds), speedup)
 	fmt.Printf("   store %s   %s\n", store, storyOf(store))
 	fmt.Printf("   mix %s   a fault is staged on %.0f%% of requests\n", mix, 100*rateOfMix(mix))
-	fmt.Println("   the fault runs for the middle half of every case; the other half is the healthy one")
+	if mix == mixNatural {
+		fmt.Printf("   one request in %d of every case is the staged fault; the rest are healthy\n",
+			naturalPeriod)
+	} else {
+		fmt.Println("   the fault runs for the middle half of every case; the other half is the healthy one")
+	}
 	fmt.Println()
 	fmt.Printf("   %-24s%6s%6s%6s%6s%7s%7s%10s%10s%10s%7s%8s%8s%9s%9s\n",
 		"case", "n", "sick", "acts", "arms", "well", "resc", "act p50", "act p90", "act max",
@@ -1664,12 +1678,13 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 	// the same wait. How often it happens at this mix is on the line with it,
 	// because a time-to-action nobody can weigh is a number nobody can rule on.
 	for _, r := range rows {
-		if r.StallThinks == 0 {
+		if r.StallThinks == 0 || r.StallP50 == nil {
 			continue
 		}
-		fmt.Printf("   a stalled run of thought: %d of %d requests (%.2f%%), acted on at "+
-			"%.2fs p50 / %.2fs p90   [%s]\n",
-			r.StallThinks, r.N, share(r.StallThinks, r.N), r.StallP50, r.StallP90, r.Case)
+		fmt.Printf("   a stalled run of thought: %d of %d requests in its own row (%.2f%%), "+
+			"%.2f%% of every request in this arm, acted on at %.2fs p50 / %.2fs p90   [%s]\n",
+			r.StallThinks, r.N, share(r.StallThinks, r.N),
+			share(r.StallThinks, r.N*len(rows)), *r.StallP50, *r.StallP90, r.Case)
 	}
 	fmt.Println()
 }
