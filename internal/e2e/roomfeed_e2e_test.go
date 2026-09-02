@@ -30,11 +30,13 @@ package e2e
 //	go test -tags e2e -count=1 -run TestATaskPageShowsWhatACallTook -v ./internal/e2e/
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -59,7 +61,7 @@ func TestATaskPageShowsWhatACallTook(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this test drives the real binary in a real terminal")
 	}
-	brain := startScriptedBrain(t)
+	brain := startScriptedBrain(t, false)
 	// EVERY SETUP STEP IS ANSWERED IN THE PROFILE, so the run opens on the
 	// conversation rather than on the greeting: a key, a crew tier, and a daily
 	// ceiling are the three things firstrun.go asks for (setupStepsFor).
@@ -122,8 +124,15 @@ func tookOn(t *testing.T, page, command, took string) {
 // row is the door, and `enter` on it is the same press a person makes.
 func openTheOnlyRoom(t *testing.T, r *rig) {
 	t.Helper()
-	// ctrl+t puts the pointer on the roster; the arrow keys walk it and enter
-	// opens the row under it (tasks.go).
+	// THE ROSTER MAY BE HIDDEN, and its own foot says which: `ctrl+g tasks`
+	// under the transcript is the column asking to be shown, `ctrl+g hide` is
+	// the column already there (tasks.go). A run that pressed blindly would
+	// close the roster on half the launches and then walk an empty column.
+	if strings.Contains(r.capture(), "ctrl+g tasks") {
+		r.keys("C-g")
+		r.waitFor(10*time.Second, "ctrl+g hide")
+	}
+	// ctrl+t puts the pointer on the roster; enter opens the row under it.
 	r.keys("C-t")
 	r.keys("Enter")
 	r.waitFor(20*time.Second, "room ·")
@@ -138,9 +147,9 @@ func openTheOnlyRoom(t *testing.T, r *rig) {
 // words. That terminates every turn the engine opens — the node's own, and the
 // pass that checks what it left — without this file having to know how many
 // there will be.
-func startScriptedBrain(t *testing.T) *httptest.Server {
+func startScriptedBrain(t *testing.T, cutFirst bool) *httptest.Server {
 	t.Helper()
-	var streams atomic.Int64
+	var streams, cuts atomic.Int64
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -164,7 +173,22 @@ func startScriptedBrain(t *testing.T) *httptest.Server {
 				ranSomething = true
 			}
 		}
-		writeScriptedStream(w, streams.Add(1), ranSomething)
+		n := streams.Add(1)
+		// A STREAM THAT STOPS MID-REPLY, once, on the turn where the node is
+		// about to report what its calls found. The body ends with no finish and
+		// no [DONE], which is what a provider that went quiet looks like from
+		// this side, and internal/provider's streamguard answers it by cutting
+		// the attempt and asking again.
+		//
+		// IT IS THE NODE'S SECOND TURN AND NOT THE FIRST REQUEST OF THE RUN,
+		// because the conversation makes calls of its own before a node exists —
+		// naming the work, sizing it — and a cut there would be a retry nobody
+		// is standing in a room to see.
+		if cutFirst && ranSomething && cuts.Add(1) == 1 {
+			writeCutStream(r.Context(), w, n)
+			return
+		}
+		writeScriptedStream(w, n, ranSomething)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -217,4 +241,149 @@ func bashCall(index int, id, command string) string {
 	quoted, _ := json.Marshal(string(args))
 	return fmt.Sprintf(`{"index":%d,"id":"call_%s","type":"function",`+
 		`"function":{"name":"bash","arguments":%s}}`, index, id, quoted)
+}
+
+// ── THE SAME PAGE, AGAINST A REAL MODEL ─────────────────────────────────────
+
+// The scripted run above is the gate: deterministic, free, and it fails at
+// origin/dev. This one is the APPROVAL — the shipped default model, the real
+// binary, a real terminal, and a person's own sentence — because unit green and
+// a stubbed endpoint together still do not prove that the thing a person opens
+// says the thing.
+//
+// It asserts less than the scripted run on purpose. A real model chooses its
+// own calls, so what is checked is the shape rather than the script: a `bash`
+// row on a node's page carrying a duration. It costs a fraction of a cent.
+func TestATaskPageShowsWhatACallTookAgainstARealModel(t *testing.T) {
+	requireTmuxAndKey(t)
+	home := newHome(t, map[string]any{
+		"model.talk": realProbeModel, "model.work": realProbeModel,
+		"models.tiers.worker": realProbeModel, "models.tiers.high": realProbeModel,
+		"tools.approvalMode": "allow",
+		"daily_budget_usd":   1,
+	})
+	ws := newWorkspace(t, "realprobe", false)
+	rig := start(t, "roomfeedreal", home, ws, 120, 40)
+
+	rig.lit("/task solo " + realProbeBrief)
+	rig.keys("Enter")
+	// THE NODE HAS TO EXIST BEFORE THERE IS A ROOM TO WALK INTO. The line the
+	// conversation writes when it starts one is the honest signal; the card
+	// above it is still shaping and has no page behind it (app.go's task note).
+	rig.waitFor(180*time.Second, "task 1 started")
+	openTheOnlyRoom(t, rig)
+
+	// The call's row, whichever branch glyph the tree gives it.
+	page := rig.waitFor(180*time.Second, "▶ bash")
+	deadline := time.Now().Add(180 * time.Second)
+	for {
+		if line, took := timedCallRow(page); took {
+			t.Logf("a node's call row, against %s:\n  %s", realProbeModel, strings.TrimSpace(line))
+			t.Logf("the task page, captured:\n%s", page)
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no call row on the node's page carries a duration:\n%s", page)
+		}
+		time.Sleep(pollEvery)
+		page = rig.capture()
+	}
+}
+
+const (
+	realProbeModel = "~deepseek/deepseek-v4-flash-latest"
+	realProbeBrief = "with the shell, sleep for two seconds and list the files here; " +
+		"then read README.md; then say in one line what it contains. do nothing else."
+)
+
+// takenWord is a duration as a finished call's row spells it (timestamps.go's
+// tookWord): `1.4s`, `12s`, `2m04s`. It is anchored to the end of the row
+// because that is where the figure sits, which is what keeps it from matching a
+// second in the command the row is about.
+var takenWord = regexp.MustCompile(`(\d+\.\d+s|\d+s|\d+m\d\ds)\s*$`)
+
+// timedCallRow is the first `bash` row on the page that carries a figure.
+func timedCallRow(page string) (string, bool) {
+	for _, line := range strings.Split(page, "\n") {
+		if !strings.Contains(line, "bash") {
+			continue
+		}
+		// The rail is drawn to the right of the transcript, so a row's own end
+		// is where the seam is (room.go) — everything past it belongs to the
+		// roster and never to this call.
+		row := line
+		if at := strings.IndexAny(row, "│▌"); at >= 0 {
+			row = row[:at]
+		}
+		if takenWord.MatchString(strings.TrimRight(row, " ")) {
+			return row, true
+		}
+	}
+	return "", false
+}
+
+// writeCutStream is an attempt that speaks once and then goes quiet.
+//
+// IT DOES NOT SIMPLY END. A body that closes cleanly is a stream that finished,
+// and the engine takes the words as the answer — which is a different thing
+// from what this test is about. What it does instead is hold the connection
+// open saying nothing, which is what a provider that stopped mid-reply looks
+// like from this side, until the stream guard's mid-stream silence bound
+// (internal/provider's midStreamGapBound, 45s) cuts the attempt and the engine
+// asks again. The handler leaves when the cut cancels the request.
+func writeCutStream(ctx context.Context, w http.ResponseWriter, n int64) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "the script needs a flushable writer", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintf(w, "data: {\"id\":\"cut-%d\",\"object\":\"chat.completion.chunk\",\"created\":%d,"+
+		"\"model\":%q,\"provider\":\"stub\",\"choices\":[{\"index\":0,"+
+		"\"delta\":{\"role\":\"assistant\",\"content\":\"I will start by\"},\"finish_reason\":null}]}\n\n",
+		n, time.Now().Unix(), roomProbeModel)
+	flusher.Flush()
+	select {
+	case <-ctx.Done():
+	case <-time.After(3 * time.Minute):
+	}
+}
+
+// A RETRY INSIDE A TASK IS VISIBLE, which it was not: EventRetrying never
+// reached room.go's switch, so the half-answer of a cut attempt sat on a node's
+// page above the live one with nothing to explain it.
+//
+// The words are internal/session's own (loop.go's cutNotice), so this asserts on
+// the half that is a fact about the page rather than on the whole sentence.
+func TestATaskPageSaysWhenAnAttemptWasCutAndAskedAgain(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("no tmux on PATH: this test drives the real binary in a real terminal")
+	}
+	brain := startScriptedBrain(t, true)
+	home := newHome(t, map[string]any{
+		"model.talk": roomProbeModel, "model.work": roomProbeModel, "model.plan": roomProbeModel,
+		"models.tiers.worker": roomProbeModel, "models.tiers.high": roomProbeModel,
+		"tools.approvalMode": "allow",
+		"daily_budget_usd":   0,
+	})
+	ws := newWorkspace(t, "cutprobe", false)
+	rig := startWithEnv(t, []string{
+		"OPENROUTER_API_KEY=test-key",
+		"AFORGE_BASE_URL=" + brain.URL + "/api/v1",
+	}, "roomfeedcut", home, ws, 120, 40)
+
+	rig.lit("/task solo " + roomProbeBrief)
+	rig.keys("Enter")
+	rig.waitFor(90*time.Second, "task 1 started")
+	openTheOnlyRoom(t, rig)
+
+	// The cut is the guard's mid-stream silence bound, so the wait has to be
+	// longer than it (internal/provider's midStreamGapBound).
+	page := rig.waitFor(4*time.Minute, "asking again")
+	if strings.Contains(page, "I will start by") {
+		t.Fatalf("the dead attempt's words are still on the node's page:\n%s", page)
+	}
+	t.Logf("the task page, captured:\n%s", page)
 }
