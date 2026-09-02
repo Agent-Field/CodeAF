@@ -51,7 +51,7 @@ func TestManualCommandAnswersAQuestionWithLabelledSections(t *testing.T) {
 		t.Fatal("the question reaches nothing at all")
 	}
 	for _, section := range sections {
-		if !strings.Contains(note, "["+section.Page+" · "+section.Title+"]") {
+		if !strings.Contains(note, "## "+section.Page+" · "+section.Title) {
 			t.Errorf("the answer does not say where %s · %s came from", section.Page, section.Title)
 		}
 	}

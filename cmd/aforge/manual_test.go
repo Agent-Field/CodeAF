@@ -71,7 +71,7 @@ func TestManualAnswersAQuestionWithLabelledSections(t *testing.T) {
 	for _, section := range sections {
 		// Every section says which page and which heading it came from, so a
 		// quoted answer can be traced back to the page that authorized it.
-		if !strings.Contains(printed, "["+section.Page+" · "+section.Title+"]") {
+		if !strings.Contains(printed, "## "+section.Page+" · "+section.Title) {
 			t.Errorf("the answer does not label the section %s · %s", section.Page, section.Title)
 		}
 		if !strings.Contains(printed, section.Body) {
@@ -89,7 +89,7 @@ func TestManualAnswersTheQuestionAboutItsOwnDoor(t *testing.T) {
 	if err := runManualWith([]string{"how", "do", "I", "read", "the", "manual"}, &out); err != nil {
 		t.Fatalf("aforge manual \"how do I read the manual\": %v", err)
 	}
-	if !strings.Contains(out.String(), "[commands · ") {
+	if !strings.Contains(out.String(), "## commands · ") {
 		t.Errorf("the question about reading the manual reached no section of the commands page:\n%s", out.String())
 	}
 }
