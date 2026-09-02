@@ -77,15 +77,12 @@ func (c checkout) moved() string {
 		said = append(said, fmt.Sprintf("it stood on %s and now stands on %s; what was committed on top of it:\n%s",
 			short(c.head), short(head), commitsBetween(c.root, c.head, head)))
 	}
-	var appeared []string
-	for path := range porcelain(c.root) {
-		if !c.dirty[path] {
-			appeared = append(appeared, path)
-		}
-	}
-	if len(appeared) > 0 {
-		sort.Strings(appeared)
-		said = append(said, "these paths were not dirty before the run and are now:\n\t"+strings.Join(appeared, "\n\t"))
+	// THE COMPARISON IS SYMMETRIC. A line that appeared is a file the suite
+	// wrote; a line that went is a file it deleted, or reverted, or committed
+	// out from under the person — `?? note.md` becoming nothing at all is
+	// exactly what an `add` plus a `commit` looks like from here.
+	if moved := differing(c.dirty, porcelain(c.root)); len(moved) > 0 {
+		said = append(said, "these paths are not what they were before the run:\n\t"+strings.Join(moved, "\n\t"))
 	}
 	if len(said) == 0 {
 		return ""
@@ -95,6 +92,31 @@ func (c checkout) moved() string {
 		"a git command was given a working directory the suite does not own — most likely none at all, " +
 		"which exec reads as this process's own (task_run.go's gitWith). Undo the above before pushing.\n" +
 		"(a second checkout running this same suite beside you cannot cause this; a test that names no directory can.)"
+}
+
+// differing names every porcelain line that is in one listing and not the
+// other, marked with the direction it moved, sorted so the failure reads the
+// same way twice.
+//
+// A file that was ALREADY dirty and was then written again is invisible here,
+// and deliberately: its content is the person's own work in progress, hashing
+// a whole checkout on every run of this package would cost more than the guard
+// is worth, and the shape this exists to catch — a task landing its ledger in
+// the wrong repository — always writes files or commits that were not there.
+func differing(before, after map[string]bool) []string {
+	var moved []string
+	for line := range after {
+		if !before[line] {
+			moved = append(moved, "now:  "+line)
+		}
+	}
+	for line := range before {
+		if !after[line] {
+			moved = append(moved, "gone: "+line)
+		}
+	}
+	sort.Strings(moved)
+	return moved
 }
 
 // porcelain is the set of paths git calls dirty or unknown in root. An

@@ -56,29 +56,41 @@ func TestAHomeATestChoseIsNotTheHomeItInherited(t *testing.T) {
 	}
 }
 
-// TestBothInheritedRootsAreRefused covers the second root a test binary is
-// handed without asking. AFORGE_PROFILE_DIR moves the profile out from under
-// the state root, and a gate that watched only one of them would refuse the
-// common case and read the person's file in the rarer one.
-func TestBothInheritedRootsAreRefused(t *testing.T) {
-	restore := inheritedRoots
-	t.Cleanup(func() { inheritedRoots = restore })
-	for _, root := range []string{"state", "profile"} {
-		pretend := filepath.Join(t.TempDir(), root)
-		inheritedRoots = []string{pretend}
-		t.Setenv(home.EnvVar, pretend)
-		if got := StorePath(); got != "" {
-			t.Errorf("an inherited %s root resolved to %q", root, got)
-		}
-		if got := stateFile("v3", "somewhere", "deeper.json"); got != "" {
-			t.Errorf("a file deep inside an inherited %s root resolved to %q", root, got)
-		}
-		// A sibling named like the root is not inside it, which is the whole
-		// reason [home.Contains] compares path elements and not prefixes.
-		t.Setenv(home.EnvVar, pretend+"-2")
-		if stateFile("v3", "lanes.json") == "" {
-			t.Errorf("a sibling of the inherited %s root was mistaken for a child of it", root)
-		}
+// TestTheWholeInheritedRootIsRefusedAndNothingBeside covers the two edges of
+// the comparison: everything under the root a test binary was handed is
+// refused, however deep, and a directory merely NAMED like it is not — which is
+// the whole reason [home.Contains] compares path elements and not prefixes.
+func TestTheWholeInheritedRootIsRefusedAndNothingBeside(t *testing.T) {
+	restore := inheritedRoot
+	t.Cleanup(func() { inheritedRoot = restore })
+	pretend := filepath.Join(t.TempDir(), "state")
+	inheritedRoot = pretend
+
+	t.Setenv(home.EnvVar, pretend)
+	if got := StorePath(); got != "" {
+		t.Errorf("the inherited root resolved to %q", got)
+	}
+	if got := stateFile("v3", "somewhere", "deeper.json"); got != "" {
+		t.Errorf("a file deep inside the inherited root resolved to %q", got)
+	}
+	t.Setenv(home.EnvVar, pretend+"-2")
+	if stateFile("v3", "lanes.json") == "" {
+		t.Error("a sibling of the inherited root was mistaken for a child of it")
+	}
+}
+
+// TestTheProfileRootIsNotThisPackagesBusiness is the boundary the gate is drawn
+// at. The call log resolves under AFORGE_PROFILE_DIR and must refuse it; this
+// package resolves both its files with [home.Join] and never reads that
+// variable, so a test whose chosen home happens to sit under an inherited
+// profile root has still chosen it.
+func TestTheProfileRootIsNotThisPackagesBusiness(t *testing.T) {
+	profile := t.TempDir()
+	t.Setenv("AFORGE_PROFILE_DIR", profile)
+	chosen := filepath.Join(profile, "a-home-the-test-chose")
+	t.Setenv(home.EnvVar, chosen)
+	if got, want := StorePath(), filepath.Join(chosen, "v3", "lanes.json"); got != want {
+		t.Errorf("a home the test chose under an inherited profile root gave %q, want %q", got, want)
 	}
 }
 
@@ -86,11 +98,11 @@ func TestBothInheritedRootsAreRefused(t *testing.T) {
 // from inside one: the product resolves its files exactly as it always has, and
 // the gate is one bool read on a path that is taken once per process.
 func TestOutsideATestBinaryNothingChanges(t *testing.T) {
-	gate, roots := underTest, inheritedRoots
-	t.Cleanup(func() { underTest, inheritedRoots = gate, roots })
+	gate, root := underTest, inheritedRoot
+	t.Cleanup(func() { underTest, inheritedRoot = gate, root })
 	underTest = false
 	t.Setenv(home.EnvVar, filepath.Join(t.TempDir(), "inherited"))
-	inheritedRoots = []string{os.Getenv(home.EnvVar)}
+	inheritedRoot = os.Getenv(home.EnvVar)
 	if got, want := StorePath(), home.Join("v3", "lanes.json"); got != want {
 		t.Errorf("the product's belief file resolved to %q, want %q", got, want)
 	}

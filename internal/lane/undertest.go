@@ -1,7 +1,6 @@
 package lane
 
 import (
-	"os"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
@@ -42,13 +41,7 @@ import (
 // for the cache. None of them can be reached by forgetting.
 var underTest = testing.Testing()
 
-// profileDirEnv moves the profile — the key, the measured behaviour and this
-// package's files with them — out from under the state root, and it is the
-// second root a test binary is handed without asking. It is spelled here rather
-// than taken from internal/config, which routes through this package.
-const profileDirEnv = "AFORGE_PROFILE_DIR"
-
-// inheritedRoots are the roots this process was STARTED with, read once at
+// inheritedRoot is the state root this process was STARTED with, read once at
 // package initialisation — before any test has run, because `t.Setenv` can only
 // happen inside one.
 //
@@ -58,7 +51,17 @@ const profileDirEnv = "AFORGE_PROFILE_DIR"
 // own `t.TempDir()` and then reads the store back is doing the correct thing,
 // and a gate that watched the live root would refuse it. So what is refused is
 // the root nobody chose.
-var inheritedRoots = []string{home.Dir(), os.Getenv(profileDirEnv)}
+//
+// IT IS THE STATE ROOT AND NOT ALSO THE PROFILE ROOT, which is where this gate
+// differs from the call log's second time. That log resolves under
+// AFORGE_PROFILE_DIR, so a gate watching only the state root would have written
+// into a person's ledger whenever the profile moved out from under it. Nothing
+// in this package resolves under the profile: both files here are [home.Join]
+// and nothing else. Naming a root this package cannot reach would buy no
+// protection and cost a real one — a test that points AFORGE_HOME at a
+// `t.TempDir()` which happens to sit under an inherited AFORGE_PROFILE_DIR has
+// chosen its root, and would have been refused it.
+var inheritedRoot = home.Dir()
 
 // stateFile names a file under the state root, and answers "" for one that
 // would land in a root a test binary merely inherited.
@@ -75,10 +78,8 @@ func stateFile(elements ...string) string {
 	if !underTest {
 		return path
 	}
-	for _, root := range inheritedRoots {
-		if home.Contains(root, path) {
-			return ""
-		}
+	if home.Contains(inheritedRoot, path) {
+		return ""
 	}
 	return path
 }
