@@ -8,7 +8,7 @@ invalidates:
   - "The caller's page WAS a hand's whole system text, byte for byte. It is now a PREFIX of it: the page is unchanged at the front, and the tail follows. Anything comparing the two for equality is comparing the wrong thing."
   - "The hand was the one shape prompt_belt_test.go could not hold to the law, and TestAHandReadsItsCallersPage pinned that exemption. The exemption is gone: the hand is in the forward check, answerable for every tool named after the page it inherited, and the test is now TestAHandOpensOnItsCallersPageAndIsToldWhatIsActuallyIts."
   - "The list of a hand's nine tools existed only in forkBelt. It is still the only list: the tail is built from the belt forkBelt returns, so a verb added there arrives in the page with it and a verb removed leaves it."
-  - "A hand's whole request rode its caller's cached prefix. It rides the caller's PAGE, and pays a cache write for the transcript behind it — the price of message[0] no longer being byte-identical to the caller's."
+  - "A hand's request diverges from its caller's at the tool-definition block, which precedes the system message on this wire, because the hand and caller carry different belts. The appended tail therefore does not create the earliest cache divergence."
 ---
 
 Lands after #462, which made every other shape's page name exactly the tools its

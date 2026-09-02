@@ -22,6 +22,7 @@ import (
 	"context"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -551,6 +552,26 @@ func TestAHandIsOfferedItsNineAndCanCallNothingElse(t *testing.T) {
 	block := map[string]bool{}
 	for _, name := range offered[0] {
 		block[name] = true
+	}
+	want := []string{"bash", "edit", "find", "grep", "ls", "manual", "read", "read_document", "write"}
+	wanted := map[string]bool{}
+	for _, name := range want {
+		wanted[name] = true
+	}
+	got := make([]string, 0, len(block))
+	for name := range block {
+		got = append(got, name)
+	}
+	sort.Strings(got)
+	for _, name := range want {
+		if !block[name] {
+			t.Errorf("the model's nine-tool offer is missing `%s`; got %v", name, got)
+		}
+	}
+	for _, name := range got {
+		if !wanted[name] {
+			t.Errorf("the model's nine-tool offer has extra `%s`; got %v", name, got)
+		}
 	}
 	if len(block) != len(carried) {
 		t.Errorf("the model was offered %d tools and the hand carries %d", len(block), len(carried))

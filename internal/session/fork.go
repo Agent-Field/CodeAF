@@ -1019,9 +1019,10 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 // different page, and the prefix it shares with its caller would end at byte
 // one.
 //
-// It is kept by APPENDING instead. The caller's page stays a prefix of the
-// hand's system text, so everything cached about it is still cached, and what
-// follows says whose page that was and which verbs are actually this reader's.
+// It is kept by APPENDING instead. The caller's page stays byte-for-byte at the
+// front, while the cache benefit is bounded by the hand's tool block diverging
+// from its caller's before the system message. What follows says whose page
+// that was and which verbs are actually this reader's.
 //
 // THE NAMES ARE THE BELT'S OWN, never a list typed here: [forkBelt] decides
 // what a hand carries, and a second list would be the place the two drift
