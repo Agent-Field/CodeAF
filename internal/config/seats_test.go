@@ -256,3 +256,233 @@ func TestTheThinkingLevelNeverReachesTheProviderAsPartOfTheSlug(t *testing.T) {
 		t.Fatalf("building a client rewrote the seat to %q", settings.Model)
 	}
 }
+
+// A PROFILE OLDER THAN A SEAT STILL GETS THE CREW IT CHOSE, AND IS TOLD SO.
+//
+// This is #302 written down. A crew applied before the worker row existed pinned
+// the four rows there were, and the ladder read the fifth key, found nothing,
+// and fell past the whole profile to the build's default — so every headless run
+// worked on a model the person had never named while their planning ran on the
+// one they had. The only tell was one word on a line nobody reads twice.
+//
+// The rung is the crew, through the row the worker row was split out of, and it
+// says `inherited` rather than borrowing the plain crew rung: the person is owed
+// the difference between the row they wrote and the row they did not.
+func TestACrewWrittenBeforeTheWorkerSeatStillAnswersForItAndSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	// The pre-#278 crew shape, written the way it was written then: four rows
+	// and no worker row.
+	for tier, model := range map[string]string{
+		ModelTierReflex:     "mistralai/mistral-nemo",
+		ModelTierLow:        "deepseek/deepseek-v4-flash",
+		ModelTierHigh:       "qwen/qwen3.8-27b",
+		ModelTierMastermind: "deepseek/deepseek-v4-flash",
+	} {
+		if err := writeTierModel(dir, tier, model); err != nil {
+			t.Fatalf("writing the %s row: %v", tier, err)
+		}
+	}
+	if _, held := persistedString(dir, KeyTierWorkerModel); held {
+		t.Fatal("the fixture holds a worker row, so it is not the profile this is about")
+	}
+
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Model != "deepseek/deepseek-v4-flash" {
+		t.Errorf("the work seat runs on %q, want the small-work model the person pinned", seats.Work.Model)
+	}
+	if seats.Work.Model == DefaultModel {
+		t.Errorf("the work seat fell to the build's default %q with a whole crew written above it", DefaultModel)
+	}
+	if seats.Work.Source != SeatInherited || seats.Work.From != ModelTierLow {
+		t.Errorf("the work seat says %s from %q, want the crew through the small-work row",
+			seats.Work.Source, seats.Work.From)
+	}
+	if got := seats.Work.Rung(); got != "crew custom, inherited" {
+		t.Errorf("the receipt reads %q, want the crew and the fact that it was inherited", got)
+	}
+	// The seat the profile does hold a row for is untouched by any of this.
+	if seats.Plan.Source != SeatCrew || seats.Plan.Model != "deepseek/deepseek-v4-flash" {
+		t.Errorf("the plan seat reads %q (%s)", seats.Plan.Model, seats.Plan.Rung())
+	}
+}
+
+// AND THE PLAIN-INSTALL PATH IS BYTE-IDENTICAL. A profile that has said nothing
+// about models has nothing to inherit from, so the bottom rung answers and
+// nothing is said about it — the third acceptance of #302, and the rung whose
+// unreachability the ladder's own comment warns about.
+func TestAProfileThatHasSaidNothingStillRunsTheBuildsDefaultAndSaysNothing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+
+	seats := ResolveSeats(dir, "", "")
+	if seats.Work.Source != SeatDefault || seats.Work.Model != DefaultModel {
+		t.Fatalf("the work seat reads %q (%s), want the build's default", seats.Work.Model, seats.Work.Rung())
+	}
+	if notice := seats.Notice(); notice != "" {
+		t.Fatalf("a profile with no crew was told about an inheritance that did not happen: %q", notice)
+	}
+	if seats.Report() != seats.Line() {
+		t.Fatalf("the report grew a line: %q", seats.Report())
+	}
+
+	// One row written by hand, and the seat that has no row of its own inherits
+	// it — the same profile, one key later.
+	if err := writeTierModel(dir, ModelTierLow, "vendor/my-small-work"); err != nil {
+		t.Fatal(err)
+	}
+	seats = ResolveSeats(dir, "", "")
+	if seats.Work.Source != SeatInherited || seats.Work.Model != "vendor/my-small-work" {
+		t.Fatalf("the work seat reads %q (%s), want the small-work row it inherits from",
+			seats.Work.Model, seats.Work.Rung())
+	}
+	// A row cleared ON PURPOSE is an answer, and the answer is "follow the
+	// conversation" — which a headless run cannot, so it falls to the default
+	// rather than being reported as a crew that chose it.
+	if err := writeTierModel(dir, ModelTierLow, ""); err != nil {
+		t.Fatal(err)
+	}
+	if seats := ResolveSeats(dir, "", ""); seats.Work.Source != SeatDefault {
+		t.Fatalf("a cleared small-work row was inherited anyway: %q (%s)",
+			seats.Work.Model, seats.Work.Rung())
+	}
+}
+
+// THE LINE IS SAID ONCE, AND ONLY WHEN IT IS TRUE.
+//
+// A substitution nobody is told about is the defect; a warning on every one of a
+// run's calls is the same defect wearing a hat, because a person learns to read
+// past it. So it belongs exactly where the seats are reported, once, and the
+// register is the one the surface already speaks in — an observation, a middle
+// dot, a promise, lowercase, no full stop, no machinery.
+func TestTheInheritedSeatIsAnnouncedOnceInTheHousesOwnVoice(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	if err := writeTierModel(dir, ModelTierLow, "vendor/my-small-work"); err != nil {
+		t.Fatal(err)
+	}
+	seats := ResolveSeats(dir, "", "")
+
+	notice := seats.Notice()
+	if notice == "" {
+		t.Fatal("the seat was inherited and nothing was said about it")
+	}
+	report := seats.Report()
+	if got := strings.Count(report, notice); got != 1 {
+		t.Fatalf("the line is printed %d times in one report, want once:\n%s", got, report)
+	}
+	if !strings.HasPrefix(report, seats.Line()+"\n") {
+		t.Fatalf("the report is not the models line and then the reason:\n%s", report)
+	}
+	if !strings.Contains(notice, "small work") {
+		t.Errorf("the line does not name the row a person would go and look at: %q", notice)
+	}
+	if !strings.Contains(notice, "work seat") {
+		t.Errorf("the line does not name the seat that was filled: %q", notice)
+	}
+	if notice != strings.ToLower(notice) {
+		t.Errorf("the line is not lowercase: %q", notice)
+	}
+	if strings.HasSuffix(notice, ".") {
+		t.Errorf("the line ends in a full stop, which makes a remark into an announcement: %q", notice)
+	}
+	if strings.Count(notice, " · ") != 1 {
+		t.Errorf("the line is not the observation-then-promise the surface speaks in: %q", notice)
+	}
+	if strings.Contains(notice, "\n") {
+		t.Errorf("the line is more than one line: %q", notice)
+	}
+	for _, machinery := range []string{"tier", "models.tiers", "fallback", "resolve", "seatinherited", "config"} {
+		if strings.Contains(notice, machinery) {
+			t.Errorf("the line says %q, which is machinery: %q", machinery, notice)
+		}
+	}
+
+	// And a crew that pins every row hears nothing at all: the notice is a fact
+	// about this profile, not decoration on the models line.
+	pinned := t.TempDir()
+	if err := ApplyCrew(pinned, CrewFrugal); err != nil {
+		t.Fatal(err)
+	}
+	if notice := ResolveSeats(pinned, "", "").Notice(); notice != "" {
+		t.Fatalf("a fully pinned crew was told about an inheritance: %q", notice)
+	}
+	// Nor does a seat somebody filled by hand this minute.
+	t.Setenv(ModelEnv, "vendor/from-the-environment")
+	if notice := ResolveSeats(dir, "", "").Notice(); notice != "" {
+		t.Fatalf("a seat filled from the environment was called inherited: %q", notice)
+	}
+}
+
+// EVERY TIER DECLARES ITS ANCESTRY, OR DECLARES THAT IT HAS NONE.
+//
+// The worker row will not be the last seat added, and the failure it caused is
+// invisible from outside — so the rule lives in one table and this reads the
+// table rather than the code that uses it. A tier word added to [ModelTiers]
+// without a row here is the same defect again, one seat later, and it fails
+// here instead of in somebody's benchmark.
+func TestEveryTierDeclaresItsAncestry(t *testing.T) {
+	known := make(map[string]bool, len(ModelTiers))
+	for _, tier := range ModelTiers {
+		known[tier] = true
+	}
+	for _, tier := range ModelTiers {
+		row, ok := tierLineage[tier]
+		if !ok {
+			t.Errorf("the %s tier declares no ancestry — name the row it was split out of, "+
+				"or an empty ancestor to say it was always here", tier)
+			continue
+		}
+		if row.Words == "" {
+			t.Errorf("the %s tier has no name a person would recognise, so the line about it "+
+				"cannot send them to a row they can find", tier)
+		}
+		if row.Inherits != "" && !known[row.Inherits] {
+			t.Errorf("the %s tier inherits from %q, which is not a tier", tier, row.Inherits)
+		}
+		// A ring of rows would make the walk depend on where it started.
+		seen := map[string]bool{tier: true}
+		for step := row.Inherits; step != ""; step = tierLineage[step].Inherits {
+			if seen[step] {
+				t.Fatalf("the lineage from %s comes back to %s", tier, step)
+			}
+			seen[step] = true
+		}
+	}
+	for tier := range tierLineage {
+		if !known[tier] {
+			t.Errorf("the table holds %q, which is not one of this build's tiers", tier)
+		}
+	}
+	// The one ancestry there is today, named rather than merely well-formed: the
+	// worker seat came out of the small-work row (#278), and a change of mind
+	// about that is a change of what old profiles run on.
+	if got := tierLineage[ModelTierWorker].Inherits; got != ModelTierLow {
+		t.Errorf("the worker row inherits from %q, want the small-work row it was split out of", got)
+	}
+}
+
+// APPLYING A CREW PINS EVERY SEAT, so a profile written by this build never
+// needs the lineage at all — the inheritance is for the profiles that already
+// exist, and it must not become the ordinary path.
+func TestApplyingACrewLeavesNoSeatToInherit(t *testing.T) {
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+	for _, preset := range CrewPresets {
+		dir := t.TempDir()
+		if err := ApplyCrew(dir, preset); err != nil {
+			t.Fatal(err)
+		}
+		for _, tier := range ModelTiers {
+			if _, held := persistedString(dir, tierKeyFor(tier)); !held {
+				t.Errorf("%s leaves the %s row unwritten, so a seat on it inherits", preset, tier)
+			}
+		}
+		if seats := ResolveSeats(dir, "", ""); seats.Work.Source != SeatCrew {
+			t.Errorf("%s: the work seat reads %s", preset, seats.Work.Rung())
+		}
+	}
+}

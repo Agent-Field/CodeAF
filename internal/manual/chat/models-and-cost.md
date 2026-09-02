@@ -411,7 +411,10 @@ answers wins:
 2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;
-4. what the build ships with.
+4. **your crew again, through an older class**, when your profile was set before a class
+   existed — the worker class inherits the small-work class it was split out of, and the
+   run says it did;
+5. what the build ships with.
 
 So `--model` is one voice of four rather than the only one. This was not always true: until
 recently a run outside the chat read only the flag and the environment, and a crew set here
@@ -427,6 +430,32 @@ Two details worth knowing. A crew answers only once you have actually set one �
 nobody has touched takes the build's default rather than reading its own shipped values back
 as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
 the run plans on that model at that level, the same as it does here.
+
+## Why does my run say inherited — my crew is older than the worker class
+
+The worker class arrived after the other four. A crew set before it exists on disk as four
+classes with no worker among them, so a run has no worker row of its own to read. It does
+**not** fall back to the shipped default: it takes the class the worker was split out of —
+**small work**, the row that used to do this job — and it tells you, in one line under the
+models line:
+
+```
+models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
+your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+```
+
+`inherited` beside the class means exactly that: **the model came from your crew, but from a
+row you did not write.** The line is said once, when the run opens, and never again — not on
+every call.
+
+To end it, set the crew again with `/crew frugal`, `/crew balanced` or `/crew max`, which
+writes all five classes including the worker, or pin the worker row alone in `/settings` →
+Providers. Either one, and the next run reads `crew frugal` with no second line.
+
+A crew set with this build already pins every class, so this only ever appears on a profile
+older than the class. And it is only for a row you never wrote: a row you **emptied on
+purpose** means "follow the conversation", which a run outside the chat has no conversation
+for, so that falls to the build's default the way it always has.
 
 ## What are the six models — the one you talk to and the five crew seats
 

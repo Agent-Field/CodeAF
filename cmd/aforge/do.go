@@ -290,7 +290,7 @@ func doErrand(request doRequest) error {
 	// says which models it is about to use and on whose authority — and says it
 	// even on a run that dies before it reaches a provider.
 	seats := config.ResolveSeats(config.ProfileDir(), request.model, request.planModel)
-	fmt.Fprintln(request.stderr, seats.Line())
+	fmt.Fprintln(request.stderr, seats.Report())
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {

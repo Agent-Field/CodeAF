@@ -146,6 +146,12 @@ func runExecute(args []string) error {
 	// the rung that chose it: a run whose models came from the profile's crew
 	// used to print nothing at all about them.
 	fmt.Printf("models:    %s\n", seats.Sentence())
+	// And, once, the reason a seat is not the row the person wrote — this door
+	// has a label column of its own, so the line sits under the models it is
+	// about rather than in front of them.
+	if notice := seats.Notice(); notice != "" {
+		fmt.Printf("           %s\n", notice)
+	}
 	if len(settings.Panel.Models) > 0 {
 		fmt.Printf("panel:     %s\n", strings.Join(panelSlugs(settings.Panel), ", "))
 	}

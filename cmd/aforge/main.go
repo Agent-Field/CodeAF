@@ -374,7 +374,7 @@ func runPlan(args []string) error {
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
-		fmt.Println(seats.Line())
+		fmt.Println(seats.Report())
 		if settings.PlanSplit() {
 			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
 		}
@@ -492,7 +492,7 @@ func runRevise(args []string) error {
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nevent:  %s\n", graph.Goal, event)
-		fmt.Printf("%s\n\n", seats.Line())
+		fmt.Printf("%s\n\n", seats.Report())
 	}
 	start := time.Now()
 	operations, usage, err := plan.Revise(ctx, client, graph, event)

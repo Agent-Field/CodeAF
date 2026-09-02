@@ -84,7 +84,7 @@ func runSubharnessCommand(args []string) error {
 	// this one too (config.ResolveSeats).
 	seats := config.ResolveSeats(settings.ProfileDir, *model, "")
 	applySeats(&settings, seats)
-	fmt.Fprintln(os.Stderr, seats.Work.Line())
+	fmt.Fprintln(os.Stderr, seats.Work.Report())
 	// The measured ruler is seated for the same reason `run` seats it: this is a
 	// surface that will record what a worker cost, and a history keyed on
 	// anything but the model is two histories for one executor.
