@@ -764,6 +764,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
 		{"the run said the brief could not be written, what happened", "adaptive-runs"},
+		// The run that had the answer and kept going, asked the two ways it was
+		// actually reported: as time and money spent after the fact, and as the
+		// word `partial` printed over tests that were green.
+		{"why did it keep going after it had the answer", "adaptive-runs"},
+		{"it said partial but the tests were green", "adaptive-runs"},
+		{"the request was met as stated", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
 		// person watching a run that has not drawn anything yet. Both are asked
 		// with the screen in front of them, in the words the screen gave them.
