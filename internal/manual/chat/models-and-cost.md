@@ -1215,6 +1215,17 @@ what, into the conversation. Up to six aligned lines:
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
 
+## Why do the tokens on the status line jump instead of counting up
+
+They count up. While a turn is running, the money and the token figures on the status
+line **walk toward the new reading** over a couple of tenths of a second — the same
+ease as the reply writing in — rather than popping from one number to the next. The
+books stay exact; only what the line paints is in motion.
+
+`/cost` and `/status` print the exact books, not the figure in motion. Opening a
+resumed conversation, or switching to another one, lands on that conversation's own
+bill at once. A screen-reader session never eases a number.
+
 ## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
 
 **The `$` on the status line is the whole tree: this conversation and every task it
