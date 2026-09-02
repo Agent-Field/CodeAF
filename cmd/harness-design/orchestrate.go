@@ -144,7 +144,6 @@ type driver struct {
 	nodeTokens  int
 	maxParallel int
 	gate        string
-	temperature float64
 
 	// The graph and the tank. Only the run loop writes these.
 	nodes  []*nodeRun
@@ -423,7 +422,7 @@ func (d *driver) planTurn(ctx context.Context, v orchestrate.View, refused []str
 
 	out := planned{}
 	for tries := 0; tries < 2; tries++ {
-		salvaged, at, err := jsonReply(ctx, d.chat, history, d.planTokens, d.temperature)
+		salvaged, at, err := jsonReply(ctx, d.chat, history, d.planTokens)
 		out.cost += at.spent
 		out.tokens += at.tokens
 		if err == nil {
@@ -879,8 +878,7 @@ func (d *driver) execNode(ctx context.Context, node orchestrate.Node, deps []orc
 			{Role: "system", Content: system},
 			{Role: "user", Content: input.String()},
 		},
-		MaxTokens:   d.nodeTokens,
-		Temperature: 0.4,
+		MaxTokens: d.nodeTokens,
 	})
 	if err != nil {
 		return completion{id: node.ID, err: err}
@@ -934,7 +932,7 @@ func (d *driver) atTheGate(ctx context.Context) {
 			"Answer with an amendment carrying ONLY `done`, and write the best synthesis the RESULTS above support — " +
 			"every claim citing the node id it came from, and any part of the goal the results do not reach said plainly."},
 	}
-	salvaged, at, err := jsonReply(ctx, d.chat, history, d.planTokens, d.temperature)
+	salvaged, at, err := jsonReply(ctx, d.chat, history, d.planTokens)
 	d.plannerRuns++
 	d.burn(at.spent)
 	if err != nil {

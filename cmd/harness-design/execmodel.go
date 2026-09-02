@@ -125,7 +125,7 @@ func (e *execModel) Loop(ctx context.Context, node subharness.Node, input string
 		{Role: "user", Content: "What the previous step produced (your input):\n\n" + firstOr(input, "(nothing yet — you are the first step; work from the goal)")},
 	}
 	for turn := 0; turn < turns; turn++ {
-		request := chatRequest{Messages: history, MaxTokens: 4000, Temperature: 0.4}
+		request := chatRequest{Messages: history, MaxTokens: 4000}
 		if len(granted) > 0 && turn < turns-1 {
 			// The LAST turn carries no tools, so a worker out of rounds answers
 			// with words instead of asking for a round it cannot have.
@@ -148,7 +148,7 @@ func (e *execModel) Loop(ctx context.Context, node subharness.Node, input string
 	}
 	// Out of turns: one more call with no tools, which is the same ending the
 	// provider's own loop gives a worker that ran long.
-	out, err := e.chat.complete(ctx, chatRequest{Messages: history, MaxTokens: 4000, Temperature: 0.4})
+	out, err := e.chat.complete(ctx, chatRequest{Messages: history, MaxTokens: 4000})
 	if err != nil {
 		return "", err
 	}
@@ -232,7 +232,7 @@ func (e *execModel) Check(ctx context.Context, node subharness.Node, state subha
 		"or",
 		"FAIL — <what is wrong, in one sentence, specific enough to fix>",
 	}, "\n")
-	answer, err := e.chat.ask(ctx, system, "The material:\n\n"+firstOr(state.Last, "(nothing)"), 1500, 0.1)
+	answer, err := e.chat.ask(ctx, system, "The material:\n\n"+firstOr(state.Last, "(nothing)"), 1500)
 	if err != nil {
 		return false, "", err
 	}
@@ -259,7 +259,7 @@ func (e *execModel) Cond(ctx context.Context, node subharness.Node, condition st
 		"",
 		"Answer with exactly one word: YES if the condition holds, NO if it does not.",
 	}, "\n")
-	answer, err := e.chat.ask(ctx, system, "What the last step produced:\n\n"+firstOr(state.Last, "(nothing)"), 1200, 0.0)
+	answer, err := e.chat.ask(ctx, system, "What the last step produced:\n\n"+firstOr(state.Last, "(nothing)"), 1200)
 	if err != nil {
 		return false, err
 	}

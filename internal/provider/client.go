@@ -20,17 +20,20 @@ import (
 
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
-// decide a request's economics without ever performing I/O on the hot path.
+// decide a request's economics without ever performing I/O on the hot path —
+// and minus Temperature: an absent sampling parameter is omitted upstream and
+// the provider's own default applies, so the field is absent rather than
+// carried and always sent (withoutSampling covers the SDK's own loop, which
+// injects one).
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
 type Config struct {
-	APIKey      string
-	BaseURL     string
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	Timeout     time.Duration
+	APIKey    string
+	BaseURL   string
+	Model     string
+	MaxTokens int
+	Timeout   time.Duration
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
@@ -215,14 +218,13 @@ func (c *Client) SetAPIKey(key string) error {
 	var base *ai.Client
 	if key != "" {
 		built, err := ai.NewClient(&ai.Config{
-			APIKey:      key,
-			BaseURL:     c.config.BaseURL,
-			Model:       c.config.Model,
-			Temperature: c.config.Temperature,
-			MaxTokens:   c.config.MaxTokens,
-			Timeout:     c.config.Timeout,
-			SiteURL:     AppURL,
-			SiteName:    AppName,
+			APIKey:    key,
+			BaseURL:   c.config.BaseURL,
+			Model:     c.config.Model,
+			MaxTokens: c.config.MaxTokens,
+			Timeout:   c.config.Timeout,
+			SiteURL:   AppURL,
+			SiteName:  AppName,
 		})
 		if err != nil {
 			return err
@@ -293,7 +295,21 @@ func (c *Client) ExecuteToolCallLoop(
 	if base == nil {
 		return nil, nil, ErrNoAPIKey
 	}
-	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
+	// The SDK builds every round's request with its configured temperature —
+	// its config supplies one even when nobody asked — so the option that
+	// undoes the injection goes on LAST, after anything a caller passed: a
+	// sampling decision this adapter has promised not to make.
+	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, append(options, withoutSampling)...)
+}
+
+// withoutSampling removes the one sampling parameter the SDK's request
+// builders always set. The SDK is read-only here and its temperature cannot
+// be configured AWAY — a zero would be sent as zero — so the answer is an
+// option that takes the field back off, leaving the provider's own default
+// to answer. Everything else the SDK injects stays.
+func withoutSampling(request *ai.Request) error {
+	request.Temperature = nil
+	return nil
 }
 
 // maxResponseBytes bounds what one completion may be believed to be. A
@@ -591,10 +607,10 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 		Messages: messages,
 		Model:    c.config.Model,
 	}
-	// Temperature is always sent: an operator who configured zero wants zero,
-	// not whatever the endpoint happens to default to.
-	temperature := c.config.Temperature
-	request.Temperature = &temperature
+	// NO SAMPLING PARAMETER IS SET, here or anywhere else: an absent
+	// temperature is omitted upstream and the provider applies its own
+	// default, which is the behavior every call through this adapter wants —
+	// nothing here chooses a temperature for somebody else's model.
 	if c.config.MaxTokens > 0 {
 		maxTokens := c.config.MaxTokens
 		request.MaxTokens = &maxTokens

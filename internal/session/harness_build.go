@@ -128,10 +128,6 @@ const (
 	harnessDesignTokens = 16000
 	harnessReviewTokens = 10000
 
-	// harnessDesignTemp is the design turn's temperature. Low, not zero: this is
-	// architecture, and the guide is asking for a choice among shapes.
-	harnessDesignTemp = 0.3
-
 	// harnessToolAbout bounds one tool's line in the belt the guide is shown. The
 	// wire descriptions are paragraphs — they are written for a model deciding
 	// whether to CALL the tool — and what a designer needs is a name and a
@@ -792,7 +788,7 @@ func harnessCues(draft harnessDesign, revised harnessRevision) []string {
 // emitted, so a cut-off reply skips it and is answered with the truth instead
 // (see below).
 func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, maxTokens int, progress harnessProgressCall) ([]byte, string, error) {
-	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, harnessDesignTemp, progress)
+	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, progress)
 	if err != nil {
 		return nil, "", err
 	}
@@ -834,7 +830,7 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence. "+
 			"JSON delimiters and syntax are ASCII: every key and string value is wrapped in \" (U+0022). Prose inside a string value stays exactly as it is."),
 	}
-	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, 0, progress)
+	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, progress)
 	if err != nil {
 		return nil, raw, err
 	}
@@ -879,9 +875,7 @@ func (a *Agent) harnessContinue(ctx context.Context, history []ai.Message, raw, 
 		textMessage("user", "Your reply was CUT OFF by the transport mid-object — it was not rejected. "+
 			"Continue it from the exact character it stopped at: reply with ONLY the remaining characters of that same JSON object, "+
 			"no repetition of what you already wrote, no prose, no code fence, until the object is closed."))
-	// Temperature zero, like the repair turn: this is transcription of a page
-	// already designed, not a second opinion about its shape.
-	rest, cut, err := a.harnessComplete(ctx, asked, model, maxTokens, 0, progress)
+	rest, cut, err := a.harnessComplete(ctx, asked, model, maxTokens, progress)
 	// The call finished and had nothing to say to a person; the room's catch-up
 	// still has to be told the step is over ([designSeat.noted]).
 	progress.seat.noted("")
@@ -1013,7 +1007,7 @@ func harnessPartialHint(raw string) string {
 	return "thinking"
 }
 
-func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, temperature float64, call harnessProgressCall) (string, bool, error) {
+func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, call harnessProgressCall) (string, bool, error) {
 	progress := &harnessProgress{a: a, call: call, last: time.Now()}
 	streamCtx := provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
 		if event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning {
@@ -1051,8 +1045,7 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 		provider.WithRole(streamCtx, lane.RoleDesign),
 		messages,
 		ai.WithModel(model),
-		ai.WithMaxTokens(maxTokens),
-		ai.WithTemperature(temperature))
+		ai.WithMaxTokens(maxTokens))
 	close(done)
 	if err != nil {
 		call.seat.broke(err)
