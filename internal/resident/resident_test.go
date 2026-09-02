@@ -445,6 +445,18 @@ func TestCompileReceiptKeepsLegacyBytes(t *testing.T) {
 	if withModel != wantModel {
 		t.Fatalf("model receipt = %q, want %q", withModel, wantModel)
 	}
+	// A compile that supplied no reading of its own says so on the receipt,
+	// after the model line and before the invitation: a goal that is quietly
+	// the person's own words back is a substitution they could not see (#335).
+	withNote := compileReceipt("Verbatim request:\nBenchmark the parser", nil,
+		"Running on google/gemini-3-pro.", "The compiler supplied no reading of its own.")
+	const wantNote = "Here's my reading: Verbatim request:\nBenchmark the parser\n" +
+		"Running on google/gemini-3-pro.\n" +
+		"The compiler supplied no reading of its own.\n" +
+		"Correct me anytime — changing course costs nothing."
+	if withNote != wantNote {
+		t.Fatalf("note receipt = %q, want %q", withNote, wantNote)
+	}
 }
 
 // Attached documents have to survive compilation twice over: the compiler sees

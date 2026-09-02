@@ -111,6 +111,26 @@ past the patience for that kind of work borrows another one for that answer and
 says so in the log. An instruction whose author cannot be reached is honoured by
 getting them their answer.
 
+## Waiting on a model that is thinking
+
+A reasoning model writes its thinking before it writes a word you can read, and
+none of that is on your screen. It is not a stall, so aforge does not treat it
+as one. While a thought is arriving, its patience is measured against **how the
+model itself usually thinks** — learned from every
+thought aforge has timed for it, at the effort it was asked at, and from nothing
+else.
+
+So a thought that has gone quiet far beyond that model's usual thinking is
+treated as a stall and rescued the same way a slow lane is: a second request
+goes out and the status line shows `slow · trying …`. A deep thought that is
+still arriving is left alone for all the patience it needs, because leaving one
+costs a whole fresh thought and buys you nothing.
+
+Until aforge has watched a model think a few dozen times it has no opinion about
+that model's thinking, and only the ceiling on silence can end a hung one. That
+is why a model you have been using feels quicker to rescue than one you have
+just picked.
+
 ## When every lane is slow
 
 Sometimes there is nowhere better to go — everything serving that model is
@@ -136,10 +156,37 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
-| `slow · trying parasail…` | a second request is out; the first one to answer wins |
+| `slow · trying parasail…` | a machine was late; a second request is out and the first to answer wins |
+| `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
+| `parasail refused` | the machine that second request went to said no as well |
 | `via parasail · rescued` | it worked, for this answer only |
 | `coreweave is slow · switch to auto? (y)` | your pinned machine is quiet, and you can end the wait |
 | `all lanes slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
+
+## When a machine refuses to serve the model
+
+`slow` and `refused` are two different facts and the row says which. **Slow** is
+a wait: the machine is answering and taking its time. **Refused** is a machine
+saying it will not serve this model at all — the router answers
+`no endpoints found … your request's provider.only preference permits only:
+coreweave`, which means the machine aforge asked for is not in the set that
+serves this model right now.
+
+A refusal is final for that machine, immediately:
+
+- the next request leaves at once, for a different machine, and does not name
+  the refused one;
+- that machine is taken out of the set aforge will choose from for this model,
+  so it is not picked again later in the session;
+- if there is nowhere left to move to, the request itself is widened — the
+  demand for one machine is the first thing dropped — and the answer usually
+  arrives from wherever the router picks.
+
+The row keeps up with all of it. `refused · trying parasail…` while the answer
+is moving, and if parasail refuses too the promise is **taken back** rather than
+left standing: the row reads `parasail refused`, which is what actually
+happened. A row still saying `trying …` about a request that has already failed
+is the one thing it will not do.
 
 ## Turning lane routing off
 

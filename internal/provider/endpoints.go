@@ -265,10 +265,18 @@ func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
 type relaxSet uint8
 
 const (
-	// relaxEndpointFilter drops `provider.require_parameters` and
-	// `provider.ignore`. FIRST because it is the only rung that changes nothing
-	// about what the model is asked — it widens which endpoints may answer, and
-	// it is the field most likely to have emptied the set in the first place.
+	// relaxEndpointFilter drops THE WHOLE `provider` FILTER — the hard
+	// parameter filter, this process's own refusals, the price ceiling, and the
+	// demand for one machine that a pin or a rescue put there. FIRST because it
+	// is the only rung that changes nothing about what the model is asked: it
+	// widens which endpoints may answer, and every field on it is one that can
+	// empty the endpoint set ([providerPrefs.narrowing] is the one list).
+	//
+	// `provider.only` was not on this rung for a long time, and that is half of
+	// issue #266: a pinned request climbed every rung there is — reasoning, the
+	// output cap, structured output, its attachments, finally its tools — still
+	// pinned to the one machine that had refused it, so every rung was spent on
+	// a request that could not have been served whatever shape it was in.
 	relaxEndpointFilter relaxSet = 1 << iota
 	// relaxReasoning drops the `reasoning` knob. A knob, not content: the model
 	// answers the same question, with its own default amount of thinking.
@@ -335,8 +343,14 @@ func rung(bit relaxSet) relaxStep {
 // line and does not inflate the attempt counter the person is reading.
 func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model string) []relaxStep {
 	var plan []relaxStep
-	if prefs := c.providerPreferences(model, knobs, request); prefs != nil &&
-		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
+	// THE RUNG IS OFFERED FOR WHAT IS ACTUALLY ON THE WIRE, which is the
+	// preference object the encoder builds and not the one half of it: a rescue
+	// demands its lane through [hedgePreference] AFTER the ledger's own
+	// preferences are assembled, so a plan built from the ledger's half alone
+	// could not see the narrowest filter this process sends. A pinned request
+	// therefore had no first rung at all and climbed straight to "removed
+	// reasoning", still pinned to the machine that had refused it (issue #266).
+	if c.wirePreferences(model, knobs, request).narrowing() {
 		plan = append(plan, rung(relaxEndpointFilter))
 	}
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
@@ -829,7 +843,12 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		params = append(params, "reasoning")
 	}
-	if prefs := c.providerPreferences(model, knobs, request); prefs != nil {
+	// THE PREFERENCE IS READ AS IT WENT OUT, not as the ledger assembled it, so
+	// a demand a rescue added afterwards is named here too: `provider.only` is
+	// the field most likely to have emptied the endpoint set on a request that
+	// reached this sentence, and a list that left it out was describing a
+	// different request from the one that failed.
+	if prefs := c.wirePreferences(model, knobs, request); prefs != nil {
 		if prefs.RequireParameters != nil {
 			params = append(params, "provider.require_parameters")
 		}
@@ -838,6 +857,9 @@ func (c *Client) sentParams(request *ai.Request, knobs callKnobs, model string) 
 		}
 		if prefs.MaxPrice != nil {
 			params = append(params, "provider.max_price")
+		}
+		if len(prefs.Only) > 0 {
+			params = append(params, "provider.only")
 		}
 	}
 	return params

@@ -195,6 +195,12 @@ type Brief struct {
 	// ModelNote is the one calm receipt line about that choice — which model
 	// runs the job, or why the name they used did not land.
 	ModelNote string `json:"model_note,omitempty"`
+
+	// Note is the one calm receipt line the compiler itself adds, when it has
+	// something to own up to: today, that it supplied no reading of its own and
+	// the person's words stand as the goal. It is never read from the wire —
+	// a model may not write the receipt about its own answer.
+	Note string `json:"-"`
 }
 
 // Compiler converts verbatim user intent into a planning brief without asking
@@ -330,9 +336,8 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		return brief, nil
 	}
 	brief.QuestionOptions = nil
-	if err := validateBrief(&brief); err != nil {
-		return Brief{}, fmt.Errorf("compile intent: %w", err)
-	}
+	tidyBrief(&brief)
+	brief.Note = noGlossNote(brief.Goal)
 	brief.Goal = anchorQualityWords(anchorGoal(brief.Goal, instruction), instruction)
 	brief.Scale = reconcileScale(brief.Structure, normalizeScale(brief.Scale))
 	brief.Title = normalizeTitle(brief.Title)
@@ -534,17 +539,24 @@ func normalizeScale(scale string) string {
 	}
 }
 
-// validateBrief refuses what cannot be run and tidies what can. A BRIEF THAT
-// MADE NO ASSUMPTIONS IS A COMPLETE BRIEF: the field is what the model declares
-// it had to assume, and a request that needed nothing assumed comes back with
-// the field absent or empty. A blank entry is dropped rather than refused for
-// the same reason — it says nothing, and a refusal here forfeits the whole
-// compile, the cheapest call in the job and the only one nothing after it can
-// run without.
-func validateBrief(brief *Brief) error {
-	if strings.TrimSpace(brief.Goal) == "" {
-		return errors.New("empty goal")
-	}
+// tidyBrief drops what says nothing and refuses nothing. A BRIEF THAT MADE NO
+// ASSUMPTIONS IS A COMPLETE BRIEF: the field is what the model declares it had
+// to assume, and a request that needed nothing assumed comes back with the
+// field absent or empty. A blank entry is dropped rather than refused for the
+// same reason — it says nothing, and a refusal here forfeits the whole compile,
+// the cheapest call in the job and the only one nothing after it can run
+// without.
+//
+// A BLANK GOAL IS NOT REFUSED EITHER, and this used to be the one thing that
+// was. The goal's law is that the person's exact words are appended to it
+// deterministically, so the words alone are a complete goal and the model's
+// gloss on top of them is a nicety — yet a gloss that came back empty ended the
+// run with "empty goal" while the instruction sat in the request the whole
+// time. Measured 2026-09-02: a 416-word brief, a reply cut inside the goal and
+// continued as a fresh object without one, 229 s and zero nodes (#335). Now
+// the words stand as the goal and the receipt says the compiler supplied no
+// reading of its own (noGlossNote).
+func tidyBrief(brief *Brief) {
 	kept := brief.Assumptions[:0]
 	for _, assumption := range brief.Assumptions {
 		if assumption = strings.TrimSpace(assumption); assumption != "" {
@@ -552,7 +564,18 @@ func validateBrief(brief *Brief) error {
 		}
 	}
 	brief.Assumptions = kept
-	return nil
+}
+
+// NoGlossNote is the receipt line for a compile whose goal came back blank.
+// It is a constant so the surfaces that show it and the tests that pin it read
+// one spelling.
+const NoGlossNote = "The compiler supplied no reading of its own, so your request stands as the goal, word for word."
+
+func noGlossNote(goal string) string {
+	if strings.TrimSpace(goal) == "" {
+		return NoGlossNote
+	}
+	return ""
 }
 
 // normalizeTitle takes the model's name at its word and only strips what a
@@ -569,6 +592,10 @@ func normalizeTitle(title string) string {
 	return title
 }
 
+// anchorGoal is the goal's law: the person's exact words are the last thing
+// in it, whatever the model wrote above them. A blank gloss leaves the words
+// alone as the whole goal — the anchor is what makes the goal complete, so
+// nothing is missing when nothing precedes it.
 func anchorGoal(goal, instruction string) string {
 	goal = strings.TrimSpace(goal)
 	// A compiler that followed the prompt already carries the anchor inline;
@@ -576,5 +603,5 @@ func anchorGoal(goal, instruction string) string {
 	if strings.Contains(goal, "Verbatim request:") && strings.Contains(goal, instruction) {
 		return goal
 	}
-	return goal + "\n\nVerbatim request:\n" + instruction
+	return strings.TrimSpace(goal + "\n\nVerbatim request:\n" + instruction)
 }

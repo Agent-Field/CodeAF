@@ -61,14 +61,22 @@ type HedgeReport struct {
 	action  string
 	silence time.Duration
 	arms    int
-	// onStart is told the moment a rescue goes out, with the lane it is going
-	// to. It is the ONE thing on this slot that is not read afterwards, and it
+	// onStart is told the moment a rescue goes out, and again the moment one
+	// dies. It is the ONE thing on this slot that is not read afterwards, and it
 	// exists because the only interesting state of a rescue is the one that is
 	// over before the call returns: while the second request is in flight and
 	// nobody has committed, which is the sentence a person reads on the status
 	// line. A caller that registers nothing is told nothing, and nothing here
 	// waits on it.
-	onStart func(alt string)
+	//
+	// IT CARRIES THE REASON AND NOT ONLY THE LANE, and it carries a retraction.
+	// A lane name alone made a refusal and a slow answer indistinguishable at
+	// the surface, so `…your request's provider.only preference permits only:
+	// coreweave` was drawn as `· slow · trying nextbit…` and stayed on the
+	// screen for ten minutes after the arm it was about had died (issue #266).
+	// [RescueNews] is what goes through it now, narrowed from the one refusal
+	// object so that the word a person reads is the word the ledger acted on.
+	onStart func(RescueNews)
 }
 
 // Hedged reports whether a second request went out.
@@ -102,14 +110,15 @@ func (h *HedgeReport) Primary() string {
 	return h.primary
 }
 
-// OnHedgeStart registers what to do the moment a rescue goes out — once, with
-// the lane it is going to. It is called from the race's own goroutine and must
-// not block; a nil function unregisters.
+// OnHedgeStart registers what to do about a rescue while it is still
+// happening: once when one goes out, and once more if the machine it went to
+// fails. It is called from the race's own goroutine and must not block; a nil
+// function unregisters.
 //
 // IT IS SET BEFORE THE CALL AND NEVER DURING ONE. The slot belongs to the
 // caller and is stamped on the context before the request goes out
 // ([WithHedgeReport]), which is the only moment at which nothing is reading it.
-func (h *HedgeReport) OnHedgeStart(fn func(alt string)) {
+func (h *HedgeReport) OnHedgeStart(fn func(RescueNews)) {
 	if h == nil {
 		return
 	}
@@ -120,7 +129,25 @@ func (h *HedgeReport) OnHedgeStart(fn func(alt string)) {
 
 // started tells the caller a rescue is in flight, outside the lock so that a
 // slow reader cannot stall the race that is trying to rescue an answer.
-func (h *HedgeReport) started(alt string) {
+func (h *HedgeReport) started(news RescueNews) {
+	h.tell(news)
+}
+
+// ended retracts a rescue this slot has already announced, because the machine
+// it named has failed.
+//
+// A SURFACE MAY ONLY BE LEFT SHOWING A CLAIM THAT IS STILL TRUE. `trying
+// nextbit…` is a promise about the present tense, and nothing withdrew it when
+// nextbit died — so the sentence sat on the status line until it aged out of a
+// ten-minute window, describing a request that had already failed.
+func (h *HedgeReport) ended(news RescueNews) {
+	news.Failed = true
+	h.tell(news)
+}
+
+// tell posts one piece of rescue news outside the lock, so that a slow reader
+// cannot stall the race it is reading about.
+func (h *HedgeReport) tell(news RescueNews) {
 	if h == nil {
 		return
 	}
@@ -128,7 +155,7 @@ func (h *HedgeReport) started(alt string) {
 	fn := h.onStart
 	h.mu.Unlock()
 	if fn != nil {
-		fn(alt)
+		fn(news)
 	}
 }
 

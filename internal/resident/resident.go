@@ -91,6 +91,11 @@ type Compiled struct {
 
 	// ModelNote is the one calm receipt line about that choice.
 	ModelNote string
+
+	// Note is the one calm receipt line the compiler adds about its own
+	// answer — that it supplied no reading and the person's words stand as
+	// the goal. Empty is the ordinary case.
+	Note string
 }
 
 // SkillCandidate names the artifact directory a job proved useful. It remains
@@ -1505,7 +1510,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	// made to being real was signalled by nothing at all.
 	r.noteCommandStage(command, stageStarting, spliceStageLatest(subtree))
 
-	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
+	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote, compiled.Note)
 	switch {
 	case usingCraft:
 		receipt = use.receipt
@@ -2515,7 +2520,13 @@ func clipKeepingFiles(block string, limit int) string {
 	return prose + files.String()
 }
 
-func compileReceipt(goal string, assumptions []string, modelNote string) string {
+// compileReceipt is the one line the person is owed for a compile: the
+// reading, the defaults it filled, and any note the compile has to add about
+// itself — the model it chose, or that it supplied no reading at all. A note
+// belongs on the receipt and nowhere else: a substitution the person cannot
+// see is the class of defect #311 and #314 closed, and a goal that is quietly
+// their own words back is one in miniature.
+func compileReceipt(goal string, assumptions []string, notes ...string) string {
 	var receipt strings.Builder
 	fmt.Fprintf(&receipt, "Here's my reading: %s", strings.TrimSpace(goal))
 	for _, assumption := range assumptions {
@@ -2523,8 +2534,10 @@ func compileReceipt(goal string, assumptions []string, modelNote string) string 
 			fmt.Fprintf(&receipt, "\nAssumed: %s", assumption)
 		}
 	}
-	if modelNote = strings.TrimSpace(modelNote); modelNote != "" {
-		fmt.Fprintf(&receipt, "\n%s", modelNote)
+	for _, note := range notes {
+		if note = strings.TrimSpace(note); note != "" {
+			fmt.Fprintf(&receipt, "\n%s", note)
+		}
 	}
 	receipt.WriteString("\nCorrect me anytime — changing course costs nothing.")
 	return receipt.String()

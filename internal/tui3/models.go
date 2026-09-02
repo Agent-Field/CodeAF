@@ -641,8 +641,10 @@ func modelNoteVia(model Model, pin string) string { return rowAll(modelFields(mo
 func modelFields(model Model, pin string) []rowField {
 	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
 	// milliseconds cannot change a figure rounded to a tenth of a second, and
-	// threading a moment through every list on this surface to prove it would
-	// be a parameter nobody could ever see the effect of.
+	// [laneAuto] asks typically — posterior means, no Thompson draw — so the
+	// clock cannot re-sample a `via` either. Threading a moment through every
+	// list on this surface to prove that would be a parameter nobody could
+	// ever see the effect of.
 	now := timeNow()
 	views := laneViews(model.ID, now)
 	via := pin
