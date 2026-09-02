@@ -2215,7 +2215,7 @@ aforge logs --path          print the file and nothing else
 One line per call, and it reads like this:
 
 ```
-21:12:53  compile  z-ai/glm-5.3-flash  low  max 10240  → 200  12.7s  stop  466 tok  $0.0003
+21:12:53  compile  z-ai/glm-5.3-flash  low  max 10240  → 200  12.7s  stop  1204 in  466 out  $0.0003
 21:12:41  compile  z-ai/glm-5.3-flash  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
 21:13:04  leaf  #build  z-ai/glm-5.3  high  max 65536  ⋯ in flight 3m12s
 ```
@@ -2225,8 +2225,15 @@ What one line holds: when the call went out, what it was for (`turn`, `leaf`, `t
 actually answered, the thinking level and the **ceiling that really travelled** — which is
 larger than the one asked for, because the thinking pass is given room in front of the
 answer — how many messages and tools the request carried, the status it came back with,
-how long it took, how it finished, the tokens and the cost, and anything the refusal
-taught aforge about that model.
+how long it took, how it finished, what it spent and what it cost, and anything the
+refusal taught aforge about that model.
+
+**The two token figures are `N in` and `N out`** — the prompt and the completion. `in` is
+what the request carried, which is how full the context was; `out` is what the model
+wrote, and it carries `(N thinking)` beside it when the endpoint said how much of the
+reply went to the thinking pass. A `N cached` figure beside them is the share of `in` the
+provider billed at the cached rate. Each is left off when the provider did not report it,
+so a reply that came back with no usage block shows neither a token figure nor a cost.
 
 **A call still running shows as `⋯ in flight`.** That is the reason a line is written when
 a call goes *out* as well as when it comes back: a planning call four minutes into a

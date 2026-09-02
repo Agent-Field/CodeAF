@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func fixtureLog(t *testing.T) string {
 		`{"ts":"2026-08-28T21:12:41.000Z","id":"aaaaaaaa","phase":"start","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"attempt":1}`,
 		`{"ts":"2026-08-28T21:12:41.200Z","id":"aaaaaaaa","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"attempt":1,"status":400,"ms":200,"error":"Reasoning is mandatory for this endpoint","learned":["reasoning_mandatory"]}`,
 		`{"ts":"2026-08-28T21:12:41.300Z","id":"bbbbbbbb","phase":"start","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"attempt":2}`,
-		`{"ts":"2026-08-28T21:12:53.000Z","id":"bbbbbbbb","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"attempt":2,"status":200,"ms":12700,"finish":"stop","completion_tokens":466,"cost":0.0003}`,
+		`{"ts":"2026-08-28T21:12:53.000Z","id":"bbbbbbbb","tag":"compile","model":"z-ai/glm-5.3-flash","effort":"low","max_tokens":10240,"messages":2,"stream":true,"attempt":2,"status":200,"ms":12700,"finish":"stop","prompt_tokens":1204,"completion_tokens":466,"cost":0.0003}`,
 		`{"ts":"2026-08-28T21:13:04.000Z","id":"cccccccc","phase":"start","tag":"leaf","node":"build","model":"z-ai/glm-5.3","effort":"high","max_tokens":65536,"messages":9,"tools":11,"attempt":1}`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(lines), 0o644); err != nil {
@@ -70,7 +71,7 @@ func TestLogsRendersTheLastCallsOnePerLine(t *testing.T) {
 	}
 	answered, inFlight := lines[1], lines[2]
 	for _, want := range []string{"21:12:53", "compile", "z-ai/glm-5.3-flash", "low", "max 10240",
-		"→ 200", "12.7s", "stop", "466 tok", "$0.0003"} {
+		"→ 200", "12.7s", "stop", "1204 in", "466 out", "$0.0003"} {
 		if !strings.Contains(answered, want) {
 			t.Errorf("the answered call's line is missing %q: %q", want, answered)
 		}
@@ -131,5 +132,109 @@ func TestLogsOnAMachineThatHasNeverCalledAModelPrintsThePathAndNothingElse(t *te
 	}
 	if got := strings.TrimSpace(out.String()); got != absent {
 		t.Fatalf("nothing has been logged, so there is nothing to draw: %q", got)
+	}
+}
+
+// THE ROW SAYS WHAT THE MONEY BOUGHT. A line that carries a cost and no token
+// figures is the one shape a person cannot act on: the bill cannot be checked
+// against a price, and the prompt figure — the one that says how full the
+// context was — is missing from the only place it is written down (#345).
+//
+// The counts have always been IN the record; a single unlabelled "tok" segment
+// carried the completion half and dropped the prompt half on the floor.
+func TestALoggedCallSaysHowManyTokensItsCostBought(t *testing.T) {
+	var out strings.Builder
+	if err := runLogsWith([]string{"--tail", "2"}, &out, fixtureLog(t), stoppedClock(t)); err != nil {
+		t.Fatal(err)
+	}
+	answered := strings.Split(strings.TrimSpace(out.String()), "\n")[1]
+	if !strings.Contains(answered, "$0.0003") {
+		t.Fatalf("the fixture's answered call should carry a cost: %q", answered)
+	}
+	for _, want := range []string{"1204 in", "466 out"} {
+		if !strings.Contains(answered, want) {
+			t.Errorf("a row with a cost should say what it bought; missing %q: %q", want, answered)
+		}
+	}
+}
+
+// And the emptiness law on the same line: a reply the provider sent no usage
+// block for says neither a cost nor a token count, because a zero in either
+// place is a figure nobody measured.
+func TestALoggedCallWithNoUsageShowsNeitherCostNorTokens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	line := `{"ts":"2026-08-28T21:12:53.000Z","id":"dddddddd","tag":"gate","model":"z-ai/glm-5.3",` +
+		`"messages":2,"stream":true,"attempt":1,"status":200,"ms":900,"finish":"stop"}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runLogsWith([]string{"--tail", "1"}, &out, path, stoppedClock(t)); err != nil {
+		t.Fatal(err)
+	}
+	row := strings.Split(strings.TrimSpace(out.String()), "\n")[1]
+	for _, unwanted := range []string{"$", " in", " out", "0 tok"} {
+		if strings.Contains(row, unwanted) {
+			t.Errorf("an unmeasured call invented %q: %q", unwanted, row)
+		}
+	}
+}
+
+// The whole of #345 end to end: a headless errand, and every end row it leaves
+// that carries a cost also carries both token figures.
+//
+// It runs the real `do` against the scripted endpoint rather than a fixture,
+// because the claim under test is about the rows the RUN writes — the compile,
+// the grounding pass, the working method, the leaf and the gate — and a fixture
+// can only ever restate what this test was written believing.
+func TestAHeadlessRunsRowsCarryBothTokenFiguresBesideTheirCost(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	t.Setenv(calllog.EnvVar, path)
+	calllog.Open("")
+	t.Cleanup(func() {
+		calllog.Close()
+		os.Setenv(calllog.EnvVar, calllog.OffValue)
+		calllog.Open("")
+	})
+
+	script := newScriptedBrain(t)
+	script.gatePasses = true
+	script.leafCost = 0.0012
+	defer script.close()
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:      "count the lines in notes.txt and write the count to count.txt",
+		timeout:   60 * time.Second,
+		stdout:    &stdout,
+		stderr:    &stderr,
+		newClient: script.client,
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
+	}
+	calllog.Close()
+
+	records, err := readCallLog(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	priced := 0
+	for _, record := range records {
+		if record.Phase == calllog.PhaseStart || record.Cost <= 0 {
+			continue
+		}
+		priced++
+		line := callLogLine(record, stoppedClock(t)())
+		for _, want := range []string{
+			fmt.Sprintf("%d in", record.PromptTokens),
+			fmt.Sprintf("%d out", record.CompletionTokens),
+		} {
+			if !strings.Contains(line, want) {
+				t.Errorf("a priced %s row is missing %q: %q", record.Tag, want, line)
+			}
+		}
+	}
+	if priced == 0 {
+		t.Fatal("the run left no priced end row at all, so nothing here was tested")
 	}
 }
