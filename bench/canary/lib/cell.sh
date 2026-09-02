@@ -25,6 +25,12 @@ OUT="$2"
 mkdir -p "$OUT"
 WORK="$OUT/work"
 HOME_DIR="$OUT/home"
+# EVERY CELL HAS ITS OWN TEMP: a base temp shared with strangers is one their
+# cleanup can delete from under a grade. This was measured when concurrent
+# pytest cleanup left its garbage directory nonempty and the grader exited
+# without a summary line.
+export TMPDIR="$OUT/tmp"
+mkdir -p "$TMPDIR"
 PROMPT="$OUT/prompt.txt"
 LOAD_START="$(cut -d" " -f1 /proc/loadavg)"
 
