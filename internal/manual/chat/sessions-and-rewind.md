@@ -1,6 +1,6 @@
-# Conversations, and taking a message back
+# Conversations, and taking a message back — undoing something you said
 
-## Taking a message back — rewind
+## Taking a message back — rewind, how do I undo something I said
 
 Rewind cuts the conversation back to an earlier point and drops everything after it. Use it
 when you phrased something badly and want to say it again better.

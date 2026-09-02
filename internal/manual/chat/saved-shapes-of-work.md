@@ -1,4 +1,4 @@
-# Saved shapes of work
+# Saved shapes of work — saving a way of working and reusing it
 
 ## What a harness is
 

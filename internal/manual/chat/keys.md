@@ -1,4 +1,4 @@
-# Keys, typing, and the mouse
+# Keys, typing, and the mouse — what all the keys do
 
 ## Which key sends, and which key opens a new line
 
@@ -397,7 +397,7 @@ disk when you switched away from them.
 - Closing the terminal window is not a quit aforge sees; the draft written 300ms after
   you stopped typing is what survives that.
 
-## Keys — the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
+## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
 This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
 listens for is on this page, in the tables below.

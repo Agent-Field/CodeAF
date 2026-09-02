@@ -1,4 +1,4 @@
-# The daily rhythm: what happens while you are gone
+# The daily rhythm: what happens every day while you are gone
 
 You are not the only reason aforge is awake. Between the moment you close the
 terminal and the moment you come back, it keeps a small, budgeted, honest

@@ -1,4 +1,4 @@
-# Work that runs on its own
+# Work that runs on its own — tasks, and finding out what one actually did
 
 ## What a task is
 
@@ -2486,6 +2486,8 @@ without exception: the same two tests, the same reading by the mastermind, the s
 The receipt reads the same too, and the worker is told the parts are already running so it
 does not do them again. *An answer that runs long is read and moved* is where that happens.
 
+## Why it refused to split the work — it would not break the job into pieces, and the two tests a division has to pass
+
 **Two things have to be true, and neither is the worker's confidence.**
 
 - **There must be enough separate items.** Below six, one worker doing them in order beats
@@ -2516,6 +2518,8 @@ not the last word there: the division goes to the mastermind below, which decide
 parts themselves. That is the whole of the exception. A count that says no on work nobody
 read for width is final and free, exactly as it always was, and the free-lane test is never
 waived by anything.
+
+## What each part is told — the brief a part opens on, and how it knows what its siblings own
 
 **What each part is told is composed, not copied.** A part opens on the same document
 every task opens on: your own message word for word, then the work being divided as the
@@ -2549,6 +2553,8 @@ without doing anything*, is what you see. This is a deliberate word the mastermi
 reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
 this, has refused a division and the worker carries on with the work exactly as above.
 
+## Two parts cannot own the same file — a division refused over an overlap
+
 **No two parts may own the same file, and that one is not a judgement — it is
 enforced.** The files each part's brief and done-condition name are checked against each
 other, and if the same file is claimed by more than one part the division is **refused
@@ -2580,6 +2586,8 @@ once more. The unanswered ask costs nothing and is not held against the work; on
 mastermind that actually answers settles the question, and its no is then final for that
 task. Nothing is lost either way: an unreachable mastermind cannot admit a split, and it
 cannot cancel any work.
+
+## Which model each part runs on — ordinary parts, careful parts, and the grade the worker sets
 
 **Some parts are done with more thinking than others.** Each part carries a grade the worker
 sets. Most parts are ordinary work — the failure mode is simply not being done yet, and you
@@ -2636,6 +2644,8 @@ night to re-read the same sentence is a bill nobody agreed to. The two tests sti
 the plan is still read once before the parts exist, and the machine is still respected: a
 division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
+
+## Where the parts show up on the screen, and how to stop them
 
 **Where you see it:** the parts appear in the task column under their parent, joined by tree
 connectors and carrying their own id and state, exactly as pieces handed out from the brief
@@ -2802,7 +2812,7 @@ work that fits in its own hands.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
-## How many tasks run at once
+## How many tasks run at once — can I have it do two things at the same time
 
 **There is no limit by default.** aforge does not cap the number of tasks running at the
 same time.
