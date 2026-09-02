@@ -42,6 +42,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 // bashOutcome is who owns the ending of one foreground bash call.
@@ -258,7 +260,7 @@ func bashPromoterFrom(ctx context.Context) BashPromoter {
 // the wait when a grandchild is still holding the pipe open after its parent
 // died.
 func watchCancel(ctx context.Context, call *BashCall, done <-chan struct{}) {
-	go func() {
+	guard.Go("exec/bare cancel watch", func() {
 		select {
 		case <-ctx.Done():
 			if _, _, adopted := call.close(); !adopted {
@@ -266,5 +268,5 @@ func watchCancel(ctx context.Context, call *BashCall, done <-chan struct{}) {
 			}
 		case <-done:
 		}
-	}()
+	})
 }

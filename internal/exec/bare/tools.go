@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
@@ -430,11 +431,11 @@ func newBashTool(cwd string) Tool {
 			// wait per command. The exit code goes to whoever adopts the call;
 			// the error comes back here for the ordinary ending.
 			waitCh := make(chan error, 1)
-			go func() {
+			guard.Go("exec/bare wait", func() {
 				err := cmd.Wait()
 				call.exit <- exitCodeFromWait(err)
 				waitCh <- err
-			}()
+			})
 
 			// THE TIMEOUT IS A HANDOFF WHERE SOMEBODY IS THERE TO TAKE IT.
 			// With no promoter it is what it always was — the process group is
