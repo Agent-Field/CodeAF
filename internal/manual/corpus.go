@@ -192,7 +192,7 @@ func (c *Corpus) build() {
 		c.average += float64(length)
 	}
 	for _, name := range c.order {
-		for _, word := range unique(c.pageTitle[name]) {
+		for _, word := range c.pageTitle[name] {
 			c.documents[word]++
 		}
 	}

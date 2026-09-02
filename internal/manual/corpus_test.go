@@ -22,8 +22,12 @@ func (pages fakePages) ReadFile(name string) ([]byte, error) {
 // for it to count in document frequency once per section too — and then cutting
 // one long section in half would move the IDF of the title's words for every
 // question asked of the corpus, which is a page's shape deciding what its
-// vocabulary is worth. It is counted once per page instead, and this pins that:
-// the same page written as one section and as two indexes identically.
+// vocabulary is worth. It is counted once per page instead, and that is what
+// this pins. It is not a claim that a split changes no ranking at all: BM25's
+// corpus size is the section count, so cutting a section moves every term's IDF
+// a little and puts one more candidate in the running. What it must not do is
+// move the page title's weight in particular, which is the one term this file
+// put in every section.
 func TestSplittingASectionDoesNotMoveTheTitlesWeight(t *testing.T) {
 	const title = "# The empty screen\n\n"
 	whole := newCorpus(fakePages{
