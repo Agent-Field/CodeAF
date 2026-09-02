@@ -30,6 +30,16 @@ import "sync"
 // send path as well as at launch, and a fold that went and looked something up
 // would be a fetch in front of a request, which is the law this package opens
 // with.
+//
+// NON-BLOCKING IS NOT LOCK-FREE, and the difference is worth stating here
+// because a comment in this package once got it wrong the other way round.
+// [LedgerModel] takes an ordinary in-process mutex around its memo — one
+// uncontended lock and a map lookup, held for no I/O — which is a different
+// thing from the store's EXCLUSIVE FILE lock that [ledger.keep] documents
+// itself as still sometimes taking in front of a stream (issue #264, open).
+// What this seam promises is that resolving a name never waits on a disk, a
+// network or another process; it does not promise that nothing on the send path
+// ever takes a lock, because something still does.
 type Servable func(model string) string
 
 var servable struct {

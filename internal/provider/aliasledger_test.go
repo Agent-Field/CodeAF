@@ -34,24 +34,69 @@ import (
 // hedge.go's and the general fold's, not this one's, and staging it here would
 // assert something this change does not fix.
 
-// storedLanes is what `~/.aforge/v3/lanes.json` holds, read back the way another
-// process would read it. Belief carries no json tags, so the field names are the
-// Go ones.
-func storedLanes(t *testing.T) []struct {
-	ID struct{ Model, Lane string }
-} {
+// storedLanes is every model name the belief file and its journal carry, read
+// back the way another process would read them.
+//
+// BOTH HALVES, BECAUSE ONE OF THEM IS NOT ENOUGH. Since the store became a
+// state file plus an append-only journal (`v3/lanes.json` and `v3/lanes.log`),
+// the compacted half is written on the first record of a process and every
+// journalLimit-th after, and everything since sits in the journal. A sighting
+// filed a moment ago is therefore usually in the log and not in the state — so
+// an assertion that read only the state would pass on a ledger that is still
+// split, which is the whole thing this test exists to catch.
+//
+// Belief and Sighting carry no json tags, so the field names are the Go ones.
+func storedLanes(t *testing.T) []string {
 	t.Helper()
-	data, err := os.ReadFile(lanes.StorePath())
+	var names []string
+	state, err := os.ReadFile(lanes.StorePath())
 	if err != nil {
 		t.Fatalf("read the belief file: %v", err)
 	}
-	var beliefs []struct {
-		ID struct{ Model, Lane string }
+	var held struct {
+		Beliefs []struct {
+			ID struct{ Model, Lane string }
+		}
 	}
-	if err := json.Unmarshal(data, &beliefs); err != nil {
+	if err := json.Unmarshal(state, &held); err != nil {
 		t.Fatalf("decode the belief file: %v", err)
 	}
-	return beliefs
+	for _, belief := range held.Beliefs {
+		names = append(names, belief.ID.Model)
+	}
+
+	// The journal sits beside the state file under the same name.
+	log, err := os.ReadFile(strings.TrimSuffix(lanes.StorePath(), ".json") + ".log")
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read the belief journal: %v", err)
+	}
+	for _, line := range strings.Split(string(log), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry struct {
+			Sight *struct {
+				ID struct{ Model, Lane string }
+			}
+			Out *struct {
+				ID struct{ Model, Lane string }
+			}
+			Row *struct {
+				ID struct{ Model, Lane string }
+			}
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode a journal line: %v", err)
+		}
+		for _, seen := range []*struct {
+			ID struct{ Model, Lane string }
+		}{entry.Sight, entry.Out, entry.Row} {
+			if seen != nil && seen.ID.Model != "" {
+				names = append(names, seen.ID.Model)
+			}
+		}
+	}
+	return names
 }
 
 // TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames is issue #289.
@@ -134,14 +179,23 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 	// ONE MODEL, ONE KEY. The file is what the next session opens, so it is what
 	// the assertion is made against.
 	names := map[string]bool{}
-	for _, belief := range storedLanes(t) {
-		names[belief.ID.Model] = true
+	for _, model := range storedLanes(t) {
+		names[model] = true
 	}
 	if len(names) != 1 {
 		t.Fatalf("the belief file holds %d names for one model (%v); the ledger is still split", len(names), keysOf(names))
 	}
 	if !names[servable] {
 		t.Fatalf("the belief file is keyed on %v, want the id the router actually serves (%q)", keysOf(names), servable)
+	}
+
+	// AND WHAT A NEXT SESSION ACTUALLY OPENS, which is the claim the file is
+	// only evidence for: a registry built from scratch against the same home
+	// restores the state and replays the journal, and it must find this model
+	// under one name and nothing at all under the spelling nobody folded.
+	lanes.Default().Reset()
+	if stale := lanes.Default().Ledger().Beliefs(alias); len(stale) != 0 {
+		t.Fatalf("a fresh session found %d lanes filed under %q, the id the router serves nothing under", len(stale), alias)
 	}
 
 	// And the beliefs under it are worth having: the sheet has spoken about the
