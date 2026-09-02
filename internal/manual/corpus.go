@@ -317,7 +317,7 @@ func (c *Corpus) Search(query string, k int) []Section {
 // Page returns one whole page by name — "daily-rhythm", not "daily-rhythm.md".
 func (c *Corpus) Page(name string) (string, bool) {
 	c.load()
-	text, ok := c.pageText[strings.TrimSuffix(strings.TrimSpace(name), ".md")]
+	text, ok := c.pageText[pageName(name)]
 	return text, ok
 }
 
