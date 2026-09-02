@@ -151,11 +151,32 @@ func (c *Client) runningEffort(model string, sent Effort) Effort {
 	return "max"
 }
 
+// unaskedThinkingFloor is the least room a thinking pass NOBODY ASKED FOR is
+// given, in tokens.
+//
+// The share formula sizes the pass off the answer, which is right when the
+// pass is one the caller chose and the router will hold to its share. A model
+// that ignores the disable runs its own pass at its own level and stops when
+// it is done thinking, not when a budget says so — and off a thirty-token
+// answer the formula leaves it a hundred and twenty-eight tokens to think in.
+// Measured on the task namer, on a model whose shortest observed pass on a
+// one-line question was near four hundred tokens: the whole ceiling went to
+// thinking, the answer was empty, and the task kept the sentence it was cut
+// from. The memo had already learned this model, so nothing asked again.
+//
+// So a pass the model runs on its own is given at least a page, whatever the
+// answer's size, and a max_tokens is a ceiling and not a spend: the room costs
+// nothing on a model that answers in three hundred. The figure is a comfortable
+// multiple of what was measured, so that one more measurement does not move it.
+const unaskedThinkingFloor = 2048
+
 // wireCeiling is the max_tokens that actually travels for an answer the caller
 // sized at `answer` tokens: the answer, plus the room the thinking pass in
 // front of it is allocated. With a budget in tokens the room is the budget;
 // with a word it is the word's share of the ceiling; with no pass it is
-// nothing, and the caller's own figure goes out unchanged.
+// nothing, and the caller's own figure goes out unchanged. A pass the caller
+// never asked for, on a model that runs one regardless, gets the share or
+// [unaskedThinkingFloor], whichever leaves more room.
 func (c *Client) wireCeiling(model string, sent Effort, budget int, answer int) int {
 	if answer <= 0 {
 		return answer
@@ -163,11 +184,16 @@ func (c *Client) wireCeiling(model string, sent Effort, budget int, answer int) 
 	if budget > 0 {
 		return answer + budget
 	}
-	share := thinkingShare(c.runningEffort(model, sent))
+	running := c.runningEffort(model, sent)
+	share := thinkingShare(running)
 	if share <= 0 {
 		return answer
 	}
-	return int(float64(answer)/(1-share) + 0.5)
+	ceiling := int(float64(answer)/(1-share) + 0.5)
+	if running != sent && ceiling < answer+unaskedThinkingFloor {
+		return answer + unaskedThinkingFloor
+	}
+	return ceiling
 }
 
 // ceilingFor is the wire ceiling for one request as its knobs will shape it,

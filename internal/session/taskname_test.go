@@ -505,3 +505,105 @@ func TestCallRoleReportsTheModelThatAnswered(t *testing.T) {
 		t.Fatalf("requests = %d, want the resolved rung and exactly one below it", failing.requests())
 	}
 }
+
+// THE NAME IS ON THE TASK THE FIRST TIME A PERSON READS ABOUT IT. A road that
+// starts work on its own asks for the name when it decides to, and the
+// told-after line and the node carry it — as a name a model wrote, so nobody
+// asks again.
+func TestANameAskedAheadIsOnTheTaskWhenItIsAnnounced(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		if !isNameCall(messages) {
+			t.Errorf("the call was not the namer's: %q", messageContentText(messages[0]))
+		}
+		return textResponse("issue 252 check"), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+
+	const asked = "https://github.com/x/y/issues/252 Can you look at this and tell me whether it is done"
+	ahead := agent.nameAhead(asked)
+	if got := ahead.wait(); got != "issue 252 check" {
+		t.Fatalf("the name asked ahead is %q", got)
+	}
+	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: "say whether issue 252 is done", Why: "an audit"}, asked, drawnDivision{}, ahead)
+	if !strings.HasSuffix(said, ": issue 252 check") {
+		t.Fatalf("the told-after line is %q; want it to end in the name", said)
+	}
+	if got := graph.node(id).title(); got != "issue 252 check" {
+		t.Fatalf("the node is called %q", got)
+	}
+	// AND NOBODY ASKS AGAIN: the graph's own namer sees a name a model wrote.
+	time.Sleep(200 * time.Millisecond)
+	if got := client.requests(); got != 1 {
+		t.Fatalf("%d calls were made to name one task", got)
+	}
+}
+
+// A NAME STILL IN FLIGHT AT ADMISSION IS WAITED FOR, NOT ASKED FOR AGAIN. The
+// line and the row carry the sentence until it lands, and then the row changes.
+func TestANameStillInFlightAtAdmissionIsWaitedFor(t *testing.T) {
+	release := make(chan struct{})
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return textResponse("issue 252 check"), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+
+	const asked = "look at issue 252 and tell me whether it is done"
+	ahead := agent.nameAhead(asked)
+	said, id := agent.launchRouteTask(newEventHub(), routeVerdict{Work: true, Goal: asked, Why: "an audit"}, asked, drawnDivision{}, ahead)
+	if strings.Contains(said, "issue 252 check") {
+		t.Fatalf("the told-after line %q waited for a name that had not landed", said)
+	}
+	close(release)
+	if !nameLanded(func() bool { return graph.node(id).title() == "issue 252 check" }) {
+		t.Fatalf("the node is still called %q", graph.node(id).title())
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := client.requests(); got != 1 {
+		t.Fatalf("%d calls were made to name one task", got)
+	}
+}
+
+// A ROAD THAT DECLINES LETS THE NAME GO. The call was made for work that never
+// started, and a released, unclaimed one is cancelled rather than left holding
+// a provider slot. And every method is safe on nil, because a road with nothing
+// to name from hands the doors a nil.
+func TestARoadThatDeclinesLetsTheNameGo(t *testing.T) {
+	cancelled := make(chan struct{})
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
+
+	ahead := agent.nameAhead("look at issue 252 and tell me whether it is done")
+	ahead.release()
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the released call was not let go")
+	}
+	if got := ahead.wait(); got != "" {
+		t.Fatalf("a released call answered %q", got)
+	}
+
+	var none *nameAhead
+	none.claim()
+	none.release()
+	if name, landed := none.ready(); landed || name != "" {
+		t.Fatalf("a nil name is %q, %v", name, landed)
+	}
+	if got := none.wait(); got != "" {
+		t.Fatalf("a nil name waited into %q", got)
+	}
+	if agent.nameAhead("   ") != nil {
+		t.Fatal("nothing to name from made a call")
+	}
+}

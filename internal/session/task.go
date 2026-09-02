@@ -228,7 +228,14 @@ type taskSpec struct {
 	// paying a second call to rename it would be the harness disagreeing with
 	// its own answer. False is the honest default, so a new door that says
 	// nothing gets a name made for it.
-	named   bool
+	named bool
+	// ahead is a name that was asked for before this node existed and has not
+	// landed yet (taskname.go's [nameAhead]). A road that starts work on its own
+	// asks at the moment it decides to, and hands the call over here so that
+	// [TaskGraph.nameNode] waits for its answer instead of asking a second time.
+	// It is never written to the checkpoint: a name that lands is written into
+	// title like any other, and one that never lands leaves the title as it was.
+	ahead   *nameAhead
 	summary string
 	// request is THE PERSON'S OWN MESSAGE, captured by the code that admits this
 	// proposal rather than asked of the model (task_brief.go). It is the first

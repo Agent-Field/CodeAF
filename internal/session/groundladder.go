@@ -519,8 +519,15 @@ func sealForkWorld(dir, branch, title string) (string, bool) {
 		return "", false
 	}
 	// The harness's own corner is not part of anybody's world (task_run.go's
-	// [aforgeDroppings]), exactly as [sealGroundWork] excludes it.
-	if _, err := git(dir, "add", "-A", "--", ".", ":(exclude)"+aforgeDroppings); err != nil {
+	// [aforgeDroppings]), exactly as [sealGroundWork] excludes it — and it is
+	// taken back out with a reset rather than named as an `:(exclude)` pathspec,
+	// for the reason given there: a person whose `.gitignore` lists the corner
+	// would otherwise have git refuse the whole add as an attempt to stage an
+	// ignored path. [stageTaskWork] stages the same way.
+	if _, err := git(dir, "add", "-A", "--", "."); err != nil {
+		return "", false
+	}
+	if _, err := git(dir, "reset", "-q", "--", aforgeDroppings); err != nil {
 		return "", false
 	}
 	if _, err := git(dir, "diff", "--cached", "--quiet"); err == nil {
@@ -753,7 +760,24 @@ func sealGroundWork(dir, title string) (string, error) {
 	// worktree this commit is about to be carved into, so committing either
 	// would put a file in the child's world that its parent's world does not
 	// have.
-	if out, err := withIndex("add", "-A", "--", ".", ":(exclude)"+aforgeDroppings, ":(exclude)"+furrowMarkerDir); err != nil {
+	//
+	// THEY ARE TAKEN BACK OUT AFTERWARDS, NOT NAMED AS `:(exclude)` PATHSPECS.
+	// They were, and it sealed nothing on exactly the repository this is for:
+	// [hideFurrowMarker] lists `.furrow/` in `.git/info/exclude`, and git treats
+	// an exclude pathspec that literally names an ignored path as somebody
+	// trying to add it — "The following paths are ignored by one of your
+	// .gitignore files", exit status one, on a `git add` that had already done
+	// everything asked of it. Every task grounded on an attached repository
+	// failed in its first second with that line. `git reset -- <paths>` on the
+	// private index puts the two corners back to what HEAD has of them (nothing,
+	// nearly always), which is the same tree the exclusions were meant to
+	// produce, and it reads the index and the tree rather than the working
+	// directory, so an ignore rule has nothing to say about it. [stageTaskWork]
+	// has always staged this way, for the same reason.
+	if out, err := withIndex("add", "-A", "--", "."); err != nil {
+		return "", sealProblem(out, err)
+	}
+	if out, err := withIndex("reset", "-q", "--", aforgeDroppings, furrowMarkerDir); err != nil {
 		return "", sealProblem(out, err)
 	}
 	tree, err := withIndex("write-tree")

@@ -2797,6 +2797,15 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead) checkpointHandover {
 	sketch := read.sketch
 	asked := a.taskRequest()
+	// THE NAME IS ASKED FOR NOW, beside the two calls below rather than after
+	// them (taskname.go's [nameAhead]). This stage is the longest silence on the
+	// road, and the namer used to start only when it ended — so the line that
+	// announced the task, and the row it put on the rail, carried the person's
+	// raw sentence and were renamed under their eyes a moment later, or never,
+	// when the task failed first. Asked here, the name has the whole stage to
+	// land in. A road that declines below lets the call go.
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
 	// AND THE PERSON IS TOLD WHAT THE SILENCE IS, because the two calls below are
 	// the longest stretch of this whole road with nothing drawn.
 	//
@@ -2958,7 +2967,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

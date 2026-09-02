@@ -418,3 +418,41 @@ func TestAnEmptyAnswerWithoutEvidenceTeachesNothing(t *testing.T) {
 		}
 	}
 }
+
+// A PASS NOBODY ASKED FOR GETS A PAGE TO THINK IN. The share formula off a
+// three-word answer left a model that thinks regardless a hundred-odd tokens,
+// it thought through all of them, and the namer got nothing back — with the
+// memo already knowing the model, so nothing asked again. A word the caller
+// chose keeps the router's own allocation.
+func TestAPassNobodyAskedForGetsAPageToThinkIn(t *testing.T) {
+	quirksAt(t, "silent/thinker", "quiet/thinker")
+	client, _ := newTestClient(t, Config{Model: "sim/model", ReasoningProfile: func(model string) (ReasoningProfile, bool) {
+		switch model {
+		case "silent/thinker":
+			return ReasoningProfile{Mandatory: true, Default: "max"}, true
+		case "quiet/thinker":
+			return ReasoningProfile{Mandatory: true, Default: "high"}, true
+		}
+		return ReasoningProfile{}, false
+	}})
+	const answer = 32
+	for _, tc := range []struct {
+		name  string
+		model string
+		sent  Effort
+		want  int
+	}{
+		{"the model's own pass at high", "quiet/thinker", EffortNone, answer + unaskedThinkingFloor},
+		{"the model's own pass at max", "silent/thinker", EffortNone, answer + unaskedThinkingFloor},
+		{"a word the caller chose keeps the share", "sim/model", EffortLow, 40},
+		{"no pass, the caller's figure", "sim/model", EffortNone, answer},
+	} {
+		if got := client.wireCeiling(tc.model, tc.sent, 0, answer); got != tc.want {
+			t.Errorf("%s: wireCeiling = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+	// AND A LARGE ANSWER IS UNCHANGED: the share already leaves more than a page.
+	if got := client.wireCeiling("silent/thinker", EffortNone, 0, 1000); got != 20000 {
+		t.Fatalf("a thousand-token answer at max = %d, want 20000", got)
+	}
+}
