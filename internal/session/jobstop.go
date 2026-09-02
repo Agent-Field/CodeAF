@@ -22,6 +22,7 @@ package session
 // is neither of those: it is Cancel, and only Cancel.
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -54,7 +55,15 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	if !target.running() {
 		return name + " has already finished; there is nothing to stop", nil
 	}
-	_, failed := jobs.kill(number)
+	// A PERSON'S STOP IS NOT ON A TURN'S CLOCK, so this kill is given a plain
+	// background context rather than a cancellable one. [jobRegistry.kill]
+	// takes a context because the bounded stop needs its SIGTERM and SIGKILL
+	// graces to end the moment a turn is abandoned (issue #265); those graces
+	// are two seconds each and end on their own, so passing a context that is
+	// never cancelled leaves this path behaving exactly as it did. What it must
+	// not do is inherit a turn's context: a person who asks for a job to stop
+	// is owed the kill even if the turn they asked from is already over.
+	_, failed := jobs.kill(context.Background(), number)
 	if failed {
 		// The job ended between the running check and the kill: same news as
 		// a second press on work that has already landed.

@@ -938,7 +938,7 @@ func TestKilledTaskKeepsItsBranch(t *testing.T) {
 	if listed := agent.jobs.list(); !strings.Contains(listed, "task 1") {
 		t.Fatalf("the node is not in the jobs list:\n%s", listed)
 	}
-	if text, isError := agent.jobs.kill(1); isError {
+	if text, isError := agent.jobs.kill(context.Background(), 1); isError {
 		t.Fatalf("jobs kill: %s", text)
 	}
 

@@ -276,10 +276,13 @@ What happens:
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
-**The words aforge uses for one stop.** They are four slots and one key press, so they
+**The words aforge uses for one stop.** They are five slots and one key press, so they
 are worth reading together: `stopping` is the status word while the turn is being let go,
+`stopping · detaching in 7s` is that same word once the 10-second bound is counting down,
 `interrupted` is the status word once it is over, `· stopped` is the note left in the
-conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. If
+conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. A
+turn that never let go leaves a sixth: `detached — the turn was let go of and nothing is
+waiting for it`. If
 you are looking for the word *interrupted* anywhere else on the screen, that is where it
 is — the status line, and only after the turn has truly ended.
 
@@ -307,7 +310,11 @@ time straight away does not quit either: the press that stopped the turn does no
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
 
-## Why is the turn still finishing after esc — the stopping window
+## Esc is not stopping it — why the turn is still finishing, how long stopping takes, and what happens if it will not let go
+
+**I pressed escape and it is still running.** That is this section: escape is not being
+ignored, the turn is being let go of, and if it will not let go aforge ends it for you
+after ten seconds.
 
 `esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
 `bash` call whose command left something holding its output waits up to three seconds
@@ -315,6 +322,12 @@ before the pipes are forced shut, and a `jobs` kill spends two seconds on a poli
 and two more on the one that is not polite. For those seconds the status line reads
 `stopping` rather than `interrupted`, and that is the honest word: the work is being let
 go rather than gone.
+
+**That window is bounded at 10 seconds and the screen says so.** The status line reads
+`stopping · detaching in 7s`, counting down from the moment you pressed the key. If the
+engine lets go inside the window — which is what almost always happens, because the longest
+ordinary wait is about four seconds — the countdown simply disappears and the status word
+becomes `interrupted`.
 
 **Nothing moves in that window and nothing new is drawn.** The spinners are already gone
 from the status line and from every tool row. Any consent question, account offer or
@@ -325,11 +338,31 @@ becomes a row. Two things do still land, because neither can draw anything new: 
 that was **already** on screen reports its own result if it returns in that moment, and
 what the turn spent is still counted.
 
-**No key makes it stop harder, and there is no second stage.** A second `esc` inside half
-a second is the rewind's door and `ctrl+c` is the quit arm, so neither is free — and there
-would be nothing behind a third key: the waits that make this window long are inside a
-tool that has already been cancelled. If something genuinely will not let go, `ctrl+c`
-twice quits and takes it with it.
+**No key makes it stop harder, because the second stage is a clock and not a key.** A
+second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit arm, so
+neither is free — and you do not need one. The `esc` you already pressed started the
+10-second window, and when it runs out aforge stops waiting on its own.
+
+**What happens at 10 seconds.** aforge detaches from the turn: the waits aforge holds are
+ended and whatever request was still open to the model is aborted. A wait that ignores
+being cancelled — a command whose output a grandchild is still holding, say — may run on
+behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
+more, not that it is already gone. The conversation gets the note `detached — the turn was let go of and nothing is waiting for it`, and the box is
+yours again — you can type the next thing straight away. If the turn had spent anything,
+the note names it, for example `detached — the turn was let go of and nothing is waiting
+for it — it spent $0.04`; under half a cent it says `it spent under a cent` rather than a
+figure, and a turn that spent nothing says nothing about money at all.
+
+**Nothing is silently orphaned.** A turn that had to be detached is written into the
+conversation's own journal file as `abandoned`, with the tokens and the money it had spent
+by then, so a turn nobody waited for is never a turn nobody can account for. What it cost
+is already on your spending page either way: aforge counts money as each request is
+answered rather than when a turn ends.
+
+**You should almost never see this.** Ten seconds is well above the longest ordinary
+letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
+something is wedged even further down, `ctrl+c` twice still quits and takes the whole
+process with it — but you no longer have to reach for that just to get your prompt back.
 
 ## Quitting aforge — how do I exit aforge, how do I close aforge, or why did ctrl+c not quit
 
