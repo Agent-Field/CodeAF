@@ -505,8 +505,14 @@ func (a *Agent) armDivision(spec taskSpec) string {
 // The pieces are joined with newlines because that is how [splitgate.WorthIt]
 // reads a plan: a number and its noun must stand together, and gluing a title
 // onto the front of a brief invents adjacencies neither of them wrote.
+//
+// It reads the count through [splitgate.Count] rather than [splitgate.WorthIt]
+// so that a binary running an experimental counting (splitgate's modes.go)
+// arms on the same reading its gate will later refuse or admit on. Two counters
+// in one process would be the two floors this comment just refused, wearing
+// different clothes.
 func enumeratesWidth(pieces ...string) bool {
-	return splitgate.WorthIt(strings.Join(pieces, "\n"))
+	return splitgate.Count(strings.Join(pieces, "\n")) >= splitgate.Floor
 }
 
 // rememberDivisible banks a yes from the sizing judge against the exact text it
@@ -674,7 +680,12 @@ func (a *Agent) divideOnce(ctx context.Context, args json.RawMessage, source str
 	// decided, and handing back the adjudication it never used
 	// ([divisionUnadjudicated]).
 	node := graph.node(parent)
-	thin := splitgate.Armed() && !splitgate.WorthIt(parsed.Evidence)
+	// The gate is asked once, through the one function both products ask
+	// (splitgate's modes.go), and with no leaves: the parts this division wants
+	// do not exist yet, so nothing has sized them, and a mode that would rather
+	// read the plan's sizing than the brief is told honestly that there is no
+	// plan to read.
+	thin := !splitgate.Judge(parsed.Evidence, nil).Keep
 	if thin && !node.armedByJudgement() {
 		line.Decision = divisionRefusedFloor
 		return divisionTooNarrow(parsed.Evidence), "", false
@@ -1237,7 +1248,7 @@ func divideReviewQuestion(parent *TaskNode, parsed divideArguments, thin bool) s
 func divisionTooNarrow(evidence string) string {
 	return fmt.Sprintf(
 		"not split: what you found names %d separate items, and work is only split at %d or more — below that one worker doing them in order is faster than a working copy, a check and a wait for each part. Carry on with the work in your own hands. If there really are more items than that, say what they are and how many, and ask again.",
-		splitgate.Items(evidence), splitgate.Floor)
+		splitgate.Count(evidence), splitgate.Floor)
 }
 
 // divisionUnadjudicated is the answer when a below-floor division was owed a

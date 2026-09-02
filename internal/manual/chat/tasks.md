@@ -2890,6 +2890,18 @@ turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and
 worker's request to split be taken at its word — both are for somebody rolling something
 back, not preferences, which is why neither is in the settings panel.
 
+**The width test is under measurement right now, and `AFORGE_SPLITGATE` picks which reading
+you get.** Unset, or `1`, is the one described above: the work has to name at least six
+separate things. `lanes` reads the shapes a person actually writes a division down in as
+well — a numbered or bulleted list, lanes labelled `L1 … L3`, a number spelled out in words,
+a list of files — so "thirty chapters" counts as thirty where today it counts as nothing;
+it moves the counting and not the six, so a brief naming three lanes is still one sitting.
+`judgment` stops reading your words for a number at all and asks the plan instead: if every
+part is already the size of one sitting and none of them waits on another, the parts stand,
+whatever the brief counted. Anything else you type reads as the first one. All of this is a
+measurement in progress — one of these will become the only behaviour and the others will
+stop being words you can type.
+
 ## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
 
 Sometimes the work is not big enough to hand away and still has separate parts in it. Three
