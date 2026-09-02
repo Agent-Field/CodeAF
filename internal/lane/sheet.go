@@ -56,15 +56,31 @@ import (
 var ErrNoSheet = errors.New("lane: no sheet client")
 
 // ErrNoSheetHere is what a [Fetcher] returns when the base ANSWERED, and its
-// answer was that no endpoints page lives at that address at all.
+// answer was that no endpoints ROUTE lives at that address at all.
 //
 // IT IS THE ONE ANSWER THAT MAKES A BASE SHEETLESS. A timeout, a severed
 // connection, a 500 and a 429 are all a router having an afternoon, and a build
 // that read any of those as "this is not a router" would throw away every lane
-// behaviour it has for five minutes over one bad packet. Which statuses mean it
-// is the transport's decision because only the transport can see a status code
-// (internal/provider's sheetFetcher); everything here only asks whether the
-// error it was handed wraps this one.
+// behaviour it has for five minutes over one bad packet.
+//
+// AND A 404 IS NOT THIS ANSWER BY ITS STATUS; IT IS BY ITS BODY. The live router
+// answers 404 twice over, and the two mean opposite things about the base
+// (measured 2026-09-02):
+//
+//	GET /api/v1/models/nonexistent/model-xyz/endpoints
+//	→ 404, {"error":{"message":"Not Found","code":404}}
+//
+//	GET /api/v1/nonexistent-route/x/endpoints
+//	→ 404, <!DOCTYPE html>…<title>Not Found | OpenRouter</title>…
+//
+// The first is the router's own error envelope — the route is there and it
+// answered about ONE MODEL, which simply has no page this round; it is a quiet
+// per-model error and says nothing about the base. Only the second, a 404 whose
+// body is not that envelope, is "no such route", and only that one wraps this
+// error. Which bodies mean which is the transport's decision because only the
+// transport can see a status and a body (internal/provider's sheetFetcher, and
+// its sheetNotFound); everything here only asks whether the error it was handed
+// wraps this one.
 var ErrNoSheetHere = errors.New("lane: the base publishes no endpoints page")
 
 // Fetcher is the connection this package may not open for itself.
@@ -606,10 +622,14 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 		return ErrNoSheet
 	}
 	// THE PROBE IS THIS FETCH AND NOT A SECOND ONE. A base that has already
-	// told us there is no endpoints page here is not asked again until that
+	// told us there is no endpoints route here is not asked again until that
 	// answer is stale, so a session pointed at something that is not a router
 	// spends one request every [sheetTTL] rather than one per beat per model —
 	// and a base that has never answered is asked, which is the whole law.
+	// What counts as "told us" is [ErrNoSheetHere] and nothing looser: the
+	// router's own envelope 404 about a model it does not publish is that
+	// model's business and holds nothing back, so a base whose first model in
+	// the round is unknown to it still gets the second model's sheet at once.
 	// Two beats could in principle pass this gate at once; there is one beat
 	// per session by construction, and the cost of the race is one duplicate
 	// request rather than a wrong answer.

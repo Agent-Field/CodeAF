@@ -281,11 +281,13 @@ type Server struct {
 	clock    Clock
 	http     *httptest.Server
 	next     int
-	// sheetless makes the endpoints route answer 404 for EVERY model, which is
-	// what a base that is not a router — a bare proxy, a mirror of the
-	// completions route alone — answers when asked for a page it has never
-	// heard of. It is the state a test needs to stage "there is no sheet here"
-	// as distinct from "this router does not serve that model".
+	// sheetless takes the endpoints route away altogether, so every ask for a
+	// page answers the 404 a base that is not a router — a bare proxy, a mirror
+	// of the completions route alone — answers for an address it has never
+	// heard of: a plain HTML not-found page, and never the router's JSON
+	// envelope. It is the state a test needs to stage "there is no sheet here"
+	// as distinct from "this router does not publish that model", which the
+	// route answers on its own for an unknown model.
 	sheetless bool
 }
 
@@ -347,14 +349,27 @@ func (s *Server) Alias(alias, target string) {
 	s.aliases["~"+strings.TrimPrefix(alias, "~")] = target
 }
 
-// Sheetless makes this router publish no endpoints page at all: every ask for
-// one is the same 404 a base with no such route would answer, while the
-// completions route keeps serving. It is set before any request is made.
+// Sheetless makes this router publish no endpoints route at all: every ask for
+// a page is the 404 a base with no such route answers — an HTML not-found page
+// ([routelessBody]) — while the completions route keeps serving. It is set
+// before any request is made.
 //
-// It exists so that a test can stage the base issue #373 is about — one that
-// answers completions and has no sheet — without a second server: the sheet
-// must learn that from the answer and not from the hostname, and this is the
-// answer.
+// THE STUB'S TWO 404S ARE THE LIVE ROUTER'S TWO 404S, because the transport
+// tells them apart by their bodies and a stub that answered the same body for
+// both would be testing nothing (measured 2026-09-02):
+//
+//	GET /api/v1/models/nonexistent/model-xyz/endpoints
+//	→ 404, {"error":{"message":"Not Found","code":404}}       an unknown model
+//
+//	GET /api/v1/nonexistent-route/x/endpoints
+//	→ 404, <!DOCTYPE html>…<title>Not Found | OpenRouter</title>…   no route
+//
+// The first is what [serveSheet] already answers for a model this stub does not
+// publish, through [writeError]; the second is what this mode answers for every
+// model. It exists so that a test can stage the base issue #373 is about — one
+// that answers completions and has no sheet — without a second server: the
+// sheet must learn that from the answer and not from the hostname, and this is
+// the answer.
 func (s *Server) Sheetless() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -500,9 +515,13 @@ func (s *Server) serveSheet(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	// A sheetless router counts the ask before refusing it, because the count
 	// is the whole of what a test asserts: how many times a base that said
-	// "no page here" was asked again.
+	// "no route here" was asked again. And it refuses as a base with no such
+	// route does — a page, not an envelope — which is the one 404 the transport
+	// may remember a base by ([Server.Sheetless]).
 	if sheetless {
-		writeError(w, http.StatusNotFound, "No endpoints page here", "")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(routelessBody))
 		return
 	}
 	if !known {
@@ -1056,6 +1075,11 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // writeError is the router's own error envelope, with the lane named when there
 // is one to name — which is what tells a refusal by an endpoint apart from a
 // refusal by the router itself.
+// routelessBody is the 404 a base with no endpoints route answers: the shape
+// of the live router's own not-found page for an address it does not serve,
+// cut to the two tags that make it a page and not an envelope.
+const routelessBody = "<!DOCTYPE html><title>Not Found</title>"
+
 func writeError(w http.ResponseWriter, status int, message, lane string) {
 	body := map[string]any{"error": map[string]any{"message": message, "code": status}}
 	if lane != "" {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -617,24 +618,75 @@ func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadClo
 		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		// The body is drained a little before it is closed so the connection
-		// goes back to the pool rather than being torn down, which is the same
-		// courtesy the catalog reader pays on the same host.
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		// The body is read a little before the connection is closed, for two
+		// reasons that happen to want the same bytes: draining it sends the
+		// connection back to the pool rather than tearing it down, which is the
+		// courtesy the catalog reader pays on the same host, and a 404 is read
+		// for what it says below. The cap is [sheetRefusalBytes] either way.
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, sheetRefusalBytes))
 		response.Body.Close()
-		// A 404 IS THE ONE STATUS THAT SAYS "THERE IS NO SUCH PAGE", and it is
-		// the one status the sheet is allowed to remember a base by
-		// ([lanes.ErrNoSheetHere]). Everything else — a 500, a 429, a 502 from
-		// somebody's load balancer — is a router having an afternoon, and it
-		// stays an ordinary error so that one bad reply never costs a base its
-		// lanes for five minutes. Only this transport can see the status, which
-		// is why the reading is made here and nowhere in internal/lane.
 		if response.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("lane sheet: %s: %w", response.Status, lanes.ErrNoSheetHere)
+			return nil, sheetNotFound(response.Status, payload)
 		}
+		// Everything else — a 500, a 429, a 502 from somebody's load balancer —
+		// is a router having an afternoon, and it stays an ordinary error so
+		// that one bad reply never costs a base its lanes for five minutes.
 		return nil, fmt.Errorf("lane sheet: %s", response.Status)
 	}
 	return response.Body, nil
+}
+
+// sheetRefusalBytes bounds how much of a refused sheet fetch is read. A 404
+// body that matters is a JSON envelope of under a hundred bytes; the router's
+// own HTML page for a route that does not exist is a few kilobytes; nothing
+// past four is evidence about anything, and reading it would be paying for
+// somebody's error page to decide a thing the first line already decided.
+const sheetRefusalBytes = 4 << 10
+
+// errNoSheetForModel is a 404 the router answered ABOUT A MODEL: the endpoints
+// route is there and this one model has no page on it. It is deliberately not
+// [lanes.ErrNoSheetHere], and nothing in internal/lane reads it: a refresh that
+// returns it is quiet (refreshAndPrime primes on nil and logs nothing) and
+// leaves the base's answer exactly where it was.
+var errNoSheetForModel = errors.New("lane sheet: the router publishes no page for this model")
+
+// sheetNotFound reads what a 404 from the endpoints route MEANS, which is the
+// one reading the sheet remembers a base by, and it is made by the body and
+// never by the status alone.
+//
+// THE STATUS SAYS NOTHING ABOUT THE BASE; THE BODY DOES. Measured against the
+// live router on 2026-09-02:
+//
+//	GET /api/v1/models/nonexistent/model-xyz/endpoints
+//	→ 404, {"error":{"message":"Not Found","code":404}}
+//
+//	GET /api/v1/nonexistent-route/x/endpoints
+//	→ 404, <!DOCTYPE html>…<title>Not Found | OpenRouter</title>…
+//
+// The first is the router's own error envelope: the route exists, it answered
+// about the model, and the model simply has no page — [errNoSheetForModel],
+// which marks NOTHING about the base. Reading it as "no page here" was the
+// defect class of #373 in a new coat: on any base that is not the shipped
+// router (where LaneSheetCertain skips the asking) a first beat model the
+// router does not publish would have held the WHOLE BASE sheetless for five
+// minutes, a wrong answer about the base derived from one request. The second
+// is not the envelope — an HTML page, a proxy framework's own not-found, a
+// bare `404 page not found` — and it is the one answer that says there is no
+// such route, so it is the one that wraps [lanes.ErrNoSheetHere].
+//
+// THE ENVELOPE IS DECODED ONCE IN THIS PACKAGE. The body goes through
+// [apiError], the same raw-body decoder every refusal on the send path is
+// recovered from ([RefusalFrom]), and "is this the router speaking" is the
+// [APIError.Message] it filled in — never a second unmarshal of the same
+// shape here. Once #368 lands, its Client.routingRefusal(model, status,
+// payload) is the one function that decides what a 404 body means, and this
+// read becomes a third answer on it — "no such route" — as an enum, in a
+// follow-up on top of both.
+func sheetNotFound(status string, payload []byte) error {
+	if refused, ok := RefusalFrom(apiError(http.StatusNotFound, payload)); ok && refused.Message != "" {
+		return fmt.Errorf("lane sheet: %s: %w: %w", status, errNoSheetForModel, refused)
+	}
+	return fmt.Errorf("lane sheet: %s: %w", status, lanes.ErrNoSheetHere)
 }
 
 // LaneSheetCertain reports whether base is KNOWN to publish a lane sheet

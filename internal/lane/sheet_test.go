@@ -47,11 +47,22 @@ func (o *overWire) Fetch(ctx context.Context, address, bearer string) (io.ReadCl
 		return nil, err
 	}
 	if response.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
 		response.Body.Close()
 		// The same reading the real transport makes (internal/provider's
-		// sheetFetcher): a 404 is the base saying there is no such page, and it
-		// is the one status the sheet may remember a base by.
+		// sheetFetcher and its sheetNotFound): a 404 is read by its BODY. The
+		// router's own JSON envelope is a 404 about one model and says nothing
+		// about the base; anything else — the stub's HTML page for a base with
+		// no route — is the one answer the sheet may remember a base by.
 		if response.StatusCode == http.StatusNotFound {
+			var envelope struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(payload, &envelope) == nil && envelope.Error.Message != "" {
+				return nil, fmt.Errorf("the router answered %s about this model: %s", response.Status, envelope.Error.Message)
+			}
 			return nil, fmt.Errorf("the router answered %s: %w", response.Status, ErrNoSheetHere)
 		}
 		return nil, fmt.Errorf("the router answered %s", response.Status)

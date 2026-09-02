@@ -422,11 +422,27 @@ func TestTheSheetFetcherTurnsARefusalIntoAnError(t *testing.T) {
 	}
 }
 
-// TestTheSheetFetcherReadsA404AsNoPageHere is the one status the sheet may
-// remember a base by, made where only the transport can see a status code.
+// The live router answers 404 twice over, and the two mean opposite things about
+// the base (measured with curl on 2026-09-02). These two bodies are quoted
+// exactly, because the reading is made on the body and a paraphrase would be
+// testing a router that does not exist.
+const (
+	// routerModel404 is GET /api/v1/models/nonexistent/model-xyz/endpoints: the
+	// router's own error envelope, the route answering about one model.
+	routerModel404 = `{"error":{"message":"Not Found","code":404}}`
+	// routerRoute404 is GET /api/v1/nonexistent-route/x/endpoints, cut to its
+	// head: a page, not an envelope, for an address the router does not serve.
+	routerRoute404 = "<!DOCTYPE html><html><head><title>Not Found | OpenRouter</title></head><body>Not Found</body></html>"
+)
+
+// TestTheSheetFetcherReadsA404AsNoPageHere is the one answer the sheet may
+// remember a base by, made where only the transport can see a status and a
+// body: a 404 whose body is NOT the router's envelope is "no such route".
 func TestTheSheetFetcherReadsA404AsNoPageHere(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(routerRoute404))
 	}))
 	defer server.Close()
 
@@ -436,10 +452,47 @@ func TestTheSheetFetcherReadsA404AsNoPageHere(t *testing.T) {
 		t.Fatal("a 404 handed back a body")
 	}
 	if !errors.Is(err, lanes.ErrNoSheetHere) {
-		t.Fatalf("a 404 came back as %v, want one wrapping lanes.ErrNoSheetHere", err)
+		t.Fatalf("a route 404 came back as %v, want one wrapping lanes.ErrNoSheetHere", err)
+	}
+	if errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("a route 404 was also read as a verdict about a model: %v", err)
 	}
 	if !strings.Contains(err.Error(), "404") {
 		t.Errorf("the error was %q and does not say what the router answered", err)
+	}
+}
+
+// TestTheSheetFetcherReadsTheRoutersOwn404AsNoSheetForThatModel is the other
+// 404: the router's own error envelope, which is the route answering about ONE
+// MODEL it does not publish. It marks nothing about the base — reading it as
+// "no page here" would hold a whole proxy or mirror sheetless for five minutes
+// on the strength of one model the beat happened to ask about first, which is
+// the defect class of #373 over again.
+func TestTheSheetFetcherReadsTheRoutersOwn404AsNoSheetForThatModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(routerModel404))
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "sk-test")
+	if err == nil {
+		body.Close()
+		t.Fatal("a 404 handed back a body")
+	}
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the router's own envelope 404 was read as the base having no endpoints route: %v", err)
+	}
+	if !errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("the envelope 404 came back as %v, want one wrapping errNoSheetForModel", err)
+	}
+	// AND IT IS DECODED THROUGH THE ONE REFUSAL OBJECT this package has, not a
+	// second reader of the same shape: the router's sentence is recoverable
+	// from the chain exactly as it is from a refused completion.
+	refused, ok := RefusalFrom(err)
+	if !ok || refused.Status != http.StatusNotFound || refused.Message != "Not Found" {
+		t.Fatalf("the router's own refusal did not survive the read: %v", err)
 	}
 }
 
@@ -529,6 +582,54 @@ func TestABaseWithNoEndpointsPageIsAskedOnce(t *testing.T) {
 	}
 	if rows := sheet.Rows(model); rows != nil {
 		t.Fatalf("a sheetless base produced rows: %v", rows)
+	}
+}
+
+// TestAModelTheRouterDoesNotPublishHoldsNothingAgainstTheBase is the body rule
+// through the real transport against the stub, which answers its two 404s the
+// way the live router does: the first model the beat asks about is one the
+// router does not publish, and that must cost the base nothing — the very next
+// refresh, for a model it does publish, gets its sheet with no wait and no
+// second answer needed.
+func TestAModelTheRouterDoesNotPublishHoldsNothingAgainstTheBase(t *testing.T) {
+	forgetLanes(t)
+	const published = "openrouter/published-model"
+	const unknown = "openrouter/unknown-model"
+	server := lanestub.New(published,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: unknown, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	sheet := lanes.Default().Sheet()
+	err := sheet.Refresh(context.Background(), unknown)
+	if err == nil {
+		t.Fatal("a model the router does not publish came back with a sheet")
+	}
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the router's 404 about one model was read as the base having no endpoints route: %v", err)
+	}
+	if !errors.Is(err, errNoSheetForModel) {
+		t.Fatalf("the router's 404 about one model came back as %v", err)
+	}
+	if rows := sheet.Rows(unknown); rows != nil {
+		t.Fatalf("an unpublished model produced rows: %v", rows)
+	}
+
+	// The base was not held: the published model is fetched at once.
+	if err := sheet.Refresh(context.Background(), published); err != nil {
+		t.Fatalf("a refresh for a published model after an unpublished one: %v", err)
+	}
+	if rows := sheet.Rows(published); len(rows) != 1 {
+		t.Fatalf("the published model has %d rows after one refresh, want 1", len(rows))
+	}
+	if got := server.Sheets(lanes.LedgerModel(published)); got != 1 {
+		t.Fatalf("the published model's refresh cost %d endpoints requests, want exactly the fetch itself", got)
+	}
+	if got := server.Sheets(lanes.LedgerModel(unknown)); got != 1 {
+		t.Fatalf("the unpublished model was asked %d times, want once", got)
 	}
 }
 
