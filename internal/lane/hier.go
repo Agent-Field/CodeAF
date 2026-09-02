@@ -613,6 +613,12 @@ func (c *chains) refold() {
 	// about a step neither half saw; the first in sorted order is kept, which
 	// is arbitrary and deterministic — and the next observation moves it anyway.
 	c.Drift = refolded(c.Drift, foldedLeaf, keepHeld[drift])
+	// A DISPERSION ACCOUNT IS ADDABLE, AND THAT IS THE WHOLE DIFFERENCE. Two
+	// spellings' thinking durations are draws of ONE leaf gathered twice, so
+	// they are pooled rather than picked between: dropping a half would throw
+	// away real observations and hand the duration clock back the prior it was
+	// measured out of.
+	c.Spread = refolded(c.Spread, foldedLeaf, mergedSpread)
 	// The lane and world levels carry no model name: a provider is a provider
 	// under every spelling of every model it serves.
 }
@@ -686,3 +692,24 @@ func fresherTally(held, other tally) tally {
 // keepHeld is the merge for evidence that cannot be combined: the one already
 // held stands.
 func keepHeld[T any](held, _ T) T { return held }
+
+// mergedSpread pools two halves of one leaf's dispersion account, exactly.
+//
+// It is the parallel form of Welford's update (Chan, Golub and LeVeque): the
+// pooled mean is the count-weighted one, and the pooled sum of squared
+// deviations is the two sums plus the term the shift between the halves' means
+// contributes. It is what the leaf would hold had every draw been folded in one
+// account, to the last bit that floating point allows.
+func mergedSpread(held, other spreadStat) spreadStat {
+	total := held.N + other.N
+	if total == 0 {
+		return spreadStat{}
+	}
+	between := other.Mean - held.Mean
+	weight := float64(held.N) * float64(other.N) / float64(total)
+	return spreadStat{
+		N:    total,
+		Mean: held.Mean + between*float64(other.N)/float64(total),
+		M2:   held.M2 + other.M2 + between*between*weight,
+	}
+}
