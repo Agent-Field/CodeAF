@@ -90,7 +90,10 @@ INFRA_PATTERNS = re.compile(
 # Documentation and changelog fragments ride along with most fixes and do not
 # affect what the tests grade, so they are allowed but not counted as source.
 DOC_PATTERNS = re.compile(
-    r"(\.(md|rst|txt)$|(^|/)(docs?|doc|changelog\.d|changes|news|newsfragments)/"
+    # A release-note fragment is a changelog entry, which the rule already
+    # lets ride without counting it as source.
+    r"(\.(md|rst|txt)$|(^|/)releasenotes/notes/[^/]+\.ya?ml$"
+    r"|(^|/)(docs?|doc|changelog\.d|changes|news|newsfragments)/"
     # Half the projects a search reaches keep their changelog as an
     # extensionless file at the root — `ChangeLog`, `CHANGES`, `NEWS`. Without
     # this arm such a file reads as a non-source file and rejects the whole
@@ -268,7 +271,7 @@ def classify_files(files):
             tests.append(f)
         elif INFRA_PATTERNS.search(path):
             return None, "pull request touches packaging or CI (%s)" % path
-        elif path.endswith(".py"):
+        elif path.endswith((".py", ".pyi")):
             src.append(f)
         elif DOC_PATTERNS.search(path):
             docs.append(f)

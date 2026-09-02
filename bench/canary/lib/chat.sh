@@ -43,7 +43,7 @@ canary_chat() {
   local here="$CHAT_LIB"
   local name="canary-$$-$(basename "$out")"
   local calls="$home/logs/calls.jsonl"
-  local ended="" started now seals quiet screen working
+  local ended="" started now seals quiet screen working task_done_s=""
 
   tmux kill-session -t "=$name" 2>/dev/null
   # Its stderr is kept: a session that never comes up is a cell that says
@@ -85,6 +85,9 @@ canary_chat() {
       seals=$(python3 "$here/journal.py" seals "$home")
       quiet=$(( now - $(stat -c %Y "$calls" 2>/dev/null || echo "$now") ))
       screen="$(tmux capture-pane -p -t "=$name:" 2>/dev/null)"
+      if [ -z "$task_done_s" ] && echo "$screen" | grep -Eq '[0-9]+ done' && ! echo "$screen" | grep -Eq '[0-9]+ running'; then
+        task_done_s=$(( now - started ))
+      fi
       working=0
       echo "$screen" | tail -1 | grep -q ' · idle' || working=1
       echo "$screen" | grep -Eq '[0-9]+ running' && working=1
@@ -102,17 +105,21 @@ canary_chat() {
   # on a shared box a pattern kill is how somebody else's run dies.
   ss -xlp 2>/dev/null | grep -F "$home" > "$out/listeners.txt" || true
 
-  CANARY_ENDED="$ended" CANARY_WALL="$(( $(date +%s) - started ))" CANARY_HOME="$home" \
+  CANARY_ENDED="$ended" CANARY_WALL="$(( $(date +%s) - started ))" CANARY_TASK_DONE="$task_done_s" CANARY_HOME="$home" \
   CANARY_LIB="$here" CANARY_OUT="$out/door.json" python3 - <<'PY'
 import json, os, subprocess
 lib, home = os.environ["CANARY_LIB"], os.environ["CANARY_HOME"]
+ended, wall_s = os.environ["CANARY_ENDED"], int(os.environ["CANARY_WALL"])
+task_done_s = int(os.environ["CANARY_TASK_DONE"]) if os.environ["CANARY_TASK_DONE"] else None
 def ask(word):
     return subprocess.run(["python3", os.path.join(lib, "journal.py"), word, home],
                           capture_output=True, text=True).stdout.strip()
 json.dump({
     "door": "chat",
-    "ended": os.environ["CANARY_ENDED"],
-    "wall_s": int(os.environ["CANARY_WALL"]),
+    "ended": ended,
+    "wall_s": wall_s,
+    "task_done_s": task_done_s,
+    "done_to_wall_s": wall_s - task_done_s if ended == "wall" and task_done_s is not None else None,
     "cost_usd": float(ask("cost") or 0),
     "ttft_ms": int(ask("ttft") or 0) or None,
     "calls": int(ask("calls") or 0),
