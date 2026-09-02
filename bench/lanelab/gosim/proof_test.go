@@ -110,7 +110,7 @@ func TestAStalledLaneIsActedOnInsideTheCeiling(t *testing.T) {
 		t.Fatalf("no scenario called %q", proofScenario)
 	}
 	const requests = 8
-	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold, mixStress, policyWaiting)
+	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold, mixStress, policyWaiting, 0)
 	if len(got) != requests {
 		t.Fatalf("got %d trials, want %d", len(got), requests)
 	}

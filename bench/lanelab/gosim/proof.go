@@ -796,7 +796,7 @@ func share(part, whole int) float64 {
 // proveIt is the whole of the `-proof` run: the four scenarios, the pass table,
 // the two figures §K reports without gating, and the raw rows if a file was
 // named for them.
-func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, mixes []string, jsonOut string, began time.Time) {
+func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, mixes []string, thinks int, jsonOut string, began time.Time) {
 	fmt.Printf("script:   the lane that is about to serve goes quiet for %v on the middle half "+
 		"of every case's requests\n", quietFor)
 	fmt.Printf("stores:   %v; a warmed one has watched %d answers of every pair over the %v "+
@@ -813,7 +813,7 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, m
 				continue
 			}
 			for _, pace := range paces {
-				rows := runProof(w, seeds, n, speedup, trace, pace, store, mix, policyWaiting)
+				rows := runProof(w, seeds, n, speedup, trace, pace, store, mix, policyWaiting, thinks)
 				arms = append(arms, proofArm{Pace: pace, Store: store, Mix: mix,
 					Policy: policyWaiting, FaultPct: 100 * rateOfMix(mix), Rows: rows,
 					Criteria: proofGates(rows, store, mix, policyWaiting)})
@@ -824,7 +824,7 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, m
 			// same question. Running it beside every arm would quadruple the
 			// wall for three tables nothing reads.
 			if store == storeWarmed && mix == mixNatural {
-				rows := runProof(w, seeds, n, speedup, trace, paceShipped, store, mix, policyBaseline)
+				rows := runProof(w, seeds, n, speedup, trace, paceShipped, store, mix, policyBaseline, thinks)
 				arms = append(arms, proofArm{Pace: paceShipped, Store: store, Mix: mix,
 					Policy: policyBaseline, FaultPct: 100 * rateOfMix(mix), Rows: rows,
 					Criteria: proofGates(rows, store, mix, policyBaseline)})
@@ -961,7 +961,7 @@ func (a proofArm) waited() (p50, p90 float64) {
 }
 
 // runProof is the whole of §K: every case, every seed, pooled.
-func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix, policy string) []proofRow {
+func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix, policy string, thinks int) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)
 	if !ok {
 		log.Fatalf("gosim: no scenario called %q to run the proof rows in", proofScenario)
@@ -970,7 +970,7 @@ func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mi
 	for _, c := range proofCases {
 		var all []trial
 		for _, seed := range seeds {
-			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store, mix, policy)...)
+			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store, mix, policy, thinks)...)
 		}
 		rows = append(rows, summariseProof(c, all))
 	}
@@ -994,7 +994,7 @@ func scenarioNamed(name string) (scenario, bool) {
 // did not move the state root would fold this program's lanes into the belief
 // file of whoever ran it — and the cold-store row would not be cold on its
 // second seed.
-func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store, mix, policy string) []trial {
+func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store, mix, policy string, thinks int) []trial {
 	dir, err := os.MkdirTemp("", "gosim-proof-")
 	if err != nil {
 		log.Fatal(err)
@@ -1006,6 +1006,16 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 	lane.Default().Reset()
 	defer lane.Default().Reset()
 
+	// THE THINK CHAIN, WARMED ON ITS OWN. It is a knob rather than part of a
+	// store because the question it answers is about the duration clock alone:
+	// how much of the cold arm's long-think rate is a chain nobody has fed.
+	if thinks > 0 {
+		began := theMoment.Add(-warmOver)
+		for i := 0; i < thinks; i++ {
+			at := began.Add(time.Duration(i+1) * warmOver / time.Duration(thinks))
+			lane.NoteThought(w.model, "", thinkFor, at)
+		}
+	}
 	ledger := lane.Default().Ledger()
 	switch store {
 	case storeWarmed, storeSeen:
@@ -1964,12 +1974,33 @@ func proofGates(rows []proofRow, store, mix, policy string) []proofGate {
 			Where:     "every case",
 			Value:     spendPct, Gated: true, Pass: spendPct <= purse})
 	}
+	// ── LONG THINK IS GATED ON A WARMED ARM AND REPORTED ON A COLD ONE ──────
+	//
+	// Not an allowance for being cold — it is what the number MEASURES that
+	// differs. §B's abnormality gate asks whether a wait is past the quantile of
+	// the survival its clock reads, and for the duration clock that survival is
+	// [lane.Thinks]. A thinking phase has no published dispersion, so
+	// `Chain.Survival` floors its spread at [lane.SpreadFloor] and the quantile
+	// is pinned at about fifteen times the believed median — permanently past
+	// the role's ten-second ceiling. THE DURATION CLOCK THEREFORE NEVER ACTS
+	// BEFORE THE CEILING for any model that deliberates for more than about two
+	// thirds of a second, at any amount of evidence
+	// (`TestWhenTheThinkGateCloses` measures it).
+	//
+	// So on an arm with no timing belief behind it, what the long-think rate
+	// counts is how often the WORLD's own thinking phase outlasts the ceiling —
+	// a property of the model and the role's patience, which no correct policy
+	// controls and which a gate cannot ask a controller to change. On a warmed
+	// arm the first-token and gap clocks are sharp, the spurious arms that land
+	// inside a thought are the ones a policy really does decide, and the
+	// criterion is about the build again. It is enforced there at full force: a
+	// warmed arm under 95% is red.
 	return append(out, proofGate{
 		Criterion: "long think, not hedged",
 		Threshold: ">= 95% of thinking phases",
 		Measured:  fmt.Sprintf("%.2f%% of %d thinking phases", thinkPct, thinks),
 		Where:     "thinking model, healthy half",
-		Value:     thinkPct, Gated: true, Pass: thinks > 0 && thinkPct >= gateLongThinkPct})
+		Value:     thinkPct, Gated: steady, Pass: thinks > 0 && thinkPct >= gateLongThinkPct})
 }
 
 // printProof writes §K's pass table with the measured value beside every
