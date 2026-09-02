@@ -393,6 +393,13 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	if !ok || !verdict.Work {
 		return
 	}
+	// THE NAME IS ASKED FOR THE MOMENT THE JUDGE SAYS WORK, beside the confirm
+	// rather than after the node exists (taskname.go's [nameAhead]): the
+	// told-after line is the first thing a person reads about this task, and it
+	// carries the name wherever the name is in hand. A confirm that declines
+	// lets the call go.
+	ahead := a.nameAhead(asked)
+	defer ahead.release()
 	// THE CONFIRM, and it is asked HERE — after the yes and before anything is
 	// admitted — because that is the only place it costs anything at all.
 	confirmed, ok := a.confirmRouteWork(ctx, model, asked, answer)
@@ -428,7 +435,7 @@ func (a *Agent) routeJudge(ctx context.Context, hub *eventHub, user userMessage,
 	// AND WITH NO DIVISION DRAWN, because nobody has drawn one: this door reads a
 	// REQUEST nobody has worked on yet, and the shape of what is left of a turn is
 	// a question only a mark can answer (checkpoint.go's [drawnDivision]).
-	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{})
+	a.launchRouteTask(hub, verdict, verdict.Goal, drawnDivision{}, ahead)
 }
 
 // routeSubstantial reports whether a message is worth a model call. It counts
@@ -963,7 +970,13 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // is left, taken at a checkpoint mark, and the spec is where it has to land so
 // that the worker this admits can be started on it (task_divide_sketch.go). An
 // empty one is every other door, and changes nothing.
-func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision) (string, uint64) {
+//
+// AND IT CARRIES THE NAME THE ROAD ASKED FOR AHEAD (taskname.go's [nameAhead]),
+// which may be nil. One that has landed is the title from the first line a
+// person reads, written as a name a model wrote so nothing renames it; one
+// still in flight rides the spec, and the graph waits for it rather than asking
+// again.
+func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
 	graph := a.graph()
 	id := graph.reserve()
 	spec := taskSpec{
@@ -1002,6 +1015,12 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 	if spec.summary == "" {
 		spec.summary = spec.title
 	}
+	if name, landed := ahead.ready(); landed && name != "" {
+		spec.title, spec.named = name, true
+	} else {
+		spec.ahead = ahead
+	}
+	ahead.claim()
 	// AND WHERE THE WORK STANDS (taskstands.go), on the same ladder every other
 	// door climbs. This door cannot ask anything either — the person is told
 	// afterwards that work began — so an evidence that will not settle falls back

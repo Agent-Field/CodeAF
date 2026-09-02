@@ -871,3 +871,59 @@ func TestASketchRoadDivisionWritesNoCommit(t *testing.T) {
 		t.Fatalf("the sketch road froze %q, want the family tree's own HEAD %q", line.Frozen, before)
 	}
 }
+
+// THE REPOSITORY THIS IS FOR HAS ITS FURROW MARKER HIDDEN. [hideFurrowMarker]
+// writes `.furrow/` into `.git/info/exclude` the moment anything attaches the
+// folder, and the seal used to name that path in an `:(exclude)` pathspec —
+// which git reads as an attempt to add an ignored path and refuses, after doing
+// everything else it was asked. Every task grounded on an attached repository
+// failed in its first second with "The following paths are ignored by one of
+// your .gitignore files".
+func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
+	writeFile(t, filepath.Join(repo, furrowMarkerDir, "state.json"), "{}\n")
+	writeFile(t, filepath.Join(repo, aforgeDroppings, "notes.md"), "private\n")
+	hideFurrowMarker(repo)
+	if held, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude")); !strings.Contains(string(held), furrowMarkerPattern) {
+		t.Fatalf("the marker is not hidden:\n%s", held)
+	}
+
+	commit, err := sealGroundWork(repo, "the whole job")
+	if err != nil {
+		t.Fatalf("the seal refused a repository furrow has attached: %v", err)
+	}
+	if commit == "" {
+		t.Fatal("the seal answered nothing while the parent held uncommitted work")
+	}
+	listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", commit)
+	if !strings.Contains(listed, "wip.txt") {
+		t.Fatalf("the sealed world is missing the parent's file:\n%s", listed)
+	}
+	// AND NEITHER CORNER OF MACHINERY IS IN IT.
+	for _, corner := range []string{furrowMarkerDir, aforgeDroppings} {
+		if strings.Contains(listed, corner) {
+			t.Fatalf("%s is in the sealed world:\n%s", corner, listed)
+		}
+	}
+}
+
+// THE FORK RUNG HAS THE SAME CORNER, and a person whose `.gitignore` lists it
+// used to lose the rung the same way.
+func TestAForkSealsAWorldWhosePrivateCornerIsIgnored(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".gitignore"), aforgeDroppings+"/\n")
+	mustGit(t, repo, "add", ".gitignore")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "ignore the corner")
+	writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
+	writeFile(t, filepath.Join(repo, aforgeDroppings, "notes.md"), "private\n")
+
+	commit, ok := sealForkWorld(repo, "task/fork-seal", "the whole job")
+	if !ok || commit == "" {
+		t.Fatalf("the fork rung answered %q, %v; want the parent's world sealed", commit, ok)
+	}
+	listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", commit)
+	if !strings.Contains(listed, "wip.txt") || strings.Contains(listed, aforgeDroppings) {
+		t.Fatalf("the sealed world is wrong:\n%s", listed)
+	}
+}
