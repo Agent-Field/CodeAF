@@ -446,3 +446,37 @@ func TestTheGateJournalsWhatItJudged(t *testing.T) {
 		}
 	}
 }
+
+// A DELIVERY THAT BROKE A RULE THE PERSON SET IS NOT WHOLE, AND NOTHING ON THIS
+// EVENT CAN ACQUIT IT.
+//
+// The other standing findings here are measurements of a repository, and an
+// acquittal is at least about the same kind of thing. This one is the person's
+// own sentence held against the files the run changed, so a pass on the
+// deliverable's substance says only that the work was good at doing what it was
+// forbidden to do — which is exactly the shape #427 shipped: the command run,
+// the line reported, and two files written under "Change no files."
+func TestADeliveryThatBrokeARuleThePersonSetIsNotWhole(t *testing.T) {
+	broke := DeliveryGate{Pass: false, Gap: `The work broke a rule the person set: "Change no files." (2 files).`,
+		Constraint: []string{"Change no files. — check.sh, internal/x/x_test.go"}}
+	if broke.Whole() {
+		t.Fatal("a broken rule settled as a whole delivery")
+	}
+	// And no reading of the substance changes that. A pass, a repair the second
+	// judge accepted, and a refusal weighed against the world and lost are the
+	// three things that normally settle this event, and none of them is about
+	// the rule.
+	for name, settled := range map[string]DeliveryGate{
+		"passed":     {Pass: true, Constraint: broke.Constraint},
+		"repaired":   {Pass: false, Gap: broke.Gap, PolishClosed: true, Constraint: broke.Constraint},
+		"overturned": {Pass: false, Gap: broke.Gap, Overturned: true, Constraint: broke.Constraint},
+	} {
+		if settled.Whole() {
+			t.Fatalf("a %s delivery carried a broken rule and still settled whole", name)
+		}
+	}
+	// A job whose request stated no rule is the job this system already ran.
+	if !(DeliveryGate{Pass: true}).Whole() {
+		t.Fatal("an ordinary passing delivery stopped being whole")
+	}
+}

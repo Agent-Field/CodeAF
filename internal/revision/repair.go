@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 )
 
 // ── what a repair round actually changed, and what that lets it close ────────
@@ -209,8 +211,32 @@ func RepairClosed(rejudged, finding Judgment, evidence Evidence, unmoved bool) b
 	if !rejudged.Checked || !rejudged.Pass {
 		return false
 	}
-	if unmoved && GroundedInTheWorld(finding, evidence) {
+	if unmoved && !toldToMoveNothing(evidence) && GroundedInTheWorld(finding, evidence) {
 		return false
 	}
 	return true
+}
+
+// toldToMoveNothing says the person forbade this run to change anything, which
+// makes "the round changed nothing on disk" the opposite of the evidence the
+// law above reads it as.
+//
+// THE STANDSTILL RULE IS WRITTEN FOR RUNS THAT WERE SUPPOSED TO MOVE. A repair
+// that rewrote the account and touched no file is a repair that did not do the
+// work — unless doing the work meant touching no file, in which case the
+// unmoved tree is the run keeping its word. #427's stream said `not repaired:
+// the repair rewrote the account and changed nothing on disk` over a run whose
+// whole contract was to change nothing, and that reading is one of the three
+// rules in this harness that rewarded the violation it is now written against.
+//
+// It reads the constraint and never the absence of artifacts: a run that
+// happened to produce nothing is not a run that was told to produce nothing,
+// and only the person's own words can say which of the two this is.
+func toldToMoveNothing(evidence Evidence) bool {
+	for _, constraint := range evidence.Constraints {
+		if constraint.Kind == plan.ConstraintNoWrites {
+			return true
+		}
+	}
+	return false
 }

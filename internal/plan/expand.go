@@ -588,6 +588,14 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// discard a division that has already been paid for.
 	sizeUsage, _ := SizeNodes(ctx, client, sub)
 	usage.merge(sizeUsage)
+	// AND THE RULES THE PERSON SET COME DOWN WITH THE SETTLED POINTS. A
+	// constraint is a property of the JOB — they said it about the run, not
+	// about the node that happened to be big enough to divide — so a subtree
+	// minted here is under it exactly as its parent was. Without this, dividing
+	// a node is how a job walks out from under the one thing it was forbidden
+	// to do, which is the shape #427 measured one seam along, at the remainder
+	// planner. See constraint.go.
+	sub.SetConstraints(node.Spec.Constraints)
 	sub.Goal = node.Title
 	return expansion{nodeID: nodeID, sub: sub, usage: usage}
 }

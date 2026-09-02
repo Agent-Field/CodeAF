@@ -529,6 +529,40 @@ A node with **no** write scope is read-only work — its brief says `THIS IS REA
 find out, do not change anything` — and writing nothing is the whole of what it was asked
 for. It is never held to this.
 
+## "I said change no files" — rules you state are laws of the run: do not touch anything, only write inside one folder
+
+A rule you state about what the run may or may not **do** — as distinct from what it must
+produce — is carried as a rule, not as advice. Tell it to touch nothing (`Change no
+files.`) or to stay inside one folder (`Only touch docs/.`, `Don't write outside src/.`)
+and that sentence is a law of the run, not a preference in the brief. It is read off your
+request in your own words, and aforge may only hold you to words you actually wrote: a
+rule it cannot quote back out of your request is dropped.
+
+**Three things then happen with it.**
+
+- **Every worker reads it first.** It sits above the working method in the brief of every
+  piece of the job — including the ones spliced later by a repair round or by work planned
+  to close a review's finding, which is where it used to be lost. A repair round is told
+  in as many words that your rule outranks the review's gap.
+- **The gate checks the files the run changed against it**, before any review is bought.
+  A run told to touch nothing is stopped by any file it left in your workspace; a run told
+  to stay in one folder, by anything it wrote outside that folder. aforge's own
+  bookkeeping — its `.aforge/` logs and traces — is never counted, and neither is a
+  dependency tree something installed. A rule no such arithmetic can settle — "don't use
+  the network" — is put to the review as the standard beside your request instead.
+- **A run that broke one ends failed, with the rule quoted and the files named**, and no
+  round is bought to close it. Nothing is repaired and nothing further is planned: the work
+  did the one thing you said not to, and more of it is not the answer. Headless, that is
+  **exit 2** and a last line like:
+
+```
+gate: fail — The work broke a rule the person set: "Change no files." (2 files).
+```
+
+A run told to change nothing that changed nothing has **kept** its rule, and nothing counts
+that against it: the "this round changed nothing on disk" reading that normally refuses a
+repair is off for such a job.
+
 ## When a review says something is missing — why it says partial, not finished
 
 Before a run's answer is handed over, one review reads it against your own request and

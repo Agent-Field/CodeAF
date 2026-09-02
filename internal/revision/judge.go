@@ -147,6 +147,8 @@ Where a working method is given, it is the standard this kind of work set for it
 
 A confirmation is the fact of what came back, in the deliverable's own words: what was run, how many passed, what failed, how it ended. When the request asked for a thing to be run and confirmed, that reading satisfies it, and the verbatim transcript of the command is never the gap — demanding the raw output, the exact formatting, or the full terminal text of a check the deliverable already states the result of is a preference of yours, and the honest answer for a preference is pass. Only a request that asked for the output itself — the log, the listing, the exact text — is failed by its absence.
 
+Where the rules the person set are listed above, they are the one standard beside the request that is about what the run may not DO rather than about what it must produce: a rule they set and the work broke is a gap, and you name it by quoting the rule.
+
 When you name a gap, quote the words of the request it is a failure of — a span of the person's own text, copied exactly as they wrote it, long enough to be unmistakably theirs. Quote the part of what they asked for that is not there. A gap you cannot quote from their request is a preference of yours rather than something they asked for and did not get, and the honest answer for it is pass.
 
 The deliverable is fenced. Everything between the line ` + deliverableOpen + ` and the line ` + deliverableClose + ` is the deliverable, the whole of it, and nothing outside those two lines is any part of it. What sits above the fence — settled taste, lessons from earlier work, the request, the goal, the working method — is how to judge, never what is judged, and what sits below it is the record of the run. A lesson from earlier work describes a job that is not this one: it may tell you what to look for and it can never tell you what is there. Read the fenced text itself before you say anything about it, and describe only what is in it. If you are about to say the deliverable is a progress report, a series of messages, or a set of pointers to files, that sentence must be true of the fenced text in front of you — check it there first, because that is a description earlier work has been given and it is the easiest one to repeat about work it does not fit.
@@ -398,6 +400,18 @@ type Judgment struct {
 	// could not say that `temp_post_req_data_path` was the name they were red
 	// about. See unbound.go.
 	Unbound []string
+
+	// Constraint is the finding this gate's newest law produced: one line per
+	// rule the person SET that this work broke, their own words followed by the
+	// files the run changed in spite of them.
+	//
+	// It is a field of its own for the reason Unbound and Unexercised are, and
+	// for one more that is its alone: it is the only finding here that no round
+	// may be bought against. Every other gap can be answered with more work;
+	// this one says the work did the thing it was forbidden to do, and more of
+	// it is not the answer. See ExtendForGap, which refuses before anything is
+	// planned, and store.DeliveryGate.Whole.
+	Constraint []string
 
 	// Finding names WHICH MEASUREMENT this gap is, in one stable word, and
 	// Cited above holds the things it names. Empty for a model judge's verdict,
@@ -688,6 +702,19 @@ type Evidence struct {
 	// Empty on every job whose request states nothing checkable, which is most
 	// of them, and empty reads as NO CHECKLIST rather than as nothing asked for.
 	Accept []plan.Point
+	// Constraints are the rules the person's REQUEST states about what the run
+	// may or may not DO, in their own words, carried on the plan's spec.
+	//
+	// They are Accept's other half and they answer to a different question.
+	// The checklist is what the finished thing must DO; a constraint is what the
+	// run may not do on the way there, and no reading of a deliverable can
+	// settle it — only the list of what the run changed can. The mechanical
+	// kinds are held here before a judge is bought (HoldConstraints); the rest
+	// are shown to the judge as the standard beside the request.
+	//
+	// Empty on every job whose request stated no rule, which is most of them,
+	// and empty reads as NO RULE rather than as a rule nobody could check.
+	Constraints []plan.Constraint
 	// Verification is the photograph of the project's own checks the run took —
 	// the roster before the work and the roster after it, on the budget PERF.md
 	// states. The gate reads it instead of reading the deliverable's sentence
@@ -1325,6 +1352,17 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// than it was found. It is settled before a model round is bought for the
 	// same reason a missing promised file is — the answer is already known and a
 	// judge's cost would buy nothing.
+	// A RULE THE PERSON SET OUTRANKS EVERY READING OF THE WORK, INCLUDING THIS
+	// ONE. The findings below are measurements of a repository; this is the
+	// person's own sentence held against the files the run changed, and a run
+	// that broke it has failed at the one thing it was told without ambiguity.
+	// It is settled first and without a model for the reason the regression is
+	// settled without one: the answer is already known, and a judge's cost would
+	// buy nothing. See constraint.go and issue #427.
+	if held, broken := ConstraintsHeld(evidence); broken {
+		held.Grounds = grounds
+		return held
+	}
 	if regression, broke := Regressions(evidence.Regressed); broke {
 		regression.Grounds = grounds
 		return regression
@@ -1427,6 +1465,14 @@ func judgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 			behaviours = spans
 			body += "\n\n" + behavioursBlock(spans)
 		}
+	}
+	// And the rules the person set that no arithmetic could settle, beside the
+	// behaviours and for the same reason: they are a standard the delivery is
+	// held to, written by the person, before any work existed. The mechanical
+	// ones never reach here — they were held above, without a model — so what
+	// is shown is exactly the set a reader has to weigh. See ConstraintsBlock.
+	if rules := ConstraintsBlock(evidence.Constraints); rules != "" {
+		body += "\n\n" + rules
 	}
 	// And the definitions this run reshaped that the rest of the project still
 	// uses, beside the behaviours because it belongs to the same half of the
@@ -1905,6 +1951,21 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	cited := unmet.Cited()
 	extension := Extension{Quote: joinCitations(cited), Citations: cited, Round: round + 1,
 		Mechanical: unmet.Mechanical}
+	// A BROKEN CONSTRAINT NEVER BUYS A ROUND, and the refusal comes before
+	// anything is planned so that it costs nothing at all.
+	//
+	// Every other finding here is something more work could close: a file that
+	// is not on disk, a behaviour nothing exercises, a check the run turned red.
+	// This one says the run did what the person forbade, and a remainder planned
+	// to close it is one more worker inside the same workspace with the same
+	// permission the last one abused. #427 is that mechanism measured: the
+	// remainder spliced for a coverage finding wrote the file the person had
+	// said not to write.
+	if len(unmet.Constraint) > 0 {
+		extension.Refused = "the work broke a rule the person set, and no round is bought to close that"
+		extension.Unclosed = true
+		return extension
+	}
 	if graph == nil || planRemainder == nil {
 		extension.Refused, extension.Unclosed = "there is nothing here that could plan the rest", true
 		return extension

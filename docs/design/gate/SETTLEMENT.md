@@ -656,3 +656,82 @@ the person used, and "is this done" is the work's question. What is still refuse
 is the one that produced the defect this document is named after — a remainder
 judge shown the brief and the worker's own last sentence, whose "nothing is left"
 settles nothing at all.
+
+## Addendum, 2026-09-02: a constraint the person states is a law of the run
+
+Every clause above weighs what the work PRODUCED. #427 is the other axis, and
+nothing in this file held it: a rule the person states about what the run may or
+may not **do**.
+
+The measured run is one sentence long.
+
+> Run the command `go test ./internal/subharness/ -count=1` in this workspace and
+> report the final line it prints. **Change no files.**
+
+The first leaf did exactly that — one shell call, the final line reported, its
+own closing words "No files were changed." — and two minutes in the request was
+satisfied. The run then spliced `write-run-command-test`,
+`check-runs-in-workspace`, `check-reports-final-line`, which wrote a new test
+into an existing `_test.go` and a shell script at the workspace root. Measured
+twice on the shipped default: 1 file changed, then 2.
+
+The constraint reached the run only as prose. The compiled brief had no field for
+one, so "Change no files" survived inside the goal and inside the working method.
+The acceptance checklist rightly held two behaviours about the RESULT (the
+command is run; the final line is reported) and — also rightly — did not hold the
+constraint, because it is not a behaviour of the deliverable. So nothing
+structural carried it, and the gate never read it: the judge is asked to name an
+element of the request that is ABSENT, and the workspace's own before-and-after
+list was never held against a rule about what the run may not touch.
+
+Three rules then rewarded the violation, which is why no prompt could have fixed
+it. A repair was judged not to have closed a grounded finding when it "changed
+nothing on disk". The growth governor's standstill reads "nothing was written or
+altered" as no progress. And the overrun journal recorded the two written files
+under `moved` as the evidence that the round had produced something.
+
+> **A CONSTRAINT THE PERSON STATES IS A LAW OF THE RUN: carried on the brief and
+> on the spec of EVERY node, shown to every worker first, held mechanically at
+> the gate against what the run left behind, and never advice. A delivery that
+> broke one FAILS, and a broken constraint NEVER buys a repair round or a
+> remainder.**
+
+Four things follow, and each is a mechanism rather than a sentence.
+
+**It is a field.** `plan.Constraint` carries the person's own words, the
+mechanical reading of them (`no_writes`, `paths_only`, `other`) and the paths
+that reading is about. The compiler extracts it; `head.keepStatedConstraints`
+then drops every constraint whose text it cannot quote out of the instruction,
+because THE GATE MAY ONLY HOLD PEOPLE TO THEIR OWN WORDS — a rule this system
+invented, enforced by arithmetic, would fail deliveries that did exactly what was
+asked. The same guard strips a kept rule out of `Assumptions`, since `aforge do`
+discards those and a rule living only there is a rule that surface drops.
+
+**It lands on every node, not on the one that delivers.** That is the one way
+`SetConstraints` differs from `SetAcceptance` beside it. The checklist is what
+the finished thing must do and belongs to whoever hands it over; the person said
+"change no files" about the RUN, so every worker the run starts is under it —
+including the ones spliced later, which is exactly where the files were written.
+The remainder planner stamps them onto the continuation before it is encoded.
+
+**The gate holds it before a model is bought, and above every other finding.**
+`revision.HoldConstraints` reads the artifact record against the workspace: for
+`no_writes`, any file the run left behind; for `paths_only`, any file outside the
+named places. The harness's own machinery is never counted — it lives outside the
+workspace root by construction, and `verify.SkipTree` names the rest. The
+resulting judgement is `Mechanical` and `Sourced`: mechanical because no ruling
+about a quotation makes a written file unwritten, and sourced because the quote
+IS the person's sentence, so the grounding invariant of §1 is satisfied by
+construction rather than by a check. `other` constraints are shown to the judge
+as the standard beside the request instead.
+
+**And it buys nothing.** `ExtendForGap` refuses before anything is planned —
+`the work broke a rule the person set, and no round is bought to close that` —
+and the repair round is skipped at the wiring seam for the same reason. §8's
+standstill rule is turned OFF for a run under `no_writes`: a run told to change
+nothing that changed nothing has kept its word, and reading that as a repair
+which did nothing is the first of the three rules above, written down.
+
+`store.DeliveryGate.Constraint` records it, and `Whole()` counts it as leaving
+the delivery short — no pass, no closed repair and no overturned refusal covers
+it, because none of the three is about the rule.
