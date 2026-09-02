@@ -537,6 +537,35 @@ on any host that is neither macOS nor Linux there is no timer to install, so
 things are checked only while a window is open and the settings row is not there
 at all.
 
+## Do the background checks run before I set an API key — the walk happens, the judgment does not
+
+**Yes, the pass still walks.** On a machine that has never been given a key, the
+5-minute pass takes the lock and goes through every reminder, watch and routine you
+have, exactly as it would with one. It does not stop at the door and it does not
+demand a key to find out there was nothing to do — most passes decline the lock to a
+window that already has it, or find everything asleep, and those cost nothing.
+
+**A reminder at a time still fires.** "Remind me at 6 to leave" is a question about the
+clock and not about the world, so nothing has to be judged: at 6 the line is delivered
+to the window you are sitting in, or waits for you on home.
+
+**A watch that has to judge something stops on its own row.** "Tell me when the build
+goes red" runs its command first — that part costs nothing and needs nobody — and then
+needs a model to say whether what came back means yes. With no key, that item's `last
+look` reads
+
+```
+could not check: no API key: this session has not been given one yet
+```
+
+the walk carries straight on to the next item, and nothing fires, because a firing
+needs a yes and nobody was able to say one. The item still records that it looked, so
+the count of what was examined is honest and the record of the pass carries one error.
+
+Set the key — `/settings` → **openrouter key**, or say "set up my api key" — and the
+next pass judges normally. Nothing has to be re-made and nothing was lost while there
+was no key.
+
 ## Turn background checks off
 
 `/settings` → **Workspace** → **background checks**, or just say "turn off the

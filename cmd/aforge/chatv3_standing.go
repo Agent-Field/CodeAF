@@ -108,11 +108,24 @@ func standingWatch(store *standing.Store) standing.Watch {
 // v3StandingTicker builds one pass. IT IS THE ONE CONSTRUCTOR: a window's
 // goroutine below and `aforge tick` both call exactly this, so the two can
 // never disagree about what a pass is allowed to do.
+//
+// IT READS THE PROFILE KEYLESS, and that is the law rather than a convenience:
+// A PASS THAT WILL DO NOTHING COSTS NOTHING AND NEEDS NOTHING. Most passes do
+// nothing at all — another window already holds the tick lock, or every item is
+// asleep — and [config.Load] refusing without a key made building the pass the
+// moment credentials were demanded, five minutes apart, forever, on a machine
+// that has never been set up. Nothing below builds a client: the sentinel makes
+// its own lazily on the first judgment that actually needs one
+// (internal/session's NewStandingSentinel) and the runner is a plain struct. So
+// the key is carried through and asked for at the one moment a model is called,
+// where a machine that has none says so on that item's own row — `could not
+// check: no API key: this session has not been given one yet` — and the rest of
+// the walk goes on.
 func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 	if store == nil {
 		return nil, fmt.Errorf("standing: no store")
 	}
-	settings, err := config.Load()
+	settings, err := config.LoadKeyless()
 	if err != nil {
 		return nil, err
 	}
