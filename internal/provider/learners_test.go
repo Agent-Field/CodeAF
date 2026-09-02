@@ -14,7 +14,7 @@ import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 // SO THIS FUNCTION MUST LIST EVERY SUCH LEARNER AND NOT ONLY THE ONES THAT HAVE
 // BITTEN. The list is a sweep of this package's own `var`s — a process-wide value
 // that accumulates what it saw belongs here — and a learner added without a line
-// here is the same bug again under a different name. Three today:
+// here is the same bug again under a different name. Four today:
 //
 //	sharedVelocity  velocity.go   what each lane was measured doing
 //	sharedPins      affinity.go   which endpoint holds a prompt lineage's cache
@@ -42,7 +42,7 @@ import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 // process-lifetime and never expires.
 //
 // Twenty-nine test files in this package build a client with `NewClient` and
-// every one of them folds into these same three learners. The rest are safe
+// every one of them folds into these same learners. The rest are safe
 // because they either assert on request counts, bodies and logged rows — which
 // no learner reshapes — or take the isolation the ledgers' own comments describe
 // and overwrite the client's field with a fresh one, the way
@@ -52,7 +52,7 @@ import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 // reading a learner back takes this call in its own cleanup rather than a third
 // private override.
 //
-// THE FOURTH LEARNER IS NOT THIS PACKAGE'S OWN, and it is reset here on the
+// THE FIFTH LEARNER IS NOT THIS PACKAGE'S OWN, and it is reset here on the
 // same law. #368 landed `refusedLanes` in `internal/lane` (sheet.go) — the
 // negative half of the serving set — behind the reset door
 // `lanes.ForgetRefusals()`. It is process-wide state that accumulates what it
