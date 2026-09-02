@@ -19,7 +19,6 @@
 # CLAUDE.md could not spell, and found six more nobody was tracking.
 
 # Fail on a clean tree.
-TestEveryGoroutineInTheGuardedTreeIsGuarded
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
 
 # Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run

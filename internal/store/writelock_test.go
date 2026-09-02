@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
+	"log"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -116,4 +119,64 @@ func TestAnAbandonedAttemptDoesNotKeepTheLockItLaterWins(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("the lock never came back after the holder released it: %v", err)
+}
+
+// An attempt that FALLS is the fault this function cannot see coming: the
+// goroutine that opens the transaction sends its outcome on a channel two
+// people are waiting on, and a panic guard.Go absorbs used to end it with
+// nothing sent. The caller then waited out its whole bound and blamed the lock
+// — ErrBusy, for a lock nobody was holding — and the rollback goroutine it
+// started on the way out waited on that channel for the life of the process,
+// one leaked goroutine per fault.
+//
+// The outcome leaves from a defer now, so the fall arrives at whoever is
+// waiting, named as itself.
+func TestAnAttemptThatFallsReachesItsCallerAndFreesTheRollback(t *testing.T) {
+	// guard.Note writes the fault and its stack through the standard logger,
+	// which in a test is the test's own output.
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(os.Stderr)
+
+	// The fall lands while the caller is still waiting, which is the ordinary
+	// case: it is told what happened rather than told the store is busy.
+	tx, rolledBack, err := beginWithin(func() (*sql.Tx, error) {
+		panic("the driver fell over inside BEGIN")
+	}, writeLockWait)
+	if tx != nil {
+		_ = tx.Rollback()
+		t.Fatal("an attempt that fell handed back a transaction")
+	}
+	if err == nil {
+		t.Fatal("an attempt that fell reported no error at all")
+	}
+	if errors.Is(err, ErrBusy) {
+		t.Fatalf("a fallen attempt was reported as a busy lock: %v", err)
+	}
+	if !errors.Is(err, errAttemptFell) {
+		t.Fatalf("the caller was told %v, want the fault the attempt fell with", err)
+	}
+	if rolledBack != nil {
+		t.Fatal("a rollback was started for an attempt the caller was still waiting on")
+	}
+
+	// And the fall that lands AFTER the caller has given up, where the only one
+	// still waiting is the rollback goroutine. It ends because the send comes,
+	// and it says so by closing — the one way a goroutine's exit can be watched
+	// for rather than inferred from a count that anything else in the process
+	// could move.
+	_, rolledBack, err = beginWithin(func() (*sql.Tx, error) {
+		time.Sleep(100 * time.Millisecond)
+		panic("the driver fell over on its way out")
+	}, 20*time.Millisecond)
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("an attempt abandoned on the clock should say busy, said: %v", err)
+	}
+	if rolledBack == nil {
+		t.Fatal("the abandoned attempt started no rollback to take the lock back")
+	}
+	select {
+	case <-rolledBack:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the rollback is still waiting on an attempt that will never send")
+	}
 }
