@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -193,10 +194,23 @@ func openRoom(t *testing.T, r *rig) {
 // costs a couple of calls on a small row.
 func TestARoomSteerIsAnElbowAgainstTheShippedModel(t *testing.T) {
 	requireTmuxAndKey(t)
+	// EVERY SEAT IS THE SHIPPED DEFAULT, and that is the point of this run rather
+	// than a convenience. [newHome] copies the person's own profile, so a machine
+	// whose crew pins a bigger row for work would have this scenario approved
+	// against a model the product does not ship on — the first run of it landed on
+	// `deepseek/deepseek-v4-pro` for exactly that reason. Pinning every seat to
+	// [config.DefaultModel] is what an untouched install resolves to, and it is
+	// also the only way to stop an escalation quietly moving the answer.
 	home := newHome(t, map[string]any{
-		"tools.approvalMode": "allow",
-		"setup_seen_at":      time.Now().UTC().Format(time.RFC3339),
-		"ui.task_column":     true,
+		"tools.approvalMode":          "allow",
+		"setup_seen_at":               time.Now().UTC().Format(time.RFC3339),
+		"ui.task_column":              true,
+		"model.talk":                  config.DefaultModel,
+		config.KeyTierWorkerModel:     config.DefaultModel,
+		config.KeyTierLowModel:        config.DefaultModel,
+		config.KeyTierHighModel:       config.DefaultModel,
+		config.KeyTierReflexModel:     config.DefaultModel,
+		config.KeyTierMastermindModel: config.DefaultModel,
 	})
 	ws := newWorkspace(t, "steerlivews", false)
 	r := start(t, "afe2e_roomsteerlive", home, ws, tuiPlain, 44)
