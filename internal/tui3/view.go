@@ -267,6 +267,25 @@ func (a *app) frame() (string, int, int) {
 	if lines, _, caretX, caretY, up := a.placeFrameNow(width, height); up {
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// AND A BACKGROUND JOB'S PAGE, on the same terms and outside the bar
+	// (jobpage.go). It takes the frame WHOLE and draws no composer under itself,
+	// which is the whole of why it is here rather than inside the conversation:
+	// there is nobody in a job to read a line, and the surface used to say so
+	// with a refusal under a box that should never have been on the page.
+	//
+	// IT IS UNDER THE PLACES because a place is a room in the machine and this is
+	// one job in one conversation; alt+1…7 leaves it, and [app.standDownRest]
+	// closes it on the way out so it cannot reappear under a place somebody has
+	// since walked away from.
+	//
+	// It draws nothing when the job it named has gone — a page opened on work
+	// this window no longer holds — and the frame then falls through to the
+	// conversation, which is [app.expandShowing]'s own rule below.
+	if a.jobPageOpen() {
+		if lines, _, caretX, caretY := a.jobPageFrame(width, height); len(lines) > 0 {
+			return strings.Join(lines, "\n"), caretX, caretY
+		}
+	}
 	// AND THE REWIND TIMELINE, on the same terms and outside the bar
 	// (rewindsheet.go). It is the whole conversation, laid out as the list a
 	// person picks a point out of, and a picker read past the very conversation it

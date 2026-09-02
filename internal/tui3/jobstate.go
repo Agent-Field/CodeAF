@@ -115,7 +115,7 @@ func (a *app) jobsOver() int { return len(a.jobs) - a.jobsRunning() }
 func (a *app) dropJobs() {
 	a.jobs = nil
 	a.jobsOpen = false
-	a.jobPage = 0
+	a.closeJobPage()
 }
 
 // ── THE SEAM BETWEEN THE COLUMN AND THE PAGE ────────────────────────────────
@@ -142,8 +142,13 @@ func (a *app) showJobPage(id int) bool {
 	return true
 }
 
-// closeJobPage comes back out to whatever was underneath.
-func (a *app) closeJobPage() { a.jobPage = 0 }
+// closeJobPage comes back out to whatever was underneath, and drops the reading
+// with it: a log tail and a scroll position kept past the page they belong to
+// are what the NEXT page would open showing (jobpage.go's [jobDraw]).
+func (a *app) closeJobPage() {
+	a.jobPage = 0
+	a.jobDraw = nil
+}
 
 // jobPageOpen reports whether a job's page is on the frame, and jobPageJob is
 // the job it is about — nil once that job has gone, which is the reading every

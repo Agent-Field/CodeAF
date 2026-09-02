@@ -60,10 +60,12 @@ func (a *app) jobEnter() (tea.Cmd, bool) {
 		a.toggleJobs()
 		return nil, true
 	case a.railWhere.job != 0:
-		if a.showJobPage(a.railWhere.job) {
-			a.touch()
-		}
-		return nil, true
+		// THE PAGE IS OPENED THROUGH [app.openJobPage] AND NOT THROUGH
+		// [app.showJobPage], because the id is only half of it: the other half is
+		// the log's own beat, and a page opened without it draws the one reading
+		// it was seeded with and then never moves again — a live job's page,
+		// frozen, under a clock that is still counting (jobpage.go).
+		return a.openJobPage(a.railWhere.job), true
 	}
 	return nil, false
 }

@@ -1480,6 +1480,11 @@ type app struct {
 	// point of the whole change: one thing, one number, the same one `jobs kill`
 	// takes.
 	jobPage int
+	// jobDraw is that page's own reading — the log tail it is showing, the beat
+	// it is on and where it is scrolled to (jobpage.go). It is nil whenever no
+	// page is open, and it is replaced rather than reused when the page moves to
+	// another job.
+	jobDraw *jobDraw
 	taskLane    <-chan session.Event
 	taskGen     int
 	// railStamp counts the times this window's own row-space MOVED — a node
@@ -2935,6 +2940,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// And a background job's page at the same rung and for the same
+			// reason: it is the whole screen, so a press that fell through would
+			// open a tool call in a conversation that is not even on the frame
+			// (jobpage.go). Its edges are the way back and its body is read.
+			if a.jobPageOpen() {
+				a.jobPagePress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
 			// And the rewind timeline at the same rung and for the same reason: a
 			// press that fell through to the conversation underneath would open a
 			// tool call nobody can see, in a conversation somebody is about to cut
@@ -3366,11 +3379,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
-	case roomJobLogMsg:
+	case jobLogMsg:
 		// A BACKGROUND JOB'S LOG, ONE READING LATER (roomjoblog.go). The reader
 		// itself decides whether another beat is owed, because the row it watches
 		// is what says the work is over.
-		return a, tea.Batch(a.roomJobRead(msg), a.wake())
+		return a, tea.Batch(a.jobPageRead(msg), a.wake())
 
 	case homeNewsMsg:
 		a.tookHomeNews(msg)

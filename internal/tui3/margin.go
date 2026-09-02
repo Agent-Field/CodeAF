@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -440,32 +441,35 @@ func (a *app) marginPlainGlyph(view StandingItemView) string {
 // ── the pointer ─────────────────────────────────────────────────────────────
 
 // marginPress answers a press on one of the margin's own lines, and reports
-// whether it took it. The rows this column has always had are answered above it
-// (room.go's [app.railPress]); what is left here is a standing order, a job, the
-// jobs label, and the two doors.
-func (a *app) marginPress(line railLine) bool {
+// whether it took it — with whatever that press owes the loop. The rows this
+// column has always had are answered above it (room.go's [app.railPress]); what
+// is left here is a standing order, a job, the jobs label, and the two doors.
+//
+// IT CARRIES A COMMAND BECAUSE ONE OF THESE ROWS STARTS A READING. A job's row
+// opens that job's page, and the page's log is read on a beat rather than once
+// (jobpage.go) — so a press that answered only "taken" would open a live job's
+// page on a single frozen reading under a clock still counting up. The other
+// rows owe nothing and say so.
+func (a *app) marginPress(line railLine) (tea.Cmd, bool) {
 	switch {
 	case line.jobs:
 		a.railWhere = railSpot{jobs: true}
 		a.toggleJobs()
-		return true
+		return nil, true
 	case line.job != 0:
 		a.railWhere = railSpot{job: line.job}
-		if a.showJobPage(line.job) {
-			a.touch()
-		}
-		return true
+		return a.openJobPage(line.job), true
 	case line.door != "":
 		a.marginType(line.door)
-		return true
+		return nil, true
 	case line.stand != "":
 		// THE ROW OPENS THE PAGE ON ITSELF. Everything a person can do to an order
 		// is a key on that page (standingpage.go), and a column two cells from a
 		// paragraph is not the place to grow a second set of them.
 		a.openStandingAt(line.stand)
-		return true
+		return nil, true
 	}
-	return false
+	return nil, false
 }
 
 // marginType is what a `+` row does: the slash word into the draft, the keyboard
