@@ -981,6 +981,50 @@ func TestDoRunsTheWorkWhenTheCompileSuppliesNoGoalAndSaysSo(t *testing.T) {
 	assertErrandIsHonest(t, outcome, err)
 }
 
+// ONE LEDGER, ONE NUMBER. The acceptance pass — the plan model reading the
+// request for the behaviours it states — ran on the plan client's snapshot,
+// which carries no usage journal, and its usage was thrown away; a run's
+// printed total was short by exactly that call (#380). Every call the run
+// makes before its job exists is billed to the spine, so the spine's rows
+// number the compile and the acceptance pass together.
+func TestTheAcceptancePassIsBilledToTheSpine(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	script.gatePasses = true
+	script.acceptancePoints = `{"points":[{"text":"the count is written to count.txt"}]}`
+
+	database := filepath.Join(t.TempDir(), "graph.db")
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task:     "count the lines in notes.txt and write the count to count.txt",
+		database: database, asJSON: true,
+		timeout: 60 * time.Second, workspace: t.TempDir(),
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err != nil {
+		t.Fatalf("the errand did not settle: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if script.count("acceptance") != 1 {
+		t.Fatalf("the acceptance pass ran %d times, want 1", script.count("acceptance"))
+	}
+	graph, err := store.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	spend, err := graph.SpendSinceSeq("", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every other scripted call completes ten tokens, so the acceptance pass's
+	// own figure is visible in the spine's sum exactly once.
+	rest := spend.Spine.CompletionTokens - acceptanceCompletionTokens
+	if rest < 0 || rest%10 != 0 {
+		t.Fatalf("the spine's completion tokens are %d; the acceptance pass's %d are not among them",
+			spend.Spine.CompletionTokens, acceptanceCompletionTokens)
+	}
+}
+
 // The other half of the contract, which the law above narrows but does not
 // repeal: a question that does reach the end of a headless run must not end it
 // in silence. Three seconds, five thousandths of a cent and an empty stdout is
@@ -1382,10 +1426,14 @@ func (s *scriptedBrain) reply(body string) string {
 
 	case strings.Contains(body, "You read one request and list the behaviours it states"):
 		s.tally("acceptance")
-		if s.acceptancePoints == "" {
-			return s.say(`{"points":[]}`)
+		points := s.acceptancePoints
+		if points == "" {
+			points = `{"points":[]}`
 		}
-		return s.say(s.acceptancePoints)
+		// Billed with a figure no other scripted call reports, so a test can
+		// see this one row in a sum (TestTheAcceptancePassIsBilledToTheSpine).
+		return strings.Replace(s.say(points), `"completion_tokens":10`,
+			fmt.Sprintf(`"completion_tokens":%d`, acceptanceCompletionTokens), 1)
 
 	case strings.Contains(body, "You decide whether a job still needs work added to it"):
 		s.tally("satisfied")
@@ -1535,6 +1583,10 @@ func (s *scriptedBrain) leaf(body string) string {
 		return s.say(firstDraftAnswer)
 	}
 }
+
+// acceptanceCompletionTokens is what the scripted acceptance pass reports
+// completing: a figure that is not ten, so its row is visible in a total.
+const acceptanceCompletionTokens = 777
 
 func (s *scriptedBrain) say(content string) string {
 	encoded, _ := json.Marshal(content)

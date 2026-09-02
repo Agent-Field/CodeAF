@@ -33,6 +33,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// left out, which is the first thing somebody greps for when a line has
 		// a sentence where a cost should be.
 		{"why is cost_s missing on a call log row", "models-and-cost"},
+		// And the money on a headless run's last line, asked both ways people
+		// meet it: reading the figure, and finding it beside the call log.
+		{"what does the total at the end of aforge do include", "models-and-cost"},
+		{"why is the printed cost different from the call log", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
