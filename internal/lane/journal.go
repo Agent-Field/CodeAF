@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,10 +29,11 @@ import (
 //	lanes.json   the compacted state — the chains, the beliefs, the moment
 //	lanes.log    one line of NDJSON per observation since that moment
 //
-// APPEND is one write under O_APPEND with a SHARED advisory lock, after an
-// answer and never on a send path. Shared, because two appenders do not
-// conflict — O_APPEND is what keeps their bytes apart — and the lock is there
-// only to keep them out of a compaction.
+// APPEND is one write under O_APPEND with a SHARED advisory lock, and it IS on
+// the send path — an answer is folded in the moment it finishes. Shared,
+// because two appenders do not conflict — O_APPEND is what keeps their bytes
+// apart — and the lock is there only to keep them out of a compaction, which is
+// why it is asked for once and never waited on.
 //
 // LOAD reads the state and replays the whole journal into it in time order.
 // Observations commute in this filter to first order and exactly in time order,
@@ -39,8 +41,9 @@ import (
 //
 // COMPACT takes the EXCLUSIVE lock, which no appender can be inside, replays,
 // writes the state through a temporary file and a rename, and truncates the
-// journal to zero. It happens on the beat and when the journal gets long; never
-// in front of somebody's first token.
+// journal to zero. It happens ON THE WRITER GOROUTINE ALONE ([ledger.Persist])
+// and never in front of somebody's first token — which is issue #264, and used
+// to be untrue of the first observation of every process.
 //
 // A MISSING JOURNAL IS AN EMPTY ONE. A LINE THAT WILL NOT PARSE IS SKIPPED AND
 // COUNTED — a half-written record from a machine that lost power is one
@@ -109,10 +112,13 @@ type journal struct{ path string }
 
 // add appends one observation.
 //
-// A SHARED LOCK, TAKEN AND NOT DEMANDED. The lock keeps this write out of a
-// compaction; on a filesystem with no advisory locking the write still happens,
-// which is what a lone process has always done and what a person on a network
-// home is entitled to.
+// A SHARED LOCK, ASKED FOR ONCE AND NEVER WAITED ON. This is the one thing in
+// this package that a send path really does reach — a sighting is folded in the
+// moment an answer finishes — so it may not wait on anything (store.go,
+// "nothing here waits on a lock"). The lock is only here to keep the write out
+// of a compaction's truncation; without it the write still happens, which is
+// what a lone process has always done and what a person on a network home is
+// entitled to, and the worst it can cost is this one observation.
 func (j journal) add(entry record) error {
 	if j.path == "" || !entry.ok() {
 		return nil
@@ -129,7 +135,7 @@ func (j journal) add(entry record) error {
 		return err
 	}
 	defer file.Close()
-	if filelock.Lock(file, false, false) == nil {
+	if filelock.Lock(file, false, true) == nil {
 		defer filelock.Unlock(file)
 	}
 	_, err = file.Write(append(line, '\n'))
@@ -147,7 +153,7 @@ func (j journal) read() ([]record, int) {
 		return nil, 0
 	}
 	defer file.Close()
-	if filelock.Lock(file, false, false) == nil {
+	if filelock.Lock(file, false, true) == nil {
 		defer filelock.Unlock(file)
 	}
 	return decodeRecords(file)
@@ -195,23 +201,32 @@ func decodeRecords(from *os.File) ([]record, int) {
 // is written by fn through a rename, which is why its own lock is a third file:
 // a lock on an inode the next write replaces is a lock two processes each think
 // they hold.
-func (j journal) drain(fold func([]record, int) bool) {
+//
+// A BUSY LOCK ANSWERS [errLockBusy] AND TRUNCATES NOTHING. This is the one lock
+// in the pair that may not be skipped: emptying the file while an appender is
+// inside it is how an observation disappears, and a compaction that did not
+// happen is worth nothing at all next to that.
+func (j journal) drain(fold func([]record, int) bool) error {
 	if j.path == "" {
-		return
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(j.path), 0o700); err != nil {
-		return
+		return err
 	}
 	file, err := os.OpenFile(j.path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return
+		return err
 	}
 	defer file.Close()
-	if filelock.Lock(file, true, false) == nil {
+	switch err := take(file, true); {
+	case err == nil:
 		defer filelock.Unlock(file)
+	case errors.Is(err, errLockBusy):
+		return errLockBusy
 	}
 	records, skipped := decodeRecords(file)
 	if fold(records, skipped) {
 		_ = file.Truncate(0)
 	}
+	return nil
 }

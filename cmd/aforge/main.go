@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -68,6 +69,24 @@ func execute() (code int) {
 	// opened is a process whose logs directory can be removed on Windows and in
 	// a test's temporary home.
 	defer calllog.Close()
+	// AND THE BELIEF WRITER RUNS FOR THE WHOLE PROCESS, beside the log above and
+	// stopped at the same one exit.
+	//
+	// It is here rather than in a session because every command in this binary
+	// measures lanes — `do` and a subharness never build a session at all — and
+	// because it is the goroutine that owns the belief file's EXCLUSIVE LOCK.
+	// Taking that lock anywhere a request can be waiting behind it is issue
+	// #264, which cost a person twenty-nine silent minutes; `internal/lane`
+	// runs no goroutine of its own by design, so somebody has to run this one
+	// and this is the process's own line. The flush is registered after the
+	// log's close and therefore runs before it, so a compaction that had to be
+	// deferred still has somewhere to say so.
+	beliefs, stopBeliefs := context.WithCancel(context.Background())
+	defer func() {
+		stopBeliefs()
+		lanes.Flush()
+	}()
+	go lanes.Persist(beliefs)
 	err := run()
 	var status exitStatus
 	switch {

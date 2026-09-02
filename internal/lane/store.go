@@ -82,8 +82,12 @@ import (
 // (journal.go) and both replay it, which is a merge that needs no rule: the
 // same observations in the same order are the same belief.
 //
-// Nothing here stats a file on the send path — an observation is written after
-// an answer, and a compaction happens at open and on the beat.
+// AND THE COMPACTION IS SOMEBODY ELSE'S GOROUTINE. An observation is one
+// O_APPEND write on the send path, under a lock that is asked for and never
+// waited on; the compaction that folds the journal into this file takes the
+// exclusive lock and therefore runs only on the writer ([ledger.Persist]).
+// Holding both that lock and the ledger's mutex is issue #264, and it cost a
+// person twenty-nine silent minutes.
 
 // ErrNoStore is what a store with nowhere to write answers with, so that
 // "nothing was kept" and "nothing can be kept" are never confused for each
@@ -104,6 +108,11 @@ func StorePath() string { return home.Join("v3", "lanes.json") }
 // it was born with would keep writing into the home it was pointed at first.
 type store struct {
 	mu sync.Mutex
+	// writing serialises this process's own whole-file writers, which the file
+	// lock cannot: flock is a property of an OPEN DESCRIPTION, so two
+	// goroutines here would each take the gate on a handle of their own and
+	// each believe itself alone with the file.
+	writing sync.Mutex
 	// path overrides the file, for a test that must not write into the state
 	// root of whoever is running it. Empty is [StorePath].
 	path string
@@ -121,12 +130,21 @@ func (s *store) at(path string) *store {
 	return s
 }
 
-// file is where this store writes.
+// file is where this store writes. It is called with the lock held.
 func (s *store) file() string {
 	if path := strings.TrimSpace(s.path); path != "" {
 		return path
 	}
 	return StorePath()
+}
+
+// where is [store.file] as everything outside this file's own accessors asks
+// it: the path alone, with the lock held for exactly as long as reading it
+// takes and never across the disk underneath.
+func (s *store) where() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.file()
 }
 
 // ── WHAT THE FILE HOLDS ─────────────────────────────────────────────────────
@@ -238,9 +256,7 @@ func attributed(beliefs []Belief) []Belief {
 // machine that has not routed anything yet, and a caller that had to tell that
 // apart from a real failure would end up treating both as neither.
 func (s *store) Load() ([]Belief, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := s.file()
+	path := s.where()
 	if path == "" {
 		return nil, ErrNoStore
 	}
@@ -274,12 +290,12 @@ func (s *store) Save(beliefs []Belief) error {
 // It is one critical section: take the lock, read the file, fold this process's
 // set over it, write, release.
 func (s *store) saveMerging(beliefs []Belief) ([]Belief, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := s.file()
+	path := s.where()
 	if path == "" {
 		return nil, ErrNoStore
 	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -308,8 +324,8 @@ type deepStore interface {
 	// state is the compacted state, the observations appended since, and how
 	// many journal lines would not parse.
 	state() (storeState, []record, int)
-	// log appends one observation. It is called after an answer and never on a
-	// send path.
+	// log appends one observation. It is on the send path — an answer is
+	// folded in the moment it finishes — and it therefore waits on nothing.
 	log(entry record) error
 	// hold replays the journal under the exclusive lock and writes what fold
 	// returns; the journal is emptied only when fold says the state it folded
@@ -319,9 +335,7 @@ type deepStore interface {
 
 // state reads the compacted file and the journal beside it.
 func (s *store) state() (storeState, []record, int) {
-	s.mu.Lock()
-	path := s.file()
-	s.mu.Unlock()
+	path := s.where()
 	if path == "" {
 		return storeState{}, nil, 0
 	}
@@ -332,9 +346,7 @@ func (s *store) state() (storeState, []record, int) {
 
 // log appends one observation to the journal.
 func (s *store) log(entry record) error {
-	s.mu.Lock()
-	path := s.file()
-	s.mu.Unlock()
+	path := s.where()
 	if path == "" {
 		return ErrNoStore
 	}
@@ -348,25 +360,27 @@ func (s *store) log(entry record) error {
 // the journal's shared lock and nothing else, so it can never be holding one of
 // these while waiting for the other.
 func (s *store) hold(fold func(storeState, []record, int) (storeState, bool)) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := s.file()
+	path := s.where()
 	if path == "" {
 		return ErrNoStore
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
 	var failed error
 	return s.locked(path, func() error {
-		journal{path: journalPath(path)}.drain(func(records []record, skipped int) bool {
+		if err := (journal{path: journalPath(path)}).drain(func(records []record, skipped int) bool {
 			next, write := fold(readState(path), records, skipped)
 			if !write {
 				return false
 			}
 			failed = writeState(path, next)
 			return failed == nil
-		})
+		}); err != nil {
+			return err
+		}
 		return failed
 	})
 }
@@ -390,23 +404,79 @@ func writeState(path string, held storeState) error {
 // which is the only thing a lock needs to be.
 const lockSuffix = ".lock"
 
-// locked runs fn with the exclusive right to read and replace path.
+// ── NOTHING HERE WAITS ON A LOCK (issue #264) ───────────────────────────────
+//
+// flock(2) IS UNINTERRUPTIBLE. It takes no deadline, it reads no context, and
+// Go's scheduler cannot break a goroutine out of it. So a lock taken blocking
+// is a lock held for exactly as long as whoever else has it — and on 2026-09-01
+// that was 29m49s, during which this process sent nothing at all, because the
+// wait was entered while the ledger's own mutex was held and every encode reads
+// that mutex.
+//
+// SO EVERY LOCK BELOW IS ASKED FOR AND NEVER WAITED ON. A few tries, a short
+// backoff, and then the write is DEFERRED and said so. Deferring is safe by
+// construction: an observation is in the journal before any of this is reached
+// (journal.go), so what a held lock costs is a compaction and a longer replay,
+// never a belief.
+
+// lockAttempts and lockBackoff bound the asking. Five tries at twenty
+// milliseconds doubling is about three hundred milliseconds in the worst case,
+// spent on the writer goroutine and never in front of a request.
+const (
+	lockAttempts = 5
+	lockBackoff  = 20 * time.Millisecond
+)
+
+// errLockBusy is a lock somebody else is holding.
+//
+// IT IS TOLD APART FROM A FILESYSTEM WITH NO ADVISORY LOCKING, and the
+// difference is what the two callers do about it: a busy lock defers the write,
+// and a filesystem that cannot lock at all writes anyway — which is what a lone
+// process has always done and what a person on a network home is entitled to.
+var errLockBusy = errors.New("lane: the belief file's lock is held elsewhere")
+
+// take asks for a lock a few times and never waits on it.
+//
+// It answers three ways: nil is the lock and the caller must release it,
+// [errLockBusy] is somebody else's and the caller defers, and anything else is
+// a filesystem with no flock and the caller carries on unlocked.
+func take(file *os.File, exclusive bool) error {
+	for attempt, backoff := 1, lockBackoff; ; attempt, backoff = attempt+1, backoff*2 {
+		err := filelock.Lock(file, exclusive, true)
+		if err == nil {
+			return nil
+		}
+		if !filelock.IsBusy(err) {
+			return err
+		}
+		if attempt >= lockAttempts {
+			return errLockBusy
+		}
+		time.Sleep(backoff)
+	}
+}
+
+// locked runs fn with the exclusive right to read and replace path, and answers
+// [errLockBusy] without running it when another process holds that right.
 //
 // A LOCK THAT CANNOT BE TAKEN IS NOT A REASON TO LOSE A BELIEF. A read-only
 // directory, a filesystem with no advisory locking, a home on a share that
 // refuses flock: on any of them fn still runs, unlocked, which is exactly the
-// behaviour this file had before the lock existed. The lock makes concurrent
-// saves safe where it works; it may not make a lone process refuse to write.
+// behaviour this file had before the lock existed. A lock that is merely BUSY
+// is the other case, and it is the one that is deferred: somebody else is
+// writing this file right now and waiting for them is the defect.
 func (s *store) locked(path string, fn func() error) error {
 	gate, err := os.OpenFile(path+lockSuffix, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fn()
 	}
 	defer gate.Close()
-	if err := filelock.Lock(gate, true, false); err != nil {
-		return fn()
+	switch err := take(gate, true); {
+	case err == nil:
+		defer filelock.Unlock(gate)
+	case errors.Is(err, errLockBusy):
+		return errLockBusy
 	}
-	defer filelock.Unlock(gate)
 	return fn()
 }
 

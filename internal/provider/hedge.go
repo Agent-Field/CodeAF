@@ -229,6 +229,13 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 	seen := map[int]armResult{}
 	for {
 		select {
+		case <-ctx.Done():
+			// A CANCELLED TURN LEAVES THIS LOOP. Escape, a closed session and a
+			// caller's own deadline all arrive here, and until this case existed
+			// none of them could: the loop waited only on arms, so a stop had to
+			// travel through every one of them before anybody could quit
+			// (issue #264, where a stopped turn sat in `stopping` for minutes).
+			return r.abandon(ctx, seen)
 		case <-decided:
 			decided = nil
 			if result, ok := seen[r.won()]; ok {
@@ -268,6 +275,52 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				}
 				return r.settle(result, seen)
 			}
+		}
+	}
+}
+
+// abandonGrace is how long a cancelled race waits for its arms to say they have
+// stopped. An arm whose request has just been cancelled unwinds in
+// microseconds, so this is never really spent; what it bounds is the arm that
+// cannot report at all, which is exactly the shape issue #264 was found in.
+const abandonGrace = time.Second
+
+// abandon leaves the race because its caller did, and leaves it accounted for.
+//
+// The arms are already cut — [hedgeRace.run] defers the cancel of the context
+// they all ride — and each of them writes its own end row as its stream unwinds
+// (calllog.go). SO THIS DRAINS THEM RATHER THAN WALKING AWAY: a stop that left
+// its requests unreported would put a start row in the log with nothing under
+// it, which is the exact state the log exists to make impossible. The drain is
+// bounded, which is the whole difference from the loop it replaces.
+//
+// AND IT DELIBERATELY DOES NOT SETTLE. The arms were never allowed to finish,
+// so folding their waits into the belief would teach the ledger that a lane it
+// cut off is slow. The money is the other way round — a cancelled request was
+// still made, and the rate limit is counted in requests — so the two
+// denominators are noted here exactly as [hedgeRace.settle] notes them.
+func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Response, bool, error) {
+	r.drainArms(seen)
+	r.withdraw()
+	now := waitNow()
+	r.budget.NoteRequest(now)
+	r.budget.NoteSpend(r.spent(seen), now)
+	return nil, false, ctx.Err()
+}
+
+// drainArms collects what the arms report as they stop, for at most
+// [abandonGrace]. An arm that says nothing in that time is one this process
+// cannot account for, and waiting longer for it is the defect rather than the
+// remedy.
+func (r *hedgeRace) drainArms(seen map[int]armResult) {
+	grace := time.NewTimer(abandonGrace)
+	defer grace.Stop()
+	for len(seen) < r.count() {
+		select {
+		case result := <-r.results:
+			seen[result.index] = result
+		case <-grace.C:
+			return
 		}
 	}
 }

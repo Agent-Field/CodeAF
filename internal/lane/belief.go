@@ -1,11 +1,15 @@
 package lane
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 )
 
 // ── THE LEDGER: WHAT THIS PROCESS HAS MEASURED ──────────────────────────────
@@ -147,6 +151,16 @@ type ledger struct {
 	appended int
 	settled  bool
 	skipped  int
+	// owed is how a door tells the writer a compaction is worth doing. It holds
+	// ONE slot and the send never waits for it: a full channel already says
+	// "there is a compaction to do", and the writer reads the journal rather
+	// than any queued delta, so a second signal would say nothing the first
+	// does not (issue #264).
+	owed chan struct{}
+	// deferred counts the compactions that could not take the file's lock. A
+	// write that was quietly dropped is the same freeze with the symptom
+	// removed, so it is counted here and said once in the call log.
+	deferred int
 }
 
 // spread is one lane's prior variance for each filter, as the sheet published
@@ -163,7 +177,12 @@ type spread struct {
 // newLedger builds the live ledger. It is called from the registry and nowhere
 // else.
 func newLedger() *ledger {
-	fresh := &ledger{beliefs: map[ID]Belief{}, priors: map[ID]spread{}, shifted: map[ID]bool{}}
+	fresh := &ledger{
+		beliefs: map[ID]Belief{},
+		priors:  map[ID]spread{},
+		shifted: map[ID]bool{},
+		owed:    make(chan struct{}, 1),
+	}
 	fresh.pace()
 	return fresh
 }
@@ -216,13 +235,19 @@ func (l *ledger) restore() {
 // NOTHING ON THE SEND PATH CALLS IT. A choice reads memory.
 func (l *ledger) reload() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.loaded = true
-	if deep, ok := l.keeper.(deepStore); ok {
-		l.compact(deep)
+	deep, ok := l.keeper.(deepStore)
+	if !ok {
+		l.readBack()
+		l.mu.Unlock()
 		return
 	}
-	l.readBack()
+	l.mu.Unlock()
+	// AND THE COMPACTION RUNS WITH THE MUTEX FREE. It takes the file's lock,
+	// and a lock and this mutex held at once is the thirty minutes of issue
+	// #264 — the beat is nowhere near a send, but the chooser that would have
+	// queued behind it is on every one.
+	l.compact(deep)
 }
 
 // readBack builds memory from what is written down. It is called with the lock
@@ -323,26 +348,23 @@ func (l *ledger) replay(entry record) {
 
 // keep writes one observation down. It is called with the lock held.
 //
-// A journal line is one small append; the whole set is written only when the
-// journal has grown long enough to be worth compacting, and once at the start
-// so that a session which learns anything leaves a state file behind it.
+// A journal line is one small append. The whole set is COMPACTED, and this
+// function never does it: it says that one is owed and returns.
 //
-// ── AND THE COMPACTION IS STILL IN FRONT OF SOMEBODY, SOMETIMES ─────────────
+// ── WHY NOT HERE (issue #264) ───────────────────────────────────────────────
 //
-// This comment used to say "never on a send path" and that was not true.
-// [ledger.compact] replays the journal under the store's EXCLUSIVE lock, and
-// this function calls it on the first record of a process and on every
-// [journalLimit]th after — while `internal/provider`'s stream loop calls
-// [NoteThought] mid-answer, on the first visible word after a run of thought
-// (client.go, "THE FIRST WORD OF ANSWER IS WHAT ENDS A THOUGHT"). So one
-// request in five hundred and twelve, and the first one of every process, can
-// block on a file lock with a person watching the stream.
+// This used to compact inline, on the first record of a process and on every
+// [journalLimit]th after — with this ledger's mutex held, which the chooser
+// reads on every encode, over an exclusive flock, which takes no deadline and
+// which Go's scheduler cannot interrupt. On 2026-09-01 that arrangement sent
+// nothing at all for 29m49s: another process had the file, and this one was
+// inside the lock with the mutex every model call needs.
 //
-// The per-observation `save()` is gone and that was the big one — every
-// sighting used to marshal every belief and rename a file. What is left is
-// issue #264: an off-path writer and a non-blocking lock. It is recorded here
-// rather than fixed here because it is a change to who owns the writing, and
-// this lane may not take it.
+// So the compaction is somebody else's work now ([ledger.Persist]), and the
+// only thing on this path is an O_APPEND write and a signal that cannot block.
+// DEFERRING IS SAFE BY CONSTRUCTION: the observation is in the journal before
+// the signal is sent, so a compaction that never happens costs a longer replay
+// and not a belief.
 func (l *ledger) keep(entry record) {
 	if l.keeper == nil {
 		return
@@ -357,18 +379,156 @@ func (l *ledger) keep(entry record) {
 	}
 	l.appended++
 	if !l.settled || l.appended >= journalLimit {
-		l.compact(deep)
+		l.owe()
+	}
+}
+
+// owe says a compaction is worth doing, without doing it and without waiting to
+// say so. It is called with the lock held.
+func (l *ledger) owe() {
+	select {
+	case l.owed <- struct{}{}:
+	default:
 	}
 }
 
 // compact replays the journal under the exclusive lock, writes the state it
-// folded into, and empties the journal. It is called with the lock held.
-func (l *ledger) compact(deep deepStore) {
-	l.settled, l.appended = true, 0
-	_ = deep.hold(func(held storeState, records []record, skipped int) (storeState, bool) {
+// folded into, and empties the journal.
+//
+// IT IS CALLED WITHOUT THE LEDGER'S MUTEX AND TAKES IT ONLY AROUND THE
+// ARITHMETIC. That order is the whole of issue #264: asking for the file's lock
+// and holding this mutex at once is what turned one stuck lock into a silent
+// process. Here the asking, the reading and the rename all happen with the
+// mutex free, and the fold below holds it for the microseconds a replay costs.
+func (l *ledger) compact(deep deepStore) error {
+	err := deep.hold(func(held storeState, records []record, skipped int) (storeState, bool) {
+		l.mu.Lock()
+		defer l.mu.Unlock()
 		l.rebuild(held, records, skipped)
+		l.settled, l.appended = true, 0
 		return l.snapshot(), true
 	})
+	if err != nil {
+		l.deferWrite(err)
+	}
+	return err
+}
+
+// deferredNote is what a compaction that could not be done says. It is one
+// sentence because it goes in the call log, which is the file somebody reading
+// an incident already has open — and a run of thirty silent minutes with
+// nothing written anywhere is the state this whole issue is about.
+const deferredNote = "the belief file could not be compacted"
+
+// deferWrite counts a compaction that did not happen and says so, once each.
+func (l *ledger) deferWrite(reason error) {
+	l.mu.Lock()
+	l.deferred++
+	count := l.deferred
+	l.mu.Unlock()
+	calllog.Append(calllog.Record{
+		Tag:  "lanes",
+		Note: fmt.Sprintf("%s: %v (%d deferred so far; every observation is still in the journal)", deferredNote, reason, count),
+	})
+}
+
+// Deferred is how many compactions this ledger could not do. It is the counted
+// half of what [deferWrite] says in words, and it is what a test asserts on:
+// a deferral that were merely silent would be the original defect with the
+// symptom removed rather than the cause.
+func (l *ledger) Deferred() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.deferred
+}
+
+// ── THE ONE WRITER ──────────────────────────────────────────────────────────
+
+// compactRetry is how long the writer waits before asking again for a lock it
+// has just been refused, doubling to compactRetryMax. It backs off because a
+// file held for half an hour would otherwise be a line a second in the log, and
+// because a compaction gets no more urgent for being asked for twice.
+const (
+	compactRetry    = time.Second
+	compactRetryMax = time.Minute
+)
+
+// Persist compacts the belief file whenever one is owed, and never anywhere
+// else. It returns when ctx is done.
+//
+// IT STARTS NOTHING, for the reason [Beat] starts nothing: who is writing, and
+// when, is a question with an answer in the session's own code rather than in a
+// package nobody thought was running (sheet.go). A process that never runs it
+// keeps every observation in the journal and pays a longer replay next time; it
+// loses nothing.
+func (l *ledger) Persist(ctx context.Context) {
+	backoff := compactRetry
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-l.owed:
+		}
+		if l.write() == nil {
+			backoff = compactRetry
+			continue
+		}
+		// A LOCK THIS PROCESS COULD NOT TAKE IS A COMPACTION OWED, NOT ONE
+		// LOST. It is asked for again after a pause; the journal it would have
+		// emptied keeps growing meanwhile, and that longer replay is the entire
+		// price of somebody else holding the file.
+		l.owe()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff *= 2; backoff > compactRetryMax {
+			backoff = compactRetryMax
+		}
+	}
+}
+
+// Flush does the compaction that is owed, once, and returns. It is what a
+// process on its way out calls so that a run which learned something leaves a
+// state file behind it rather than a journal for the next one to replay.
+//
+// It takes no deadline because it cannot need one: the lock underneath is asked
+// for and never waited on (store.go).
+func (l *ledger) Flush() error {
+	select {
+	case <-l.owed:
+	default:
+		return nil
+	}
+	return l.write()
+}
+
+// write is one compaction, on whichever goroutine owns the writing.
+func (l *ledger) write() error {
+	l.mu.Lock()
+	deep, ok := l.keeper.(deepStore)
+	l.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return l.compact(deep)
+}
+
+// Persist runs the process's belief writer until ctx is done. The session
+// starts it beside the beat, and for the same reason that one is started there.
+func Persist(ctx context.Context) {
+	if writer, ok := Default().Ledger().(interface{ Persist(context.Context) }); ok {
+		writer.Persist(ctx)
+	}
+}
+
+// Flush writes down what the writer has not reached yet. It is called on the
+// way out of a process, beside the beat's own stop.
+func Flush() {
+	if writer, ok := Default().Ledger().(interface{ Flush() error }); ok {
+		_ = writer.Flush()
+	}
 }
 
 // snapshot is everything this ledger would have written down.
