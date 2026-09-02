@@ -17,10 +17,11 @@ package tui3
 // the only blocks the frame clock walks are the ones those pointers name
 // ([app.liveRevealing]). So a block that left the live state with an unread
 // remainder has nobody left to finish it: it freezes mid-word for the rest of
-// the session, and every reading taken off it afterwards inherits the truncation
-// — [promoteBlock] cuts markdown on the DRAWN prefix, so a settle that promoted
-// before the edge was whole would format twelve bytes and leave the paragraph
-// they came from as a line of source.
+// the session, and no later frame ever puts it right because no later frame can
+// see it. Every reading taken off the block afterwards inherits that truncation:
+// [promoteBlock] and [app.assistantRows] both cut on the DRAWN prefix while a
+// block is unsettled, so the page goes on drawing the twelve bytes the edge had
+// reached at the moment the pointer went.
 //
 // SO THERE IS ONE DOOR AND NOT SIX. A turn settling, a person's line landing, a
 // cut stream, a thought folding, a node's page finishing and an errand's reply
