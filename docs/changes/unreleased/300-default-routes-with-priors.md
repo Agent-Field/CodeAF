@@ -14,3 +14,15 @@ The wire is unchanged: it still sends the alias, the panel still shows it, and
 the profile still keys its history the way it did. Only the two reads that name
 a belief resolve — the sighting side and the beat — so one model has one ledger
 key, the sheet lands under it, and the chooser has something to rank.
+
+Measured on the shipped defaults, 2026-09-02: one `aforge do` against
+`~deepseek/deepseek-v4-flash-latest` left a ledger with ONE identity in it,
+`deepseek/deepseek-v4-flash-0731`, where before it would have left two.
+
+Two limits, so nobody reads more into this than it says. `aforge do` runs no
+lane beat at all — `startLaneBeat` is on `session.Agent`, which the chat paths
+build and the headless ones do not — so a headless run still has no sheet and
+still learns only from what it has served. And a process that dies before its
+catalog warms files its records under the alias, because a cold catalog answers
+the id as written; `profile.Load` adopts such early keys and the lane ledger has
+no equivalent merge yet.
