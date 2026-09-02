@@ -432,6 +432,16 @@ disk when you switched away from them.
 - Closing the terminal window is not a quit aforge sees; the draft written 300ms after
   you stopped typing is what survives that.
 
+## Quitting while a task is running — what happens to tasks and background work when the session closes
+
+Every task this session is running is stopped when the session closes, and aforge waits for
+all of them before it leaves. A task that was only just admitted is stopped before it opens
+anything — no worktree, no log, no model call for a session that has left. Nothing can
+start in the session afterwards: `this session has closed; nothing new starts in it`.
+
+Background jobs go the same way, a moment later. What a task wrote is on its branch and
+stays there; a stop is an interruption and never a finding about the work.
+
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
 This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
