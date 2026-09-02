@@ -935,12 +935,13 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// it as an ordinary entry.
 		//
 		// AND IT SAYS WHAT IT WAS PART OF, on the person's own block's terms
-		// (turncontext.go): a correction typed into a NAMED working context is a
-		// thing said into that context exactly as the question was, and it would be
-		// the only sentence of theirs on the page that did not name where it went.
-		// An ordinary correction — every one typed in this conversation — carries
-		// no context and adds nothing at all.
-		return a.turnContextRows(a.steerBlockRows(e, width), e.context, width)
+		// (turncontext.go, applied inside [app.steerBlockRows] so that the mark sits
+		// with the sentence and the passing clause stays last): a correction typed
+		// into a NAMED working context is a thing said into that context exactly as
+		// the question was, and it would otherwise be the only sentence of theirs on
+		// the page that did not name where it went. An ordinary correction — every
+		// one typed in this conversation — carries no context and adds nothing.
+		return a.steerBlockRows(e, width)
 
 	case entryAssistant:
 		return a.linkPaths(a.assistantRows(i, e, width))

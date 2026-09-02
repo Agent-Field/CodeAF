@@ -480,7 +480,15 @@ func (a *app) steerBlockRows(e *entry, width int) []string {
 	if e.steer == nil || width < 4 {
 		return nil
 	}
-	return a.linkPaths(a.elbowRows(*e.steer, width))
+	// THE THREE PASSES ARE IN THIS ORDER FOR THE PERSON'S OWN BLOCK'S REASONS
+	// (render.go's entryUser). The paths in the words become doors; then the turn
+	// says what it was part of, and NOTHING IN THAT MARK MAY BECOME A DOOR — it is
+	// this surface talking about the sentence, not a word of it; then the clause,
+	// last, because it is the one part of the row that is about RIGHT NOW and goes
+	// when right now does.
+	rows := a.linkPaths(a.elbowWords(*e.steer, width))
+	rows = a.turnContextRows(rows, e.context, width)
+	return a.elbowClause(rows, *e.steer, width)
 }
 
 // elbowRows is one correction: its glyph, its words, and — while the model has
@@ -490,6 +498,12 @@ func (a *app) steerBlockRows(e *entry, width int) []string {
 // character, which is [bandClauses]' rule and the person's own block's: the
 // glyph marks the correction and the column belongs to the sentence.
 func (a *app) elbowRows(elbow steerElbow, width int) []string {
+	return a.elbowClause(a.elbowWords(elbow, width), elbow, width)
+}
+
+// elbowWords is the correction itself: the glyph and the person's sentence, in
+// the tier this frame draws it in.
+func (a *app) elbowWords(elbow steerElbow, width int) []string {
 	mark := steerGlyph(a.pal)
 	cols := ansi.StringWidth(mark)
 	lead := strings.Repeat(" ", cols)
@@ -503,17 +517,44 @@ func (a *app) elbowRows(elbow steerElbow, width int) []string {
 		}
 		out = append(out, lead+ink(line))
 	}
+	return out
+}
+
+// elbowClause hangs the one clause this frame owes off the sentence: the working
+// clause while the model has not been given the words, the delivery receipt while
+// that is still news, and nothing at all once both are past — which is what a
+// settled correction is.
+//
+// It goes on the row the sentence ended on when there is room — the spacing
+// ladder's clause step, exactly as the turn's context mark takes it
+// (turncontext.go) — and on a row of its own when there is not.
+func (a *app) elbowClause(out []string, elbow steerElbow, width int) []string {
 	if len(out) == 0 {
 		return out
 	}
+	plain, painted := a.elbowClauseWords(elbow)
+	if plain == "" {
+		return out
+	}
+	lead := strings.Repeat(" ", ansi.StringWidth(steerGlyph(a.pal)))
+	// The clause is MEASURED on its plain text and appended already PAINTED,
+	// because a painted run carries its own reset and cannot be measured.
+	if ansi.StringWidth(out[len(out)-1]+steerClauseSep+plain) <= width {
+		out[len(out)-1] += a.pal.dim(steerClauseSep) + painted
+		return out
+	}
+	return append(out, lead+painted)
+}
+
+// elbowClauseWords is the clause as text and as paint, or two empty strings for
+// a correction that has nothing left to say about itself.
+func (a *app) elbowClauseWords(elbow steerElbow) (string, string) {
 	if elbow.consumed {
 		// THE DELIVERY RECEIPT, while it is still news. It is the only clause a
 		// settled elbow ever wears, and only a correction that crossed to another
 		// agent has one.
-		if word := a.elbowReceipt(elbow); word != "" {
-			return a.elbowClause(out, lead, word, a.pal.dim(word), width)
-		}
-		return out
+		word := a.elbowReceipt(elbow)
+		return word, a.pal.dim(word)
 	}
 	// THE WORKING CLAUSE. Its words are the engine's account of where this
 	// correction is landing, and [steerPendingWord] only when it sent none.
@@ -522,24 +563,7 @@ func (a *app) elbowRows(elbow steerElbow, width int) []string {
 		word = steerPendingWord
 	}
 	spin := a.steerSpin()
-	return a.elbowClause(out, lead, spin+" "+word,
-		a.pal.muted(spin)+a.pal.dim(" "+word), width)
-}
-
-// elbowClause hangs one clause off the correction: on the row the sentence
-// ended on when there is room — the spacing ladder's clause step, exactly as the
-// turn's context mark takes it (turncontext.go) — and on a row of its own when
-// there is not.
-//
-// It is measured on the clause's PLAIN text and appended already PAINTED,
-// because a painted run carries its own reset and cannot be measured.
-func (a *app) elbowClause(out []string, lead, plain, painted string, width int) []string {
-	room := ansi.StringWidth(steerClauseSep + plain)
-	if ansi.StringWidth(out[len(out)-1])+room <= width {
-		out[len(out)-1] += a.pal.dim(steerClauseSep) + painted
-		return out
-	}
-	return append(out, lead+painted)
+	return spin + " " + word, a.pal.muted(spin) + a.pal.dim(" "+word)
 }
 
 // elbowReceipt is the delivery clause this frame draws, or "" once it has

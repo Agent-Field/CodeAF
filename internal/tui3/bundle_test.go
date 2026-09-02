@@ -1,7 +1,9 @@
 package tui3
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -4108,8 +4110,21 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	if !strings.HasPrefix(said, sgrOf(a.pal.dim)) {
 		t.Fatalf("the elbow glyph is not dim furniture: %q", said)
 	}
-	if !strings.Contains(said, sgrOf(a.pal.narr)+"the config lives under etc/") {
-		t.Fatalf("the correction's words are not one step under a question's: %q", said)
+	// Past the whole ramp, so what is left is the tier the row RESTS at: the
+	// person's own prose one reading step under a question's, never the accent.
+	a.clock = func() time.Time { return time.Now().Add(hudWarm + time.Second) }
+	a.roomTouched()
+	settled := ""
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
+			settled = r.text
+		}
+	}
+	if !strings.Contains(settled, sgrOf(a.pal.narr)+"the config lives under etc/") {
+		t.Fatalf("the correction's words are not one step under a question's: %q", settled)
+	}
+	if strings.Contains(settled, sgr256(hueAccent)) {
+		t.Fatalf("the correction spent the accent a question is drawn in: %q", settled)
 	}
 	if strings.Contains(roomText(a), "› the config lives under etc/") {
 		t.Fatalf("the correction was drawn as a question of its own:\n%s", roomText(a))
@@ -4413,9 +4428,19 @@ func (noReaderRefusal) Unwrap() error { return session.ErrNobodyToRead }
 // replay.go's replayUserLine, which this is the third reader of).
 func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
 	a, agent, _ := roomApp(t)
+	// THE FILE IS REALLY THERE, digest and all. A page reads the record the way
+	// the conversation does now (#252), and the conversation says so when a
+	// picture's file has gone — so a fixture pointing at nothing would be testing
+	// the missing-file sentence rather than the marker.
+	picture := filepath.Join(t.TempDir(), "chart.png")
+	if err := os.WriteFile(picture, []byte("not really a png"), 0o600); err != nil {
+		t.Fatalf("writing the picture: %v", err)
+	}
+	sum := sha256.Sum256([]byte("not really a png"))
 	agent.journal = roomJournal(t,
 		`{"type":"message","role":"user","content":"what is wrong with this",`+
-			`"parts":[{"type":"image","path":"/tmp/lab/chart.png","sha256":"abc"}]}`,
+			`"parts":[{"type":"image","path":`+strconv.Quote(picture)+
+			`,"sha256":"`+hex.EncodeToString(sum[:])+`"}]}`,
 	)
 	clickRail(t, a, 0)
 
@@ -4423,7 +4448,7 @@ func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
 	if !strings.Contains(page, "[#1 chart.png]") {
 		t.Fatalf("a page dropped the message's picture:\n%s", page)
 	}
-	if strings.Contains(page, "/tmp/lab/chart.png") {
+	if strings.Contains(page, picture) {
 		t.Fatalf("a page drew the whole path instead of the name:\n%s", page)
 	}
 }
