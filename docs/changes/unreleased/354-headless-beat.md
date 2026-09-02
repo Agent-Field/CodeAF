@@ -2,7 +2,7 @@
 kind: fixed
 title: the headless doors fetch a lane sheet of their own
 pr: 354
-surface: [engine, headless]
+surface: [engine, resident]
 invalidates:
   - "The lane-sheet beat was a session's errand and lived on `session.Agent` alone. It is also the process's: `cmd/aforge`'s `startLaneBeat` (lanebeat.go) is seated at `installMeasuredRulers`, so `do`, `run` and `run subharness` — none of which build a session — fetch an endpoints page too."
   - "`aforge do` left `$AFORGE_HOME/v3/lanes/` empty and a ledger holding the one lane each run was served by. It leaves a sheet cache per model and a belief per lane with `Facts.Known()` true, so the chooser ranks a frontier on a headless-only install."
