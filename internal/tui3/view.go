@@ -283,6 +283,10 @@ func (a *app) frame() (string, int, int) {
 	// conversation, which is [app.expandShowing]'s own rule below.
 	if a.jobPageOpen() {
 		if lines, _, caretX, caretY := a.jobPageFrame(width, height); len(lines) > 0 {
+			// NOTHING ON THIS PAGE IS TYPED INTO — a blinking bar at (0, 0) was
+			// a cursor with no box, the same law home-at-rest and the task card
+			// follow by hiding the caret rather than parking it on the title.
+			a.caret = false
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}

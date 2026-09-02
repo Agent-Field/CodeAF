@@ -394,8 +394,15 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 
 // jobPageTitle is the head: what this job is called on the left, and how to
 // get back on the right. It is [app.taskCardTitle] pointed at a job.
+//
+// THE TITLE IS THE NAME, OR THE HANDLE WHEN THERE IS NO NAME YET. It is never
+// the raw command: the body already draws the command in full, and putting the
+// same string in the head made a page that said the command twice and hid the
+// number a person came looking for (`job 8`). Until the namer answers, `job N`
+// is the honest title — short, stable, and the same handle the foot and the
+// column already use.
 func (a *app) jobPageTitle(width int, job session.JobNotice) string {
-	words := strings.TrimSpace(job.Label())
+	words := strings.TrimSpace(job.Name)
 	if words == "" {
 		words = jobPageHandle(job.ID)
 	}

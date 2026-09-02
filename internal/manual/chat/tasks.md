@@ -1219,13 +1219,28 @@ A command that is a script — a pipe, a quote, a dollar, or more than four word
 one the namer is asked about. Four words is a cap, not a target: a two-word name is left
 at two.
 
-## What a job's row shows — exited 1, stopped, how a job ended, the clock while it runs
+## What a job's row shows — exited 1, stopped, done, how a job ended, the clock while it runs
 
-**A job's row shows its name on the left and, on the right, its clock while running or
-how it ended.** A running job's figure is the clock (`4m12s`). A clean finish shows just
-the duration. A non-zero exit reads `exited 1`. A job somebody ended reads `stopped`.
-Under a second there is no clock — `0s` on a row that has just begun would be a figure
-that has to be read to learn nothing.
+**A job's row shows its name on the left and, on the right, its number and either
+the clock or how it ended.** The number is the handle — the same `3` in `job 3`,
+`jobs kill 3` and `job:3`. The shapes:
+
+```
+3 · 4m12s
+3 · done
+3 · exited 1
+3 · stopped
+```
+
+A running job's figure is the clock (`4m12s`). A clean finish reads `done` — how
+long it ran is on the page, not restated here, because a frozen clock and a
+ticking one are the same shape at a glance. A non-zero exit reads `exited 1`. A
+job somebody ended reads `stopped`. Under a second there is no clock on a
+running row — `0s` on a row that has just begun would be a figure that has to be
+read to learn nothing — and the number still stands alone.
+
+A running name is drawn in the column's working ink; a settled one is muted. That
+is the same brightness the roster already uses for live work versus history.
 
 **The absolute log path is off the row.** It used to sit under the name as
 `job 3 · log /…/3.log`. It is on the job's page now. Open the row (enter or a click) to
@@ -1275,9 +1290,11 @@ conversation interrupts the turn and does **not** stop background jobs.
 
 ## Opening a job's page — where is a job's log path, a job is not a chat, copy the log path
 
-**Opening a job opens a page, not a chat.** It is a full-frame card: the name, the handle
-`job 3`, the command, the clock or ending, the log tail, and a foot. There is no composer
-on the page at all, so there is nothing to refuse. The old feet
+**Opening a job opens a page, not a chat.** It is a full-frame card: the name (or
+`job 3` until the name arrives), the handle and clock or ending on the next line, the
+command in full, the log tail, and a foot. There is no composer on the page at all, so
+there is nothing to refuse. The title is never the raw command — that lives once, in the
+body — so the number is always visible in the head. The old feet
 `this log grows as the job works — say it to main` and
 `a background job keeps a log, not a transcript` are gone.
 

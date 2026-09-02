@@ -294,8 +294,11 @@ func TestAJobsSectionCountsTheRemainderOnAnEarlierLine(t *testing.T) {
 	}
 }
 
-// A FAILED JOB SAYS `exited 1`. A STOPPED ONE SAYS `stopped`. A CLEAN FINISH
-// CARRIES ITS DURATION AND NOT A SECOND WORD FOR THE STATE.
+// A FAILED JOB SAYS `N · exited 1`. A STOPPED ONE SAYS `N · stopped`. A CLEAN
+// FINISH SAYS `N · done`. A RUNNING ONE SAYS `N · 4m12s`. The number is the
+// handle; the word (or clock) is the state. Duration on a clean finish lives
+// on the page, not restated here — a frozen clock and a ticking one were the
+// same shape at a glance.
 func TestAJobsRowSaysHowItEnded(t *testing.T) {
 	now := jobViewNow()
 	pal := jobViewPal()
@@ -305,18 +308,33 @@ func TestAJobsRowSaysHowItEnded(t *testing.T) {
 		doneJob(3, "seed the fixtures", 12*time.Second),
 	}, true, now, 40, 20, pal)
 	text := jobJoined(rows)
-	if !strings.Contains(text, jobsExitedWord+" 1") {
-		t.Fatalf("a failed job did not say %q:\n%s", jobsExitedWord+" 1", text)
+	if !strings.Contains(text, "1"+railSep+jobsExitedWord+" 1") {
+		t.Fatalf("a failed job did not say %q:\n%s", "1"+railSep+jobsExitedWord+" 1", text)
 	}
-	if !strings.Contains(text, jobsStoppedWord) {
-		t.Fatalf("a stopped job did not say %q:\n%s", jobsStoppedWord, text)
+	if !strings.Contains(text, "2"+railSep+jobsStoppedWord) {
+		t.Fatalf("a stopped job did not say %q:\n%s", "2"+railSep+jobsStoppedWord, text)
+	}
+	if !strings.Contains(text, "3"+railSep+jobsDoneWord) {
+		t.Fatalf("a clean finish did not say %q:\n%s", "3"+railSep+jobsDoneWord, text)
 	}
 	clock := tokens.Duration(12 * time.Second)
-	if !strings.Contains(text, clock) {
-		t.Fatalf("a clean finish did not carry %q:\n%s", clock, text)
+	if strings.Contains(text, clock) {
+		t.Fatalf("a clean finish restated its duration on the row:\n%s", text)
 	}
-	if strings.Contains(text, string(session.JobDone)) {
-		t.Fatalf("a clean finish restated its state:\n%s", text)
+}
+
+// A RUNNING ROW CARRIES ITS NUMBER BESIDE ITS CLOCK, so eleven similar
+// commands stay distinguishable without opening each page.
+func TestARunningJobsRowCarriesItsNumber(t *testing.T) {
+	now := jobViewNow()
+	age := 4*time.Minute + 12*time.Second
+	rows := jobSectionRows(
+		[]session.JobNotice{liveJob(8, "sleep job eight done", age)},
+		nil, true, now, 40, 20, jobViewPal())
+	text := jobJoined(rows)
+	want := "8" + railSep + tokens.Duration(age)
+	if !strings.Contains(text, want) {
+		t.Fatalf("a running row did not say %q:\n%s", want, text)
 	}
 }
 

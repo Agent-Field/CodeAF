@@ -32,13 +32,18 @@ const (
 	jobsRanWord     = "ran"
 	jobsEarlierWord = "earlier"
 	// jobsExitedWord is a failed job's ending: the process left a non-zero code,
-	// and that code is the news. A clean exit has no extra word — the duration
-	// is what the state already says.
+	// and that code is the news.
 	jobsExitedWord = "exited"
 	// jobsStoppedWord is a job somebody ended rather than one that finished.
 	// It is its own word because "it failed" and "you stopped it" are different
 	// news about a process that is equally not running.
 	jobsStoppedWord = "stopped"
+	// jobsDoneWord is a clean finish. It is a word of its own — not the
+	// duration alone — because a frozen clock and a ticking one are the same
+	// shape at a glance, and a column of eleven sleeps needs a state a person
+	// can read without watching the digits move. How long it ran lives on the
+	// page ([jobPageEnding]).
+	jobsDoneWord = "done"
 )
 
 // jobSectionRows is the jobs section as the column draws it.
@@ -164,14 +169,17 @@ func jobSectionHead(live, settled []session.JobNotice, open bool, now time.Time,
 
 // jobRowLine is one job as one line: the name on the left and a dim figure on
 // the right, which is the roster's own row grammar ([app.railEntryRows]) rather
-// than a second one. A running job's figure is the clock; a settled one's is
-// how it ended.
+// than a second one. The figure always leads with the job's own number — the
+// handle `jobs kill` and `job:3` take — so eleven similar commands stay
+// distinguishable, and then the clock or the ending.
 func jobRowLine(job session.JobNotice, now time.Time, width int, pal palette) string {
 	meta := jobRightWord(job, now)
 	indent := "  "
 	room := width - ansi.StringWidth(indent)
 	if meta != "" && room-ansi.StringWidth(meta)-1 < railTitleFloor {
-		meta = ""
+		// KEEP THE HANDLE even when the status will not fit: a row that lost
+		// its number is a row a person cannot aim `jobs kill` at by sight.
+		meta = itoa(job.ID)
 	}
 	if meta != "" {
 		room -= ansi.StringWidth(meta) + 1
@@ -202,17 +210,32 @@ func jobEarlierLine(n, width int, pal palette) string {
 	return pal.dim(fit(text, width))
 }
 
-// jobRightWord is the figure on the right of a job row, or "" when there is
-// nothing worth saying. A running job and a clean finish both show the clock;
-// a failure shows the exit; a stop shows that it was stopped.
+// jobRightWord is the figure on the right of a job row. It always carries the
+// job's number, then the clock while the process runs or the word for how it
+// ended — so the column answers "which job" and "is it still going" in one
+// glance without a second column of chrome.
+//
+//	3 · 49s
+//	3 · done
+//	3 · exited 1
+//	3 · stopped
 func jobRightWord(job session.JobNotice, now time.Time) string {
+	id := itoa(job.ID)
+	var status string
 	switch job.State {
 	case session.JobFailed:
-		return jobsExitedWord + " " + itoa(job.ExitCode)
+		status = jobsExitedWord + " " + itoa(job.ExitCode)
 	case session.JobStopped:
-		return jobsStoppedWord
+		status = jobsStoppedWord
+	case session.JobDone:
+		status = jobsDoneWord
+	default:
+		status = jobClock(job, now)
 	}
-	return jobClock(job, now)
+	if status == "" {
+		return id
+	}
+	return id + railSep + status
 }
 
 // jobClock is how long this job has been running, or ran, in the column's

@@ -3408,8 +3408,14 @@ func (a *app) railRows(height int) []string {
 	out := make([]string, len(view))
 	for i, line := range view {
 		lead := seam
+		// A JOB ROW takes the accent mark the way a task row does. The jobs
+		// SECTION LABEL does not — replacing the seam there with ▌ left a notch
+		// in the continuous │, which read as a glitch on a line that is a fold
+		// toggle rather than a piece of work. The cursor band still lands on
+		// the label (jobHere below), so the keyboard's place is not silent.
 		jobHere := (a.railWhere.jobs && line.jobs) || (a.railWhere.job != 0 && line.job == a.railWhere.job)
-		if (focus >= 0 && line.head && line.entry == focus) || jobHere {
+		jobRowHere := a.railWhere.job != 0 && line.job == a.railWhere.job
+		if (focus >= 0 && line.head && line.entry == focus) || jobRowHere {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text

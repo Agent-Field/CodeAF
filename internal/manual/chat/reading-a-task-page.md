@@ -103,8 +103,10 @@ same for the task's page.
 ## Watch a background job's log — the page tails it live, where is the log
 
 Press `enter` on the job's row in the `jobs` section, or click it. Opening a job opens a
-**page**, not a chat: a full-frame card with the name, the handle `job 4`, the command, the
-clock or ending, the log tail, and a foot. There is no composer on it at all.
+**page**, not a chat: a full-frame card with the name (or `job 4` until one arrives), the
+handle and clock or ending, the command, the log tail, and a foot. The title is the name
+or the handle — never the raw command, which the body draws once. There is no composer on
+it at all.
 
 The log is the last **200** lines of the file, oldest at the top and newest at the bottom,
 dim, re-read four times a second for as long as the job is running. Colour codes and

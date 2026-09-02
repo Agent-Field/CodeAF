@@ -110,6 +110,37 @@ func TestAJobsPageDrawsTheNameTheHandleAndTheCommand(t *testing.T) {
 	}
 }
 
+// AN UNNAMED JOB'S TITLE IS THE HANDLE, NEVER THE COMMAND. The body already
+// draws the command once; repeating it in the head hid the number and made the
+// page say the same string twice.
+func TestAnUnnamedJobsPageTitleIsTheHandle(t *testing.T) {
+	const command = `sleep 50 && echo "job 4 done"`
+	job := session.JobNotice{
+		ID:      8,
+		Command: command,
+		State:   session.JobRunning,
+		LogPath: jobLogFile(t),
+		Started: taskFixtureNow,
+		Elapsed: 33 * time.Second,
+	}
+	a := jobPageApp(t, job)
+	width, _ := a.size()
+	title := ansi.Strip(a.jobPageTitle(width, job))
+	if !strings.Contains(title, "job 8") {
+		t.Fatalf("an unnamed job's title is not the handle: %q", title)
+	}
+	if strings.Contains(title, "sleep") || strings.Contains(title, command) {
+		t.Fatalf("an unnamed job's title repeated the command: %q", title)
+	}
+	text := jobPageText(a)
+	if !strings.Contains(text, command) {
+		t.Fatalf("the body dropped the command:\n%s", text)
+	}
+	if strings.Count(text, "sleep 50") != 1 {
+		t.Fatalf("the command was drawn more than once:\n%s", text)
+	}
+}
+
 func TestARunningJobsFootOffersAStopAndASettledOneDoesNot(t *testing.T) {
 	log := jobLogFile(t)
 	running := jobPageApp(t, jobNotice(3, session.JobRunning, "ffmpeg -i in.mp4 out.mp4", log))
