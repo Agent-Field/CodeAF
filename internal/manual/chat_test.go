@@ -918,6 +918,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person asks about the word, or about the model they never picked.
 		{"why does my run say inherited", "models-and-cost"},
 		{"my crew was set before the work seat existed", "models-and-cost"},
+		// And the same substitution met in the conversation, where the person
+		// has no models line to read the word off — they ask about the task.
+		{"why is my task running on a model I did not pick", "models-and-cost"},
+		{"my work seat is inherited from small work", "models-and-cost"},
 		// The onboarding wave: the five seats. /crew and /model became two dials
 		// a person can see as two — the confirm line names the model it left
 		// alone, bare /crew opens with seat one, and the status line carries

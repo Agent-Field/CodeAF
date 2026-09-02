@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -484,5 +487,232 @@ func TestApplyingACrewLeavesNoSeatToInherit(t *testing.T) {
 		if seats := ResolveSeats(dir, "", ""); seats.Work.Source != SeatCrew {
 			t.Errorf("%s: the work seat reads %s", preset, seats.Work.Rung())
 		}
+	}
+}
+
+// THE SAME LADDER, READ THE WAY A CONVERSATION READS IT.
+//
+// #312 is #302 on the other surface. The chat's role map, the settings sheet and
+// the crew word all resolve a tier row through [TierModelAt], which knew two
+// answers — the row somebody wrote, and this build's choice — so a profile older
+// than the worker seat handed every task started in a conversation to the build's
+// default while the same profile handed `aforge do` the crew's own model. The
+// rung is the same rung; what this table pins is that adding it moved NOTHING
+// else: a row written, a row cleared and a profile with no rows at all read
+// exactly what they read before, on every tier.
+func TestATierRowIsSeatedTheWayAConversationReadsIt(t *testing.T) {
+	const small = "vendor/my-small-work"
+	for _, test := range []struct {
+		name string
+		// rows is the profile's config.json, written as a profile of that
+		// vintage holds it: a key present with a value, a key present and empty,
+		// or a key that is simply not there.
+		rows   map[string]string
+		tier   string
+		model  string
+		source SeatSource
+		from   string
+	}{
+		{
+			name:  "a key that was never held on a profile older than the seat takes the row it was split out of",
+			rows:  map[string]string{KeyTierLowModel: small},
+			tier:  ModelTierWorker,
+			model: small, source: SeatInherited, from: ModelTierLow,
+		},
+		{
+			name:  "a row somebody wrote is the crew answering and nothing climbs past it",
+			rows:  map[string]string{KeyTierLowModel: small, KeyTierWorkerModel: "vendor/my-worker"},
+			tier:  ModelTierWorker,
+			model: "vendor/my-worker", source: SeatCrew,
+		},
+		{
+			// The decision this whole rung is fenced against: emptying a row is
+			// somebody saying "follow the conversation", and a conversation is
+			// the one thing that CAN. It must not start inheriting.
+			name:  "a row cleared on purpose still follows the conversation",
+			rows:  map[string]string{KeyTierLowModel: small, KeyTierWorkerModel: ""},
+			tier:  ModelTierWorker,
+			model: "", source: SeatDefault,
+		},
+		{
+			name:  "a profile that has said nothing still reads this build's choice",
+			rows:  map[string]string{},
+			tier:  ModelTierWorker,
+			model: DefaultWorkerModel, source: SeatDefault,
+		},
+		{
+			// An ancestor that was itself cleared is not an answer either: the
+			// walk stops at the row that was written, and an empty one is not.
+			name:  "an ancestor cleared on purpose is not inherited from",
+			rows:  map[string]string{KeyTierLowModel: ""},
+			tier:  ModelTierWorker,
+			model: DefaultWorkerModel, source: SeatDefault,
+		},
+		{
+			// And a tier with no ancestor is untouched by any of it.
+			name:  "a row that was always here has nothing to inherit",
+			rows:  map[string]string{KeyTierLowModel: small},
+			tier:  ModelTierHigh,
+			model: DefaultHighModel, source: SeatDefault,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := writeProfileRows(t, test.rows)
+			seat := TierSeatAt(dir, test.tier)
+			if seat.Model != test.model || seat.Source != test.source || seat.From != test.from {
+				t.Errorf("the %s row seats %q (%s from %q), want %q (%s from %q)",
+					test.tier, seat.Model, seat.Source, seat.From, test.model, test.source, test.from)
+			}
+			// AND THE MODEL EVERY OTHER CALLER READS IS THIS SEAT'S MODEL. The
+			// sheet, the crew word and the conversation's role map all go
+			// through TierModelAt, and a seat that disagreed with it would be a
+			// receipt about a model nothing runs on.
+			if got := TierModelAt(dir, test.tier); got != seat.Model {
+				t.Errorf("TierModelAt reads %q while the seat reads %q", got, seat.Model)
+			}
+		})
+	}
+}
+
+// THE LINE IS THE SAME LINE ON BOTH SURFACES, and the noun in it is the row a
+// person can go and find. A second wording for one fact is how somebody
+// concludes the two surfaces are doing two different things.
+func TestAnInheritedTierSeatSaysTheSameSentenceTheRunSays(t *testing.T) {
+	dir := writeProfileRows(t, map[string]string{KeyTierLowModel: "vendor/my-small-work"})
+	t.Setenv(ModelEnv, "")
+	t.Setenv(PlanModelEnv, "")
+
+	seat := TierSeatAt(dir, ModelTierWorker)
+	if got, want := seat.Notice(), ResolveSeats(dir, "", "").Work.Notice(); got != want {
+		t.Fatalf("the conversation reads\n\t%s\nand the run reads\n\t%s", got, want)
+	}
+	if got := seat.FromWords(); got != "small work" {
+		t.Errorf("the row is called %q here and `small work` on the settings sheet", got)
+	}
+	// Every other shape says nothing at all, which is what makes the line worth
+	// reading when it is there.
+	for name, rows := range map[string]map[string]string{
+		"a pinned row":  {KeyTierWorkerModel: "vendor/my-worker"},
+		"a cleared row": {KeyTierLowModel: "vendor/my-small-work", KeyTierWorkerModel: ""},
+		"no rows":       {},
+	} {
+		seat := TierSeatAt(writeProfileRows(t, rows), ModelTierWorker)
+		if notice := seat.Notice(); notice != "" {
+			t.Errorf("%s was told about an inheritance that did not happen: %q", name, notice)
+		}
+		if words := seat.FromWords(); words != "" {
+			t.Errorf("%s names a row it did not inherit from: %q", name, words)
+		}
+	}
+}
+
+// ONE READER OF A TIER ROW, AND EVERY SURFACE BEHIND IT.
+//
+// The defect was not that the ladder was wrong — it was that the conversation
+// had a second, shorter one. So this reads the sources and states the law twice:
+// inside this package, only the file that owns the ladder turns a tier key into
+// a MODEL (asking whether a key exists is a different question, and
+// [CrewConfigured] asks it), and outside it nobody spells a tier key at all. A
+// surface that wants a model asks [TierModelAt]; one that also wants the rung
+// asks [TierSeatAt]; nobody opens the file for themselves.
+func TestEveryReadOfATierRowGoesThroughTheLadder(t *testing.T) {
+	root := moduleRoot(t)
+	inside, err := filepath.Glob(filepath.Join(root, "internal", "config", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range inside {
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, "_test.go") || base == "seats.go" {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if !strings.Contains(line, "tierKeyFor(") || !strings.Contains(line, "persistedString(") {
+				continue
+			}
+			// `_, ok :=` is the presence question and is nobody's second ladder.
+			if !strings.Contains(line, "_, ok :=") && !strings.Contains(line, "_, held :=") {
+				t.Errorf("%s reads the VALUE of a tier row for itself: %q\n\tthe ladder is seats.go's, and a "+
+					"second reader is how `unset` comes to mean one thing here and another there",
+					base, strings.TrimSpace(line))
+			}
+		}
+	}
+	// And outside this package, nothing spells a tier key at all.
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil
+		case entry.IsDir():
+			if name := entry.Name(); name == ".git" || name == "bin" || name == "bench" {
+				return filepath.SkipDir
+			}
+			return nil
+		case !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go"):
+			return nil
+		case strings.HasPrefix(path, filepath.Join(root, "internal", "config")):
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		if strings.Contains(string(raw), `"models.tiers.`) {
+			rel, _ := filepath.Rel(root, path)
+			t.Errorf("%s spells a tier key by hand instead of asking the ladder", rel)
+		}
+		return nil
+	})
+	// AND THE CONVERSATION'S OWN ROLE MAP IS ON IT. This is the wiring #312 was
+	// about: the three rows the chat resolves from the profile go through this
+	// package, which is what makes the worker row inherit there too.
+	raw, err := os.ReadFile(filepath.Join(root, "cmd", "aforge", "chatv3.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tier := range []string{"ModelTierReflex", "ModelTierMastermind", "ModelTierWorker"} {
+		if want := "config.TierModelAt(c.profileDir, config." + tier + ")"; !strings.Contains(string(raw), want) {
+			t.Errorf("the chat door does not seat the %s row through the ladder (%s)", tier, want)
+		}
+	}
+}
+
+// writeProfileRows makes a throwaway profile holding exactly these keys — a
+// value for a row somebody wrote, the empty string for a row they cleared, and
+// nothing at all for a key of a vintage that never had one.
+func writeProfileRows(t *testing.T, rows map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(BudgetConfigPath(dir), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// moduleRoot walks up to the directory holding go.mod, for the two tests that
+// read the tree they are part of.
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("no go.mod above %s", dir)
+		}
+		dir = parent
 	}
 }

@@ -174,7 +174,12 @@ func (a *app) openSetup(allowed bool) {
 		return
 	}
 	a.setup = setupFlow{open: true, steps: steps}
-	a.setup.crew.start(config.CrewAt(dir))
+	// The inherited line is asked for here too, and on a genuine first run it is
+	// empty because a profile with no rows has nothing to inherit from. It is
+	// not hard-coded empty: this screen also opens on a profile that has rows
+	// and no setup marker, and a person answering the crew question is exactly
+	// the person the line is for (crew.go's [app.crewInheritedLine]).
+	a.setup.crew.start(config.CrewAt(dir), a.crewInheritedLine())
 	a.touch()
 }
 

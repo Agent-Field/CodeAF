@@ -448,6 +448,9 @@ your crew was set before the work seat existed · it is running on your small wo
 row you did not write.** The line is said once, when the run opens, and never again — not on
 every call.
 
+The same thing happens in the conversation, where there is no models line to carry the word —
+see "Why is my task running on a model I did not pick".
+
 To end it, set the crew again with `/crew frugal`, `/crew balanced` or `/crew max`, which
 writes all five classes including the worker, or pin the worker row alone in `/settings` →
 Providers. Either one, and the next run reads `crew frugal` with no second line.
@@ -456,6 +459,44 @@ A crew set with this build already pins every class, so this only ever appears o
 older than the class. And it is only for a row you never wrote: a row you **emptied on
 purpose** means "follow the conversation", which a run outside the chat has no conversation
 for, so that falls to the build's default the way it always has.
+
+## Why is my task running on a model I did not pick — inherited work seat in the conversation
+
+Tasks you hand off in a conversation run on the **worker** class, not on the model you are
+talking to. If your crew was set before that class existed, you have no worker row — so the
+work takes the class the worker was split out of, **small work**, and the thread tells you
+once, the first time a task starts:
+
+```
+your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+```
+
+**It is said once per session**, when work actually starts, and never per task or per part.
+Twenty tasks in one sitting is one line. Start aforge again tomorrow with the same profile and
+you get it again — it is true until you answer it.
+
+`/crew` shows the same fact about the row itself, under the three presets:
+
+```
+your work seat is inherited from small work — picking one writes it
+```
+
+**To end it, pick any crew** — `/crew frugal`, `/crew balanced`, `/crew max`, or the chooser
+that bare `/crew` opens. Every preset writes all five classes including the worker, so the
+line stops on both surfaces at once. You can also pin the worker row on its own in
+`/settings` → Providers.
+
+Three things this is **not**:
+
+- It is not the model you talk to. That one is on the status line and only `/model` moves it.
+- It is not a row you emptied. A worker row you cleared on purpose means "follow the
+  conversation", and a task then rides the model you are talking to — that is an answer, and
+  nothing is said about it.
+- It is not a fresh install. A profile that has never named any model runs this build's own
+  choice for each class, silently, the way it always has.
+
+The word `inherited` is the same word `aforge do` prints beside the model on its `models:`
+line, so the two surfaces are telling you about one thing.
 
 ## What are the six models — the one you talk to and the five crew seats
 

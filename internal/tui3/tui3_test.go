@@ -283,6 +283,15 @@ func newTestApp(agent Agent) *app {
 	// developer who turned it off in their own aforge would run a different
 	// suite. The quick behaviour has tests of its own that turn it on outright.
 	a.hopQuick = false
+	// AND IT PINS THE WORK SEAT'S QUESTION AS ALREADY ASKED, for the seventh
+	// time for the reason the six pins above exist. The one line about a crew
+	// older than the work seat is read from the PROFILE (crew.go's
+	// [app.workSeat]), and a bare app has no profile of its own — so a suite run
+	// on a machine whose own crew predates the worker row would grow a note in
+	// every test that starts a node, and one run on a machine whose crew does
+	// not would grow none. A test that means the line builds a profile and asks
+	// for it outright (crewseat_test.go's crewSeatLab).
+	a.workSeatSaid = true
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
