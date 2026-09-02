@@ -2259,7 +2259,7 @@ One line per call, and it reads like this:
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
-`compile`, `brief`, `contract`, `gate`, `reflex`), which model was asked and which endpoint
+`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`), which model was asked and which endpoint
 actually answered, the thinking level and the **ceiling that really travelled** — which is
 larger than the one asked for, because the thinking pass is given room in front of the
 answer — how many messages and tools the request carried, the status it came back with,
@@ -2284,6 +2284,34 @@ switched off — not the moment the work was booked. A worker ten minutes into i
 The file rotates at 32 MB and keeps one predecessor, `calls.1.jsonl`. `aforge doctor` names
 the file and its size. Set `AFORGE_CALL_LOG=off` to write nothing at all, or
 `AFORGE_CALL_LOG=/some/path.jsonl` to put it somewhere you can watch.
+
+## What does the total at the end of aforge do include — the last line, and why the printed cost should match the call log
+
+A headless run prints one last line, under the answer and any files or lines it learned:
+
+```
+16s · 1 node · $0.0074
+```
+
+That is `<elapsed> · <n> node(s) · $<amount>` — how long it took, how many nodes ran, and
+what it cost. `--json` carries the same money in `spend`, with the two halves beside it:
+`spend_work` is what this run's own nodes cost, `spend_overhead` what it cost to decide
+what those nodes should be. They always add up to `spend`.
+
+**The amount is every model call the run made**, not the workers' calls alone: compiling
+the request, the plan model's reading of what the request states, the planning passes, each
+worker's own calls, and the delivery gate at the end. It is summed out of the run's own
+usage ledger once the work has stopped moving, rather than guessed at from a day's total.
+
+**So it equals the call log's end rows to the cent.** Add up the `$` on the rows in `aforge
+logs` that came back — the end rows, never the `⋯ in flight` starts, which have no cost
+yet — and you get the printed figure. When the two disagree, the receipt is the one that is
+wrong: a total under its own ledger is worse than no total at all.
+
+That agreement is newer than the line. The plan model's reading of the request — the pass
+the log tags `ground` — used to run outside the ledger and its row was dropped, so a run
+printed `$0.0041` against `$0.0076` in its own call log. It is billed with the rest of the
+planning now.
 
 ## What did you send the model — the prompts are not in the log unless you ask for them
 
