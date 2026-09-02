@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -40,67 +39,8 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
-	"github.com/Agent-Field/aforge-v2/internal/tui"
-	"github.com/Agent-Field/aforge-v2/internal/voice"
-	"github.com/Agent-Field/aforge-v2/internal/watchdog"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
-
-// runChat opens one window on a durable graph. Which half of aforge that window
-// runs is not its decision: the first process on a store takes the resident
-// role and runs the brain — a head that always replies, a reconciler that
-// applies mutations, a runner that executes ready nodes — and every later
-// window is a surface over the same journal until the role comes free. The
-// one-shot plan/run path shares none of this and stays untouched.
-func runChat(args []string) error {
-	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	sessionID := flags.String("session", "", "thread session id; empty resumes the last one, \"new\" starts a fresh one")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge [chat] [--db path] [--session id|new]")
-	}
-	requestedSession := strings.TrimSpace(*sessionID)
-
-	path, err := expandHome(strings.TrimSpace(*database))
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create chat database directory: %w", err)
-	}
-	window, err := openChatWindow(path, strings.TrimSpace(*database), requestedSession)
-	if err != nil {
-		return err
-	}
-	defer window.close()
-
-	role := newChatResidency(window)
-	defer role.stop()
-	if err := role.claim(); err != nil {
-		return err
-	}
-
-	// While bubbletea owns the terminal, anything written to stderr or the
-	// standard logger tears straight through the alt screen as a raw row (a
-	// contract failure once printed itself across both panes). Everything the
-	// runtime logs goes to a file for the TUI's lifetime instead.
-	if logFile, logErr := os.OpenFile(filepath.Join(filepath.Dir(defaultChatDB()), "chat.log"),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); logErr == nil {
-		log.SetOutput(logFile)
-		defer func() {
-			log.SetOutput(os.Stderr)
-			_ = logFile.Close()
-		}()
-	}
-
-	err = tui.RunWithCommander(window.graph, window.session, role.commander())
-	seenErr := role.sessionClosed()
-	role.stop()
-	return errors.Join(err, seenErr)
-}
 
 // summaryFileList is the header a leaf writes over the absolute paths it
 // produced, before handing its summary on. The spelling is a constant because
@@ -109,37 +49,32 @@ func runChat(args []string) error {
 // `files:` footer is the only list on stdout.
 const summaryFileList = "\n\nFiles:\n"
 
-// brainOptions is what separates the two ways this machine is driven. There is
-// one brain and one construction of it; these say which parts of it a
-// particular driver has any use for.
+// brainOptions is what one driver says about the errand it is building a brain
+// for. There is one brain and one construction of it; these are the few things
+// the construction cannot work out for itself.
 //
-// A chat window takes the zero value, which is the whole thing — head, voice,
-// arrival brief, standing watch, the commander the surface reaches everything
-// through. A headless one-shot takes headless, which removes exactly the
-// conversational half and nothing else: the compiler, the reconciler, the
-// runner, the contracts, the gate, the extensions and the replans are the same
-// objects wired the same way, because a headless run that planned once and
-// froze the plan would not be this system at all.
+// THEY DESCRIBE THE WORK, NEVER A SURFACE. A brain has no conversational half
+// to switch off any more: `aforge chat` is internal/tui3 over internal/session
+// and reaches none of this, and the entry point that once built a talking brain
+// here went with the surface it served (#329). The compiler, the reconciler,
+// the runner, the contracts, the gate, the extensions and the replans are what
+// is left, which is the whole of what an errand needs.
 type brainOptions struct {
-	// hand is the handover seam. Only a window that can stand down has one.
-	hand resident.HandoverFunc
-	// headless removes the head, the TUI commander, voice, the arrival brief,
-	// the narrator, and the standing-watch installer. Nothing else.
-	headless bool
 	// ephemeral says the store evaporates when this process exits, so the
 	// loops whose whole product is a durable record — craft, self-practice —
 	// would be paying for something nobody can ever read.
 	ephemeral bool
 	// workspaceRoot overrides where jobs work. Empty is the store's own
-	// workspace directory, which is what a window has always used.
+	// workspace directory, which is what a caller that names none gets.
 	workspaceRoot string
 	// sharedWorkspace makes every node work directly in workspaceRoot instead
 	// of in a per-job subdirectory beneath it, and moves the harness's own
 	// scratch out of it entirely.
 	//
-	// It is what an errand selects. A window hosts many unrelated jobs and
-	// gives each one its own directory so they cannot trample each other; an
-	// errand IS one job, aimed at a directory a person named, and the only
+	// It is what an errand selects, and the reason the other layout exists is
+	// that a driver hosting many unrelated jobs must give each one its own
+	// directory so they cannot trample each other. An errand IS one job, aimed
+	// at a directory a person named, and the only
 	// correct reading of "fix the bug in intervals.py -w ~/project" is that the
 	// agent works in ~/project — opening the file that is there, editing it in
 	// place, the way every other CLI agent does. Under the per-job layout it
@@ -155,15 +90,13 @@ type brainOptions struct {
 	// than resolved again here, so the models the door printed on its receipt
 	// are the models this brain builds clients for.
 	//
-	// Nil is a window, which keeps the order it has always kept: the flag, then
-	// the picker the person last used, then what config.Load resolved. The crew
-	// reaches a window through the roles ladder instead, live, on every
-	// auxiliary call — a window that folded its crew into the session model
-	// would be answering the conversation on the work class.
+	// Nil falls back to the order this construction has always kept on its own:
+	// the flag, then the picker the person last used, then what config.Load
+	// resolved. Every door that has a ladder to read hands the answer down.
 	seats *config.Seats
-	// wall is how long this brain's work has to finish in. Zero is a window,
-	// which has no wall; an errand's is its own timeout, and it is handed on so
-	// the work can see the clock it is being judged against.
+	// wall is how long this brain's work has to finish in. Zero is no wall at
+	// all; an errand's is its own timeout, and it is handed on so the work can
+	// see the clock it is being judged against.
 	wall time.Duration
 	// produced is the job's record of what its work left behind: told, as each
 	// leaf lands, the absolute paths that leaf's workspace recorded it writing.
@@ -195,20 +128,12 @@ type brainOptions struct {
 	newClient func(config.Config, string) (*liveClient, error)
 }
 
-// buildChatBrain assembles the resident half of a window. It is the whole brain
-// with a head on it, which is what a chat window is.
-func buildChatBrain(w *chatWindow, session string, hand resident.HandoverFunc) (*chatBrain, error) {
-	return buildBrain(w, session, brainOptions{hand: hand})
-}
-
 // buildBrain assembles the brain: every provider client, the reconciler, the
-// runner, the consent desk, and — for a window — the commander that lets the
-// surface reach all of it. It is a function rather than the body of runChat
-// because a window may need it twice over — once at launch if it is the first
-// on the store, and again if it starts as a visitor and later takes the role
-// over — and because `aforge do` needs the same brain with the conversation
-// taken off. Nothing here starts a goroutine or holds the terminal; start does
-// that, once, on a brain that has already been built.
+// runner and the consent desk. It is a function rather than the body of the
+// errand because a test scripts a provider through brainOptions.newClient and
+// drives the same construction every errand drives. Nothing here starts a
+// goroutine or holds the terminal; start does that, once, on a brain that has
+// already been built.
 func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, error) {
 	brain := &chatBrain{window: w, session: session, wall: opts.wall}
 	path, database, graph := w.path, w.database, w.graph
@@ -218,11 +143,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 	settings, err := config.Load()
 	if err != nil {
-		if opts.headless {
-			fmt.Fprintln(os.Stderr, "aforge do needs a model to work with.")
-		} else {
-			fmt.Fprintln(os.Stderr, "aforge chat needs a model to talk with.")
-		}
+		fmt.Fprintln(os.Stderr, "aforge do needs a model to work with.")
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
@@ -260,8 +181,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 	// A flag names the model for this run and outranks the picker, which is a
 	// standing preference; the picker outranks the environment, which is a
-	// default. With no flag — every chat window — this is the picker exactly as
-	// before.
+	// default. With no flag this is the picker exactly as before.
 	talkModel := firstNonEmptyString(opts.model, prefs.ChatModel, settings.Model)
 	workModel := firstNonEmptyString(opts.model, prefs.TaskModel, settings.Model)
 	baseMedia := exec.MediaTools{
@@ -364,18 +284,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// reached through signatures that carry a plan function and a budget and
 	// have no client to give it. AFORGE_GROWTH_GATE=0 turns it off.
 	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient, planContextTokens))
-	// The standing watch is a host timer: installing it shells out to launchctl
-	// or systemctl and leaves something behind that outlives the process. A
-	// one-shot command may not do that to a machine, so headless never builds
-	// the manager and the reconciler's repair pass finds nothing to reconcile.
-	var standingWatch *watchdog.Manager
-	if !opts.headless {
-		standingWatch, err = newStandingWatchManager(graph)
-		if err != nil {
-			return nil, brain.abandon(err)
-		}
-	}
-
 	workspaceRoot := strings.TrimSpace(opts.workspaceRoot)
 	if workspaceRoot == "" {
 		workspaceRoot = home.StoreDir(path, "workspace")
@@ -459,51 +367,20 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			log.Printf("note: craft repository unavailable: %v", craftErr)
 		}
 	}
-	// The commander owns the live boost slot, and it is built further down;
-	// the resolver reads it through this handle so a later /model change is
-	// what the next job's model words resolve against.
-	var commander *chatCommander
 	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, terrainRoot,
 		func(words head.ModelWords) head.WorkModelChoice {
-			return resolveWorkModelWords(words, modelCatalog, func() string {
-				if commander != nil {
-					return commander.CurrentModel(head.ModelSlotBoost)
-				}
-				return taskClient.Model()
-			})
-		}, opts.headless)
-	// Narration, the arrival brief, redirection and the host timer are all one
-	// thing: a conversation. Each of them speaks into a thread, or waits for
-	// somebody to speak into it, or leaves something on the machine that
-	// outlives the process. A one-shot has none of those, so it buys none of
-	// the calls they cost.
-	if !opts.headless {
-		reconciler = reconciler.
-			WithNarrator(narrateProgress(settings, chatClient, graph)).
-			WithBriefComposer(composeMorningBrief(settings, chatClient, graph)).
-			// Redirection is a chat-surface concern — a wake pass has no user
-			// whose words could revise a running job.
-			WithRedirector(func(ctx context.Context, job store.Node, message string,
-				flavor resident.RevisionFlavor) (resident.Redirection, error) {
-				return plans.reviseForUser(ctx, settings, planClient, graph, job, message, flavor)
-			}).
-			WithStandingWatch(standingWatch).
-			WithStandingWatchKeyPersist(func() (bool, string, error) {
-				return config.EnsurePersistedAPIKey(settings.ProfileDir)
-			})
-	}
+			return resolveWorkModelWords(words, modelCatalog, taskClient.Model)
+		}, true)
 	// Self-practice is curiosity spent on a notebook, and a one-shot has no
 	// business buying any. An ephemeral store's notebook is deleted with it, so
 	// the practice would be paid for and unreadable; and on a durable store
 	// named with --db it is worse, because the charter and its work land in
 	// somebody's own journal as the residue of an errand that was asked for one
 	// thing. Either way it competes with the single job this process was
-	// started to run. So the gate is headlessness, not the store's lifetime —
-	// every `aforge do` schedules nothing, and the resident that owns that
-	// store keeps practising on its own time.
-	if opts.headless || opts.ephemeral {
-		reconciler = reconciler.WithPracticeLoop(0, 0)
-	}
+	// started to run. So every `aforge do` schedules nothing, whatever its
+	// store, and the resident that owns that store keeps practising on its own
+	// time.
+	reconciler = reconciler.WithPracticeLoop(0, 0)
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
 	}
@@ -511,12 +388,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// compiler's model words use; without this seam every "rerun that on the
 	// better model" honestly reports falling back to the default.
 	reconciler = reconciler.WithModelResolver(func(names []string, boost bool) (string, bool) {
-		choice := resolveWorkModelWords(head.ModelWords{Names: names, Boost: boost}, modelCatalog, func() string {
-			if commander != nil {
-				return commander.CurrentModel(head.ModelSlotBoost)
-			}
-			return taskClient.Model()
-		})
+		choice := resolveWorkModelWords(head.ModelWords{Names: names, Boost: boost},
+			modelCatalog, taskClient.Model)
 		return choice.Model, choice.Model != ""
 	})
 	// The lease's flock proves the process exists; the heartbeat proves it is
@@ -525,12 +398,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	reconciler = reconciler.WithHeartbeat(func(at time.Time) {
 		_ = lease.NoteResidentTick(path, at)
 	})
-	// The handover seam, and the moment it is measured against. A request
-	// journaled before this process took the role belongs to whoever was
-	// serving then; answering it would make a window that has just promoted
-	// stand straight back down, and the role would circle the open windows
-	// forever.
-	reconciler = reconciler.WithHandover(opts.hand).WithResidentSince(time.Now())
+	// The moment this process took the resident role, which every rule about
+	// what happened before it is measured against.
+	reconciler = reconciler.WithResidentSince(time.Now())
 	// Recognition and forging ride the resident's own talk client, like every
 	// other small verdict it makes about itself.
 	if craftShelf != nil {
@@ -539,22 +409,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	}
 	if err := reconciler.AttachSession(session); err != nil {
 		return nil, brain.abandon(err)
-	}
-	// The attach edge is journalled now, because its ordering is what fixes the
-	// brief's window. Composing that brief is a model round-trip over a journal
-	// gather, and it used to run here, in front of the first frame — the user
-	// waited on the network to be told what happened while they were away. The
-	// thread is the delivery channel, so the composition rides behind the
-	// surface and the brief lands in the same place a moment later.
-	// A one-shot has not been away and has nobody to greet, so there is no
-	// arrival and no brief to compose for it.
-	var deliverBrief func(context.Context) error
-	if !opts.headless {
-		brief, briefErr := reconciler.SessionOpening(session, "tui", settings.BriefAfter)
-		if briefErr != nil {
-			log.Printf("note: could not prepare the arrival brief: %v", briefErr)
-		}
-		deliverBrief = brief
 	}
 
 	web := exec.NewWeb()
@@ -1987,206 +1841,29 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	resident.SetJobCloser(runner.CloseOut)
 	brain.consent = desk
 	brain.workspaceRoot = workspaceRoot
-	// Everything below this line is the conversation: the commander the surface
-	// reaches capabilities through, the microphone, the stream the reply is
-	// typed into, and the head that does the replying. A headless run has no
-	// surface to reach anything, nothing to listen to, nobody to stream at, and
-	// no routing to do — the task IS the work order. The brain above is
-	// complete and identical either way.
-	if opts.headless {
-		return brain, nil
-	}
-	// A window's shutdown is somebody closing a terminal, which says nothing at
-	// all about whether the work should stop. A one-shot's is the wall it was
-	// given, which says exactly that — so the grace belongs to this side of the
-	// line and `aforge do` keeps cancelling on the instant.
-	brain.leafGrace = windowLeafGrace
-
-	streamEvents := make(chan tui.StreamEvent, 256)
-	transcriber, err := voice.NewClient(voice.ClientConfig{
-		APIKey: settings.APIKey, BaseURL: settings.BaseURL, Timeout: settings.Timeout,
-	})
-	if err != nil {
-		return nil, brain.abandon(err)
-	}
-	commander = command.New(command.Options{
-		Settings:         settings,
-		Database:         path,
-		PrefsDir:         filepath.Dir(path),
-		WorkspaceRoot:    workspaceRoot,
-		ScratchRoot:      scratchRoot,
-		ChatClient:       chatClient,
-		TaskClient:       taskClient,
-		PlanClient:       planClient,
-		Store:            graph,
-		Prefs:            prefs,
-		SessionID:        session,
-		StreamEvents:     streamEvents,
-		VoiceRecorder:    voice.NewSystemRecorder(),
-		VoiceTranscriber: transcriber,
-		Models:           modelCatalog,
-		MediaModels:      mediaModels,
-		AttachSession:    reconciler.AttachSession,
-		// The two seams the commander borrows from this process: where a job's
-		// files live, and what a work-model switch means to the measured ruler.
-		JobID: func(node store.Node) string { return jobIDOf(graph, node) },
-		InstallRuler: func(model string) {
-			installMeasuredRulers(settings, model)
-		},
-	})
-
-	// The head is built here rather than inside the loop below because the
-	// surface has to be able to reach it: stopping the turn being answered right
-	// now is a handle on this process, and the commander is where the surface
-	// keeps its handles.
-	conversationalHead := head.New(chatClient, graph).
-		// Where the artifact door writes. Unset, the head writes into the
-		// process's working directory, which is the right default for a person
-		// typing in a terminal and the wrong one for a chat serving a job
-		// workspace: a diagram born beside the binary is a diagram nobody finds
-		// beside the work it belongs to. The commander already resolved this
-		// root for every other file the job touches, so the head uses the same.
-		WithWorkspace(workspaceRoot).
-		// How much the talk model holds, which is what every block of the head's
-		// prompt is sized from. The catalog lives here, on the surface, and the
-		// head is handed the fact — the same doctrine the linear leaf's own
-		// window takes (subharness.go). A model the catalog cannot size answers
-		// zero, and zero leaves the head on the literals it shipped with rather
-		// than on a guess about a window nobody knows.
-		WithContextLength(modelCatalog.ContextLength(talkModel)).
-		// The pool answers with its own concrete client; the head asks for its
-		// own interface. The lift is written out rather than passed as a method
-		// value so a failed pin returns a nil interface rather than a non-nil
-		// one wrapping a nil pointer.
-		WithMessageClient(func(message store.Message) (head.Client, error) {
-			pinned, pinErr := boostClients.ForMessage(message)
-			if pinErr != nil {
-				return nil, pinErr
-			}
-			return pinned, nil
-		}).
-		WithSelfKnowledge(func() string { return selfKnowledge(settings, taskClient.Model()) }).
-		WithImageInput(modelCatalog, settings.Model).
-		WithCompetenceMap(func() string {
-			return competenceGrounding(graph, settings.ProfileDir, taskClient.Model())
-		}).
-		WithStandingWatch(func() string {
-			return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
-		}).
-		// This window draws a list of rooms, so its rooms get names: after the
-		// first exchange in a room, the head's clerk titles it on the scribe rung
-		// of the ladder. Everything past this line is the conversation, and a
-		// headless brain never reaches it — which is exactly the window that has
-		// no rail to name anything for.
-		WithRoomNaming(true).
-		WithDailyBudgetUSD(settings.DailyBudgetUSD)
-	commander.SetHead(conversationalHead)
-
-	brain.commander = commander
-	brain.streamEvents = streamEvents
-	brain.deliverBrief = deliverBrief
-	// Routing is a structuring call, and it was the one loop served with a bare
-	// context: without the configured effort knob, a reasoning model spends the
-	// head's whole token cap deliberating and returns empty text — measured as
-	// 600/600 completion tokens of thought and zero answer on the default model.
-	brain.serveHead = func(ctx context.Context) {
-		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
-			kind, known := headStreamKind(event.Kind)
-			if !known {
-				// A boundary this build has never heard of is DROPPED rather than
-				// mapped to whatever the zero value happens to be. The zero value
-				// is StreamStarted, which resets the live region — so the old
-				// unguarded switch turned every future provider boundary into a
-				// wiped reply. See headStreamKind.
-				return
-			}
-			translated := tui.StreamEvent{Kind: kind, Delta: event.Delta, Session: event.Session}
-			select {
-			case streamEvents <- translated:
-			case <-ctx.Done():
-			}
-		})
-		// The rooms that existed before the naming clerk did get their one chance
-		// here, off this goroutine and bounded — see head.BackfillRoomNames. It
-		// belongs beside the room grooming that already runs at launch
-		// (groomChatRooms, store.ReapEmptySessions) and not inside it, because
-		// grooming is a query against the journal and this one spends a model
-		// call: it needs the head, and the head only exists once the brain does.
-		conversationalHead.BackfillRoomNames(headContext)
-		_ = conversationalHead.Serve(headContext)
-	}
 	return brain, nil
 }
 
-// headStreamKind maps the provider's stream vocabulary onto the window's, and
-// says when it could not.
-//
-// IT REPORTS FAILURE BECAUSE THE ZERO VALUE IS A REAL BOUNDARY. tui.StreamStarted
-// is ordinal zero and means "wipe the live region and start again"; a switch
-// that silently left an unrecognised kind at the zero value therefore did the
-// most destructive possible thing with the least information. Two vocabularies
-// only stay in step if the seam between them can say "I do not know this one".
-//
-// The tool-activity boundaries ride here with the rest (internal/head/
-// activity.go emits them): they cross into the window on the same channel the
-// tokens do, because they are the same turn happening.
-func headStreamKind(kind provider.StreamEventKind) (tui.StreamEventKind, bool) {
-	switch kind {
-	case provider.StreamStarted:
-		return tui.StreamStarted, true
-	case provider.StreamDelta:
-		return tui.StreamDelta, true
-	case provider.StreamThinking:
-		return tui.StreamThinking, true
-	case provider.StreamFinished:
-		return tui.StreamFinished, true
-	case provider.StreamFailed:
-		return tui.StreamFailed, true
-	case provider.StreamToolBegin:
-		return tui.StreamToolBegin, true
-	case provider.StreamToolEnd:
-		return tui.StreamToolEnd, true
-	case provider.StreamToolFailed:
-		return tui.StreamToolFailed, true
-	}
-	return 0, false
-}
-
-// chatBrain is the resident half of a window: the head that replies, the
-// reconciler that applies the command journal, the runner that executes ready
-// leaves, and the consent desk that prices work before it is bought. A window
-// has one for as long as it holds the resident role and none the rest of the
-// time.
+// chatBrain is the working half of an errand: the reconciler that applies the
+// command journal, the runner that executes ready leaves, and the consent desk
+// that prices work before it is bought. One process holds one for as long as it
+// holds the resident role over its store.
 //
 // It keeps two contexts rather than one, and that is the whole reason it is a
-// type. An ordinary shutdown ends both, because the terminal is going away. A
-// handover ends only the first: the head must stop answering the instant this
-// process is no longer the brain, while the leaves already running belong to
-// claims in the store and must be allowed to land.
+// type. Ending the first stops the housekeeping at once; the leaves already
+// running belong to claims in the store and land on the second.
 type chatBrain struct {
-	window       *chatWindow
-	session      string
-	settings     config.Config
-	commander    *chatCommander
-	reconciler   *resident.Reconciler
-	runner       *resident.Runner
-	consent      *consentDesk
-	streamEvents chan tui.StreamEvent
-	deliverBrief func(context.Context) error
-	// serveHead is nil in a headless brain, which is the one structural
-	// difference between the two: no head means nothing routes, and the command
-	// journal is written by the caller instead.
-	serveHead func(context.Context)
+	window     *chatWindow
+	session    string
+	settings   config.Config
+	reconciler *resident.Reconciler
+	runner     *resident.Runner
+	consent    *consentDesk
 	// workspaceRoot is where this brain's jobs work, so a caller that gave one
 	// can find what was written without guessing at the id law.
 	workspaceRoot string
-	// leafGrace is how long an ordinary shutdown lets the leaves already
-	// running finish before it takes their context away. Zero — every headless
-	// caller, and every test that does not ask otherwise — cancels at once,
-	// which is what a one-shot's wall means.
-	leafGrace time.Duration
 	// wall is when this brain's work has to be over, for the callers that have
-	// one. Zero is a window, which has none.
+	// one. Zero is no wall at all.
 	//
 	// IT IS THE SAME WALL THE ERRAND IS WATCHING AND THAT IS THE POINT. The
 	// wall used to live only in the settlement watcher's own context while the
@@ -2238,8 +1915,8 @@ func (b *chatBrain) closeAll() {
 }
 
 // start runs the brain. Every loop it owns lives on this side of the call, so
-// a window that has just promoted starts exactly what a window that launched
-// as the resident starts, in the same order.
+// construction never leaves a goroutine behind for a caller that decides not to
+// run what it built.
 func (b *chatBrain) start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	runCtx, runCancel := context.WithCancel(context.Background())
@@ -2262,17 +1939,6 @@ func (b *chatBrain) start() {
 	// fails without it, and until it lands every command runs plain.
 	guard.Go("chat/rtk", func() { rtk.Bootstrap(ctx) })
 
-	if b.serveHead != nil {
-		b.background.Add(1)
-		go func() {
-			// Registered first so it absorbs last: the channel close and the wait
-			// group both settle on the unwind before the fault is recorded.
-			defer guard.Recover("chat/head")
-			defer b.background.Done()
-			defer close(b.streamEvents)
-			b.serveHead(ctx)
-		}()
-	}
 	b.background.Add(2)
 	guard.Go("chat/reconciler", func() {
 		defer b.background.Done()
@@ -2298,64 +1964,24 @@ func (b *chatBrain) start() {
 	}()
 	b.background.Add(1)
 	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.Serve(ctx) })
-
-	if b.deliverBrief != nil {
-		b.background.Add(1)
-		go func() {
-			defer guard.Recover("chat/arrival-brief")
-			defer b.background.Done()
-			if err := b.deliverBrief(ctx); err != nil {
-				log.Printf("note: could not deliver the arrival brief: %v", err)
-			}
-		}()
-	}
 }
 
-// standDown is the handover shutdown. The head, the reconciler and the consent
-// desk end at once, because from this moment another process is answering for
-// this store and two of anything would be a race. The runner is only told to
-// stop claiming: its running leaves keep the context they started with until
-// they land, and the clients they are still talking through are given back
-// after — never before.
-func (b *chatBrain) standDown() {
-	if b.cancel != nil {
-		b.cancel()
-	}
-	b.runner.Drain()
-	guard.Go("chat/stand-down", func() {
-		<-b.runDone
-		if b.runCancel != nil {
-			b.runCancel()
-		}
-		b.closeAll()
-	})
-}
-
-// stop is the ordinary shutdown: the terminal is going away, so the half of
-// this brain that was talking to it goes with it.
+// stop is the shutdown: the housekeeping ends at once, the dispatcher stops
+// claiming, and only then does the work's own context go away.
 //
-// The work does not, and that asymmetry is the whole point. This used to cancel
-// both contexts on the same line, which meant closing a chat window killed
-// every leaf mid-POST: three nodes of one job died on the millisecond the
-// surface detached, five milliseconds after the seen edge was journaled, and
-// the resident then read `context canceled` as a flaky provider and learned to
-// add retries. A product whose premise is background work may not make the
-// person's terminal the lifetime of the work.
-//
-// So it takes the two steps standDown has always taken — end the conversation,
-// drain the dispatcher, let the running leaves land on the context they started
-// with — and only then takes that context away. The wait is bounded, because a
-// window being closed must eventually close; what makes the bound safe rather
-// than merely polite is that a leaf whose context ends this way is now released
-// back to pending instead of failed (see the runner's landing path), so
-// whatever the grace does not cover is picked up next time rather than lost.
+// THE ORDER IS THE WHOLE POINT, AND IT IS NOT POLITENESS. Cancelling both
+// contexts on the same line killed every leaf mid-POST — three nodes of one job
+// died on the millisecond the surface detached, and the resident then read
+// `context canceled` as a flaky provider and learned to add retries. A leaf
+// whose context ends after the drain is released back to pending instead of
+// failed (see the runner's landing path), so what a stop interrupts is picked
+// up next time rather than lost.
 func (b *chatBrain) stop() {
 	b.stopOnce.Do(func() {
 		if b.cancel != nil {
 			b.cancel()
 		}
 		b.runner.Drain()
-		b.awaitLanding()
 		if b.runCancel != nil {
 			b.runCancel()
 		}
@@ -2370,36 +1996,6 @@ func (b *chatBrain) stop() {
 		}
 		b.closeAll()
 	})
-}
-
-// leafSettleNotice is how long a shutdown waits in silence before it admits it
-// is waiting. Below this, the leaves land in the time it takes the terminal to
-// repaint and saying anything would be noise.
-const leafSettleNotice = 250 * time.Millisecond
-
-// awaitLanding gives the leaves already in flight their bounded chance to
-// finish. It says so on the way past, because a terminal that does not come
-// back for a minute with nothing on it is indistinguishable from a hang — and
-// the sentence has to name the way out, since the way out is safe.
-func (b *chatBrain) awaitLanding() {
-	if b.runDone == nil || b.leafGrace <= 0 {
-		return
-	}
-	select {
-	case <-b.runDone:
-		return
-	case <-time.After(leafSettleNotice):
-	}
-	fmt.Fprintf(os.Stderr,
-		"finishing the work already running before closing (up to %s) — ctrl+C leaves it to be picked up next time\n",
-		b.leafGrace)
-	timer := time.NewTimer(b.leafGrace)
-	defer timer.Stop()
-	select {
-	case <-b.runDone:
-	case <-timer.C:
-		fmt.Fprintln(os.Stderr, "still running when the grace ran out — it goes back on the queue and resumes next time")
-	}
 }
 
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
@@ -3161,19 +2757,12 @@ func withDocumentAttachmentBrief(brief string, paths []string) string {
 	return strings.TrimSpace(brief) + strings.TrimRight(addition.String(), "\n")
 }
 
-// The commander is internal/command's now: every capability the surface
-// reaches through, in a package a process without a terminal can also reach.
-// These names stay because they are what this package's own prose calls them.
-type (
-	chatCommander   = command.Commander
-	chatPrefs       = command.Prefs
-	chatMediaModels = command.MediaModels
-)
-
+// What an errand still borrows from internal/command, under the spellings this
+// package's own prose uses. The commander itself — every capability a surface
+// reached the machine through — went with the surface that reached it (#329);
+// these three are ordinary helpers a process with no terminal needs.
 var (
-	newVisitorCommander = command.NewVisitor
 	loadChatPrefs       = command.LoadPrefs
-	saveChatPrefs       = command.SavePrefs
 	attachmentStoreRoot = command.AttachmentStoreRoot
 	newSessionID        = command.NewSessionID
 )
@@ -3326,8 +2915,9 @@ const sessionNewWord = "new"
 // one at every launch quietly threw all four away — including the deliverable
 // an overnight job posted into the session it was born in. So the default is
 // continuity: come back to the conversation the journal last saw someone in.
-// Starting over is still available and is now the explicit act it always
-// should have been — `--session new`, or `/new` once the surface is up.
+// Starting over is the explicit act — the caller asks for [sessionNewWord]. An
+// errand asks for neither: `aforge do` mints its own id and hands it straight
+// down, so what this resolves for today is a name it was given.
 //
 // The journal is the only honest source for "the last one", and it holds two
 // answers that agree except in the case rooms created. The seen edge is written
@@ -3418,19 +3008,6 @@ const (
 	reflexTurns    = 4
 	reflexTokens   = chatLeafTokens / 8
 	reflexDeadline = 90 * time.Second
-
-	// windowLeafGrace is how long closing a chat window waits for the leaves it
-	// was already running to land.
-	//
-	// It is a wait rather than a kill because the leaf is a paid-for turn
-	// against a provider that is answering: the receipts for the incident this
-	// exists for show ~995k prompt tokens bought and thrown away on the
-	// millisecond a terminal closed. It is two minutes rather than unbounded
-	// because a window being closed must eventually close, and it is safe to be
-	// short because the runner now releases a leaf its context outlived instead
-	// of failing it — the remainder resumes on the next window rather than
-	// becoming a fault the machine has to explain to itself.
-	windowLeafGrace = 2 * time.Minute
 )
 
 func continuationMessage(pieces int) string {
@@ -4248,41 +3825,6 @@ func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client 
 		})
 }
 
-// reviseForUser is reviseAfter's twin for the other event source. It takes the
-// same two locks for the same reasons, and differs in exactly two places: the
-// event is the user speaking with authority, and it does not return early when
-// nothing is pending — the leaves already running still have to be told, and
-// that broadcast is the reconciler's next move.
-func (j *jobPlans) reviseForUser(ctx context.Context, settings config.Config, client *liveClient,
-	graph *store.Store, job store.Node, message string,
-	flavor resident.RevisionFlavor) (resident.Redirection, error) {
-	entry, ok := j.get(job.ID)
-	if !ok {
-		// Silence here was a lie with a receipt attached. An empty Redirection
-		// and a nil error are indistinguishable from "the sentinel read the
-		// plan and found nothing to change", so the user was told exactly that
-		// while every pending leaf went on building the version they had just
-		// asked to replace. The caller already owns an honest branch for a
-		// revision that could not happen; this is how it reaches it.
-		return resident.Redirection{}, errNoRetainedPlan
-	}
-	locks := j.locksFor(entry.graph)
-	locks.pass.Lock()
-	defer locks.pass.Unlock()
-	locks.document.Lock()
-	defer locks.document.Unlock()
-	redirection, applied, err := revision.ForUser(ctx, settings,
-		unlockedWhileThinking{client: client, document: &locks.document},
-		graph, job, entry.graph, entry.root, message, flavor)
-	if err != nil {
-		return resident.Redirection{}, err
-	}
-	if applied > 0 && j.journal != nil {
-		j.journal(job.ID, entry)
-	}
-	return redirection, nil
-}
-
 // unlockedWhileThinking hands a plan document back to the rest of the job for
 // as long as the model has the question.
 //
@@ -4307,11 +3849,6 @@ func (u unlockedWhileThinking) CompleteWithMessages(ctx context.Context, message
 	defer u.document.Lock()
 	return u.client.CompleteWithMessages(ctx, messages, options...)
 }
-
-// errNoRetainedPlan says that this job's plan is not in hand — not that it
-// needed no changes. The distinction is the whole of the redirect receipt's
-// honesty, so it is a sentinel value rather than a formatted string.
-var errNoRetainedPlan = errors.New("its plan is not in hand, so the remaining steps could not be re-read")
 
 // isJobNode reports whether a store id belongs to the job minted under prefix.
 // The separator is the entire content of the test: ids are minted as
@@ -5555,53 +5092,6 @@ func errandContext(ctx context.Context, settings config.Config, task string, rol
 	return provider.WithRole(settings.Context(ctx, task), role)
 }
 
-// narratorSystemPrompt keeps progress updates in the agent's own casual
-// voice. The reconciler decides when to speak; this decides only how.
-const narratorSystemPrompt = `You are aforge, giving the user one casual progress update on work happening in the background. One sentence, two at most. Plain speech in first person, no markdown, no lists, no internal jargon. Name the concrete things that just finished and what is in motion now; mention a duration only when it is notable. Do not repeat anything from your earlier updates, provided below. Never imply the whole job is finished — it is not.`
-
-// narrateProgress wires the reconciler's narration context to the talk model.
-func narrateProgress(settings config.Config, client *liveClient, graph *store.Store) resident.NarrateFunc {
-	return func(ctx context.Context, narration resident.Narration) (string, error) {
-		var input strings.Builder
-		// The job and the updates already spoken are the only append-only parts
-		// of a narration: across the heartbeats of one job the goal never moves
-		// and each new update is added to the end of a list whose earlier lines
-		// are fixed. They lead, so successive narrations of the same job share
-		// everything up to the new update. What is running and what just
-		// finished are rewritten every time by definition, and sit below.
-		fmt.Fprintf(&input, "The job: %s\n", narration.Goal)
-		if len(narration.Previous) > 0 {
-			input.WriteString("\nYour earlier updates (do not repeat):\n")
-			for _, line := range narration.Previous {
-				input.WriteString("- " + line + "\n")
-			}
-		}
-		if len(narration.Finished) > 0 {
-			input.WriteString("\nJust finished:\n")
-			for _, item := range narration.Finished {
-				input.WriteString("- " + item + "\n")
-			}
-		}
-		if len(narration.Running) > 0 {
-			input.WriteString("\nIn motion now:\n")
-			for _, item := range narration.Running {
-				input.WriteString("- " + item + "\n")
-			}
-		}
-		if narration.Queued > 0 {
-			fmt.Fprintf(&input, "\nQueued behind them: %d parts\n", narration.Queued)
-		}
-		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "narrate", lane.RoleAuxiliary), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: resident.VoicePrompt(graph, narratorSystemPrompt, narration.Goal)}}},
-			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(150))
-		if err != nil || response == nil {
-			return "", err
-		}
-		return strings.TrimSpace(response.Text()), nil
-	}
-}
-
 // jobIDOf resolves the top-level job a node belongs to, which names its
 // workspace directory. A resolution failure falls back to the node itself:
 // an isolated directory is always safe, a shared one is not.
@@ -5804,75 +5294,6 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 }
 
 const sentinelSystemPrompt = `You are a cheap standing-watch sentinel. Decide only whether the supplied condition occurred or the invariant is threatened now. Answer exactly "yes — <one line>" or "no — <one line>". No markdown, no qualifications, no suggested work.`
-
-const morningBriefSystemPrompt = `You are the resident assistant writing one calm arrival fold after the person has been away. Return exactly one JSON object: {"headline":"While you were away: ...","items":[{"seq":123,"body":"..."}]}.
-
-The input is journal truth. Write one short, human sentence for headline: begin exactly "While you were away:" and summarize the shape of what changed, including a waiting question or failure before routine progress. No greeting, dashboard language, hype, or "nothing to report".
-
-Write exactly one slim item for every supplied event, in the same order, preserving its seq. Do not combine, omit, or invent events. Keep concrete names, results, questions, learned facts, and dollar amounts. Each item is one sentence fragment, at most 22 words. No markdown.`
-
-var morningBriefSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "headline": {"type": "string"},
-    "items": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "seq": {"type": "integer"},
-          "body": {"type": "string"}
-        },
-        "required": ["seq", "body"],
-        "additionalProperties": false
-      }
-    }
-  },
-  "required": ["headline", "items"],
-  "additionalProperties": false
-}`)
-
-// composeMorningBrief is one small, routable resident verdict. Session
-// surfaces never see this client; they only attach and render the message the
-// resident journals. The panel may verify the JSON schema exactly as it does
-// for other bounded planning verdicts.
-func composeMorningBrief(settings config.Config, client *liveClient, graph *store.Store) resident.BriefComposeFunc {
-	return func(ctx context.Context, activity resident.BriefActivity) (resident.BriefDraft, error) {
-		input, err := json.Marshal(activity)
-		if err != nil {
-			return resident.BriefDraft{}, err
-		}
-		briefCtx := provider.WithCall(errandContext(ctx, settings, "morning-brief", lane.RoleAuxiliary), provider.ClassPlanBrief)
-		options := []ai.Option{ai.WithMaxTokens(500)}
-		if client.Routed() {
-			options = append(options, ai.WithSchema(morningBriefSchema))
-		}
-		// The first thing a person reads after being away is not the place to
-		// disobey what they taught the assistant yesterday. "Stop opening with a
-		// preamble" was learned, obeyed in ordinary replies, and then broken by
-		// the one message they were guaranteed to read.
-		response, err := client.CompleteWithMessages(briefCtx, []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text",
-				Text: resident.VoicePrompt(graph, morningBriefSystemPrompt)}}},
-			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: string(input)}}},
-		}, options...)
-		if err != nil || response == nil {
-			provider.Report(briefCtx, provider.VerdictProviderFailure)
-			if err == nil {
-				err = fmt.Errorf("brief composer returned no response")
-			}
-			return resident.BriefDraft{}, err
-		}
-		object := jsonResponseObject(response.Text())
-		var draft resident.BriefDraft
-		if object == "" || json.Unmarshal([]byte(object), &draft) != nil || strings.TrimSpace(draft.Headline) == "" {
-			provider.Report(briefCtx, provider.VerdictFormatFailure)
-			return resident.BriefDraft{}, fmt.Errorf("brief composer returned malformed JSON")
-		}
-		provider.Report(briefCtx, provider.VerdictVerifiedSuccess)
-		return draft, nil
-	}
-}
 
 // checkSentinel reuses the resident talk client just like consolidation. The
 // store, not this parser, decides whether a yes may spend or fire.

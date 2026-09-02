@@ -108,36 +108,6 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 	}
 }
 
-// The narrator speaks the same job many times over. The goal and the updates
-// already spoken are the append-only half and lead; what is running and what
-// just landed are rewritten every heartbeat and sit below them.
-func TestNarratorPromptLeadsWithTheAppendOnlyHalf(t *testing.T) {
-	settings := config.Config{Model: "talk/model"}
-	capture := &gateCaptureClient{model: "talk/model", response: "still going"}
-	client := adoptLiveClient(settings, capture.model, capture)
-	narrate := narrateProgress(settings, client, nil)
-
-	if _, err := narrate(context.Background(), resident.Narration{
-		Goal:     "compare the weather",
-		Finished: []string{"Fetch city A weather"},
-		Running:  []string{"Fetch city B weather"},
-		Queued:   1,
-		Previous: []string{"City A is in."},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	body := capture.messages[len(capture.messages)-1].Content[0].Text
-	previous := strings.Index(body, "Your earlier updates (do not repeat):")
-	finished := strings.Index(body, "Just finished:")
-	running := strings.Index(body, "In motion now:")
-	if previous <= 0 || finished <= 0 || running <= 0 {
-		t.Fatalf("narration blocks missing:\n%s", body)
-	}
-	if previous > finished || finished > running {
-		t.Fatalf("narration blocks are not stable-first:\n%s", body)
-	}
-}
-
 // The compiler is one call with no lineage, so its affinity key is a constant.
 // Two different instructions must ask for the same warm instance.
 func TestCompileRidesOneConstantCacheKey(t *testing.T) {

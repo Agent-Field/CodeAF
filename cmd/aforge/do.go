@@ -514,7 +514,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 		return nil, nil, nil, err
 	}
 	brain, err := buildBrain(window, session, brainOptions{
-		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
+		ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
 		seats:   &seats,

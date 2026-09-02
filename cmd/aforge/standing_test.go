@@ -102,7 +102,7 @@ func TestStandingSlashListsOnlyActiveCharters(t *testing.T) {
 	}
 }
 
-func openBudgetCommander(t *testing.T, daily float64, session ...string) (*chatCommander, *store.Store) {
+func openBudgetCommander(t *testing.T, daily float64, session ...string) (*command.Commander, *store.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	graph, err := store.Open(filepath.Join(dir, "graph.db"))
