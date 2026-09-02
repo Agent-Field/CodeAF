@@ -421,7 +421,8 @@ func (c *Corpus) Cues() []string {
 
 // searchStopWords are the function words that carry no reference. Dropping them
 // costs nothing — BM25 already discounts a word that is in every section — and
-// it keeps a short question from being scored mostly on its grammar.
+// it keeps a short question from being scored mostly on its grammar. "How much"
+// is the commonest question shape, and "much" has no business deciding its ranking.
 var searchStopWords = map[string]bool{
 	"a": true, "an": true, "the": true, "of": true, "to": true, "in": true,
 	"on": true, "at": true, "by": true, "for": true, "and": true, "or": true,
@@ -433,6 +434,7 @@ var searchStopWords = map[string]bool{
 	"should": true, "could": true, "has": true, "have": true, "had": true,
 	"but": true, "so": true, "if": true, "then": true, "than": true,
 	"what": true, "which": true, "who": true, "why": true, "how": true,
+	"much": true,
 }
 
 // cueStopWords are words a manual's own headings use that would fire the
@@ -493,23 +495,29 @@ func tokenize(text string) []string {
 
 // stem is the smallest reduction that makes the questions people actually ask
 // meet the words the pages actually use: plurals, gerunds and past tenses, plus
-// the doubled consonant English adds before them. Nothing here is a linguistic
-// claim — it is the difference between "why did you ask before cancelling" and
-// a page that says "cancel".
+// the doubled consonant English adds before them. BOTH SIDES OF A LOOKUP PASS
+// THROUGH THIS ONE FUNCTION, so they only have to land on the same string, not
+// a real word. The stop-word check runs on the raw field before stemming, which
+// is why "one" becoming "on" collides with nothing: raw "on" is dropped, while
+// raw "one" becomes "on" on both sides.
 func stem(word string) string {
+	base := word
 	switch {
 	case len(word) > 4 && strings.HasSuffix(word, "ies"):
-		return word[:len(word)-3] + "y"
+		base = word[:len(word)-3] + "y"
 	case strings.HasSuffix(word, "ss") || strings.HasSuffix(word, "us"):
-		return word
+		base = word
 	case len(word) > 5 && strings.HasSuffix(word, "ing"):
-		return undouble(word[:len(word)-3])
+		base = undouble(word[:len(word)-3])
 	case len(word) > 4 && strings.HasSuffix(word, "ed"):
-		return undouble(word[:len(word)-2])
+		base = undouble(word[:len(word)-2])
 	case len(word) > 3 && strings.HasSuffix(word, "s"):
-		return word[:len(word)-1]
+		base = word[:len(word)-1]
 	}
-	return word
+	if len(base) > 3 && strings.HasSuffix(base, "e") {
+		base = base[:len(base)-1]
+	}
+	return base
 }
 
 func undouble(word string) string {
