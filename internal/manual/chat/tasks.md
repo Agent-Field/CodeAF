@@ -5,9 +5,11 @@
 A task is one self-contained piece of work handed off to run on its own while the
 conversation carries on. It works in a copy of its own — a working copy of your repository, or
 a copy of the folder when the work is about a folder — and reports back when it lands. It
-never sees the conversation: what it reads is one written brief — your own message, word
-for word, then the work, what to produce and what done means. How that is
-assembled is on the *how tasks run* page, under *What the task actually reads*.
+never inherits the conversation: what it reads is one written brief — your own message, word
+for word, then the work, what to produce and what done means, and a pointer at the
+journal path and line of your original turn so it can read those words in full when the
+restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
+task actually reads* and *Can the task see the original request*.
 
 You can ask for the work in words, and the model grooms it and calls its `propose_task`
 tool. You then get a card asking whether the work should go. The
@@ -2696,8 +2698,9 @@ appears exactly once, at the top, where it appears on every task.
 
 **And then the plan itself is read once, by your `mastermind` model.** Both tests above are
 about whether a split is worth it; neither of them reads the parts. But what a part owns is
-everything that worker will act on — it never sees your conversation and cannot
-ask anybody anything — and the scopes were written by whatever model the task itself runs on.
+everything that worker will act on — it is not handed your conversation and cannot
+ask anybody anything, though the brief names the journal path and line of your original
+words so it can read them if the restatement was cut — and the scopes were written by whatever model the task itself runs on.
 So once the two tests have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
 scope, fix a boundary two parts share, fold two parts into one, or say the parts are really

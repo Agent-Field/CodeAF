@@ -109,7 +109,7 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, er
 	// the node is running (taskname.go).
 	spec := taskSpec{
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
-		summary: firstLine(brief), request: brief, brief: work,
+		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
 		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
 	}
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
