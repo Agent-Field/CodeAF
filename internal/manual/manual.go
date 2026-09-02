@@ -24,11 +24,6 @@
 // outlives the window and the chat's is about the session you are sitting in.
 package manual
 
-import (
-	"fmt"
-	"strings"
-)
-
 // The pages ship packed, not raw: a megabyte of Markdown is otherwise a
 // megabyte of binary, and a manual is the most compressible thing aforge
 // carries. internal/packed says how and why. The folders below are the only
@@ -100,14 +95,4 @@ func Cues() []string { return resident.Cues() }
 // Render turns sections into the block a model reads. Page and heading stay
 // attached so a quoted answer can be traced back to the page that authorized
 // it. It belongs to no corpus — sections carry their own provenance.
-func Render(sections []Section) string {
-	blocks := make([]string, 0, len(sections))
-	for _, section := range sections {
-		body := section.Body
-		if len(body) > SectionBodyCap {
-			body = body[:SectionBodyCap] + "…"
-		}
-		blocks = append(blocks, fmt.Sprintf("[%s · %s]\n%s", section.Page, section.Title, body))
-	}
-	return strings.Join(blocks, "\n\n")
-}
+func Render(sections []Section) string { return renderSections(sections, SectionBodyCap) }

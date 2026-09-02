@@ -168,6 +168,13 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	case "manual":
+		// Everything aforge knows about itself, read straight (manual.go). It
+		// is the same corpus the chat's manual tool reads, printed as it is
+		// written rather than retold — and it is here rather than only there
+		// because the questions people ask most are the ones they ask before
+		// there is a key to make a model call with.
+		return runManual(os.Args[2:])
 	// Three spellings for one question, because three different callers ask it
 	// and none of them should have to know which one this build prefers: the
 	// agentfield Python doctor runs `aforge version`, the Go doctor runs
@@ -244,6 +251,11 @@ var usageText = `aforge — build and revise task graphs
   aforge why <node-id> [--db path]  show what one leaf actually did: its turns, the
                                 tools it called with what arguments, what came back,
                                 and how it ended
+  aforge manual                 every page of aforge's own manual, one per line
+  aforge manual <page>          print that page as it is written
+  aforge manual "<question>"    the sections that answer it, each labelled with the
+                                page and heading it came from. No key, no model call,
+                                nothing spent — the same pages the chat reads, whole.
   aforge version                print the build this binary was cut from
                                 (--version and -v say the same thing)
 
