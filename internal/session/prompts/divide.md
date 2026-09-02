@@ -13,9 +13,12 @@ is what the answer is decided on, so state the items and how many there are.
 11 files, each with its own interface to move" is evidence.
 
 EACH PART'S `brief` IS ITS SCOPE, NOT ITS WHOLE WORLD. Write what that one part
-owns and what it needs to own it: the files and symbols it works on, the
+works on and what it needs to do the work: the files and symbols it opens, the
 conventions it has to keep, what you have already learned about this material
 that it would otherwise find out again, and what its done-condition rests on.
+Material several parts read — the plan you wrote, the notes you gathered, the
+file they all start from — belongs here, in every brief that needs it: naming it
+is not claiming it.
 The rest is composed around it before it is handed over — the work being divided,
 word for word as you were given it, and a map of what each of the other parts
 owns — so every part opens on the family whether or not you say so. Do not copy
@@ -50,14 +53,21 @@ your report what has to be done and who has to do it, and do not go looking for
 something adjacent you could do instead. Work that has been read and handed back
 to a person is not work you can make progress on by finding a nearby file.
 
-EVERY PART OWNS ITS OWN FILES, AND THIS ONE IS ENFORCED. If two of your parts
-name the same file between them, the division is refused before anything is
+WHAT A PART OWNS IS WHAT ITS `acceptance` NAMES. The done-condition is the one
+sentence that says what must be true once that part is finished, so it names
+what that part PRODUCES — every file it writes, and nothing it only reads. Write
+it that way for every part: it is what the part is judged against when it lands,
+and it is where ownership is read.
+
+AND EVERY PART OWNS ITS OWN FILES, WHICH IS ENFORCED. If two of your parts'
+done-conditions name the same file, the division is refused before anything is
 handed out and you are told which file. That is not tidiness: everything the
 parts write goes into one deliverable, so a file two of them wrote is kept once
 and one part's work is quietly lost. Your own parts are read for this BEFORE
-anything is spent, so a refusal there costs you nothing at all. Say in each
-brief which files that part owns, keep those lists apart, and ask again. Two
-parts working in the same directory on different files is fine and always was.
+anything is spent, so a refusal there costs you nothing at all. Give each part
+files of its own, say in each done-condition which ones that part produces, and
+ask again. Two parts working in the same directory on different files is fine
+and always was, and so is a file every part reads.
 
 AND THEN THE PLAN ITSELF IS READ, ONCE, BEFORE ANY PART EXISTS. Somebody sees
 the whole division at once — your evidence, the work it came out of, and every
@@ -90,7 +100,7 @@ report: say what is missing, integrate everything that did land, and retry the
 missing part only when that is the right way to finish the whole.
 
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
-edit the same file are not independent, and are refused. A part that needs what
+write the same file are not independent, and are refused. A part that needs what
 another part learned is a second step, not a second worker. When you are unsure,
 keep working: you can ask again later, and the work you did in the meantime is
 not wasted.

@@ -2586,18 +2586,24 @@ this, has refused a division and the worker carries on with the work exactly as 
 ## Two parts cannot own the same file — a division refused over an overlap
 
 **No two parts may own the same file, and that one is not a judgement — it is
-enforced.** The files each part's brief and done-condition name are checked against each
-other, and if the same file is claimed by more than one part the division is **refused
-before anything is handed out**: no part starts and no working copy is made.
+enforced.** What a part owns is what its **done-condition** names — the sentence that says
+what must be true once that part is finished — so those are the files that are checked
+against each other, and if the same file is named by more than one part's done-condition
+the division is **refused before anything is handed out**: no part starts and no working
+copy is made. A part's brief is read for none of this: it names the material that part
+works on, which includes everything it only reads, and **a file two briefs both name is
+not an overlap** — the plan they all start from, the notes they all draw on, the sibling's
+file one brief mentions so that its worker leaves it alone.
 The worker is told which file — "`report.md` is claimed by more than one part" — and can
-redraw the boundary and ask again. The reason is that everything the parts write goes
+redraw the boundary — give each part a file of its own and say so in its done-condition —
+and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
 version of it would simply be gone, with no conflict for anybody to notice.
 
 **It is checked twice, and the first one is free.** The parts as the worker wrote them are
 read before the mastermind is, so the commonest case — a worker that drew its own
 boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts
-the mastermind settled are read again afterwards, because it can sharpen a brief onto a
+the mastermind settled are read again afterwards, because it can sharpen a part onto a
 file its sibling already owns; a refusal there has cost that one reading and nothing else,
 and its wording does not pretend otherwise. Only the **same file** counts either time. Two
 parts working in one directory on different files are independent and always were, and so

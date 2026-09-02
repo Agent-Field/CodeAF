@@ -13,10 +13,12 @@
 //
 // THE THREE SCENARIOS, AND THE ISSUES THEY STAND ON:
 //
-//   - a three-section report on a FOLDER ground (#230, #229): the mirror is a
-//     repository, the parts cut worktrees off it and merge back into it, and the
+//   - a three-section report on a FOLDER ground (#230, #229, #281): the mirror is
+//     a repository, the parts cut worktrees off it and merge back into it, and the
 //     person's folder gets every part's file laid over it by name — and never a
-//     .git of its own.
+//     .git of its own. The folder is SEEDED with the material every part reads,
+//     which is what #281 made possible: ownership is read off a part's
+//     done-condition, so a file named in every brief is nobody's claim.
 //   - a two-part write-up on a REPOSITORY ground (#232): the parent writes its
 //     plan down first, the parts start in a world that holds it, and the family
 //     lands on the person's branch in one move.
@@ -541,15 +543,16 @@ func TestFamilies(t *testing.T) {
 // they wrote comes home into the person's directory.
 func threeSectionsOnAFolder(t *testing.T, w *world) {
 	const ask = `Write a three-section report into the folder this conversation is already about.
-It covers nine topics and lands as three separate files: a.md, b.md and c.md —
-a.md holds the first three topics, b.md the next three, c.md the last three, about
-eighty words each. The three sections do not depend on each other, so split this
-with divide_work into THREE parts, one file each.
+The folder holds README.md, which lists the nine topics — read it, and say in every
+part's brief that the part reads it too. The report lands as three separate files:
+a.md, b.md and c.md — a.md holds the first three topics, b.md the next three, c.md
+the last three, about eighty words each. The three sections do not depend on each
+other, so split this with divide_work into THREE parts, one file each.
 
-In each part's brief name ONLY the one file that part writes, and say that the
-part writes that one file and nothing else. Name no other file anywhere in that
-brief — not a sibling's file, not something to read, not a path in the folder —
-because a file named in two briefs is two parts claiming one file.`
+Say in each part's done-condition the ONE file that part produces — a.md, b.md or
+c.md — and no other file, because two parts whose done-conditions name the same
+file are two parts claiming one file. README.md is shared: every part reads it and
+no part owns it, so it belongs in the briefs and in no done-condition.`
 
 	run := familyWithParts(t, w, newFolderGround, ask, nil, func(run *familyRun) bool {
 		root, found := run.node(run.root)
@@ -608,11 +611,11 @@ Then split the rest with divide_work into TWO parts. One writes x.md and takes t
 first four topics; the other writes y.md and takes the last four. Each is about
 sixty words and the two are independent of each other.
 
-In each part's brief say which ONE file that part writes and what goes in it, and
-name no other file anywhere in that brief — not the plan, not the sibling's file,
-not a path in the project — because a file named in two briefs is two parts
-claiming one file. Say in each brief that the part writes that one file and
-nothing else.`, token)
+In each part's brief say what that part works on, and in its done-condition say
+which ONE file that part produces — x.md or y.md — and no other file, because two
+parts whose done-conditions name the same file are two parts claiming one file.
+NOTES.md is shared: both parts may read it and neither owns it, so it belongs in
+the briefs and in no done-condition.`, token)
 
 	run := familyWithParts(t, w, newRepositoryGround, ask, nil, func(run *familyRun) bool {
 		root, found := run.node(run.root)
@@ -814,13 +817,13 @@ func oneFileClaimedTwice(t *testing.T, w *world) {
 
 Before you write anything, make ONE divide_work call, with exactly two parts and
 with "seven findings to write up" as the evidence:
-  · part one is called "opening section" and its brief says it writes the opening
-    section of report.md;
-  · part two is called "closing section" and its brief says it writes the closing
-    section of report.md.
-Both briefs name report.md. That is deliberate: this ask is about what happens
-when two parts are given the same file, so write it that way and do not redraw the
-boundary.
+  · part one is called "opening section" and its done-condition says report.md
+    holds the opening section;
+  · part two is called "closing section" and its done-condition says report.md
+    holds the closing section.
+Both done-conditions name report.md. That is deliberate: this ask is about what
+happens when two parts are given the same file, so write it that way and do not
+redraw the boundary.
 
 Then, whatever answer comes back, write report.md yourself with both sections in
 it and say in your report what you were told about the split.`
@@ -889,15 +892,16 @@ it and say in your report what you were told about the split.`
 // exactly that line and the edit is made across it.
 func anEditMadeWhileItRan(t *testing.T, w *world) {
 	const ask = `Write a three-section report into the folder this conversation is already about.
-It covers nine topics and lands as three separate files: a.md, b.md and c.md —
-a.md holds the first three topics, b.md the next three, c.md the last three, about
-eighty words each. The three sections do not depend on each other, so split this
-with divide_work into THREE parts, one file each.
+The folder holds README.md, which lists the nine topics — read it, and say in every
+part's brief that the part reads it too. The report lands as three separate files:
+a.md, b.md and c.md — a.md holds the first three topics, b.md the next three, c.md
+the last three, about eighty words each. The three sections do not depend on each
+other, so split this with divide_work into THREE parts, one file each.
 
-In each part's brief name ONLY the one file that part writes, and say that the
-part writes that one file and nothing else. Name no other file anywhere in that
-brief — not a sibling's file, not something to read, not a path in the folder —
-because a file named in two briefs is two parts claiming one file.`
+Say in each part's done-condition the ONE file that part produces — a.md, b.md or
+c.md — and no other file, because two parts whose done-conditions name the same
+file are two parts claiming one file. README.md is shared: every part reads it and
+no part owns it, so it belongs in the briefs and in no done-condition.`
 
 	mine := "the person wrote this in their own folder while the work ran, and it is theirs\n"
 	run := familyWithParts(t, w, newFolderGround, ask, func(run *familyRun) {
@@ -991,14 +995,33 @@ func newFolderGround(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("make the person's folder: %v", err)
 	}
-	// IT IS DELIBERATELY EMPTY. Anything seeded here would be read by every part
-	// and therefore NAMED in every part's brief, and a path two briefs name is two
-	// parts claiming one file (#231) — so a seed file would refuse the division
-	// this scenario is about before it began. A family that starts from nothing
-	// and writes everything is the ordinary shape of a drafting task anyway, and
-	// the family tree is opened with an empty baseline for exactly that case.
+	// IT HOLDS ONE FILE EVERY PART READS, which is the ordinary shape of divided
+	// work: a folder with the material in it, and parts that each write their own
+	// file out of it. It was deliberately EMPTY until #281, because a seeded file
+	// was named in every part's brief and a path two briefs named was read as two
+	// parts claiming one file — so the scenario could not be seeded at all
+	// without refusing the division it is about. Ownership is read off the
+	// DONE-CONDITION now, so the shared input is a shared input.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(folderTopics), 0o644); err != nil {
+		t.Fatalf("seed the person's folder: %v", err)
+	}
 	return dir
 }
+
+// folderTopics is what the person's folder holds: the material every part of a
+// folder-ground family reads and none of them owns.
+const folderTopics = `# The nine topics
+
+1. how the material arrived
+2. who gathered it
+3. what shape it is in
+4. what is missing from it
+5. what it cost to gather
+6. how often it changes
+7. who reads it today
+8. what they use it for
+9. what should happen to it next
+`
 
 // newRepositoryGround is the person's checkout: one commit, one branch, an
 // identity of their own so the harness's commits are told apart from theirs.
@@ -1012,9 +1035,9 @@ func newRepositoryGround(t *testing.T) string {
 	gitAt(t, dir, "config", "user.name", "the person")
 	gitAt(t, dir, "config", "user.email", "person@localhost")
 	gitAt(t, dir, "config", "commit.gpgsign", "false")
-	// The one file is a marker rather than material, for [newFolderGround]'s
-	// reason: a repository needs a commit to cut a branch from, and material here
-	// would be named in every part's brief.
+	// The one file is a marker rather than material: a repository needs a commit
+	// to cut a branch from, and this scenario's own shared input is the plan the
+	// parent writes down before it divides (NOTES.md), not anything seeded here.
 	if err := os.WriteFile(filepath.Join(dir, ".keep"), nil, 0o644); err != nil {
 		t.Fatalf("seed the person's repository: %v", err)
 	}
