@@ -230,6 +230,9 @@ type chains struct {
 	Model map[string]node  `json:"model,omitempty"`
 	Pair  map[string]node  `json:"pair,omitempty"`
 	Drift map[string]drift `json:"drift,omitempty"`
+	// Spread is how much ONE DRAW at each leaf has been seen to vary, for the
+	// quantities nobody publishes a dispersion for. See [chains.widen].
+	Spread map[string]spreadStat `json:"spread,omitempty"`
 	// Since is the first moment this chain was ever asked about or told
 	// anything, and it is what a level nobody has moved is aged from. A prior
 	// is a belief held SINCE A MOMENT, not a fact outside time: a process that
@@ -428,6 +431,77 @@ func (c *chains) note(of subject, z, R float64, now time.Time) bool {
 	c.put(LevelPair, leaf, node{P: levelVariance(LevelPair), At: now})
 	delete(c.Drift, leaf)
 	return true
+}
+
+// ── HOW VARIABLE ONE DRAW IS, WHERE NOBODY PUBLISHES IT ─────────────────────
+//
+// [Chain.Survival] is judged against the spread of ONE DRAW and a chain holds
+// the spread of an ESTIMATE, so the draw has to come from outside the chain.
+// For a lane the sheet says it — the distance between a published p50 and p90,
+// which [Hierarchy.Draw] reads — and for a run of thought NOBODY SAYS IT AT
+// ALL. That is why the duration clock stood on [SpreadFloor] for ever: σ was
+// the larger of the two terms, the floor was always the larger, and the clock's
+// own gate could not close however many thoughts were folded in.
+//
+// BUT A THING NOBODY PUBLISHES IS STILL OBSERVED. Every thinking duration
+// folded through [Hierarchy.NoteThinking] is one draw of exactly the quantity
+// in question, so the leaf keeps its own account of them: Welford's count, mean
+// and sum of squared deviations, three floats a leaf, folded on the same lock
+// as the belief and in the same call.
+//
+// THE LAW IS THE SAMPLE SPREAD POOLED WITH THE PRIOR, AND FLOORED. n draws
+// carry n − 1 degrees of freedom about their own mean and the prior is worth
+// one more, so the two are pooled at those weights:
+//
+//	σ² = (floor² + Σ(z − z̄)²) / n
+//
+// One draw therefore answers the prior exactly, two identical ones answer it
+// divided by √2, and a model whose deliberation really does vary keeps the
+// width it really has — a wide sample never sharpens the gate, it only ever
+// widens it past the prior. It is floored at [SpreadTightest] because a spread
+// of nothing is a claim that a tail is impossible, which is the one thing a
+// predictive spread may never make.
+
+// spreadStat is one leaf's running account of how much a single draw varies,
+// in the chain's own log domain: Welford's count, mean and sum of squared
+// deviations, which is the whole of a variance in three floats and one pass.
+type spreadStat struct {
+	N    int     `json:"n,omitempty"`
+	Mean float64 `json:"mean,omitempty"`
+	M2   float64 `json:"m2,omitempty"`
+}
+
+// widen folds one observation into a leaf's dispersion account.
+//
+// It is separate from [chains.fold] because the two answer different questions
+// about the same number — where the median is, and how far one draw sits from
+// it — and only the quantities nobody publishes a dispersion for need the
+// second. A leaf with no name is a level this quantity does not have.
+func (c *chains) widen(leaf string, z float64) {
+	if leaf == "" || math.IsNaN(z) || math.IsInf(z, 0) {
+		return
+	}
+	if c.Spread == nil {
+		c.Spread = map[string]spreadStat{}
+	}
+	seen := c.Spread[leaf]
+	seen.N++
+	first := z - seen.Mean
+	seen.Mean += first / float64(seen.N)
+	seen.M2 += first * (z - seen.Mean)
+	c.Spread[leaf] = seen
+}
+
+// draw is how much ONE DRAW at this leaf varies, in nats: the prior until
+// anything has been seen, and the pooled spread of the law above once something
+// has.
+func (c *chains) draw(leaf string, floor float64) float64 {
+	seen, ok := c.Spread[leaf]
+	if !ok || seen.N < 1 || floor <= 0 {
+		return floor
+	}
+	pooled := math.Sqrt((floor*floor + math.Max(seen.M2, 0)) / float64(seen.N))
+	return math.Max(pooled, SpreadTightest)
 }
 
 // ── QUALITY IS HIERARCHICAL TOO, AND IT IS BORROWED RATHER THAN SUMMED ──────
