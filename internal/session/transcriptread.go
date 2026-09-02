@@ -56,6 +56,7 @@ package session
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -131,12 +132,17 @@ func ReadTranscriptBytes(data []byte) Record {
 // session-authored mark and its steer mark, and the marks are on the LINES the
 // scan just consumed. Nothing here can write: the door was never given a handle.
 //
-// THE ONE ERROR THIS CAN CARRY is a file written by a newer aforge: a build that
-// reads it anyway would drop every entry type and field it does not know, in
-// silence, and show a shortened copy of somebody's work as though it were the
-// work. The scan refuses it and hands back nothing, so the reading here has one
-// thing to say and says it — the page draws that sentence and no entries, which
-// is the truth about the file.
+// AN ERROR IS A THING TO SAY, NOT A REASON TO SAY NOTHING. The scan refuses a
+// file written by a newer aforge — a build reading it anyway would drop every
+// entry type and field it does not know, in silence, and show a shortened copy
+// of somebody's work as though it were the work — and hands back nothing, so the
+// page draws that sentence and no entries, which is the truth about the file.
+//
+// IT IS MATCHED, NOT ASSUMED. That refusal is the only one the scan has today,
+// and reading every error as that one would make the day a second is added the
+// day this starts telling people to upgrade a build that is already fine. The
+// sentinel says which, and anything else gets the sentence that is true of all
+// of them.
 //
 // THE FLOOR IS COUNTED BY DOING THE SHAPING, exactly as the resume path counts
 // it (agent.go): the journal counts MESSAGES and a surface indexes ENTRIES, and
@@ -144,7 +150,7 @@ func ReadTranscriptBytes(data []byte) Record {
 // with [shapeEntries].
 func transcriptFrom(replayed replayedSession, err error) Record {
 	if err != nil {
-		return Record{Unreadable: unreadNewerWord}
+		return Record{Unreadable: unreadRefusal(err)}
 	}
 	journal := &sessionFile{
 		images:    replayed.images,
@@ -175,6 +181,19 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 // remedy by naming the cause: the file is not damaged and nothing is lost — a
 // newer aforge opens it.
 const unreadNewerWord = "this transcript was written by a newer aforge — this build cannot read it"
+
+// unreadRefusedWord is every other way a reading can come back with nothing. It
+// promises no cause it has not established: whatever went wrong, what a person
+// needs to know first is that the page below is not the work.
+const unreadRefusedWord = "this transcript could not be read"
+
+// unreadRefusal is which of the two a refusal earns.
+func unreadRefusal(err error) string {
+	if errors.Is(err, errNewerFormat) {
+		return unreadNewerWord
+	}
+	return unreadRefusedWord
+}
 
 // unreadPastLine is a file that stopped being legible partway down, and "" for
 // one read to its end. It names the LINE, which is a place in a file somebody

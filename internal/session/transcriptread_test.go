@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -386,5 +387,42 @@ func TestARecordFromANewerAforgeIsRefusedOutLoud(t *testing.T) {
 			t.Fatalf("%s: the reading says %q, want it to say the file is from a newer aforge",
 				door.name, read.Unreadable)
 		}
+	}
+}
+
+// AND ONLY THAT FILE IS BLAMED ON THE BUILD. "Written by a newer aforge" sends
+// somebody to upgrade, so the reading says it only when the scan actually
+// refused the FORMAT. Every other way a reading can come back empty — a disk
+// that went away, a read cut off, whatever the scan learns to refuse next —
+// gets the sentence that is true of all of them.
+//
+// The mapping is tested here rather than through a door because the scan has one
+// refusal today: the point is that the day it has two, the second cannot inherit
+// the first one's sentence.
+func TestOnlyAFormatRefusalIsBlamedOnTheBuild(t *testing.T) {
+	plain := transcriptFrom(replayedSession{existed: true}, errors.New("read node.jsonl: input/output error"))
+	if plain.Unreadable != unreadRefusedWord {
+		t.Fatalf("a reading that failed for some other reason says %q, want %q",
+			plain.Unreadable, unreadRefusedWord)
+	}
+	if strings.Contains(plain.Unreadable, "newer aforge") {
+		t.Fatalf("a reading that failed for some other reason told somebody to upgrade: %q",
+			plain.Unreadable)
+	}
+
+	// AND THE FORMAT REFUSAL IS STILL MATCHED THROUGH ITS WRAPPER, which is what
+	// makes matching rather than assuming safe.
+	refused := &newerFormatError{Path: "/tmp/node.jsonl", Version: sessionFileVersion + 1, Reads: sessionFileVersion}
+	if !errors.Is(refused, errNewerFormat) {
+		t.Fatal("the format refusal does not match its own sentinel")
+	}
+	if got := transcriptFrom(replayedSession{existed: true}, refused); got.Unreadable != unreadNewerWord {
+		t.Fatalf("the format refusal says %q, want %q", got.Unreadable, unreadNewerWord)
+	}
+	// The sentence people are shown is the one the manual quotes
+	// (internal/manual/chat/sessions-and-rewind.md), unchanged by the wrapping.
+	want := "session file: /tmp/node.jsonl was written by a newer aforge (format version 2; this build reads 1)"
+	if refused.Error() != want {
+		t.Fatalf("the refusal now reads %q, want %q", refused.Error(), want)
 	}
 }

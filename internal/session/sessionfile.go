@@ -57,6 +57,33 @@ const sessionFileVersion = 1
 // it with errors.Is; the *SessionLockedError it wraps carries the path.
 var ErrSessionLocked = errors.New("session file is open in another aforge")
 
+// errNewerFormat is the ONE refusal a reading of a session file can carry that
+// is about the file's FORMAT rather than about this machine's luck with it — a
+// header declaring a version above [sessionFileVersion].
+//
+// It is a sentinel because a caller has to be able to tell it apart. "This was
+// written by a newer aforge" is a true and useful thing to say to somebody, and
+// saying it about a disk that went away, or a read that was cut off, would be a
+// confident wrong answer sending them to upgrade a build that is already fine.
+// Match it with errors.Is; the *newerFormatError it wraps carries the path and
+// both versions, and prints the sentence people are shown and the manual quotes
+// (internal/manual/chat/sessions-and-rewind.md).
+var errNewerFormat = errors.New("session file was written by a newer aforge")
+
+// newerFormatError names the file and the two format versions.
+type newerFormatError struct {
+	Path    string
+	Version int
+	Reads   int
+}
+
+func (e *newerFormatError) Error() string {
+	return fmt.Sprintf("session file: %s was written by a newer aforge (format version %d; this build reads %d)",
+		e.Path, e.Version, e.Reads)
+}
+
+func (e *newerFormatError) Unwrap() error { return errNewerFormat }
+
 // SessionLockedError names the file another process holds.
 type SessionLockedError struct{ Path string }
 
@@ -1368,9 +1395,8 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			if header.Version > sessionFileVersion {
-				return replayedSession{existed: true}, fmt.Errorf(
-					"session file: %s was written by a newer aforge (format version %d; this build reads %d)",
-					path, header.Version, sessionFileVersion)
+				return replayedSession{existed: true}, &newerFormatError{
+					Path: path, Version: header.Version, Reads: sessionFileVersion}
 			}
 			// FIRST one wins, unlike the title: the header is written once, at
 			// creation, and a second one in the same file would be a file two
