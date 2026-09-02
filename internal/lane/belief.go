@@ -1158,7 +1158,7 @@ func (l *ledger) Think(model, rung string, now time.Time) Chain {
 // ages there: a model does not deliberate more steadily because nobody has
 // asked it anything lately.
 func (l *ledger) ThinkDraw(model, rung string) float64 {
-	if BareModel(model) == "" {
+	if LedgerModel(model) == "" {
 		return SpreadFloor
 	}
 	l.mu.Lock()
