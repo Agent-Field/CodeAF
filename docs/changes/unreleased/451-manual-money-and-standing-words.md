@@ -10,6 +10,7 @@ invalidates:
   - The standing-orders page never used the words delete, remove or get rid of; there is no delete on that page, the word for it is stop, and the heading now carries all three.
   - Nothing in the chat manual said how often standing things are checked; a pass runs every five minutes from an open window or the machine's own timer, and an item fires on the cadence you gave it.
   - The chat manual said a pasted OpenRouter key only has to start with sk- and hold no spaces; the shape check also demands at least 20 characters.
+  - The chat manual said in three places that a late standing check says it was late; nothing aforge prints says that, and the pages now say what the timer does instead — one missed check is caught up when the machine comes back.
 ---
 
 Eight claims in the money and standing-order pages that the code does not make,
