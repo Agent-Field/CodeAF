@@ -81,12 +81,20 @@ type ExecResult struct {
 	// its summary its own last sentence, and its siblings briefed on truncated
 	// work. Nothing that runs after that ✓ can recover the cut work.
 	//
-	// Stopped is asked BEFORE Stop, and it is not redundant with it. A
-	// StopReason is a string; its zero value is the empty string; and a result
-	// built by any caller that does not fill these in would otherwise read as a
-	// leaf that stopped for no reason, which is indistinguishable from one that
-	// finished. Absence is said out loud.
-	Stopped bool
+	// THE ENDING WORD IS THE WHOLE OF THE ANSWER, and it is one field rather
+	// than two. A StopReason is a string whose zero value is the empty string,
+	// and [executor.StopReason.OutOfRoom] reads that empty string as false — so
+	// a result nobody filled in already settles as an ordinary finish, exactly
+	// as it did before any of this existed. Absence is still said out loud.
+	//
+	// It was once guarded by a second `Stopped` flag asked before this one, and
+	// the flag could only ever subtract: one writer set it in the same breath as
+	// this field and one reader consulted it, and what it gated was whether a
+	// worker's real work is thrown away. A result that arrives carrying an
+	// unambiguous "it ran out" and a flag somebody forgot is a node quietly
+	// retired over work that was still going — the very defect this seam exists
+	// to refuse — so the ending word decides alone.
+	//
 	// Stop is the executor's own word for the ending — "budget", "turn-cap",
 	// "deadline", "done".
 	Stop executor.StopReason
@@ -110,7 +118,7 @@ type ExecResult struct {
 // budget, settles a node. Exhaustion is a measured fact and doneness is a claim,
 // and a measured fact is never overturned by an unmeasured claim.
 func (r ExecResult) RanOut() bool {
-	return r.Stopped && !r.Continued && r.Stop.OutOfRoom()
+	return !r.Continued && r.Stop.OutOfRoom()
 }
 
 // ExecuteFunc runs one claimed node to completion. The runner owns the claim
@@ -1388,7 +1396,7 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 			_ = r.graph.ReleaseWithRecord(claim, outOfRoomClaimReason(result, recorded), recorded)
 			return
 		}
-		_ = r.graph.Fail(claim, outOfRoomFailure(result))
+		_ = r.graph.Fail(claim, outOfRoomFailure(result, recorded))
 		return
 	}
 	var settleErr error
@@ -1705,28 +1713,6 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 // pick up where this one stopped, and the turn count is the evidence that it
 // can. The headless stream prints it beside the node (see cmd/aforge's
 // narrateOne on store.EventNodeReleased).
-// outOfRoomClaimReason is what a person reads when a leaf that ran out goes back
-// on the queue: what ran out, how far it got, and that its work is kept.
-func outOfRoomClaimReason(result ExecResult, recorded int) string {
-	reason := "it was still working when it ran out"
-	if words := result.Meter.Words(); words != "" {
-		reason += " (" + words + ")"
-	}
-	return reason + " — " + pluralTurns(recorded) + " of its work is recorded, and the next attempt carries on from there"
-}
-
-// outOfRoomFailure is the same fact when there is no next attempt left: the leaf
-// ran out on every claim it was given and nothing could continue it, so the node
-// says so rather than settling on a summary written by a worker that was cut off
-// mid-sentence.
-func outOfRoomFailure(result ExecResult) string {
-	words := result.Meter.Words()
-	if words == "" {
-		words = string(result.Stop)
-	}
-	return "it ran out of room on every attempt and was never able to finish (" + words + ")"
-}
-
 func exhaustedClaimReason(allowed time.Duration, recorded int) string {
 	return fmt.Sprintf("the worker did not come back within %s and was stopped — %s of its work is recorded, and the next one carries on from there",
 		allowed.Round(time.Second), pluralTurns(recorded))
