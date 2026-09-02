@@ -414,7 +414,10 @@ func (a *app) doneTail(card *taskDone) string {
 		}
 		tail += " · " + kept + " · " + card.branch
 	case mergeWordMerged, mergeWordInPlace:
-		tail += " · " + card.merge
+		// THROUGH THE TABLE, NEVER THE TOKEN (task.go's [mergeScreenWords]). This
+		// arm used to append the engine's own word, so a task that ran in a
+		// folder with no repository closed its card with `· inplace`.
+		tail += " · " + mergeScreenWord(card.merge)
 	}
 	return tail
 }
@@ -539,8 +542,10 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 	}
 	if card.branch != "" {
 		branch := card.branch
-		if card.merge != "" {
-			branch += " · " + card.merge
+		// THROUGH THE TABLE, NEVER THE TOKEN (task.go's [mergeScreenWords]): the
+		// expansion is the fourth reader of a merge word and had the same leak.
+		if word := mergeScreenWord(card.merge); word != "" {
+			branch += " · " + word
 		}
 		say(fit(a.doneGroundLabel(card)+branch, room))
 	}

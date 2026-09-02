@@ -2430,16 +2430,16 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// (task.go's [taskUnverifiedWord]).
 		return taskUnverifiedWord
 	}
-	switch node.merge {
-	case mergeWordConflicted:
-		return mergeWordConflicted
-	case mergeWordAborted:
-		return taskStoppedWord
-	case "":
-		return roomDoneWord
-	default:
-		return node.merge
+	// WHERE THE WORK LANDED, IN A PERSON'S WORDS. It is one table lookup and not
+	// a switch with a fall-through, because the fall-through was drawing the
+	// engine's own token: a task in a folder with no repository publishes
+	// "inplace", and this line said `inplace` to somebody who has never read
+	// internal/session (task.go's [mergeScreenWords] holds the table and the
+	// argument). A node the engine published no merge word for is simply done.
+	if word := mergeScreenWord(node.merge); word != "" {
+		return word
 	}
+	return roomDoneWord
 }
 
 // The three words the header has that nothing else on this surface says.
