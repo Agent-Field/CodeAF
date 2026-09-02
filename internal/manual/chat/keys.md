@@ -276,10 +276,13 @@ What happens:
    immediately as the next turn. That is the whole difference `esc` makes while
    something is waiting.
 
-**The words aforge uses for one stop.** They are four slots and one key press, so they
+**The words aforge uses for one stop.** They are five slots and one key press, so they
 are worth reading together: `stopping` is the status word while the turn is being let go,
+`stopping · detaching in 7s` is that same word once the 10-second bound is counting down,
 `interrupted` is the status word once it is over, `· stopped` is the note left in the
-conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. If
+conversation, and `▸ stopped by you at 40s` is the chip a stopped turn collapses to. A
+turn that never let go leaves a sixth: `detached — the turn was let go of and nothing is
+waiting for it`. If
 you are looking for the word *interrupted* anywhere else on the screen, that is where it
 is — the status line, and only after the turn has truly ended.
 
@@ -307,7 +310,11 @@ time straight away does not quit either: the press that stopped the turn does no
 arm the door, so the second press only arms it and a third one is needed to leave.
 See "Quitting aforge — how do I exit, close it, or why did ctrl+c not quit" below.
 
-## Why is the turn still finishing after esc — the stopping window, and the 10-second bound
+## Esc is not stopping it — why the turn is still finishing, how long stopping takes, and what happens if it will not let go
+
+**I pressed escape and it is still running.** That is this section: escape is not being
+ignored, the turn is being let go of, and if it will not let go aforge ends it for you
+after ten seconds.
 
 `esc` cancels the turn on the keystroke, but the turn does not close on the keystroke. A
 `bash` call whose command left something holding its output waits up to three seconds
