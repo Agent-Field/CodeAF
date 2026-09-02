@@ -916,15 +916,23 @@ reply cannot paint itself a heading.
 
 ## The reply pops in as a block instead of streaming smoothly — why it writes in
 
-A stream from the model arrives in **lumps** — a word, a sentence, sometimes a whole
-paragraph that piled up while the last frame was being drawn. Those bytes are kept; what
-you see is the growing edge walking them in over a couple of tenths of a second, fast at
-first and finer at the end. A short burst, about a line, lands whole, because holding
-back a word the model has already said would feel like the surface stalling. The moment
-the turn finishes, anything still unread appears at once.
+A stream arrives in **lumps** — a word, a sentence, sometimes a whole paragraph that
+piled up while the last frame was being drawn, or a quiet wire that then dumps what it
+buffered. Those bytes are kept; what you see does not depend on how they arrived. The
+growing edge walks them in over a couple of tenths of a second, fast at first and finer
+at the end, whether the burst was four tokens or a paragraph. A single short word may
+land on the event itself so the edge is already moving. The moment the turn finishes,
+anything still unread appears at once.
 
 The thinking window and an `ask here` reply on home walk the same way. A screen-reader
 session never paces: every byte lands the moment it is known.
+
+## Why the reply still jumps — a blob of text still writes in
+
+A quiet wire and a lumpy endpoint look the same on this screen. The bytes are kept and
+the growing edge walks them in over a couple of tenths of a second, fast at first and
+finer at the end. A single short word may land on the event itself. A finished turn
+snaps whatever is unread. A screen-reader session never paces.
 
 ## Markdown while a reply is still arriving
 
