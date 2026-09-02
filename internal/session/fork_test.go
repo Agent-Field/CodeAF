@@ -1312,7 +1312,7 @@ func TestTheForkCallIsOneCheapRoundOfTheCallersOwnPrice(t *testing.T) {
 
 	// And the meter itself, at the unit it counts in: one batch, one round.
 	meter := &checkpointMeter{}
-	if meter.round(); meter.rounds != 1 {
+	if meter.round(true); meter.rounds != 1 {
 		t.Fatalf("one finished batch counted as %d rounds", meter.rounds)
 	}
 }

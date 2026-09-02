@@ -59,7 +59,7 @@ func TestTheMeterFiresOnlyAtTheGeometricMarks(t *testing.T) {
 	// for ever must not be interrupted for ever.
 	last := at * checkpointRatio
 	for round := 1; round <= last; round++ {
-		got := meter.round()
+		got := meter.round(true)
 		if expected, marked := want[round]; marked {
 			if got != expected {
 				t.Fatalf("round %d gave mark %d, want %d", round, got, expected)
@@ -90,13 +90,13 @@ func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 	meter := &checkpointMeter{}
 	// Two ordinary rounds, then the race's verdict lands at the third boundary.
 	for round := 1; round <= 2; round++ {
-		if mark := meter.round(); mark != 0 {
+		if mark := meter.round(true); mark != 0 {
 			t.Fatalf("round %d fired mark %d before the price", round, mark)
 		}
 	}
 	meter.tighten(routeVerdict{Work: true, Wide: true, Acceptance: "the four pieces exist"})
 
-	if mark := meter.round(); mark != 1 {
+	if mark := meter.round(true); mark != 1 {
 		t.Fatalf("the boundary the verdict landed on gave mark %d, want the first mark", mark)
 	}
 	// AND THE VERDICT IS KEPT, because whatever task eventually starts out of this
@@ -106,22 +106,22 @@ func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 	}
 	// THE LATER RUNGS ARE THE ORDINARY ONES.
 	for round := 4; round < checkpointMarkAt(2); round++ {
-		if mark := meter.round(); mark != 0 {
+		if mark := meter.round(true); mark != 0 {
 			t.Fatalf("round %d fired mark %d; the second rung stands at %d",
 				round, mark, checkpointMarkAt(2))
 		}
 	}
-	if mark := meter.round(); mark != 2 {
+	if mark := meter.round(true); mark != 2 {
 		t.Fatalf("round %d gave mark %d, want the second mark at the ordinary rung",
 			checkpointMarkAt(2), mark)
 	}
 	for round := checkpointMarkAt(2) + 1; round < checkpointMarkAt(checkpointMarks); round++ {
-		if mark := meter.round(); mark != 0 {
+		if mark := meter.round(true); mark != 0 {
 			t.Fatalf("round %d fired mark %d; the ceiling stands at %d",
 				round, mark, checkpointMarkAt(checkpointMarks))
 		}
 	}
-	if mark := meter.round(); mark != checkpointMarks {
+	if mark := meter.round(true); mark != checkpointMarks {
 		t.Fatalf("the ceiling gave mark %d at round %d, want %d",
 			mark, checkpointMarkAt(checkpointMarks), checkpointMarks)
 	}
@@ -132,7 +132,7 @@ func TestATightenedMeterMovesOnlyTheFirstMark(t *testing.T) {
 func TestALateTightenKeepsTheVerdictAndMovesNothing(t *testing.T) {
 	meter := &checkpointMeter{}
 	for round := 1; round <= checkpointMarkAt(1); round++ {
-		meter.round()
+		meter.round(true)
 	}
 	if meter.marks != 1 {
 		t.Fatalf("the meter is at %d marks, want the first one spent", meter.marks)
@@ -2954,4 +2954,285 @@ func stoppingStepsCalling(calls []scriptedCall, stopped string, remains func() s
 		}
 	}
 	return steps
+}
+
+// ── coordination is not a division, and watching is not working ─────────────
+//
+// The two halves of the same live failure (#276), 2026-09-01. A conversation had
+// four pieces out and spent a turn watching them: reading their logs, waiting for
+// what they sent back. The turn crossed a mark on the strength of that watching
+// alone; the honest sketch of a turn like that is "wait for the second | wait for
+// the third | wait for the fourth", which is three parts by the separator; and the
+// harness converted it into a task, twice, whose whole brief was to review reports
+// and accept work that a worker in its own copy cannot see. Two junk tasks, about
+// fifteen minutes of node time, and a rail the person had to distrust.
+
+// A DRAWING OF THE CONVERSATION'S OWN COORDINATION IS NOT A DIVISION.
+//
+// The table is the invariant. What makes a part real is that somebody else could
+// be given it, and neither a wait nor a bare verb over work already out is
+// anything anybody can be given — while a verb WITH SOMETHING AFTER IT is
+// ordinary work and still splits, which is the half that keeps this from eating
+// the road it stands beside.
+func TestADrawingOfTheConversationsOwnCoordinationIsNotADivision(t *testing.T) {
+	for _, one := range []struct {
+		name      string
+		shape     string
+		handsBack bool
+		split     bool
+	}{
+		{"the incident's first drawing", "(the second report > review) | (the third report > review) | (the fourth report > review)", true, false},
+		{"the incident's second drawing", "the second > accept | the third > accept | the fourth > accept", true, false},
+		{"waiting on each piece", "wait for the second | wait for the third | wait for the fourth", true, false},
+		{"the token the ask teaches", "(waiting)", true, false},
+		{"awaiting, in the other tense", "awaiting the second | awaiting the third", true, false},
+		{"three pieces of work", "A | B | C", false, true},
+		{"a verb with something after it", "review the manuscript | write the summary | check the figures against the source", false, true},
+		{"one wait beside real work", "wait for the second | write the summary", false, true},
+		{"the shape that says nothing is left", "(done)", false, false},
+		{"a chain", "A > B > C", false, false},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			sketch := parseCheckpointSketch(one.shape + "\nA sentence naming the letters.")
+			if sketch.handsBack != one.handsBack {
+				t.Errorf("%q reads as hands-back %v, want %v", one.shape, sketch.handsBack, one.handsBack)
+			}
+			if sketch.split() != one.split {
+				t.Errorf("%q reads as a split %v, want %v (%d parts)", one.shape, sketch.split(), one.split, sketch.parts)
+			}
+			// AND THE DIVISION A DRAWING PROPOSES IS THE SAME ANSWER, because a
+			// harness that refused to convert a turn on a drawing and then handed
+			// the same drawing to a worker would be two answers to one question.
+			if proposed := (drawnDivision{sketch: sketch}).proposes(); proposed != one.split {
+				t.Errorf("%q proposes a division %v while the split says %v", one.shape, proposed, one.split)
+			}
+		})
+	}
+}
+
+// AND THE REFUSAL IS WRITTEN DOWN THE WAY `(done)` IS.
+//
+// A carry-on and a hand-back both leave the turn running, and a file that spelled
+// them alike could not tell a turn that is one long job from a turn that was only
+// ever watching its own pieces.
+func TestAHandBackIsJournalledAsItsOwnDecision(t *testing.T) {
+	waiting := parseCheckpointSketch("(waiting)\nThe three pieces are still out.")
+	if got := waiting.carryOnDecision(); got != checkpointDecisionWaiting {
+		t.Errorf("a hand-back journals as %q, want %q", got, checkpointDecisionWaiting)
+	}
+	chain := parseCheckpointSketch(checkpointChainSketch)
+	if got := chain.carryOnDecision(); got != checkpointDecisionContinue {
+		t.Errorf("one long job journals as %q, want %q", got, checkpointDecisionContinue)
+	}
+	if checkpointDecisionWaiting == checkpointDecisionContinue {
+		t.Error("the two carry-ons are spelled the same, so nothing can tell them apart afterwards")
+	}
+}
+
+// AND THE ASK TEACHES THE TOKEN, because a reader that was never told how to say
+// it draws the coordination as parts instead.
+func TestTheSketchAskNamesTheWaitingToken(t *testing.T) {
+	if !strings.Contains(checkpointSketchAsk, "(waiting)") {
+		t.Errorf("the ask never names the shape that means the pieces are already out:\n%s",
+			checkpointSketchAsk)
+	}
+	if !parseCheckpointSketch("(waiting)").handsBack {
+		t.Error("the token the ask teaches is not the token the harness reads")
+	}
+}
+
+// A MARK THAT READS COORDINATION STARTS NOTHING, AND THE SAME MARK OVER REAL WORK
+// STILL HANDS THE TURN OVER.
+//
+// Both arms in one test on purpose: the fix is worth nothing if it bought the
+// refusal by turning the road off.
+func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) {
+	const asked = "keep an eye on the four pieces I have out"
+	const answered = "all four are still running; nothing needs you yet"
+	const coordination = "wait for the second | wait for the third | wait for the fourth\n" +
+		"The second, third and fourth pieces are the ones still out."
+
+	t.Run("coordination", func(t *testing.T) {
+		rounds := checkpointMarkAt(2)
+		steps := append(grindingSteps(rounds+2, coordination, "Finish it\nwhat is left"), finalAnswer(answered))
+		completer := &scriptedCompleter{steps: steps}
+		agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+		graph := stubbedGraph(agent, func(node *TaskNode) {})
+
+		events, err := agent.Submit(context.Background(), asked)
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		collected := collect(t, events)
+
+		if count := admitted(graph); count != 0 {
+			t.Fatalf("%d tasks were started off a drawing of the conversation's own waiting", count)
+		}
+		if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) {
+			t.Fatalf("the split line was said over a turn that was only waiting: %q", said)
+		}
+		// AND THE READER WAS ASKED, so this is a refusal rather than a mechanism
+		// that never fired.
+		if read := marksRead(completer); read != 2 {
+			t.Errorf("the sidecar was asked %d times over %d rounds, want both marks", read, rounds)
+		}
+		// AND THE TURN'S OWN ANSWER STANDS.
+		if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
+			t.Errorf("the turn ended as a %s saying %q, want the answer the model was giving",
+				last.Role, messageText(last))
+		}
+	})
+
+	t.Run("real parts", func(t *testing.T) {
+		completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, "Finish the four pieces\nwhat is left")}
+		agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+		ran := make(ranNodes, 2)
+		graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+		events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		collected := collect(t, events)
+		node := ran.await(t)
+
+		if count := admitted(graph); count != 1 {
+			t.Fatalf("%d tasks were admitted off three real parts, want exactly one", count)
+		}
+		if !saidSomething(noticeTexts(collected), checkpointSplitNote) {
+			t.Fatalf("the split never said its line; notices were %q", noticeTexts(collected))
+		}
+		if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS: A | B | C") {
+			t.Errorf("the brief does not open on the parts the sidecar drew:\n%s", node.spec.brief)
+		}
+	})
+}
+
+// ── WAITING IS NOT WORKING, ON THE CONVERSATION'S SIDE ──────────────────────
+
+// A ROUND SPENT WATCHING WORK ALREADY OUT PUSHES THE LADDER RATHER THAN CLIMBING
+// IT.
+//
+// This is [childRun.park]'s law in the unit this meter counts in: a node's
+// deadline is pushed by exactly the parked time, and a conversation's marks stand
+// exactly as far ahead as they did before a round of looking.
+func TestARoundSpentWatchingDoesNotClimbTheLadder(t *testing.T) {
+	meter := &checkpointMeter{}
+	// Twice the whole ladder, spent watching. Nothing fires.
+	for round := 1; round <= checkpointMarkAt(checkpointMarks)*2; round++ {
+		if mark := meter.round(false); mark != 0 {
+			t.Fatalf("watching round %d fired mark %d", round, mark)
+		}
+	}
+	if meter.rounds != 0 {
+		t.Errorf("the meter counted %d rounds of work over a turn that only watched", meter.rounds)
+	}
+	if meter.watched != checkpointMarkAt(checkpointMarks)*2 {
+		t.Errorf("the meter remembers %d watched rounds of %d", meter.watched, checkpointMarkAt(checkpointMarks)*2)
+	}
+	// AND THE FIRST MARK STILL STANDS WHERE IT ALWAYS DID, counted in work.
+	for round := 1; round < checkpointMarkAt(1); round++ {
+		if mark := meter.round(true); mark != 0 {
+			t.Fatalf("round %d of work fired mark %d before the price", round, mark)
+		}
+	}
+	if mark := meter.round(true); mark != 1 {
+		t.Fatalf("the first mark gave %d at round %d of work", mark, checkpointMarkAt(1))
+	}
+}
+
+// AND A BATCH IS READ BY WHAT IT TOUCHED.
+func TestABatchOfLooksAtWorkAlreadyOutIsNotARoundOfWork(t *testing.T) {
+	call := func(names ...string) []ai.ToolCall {
+		var calls []ai.ToolCall
+		for _, name := range names {
+			calls = append(calls, ai.ToolCall{Function: ai.ToolCallFunction{Name: name}})
+		}
+		return calls
+	}
+	for _, one := range []struct {
+		name     string
+		calls    []ai.ToolCall
+		watching bool
+	}{
+		{"the task rail", call("tasks"), true},
+		{"a job's output", call("jobs"), true},
+		{"both, in one breath", call("tasks", "jobs"), true},
+		{"a look and a read", call("tasks", "read"), false},
+		{"ordinary work", call("read", "write"), false},
+		{"no batch at all", nil, false},
+	} {
+		if got := roundWasWatching(one.calls); got != one.watching {
+			t.Errorf("%s reads as watching %v, want %v", one.name, got, one.watching)
+		}
+	}
+}
+
+// AND THE TWO WINDOWS IT NAMES ARE REAL TOOLS. A name that drifted out of the
+// belt would turn this carve-out off in silence, which is the failure mode the
+// whole file is built to avoid.
+func TestTheWatchToolsAreOnTheBelt(t *testing.T) {
+	agent := checkpointAgent(t, &scriptedCompleter{steps: []step{finalText("nothing")}})
+	onBelt := make(map[string]bool)
+	for _, name := range beltNames(agent) {
+		onBelt[name] = true
+	}
+	for name := range checkpointWatchTools {
+		if !onBelt[name] {
+			t.Errorf("the checkpoint discounts rounds spent in %q, which is not a tool on the belt: %v",
+				name, beltNames(agent))
+		}
+	}
+}
+
+// AND A WHOLE TURN SPENT WATCHING NEVER REACHES A MARK AT ALL.
+//
+// The incident's own shape, scripted end to end through [Agent.Submit]: a turn
+// that does nothing but look at the pieces it already has out runs to its own end
+// with the sidecar never asked, nothing said and nothing started.
+func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
+	const answered = "all four are still running; I will tell you when they land"
+
+	rounds := checkpointMarkAt(checkpointMarks) + 4
+	steps := make([]step, rounds)
+	for index := range steps {
+		round := index
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForRemains(messages) {
+				return textResponse(checkpointNothingLeft), nil
+			}
+			if round == rounds-1 {
+				return textResponse(answered), nil
+			}
+			arguments, _ := json.Marshal(struct {
+				Query string `json:"query"`
+			}{Query: fmt.Sprintf("piece %d", round)})
+			return toolResponseWithText(fmt.Sprintf("look-%d", round), "tasks", string(arguments),
+				"Checking where the pieces have got to."), nil
+		}
+	}
+	completer := &scriptedCompleter{steps: steps}
+	agent := checkpointAgent(t, completer)
+	graph := stubbedGraph(agent, func(node *TaskNode) {})
+
+	events, err := agent.Submit(context.Background(), "keep an eye on the four pieces I have out")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if read := marksRead(completer); read != 0 {
+		t.Errorf("the sidecar was asked %d times about a turn that only watched", read)
+	}
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were started off a turn that only watched", count)
+	}
+	if said := noticeTexts(collected); saidSomething(said, checkpointSplitNote) ||
+		saidSomething(said, checkpointCeilingNote) {
+		t.Fatalf("a watching turn was told something happened to it: %q", said)
+	}
+	if last := lastMessage(agent); last.Role != "assistant" || !strings.Contains(messageText(last), answered) {
+		t.Errorf("the turn ended as a %s saying %q, want the answer the model was giving",
+			last.Role, messageText(last))
+	}
 }

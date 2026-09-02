@@ -458,12 +458,26 @@ const checkpointResultArrow = " → "
 // UNTOUCHED, from "independent parts" to the end: that is variant C word for
 // word, it is what both models were scored on, and it is what the parser is
 // pinned to.
+//
+// AND IT TEACHES THE SECOND TOKEN FOR THE SAME REASON IT TEACHES THE FIRST.
+// `(done)` exists because a reader that was never told how to say "nothing is
+// left" says it in a sentence nobody can parse; `(waiting)` exists because a
+// reader that was never told that work already handed out is not a part DRAWS IT
+// AS ONE. Measured live 2026-09-01: a conversation with four pieces out spent a
+// turn watching them, the honest sketch of that turn was "wait for the second |
+// wait for the third | wait for the fourth", and three parts is a split — so the
+// turn was converted into a task whose whole brief was to review reports and
+// accept work that a worker in its own copy cannot see, let alone accept. The
+// exclusion is stated in the ask, and the fold that reads it back is
+// [checkpointSketch.handsBack].
 const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has been done towards it. " +
 	"In one line, sketch what remains of the ask as parts and arrows: " +
 	"independent parts separated by ' | ', ordered steps joined by ' > '. " +
 	"Example shapes: 'A | B | C' or 'A > B > C' or 'A > (B | C)'. " +
 	"Nothing else on that line. Then one sentence saying what each letter is. " +
-	"If nothing remains, that line is '(done)'."
+	"If nothing remains, that line is '(done)'. " +
+	"Work you have already handed out is not a part: if all that remains is waiting on it, " +
+	"reviewing what comes back or accepting it, that line is '(waiting)'."
 
 // checkpointSplitNote is the ONE line a person reads when a mark's sketch says
 // the work in front of it has parts.
@@ -714,8 +728,13 @@ const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not
 // work out of a conversation on the strength of a conversation that already
 // ended.
 type checkpointMeter struct {
-	// rounds is how many tool batches this turn has FINISHED.
+	// rounds is how many tool batches this turn has FINISHED AS WORK.
 	rounds int
+	// watched is how many of this turn's batches did nothing but LOOK at work the
+	// conversation already has out ([roundWasWatching]), and it is here so that
+	// what a turn spent waiting is a fact somebody can read rather than a gap in
+	// the count. It prices nothing: see [checkpointMeter.round].
+	watched int
 	// carriedOn is how many times this turn has already been re-opened by
 	// [Agent.checkpointReopen], and it is what [checkpointCarryOnCap] bounds.
 	//
@@ -798,6 +817,42 @@ func (m *checkpointMeter) tighten(verdict routeVerdict) {
 	m.firstAt = m.rounds + 1
 }
 
+// checkpointWatchTools are the belt's two windows onto work this conversation
+// ALREADY HAS OUT: the task rail and the background jobs. They are the only two
+// there are — each is deliberately the single vocabulary for its kind of thing
+// (tools_tasks.go, tools_jobs.go) — so a batch drawn entirely from them is a
+// batch that touched nothing but work that is already running somewhere else.
+//
+// IT IS THE TOOL AND NOT THE ARGUMENT, which is a decision rather than a
+// shortcut. Steering a running piece and stopping one are the conversation's own
+// verbs exactly as looking at one is: a worker in its own copy cannot steer a
+// sibling either, so a turn that spent its rounds doing those has no more to hand
+// out than a turn that spent them reading. Reading arguments here would buy a
+// second parser and change no answer.
+var checkpointWatchTools = map[string]bool{
+	"tasks": true,
+	"jobs":  true,
+}
+
+// roundWasWatching reports that a finished batch did nothing but look at work
+// this conversation already has out.
+//
+// A BATCH WITH NO CALLS IN IT IS NOT ONE OF THESE. The other road into the meter
+// is a turn that has already stopped ([Agent.checkpointReopen]), which has no
+// batch at all, and reading its silence as watching would exempt from the ladder
+// the one shape that reaches it.
+func roundWasWatching(calls []ai.ToolCall) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	for _, call := range calls {
+		if !checkpointWatchTools[call.Function.Name] {
+			return false
+		}
+	}
+	return true
+}
+
 // round folds one finished tool round into the meter and reports which mark, if
 // any, this round has just crossed. Zero is the ordinary answer.
 //
@@ -817,8 +872,30 @@ func (m *checkpointMeter) tighten(verdict routeVerdict) {
 // working inside it, and the person waits once. So a lane tempted to count calls
 // here would silently price a burst at four times what the person actually
 // waited, and would move work off a conversation for having been parallel.
-func (m *checkpointMeter) round() int {
+func (m *checkpointMeter) round(worked bool) int {
 	if m == nil {
+		return 0
+	}
+	// AND WAITING IS NOT WORKING, WHICH IS THE RUNNER'S OWN LAW SAID ON THE OTHER
+	// SIDE OF THE TREE.
+	//
+	// A node that hands its work out and waits on the reports is PARKED: its
+	// deadline is pushed by exactly the parked time and its no-progress counter
+	// starts again, because a stretch in which it made no request and took no step
+	// is not a stretch of the thing the deadline bounds (task_child_run.go's
+	// [childRun.park]). A conversation cannot park — nobody hands it a lane — so
+	// the same law has to be written in the unit this meter counts in, and a round
+	// is that unit: a batch that only looked at work already out is not a batch of
+	// work, so it does not move the ladder and the marks stand exactly as far
+	// ahead as they did before it.
+	//
+	// WITHOUT IT A PERSON WHO SAYS "KEEP AN EYE ON THOSE" MANUFACTURES A
+	// CONVERSION. Measured live 2026-09-01: a conversation with four pieces out
+	// spent a turn reading their logs, crossed a mark on the strength of the
+	// reading alone, and was converted into a task twice over — about fifteen
+	// minutes of a worker that could act on none of it.
+	if !worked {
+		m.watched++
 		return 0
 	}
 	m.rounds++
@@ -843,10 +920,27 @@ type checkpointSketch struct {
 	shape  string
 	legend string
 	parts  int
+	// handsBack says the drawing is THE CONVERSATION'S OWN COORDINATION and not
+	// work anybody else could take: waiting on pieces that are already out,
+	// reading what they report, accepting them. See [checkpointHandBack].
+	handsBack bool
 }
 
 // split reports the one decision this file takes off a sketch.
-func (s checkpointSketch) split() bool { return s.parts >= checkpointSketchParts }
+//
+// AND COORDINATION IS NEVER A DIVISION, WHICH IS THE ONE THING THE COUNT CANNOT
+// SEE. Three parts is three pairs of hands only where the parts are work; "wait
+// for the second | wait for the third | wait for the fourth" is three parts by
+// the separator and NO hands at all, because every one of them is a verb this
+// conversation owns and a worker in its own copy does not have. The refusal is
+// stated once, here, so that everything downstream agrees with it: the mark that
+// would convert the turn ([Agent.checkpointRound]), the head of the brief
+// ([checkpointSketch.head]) and the division a drawing proposes to a worker
+// (task_divide_sketch.go's [drawnDivision.proposes]) are three readings of this
+// one answer.
+func (s checkpointSketch) split() bool {
+	return s.parts >= checkpointSketchParts && !s.handsBack
+}
 
 // drawn reports whether the reader answered with a shape at all, which is a
 // different question from whether the shape has parts in it: an unreachable
@@ -895,6 +989,99 @@ func (s checkpointSketch) saysDone() bool {
 		return false
 	}
 	return checkpointDoneShapes[strings.Join(normalizedWords(s.shape), " ")]
+}
+
+// carryOnDecision is what a sketch that did not split WROTE ITSELF DOWN AS
+// (sessionfile.go's [journalMark]).
+//
+// A carry-on and a hand-back are two different things that happen to end the same
+// way, and a file that spelled them alike could not tell a turn that is one long
+// job from a turn that was only ever watching its own pieces — which is the
+// reading the incident this exists for had to be reconstructed from provider logs
+// to establish. So the refusal is written down, exactly as `(done)` is written
+// down, rather than being a branch that quietly returns false.
+func (s checkpointSketch) carryOnDecision() string {
+	if s.handsBack {
+		return checkpointDecisionWaiting
+	}
+	return checkpointDecisionContinue
+}
+
+// ── the conversation's own verbs ────────────────────────────────────────────
+//
+// THE LAW: WHAT A CONVERSATION DOES TO WORK IT ALREADY HANDED OUT IS NOT WORK IT
+// CAN HAND OUT AGAIN.
+//
+// A worker runs in a copy of its own with a brief and a budget. It cannot see
+// another piece's report, it cannot accept anything on anybody's behalf, and it
+// cannot wait for something it was never told about — so a part that asks for any
+// of those is a part with nobody to give it to. Handing one over buys a worker
+// that opens its brief, finds nothing it can act on, and spends its whole
+// deadline failing to.
+//
+// THE READING IS THE SHAPE'S OWN AND NOT A RULE ABOUT ENGLISH, as far as a
+// vocabulary can be: it folds the two places a drawing puts a coordination verb —
+// the word a part OPENS on, and a last stage that is a BARE verb with no object —
+// and it folds nothing else. `review the manuscript` is work and reads as work,
+// because the verb has something after it; `the second report > review` is a
+// hand-back, because the stage the drawing ends on names nothing to review that
+// this conversation is not already holding. It is the same fold
+// [checkpointDoneShapes] makes of `(done)`, applied per part.
+//
+// AND IT TAKES ALL THE PARTS OR NONE. One coordination part beside two real ones
+// is a turn with real work in it, and refusing that split would cost the road the
+// very turns it was built for. Only a drawing that is coordination THROUGHOUT has
+// nothing to hand out.
+
+// checkpointWaitWords are the words a part that is a WAIT opens on. A part
+// beginning with one of these is a hand-back however it goes on, because there is
+// no reading of "wait for X" that is work somebody else can be given.
+var checkpointWaitWords = map[string]bool{
+	"wait":     true,
+	"waits":    true,
+	"waiting":  true,
+	"awaiting": true,
+	"pending":  true,
+}
+
+// checkpointHandBackVerbs are the verbs that, STANDING ALONE as the last stage of
+// a part, name something only this conversation can do. The list is short for
+// [checkpointDoneShapes]'s reason: everything not on it is work, and the failure
+// direction here is to refuse a division that was real.
+var checkpointHandBackVerbs = map[string]bool{
+	"accept":  true,
+	"approve": true,
+	"check":   true,
+	"review":  true,
+}
+
+// checkpointHandBack reports that a whole drawing is the conversation's own
+// coordination. It is the one place that decides it.
+func checkpointHandBack(shape string) bool {
+	parts := readShape(shape).parts
+	if len(parts) == 0 {
+		return false
+	}
+	for _, part := range parts {
+		if !partHandsBack(part) {
+			return false
+		}
+	}
+	return true
+}
+
+// partHandsBack reads ONE part of a drawing, in the two places a coordination
+// verb lands: the word the part opens on, and a last stage that is a bare verb.
+func partHandsBack(part string) bool {
+	stages := splitAtTopLevel(unbracket(strings.TrimSpace(part)), '>')
+	if len(stages) == 0 {
+		return false
+	}
+	if opening := normalizedWords(stages[0]); len(opening) > 0 && checkpointWaitWords[opening[0]] {
+		return true
+	}
+	last := normalizedWords(stages[len(stages)-1])
+	return len(last) == 1 && (checkpointWaitWords[last[0]] || checkpointHandBackVerbs[last[0]])
 }
 
 // head puts the sketch above the dowry, so that the worker's first paragraph is
@@ -961,6 +1148,10 @@ func parseCheckpointSketch(answer string) checkpointSketch {
 		shape:  clip(shape, checkpointSketchBytes),
 		legend: clip(strings.TrimSpace(strings.Join(lines[rest:], "\n")), checkpointSketchBytes),
 		parts:  topLevelParts(shape),
+		// THE COORDINATION READING IS TAKEN HERE, ONCE, beside the count it
+		// qualifies — so no reader downstream can hold a count without the answer
+		// that says what the count is worth ([checkpointSketch.split]).
+		handsBack: checkpointHandBack(shape),
 	}
 }
 
@@ -1285,6 +1476,12 @@ const (
 	// about a turn — one outran the reading, one outran the small edit — and a
 	// bench that spelled them the same could not tell them apart afterwards.
 	checkpointDecisionWrote = "wrote"
+	// checkpointDecisionWaiting is what a mark wrote down when the drawing it read
+	// was the conversation's own coordination ([checkpointSketch.handsBack]). It is
+	// distinct from `continue` because the two are different facts about a turn —
+	// one is one long job, one is a turn watching pieces it already handed out —
+	// and only the second says a conversion was REFUSED rather than never earned.
+	checkpointDecisionWaiting = "waiting"
 
 	checkpointCeilingMoved   = "moved"
 	checkpointCeilingNothing = "dropped:nothing-left"
@@ -1913,7 +2110,7 @@ func checkpointLastSaid(messages []ai.Message) string {
 // AND A MARK THAT SAYS CONTINUE COSTS THE TURN NOTHING BUT THE CALL. Nothing is
 // injected, nothing is said, the model is not told it was looked at, and the
 // meter simply walks on to the next mark.
-func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string) bool {
+func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string, calls []ai.ToolCall) bool {
 	if !a.checkpoints(ctx, user) {
 		return false
 	}
@@ -1925,7 +2122,10 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	if a.writeMeterNow().pastAllowance() {
 		return a.checkpointWriting(ctx, hub, turn, started, model, meter.rounds, meter.raced)
 	}
-	mark := meter.round()
+	// AND THE BATCH IS PRICED FOR WHAT IT WAS. A round the turn spent looking at
+	// work it already has out is not a round of work, and the ladder does not move
+	// for it ([checkpointMeter.round]).
+	mark := meter.round(!roundWasWatching(calls))
 	if mark == 0 {
 		return false
 	}
@@ -1939,7 +2139,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	rounds := meter.rounds
 	if mark < checkpointMarks {
 		if !read.sketch.split() {
-			a.journalMarkRead(read, mark, rounds, checkpointDecisionContinue)
+			a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
 			return false
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
@@ -1949,7 +2149,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
 	// where what happened to the turn is recorded.
-	a.journalMarkRead(read, mark, rounds, checkpointDecisionContinue)
+	a.journalMarkRead(read, mark, rounds, read.sketch.carryOnDecision())
 	return a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter.raced, read)
 }
 
@@ -2254,7 +2454,10 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// ceiling. So a turn that still crosses it crossed it on rounds of its own
 	// WORK, which is the exact turn the ceiling was written for, and there is
 	// nothing further to guard here.
-	if a.checkpointRound(ctx, hub, user, meter, turn, started, model) {
+	// THE RE-OPEN CARRIES NO BATCH, and that is the honest reading: this road is
+	// reached by a turn that has STOPPED, so there is no round of looking to
+	// discount and the ladder is climbed exactly as it always was.
+	if a.checkpointRound(ctx, hub, user, meter, turn, started, model, nil) {
 		return false, true
 	}
 	meter.carriedOn++
