@@ -87,7 +87,7 @@ func codeSpanApp(t *testing.T) *app {
 	a.width, a.height = 80, 30
 	a.entries = append(a.entries,
 		entry{kind: entryUser, text: "what was deleted?"},
-		entry{kind: entryAssistant, settled: true, text: "The `internal/swepro/` directory was deleted, along with the rest."},
+		entry{kind: entryAssistant, settled: true, text: "The `internal/manual/` directory was deleted, along with the rest."},
 	)
 	a.touch()
 	return a
@@ -116,7 +116,7 @@ func TestASweepOverACodeSpanLightsEveryCellItCopies(t *testing.T) {
 func TestTheSweepCopiesExactlyWhatItLit(t *testing.T) {
 	a := codeSpanApp(t)
 	y := screenRowWith(t, a, "directory was deleted")
-	if got := sweep(t, a, 0, y, 79, y); got != "The internal/swepro/ directory was deleted, along with the rest." {
+	if got := sweep(t, a, 0, y, 79, y); got != "The internal/manual/ directory was deleted, along with the rest." {
 		t.Fatalf("copied %q", got)
 	}
 }
@@ -130,16 +130,16 @@ func TestAGroundStepCoversEveryCellItIsGiven(t *testing.T) {
 		row  func(p palette) string
 	}{
 		{"a row with one inline code span", func(p palette) string {
-			return p.ink("The ") + p.chip("internal/swepro/") + p.ink(" directory was deleted.")
+			return p.ink("The ") + p.chip("internal/manual/") + p.ink(" directory was deleted.")
 		}},
 		{"a row that OPENS with a code span", func(p palette) string {
-			return p.chip("internal/swepro/") + p.ink(" directory was deleted.")
+			return p.chip("internal/manual/") + p.ink(" directory was deleted.")
 		}},
 		{"a row with two code spans", func(p palette) string {
-			return p.ink("The ") + p.chip("internal/swepro/") + p.ink(" and ") + p.chip("internal/tui3/") + p.ink(" went.")
+			return p.ink("The ") + p.chip("internal/manual/") + p.ink(" and ") + p.chip("internal/tui3/") + p.ink(" went.")
 		}},
 		{"a row that is only a span", func(p palette) string {
-			return p.chip("internal/swepro/")
+			return p.chip("internal/manual/")
 		}},
 		{"a plain control", func(p palette) string {
 			return p.ink("The directory was deleted.")
@@ -207,7 +207,7 @@ func TestRegroundAnswersEveryBackgroundForm(t *testing.T) {
 
 // Plain text is passed through untouched — no escape, no rewrite, no growth.
 func TestHoldGroundLeavesPlainTextAlone(t *testing.T) {
-	for _, s := range []string{"", "The directory was deleted.", "  ", "internal/swepro/ 目录"} {
+	for _, s := range []string{"", "The directory was deleted.", "  ", "internal/manual/ 目录"} {
 		if got := holdGround(s, "48;2;67;76;94"); got != s {
 			t.Errorf("holdGround(%q) = %q, want it back unchanged", s, got)
 		}
@@ -219,7 +219,7 @@ func TestHoldGroundLeavesPlainTextAlone(t *testing.T) {
 // span keeps its colour, its bold and its italic.
 func TestAGroundStepLeavesTheInkAlone(t *testing.T) {
 	p := newPalette(tokens.TrueColor, false)
-	row := p.ink("The ") + p.chip("internal/swepro/") + p.ink(" went.")
+	row := p.ink("The ") + p.chip("internal/manual/") + p.ink(" went.")
 	painted := p.mark(row, ansi.StringWidth(ansi.Strip(row)))
 	for _, seq := range []string{
 		"\x1b[38;2;198;205;218m", // the ink's open
@@ -230,7 +230,7 @@ func TestAGroundStepLeavesTheInkAlone(t *testing.T) {
 		}
 	}
 	bold := newPalette(tokens.TrueColor, false)
-	boldRow := "\x1b[1mThe\x1b[22m " + bold.chip("internal/swepro/")
+	boldRow := "\x1b[1mThe\x1b[22m " + bold.chip("internal/manual/")
 	boldPainted := bold.mark(boldRow, ansi.StringWidth(ansi.Strip(boldRow)))
 	for _, seq := range []string{"\x1b[1m", "\x1b[22m"} {
 		if !strings.Contains(boldPainted, seq) {
