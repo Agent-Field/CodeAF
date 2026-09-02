@@ -595,8 +595,10 @@ crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 On the live status line the same fact is one short segment — `crew max`, or
 `crew custom` — at the head of the telemetry, beside the model on the left, and it is among
 the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading; there is no `crew` line at all when the session was opened
-without a profile directory.
+sheet is the full reading. Every ordinary launch has a crew — one is never unset, only
+`custom` — so the line and the segment are always there; the one session that shows
+neither is a **remote** one opened with `--host`, where the crew belongs to the other
+machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -1317,10 +1319,16 @@ relaunch, and no waiting for the next session. To read the crew back afterwards:
 status line says `crew max` beside the model, `/status` prints the `crew` line under
 `model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
-**That promise is local-session only.** Over `--host`, `/crew` reads and writes this
-machine's profile; the session resolves its crew from the other machine. There is no crew
-write across the connection and this build prints no host-specific warning, so `/crew max`
-does not change the five models the far session uses. Change that machine's profile there.
+**That promise is local-session only.** Over `--host` the session resolves its crew from
+the other machine, and there is no crew write across the connection — so `/crew` refuses
+rather than writing this laptop's profile behind your back:
+
+```
+devbox owns the crew · change it on that machine
+```
+
+For the same reason a remote window shows no `crew` segment on the status line and no
+`crew` line in `/status`. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
