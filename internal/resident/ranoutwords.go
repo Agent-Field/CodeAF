@@ -74,6 +74,13 @@ const (
 	recordedSeam = " — "
 	// recordedSuffix is the rest of that clause, after the count.
 	recordedSuffix = " of its work is recorded, and the next attempt carries on from there"
+	// legacyRecordedSuffix is how one of the two endings spelled that same
+	// clause before they were joined. A STORE OUTLIVES THE BINARY THAT WROTE
+	// IT: a durable --db is replayed by whatever opens it next, and a reason
+	// this cut does not recognise comes back whole, which is the turn count on
+	// the line twice. Reading both spellings costs one comparison; only the
+	// first is ever written.
+	legacyRecordedSuffix = " of its work is recorded, and the next one carries on from there"
 )
 
 // recordedTail is the clause every release reason that hands work on ends with.
@@ -90,13 +97,14 @@ func recordedTail(recorded int) string {
 // which is the honest answer: the caller asked for the why, and the whole
 // sentence is the why.
 func ReleaseWhy(reason string) string {
-	end := strings.Index(reason, recordedSuffix)
-	if end < 0 {
-		return strings.TrimSpace(reason)
+	for _, suffix := range [...]string{recordedSuffix, legacyRecordedSuffix} {
+		end := strings.Index(reason, suffix)
+		if end < 0 {
+			continue
+		}
+		if seam := strings.LastIndex(reason[:end], recordedSeam); seam >= 0 {
+			return strings.TrimSpace(reason[:seam])
+		}
 	}
-	seam := strings.LastIndex(reason[:end], recordedSeam)
-	if seam < 0 {
-		return strings.TrimSpace(reason)
-	}
-	return strings.TrimSpace(reason[:seam])
+	return strings.TrimSpace(reason)
 }

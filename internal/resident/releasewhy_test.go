@@ -46,6 +46,14 @@ func TestTheWhyOfAReleaseKeepsTheBoundAndDropsTheTurnCount(t *testing.T) {
 			want:   "the worker did not come back within 17m0s and was stopped",
 		},
 		{
+			// A journal written before the two endings shared one clause. The
+			// store outlives the binary, so the cut has to read this spelling
+			// or an old --db replays with the turn count on the line twice.
+			name:   "a reason journalled before the clause was joined",
+			reason: "the worker did not come back within 17m0s and was stopped — 45 turns of its work is recorded, and the next one carries on from there",
+			want:   "the worker did not come back within 17m0s and was stopped",
+		},
+		{
 			name:   "a reason with no such clause is the why entire",
 			reason: "no sign of life for 24m3s",
 			want:   "no sign of life for 24m3s",
