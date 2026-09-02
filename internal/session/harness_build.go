@@ -56,7 +56,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1197,58 +1196,26 @@ func (a *Agent) harnessBriefs() (designer, reviewer string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	designer = guide + harnessASCIIRule
-	return designer, designer + "\n" + prompts.Reviewer, nil
+	return guide, guide + "\n" + prompts.Reviewer, nil
 }
 
-// harnessASCIIRule is the one line of output contract this surface adds to the
-// guide. It lives here rather than in the document because the guide is about
-// DESIGN and this is a fact about the transport: a page whose delimiters came
-// out as typographic quotes is a good design that will not parse.
-//
-// It draws the line where the salvage ladder draws it — syntax is ASCII, prose
-// is the writer's — so a designer is never told to flatten an em-dash out of a
-// brief in order to be read.
-const harnessASCIIRule = "\n" + `
-One rule about the characters, not the design: JSON DELIMITERS AND SYNTAX ARE
-ASCII. The quotes around every key and every string value are " (U+0022) — never
-“ ” ‘ ’ — and so are the braces, brackets, colons and commas. Prose may use any
-character INSIDE a string value: an em-dash in a brief is content and stays.
-`
-
-// harnessMachinery is every value the guide leaves a hole for: this package's
-// caps, both ladders, and the tool belt a harness may actually reach HERE.
+// harnessMachinery is every value the guide leaves a hole for: the caps, both
+// ladders and the kind catalog are [subharness.Machinery]'s — the ONE map both
+// doors read, so the next placeholder the guide renames cannot break only the
+// standalone tool — and the belt is the one a harness may actually reach HERE.
 //
 // The belt is [HarnessBelt] — the wire tools plus whichever media verbs this
 // machine has models for — and it is the SAME CALL the run resolves its nodes
 // against (cmd/aforge's chatv3_harness.go). harness_belt.go states what is
 // excluded and why, and why the three lists that used to answer this
 // independently are now one.
-//
-// The name column is sized from the belt rather than fixed at six, because
-// generate_image is thirteen characters and a fixed width turns the list the
-// designer reads into a ragged one the moment a media verb is present.
 func (a *Agent) harnessMachinery() map[string]string {
 	tools := HarnessBelt(a.config.Workspace, a.harnessSeams())
-	width := 0
+	belt := make([]subharness.BeltEntry, 0, len(tools))
 	for _, tool := range tools {
-		if len(tool.Name) > width {
-			width = len(tool.Name)
-		}
+		belt = append(belt, subharness.BeltEntry{Name: tool.Name, About: clip(firstLine(tool.Description), harnessToolAbout)})
 	}
-	belt := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		belt = append(belt, fmt.Sprintf("%-*s %s", width, tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
-	}
-	return map[string]string{
-		"kinds":         strings.TrimRight(subharness.Catalog(), "\n"),
-		"max_nodes":     strconv.Itoa(subharness.MaxNodes),
-		"max_id_bytes":  strconv.Itoa(subharness.MaxIdBytes),
-		"max_dyn_cap":   strconv.Itoa(subharness.MaxDynCap),
-		"verify_ladder": strings.Join(subharness.VerifyLadder(), " < "),
-		"dyn_ladder":    strings.Join(subharness.DynLadder(), " < "),
-		"tools":         strings.Join(belt, "\n"),
-	}
+	return subharness.Machinery(belt)
 }
 
 // harnessToolNames is the belt as a set, for the lint. It is the SAME belt the

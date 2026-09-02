@@ -23,13 +23,6 @@ TestEveryGoroutineInTheGuardedTreeIsGuarded
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
 TestEveryMessageWriteUsesThreadPost
 
-# The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
-# had only been able to say "four cmd/harness-design tests".
-TestTheGuidesRender
-TestReviewerCarriesTheWholeLaw
-TestBothBriefsSayTheSyntaxIsASCII
-TestTheReviewerBriefCarriesBothDuties
-
 # Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run
 # locally on 2026-08-31 to confirm). Environment-shaped: whoever picks one up
 # should reproduce on Linux first.
