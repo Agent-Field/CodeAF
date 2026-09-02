@@ -389,7 +389,7 @@ the way every other proposal is offered — `yes`, `redirect`, `no`, and a count
 silence starts it. You are told, and it opens; what the card gives you on top of that is
 the window to redirect it before it spends anything.
 
-## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long, carrying the ask only
+## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long, carrying the ask only, no second model is set
 
 **When one answer keeps going, aforge prices it.** A long answer costs a little more with
 every round of tool calls and never stops costing; handing the same work to a task costs one
@@ -483,8 +483,9 @@ this is running long · moving it to a task that is watched and can split · car
 ```
 
 The reasons you can see there are **did not answer in time**, **could not be reached**, **had
-nothing new to say** — a document that went round in circles twice — and **there was nothing
-to write it from**. When either the written brief or the draft survives, the line says nothing
+nothing new to say** — a document that went round in circles twice — **there was nothing
+to write it from**, and **no second model is set** — which is not a wire failure at all, and
+has a section of its own below. When either the written brief or the draft survives, the line says nothing
 of the kind and the extra sentence is simply absent: your work went with everything the turn
 found out. Every rung of that ladder is also written into the session's own record, with what
 it produced or what the model that refused actually said, so a run where a worker started
@@ -550,6 +551,35 @@ hours. A line aforge writes to itself that nobody owes an answer for is still le
 
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.
+
+## No second model is set — the brief said that instead of a reason, nothing is configured for the reader or the writer, no thinking tier
+
+**`no second model is set` means a row nobody wrote, not a provider that went quiet.** It
+appears on the end of the line that tells you your answer was moved:
+
+```
+this is running long · moving it to a task that is watched and can split · carrying the ask only — the brief could not be written: no second model is set
+```
+
+Two calls on that road do not run on the model you are talking to: the **reader** that decides
+whether the answer is moved, and the **writer** of the brief the task opens on. Both are on the
+thinking tier, and both are deliberately crew-only — with no crew they are skipped rather than
+handed to the model that has just written the answer and would be editing itself. So if nothing
+is set for them, they have no model at all, and this is the sentence that says so.
+
+**What to do about it.** Set a thinking-tier model with `/crew`, or pin the two roles on the
+**pinned roles** row in `/settings` → Providers — they are called `markreader` and `handoff`,
+so the row reads `markreader:openai/gpt-5, handoff:openai/gpt-5`. Or run with `--one-model`,
+which settles them on the model you are talking to along with everything else. Either way the
+move still happens — a task that starts knowing only what you typed is better than an answer
+left grinding — and the session's own record keeps the exact reason, `roles: no model for
+role`, beside the rung that had nowhere to call.
+
+**It is one of four different facts, and they read differently on purpose.** `no second model
+is set` is nothing configured; **could not be reached** is the wire; **did not answer in time**
+is the minute and a half running out; **had nothing new to say** is a document that went round
+in circles. A run told the wrong one of those sends you to look at the wrong thing, which is
+exactly what happened before this sentence existed.
 
 ## Watching the pieces you handed out does not move your answer — I was only waiting on the other tasks and it made a task out of that, does watching a running task count
 

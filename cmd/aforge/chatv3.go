@@ -1188,13 +1188,24 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	if err != nil {
 		return cfg, err
 	}
-	// --one-model withholds the ladder rather than filling it in. Every rung
-	// below already ends at the session model when nothing answers — the roles
-	// ladder falls through pin, then tier, then sessionDefault (internal/roles'
-	// ResolveCall); an empty task model reads the live conversation model
-	// (internal/session's defaultTaskModel); an empty fallback chain hops
-	// nowhere. So the flag is three unset states this build has always handled,
-	// NOT a fourth resolution path that could drift from the other three.
+	// --one-model withholds the ladder AND says so to the session. Withholding is
+	// most of it: an empty task model reads the live conversation model
+	// (internal/session's defaultTaskModel), an empty fallback chain hops nowhere,
+	// and the roles ladder falls through pin, then tier, then the floor its caller
+	// passed (internal/roles' ResolveCall). Those are unset states this build has
+	// always handled, and they stay unset rather than becoming a fourth resolution
+	// path that could drift from the other three.
+	//
+	// BUT WITHHOLDING ALONE IS NOT THE PROMISE, and this comment used to claim it
+	// was. Two errands hand the ladder an EMPTY floor on purpose — the mark's
+	// reader and the brief's writer are crew-only, so that an install with no
+	// mastermind gets no second opinion rather than the running model marking its
+	// own work — and with no pin, no tier and no floor those two rungs resolve to
+	// no model at all. A measured run under the flag therefore had neither, and
+	// the person was told the second model could not be reached (#443). So the
+	// flag is CARRIED into the session as [session.Config.OneModel] and answered
+	// once at the seam every errand passes through, which is the only place a
+	// third crew-only caller can be made right without knowing the flag exists.
 	//
 	// The media slots are deliberately untouched. Vision, image, speech and
 	// video are capability-qualified — a text model cannot answer view_image —
@@ -1215,6 +1226,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	}
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
+	cfg.OneModel = oneModel
 	cfg.SpendRailUSD = rail
 	// The fallback chain reads PROFILE-ONLY, like the search keys below and
 	// unlike the three rows above it. A repository that could answer this could

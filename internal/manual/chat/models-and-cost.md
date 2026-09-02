@@ -737,6 +737,13 @@ run whose cost is being attributed to one model cannot have finished a single re
 another. That includes the catalog's own guess: with no `fallback models` row written, an
 ordinary run falls back to the nearest same-class model, and this flag withholds that too.
 
+**The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
+decides whether a long answer is moved to a task, and the writer of the brief that task opens
+on, normally run on the thinking tier and on nothing else: with no crew they are skipped
+rather than handed to the model that just wrote the answer. Under this flag they run on your
+model like everything else, because you have said your model is the crew. Without the flag and
+without a thinking-tier row, a move that needs them says `no second model is set`.
+
 **It changes no setting and writes nothing.** Your crew rows and pins are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
 It is a posture for one run, not an edit.

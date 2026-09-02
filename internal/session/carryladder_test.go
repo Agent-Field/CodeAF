@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -357,4 +359,154 @@ func ceilingNotice(t *testing.T, events []Event) string {
 	}
 	t.Fatalf("no ceiling line reached the person; events: %v", kinds(events))
 	return ""
+}
+
+// ── one model means one model at every rung ─────────────────────────────────
+//
+// THE MEASURED FAILURE, the second one. A canary chat run under `--one-model`
+// handed off, and the person read "the brief could not be written: the second
+// model could not be reached". Nothing had been unreachable. The flag withheld
+// the roles ladder, the brief's writer hands that ladder an EMPTY floor because
+// it is crew-only, and no pin plus no tier plus no floor is a role with no model
+// — so the mark was never read and the brief was never written, and the worker
+// opened on the bare paste and spent its first nine calls re-deriving the turn.
+
+// UNDER THE FLAG A CREW-ONLY ERRAND RIDES THE CONVERSATION'S OWN MODEL.
+//
+// The caller still passes the empty floor, because its law is unchanged for
+// every run that did not pass the flag. The seam is what knows better.
+func TestUnderOneModelACrewOnlyErrandRidesTheConversationsModel(t *testing.T) {
+	asked := &modelAsked{}
+	agent := checkpointAgent(t, asked, func(config *Config) {
+		config.Model = "the-one/model"
+		// NO LADDER AT ALL, which is exactly what the door leaves behind under
+		// `--one-model` (cmd/aforge's applyV3Governance).
+		config.RolesSource = nil
+		config.OneModel = true
+	})
+
+	response, model, err := agent.callRole(context.Background(), roles.RoleHandoff, "",
+		[]ai.Message{textMessage("user", "write the brief")})
+	if err != nil {
+		t.Fatalf("a crew-only errand under --one-model had no model to call: %v", err)
+	}
+	if model != "the-one/model" {
+		t.Errorf("the errand was answered by %q, want the conversation's own model", model)
+	}
+	if got := asked.model(); got != "the-one/model" {
+		t.Errorf("the request was made against %q, want the conversation's own model", got)
+	}
+	if response == nil || response.Text() != "the brief" {
+		t.Fatalf("the writer's answer did not come back: %+v", response)
+	}
+}
+
+// AND WITHOUT THE FLAG THE CREW-ONLY REFUSAL STANDS, because it is a quality
+// judgement about a profile that has a crew and this change does not touch it: an
+// install with no mastermind still gets no brief writer rather than the running
+// model editing the document it just wrote badly.
+func TestWithoutOneModelACrewOnlyErrandStillRefusesToFallToTheConversation(t *testing.T) {
+	agent := checkpointAgent(t, &modelAsked{}, func(config *Config) {
+		config.Model = "the-one/model"
+		config.RolesSource = nil
+	})
+
+	_, _, err := agent.callRole(context.Background(), roles.RoleHandoff, "",
+		[]ai.Message{textMessage("user", "write the brief")})
+	if !errors.Is(err, roles.ErrNoModel) {
+		t.Fatalf("a crew-only errand with no crew answered %v, want roles.ErrNoModel", err)
+	}
+}
+
+// AND A ROLE WITH NO MODEL READS AS ONE, never as a wire that failed. Four facts,
+// four sentences: no model set, no answer in time, and anything else.
+func TestARoleWithNoModelIsToldApartFromAProviderThatCouldNotBeReached(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no model for the role", fmt.Errorf("%w for role %q", roles.ErrNoModel, roles.RoleHandoff), carrySaidNoSecond},
+		{"no client at all", errNoCompleter, carrySaidNoSecond},
+		{"no answer in time", context.DeadlineExceeded, carrySaidTooSlow},
+		{"anything else", errors.New("dial tcp: connection refused"), carrySaidUnreachable},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			reason, said := carryFault(testCase.err)
+			if said != testCase.want {
+				t.Errorf("the person is told %q, want %q", said, testCase.want)
+			}
+			// AND THE FILE KEEPS THE EXACT SENTENCE whatever the person is told,
+			// because the autopsy's question is which row was never written.
+			if !strings.Contains(reason, testCase.err.Error()) {
+				t.Errorf("the journal reads %q, want the error's own words %q", reason, testCase.err)
+			}
+		})
+	}
+}
+
+// modelAsked answers every request with the brief and remembers which model it
+// was asked for, which is the whole of what a rung's resolution can be observed
+// by from outside.
+type modelAsked struct {
+	mu   sync.Mutex
+	seen string
+}
+
+func (m *modelAsked) CompleteWithMessages(_ context.Context, _ []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	m.mu.Lock()
+	m.seen = request.Model
+	m.mu.Unlock()
+	return textResponse("the brief"), nil
+}
+
+func (m *modelAsked) model() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.seen
+}
+
+// AND THE FLAG REACHES A CHILD, because a session is not only the turns typed
+// into it.
+//
+// The promise is about every text call the SESSION makes, and the nodes a turn
+// hands out and the hands they lift are the session at one remove. A child that
+// copied the ladder but not the flag would leave exactly the crew-only rungs
+// behind — they are the only ones that need telling — so the first thing a task
+// did on its own ceiling would fail the way the conversation's used to (#443).
+func TestTheOneModelPromiseTravelsToATaskNodeAndItsCrewOnlyErrands(t *testing.T) {
+	asked := &modelAsked{}
+	agent, _ := newTestAgent(t, asked, func(config *Config) {
+		config.Model = "the-one/model"
+		config.RolesSource = nil
+		config.OneModel = true
+	})
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "t", brief: "b", acceptance: "a"})
+
+	child, err := agent.newTaskAgent(context.Background(), t.TempDir(), graph.node(id), "")
+	if err != nil {
+		t.Fatalf("newTaskAgent: %v", err)
+	}
+	defer child.Close()
+	if !child.config.OneModel {
+		t.Fatal("the node did not inherit the flag, so its crew-only rungs have no model")
+	}
+
+	// AND THE INHERITED BIT IS LOAD-BEARING AND NOT DECORATION: the same
+	// crew-only errand that had nowhere to call now resolves on the child.
+	_, model, err := child.callRole(context.Background(), roles.RoleHandoff, "",
+		[]ai.Message{textMessage("user", "write the brief")})
+	if err != nil {
+		t.Fatalf("a crew-only errand on the node had no model to call: %v", err)
+	}
+	if model != child.model {
+		t.Errorf("the node's errand ran on %q, want its own model %q", model, child.model)
+	}
 }

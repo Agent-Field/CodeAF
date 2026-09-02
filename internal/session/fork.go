@@ -948,6 +948,8 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		SupportsParameter: parent.SupportsParameter,
 		ReasoningProfile:  parent.ReasoningProfile,
 		RolesSource:       parent.RolesSource,
+		// Beside the ladder it overrides, for task_run.go's reason.
+		OneModel: parent.OneModel,
 		// A hand reads documents on the rung the person chose, like the
 		// conversation does: the same mind, reading the same file, must not drop
 		// to a different engine because it is inside a fork.
