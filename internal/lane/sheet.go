@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,6 +81,40 @@ const maxSheetBytes = 1 << 20
 // paying for the same aggregate twice.
 const sheetTTL = 5 * time.Minute
 
+// Wanter is the optional half of a [Sheet]: one that can be ASKED about a model
+// without being made to fetch on the spot.
+//
+// It is a SECOND interface rather than a third method on [Sheet] for the reason
+// [Prober] is one: queueing is a thing the live sheet has and a fixture in a
+// bench does not, and a sheet that does not offer one makes the capability
+// ABSENT rather than present and failing. Nothing here waits, ever.
+type Wanter interface {
+	// Wants queues one model for the next beat and returns at once.
+	Wants(model string)
+}
+
+// Queue is the other end of that channel, which is [Beat]'s alone.
+type Queue interface {
+	// Wanted is the models that have been asked for and not yet fetched.
+	Wanted() <-chan string
+}
+
+// Roster is the optional half of a [Sheet] that can name every lane it has ever
+// seen, across every model. It is what gives a never-seen model somewhere to
+// borrow a provider-level belief from.
+type Roster interface {
+	Roster() []string
+}
+
+// wantedDepth is how many one-shot refreshes may be waiting at once.
+//
+// It is small deliberately. The queue holds MODELS A SESSION IS REALLY TALKING
+// TO — the two config slots, plus whatever a person picks — and a build that
+// had eight of those waiting at once has a beat that is not running rather than
+// a queue that is too short. A full queue drops the name and forgets the claim,
+// so the next request asks again; nothing waits, and nothing is lost for good.
+const wantedDepth = 8
+
 // sheet holds one map of rows per model and the means to refill it.
 //
 // The lock is a read-write one for the reason the whole file exists: Rows is on
@@ -103,6 +138,16 @@ type sheet struct {
 	// looked records the models whose cache file has already been read, so
 	// that a cold miss costs one stat and not one per question.
 	looked map[string]bool
+	// want is the ONE-SHOT QUEUE and asked is what has already been put on it.
+	//
+	// A model nobody has a sheet for is discovered on the send path — the
+	// chooser asks for rows and gets none — and the send path may not fetch.
+	// So it leaves a name here and answers from the hierarchy meanwhile, and
+	// [Beat] picks the name up on the other side of the channel. The claim in
+	// `asked` is what makes it one-shot: a cold model costs one fetch and not
+	// one per keystroke.
+	want  chan string
+	asked map[string]bool
 	// dir overrides where the cache lives, for a test that must not write into
 	// the person's own state root. Empty is the real place.
 	dir string
@@ -117,6 +162,8 @@ func newSheet() *sheet {
 		tags:   map[ID]string{},
 		at:     map[string]time.Time{},
 		looked: map[string]bool{},
+		want:   make(chan string, wantedDepth),
+		asked:  map[string]bool{},
 	}
 }
 
@@ -212,6 +259,96 @@ func (s *sheet) freshness(model string, now time.Time) (time.Duration, bool) {
 	return now.Sub(at), true
 }
 
+// ── ASKING FOR A SHEET WITHOUT WAITING FOR ONE ──────────────────────────────
+//
+// TWO MOMENTS DISCOVER A MODEL NOBODY HAS A SHEET FOR, and neither of them may
+// fetch. The chooser asks for rows immediately before a send and gets none; a
+// person picks a model in the picker, which is a keystroke. Both leave the name
+// here and carry on — the chooser answers from the hierarchy, the picker
+// returns — and [Beat] does the fetching on the other side of the channel,
+// where fetching has always belonged.
+//
+// NOTHING EVER WAITS FOR ONE. The send is a non-blocking send on a buffered
+// channel: a full queue drops the name and forgets the claim so a later ask can
+// make it again, which is the same bargain the prober strikes with its own rate
+// limit (probe.go). A build with no beat running simply never fetches, exactly
+// as it never did.
+
+// Wants queues one model for the beat to fetch once, and returns at once.
+func (s *sheet) Wants(model string) {
+	model = BareModel(model)
+	if model == "" {
+		return
+	}
+	s.mu.Lock()
+	claimed := s.asked[model]
+	if !claimed {
+		s.asked[model] = true
+	}
+	s.mu.Unlock()
+	if claimed {
+		return
+	}
+	select {
+	case s.want <- model:
+	default:
+		// The queue is full, so the claim is given back: a name dropped here is
+		// a name the next request may ask for again, and a claim kept over a
+		// name nobody enqueued would be a model that is never fetched at all.
+		s.mu.Lock()
+		delete(s.asked, model)
+		s.mu.Unlock()
+	}
+}
+
+// Wanted is the queue [Beat] drains.
+func (s *sheet) Wanted() <-chan string { return s.want }
+
+// Roster is every lane this sheet has ever named, across every model, in a
+// stable order.
+//
+// IT IS THE PROVIDER LEVEL OF THE HIERARCHY, SPELLED AS NAMES. A model nobody
+// has measured is still served by machines this process has seen serving
+// something else, and `a[lane]` is exactly the belief that a machine which is
+// quick for one model is usually quick for another. Without a roster that
+// belief has nowhere to attach: the chooser would know how long CoreWeave takes
+// and not that CoreWeave exists.
+//
+// It reads what is already in memory and never opens a file, because it is
+// asked on the one path that may not: the cold start of a choice.
+func (s *sheet) Roster() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := map[string]bool{}
+	names := make([]string, 0, len(s.rows))
+	for _, rows := range s.rows {
+		for _, row := range rows {
+			if row.ID.Lane == "" || seen[row.ID.Lane] {
+				continue
+			}
+			seen[row.ID.Lane] = true
+			names = append(names, row.ID.Lane)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// WantSheet asks the beat to fetch one model's sheet once, at once. It returns
+// before anything is sent.
+//
+// IT IS THE DOOR [Agent.SetModel] KNOCKS ON. The beat's model list is settled
+// when a session opens, from the two config slots, and a person who picks
+// another model afterwards used to get a session that never fetched a sheet for
+// it again — so cold start was the steady state for exactly the models people
+// choose deliberately. A sheet installed by a bench that is not this package's
+// own has no queue and is left alone.
+func WantSheet(model string) {
+	if pages, ok := Default().Sheet().(Wanter); ok {
+		pages.Wants(model)
+	}
+}
+
 // Tag is the router's own slug for a lane — "deep-infra" for "DeepInfra" — as
 // the sheet spelled it, empty when this sheet never saw the lane.
 //
@@ -296,7 +433,17 @@ var errSheetEmpty = errors.New("lane: the sheet named no lanes")
 // from that cached reading anyway, because a prior read off the disk is worth
 // exactly as much as one off the wire.
 func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
-	if s == nil || len(models) == 0 {
+	if s == nil {
+		return
+	}
+	var queue <-chan string
+	if asked, ok := s.(Queue); ok {
+		queue = asked.Wanted()
+	}
+	// A beat with no models and no queue has nothing it could ever do. A beat
+	// with a queue and no models is a real state — a session whose only model
+	// arrives from the picker — and it waits on the channel.
+	if len(models) == 0 && queue == nil {
 		return
 	}
 	if every <= 0 {
@@ -315,9 +462,7 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := s.Refresh(ctx, model); err == nil {
-			primeFrom(s, model)
-		}
+		refreshAndPrime(ctx, s, model)
 	}
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -325,17 +470,49 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 		select {
 		case <-ctx.Done():
 			return
+		case model := <-queue:
+			// A MODEL THAT ARRIVES HERE JOINS THE ROUND AND IS FETCHED AT ONCE.
+			// Both halves are the point: at once, because somebody is about to
+			// send to it, and joined, because the next half hour of its sheet is
+			// worth as much as the first minute. A nil queue is a channel that
+			// never fires, which is what a bench's own sheet gets.
+			models = withModel(models, model)
+			refreshAndPrime(ctx, s, model)
 		case <-ticker.C:
 			for _, model := range models {
 				if ctx.Err() != nil {
 					return
 				}
-				if err := s.Refresh(ctx, model); err == nil {
-					primeFrom(s, model)
-				}
+				refreshAndPrime(ctx, s, model)
 			}
 		}
 	}
+}
+
+// refreshAndPrime is one model's round: fetch, and fold what came back into the
+// belief. The two are one act for the reason [Beat] states — a sheet nothing
+// primed from is a prior nothing reads.
+func refreshAndPrime(ctx context.Context, s Sheet, model string) {
+	if ctx.Err() != nil {
+		return
+	}
+	if err := s.Refresh(ctx, model); err == nil {
+		primeFrom(s, model)
+	}
+}
+
+// withModel adds a model to the beat's round, once.
+func withModel(models []string, model string) []string {
+	model = BareModel(model)
+	if model == "" {
+		return models
+	}
+	for _, held := range models {
+		if BareModel(held) == model {
+			return models
+		}
+	}
+	return append(models, model)
 }
 
 // primeFrom folds one model's rows into the live ledger at [SheetWeight].

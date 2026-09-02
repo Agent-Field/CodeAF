@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -94,7 +95,191 @@ func OnPhaseNews(fn func(PhaseNews)) (previous func(PhaseNews)) {
 // forwardPhase carries a request's phase up to the surface unchanged. It is a
 // named function rather than a literal so that what the transport is holding
 // can be compared against what this package installed.
-func forwardPhase(news PhaseNews) { postPhaseNews(news) }
+//
+// IT IS ALSO WHERE AN OFFER IS NOTICED, because an offer IS a phase: the pinned
+// lane a person is waiting on has gone quiet, and the wait is one they can end.
+// Noticing it here rather than on a second channel is the whole of why it rides
+// this one ([noteOffer]).
+func forwardPhase(news PhaseNews) {
+	// THE MOMENTS ARE SETTLED BEFORE EITHER READER SEES THEM. [postPhaseNews]
+	// fills them in for the surface anyway; the offer desk needs the same two,
+	// and an offer whose start was a zero would have lapsed before it was drawn.
+	if news.At.IsZero() {
+		news.At = time.Now()
+	}
+	if news.Since.IsZero() {
+		news.Since = news.At
+	}
+	noteOffer(news)
+	postPhaseNews(news)
+}
+
+// ── A WAIT A PERSON CAN END ─────────────────────────────────────────────────
+//
+// A pinned lane is a person's instruction, and an instruction is asked rather
+// than overridden. So where an unpinned call would quietly race somebody else,
+// a pinned one raises an OFFER — `coreweave is slow · switch to auto? (y)` —
+// and the answer fires the same rescue the controller would have fired, to the
+// lane the frontier already named. There is no second choice made at the worst
+// possible moment, and the pin itself is untouched: accepting is for THIS
+// answer, and the next request goes to the pinned machine, because that is what
+// a pin means.
+//
+// IT RIDES THE PHASE CHANNEL THAT ALREADY EXISTS. A second channel for one
+// sentence is a second thing to keep alive, and the two would disagree the first
+// time one of them was fixed.
+//
+// THE OFFER IS WITHDRAWN BY ANYTHING THAT ANSWERS IT: a visible token, which
+// makes the question moot; the phase ending; and the window lapsing, so a
+// question about a request that is over never sits on a screen. A thinking
+// delta does NOT withdraw it — nothing has arrived that a person can read.
+
+// PhaseAsking is a wait a person can end, and PhaseAllSlow is a wait nothing
+// can: every reachable lane is believed slow, acting buys nothing, and saying
+// so IS the act.
+//
+// THEY ARE THE TRANSPORT'S OWN WORDS AND NOT A SECOND SPELLING OF THEM. The
+// vocabulary is one closed set, owned by the layer that knows what a request is
+// doing (internal/provider's phase.go); these two names exist so that this
+// package and the surface above it can say `session.PhaseAsking` beside every
+// other phase they already name that way, and a build in which the two ever
+// differed would be a surface drawing nothing for a wait the engine was
+// posting.
+const (
+	PhaseAsking  = provider.PhaseAsking
+	PhaseAllSlow = provider.PhaseAllSlow
+)
+
+// offerAnswerer is the transport's side of an open offer.
+//
+// IT IS AN INTERFACE AND NOT A CALL because the two halves are built in
+// parallel: internal/provider owns the registry of open offers and their
+// expiry, and this package owns the model on screen and the person answering.
+// One method, one direction, and the thing installed is a package that this one
+// already imports — so the join is one line and there is no seam to keep alive
+// afterwards.
+type offerAnswerer interface {
+	// AnswerOffer answers the offer named by an opaque token, and reports
+	// whether one was still open to answer.
+	AnswerOffer(ask string, yes bool) bool
+}
+
+// answerOffer is a plain function wearing that one method, so the thing
+// installed can be [provider.AnswerOffer] itself rather than a wrapper type
+// somebody has to keep in step with it.
+type answerOffer func(ask string, yes bool) bool
+
+func (fn answerOffer) AnswerOffer(ask string, yes bool) bool { return fn(ask, yes) }
+
+// openOffer is one live question and the moment it was raised.
+type openOffer struct {
+	ask string
+	at  time.Time
+}
+
+var offers = struct {
+	mu       sync.Mutex
+	open     map[string]openOffer
+	answerer offerAnswerer
+}{open: map[string]openOffer{}}
+
+// SetOfferAnswerer installs the side that owns the open offers, and hands back
+// the one that was there. A nil answerer uninstalls it, which is the state a
+// build with no transport wired is in.
+func SetOfferAnswerer(answerer offerAnswerer) (previous offerAnswerer) {
+	offers.mu.Lock()
+	defer offers.mu.Unlock()
+	previous, offers.answerer = offers.answerer, answerer
+	return previous
+}
+
+// noteOffer opens, keeps or withdraws one model's offer from the phase it is in.
+func noteOffer(news PhaseNews) {
+	model := strings.TrimSpace(news.Model)
+	if model == "" {
+		return
+	}
+	ask := askOf(news)
+	offers.mu.Lock()
+	defer offers.mu.Unlock()
+	if news.Phase != PhaseAsking || ask == "" {
+		// EVERY OTHER PHASE IS AN ANSWER TO THE QUESTION. The first visible
+		// token, the request ending, a rescue that went out anyway: all of them
+		// mean the offer is moot, and a question a person can no longer act on
+		// is worse than no question at all.
+		delete(offers.open, model)
+		return
+	}
+	// A HELD OFFER KEEPS ITS OWN MOMENT. The phase says itself again while it
+	// lasts, and an offer whose clock restarted on every beat would never lapse.
+	if held, open := offers.open[model]; open && held.ask == ask {
+		return
+	}
+	offers.open[model] = openOffer{ask: ask, at: news.Since}
+}
+
+// askOf is the opaque token naming the offer this news carries.
+//
+// THE TOKEN IS THE TRANSPORT'S AND THIS PACKAGE NEVER READS IT. It names the
+// REQUEST that raised the question — not the model, not the moment — which is
+// what makes a keystroke land on the wait somebody is answering rather than on
+// whichever request happens to be in flight when the key is pressed. The read
+// is in one function so that the surface, the desk and the transport cannot
+// come to three ideas of what an offer is called.
+func askOf(news PhaseNews) string { return news.Ask }
+
+// liveOffer is the open offer for one model, false when there is none or when
+// the one on the desk has lapsed. It clears what it finds either way: an offer
+// is answered once, because a second answer to one question is a second rescue
+// nobody asked for.
+func liveOffer(model string, now time.Time) (openOffer, bool) {
+	offers.mu.Lock()
+	defer offers.mu.Unlock()
+	offer, open := offers.open[strings.TrimSpace(model)]
+	if !open {
+		return openOffer{}, false
+	}
+	delete(offers.open, strings.TrimSpace(model))
+	if now.Sub(offer.at) > provider.PhaseWindow {
+		return openOffer{}, false
+	}
+	return offer, true
+}
+
+// forgetOffers empties the desk. It is for tests, which must not inherit one
+// another's questions.
+func forgetOffers() {
+	offers.mu.Lock()
+	defer offers.mu.Unlock()
+	offers.open = map[string]openOffer{}
+}
+
+// AnswerLaneOffer answers the offer standing over this conversation's model,
+// and reports whether there was one to answer.
+//
+// IT IS THE ONLY DOOR THE SURFACE HAS, and it takes the answer rather than the
+// question: which lane the rescue goes to was decided when the offer was raised,
+// from the frontier that was already computed, because the moment a rescue is
+// wanted is the worst possible moment to start choosing one.
+func (a *Agent) AnswerLaneOffer(yes bool) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	model := a.model
+	a.mu.Unlock()
+	offer, open := liveOffer(model, time.Now())
+	if !open {
+		return false
+	}
+	offers.mu.Lock()
+	answerer := offers.answerer
+	offers.mu.Unlock()
+	if answerer == nil {
+		return false
+	}
+	return answerer.AnswerOffer(offer.ask, yes)
+}
 
 // postPhaseNews tells whoever is listening. It never blocks on a slow reader
 // and never panics on an absent one, for the reason [postLaneNews] does not: a

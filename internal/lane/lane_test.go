@@ -244,27 +244,47 @@ func TestABudgetThatCannotCountRefuses(t *testing.T) {
 	}
 }
 
-// TestAWatchWithoutAVerdictStillWatches keeps the shape real while lane L-C has
-// not filled it in: the numbers are kept and nothing is spent on them.
+// TestAWatchWithoutAVerdictStillWatches is the invariant said about the one
+// case that used to be exempt from it.
+//
+// The choice below carries no clock — no [Choice] does any more — and the belief
+// behind it knows nothing at all. The watch is bounded anyway: the plan takes
+// its ceiling from the role and its alternative from the order, so a lane
+// nobody has measured is still a lane somebody is waiting a bounded time for.
 func TestAWatchWithoutAVerdictStillWatches(t *testing.T) {
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
-	watch := NewWatch(Choice{Deadline: 1200 * time.Millisecond, Alt: "CoreWeave"}, Belief{}, now)
-	if watch.Deadline() != 1200*time.Millisecond || watch.Alt() != "CoreWeave" {
-		t.Fatal("the watch lost the choice it was started from")
+	watch := NewWatch(Choice{Order: []string{"Nebius", "CoreWeave"}}, Belief{}, now)
+	if deadline := watch.Deadline(); deadline <= 0 || deadline > RoleTalk.Ceiling() {
+		t.Fatalf("a watch over an unmeasured lane named %s, outside (0, %s]", deadline, RoleTalk.Ceiling())
 	}
+	if watch.Alt() != "CoreWeave" {
+		t.Fatalf("a rescue would go to %q, not to the lane the order names next", watch.Alt())
+	}
+	// SIXTY-FOUR VISIBLE TOKENS ARE PROGRESS AND NOT A COMMITMENT COUNT. The
+	// answer is arriving, so nothing is acted on — and nothing has been.
 	if verdict := watch.Token(64, 64, now.Add(time.Second)); verdict.Hedge {
-		t.Fatal("an un-built watch asked for a hedge")
-	}
-	if verdict := watch.Silence(now.Add(time.Minute)); verdict.Hedge {
-		t.Fatal("an un-built watch asked for a hedge on silence")
+		t.Fatal("a stream that is writing was hedged")
 	}
 	if watch.Hedged() {
 		t.Fatal("a watch that hedged nothing said it had")
+	}
+	// AND A MINUTE OF SILENCE IS ACTED ON WITH NOTHING BELIEVED AT ALL, which
+	// is the whole invariant: the ceiling is not a consequence of a belief.
+	if verdict := watch.Silence(now.Add(time.Minute)); !verdict.Hedge {
+		t.Fatalf("a minute of silence past a ten-second ceiling was not acted on: %+v", watch.Last())
+	}
+	if !watch.Hedged() {
+		t.Fatal("the rescue that fired was not recorded")
 	}
 }
 
 // TestASwappedSeamIsPutBack is how every lane's tests will use the registry.
 func TestASwappedSeamIsPutBack(t *testing.T) {
+	// A HOME OF ITS OWN, because the default registry is the one a real session
+	// reads: a test that swaps a seam on it and lets a belief settle would write
+	// its invented lanes into somebody's `~/.aforge/v3/lanes.json`. See
+	// [TestNoTestWritesTheRealHome].
+	t.Setenv(home.EnvVar, t.TempDir())
 	registry := Default()
 	defer registry.Reset()
 	registry.SetChooser(fixedChooser{})

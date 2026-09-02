@@ -295,9 +295,6 @@ func TestRealRouterServesASheetAndHonoursAPreference(t *testing.T) {
 
 	pin := lane.Default().Chooser().Choose(realTalk(time.Now()))
 	pin.Only, pin.Order, pin.Ignore = []string{slow.ID.Lane}, nil, nil
-	if pin.Alt == "" {
-		pin.Alt = alternate
-	}
 	belief, _ := ledger.Belief(slow.ID)
 	watch := lane.NewWatch(pin, belief, time.Now())
 	// The shipped budget, so that this test is measuring the router somebody
@@ -531,10 +528,12 @@ func streamPinned(ctx context.Context, key string, choice lane.Choice, watch *la
 	var hedge <-chan realRescue
 	var hedgeErr <-chan error
 	var hedgeCancel context.CancelFunc
-	deadline := choice.Deadline
-	if deadline <= 0 || choice.Alt == "" {
-		// No deadline is "do not hedge this request", which is the honest
-		// answer while the arithmetic that computes one has not landed.
+	// THE CLOCK IS THE WATCH'S AND NOT THE CHOICE'S. A choice says which lane;
+	// the plan the watch was built over says when to act, and it has a ceiling
+	// under it whether or not anything is believed about the pinned machine.
+	rescue := watch.Alt()
+	deadline := watch.Deadline()
+	if rescue == "" {
 		deadline = 0
 	}
 	var alarm <-chan time.Time
@@ -593,7 +592,7 @@ func streamPinned(ctx context.Context, key string, choice lane.Choice, watch *la
 			alternateCtx, hedgeCancel = context.WithCancel(ctx)
 			defer hedgeCancel()
 			go func() {
-				answer, err := realStream(alternateCtx, key, []string{choice.Alt}, realRescueTokens, nil)
+				answer, err := realStream(alternateCtx, key, []string{rescue}, realRescueTokens, nil)
 				if err != nil {
 					fail <- err
 					return
@@ -810,7 +809,8 @@ func TestRealRouterChoosesForATierAndATurnThatCarriesTools(t *testing.T) {
 		t.Fatalf("a turn carrying tools, on a model with %d primed lanes, got no preference at all — "+
 			"which is the incident this test is written from", len(rows))
 	}
-	t.Logf("choice: order %v, alt %q, hedge at %v, why %q", choice.Order, choice.Alt, choice.Deadline, choice.Why)
+	plan := lane.PlanFor(choice, lane.Pace{}, lane.RoleTalk, time.Now())
+	t.Logf("choice: order %v, why %q; plan: %d alternatives, ceiling %v", choice.Order, choice.Why, len(plan.Alts), plan.Ceiling)
 	head, ok := ledger.Belief(lane.ID{Model: bare, Lane: choice.Order[0]})
 	if !ok || !head.Facts.Tools {
 		t.Fatalf("a turn carrying tools was ranked first onto %q, which the sheet does not say takes one", choice.Order[0])

@@ -85,18 +85,6 @@ const (
 	ignoreTTFTMultiple = 3.0
 	ignoreSureVariance = 0.25
 
-	// hedgeOverhead is what a second request costs before it can answer: a
-	// connection, a router hop, the far side reading the prompt again. It is
-	// added to the alternative's expected wait so that hedging is only ever
-	// asked for when it would genuinely arrive sooner.
-	hedgeOverhead = 300 * time.Millisecond
-
-	// hedgeFloor and hedgeCeiling clamp the computed hedge time. Below the floor
-	// a hedge fires on the ordinary spread of a healthy lane; above the ceiling
-	// nobody is being rescued by it.
-	hedgeFloor   = 700 * time.Millisecond
-	hedgeCeiling = 8 * time.Second
-
 	// sheetObservations is how many requests a published percentile row stands
 	// for WHEN THE QUESTION IS HOW SURE OF THE LANE'S MEDIAN IT MAKES US.
 	//
@@ -136,18 +124,6 @@ const (
 	// four times cheaper than Cloudflare, and the chooser sent a quarter of
 	// those requests to Cloudflare anyway.
 	sheetObservations = SheetWeight * SheetWeight
-
-	// predictiveSpreadFloor is the smallest spread the hedge arithmetic will use
-	// for a first-token belief, in the log domain.
-	//
-	// WHY THERE IS A FLOOR AT ALL. [Posterior.P] is the variance of the MEAN,
-	// and after a few dozen sightings it is nearly zero — a lane whose median is
-	// known to the millisecond. The hedge asks a different question: how long
-	// the NEXT wait might be, which is the predictive spread, and that never
-	// shrinks below the lane's own variability. One in the log domain is a p90
-	// about three and a half times the median, which is the shape the sheet
-	// actually published for the seventeen lanes this design was measured on.
-	predictiveSpreadFloor = 1.0
 )
 
 // ── THE PREFIX MEMORY ───────────────────────────────────────────────────────
@@ -269,13 +245,16 @@ func lowQuantizationAllowed() bool {
 // ── THE CHOOSER ─────────────────────────────────────────────────────────────
 
 // chooser turns a request into a preference. It holds no state of its own: the
-// belief is the ledger's and the moment is the request's.
+// belief is the ledger's, the rows are the sheet's, and the moment is the
+// request's.
 type chooser struct {
-	// ledger is where the beliefs come from, nil meaning the registry's own.
-	// The registry builds this chooser before it can hand it a ledger, and a
-	// test builds one with a ledger of its own, so the seam is read late rather
-	// than held.
+	// ledger, pages and hier are where what is believed comes from, nil meaning
+	// the registry's own. The registry builds this chooser before it can hand it
+	// any of them, and a test builds one with its own, so every seam is read
+	// late rather than held.
 	ledger Ledger
+	pages  Sheet
+	hier   Hierarchy
 }
 
 // newChooser builds the chooser. It is called from the registry and nowhere
@@ -284,10 +263,173 @@ func newChooser() *chooser { return &chooser{} }
 
 // beliefs is what is believed about a model's lanes right now.
 func (c *chooser) beliefs(model string) []Belief {
+	return c.ledgerOf().Beliefs(model)
+}
+
+func (c *chooser) ledgerOf() Ledger {
 	if c.ledger != nil {
-		return c.ledger.Beliefs(model)
+		return c.ledger
 	}
-	return Default().Ledger().Beliefs(model)
+	return Default().Ledger()
+}
+
+func (c *chooser) sheetOf() Sheet {
+	if c.pages != nil {
+		return c.pages
+	}
+	return Default().Sheet()
+}
+
+// hierarchy is the belief store's second door, nil on a build whose ledger does
+// not answer it. Everything below treats that as "borrow nothing", which is the
+// behaviour this package had before there was a hierarchy at all.
+func (c *chooser) hierarchy() Hierarchy {
+	if c.hier != nil {
+		return c.hier
+	}
+	if borrowed, ok := c.ledgerOf().(Hierarchy); ok {
+		return borrowed
+	}
+	return nil
+}
+
+// ── COLD START: A MODEL NOBODY HAS MEASURED STILL GETS AN ORDER ─────────────
+//
+// The first request to a (model, lane) pair is the STEADY STATE — a person
+// picks a model at runtime, the sheet is half an hour old at best, and the
+// ledger has never heard of the machines behind it — and until this the whole
+// package refused it: fewer than two beliefs and the answer was the zero
+// [Choice]. The measured consequence was a request with no routing opinion AND
+// no clock on it, waiting three minutes.
+//
+// The refusal was right about ONE thing and wrong about the other. An order of
+// one is genuinely not a ranking, and sending the name of the only endpoint we
+// happen to know exists is a preference for our own ignorance. But "one lane in
+// the ledger" was never the same fact as "one lane known": the sheet names
+// every machine that serves this model, and the hierarchy knows how quick each
+// PROVIDER is from every other model it has served (waiting.go's sum). Both are
+// beliefs about lanes; neither was being read.
+//
+// So the candidate set is widened in three steps, cheapest first, and it stops
+// as soon as there is something to rank:
+//
+//  1. what the ledger holds for this model — the measured account, untouched;
+//  2. every lane the SHEET names for this model, fitted from its published
+//     percentiles exactly as [Ledger.Prime] would fit them;
+//  3. every lane this process has seen serving ANY model, priced from the
+//     hierarchy's provider level.
+//
+// A candidate that comes out of all three with nothing believed about it is
+// dropped rather than ranked, because that is the old refusal's true half: a
+// name with no belief behind it is not a preference.
+//
+// AND A MODEL WITH NO SHEET ASKS FOR ONE, on the way past, without waiting:
+// [Wanter.Wants] queues it for the beat. That is the one write this path makes
+// and it is not a fetch — the law that nothing is fetched on a send path is
+// exactly what the queue exists to keep.
+
+// widened is the candidate set the choice is made from. It is the ledger's own
+// list unchanged whenever that list can be ranked, and the three steps above
+// when it cannot.
+func (c *chooser) widened(req Request, known []Belief) []Belief {
+	if len(known) >= 2 {
+		return known
+	}
+	held := make(map[string]bool, len(known))
+	for _, belief := range known {
+		held[belief.ID.Lane] = true
+	}
+	rows := c.sheetOf().Rows(req.Model)
+	if len(rows) == 0 {
+		c.wantSheet(req.Model)
+	}
+	// THE LIST IS COPIED BEFORE IT GROWS. What a ledger hands out is its answer
+	// and not this file's scratch space, and appending into somebody else's
+	// spare capacity is the kind of aliasing nobody finds twice.
+	widened := append(make([]Belief, 0, len(known)+len(rows)), known...)
+	for _, row := range rows {
+		if row.ID.Lane == "" || held[row.ID.Lane] {
+			continue
+		}
+		held[row.ID.Lane] = true
+		widened = append(widened, fromRow(ID{Model: req.Model, Lane: row.ID.Lane}, row))
+	}
+	if len(widened) < 2 {
+		for _, name := range c.rosterOf() {
+			if held[name] {
+				continue
+			}
+			held[name] = true
+			widened = append(widened, Belief{ID: ID{Model: req.Model, Lane: name}})
+		}
+	}
+	return c.borrowedAll(widened, req.Now)
+}
+
+// borrowedAll fills every candidate that believes nothing of its own from the
+// hierarchy, and drops the ones that still believe nothing after it.
+func (c *chooser) borrowedAll(candidates []Belief, now time.Time) []Belief {
+	hier := c.hierarchy()
+	// A FRESH SLICE, NOT A FILTER IN PLACE. The list may still be the ledger's
+	// own, and a package that quietly rewrote what a seam handed it would be a
+	// bug nobody could see from the seam's side.
+	kept := make([]Belief, 0, len(candidates))
+	for _, belief := range candidates {
+		if hier != nil {
+			if !belief.TTFT.Known() {
+				belief.TTFT = flatten(hier.Wait(belief.ID, now))
+			}
+			if !belief.Rate.Known() {
+				belief.Rate = flatten(hier.Rate(belief.ID, now))
+			}
+		}
+		if !belief.Known() {
+			continue
+		}
+		kept = append(kept, belief)
+	}
+	return kept
+}
+
+// flatten is one chain read as the flat belief the gate and the score are made
+// of: the sum of the four means, with the sum of the four variances. An unknown
+// chain borrows nothing, which the caller reads as a candidate to drop.
+func flatten(chain Chain) Posterior {
+	if !chain.Known() {
+		return Posterior{}
+	}
+	mu, variance := chain.Predict()
+	return Posterior{X: mu, P: variance}
+}
+
+// fromRow is a sheet row read as a belief nobody has measured yet: the facts as
+// published and the timing fitted from the percentiles, with NO MOMENT on it —
+// so the Thompson draw stays narrow ([sheetObservations]) and nothing here is
+// ever mistaken for a sighting.
+func fromRow(id ID, row Row) Belief {
+	belief := Belief{ID: id, Facts: row.Facts, Quality: qualityPrior(row.Facts.Quant)}
+	if row.Known() {
+		belief.TTFT = fit(row.TTFTp50, row.TTFTp90)
+		belief.Rate = fit(row.Ratep50, row.Ratep90)
+	}
+	return belief
+}
+
+// rosterOf is every lane this process has seen serving any model, empty for a
+// sheet that cannot answer.
+func (c *chooser) rosterOf() []string {
+	if pages, ok := c.sheetOf().(Roster); ok {
+		return pages.Roster()
+	}
+	return nil
+}
+
+// wantSheet queues a model nobody has a sheet for. It returns before anything
+// is fetched and it is safe on the send path for that reason alone.
+func (c *chooser) wantSheet(model string) {
+	if pages, ok := c.sheetOf().(Wanter); ok {
+		pages.Wants(model)
+	}
 }
 
 // Choose is the whole of the decision: age, gate, prune, sample, rank, and say
@@ -299,17 +441,19 @@ func (c *chooser) Choose(req Request) Choice {
 	// lookup below, including the two that key on [Request.Model] directly,
 	// asks about the model whose beliefs exist.
 	req.Model = BareModel(req.Model)
-	beliefs := c.beliefs(req.Model)
-	// AN ORDER OF ONE IS NOT A RANKING, and a ledger that has heard of a single
-	// lane has nothing to rank. This is the same refusal as the empty one below
-	// it and it is worth stating separately, because the case is not
-	// hypothetical: on a machine with no sheet the only lanes this package has
-	// ever heard of are the ones that have already served, so the first thing it
-	// learns about a model is the name of ONE endpoint — quite possibly the slow
-	// one it is about to be demoted for. Sending that name as `provider.order`
-	// is not a preference among lanes; it is a preference for the only machine
-	// we happen to know exists, put in front of a router that knows a dozen, and
-	// it silently overrode a strike ledger that had correctly demoted it.
+	// THE LEDGER IS ASKED FIRST AND THE WORLD SECOND. What this process has
+	// measured about this model is the best account there is; the sheet and the
+	// hierarchy are what stand in when there is not enough of it to rank, which
+	// on a cold store is every model and on a picked one is most of them
+	// ([chooser.widened] carries the whole argument).
+	beliefs := c.widened(req, c.beliefs(req.Model))
+	// AN ORDER OF ONE IS STILL NOT A RANKING. The refusal below is the old one
+	// with its true half kept: one lane KNOWN is nothing to rank, and sending
+	// its name as `provider.order` is a preference for the only machine we
+	// happen to know exists, put in front of a router that knows a dozen. What
+	// has changed is what counts as known — the widening above — so the case
+	// this fires in is now a process that has seen nothing at all rather than a
+	// process that has not seen THIS model.
 	if len(beliefs) < 2 {
 		return Choice{}
 	}
@@ -399,14 +543,10 @@ func (c *chooser) Choose(req Request) Choice {
 	if len(choice.Order) == 0 {
 		return Choice{}
 	}
-	if len(choice.Order) > 1 {
-		choice.Alt = choice.Order[1]
-	}
 	choice.Ignore = ignoredOf(scored, aged, choice.Order, lambda)
-	choice.Deadline = hedgeTime(
-		aged[ID{Model: req.Model, Lane: choice.Order[0]}],
-		aged[ID{Model: req.Model, Lane: choice.Alt}],
-	)
+	// AND NOTHING ABOUT TIME. Where a rescue would go and when it would go
+	// there are [PlanFor]'s, built for every call out of the same frontier this
+	// carries — see the note on [Choice].
 	choice.Why = whyOf(scored[0], perceived[scored[0].ID])
 	return choice
 }
@@ -525,112 +665,14 @@ func seedFor(req Request) int64 {
 	return req.Now.UnixNano() ^ int64(digest.Sum64())
 }
 
-// ── THE HEDGE TIME ──────────────────────────────────────────────────────────
-
-// hedgeTime is when a request should start thinking about asking somebody else.
-//
-// FOR A LOG-NORMAL, THE LONGER YOU HAVE WAITED, THE LONGER YOU SHOULD EXPECT TO
-// GO ON WAITING. A stream four seconds late is not four seconds from finishing;
-// it is a draw from the tail. So the hedge time is the smallest wait t at which
-// the expected REMAINING wait exceeds what the alternative would take from
-// cold, plus what a second request costs to start:
-//
-//	P(T > t)          = 1 − Φ((ln t − μ) / s)
-//	E[T·1{T>t}]       = exp(μ + s²/2) · Φ((μ + s² − ln t) / s)
-//	E[T − t | T > t]  = E[T·1{T>t}] / P(T > t) − t
-//	t*                = min t where E[T − t | T > t] > E_alt[T] + hedgeOverhead
-//
-// The remaining wait grows with t for a log-normal, so t* is found by halving
-// the interval rather than by walking it. It is clamped to [hedgeFloor,
-// hedgeCeiling] and it is per lane and per belief: a lane whose normal is four
-// hundred milliseconds hedges at about a second, and a lane whose normal is two
-// seconds does not hedge there at all.
-//
-// WITH NO ALTERNATIVE THERE IS NOTHING TO HEDGE TO, and the deadline is then
-// only the p90 of the lane's own belief — a wait that surprising is worth
-// telling the watch about even when the answer is to keep waiting.
-func hedgeTime(top, alt Belief) time.Duration {
-	mu, spread, ok := predictive(top.TTFT)
-	if !ok {
-		return 0
-	}
-	if !alt.TTFT.Known() {
-		return clampHedge(time.Duration(math.Exp(mu+1.2816*spread) * float64(time.Second)))
-	}
-	// WHAT THE ALTERNATIVE WOULD TAKE IS AN EXPECTATION OVER ITS BELIEF, and it
-	// is taken with that belief's own spread rather than with the floored one
-	// above. The floor is a statement about how variable a single wait is, which
-	// is the question the tail asks of the lane already running; applying it here
-	// too would inflate every alternative by two thirds and make every hedge
-	// systematically later than the arithmetic it is derived from.
-	altMu := alt.TTFT.X - math.Log(1000)
-	threshold := math.Exp(altMu+alt.TTFT.P/2) + hedgeOverhead.Seconds()
-	low, high := 0.01, 60.0
-	if remaining(mu, spread, high) <= threshold {
-		return clampHedge(hedgeCeiling)
-	}
-	if remaining(mu, spread, low) > threshold {
-		return clampHedge(time.Duration(low * float64(time.Second)))
-	}
-	for range 40 {
-		mid := (low + high) / 2
-		if remaining(mu, spread, mid) > threshold {
-			high = mid
-			continue
-		}
-		low = mid
-	}
-	return clampHedge(time.Duration(high * float64(time.Second)))
-}
-
-// predictive is a first-token belief as a log-normal over SECONDS, with the
-// spread floored at what a lane's own variability never goes below
-// ([predictiveSpreadFloor]). It reports false for a belief that knows nothing,
-// which is a request that gets no hedge rather than one that gets a guessed
-// deadline.
-func predictive(posterior Posterior) (mu, spread float64, ok bool) {
-	if !posterior.Known() {
-		return 0, 0, false
-	}
-	spread = math.Sqrt(posterior.P)
-	if spread < predictiveSpreadFloor {
-		spread = predictiveSpreadFloor
-	}
-	// The belief is about milliseconds and the arithmetic above is in seconds.
-	return posterior.X - math.Log(1000), spread, true
-}
-
-// remaining is E[T − t | T > t] in seconds for a log-normal (mu, spread).
-func remaining(mu, spread, t float64) float64 {
-	if t <= 0 {
-		return math.Exp(mu+spread*spread/2) - t
-	}
-	survival := 1 - phi((math.Log(t)-mu)/spread)
-	if survival < 1e-12 {
-		// So far into the tail that the ratio below is two vanishing numbers
-		// divided by each other. Anything still running there should have been
-		// hedged long ago, and saying so is more honest than a quotient of
-		// rounding errors.
-		return math.Inf(1)
-	}
-	weighted := math.Exp(mu+spread*spread/2) * phi((mu+spread*spread-math.Log(t))/spread)
-	return weighted/survival - t
-}
-
-// phi is the standard normal distribution function, from the error function the
-// standard library already has.
-func phi(x float64) float64 { return 0.5 * (1 + math.Erf(x/math.Sqrt2)) }
-
-// clampHedge holds a deadline inside the band a hedge is worth having in.
-func clampHedge(deadline time.Duration) time.Duration {
-	if deadline < hedgeFloor {
-		return hedgeFloor
-	}
-	if deadline > hedgeCeiling {
-		return hedgeCeiling
-	}
-	return deadline
-}
+// THE HEDGE TIME USED TO BE COMPUTED HERE and it is not computed anywhere in
+// this file any more. When to act on a wait is `internal/lane/control`'s one
+// question, asked of every call from [PlanFor]'s plan rather than of the calls
+// that happened to produce a routing opinion — see the note on [Choice]. What
+// went with it: an eight-second clamp that only existed when a belief did, a
+// three-hundred-millisecond overhead figure the alternative's own survival now
+// carries, and a second copy of the log-normal arithmetic that
+// [control.Survival.Remaining] states once.
 
 // ── SAYING WHY ──────────────────────────────────────────────────────────────
 
@@ -644,6 +686,13 @@ func whyOf(top Scored, felt float64) string {
 		return ""
 	}
 	start := top.TTFT / 1000
+	// AND A LANE NOBODY HAS TIMED SAYS NOTHING RATHER THAN "STARTS IN 0.0s".
+	// The widening puts lanes into the order that are believed in only through
+	// their provider, and a sentence built on a zero is the one thing this
+	// surface may not print (the emptiness law).
+	if start <= 0 {
+		return ""
+	}
 	switch {
 	case top.Price >= 0.01:
 		return fmt.Sprintf("%s starts in %.1fs and costs about $%.2f for this answer.", top.ID.Lane, start, top.Price)

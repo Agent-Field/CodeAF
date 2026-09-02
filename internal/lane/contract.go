@@ -67,7 +67,17 @@ type Ledger interface {
 // of persisting: [Posterior.Predict] widens a stale belief until it is worth
 // about as much as the sheet, so what survives a restart is "mostly the prior,
 // a little memory" rather than a claim about a machine that was busy last
-// Tuesday. The file is `~/.aforge/v3/lanes.json`; [StorePath] names it.
+// Tuesday.
+//
+// IT IS TWO FILES AND [Store.Load] IS THE COMPACTED HALF. `~/.aforge/v3/lanes.json`
+// ([StorePath]) holds the state as of the last compaction, and
+// `~/.aforge/v3/lanes.log` (journal.go) holds one appended line per
+// observation since. Load answers with the state alone; replaying the journal
+// over it is [Journal]'s, and the ledger does both. The split is what lets two
+// processes share an afternoon: last-writer-wins over one file cannot merge the
+// levels of a hierarchy that both of them folded evidence into, so neither of
+// them writes the whole belief on the send path and the compaction that does is
+// taken under the exclusive lock.
 type Store interface {
 	Load() ([]Belief, error)
 	Save([]Belief) error
@@ -170,14 +180,15 @@ type Choice struct {
 	Order  []string
 	Only   []string
 	Ignore []string
-	// Deadline is when the watch should start thinking about a hedge, computed
-	// from the belief of the lane we expect to serve rather than from a
-	// constant. Zero is "do not hedge this request".
-	Deadline time.Duration
-	// Alt is the lane a hedge would go to, empty when there is nobody worth
-	// hedging to. It is chosen at send time, from the same frontier, because
-	// the moment a hedge is wanted is the worst moment to start choosing.
-	Alt string
+	// IT SAYS NOTHING ABOUT TIME, and the absence is the law. Routing and
+	// waiting are two questions and they must never share one nil: this answers
+	// WHICH LANE, and [control.Plan] — built for every token-generating call,
+	// whether or not any preference was expressed — answers WHEN TO ACT. They
+	// were one value once, so a ledger that had never heard of a model produced
+	// no routing opinion AND no clock, and the request that most needed a
+	// deadline was the one request that got none. [PlanFor] is the other half
+	// and `law_test.go` is what keeps them apart.
+	//
 	// Frontier is the candidate set after the gate and the Pareto prune — the
 	// three to five lanes actually worth choosing between — with the numbers
 	// each was scored on. It is what the picker's `auto` row says out loud.

@@ -82,6 +82,12 @@ func New(config Config) (*Agent, error) {
 	// process with no window open is a process where nobody is
 	// ([someoneIsWatching]).
 	provider.InstallLaneProber(client, func(string) bool { return someoneIsWatching() })
+	// AND THE OFFER DESK IS POINTED AT THE SIDE THAT HOLDS THE OPEN QUESTIONS,
+	// at the same moment and for the same reason: this is where a real transport
+	// exists. A pinned lane that goes quiet raises `coreweave is slow · switch to
+	// auto? (y)` on the phase channel; `y` comes back through this package, and
+	// without this line it would come back to nobody (phasenews.go).
+	SetOfferAnswerer(answerOffer(provider.AnswerOffer))
 	return newAgent(config, client)
 }
 
@@ -563,6 +569,32 @@ func (a *Agent) SetModel(model string) {
 	a.noteModelWindow(model)
 	a.scrubBlindImagePartsLocked(model)
 	a.mu.Unlock()
+	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
+	// session's own state; this is about a fetch somebody else will do, and a
+	// lock held across a hand-off is a lock held for no reason.
+	a.noteLaneModel(model)
+}
+
+// noteLaneModel tells the sheet beat about a model this session has moved to.
+//
+// IT IS THE SECOND HALF OF THE REPORTED DEFECT. The beat's model list is
+// settled when a session opens, from the two config slots ([laneBeatModels]),
+// and [Agent.SetModel] is what the picker calls — so until this line a model a
+// person chose deliberately never got a sheet for the rest of the session's
+// life, and cold start was the STEADY STATE for exactly the models people care
+// most about. Every prior the routing design rests on was absent for them.
+//
+// NOTHING WAITS FOR IT. [lanes.WantSheet] queues the name and returns; the beat
+// fetches it on the other side of the channel and joins it to its round, so the
+// second turn on a picked model is warm and the first is no slower for it. A
+// session that runs no beat — routing off, a base that is not a router, no model
+// slot filled ([Agent.startLaneBeat] states all three) — has nobody to tell, and
+// says nothing rather than starting a fetch nobody asked for.
+func (a *Agent) noteLaneModel(model string) {
+	if a == nil || !a.laneBeating {
+		return
+	}
+	lanes.WantSheet(model)
 }
 
 // SetAPIKey hands the conversation the key it talks with, after the fact.

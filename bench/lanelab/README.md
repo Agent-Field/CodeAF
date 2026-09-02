@@ -25,6 +25,8 @@ ship-gate verdict, and the section on where this model is wrong.
 | `result.json` | the raw table from `--seed 7`, as committed |
 | `gosim/` | the **Go simulator**: the same three scenarios against the SHIPPED code — the real registry, ledger, chooser, watch and budget, driven over `internal/lane/lanestub` |
 | `gosim/result.json` | the raw table from the committed Go run |
+| `gosim/proof.go` | the **four proof scenarios** of `docs/design/waiting/DESIGN.md` §J, and its §K pass table, run with `-proof` |
+| `gosim/proof.json` | the raw rows and criteria from the committed `-proof` run |
 | `REPORT.md` | the results of both, the verdict, and the limitations |
 | `live.sh` | the blind live A/B skeleton. **Never run.** Read the header before you do. |
 
@@ -49,6 +51,11 @@ go run ./bench/lanelab/gosim                                   # the committed r
 go run ./bench/lanelab/gosim -json bench/lanelab/gosim/result.json
 go run ./bench/lanelab/gosim -requests 100 -seeds 1             # a quick look, ~20 s
 go run ./bench/lanelab/gosim -scenario talk -policy belief -trace   # one line per request
+
+go run ./bench/lanelab/gosim -proof                            # DESIGN.md §K's pass table, ~10 min
+go run ./bench/lanelab/gosim -proof -json bench/lanelab/gosim/proof.json
+go run ./bench/lanelab/gosim -proof -requests 40 -seeds 1       # a quick look, ~1 min
+go run ./bench/lanelab/gosim -proof -pace flat -trace           # one line per trial, one door
 ```
 
 | flag | what it is |
@@ -60,6 +67,8 @@ go run ./bench/lanelab/gosim -scenario talk -policy belief -trace   # one line p
 | `-json` | write the raw table, the ship gate and the per-seed verdicts here |
 | `-trace` | one line per request on standard error — asked, served, timed — which is where every autopsy starts |
 | `-sheet` | the endpoint sheet to draw lanes from |
+| `-proof` | run `docs/design/waiting/DESIGN.md` §K's four scenarios and its pass table instead of the ship gate; it brings its own smaller `-requests` and `-seeds` unless you name them |
+| `-pace` | proof only: which belief the plan waits against, `shipped` or `flat`. Both when unsaid, and the two tables side by side are most of the argument — see REPORT.md |
 
 ## The Go simulator
 
@@ -130,6 +139,36 @@ no ranking — it is the same constant for every lane — but it puts 22.22 s of
 reading into every `talk` number, and every RATIO taken from those numbers is
 then a ratio of mostly reading. `REPORT.md` has the old and new figures side by
 side.
+
+## The four proof scenarios
+
+`-proof` is a different question from everything above it. The three scenarios
+compare arms on a p90; these four ask whether the **invariant of
+`docs/design/waiting/DESIGN.md` §A holds** — that from zero history every call
+knows how much longer the silence is expected to last, and acts by the role's
+ceiling whatever it believes. That is not a quantity with a baseline: it held on
+every trial or it did not.
+
+Each row is one line of §J's e2e table, run under `talk` — the shortest ceiling
+in `lane.Role`'s table and the role the reported defect happened under — with
+its fault staged for the **middle half** of its requests, exactly as the three
+scenarios above break their victim between request n/4 and 3n/4. The other half
+is the healthy one, and it is where a false hedge would have to come from.
+
+| row | staged with |
+|---|---|
+| `cold store` | a fresh `AFORGE_HOME` per seed, nothing primed, no sheet — and the lane that serves goes quiet, because a cold store with nothing to wait for proves nothing about a clock |
+| `stalled lane` | the sheet primed, the serving lane quiet five visible words into its answer (`lanestub.Profile.StallAfter`/`StallFor`) |
+| `thinking model` | `Profile.Reasoning` deltas before the first visible word, on a world published at the rate it really writes; the healthy half is a legitimate long think, the sick half stalls inside one |
+| `pinned lane` | `only:[pin]`, twice: with a reader for the offer, and headless, where §E has the offer become a borrow |
+
+It drives the real chooser, the real ledger, the real `lane.PlanFor` and the
+real controller `internal/lane` installs at init, over `lanestub`, with **one
+`control.Reading` per stream event** — a visible word, a hidden delta, or the
+router's own comment line. What it cannot reach is the offer registry: "no
+reader" is `provider.OnPhase` with nothing registered, and this package does not
+import `internal/provider`. REPORT.md says which half of §E that leaves
+unexercised.
 
 ## The four policies
 

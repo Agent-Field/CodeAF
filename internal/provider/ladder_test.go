@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -31,11 +30,9 @@ import (
 
 // ladderChoice is a frontier of three lanes in a stated order, which is what
 // the chooser hands a request it has an opinion about.
-func ladderChoice(model string, deadline time.Duration) lanes.Choice {
+func ladderChoice(model string, _ time.Duration) lanes.Choice {
 	return lanes.Choice{
-		Order:    []string{"A", "B", "C"},
-		Alt:      "B",
-		Deadline: deadline,
+		Order: []string{"A", "B", "C"},
 		Frontier: []lanes.Scored{
 			{ID: lanes.ID{Model: model, Lane: "A"}, TTFT: 2, Rate: 2000, Price: 0.01},
 			{ID: lanes.ID{Model: model, Lane: "B"}, TTFT: 5, Rate: 2000, Price: 0.01},
@@ -58,7 +55,7 @@ func TestARefusedRescueWalksToTheNextLaneRatherThanRelaxingTheRequest(t *testing
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, ladderChoice(rig.model, 12*time.Millisecond))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
@@ -112,7 +109,7 @@ func TestEveryLaneIsAskedBeforeAnythingElseIsTried(t *testing.T) {
 	)
 	rig.believes("A", 2, 2000)
 
-	ctx := WithLaneChoice(context.Background(), ladderChoice(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), ladderChoice(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 		t.Fatalf("three refusing lanes produced an answer")
 	}

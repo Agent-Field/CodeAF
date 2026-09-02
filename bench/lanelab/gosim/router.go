@@ -367,8 +367,14 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 	var altDone <-chan streamResult
 	var hedgeAt <-chan time.Time
 	var timer *time.Timer
-	if watch.Deadline() > 0 && choice.Alt != "" {
-		timer = time.NewTimer(r.scaled(watch.Deadline()))
+	// WHERE A RESCUE WOULD GO AND WHEN IT WOULD GO THERE ARE BOTH THE WATCH'S.
+	// A [lane.Choice] says which lane and nothing about time; the plan the
+	// watch was built over carries the clock, the role's ceiling and the
+	// alternative the frontier already named.
+	rescue := watch.Alt()
+	var timerFor = watch.Deadline()
+	if timerFor > 0 && rescue != "" {
+		timer = time.NewTimer(r.scaled(timerFor))
 		defer timer.Stop()
 		hedgeAt = timer.C
 	}
@@ -396,7 +402,7 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 
 		case <-hedgeAt:
 			hedgeAt = nil
-			estimate := r.estimate(choice.Alt)
+			estimate := r.estimate(rescue)
 			if !r.budget.Allow(r.at, estimate) {
 				continue
 			}
@@ -406,7 +412,7 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 			// reports what it cost.
 			r.budget.NoteHedge(estimate, r.at)
 			altBegan = time.Now()
-			alt = r.start(ctx, nil, []string{choice.Alt}, nil, req)
+			alt = r.start(ctx, nil, []string{rescue}, nil, req)
 			altFirst, altDone = alt.first, alt.done
 
 		case result := <-primaryDone:
@@ -456,7 +462,7 @@ func (r *router) race(choice lane.Choice, req lane.Request) (answered, error) {
 	out.hedged = hedged
 	if hedged {
 		if winner == primary {
-			out.loserPrice = r.priceOfServing(choice.Alt)
+			out.loserPrice = r.priceOfServing(rescue)
 		} else {
 			out.loserPrice = r.priceOfServing(choice.Order[0])
 		}

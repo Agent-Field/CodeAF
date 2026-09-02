@@ -260,6 +260,39 @@ var tuiWords = map[string]tuiWord{
 		why:    "the Spending row the `this one` receipt hangs off",
 	},
 
+	// ── waiting on a machine that has gone quiet ─────────────────────────────
+	//
+	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
+	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
+	// internal/provider). So each half is its own row and the suite asserts the
+	// join, which is the shape `standYesWord` and `standSetWord` already have.
+	// What varies is not a needle: the machine that went quiet is whatever this
+	// run pinned, and the lane a rescue would go to is whatever the frontier
+	// named. What stands still is the clause around them.
+	"phaseSlowWord": {
+		screen: " is slow",
+		pkg:    "internal/provider",
+		why: "the pinned machine has gone quiet — the ENGINE writes this clause and the surface only relays it, " +
+			"so a gate that looked for it in internal/tui3 would be looking in the wrong tree",
+	},
+	"phaseOfferWord": {
+		screen: "switch to ",
+		why:    "the rescue the question offers, on a row with room to name where it would go",
+	},
+	"phaseOfferKeyWord": {
+		screen: "(y)",
+		why: "the one key that ends the wait, and the last thing a narrow row spends: " +
+			"an offer whose key was cut is a question nobody can answer",
+	},
+	"phaseAllSlowWord": {
+		screen: "all lanes slow",
+		why:    "every reachable machine is believed slow, so there is nowhere better to be",
+	},
+	"phaseWaitingWord": {
+		screen: "still waiting",
+		why:    "the other half of that report — acting would buy nothing, and saying so IS the act",
+	},
+
 	// ── a question answered from another window ──────────────────────────────
 	"consentAskWord": {
 		screen: "allow? ",
@@ -388,15 +421,11 @@ func TestEveryWordTheTmuxSuiteWaitsForStillStandsInTheSurface(t *testing.T) {
 // A table that only ever grows is a table with dead rows in it, and a dead row
 // is a claim about the surface nobody is testing. So the suite's own source is
 // read back and every entry must be asked for by name somewhere in it. The read
-// is of the FILE and not of the running suite, because the suite is behind a
+// is of the FILES and not of the running suite, because the suite is behind a
 // build tag this test is deliberately not behind: a gate that needed tmux and a
 // model to run would be a gate that runs as rarely as the thing it guards.
 func TestEveryWordInTheTableIsWaitedForBySomething(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "internal", "e2e", "tui_e2e_test.go"))
-	if err != nil {
-		t.Fatalf("the tmux suite is not where this gate expects it: %v", err)
-	}
-	suite := string(raw)
+	suite := suiteSources(t)
 	for name, word := range tuiWords {
 		if !strings.Contains(suite, `"`+name+`"`) {
 			t.Errorf("nothing in the tmux suite asks for %s = %q any more (%s). "+
@@ -404,6 +433,49 @@ func TestEveryWordInTheTableIsWaitedForBySomething(t *testing.T) {
 		}
 	}
 }
+
+// suiteSources is every test file in this package except this one, joined — the
+// tmux suite as it stands today.
+//
+// IT IS THE WHOLE PACKAGE AND NOT ONE FILE because the suite outgrew one file.
+// [say] is a package-level door and any file beside it may wait through it, so a
+// gate that named tui_e2e_test.go would answer a question nobody asked: it would
+// call a row dead the day its waiter was written next door, and it would push
+// scenarios into the file the gate happens to read rather than the file they
+// belong in.
+//
+// THIS FILE IS THE ONE EXCLUSION, and it is not an exception so much as the
+// point: every name in the table is spelled here, so a gate that read its own
+// source would find every row waited for by the table itself and go green on
+// exactly the rot it exists to catch.
+func suiteSources(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(moduleRoot(t), "internal", "e2e")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("the tmux suite is not where this gate expects it: %v", err)
+	}
+	var b strings.Builder
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, "_test.go") || name == tuiWordsFile {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		b.Write(raw)
+		b.WriteString("\n")
+	}
+	if b.Len() == 0 {
+		t.Fatalf("%s holds no suite beside this gate", dir)
+	}
+	return b.String()
+}
+
+// tuiWordsFile is this file's own name, which [suiteSources] skips.
+const tuiWordsFile = "tuiwords_test.go"
 
 // readPackageSources is every STRING LITERAL in every non-test .go file of one
 // directory, joined — the words the package can actually put on a screen.

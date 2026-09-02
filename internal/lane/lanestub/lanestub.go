@@ -79,6 +79,16 @@ type Profile struct {
 	// run, which is the whole reason the watch counts them apart from the
 	// answer ([internal/lane.Watch.Token]).
 	Reasoning int
+	// Fenced writes that run of thought on the CONTENT channel, wrapped in
+	// `<think>` … `</think>`, instead of on the reasoning field.
+	//
+	// IT IS A REAL SHAPE AND NOT A CURIOSITY. Several gateways hand back a
+	// model's working inside the answer channel rather than stripping it, which
+	// is why `internal/provider`'s answer.go carves it back out — and the
+	// carving has to reach the waiting policy too, or a model that fences its
+	// thoughts looks to the controller like a model writing an answer and its
+	// silence clock never runs.
+	Fenced bool
 	// StallAfter and StallFor stage a lane that goes quiet mid-answer:
 	// after StallAfter deltas — counting the reasoning run first — nothing is
 	// written for StallFor. A zero StallAfter stalls nothing.
@@ -649,7 +659,21 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			s.cancelled(lane.Name)
 			return
 		}
-		if !write("data: " + reasoningJSON(id, ask.Model, lane.Name, fmt.Sprintf("r%d ", thought)) + "\n\n") {
+		text := fmt.Sprintf("r%d ", thought)
+		frame := reasoningJSON(id, ask.Model, lane.Name, text)
+		if lane.Fenced {
+			// The whole run inside one pair of tags: opened on the first delta
+			// and closed on the last, which is how a gateway that does not strip
+			// its model's working delivers it.
+			if thought == 0 {
+				text = "<think>" + text
+			}
+			if thought == lane.Reasoning-1 {
+				text += "</think>"
+			}
+			frame = chunkJSON(id, ask.Model, lane.Name, text)
+		}
+		if !write("data: " + frame + "\n\n") {
 			s.cancelled(lane.Name)
 			return
 		}

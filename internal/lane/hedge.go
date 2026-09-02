@@ -106,6 +106,23 @@ func NewBudget(perTwenty int, share float64) *Budget {
 // wiring the transport does not get to pick its own idea of "not very many".
 func DefaultBudget() *Budget { return NewBudget(2, 0.10) }
 
+// Share is what fraction of recent spending hedging may add: the ceiling the
+// slow-leak half of this budget enforces, as a fraction of one.
+//
+// IT IS EXPORTED SO THAT A BENCH GRADING A RUN AGAINST THE PURSE READS THE
+// PURSE'S OWN FIGURE. `bench/lanelab/gosim` reports what hedging cost against
+// what the budget allows it to cost, and a bench that restated the tenth would
+// be a second copy of a number this package owns — which is the one thing this
+// codebase's own law about a single source of truth forbids.
+func (b *Budget) Share() float64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.share
+}
+
 // NoteRequest records that one request has finished. It is the denominator of
 // the rate limit and it is called once per request, hedged or not.
 func (b *Budget) NoteRequest(_ time.Time) {
