@@ -7,10 +7,14 @@ correction if it is not — so the settled work is folded and the machinery is o
 away. This page is about what is folded, how to open it, and what to do when the page
 seems empty or stuck at the top.
 
-## What a task's page folds by default
+## Why most of the work is hidden on a task page — the `▸ worked` chips, and `ctrl+e` to open them
 
-Settled work. Between each paragraph the task wrote is the thinking and the calls that
-led to it, and that stretch collapses to one dim chip:
+**This is the answer to "my task page is hiding most of the work", "where did the tool
+calls go", "why can I not see what the task did", and "what are these little grey lines".**
+Nothing is lost. Settled work is folded, and one gesture opens it.
+
+Between each paragraph the task wrote is the thinking and the calls that led to it, and
+that stretch collapses to one dim chip:
 
 ```
 ▸ worked 2m · thought 10s · 14 tool calls · ctrl+e
@@ -19,6 +23,23 @@ led to it, and that stretch collapses to one dim chip:
 The figures are counted from the rows the chip covers — how long that stretch took, the
 thinking time when there was any, and the real call count. Nothing on a chip is a summary
 of the work; a summary can be wrong and a count cannot.
+
+**Three ways to open one**, and any of them works on a page that has already finished:
+
+- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
+- **click** the chip.
+- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
+  opens the chip nearest the top and keeps your place: the rows you were reading stay on
+  the same screen lines and the work appears above them. Nothing jumps. The same gesture
+  opens a folded run of tool calls, so scrolling up keeps reaching further back rather
+  than stopping dead.
+
+An opened chip stays open, and the chip line stays with it so you can close it again.
+
+**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
+in a task's page exactly as in the conversation.
+
+### What stays on the page whatever happens
 
 **Every paragraph the task wrote stays standing**, above the chip that covers the work
 before it, and so does the report at the end. So the page reads as the story of the work
@@ -34,28 +55,16 @@ correction you typed into the running work, every call that failed, and every qu
 task asked you. They are the record of what you asked for and what you decided, and a
 fold may never hide your own words.
 
-## See the tool calls a task made — ctrl+e, a click, or scroll up
+### Why the conversation's chips are cut differently
 
-Three ways open a chip, and any of them works on a page that has already finished:
+Out in the conversation the page folds **by turn** — one chip per question you asked,
+hiding the work between the question and its answer. A task's page folds **by phase**
+instead, because a task is one long question and folding it by turn would put the whole
+page behind one chip.
 
-- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
-- **click** the chip.
-- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
-  opens the chip nearest the top and keeps your place: the rows you were reading stay on
-  the same screen lines and the work appears above them. Nothing jumps. The same gesture
-  opens a folded tool cluster, so scrolling up keeps reaching further back rather than
-  stopping dead.
+## See earlier tool calls in one long run — the `↳` line, scroll up or `ctrl+o`
 
-An opened chip stays open, and the chip line stays with it so you can close it again.
-`ctrl+o` inside a task's page is a different key: it opens or folds the long instruction
-at the top, and the tool cluster's own `↳ N earlier tool calls` line.
-
-**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
-in a task's page exactly as in the conversation.
-
-## See earlier tool calls in one long cluster — scroll up, or ctrl+o
-
-When one stretch of a task's page has made more calls than fit, the calls show a screenful
+When one stretch of a task's page has made more calls than fit, the page shows a screenful
 of the newest ones above a dim line reading:
 
 ```
@@ -68,18 +77,15 @@ page follows the task again as it works — and the opened calls stay open. A ta
 keeps its own fold state, separate from the conversation's; `ctrl+o` inside a task never
 folds or unfolds anything in the conversation you left behind.
 
-## How many calls a task's page keeps on screen
+`ctrl+o` and `ctrl+e` are different keys here: `ctrl+o` opens this run of calls, and the
+long instruction at the top of the page; `ctrl+e` opens a `▸ worked` chip.
 
-As many as your window is tall, and never fewer than three. The number is taken from
-the window at the moment the page is drawn, so resizing the terminal, growing the draft
-by a line, or the task roster changing its width all re-fit it. Only the overflow folds.
-
-The conversation is different on purpose. Out there the page folds **by turn** — one chip
-per question you asked, hiding the work between the question and its answer — and a
-folded cluster keeps exactly the last **3** calls above a line reading `N earlier tool
-calls · ctrl+o`. Scrolling the conversation never opens a fold; `ctrl+o` or a click does.
-A task's page folds **by phase** instead, because a task is one long question and folding
-it by turn would put the whole page behind one chip.
+**How many calls the page keeps on screen**: as many as your window is tall, and never
+fewer than three. The number is taken from the window at the moment the page is drawn, so
+resizing the terminal, growing the draft by a line, or the task roster changing its width
+all re-fit it. Only the overflow folds. The conversation keeps exactly the last **3** calls
+of a turn above a line reading `N earlier tool calls · ctrl+o`, and scrolling the
+conversation never opens a fold — `ctrl+o` or a click does.
 
 ## What the line at the top of a task's page tells you
 

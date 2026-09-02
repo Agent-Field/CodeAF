@@ -1006,8 +1006,8 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `conflicted`, or `inplace` (the work ran
-directly in your own tree because there was no repository to branch from).
+How a branch came home is spelled `merged`, `in your own folder` (there was no branch to
+bring home — the work edited your own files), or `conflicted · <branch>`.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1035,7 +1035,7 @@ work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## How work lands
+## How work lands — what the card means by merged, in your own folder, or conflicted
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
@@ -1060,8 +1060,8 @@ first sentence, quoted because they are its words and not aforge's.
   have set `task.settle` to `auto`, in which case aforge is deciding and the card is quiet.
 
 After the name the card carries the span, the file count, and how the branch came home:
-`merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
-`branch kept · <branch>`.
+`merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
+or `branch kept · <branch>`.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
