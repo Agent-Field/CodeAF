@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // demoTurn is one exchange: what the person said and what came back.
@@ -325,7 +326,7 @@ func indexTalk(brain *store.Store, id string, talk demoTalk, spoke time.Time) er
 			{SessionID: id, Role: store.RoleUser, Body: turn.said},
 			{SessionID: id, Role: store.RoleAgent, Body: turn.answered, Model: talk.model},
 		} {
-			if _, err := brain.PostMessage(message); err != nil {
+			if _, err := thread.Post(brain, message); err != nil {
 				return fmt.Errorf("index a turn of %q: %w", talk.title, err)
 			}
 		}
