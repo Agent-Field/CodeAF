@@ -19,15 +19,19 @@ import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 //	sharedVelocity  velocity.go   what each lane was measured doing
 //	sharedPins      affinity.go   which endpoint holds a prompt lineage's cache
 //	sharedLimiter   limiter.go    the concurrency a key was seen to tolerate
+//	quirks          quirks.go     the request shapes an endpoint refused
 //
-// TWO DELIBERATE ABSENCES, so the next reader does not think they were missed.
-// `quirks` (quirks.go) is a learner and is NOT reset here: it is not a plain
-// reassignment — it carries a `loaded` flag over a file on disk and a `writes`
-// WaitGroup whose save races a removed profile directory, so giving it a fresh
-// value would re-trigger a load and orphan a save in flight. It needs a real
-// reset seam in non-test code, which is its own change. And `offers` (offer.go)
-// is questions in flight rather than anything learned, so it has nothing to
-// forget.
+// The fourth is the one that is not a reassignment. The quirks memo carries a
+// `loaded` flag over a file on disk and a `writes` WaitGroup whose save races a
+// removed profile directory, so a fresh value would orphan a write in flight
+// rather than forget anything; it exposes `resetForTests`, a reset in non-test
+// code written for exactly this call and named so no reader takes it for a
+// production path (#455). That is what a learner does when it cannot be
+// reassigned.
+//
+// ONE DELIBERATE ABSENCE, so the next reader does not think it was missed.
+// `offers` (offer.go) is questions in flight rather than anything learned, so it
+// has nothing to forget.
 //
 // WHO CALLS IT. Two places, and both for the same reason: they leave their
 // client on the shared learners and then assert on what those learners were
@@ -60,5 +64,6 @@ func resetSharedLearners() {
 	sharedVelocity = newVelocityLedger()
 	sharedPins = newEndpointPins()
 	sharedLimiter = newAdaptiveLimiter()
+	quirks.resetForTests()
 	lanes.ForgetRefusals()
 }

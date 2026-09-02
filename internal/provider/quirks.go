@@ -500,3 +500,75 @@ func (q *quirksStore) save() {
 		_ = os.Remove(name)
 	}
 }
+
+// resetForTests puts the memo back to what it is in a process that has not yet
+// called [LoadQuirks]: nothing learned, nowhere to write it down, and no write
+// still in flight.
+//
+// A PACKAGE-LEVEL LEARNER IS RESET BY THE RIG BETWEEN TESTS, so a test's result
+// never depends on which test ran before it. This one is the reason that law
+// needed a seam in non-test code at all: the store is not a plain value a test
+// helper can reassign over, because a fresh one would leave the old one's
+// scheduled save still holding a file descriptor into a profile directory its
+// test is about to remove. What bit was
+// TestARepairedRefusalLeavesTheRefusedShapeAndThenTheAnswer, which asserts on a
+// refusal AND its repair: the first run of it in a process learned that the
+// model refuses a disabled reasoning field, the second run already knew and sent
+// the repaired shape first, and there was no refusal left to see (#455).
+//
+// NOTHING ON A PRODUCTION PATH MAY CALL IT. The memo's whole value is that a
+// fact learned by being told no survives the call, the process and — through the
+// file — the machine; a production caller that forgot it would buy back the
+// rejected call it was written to spend once. Its callers are the rig's
+// resetSharedLearners and nothing else, which is what the name is for.
+//
+// THE FORGETTING COMES FIRST AND THE WAIT COMES AFTER IT, which is the opposite
+// of the obvious order and the only one that is sound. [persist] takes
+// writes.Add(1) with the mutex ALREADY RELEASED — every caller of it does, from
+// [record] returning to [NoteAnswerCut] unlocking a line before it — so a reset
+// that waited first would return from Wait, drop the lock, and be racing an
+// Add against the very WaitGroup it had just waited on, which is misuse and not
+// merely untidy. Waiting under the lock is not the fix either: [snapshot] takes
+// the same mutex, so that deadlocks.
+//
+// Emptying first disarms instead of racing. A save already scheduled reads the
+// path under the lock in [snapshot], finds it empty, and writes nothing; a save
+// scheduled a moment later does the same. So by the time settle waits, every
+// writer that can still exist is one that will put nothing on a disk, and the
+// wait is only there to see them off the profile directory before the test
+// removes it. That is also why the maps cannot be left for after the wait: a
+// save that ran between the two would put a half-forgotten memo on the disk
+// under the name of a whole one.
+//
+// THE CONTRACT THAT REMAINS is the rig's. This is called from a cleanup, after
+// the test's clients have stopped learning; a client still recording into the
+// memo while the reset runs would be a test that outlived its own goroutines,
+// and that leak is the test's to fix rather than something this seam can
+// paper over.
+//
+// THE FILE IS LEFT ALONE, and forgetting the path is what makes that safe. The
+// path is set by [load] and nowhere else, so a store with no path can neither
+// save nor be re-read: the next process to learn this memo back is one that
+// pointed [LoadQuirks] at that directory on purpose, which is a test asserting
+// that a memo on disk is believed at startup rather than a fact leaking sideways.
+// Deleting the file instead would break exactly those tests and would have this
+// reset reaching outside the process it is resetting.
+//
+// The loaded flag goes back to false as bookkeeping. Nothing reads it today —
+// [load] only ever sets it — so it is a record that a load happened rather than
+// a gate on the next one, and a reset that left it true would be the one line
+// here still claiming this process had read a file.
+func (q *quirksStore) resetForTests() {
+	q.mutex.Lock()
+	q.mandatory = map[string]time.Time{}
+	q.disableIgnored = map[string]time.Time{}
+	q.noCacheControl = map[string]time.Time{}
+	q.noReasoningBudget = map[string]time.Time{}
+	q.noReasoningReplay = map[string]time.Time{}
+	q.answerCut = map[string]int{}
+	q.servedWindow = map[string]int{}
+	q.path = ""
+	q.loaded = false
+	q.mutex.Unlock()
+	q.settle()
+}

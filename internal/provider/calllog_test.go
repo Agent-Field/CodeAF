@@ -50,8 +50,18 @@ func TestMain(m *testing.M) {
 
 // loggingTo points the process's one log at a fresh file for the duration of a
 // test and hands back the reader for it.
+//
+// It is also the rig for the tests in this file, and so it takes
+// [resetSharedLearners] on the way out. A PACKAGE-LEVEL LEARNER IS RESET BY THE
+// RIG BETWEEN TESTS: without this line
+// TestARepairedRefusalLeavesTheRefusedShapeAndThenTheAnswer passes only as the
+// first run of its model in a process, because the quirks memo remembers the
+// repair and the second run sends the repaired shape first, leaving no refusal
+// for the assertion to see (#455). The lane rig's cleanup makes the same call,
+// but a run filtered down to one test in this file never builds a lane rig.
 func loggingTo(t *testing.T) func() []calllog.Record {
 	t.Helper()
+	t.Cleanup(resetSharedLearners)
 	path := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv(calllog.EnvVar, path)
 	calllog.Open("")
