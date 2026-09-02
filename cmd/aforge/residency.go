@@ -633,7 +633,7 @@ func (r *chatResidency) stop() {
 	// it will give back whatever it took — and this gives it a bounded moment
 	// to notice, because the alternative is a goroutine still reading a
 	// database on its way out.
-	for deadline := time.Now().Add(5 * time.Second); r.promotingNow() && time.Now().Before(deadline); {
+	for giveUpAt := time.Now().Add(5 * time.Second); r.promotingNow() && time.Now().Before(giveUpAt); {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !ok {

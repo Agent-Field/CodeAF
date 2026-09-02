@@ -41,9 +41,14 @@ import (
 // head to close it — and from that command onward every mechanism is the one a
 // chat window drives, because it is literally the same construction.
 const (
-	// defaultDoSeconds is a wall, not a schedule. Real work runs for minutes;
+	// defaultDoWall is a wall, not a schedule. Real work runs for minutes;
 	// this is the length of rope at which a wedged run is more useful dead.
-	defaultDoSeconds = 900
+	//
+	// It is the RUN's wall and not a leaf's room, so the leaf-room law in
+	// internal/exec — one place sizes a worker's budget — does not reach it.
+	// That the two figures happen to be the same fifteen minutes is a
+	// coincidence of what a reasonable length of rope is, not a shared source.
+	defaultDoWall = 15 * time.Minute
 	// settlementBeat paces the watcher. It reads a watermark first and only
 	// looks at the graph when the journal has moved, so an idle beat is one
 	// integer read.
@@ -174,7 +179,8 @@ func runDo(args []string) error {
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
-	timeout := flags.Int("timeout", defaultDoSeconds, "hard wall in seconds")
+	wall := wallFlag{wall: defaultDoWall}
+	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept for one release)")
 	asJSON := flags.Bool("json", false,
 		"print one machine-readable object instead of the deliverable; settled says the errand is over, "+
 			"the exit code says whether it worked, blocked_on carries a question nobody was here to answer, "+
@@ -195,12 +201,9 @@ func runDo(args []string) error {
 	if err != nil {
 		return err
 	}
-	if *timeout <= 0 {
-		return fmt.Errorf("do timeout must be positive")
-	}
 	return doErrand(doRequest{
 		task: task, database: *database, keep: *keep, workspace: *workspace,
-		timeout: time.Duration(*timeout) * time.Second, asJSON: *asJSON,
+		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
 		contextFill: *contextFill, completionReserve: *completionReserve,
 		stdout: os.Stdout, stderr: os.Stderr,
