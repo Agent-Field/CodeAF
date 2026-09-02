@@ -136,14 +136,16 @@ func (a *app) talkingTo() string {
 // the three class names ([config.CrewClasses]). It is what /status prints and
 // what [app.crewHint] shortens.
 //
-// THE EMPTINESS LAW: the crew is four rows of a PROFILE, so a door that opened
-// without one has no crew to read and this is the empty string — every caller
-// prints nothing rather than a word about a file nobody is writing.
+// THE EMPTINESS LAW: a window with no crew to read prints nothing rather than a
+// word about a file nobody is writing — and the window with no crew to read is
+// the HOSTED one ([app.crewReading]), never the ordinary launch this used to
+// silence.
 func (a *app) crewWord() string {
-	if strings.TrimSpace(a.profileDir) == "" {
+	crew, ok := a.crewReading()
+	if !ok {
 		return ""
 	}
-	return config.CrewAt(a.profileDir) + " · " + config.CrewClasses(a.profileDir)
+	return crew.word
 }
 
 // crewSegment is the crew in the fewest cells that still answer it — `crew max`,
@@ -157,14 +159,84 @@ func (a *app) crewWord() string {
 // stored word — so none of them can say `max` over a mastermind somebody pinned
 // out of it, and none of them can disagree with the others.
 //
-// THE EMPTINESS LAW: a door that opened without a profile has no four rows to
-// read and this is the empty string, and a segment with no text is a segment
-// the row never draws ([app.telemetry] skips it).
+// THE EMPTINESS LAW: a window with no four rows to read has no segment, and a
+// segment with no text is a segment the row never draws ([app.telemetry] skips
+// it). That window is the hosted one — see [app.crewReading] for why it is not
+// the empty profile directory this guard used to ask about.
 func (a *app) crewSegment() string {
-	if strings.TrimSpace(a.profileDir) == "" {
+	crew, ok := a.crewReading()
+	if !ok {
 		return ""
 	}
-	return "crew " + config.CrewAt(a.profileDir)
+	return crew.segment
+}
+
+// ── the one reading of the four rows ────────────────────────────────────────
+
+// crewReading is the profile's crew as this surface last read it: the preset
+// word [config.CrewAt] derives from the live rows, the three class names beside
+// it, and the settings generation the pair was read at.
+type crewReading struct {
+	// word and segment are the two readings BUILT AT THE READING and not at the
+	// draw. The status line asks for the segment on every frame, and a surface
+	// that joined `"crew " + preset` there would put an allocation on the frame
+	// clock for a sentence that cannot change between two settings writes
+	// (inputsmooth_test.go's allocation law).
+	word    string
+	segment string
+	preset  string
+	classes string
+	// dir is the profile the pair was read from, so a surface handed a
+	// different one answers from that one and not from a snapshot of the last.
+	dir string
+	// generation is [config.SettingsGeneration] as of the reading, and taken
+	// separates "read at generation zero" from "never read".
+	generation uint64
+	taken      bool
+}
+
+// crewReading is THE ONE READING every crew surface answers from — the status
+// line's segment, the model picker's hint, /status's crew line and the welcome
+// box's clause — and it reports false for a window that has no crew of its own.
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] is AFORGE_PROFILE_DIR, which
+// almost nobody exports, and every reader in internal/config resolves the empty
+// string to this process's own profile in the state root
+// ([config.ProfilePath]) — so the guard these surfaces used to carry was true on
+// very nearly every launch, and the crew segment the status line exists to show
+// was drawn only for the handful of people who had exported that variable
+// (#315). The real absence is a CONNECTION: over --host the crew lives on the
+// far machine and this window's profile is the laptop's, which is the refusal
+// [app.runCrew] already opens with and the fact [app.workSeat] guards on.
+//
+// AND IT IS READ AT THE DOOR AND NOT AT THE DRAW. Answering the status line
+// straight from the profile would put SEVEN config file reads on the frame
+// clock — four for the preset, three for the classes — for four rows that change
+// a few times a year, which is the cost [crewPicker.inherited] refuses for the
+// same reason. The snapshot is invalidated by the ONE counter every persisted
+// write bumps ([config.SettingsGeneration]), so /crew, the settings row and the
+// `change_setting` tool all move it and none of them needs to know this cache
+// exists; what the counter does not see — a config file edited by another
+// process — lands on the next launch, exactly as it does for the role source
+// the tasks resolve through (cmd/aforge's v3Crew).
+func (a *app) crewReading() (crewReading, bool) {
+	if a.hosted() {
+		return crewReading{}, false
+	}
+	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
+		preset, classes := config.CrewAt(a.profileDir), config.CrewClasses(a.profileDir)
+		a.crew = crewReading{
+			word:       preset + " · " + classes,
+			segment:    "crew " + preset,
+			preset:     preset,
+			classes:    classes,
+			dir:        a.profileDir,
+			generation: generation,
+			taken:      true,
+		}
+	}
+	return a.crew, true
 }
 
 // crewHint is [app.crewSegment] for the hint slot under the model picker

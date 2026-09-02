@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -729,17 +728,18 @@ func (w *welcome) recentName(i int) string {
 // The model is its whole routing address and not the basename the status row
 // keeps, because this line is where a person who is about to spend their own
 // money reads what they are paying for, and it has the width. The crew clause is
-// absent on a door with no profile ([app.crewWord]'s law), and the directory
-// that used to stand here is on the legend and the status sheet the moment the
-// conversation begins.
+// absent on a window with no crew of its own ([app.crewReading]'s law — the
+// hosted one, and not the ordinary launch this line used to drop it on), and the
+// directory that used to stand here is on the legend and the status sheet the
+// moment the conversation begins.
 func (a *app) welcomeModelLine() string {
 	model := a.model
 	if model == "" {
 		model = "no model"
 	}
 	crew := ""
-	if strings.TrimSpace(a.profileDir) != "" {
-		crew = config.CrewAt(a.profileDir) + " crew"
+	if reading, ok := a.crewReading(); ok {
+		crew = reading.preset + " crew"
 	}
 	return dotted(model, crew)
 }
