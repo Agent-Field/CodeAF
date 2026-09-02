@@ -496,7 +496,7 @@ list, every search and every message from that instant.
 
 Two calls per message — plus one that is not per message at all: the background
 tidy, on the **small work** class, a few times a day at most while nobody is
-here. The two that ride every message are both on the cheapest of the four crew
+here. The two that ride every message are both on the cheapest of the five crew
 classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at

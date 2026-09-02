@@ -94,6 +94,23 @@ var actsInThePersonsName = map[string]bool{
 	"slack_send":      true,
 }
 
+// ActsInThePersonsNameTools is the table above, by name and in one order.
+//
+// It is exported for internal/manual's gate on the permissions page, which tells
+// a person these calls always ask and says how many there are. A page like that
+// is only safe while it cannot fall behind the table, and a list of names
+// repeated in a test is the same list going stale in a second place. The names
+// whose shape is not known until a session runs ([ServiceRequestSuffix]) are not
+// here: they have no names to give.
+func ActsInThePersonsNameTools() []string {
+	names := make([]string, 0, len(actsInThePersonsName))
+	for name := range actsInThePersonsName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // ServiceRequestSuffix is the tail of the raw-call tool one of the person's own
 // connected accounts brings — stripe_request, freshdesk_request. There are
 // hundreds of services a key opens and their tools are named when the account is

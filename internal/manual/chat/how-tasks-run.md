@@ -349,8 +349,9 @@ A task lands **the files it wrote** — every path it handed to its `write` or `
 plus anything its own report names on a `files:` line. Nothing else is committed and
 nothing else merges.
 
-**A task that handed parts out lands what the whole family wrote.** The parts work in the
-same copy the task does, and as each one finishes its files join the task's own list. That
+**A task that handed parts out lands what the whole family wrote.** Each part works in a
+copy of its own, cut from the task's working copy, and as each one finishes its files join
+the task's own list. That
 one list is what lands — onto your branch where the ground is a repository, laid back over
 your folder by name where it is a plain folder. You never have to name a part's file again
 to keep it, and a part that wrote nothing adds nothing. A part that did not finish is not on
@@ -1201,9 +1202,11 @@ How the restore is built depends on your workspace:
   written files laid over it and staged, so `git diff --cached` still shows the whole change.
   It sits beside the task's own checkout with `-check` on the end of the name and shows up in
   `git worktree list` while the check runs, then is removed and pruned.
-- **In a workspace that is not a repository**, it is copied by the clock: everything that
-  predates the task's start is the original tree, and everything younger that the task did
-  not write is left out. A directory in which nothing predates the task — a `target/`, a
+- **On a plain folder the task took a copy of**, it is a fresh copy of your folder — which
+  the task never touched — with the written files laid over it.
+- **In a workspace that is neither**, it is copied by the clock: everything that predates
+  the task's start is the original tree, and everything younger that the task did not write
+  is left out. A directory in which nothing predates the task — a `target/`, a
   `node_modules/` — is skipped whole.
 - **When the restore cannot be made** — no repository and no record of when the work began,
   or a working copy of more than 20000 files — the check runs where it always did, in the
@@ -1558,7 +1561,7 @@ it wrote back over your folder by name when it lands. **A file you changed there
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
 copy where it is, and it lands `needs your look`:
 
-`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/tasks/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
 
 Both versions survive that: yours in your folder exactly as you left it, the task's in the
 directory the sentence names, so you can read the two and take what you want. The first few

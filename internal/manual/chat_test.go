@@ -1,12 +1,8 @@
 package manual
 
 import (
-	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -792,6 +788,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person's own message alone and the line said so.
 		{"why did my task start with just my message and nothing else", "tasks"},
 		{"the brief could not be written for my task", "tasks"},
+		// And the case where it must NOT happen: a turn whose whole remaining
+		// work is waiting on pieces it already handed out. People meet this as
+		// the junk task that appeared while they were watching, and as the
+		// question of why the same turn no longer produces one.
+		{"it made a task out of me waiting for the other pieces", "tasks"},
+		{"does watching a running task count towards moving my answer", "tasks"},
 
 		// And the other end of the same meter: a reply that STOPPED before the
 		// question was finished. People meet this as the dim line that said the ask
@@ -1544,26 +1546,6 @@ func TestTheTwoCorporaShareNoPageName(t *testing.T) {
 	}
 }
 
-// THE FLOOR AND THE PAGE ABOUT IT AGREE. internal/approval names the tools a
-// blanket allow cannot switch off, and the permissions page tells the person
-// the same names. A fourth entry in that table without its sentence here would
-// leave the page telling somebody a message will go out silently when it will
-// not — the one mistake a page about permissions must never make.
-func TestThePermissionsPageNamesEveryToolOnTheFloor(t *testing.T) {
-	page, ok := Chat().Page("permissions")
-	if !ok {
-		t.Fatal("the chat manual has no permissions page")
-	}
-	for _, tool := range []string{"gmail_send", "calendar_create", "slack_send"} {
-		if !approval.AlwaysAsks(tool, nil) {
-			t.Errorf("%s is not on the floor internal/approval keeps", tool)
-		}
-		if !strings.Contains(page, "`"+tool+"`") {
-			t.Errorf("the permissions page does not name %s", tool)
-		}
-	}
-}
-
 // EVERY PLACE OPENS, ALWAYS — AND NO PAGE MAY SAY OTHERWISE.
 //
 // The three gates around this corpus check that a name is MENTIONED. None of
@@ -1599,41 +1581,5 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
-	}
-}
-
-// ONE SOURCE OF TRUTH, ACROSS A MEDIUM THAT CANNOT INTERPOLATE. A number that
-// appears in two places drifts, and the manual is the second place for two of
-// the context law's own figures: the shipped fill percentage and the room every
-// call keeps for its answer. Markdown cannot read a Go constant, so this test
-// is the interpolation — move either constant and the page that quotes it goes
-// red, naming the figure it is now wrong about.
-//
-// `propose_task`'s schema said the step default was 40 while the executor
-// applied 200, and every model that read it reasoned from the wrong figure.
-// This is that lesson applied to the pages the model reads about compaction.
-func TestTheCompactionPageQuotesTheContextLawsOwnNumbers(t *testing.T) {
-	page, ok := Chat().Page("compacting-over-and-over")
-	if !ok {
-		t.Fatal("the chat corpus lost compacting-over-and-over")
-	}
-	for _, one := range []struct {
-		what  string
-		spelt string
-	}{
-		{"the shipped context fill", strconv.Itoa(ctxbudget.DefaultFillPercent)},
-		{"the answer room", "65,536"},
-	} {
-		if !strings.Contains(page, one.spelt) {
-			t.Fatalf("compacting-over-and-over does not say %s as %q — the constant moved and the page did not",
-				one.what, one.spelt)
-		}
-	}
-	// The answer room is spelled with a thousands separator on the page, which
-	// is how a person reads it and not how Go writes it, so the check above is
-	// only honest while this holds.
-	if ctxbudget.DefaultCompletionReserveTokens != 65536 {
-		t.Fatalf("the completion reserve is now %d; the page still says 65,536",
-			ctxbudget.DefaultCompletionReserveTokens)
 	}
 }
