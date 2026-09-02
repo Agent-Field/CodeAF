@@ -167,6 +167,38 @@ func TestCheckpointIsWrittenAfterEveryTransition(t *testing.T) {
 	}
 }
 
+// THE ORIGIN SURVIVES THE CHECKPOINT, because a resumed worker still needs
+// the address of the person's original words. A checkpoint written before
+// origins were carried decodes empty and draws nothing, which is the
+// emptiness law rather than a made-up path.
+func TestCheckpointRoundTripsTheTaskOrigin(t *testing.T) {
+	journal, checkpoint := journalIn(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(*TaskNode) {}
+	graph.mu.Unlock()
+
+	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "Add the greeting", brief: "write hello.txt", acceptance: "the file is there",
+		origin: origin,
+	})
+
+	record := recordOf(t, readCheckpoint(t, checkpoint), id)
+	if record.OriginJournal != origin.journal || record.OriginLine != origin.line {
+		t.Fatalf("the origin did not survive the write: %+v", record)
+	}
+
+	restored := restoreNode(newTaskGraph(), record)
+	if got := restored.spec.origin; got != origin {
+		t.Fatalf("the origin did not survive the restore: %+v", got)
+	}
+}
+
 // The worktree is written down the moment the node has one, because it is the
 // only thing that can tell a person where interrupted work went.
 func TestCheckpointRecordsTheWorkingCopyBeforeTheWorkStarts(t *testing.T) {

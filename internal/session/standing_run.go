@@ -888,7 +888,11 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 			// ([Agent.taskRequest]): a worker in a worktree at 3am has nobody to
 			// type one, and the words on the card are the nearest thing to the
 			// person there is.
-			request:    item.Words,
+			request: item.Words,
+			// ORIGIN IS EMPTY ON PURPOSE. This firing has a journal — the run
+			// folder transcript — but no person turn behind it. A pointer at
+			// that file would be a guessed address, and [Agent.startTheParts]
+			// would inherit it onto every part. Unknown renders as nothing.
 			brief:      brief,
 			acceptance: item.Does.Acceptance,
 			model:      cfg.Model,

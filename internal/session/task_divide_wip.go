@@ -136,6 +136,11 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 	careful := a.carefulModel(model)
 	grades := graph.grades.reader(model)
 	request := a.taskRequest()
+	// THE SAME POINTER THE PARENT WAS HANDED, so a part still finds the
+	// person's turn and never this node's own journal (task_brief.go). A
+	// standing firing carries an empty origin on purpose, and every part
+	// under it inherits that emptiness rather than a guessed path.
+	origin := a.taskOriginRef()
 	parent := a.config.taskID
 	// AND WHAT EVERY PART IS TOLD ABOUT THE FAMILY IS COMPOSED ONCE, HERE, FOR
 	// THE WHOLE DIVISION (task_divide_compose.go). A part's brief is two halves
@@ -157,6 +162,7 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 			named:      true,
 			summary:    part.Summary,
 			request:    request,
+			origin:     origin,
 			brief:      family.partBrief(index, part.Brief),
 			acceptance: part.Acceptance,
 			expects:    part.Expects,

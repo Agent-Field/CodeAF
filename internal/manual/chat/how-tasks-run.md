@@ -2145,7 +2145,7 @@ message. See the next section.
 
 Yes. Your own message travels with the work, word for word.
 
-A task's first and only message is assembled by aforge from four parts, under headings, in
+A task's first and only message is assembled by aforge from these parts, under headings, in
 this order:
 
 ```
@@ -2163,13 +2163,19 @@ WHAT TO PRODUCE
 
 DONE WHEN
 <the acceptance>
+
+THE PERSON'S ORIGINAL MESSAGE
+The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
+
+grep or read <journal path>, line <n>
 ```
 
 The first part is taken by aforge from the conversation — the message that was in front of
 the model when it proposed the work, or the newest thing you typed into that turn if you
-steered it. The model never writes that part and cannot edit it. Nothing else from the
-conversation travels: the task does not see the discussion around your message, and it
-cannot ask you anything once it starts.
+steered it. The model never writes that part and cannot edit it. The discussion around your
+message does not travel with the work, and the task cannot ask you anything once it starts.
+When that restatement is not enough, the brief also names where your original words live —
+see *Can the task see the original request* below.
 
 **A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
 separate deliverable, so it reads as your words, the work and a done-condition. A task
@@ -2182,7 +2188,8 @@ than what I typed*. Where shaping could not run, the two parts are the same sent
 is printed once — under your own heading, with no THE WORK at all.
 
 Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task that was
-handed a shortened version of what you said can see that it was.
+handed a shortened version of what you said can see that it was. The brief then names the
+journal path and line of your original turn, so the worker can read the uncut words itself.
 
 A task the model hands out from **inside** another task inherits the same words: there is
 nobody inside a task's own copy to type a new message, so the sentence that started the family is what
@@ -2191,6 +2198,33 @@ every task under it reads.
 Once a task is admitted, its brief and its acceptance are **frozen**. Nothing changes them
 after that — not steering, not a correction round. Steering is talk to the worker, not a
 new target. If the objective itself was wrong, the answer is a new proposal.
+
+## Can the task see the original request — does the task know what I originally said, can a task read my full message when the brief is cut
+
+Yes. The brief is still the contract — the task is not handed this conversation — but it is
+handed an address: the filesystem path of the session journal and the line where your turn
+began. The worker already has `read` and `grep`, so that pointer is enough.
+
+The last section of its opening message, when the address is known, is:
+
+```
+THE PERSON'S ORIGINAL MESSAGE
+The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
+
+grep or read /home/x/.aforge/v3/sessions/abc.jsonl, line 12
+```
+
+The restatement under `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS` is bounded at 6000
+bytes. A long or nuanced ask can be cut, and the cut is marked with `…`. The pointer is the
+recourse: the worker may open that path at that line and read what you actually typed. What
+it must ship is still what the brief says.
+
+**An empty pointer draws nothing.** A standing order that fired with no person turn behind
+it, or a task restored from a checkpoint written before this existed, has no origin
+section. Unknown is absent, not a guessed path.
+
+A task handed out from inside another task, and every part of a division, inherit the same
+pointer — they still point at your turn, never at the parent task's own journal.
 
 ## The optional arguments on propose_task
 

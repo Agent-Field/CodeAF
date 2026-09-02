@@ -988,6 +988,11 @@ func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title strin
 		// written by a judge that read their turn and summarised it, so the node
 		// would otherwise open on a summary of a summary.
 		request: a.taskRequest(),
+		// AND WHERE THOSE WORDS LIVE, the same pointer every other door sets
+		// (task_brief.go). The checkpoint road reaches here through
+		// [Agent.handOverRunningTurn] and does not build a spec of its own, so
+		// this one assignment covers both roads.
+		origin: a.taskOriginRef(),
 		// THE BRIEF IS THE STATE AND THE ACCEPTANCE IS THE ASK, and they are two
 		// different documents that were quietly collapsing into one.
 		//

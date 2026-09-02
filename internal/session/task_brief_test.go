@@ -7,6 +7,7 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
 		"make the pricing page match the new tiers, and don't touch the tests",
 		"edit docs/pricing.md against internal/billing/tiers.go",
 		"docs/pricing.md, one table, four rows",
-		"go test ./internal/billing/ passes and the page names all four tiers", "")
+		"go test ./internal/billing/ passes and the page names all four tiers", "", taskOrigin{})
 
 	for _, want := range []string{
 		briefAskHeading, briefAskRule,
@@ -51,8 +52,8 @@ func TestASpawnedTaskOpensOnThePersonsOwnWordsThenTheContract(t *testing.T) {
 // applied to a document. A node restored from a checkpoint written before
 // requests were carried has no request, and reads as it always did.
 func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
-	opening := composeBrief("", "sweep the deprecated calls", "", "the build passes", "")
-	for _, unwanted := range []string{briefAskHeading, briefMakeHeading} {
+	opening := composeBrief("", "sweep the deprecated calls", "", "the build passes", "", taskOrigin{})
+	for _, unwanted := range []string{briefAskHeading, briefMakeHeading, briefOriginHeading} {
 		if strings.Contains(opening, unwanted) {
 			t.Fatalf("an empty part got a heading anyway:\n%s", opening)
 		}
@@ -67,7 +68,7 @@ func TestABriefWithNothingToSayInAPartLeavesThatPartOut(t *testing.T) {
 // printing them twice would read as two instructions that happen to agree.
 func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 	words := "rewrite the importer so it streams"
-	opening := composeBrief(words, words, "", "it streams", "")
+	opening := composeBrief(words, words, "", "it streams", "", taskOrigin{})
 	if got := strings.Count(opening, words); got != 1 {
 		t.Fatalf("the person's words appear %d times:\n%s", got, opening)
 	}
@@ -80,7 +81,7 @@ func TestAPersonAuthoredTaskDoesNotSayTheSameThingTwice(t *testing.T) {
 // person who pasted a log must not be paid for once per node. The cut is marked
 // so a worker can see it was cut.
 func TestTheVerbatimAskIsBoundedAndSaysSo(t *testing.T) {
-	opening := composeBrief(strings.Repeat("x", briefAskLimit*2), "work", "", "done", "")
+	opening := composeBrief(strings.Repeat("x", briefAskLimit*2), "work", "", "done", "", taskOrigin{})
 	if len(opening) > briefAskLimit+2000 {
 		t.Fatalf("an unbounded ask reached the worker: %d bytes", len(opening))
 	}
@@ -188,6 +189,101 @@ func TestASubTaskInheritsTheSentenceThatStartedTheFamily(t *testing.T) {
 	})
 	if got := node.taskRequest(); got != "port the whole client to v2" {
 		t.Fatalf("a sub-task lost the person's words: %q", got)
+	}
+}
+
+// THE ORIGIN SECTION NAMES THE JOURNAL THE WAY A FOLD MARKER DOES, and it is
+// last: an address after the contract, never a second brief. An empty origin
+// draws nothing — the emptiness law, applied to a pointer.
+func TestTheOriginSectionNamesTheJournalPathAndLine(t *testing.T) {
+	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	opening := composeBrief(
+		"make the pricing page match the new tiers",
+		"edit docs/pricing.md",
+		"docs/pricing.md, one table",
+		"the page names all four tiers", "", origin)
+
+	pointer := "grep or read /home/x/.aforge/v3/sessions/abc.jsonl, line 12"
+	for _, want := range []string{
+		briefAskHeading, "make the pricing page match the new tiers",
+		briefWorkHeading, "edit docs/pricing.md",
+		briefMakeHeading, "docs/pricing.md, one table",
+		briefDoneHeading, "the page names all four tiers",
+		briefOriginHeading, briefOriginRule, pointer,
+	} {
+		if !strings.Contains(opening, want) {
+			t.Fatalf("the opening message is missing %q:\n%s", want, opening)
+		}
+	}
+	at := func(heading string) int {
+		index := strings.Index(opening, heading)
+		if index < 0 {
+			t.Fatalf("no %q in:\n%s", heading, opening)
+		}
+		return index
+	}
+	if at(briefDoneHeading) > at(briefOriginHeading) {
+		t.Fatalf("the origin is not last:\n%s", opening)
+	}
+}
+
+func TestAnEmptyOriginDrawsNoSection(t *testing.T) {
+	for _, origin := range []taskOrigin{{}, {line: 12}} {
+		opening := composeBrief("ask", "work", "make", "done", "", origin)
+		if strings.Contains(opening, briefOriginHeading) || strings.Contains(opening, "grep or read") {
+			t.Fatalf("an empty origin still drew a pointer:\n%s", opening)
+		}
+		for _, want := range []string{briefAskHeading, briefWorkHeading, briefMakeHeading, briefDoneHeading} {
+			if !strings.Contains(opening, want) {
+				t.Fatalf("an empty origin ate %q:\n%s", want, opening)
+			}
+		}
+	}
+}
+
+// A NODE INHERITS THE ORIGIN OF THE TASK IT WAS HANDED OUT BY. There is nobody
+// in a worktree to type a new turn, so a nested task still points at the
+// human's journal rather than at its own.
+func TestANestedTaskInheritsTheHumansOrigin(t *testing.T) {
+	conversation, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := conversation.graph()
+	graph.run = func(*TaskNode) {}
+	parent := graph.reserve()
+	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	graph.admit(parent, taskSpec{
+		title: "t", request: "port the whole client to v2", brief: "b", acceptance: "a",
+		origin: origin,
+	})
+
+	node, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.InTask = true
+		config.taskID = parent
+		config.taskDepth = 1
+		config.tasker = graph
+	})
+	if got := node.taskOriginRef(); got != origin {
+		t.Fatalf("a nested task lost the human's origin: %+v", got)
+	}
+}
+
+// THE POINTER IS TAKEN FROM THE JOURNAL, not invented. The line is the one
+// the person's own turn opened on, and the path is the file grep and read
+// already open.
+func TestTaskOriginRefNamesTheJournalLineOfThePersonsTurn(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = journal
+	})
+	agent.mu.Lock()
+	agent.recordUserLocked(userText("port the whole client to v2"))
+	agent.mu.Unlock()
+
+	got := agent.taskOriginRef()
+	if !strings.HasSuffix(got.journal, "session.jsonl") {
+		t.Fatalf("origin journal = %q, want the session file", got.journal)
+	}
+	if got.line < 1 {
+		t.Fatalf("origin line = %d, want the line the turn opened on", got.line)
 	}
 }
 

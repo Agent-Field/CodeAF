@@ -380,6 +380,12 @@ func TestAFiringsDivisionCarriesThePersonsOwnCeilings(t *testing.T) {
 	if free := graph.freeHands(); free != 0 {
 		t.Fatalf("a firing capped at one task has %d free hands, want none — its own work is the one", free)
 	}
+	// ORIGIN IS EMPTY ON PURPOSE. The firing has a journal and no person
+	// turn; a pointer at the run folder would be a guessed address that
+	// every part would then inherit.
+	if !root.origin().empty() {
+		t.Fatalf("a standing firing invented an origin: %+v", root.origin())
+	}
 
 	// AND NOTHING OF THIS EXISTS FOR NARROW WORK. The road off answers the same
 	// way, which is what makes `AFORGE_SWARM=0` the whole of the way out.

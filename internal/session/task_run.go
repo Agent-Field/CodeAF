@@ -1547,7 +1547,7 @@ func (n *TaskNode) instruction() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
-		expectsSection(n.spec.expects))
+		expectsSection(n.spec.expects), n.spec.origin)
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -1557,6 +1557,15 @@ func (n *TaskNode) request() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.spec.request
+}
+
+// origin is the pointer to the person's original words, frozen with the rest
+// of the spec. It is read by [Agent.taskOriginRef] so that a sub-task a node
+// hands out still points at the human's journal rather than at its own.
+func (n *TaskNode) origin() taskOrigin {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.origin
 }
 
 // acceptance is the frozen contract, read by the auditor. It is deliberately

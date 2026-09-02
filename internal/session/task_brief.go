@@ -23,23 +23,32 @@ package session
 // prose). [composeBrief] is the one place the sections and their order are
 // decided, and both shapes of work go through it.
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // The section headings, in the order [composeBrief] lays them out. They are
 // SHOUTED because the worker reads this as a document rather than as a sentence
 // — the same voice the run's own node briefs already use for their bounds
 // (orchestrate.go's [orchestrateBrief]).
 const (
-	briefAskHeading  = "WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS"
-	briefWorkHeading = "THE WORK"
-	briefMakeHeading = "WHAT TO PRODUCE"
-	briefDoneHeading = "DONE WHEN"
+	briefAskHeading    = "WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS"
+	briefWorkHeading   = "THE WORK"
+	briefMakeHeading   = "WHAT TO PRODUCE"
+	briefDoneHeading   = "DONE WHEN"
+	briefOriginHeading = "THE PERSON'S ORIGINAL MESSAGE"
 )
 
 // briefAskRule is the one line that says what the person's words are FOR. A
 // worker handed two accounts of the same job needs to be told which one wins,
 // and it is not the one the model wrote.
 const briefAskRule = "This is the message this work came out of. Where anything below reads differently from it, their words are what was asked for."
+
+// briefOriginRule is the one line that says what the pointer is FOR. The
+// restatement above is bounded; this is where the uncut words live, and the
+// brief still governs what ships.
+const briefOriginRule = "The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships."
 
 // briefAskLimit bounds the verbatim ask, and it is generous on purpose: a
 // person's request is usually a paragraph and occasionally a page, and the
@@ -64,7 +73,7 @@ const briefAskLimit = 6000
 // to put under THE WORK — their words are the whole of it — and printing the
 // same paragraph twice under two headings would read as two instructions that
 // happen to agree.
-func composeBrief(request, work, deliverable, acceptance, expects string) string {
+func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin) string {
 	request = clip(strings.TrimSpace(request), briefAskLimit)
 	work = strings.TrimSpace(work)
 	if work == request {
@@ -93,7 +102,26 @@ func composeBrief(request, work, deliverable, acceptance, expects string) string
 	// (handoffcontract.go). A handoff that promised nothing has no section, like
 	// every other empty one here.
 	section(briefExpectsHeading, briefExpectsRule, expects)
+	// AND WHERE THE UNCUT WORDS LIVE, last, because it is an address rather
+	// than an instruction. THE POINTER IS NOT THE SESSION: an empty origin
+	// draws nothing, and a worker that never follows the path is still
+	// governed by the brief above.
+	section(briefOriginHeading, briefOriginRule, originPointer(origin))
 	return out.String()
+}
+
+// originPointer is the fold-marker idiom applied to one line: the tools that
+// open the file, the path, and the line, in that order, because a
+// `path:12` token is what neither `read` nor `grep` takes. A path with no
+// line still stands; a line with no path does not.
+func originPointer(origin taskOrigin) string {
+	if origin.empty() {
+		return ""
+	}
+	if origin.line > 0 {
+		return fmt.Sprintf("grep or read %s, line %d", origin.journal, origin.line)
+	}
+	return "grep or read " + origin.journal
 }
 
 // ── the person's words, as the session hears them ───────────────────────────
@@ -151,4 +179,35 @@ func (a *Agent) taskRequest() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.personAsk
+}
+
+// taskOriginRef is WHERE THE PERSON'S TURN LIVES, as this agent knows it.
+//
+// In a CONVERSATION it is the journal path and the line of the message that
+// opened this turn — [Agent.lastTurnStartLocked] finds the message,
+// [sessionFile.messageLines] names the file and the line. In a NODE there is
+// no person typing, so it INHERITS the origin of the task it was handed out
+// by. THE POINTER IS AN ADDRESS, NOT INHERITED CONTEXT: a nested task still
+// points at the human's journal, never at its own, and THE BRIEF REMAINS THE
+// CONTRACT. A standing firing has a journal and no person turn, so its spec
+// carries an empty origin and every part under it inherits that emptiness
+// rather than a guessed pointer at the run folder.
+func (a *Agent) taskOriginRef() taskOrigin {
+	if a.config.InTask {
+		if parent := a.graph().node(a.config.taskID); parent != nil {
+			return parent.origin()
+		}
+		return taskOrigin{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	start, ok := a.lastTurnStartLocked()
+	if !ok || a.file == nil {
+		return taskOrigin{}
+	}
+	journal, line, _ := a.file.messageLines(a.messages[start], a.messages[start])
+	if journal == "" {
+		return taskOrigin{}
+	}
+	return taskOrigin{journal: journal, line: line}
 }

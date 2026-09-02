@@ -150,7 +150,13 @@ type taskRecord struct {
 	// carried, which resumes exactly as it always did: fewer sections, nothing
 	// invented.
 	Request string `json:"request,omitempty"`
-	Brief   string `json:"brief"`
+	// OriginJournal and OriginLine are the pointer to the person's original
+	// words in the conversation journal (task_brief.go). Absent in every
+	// checkpoint written before origins were carried, which resumes as it
+	// always did: the brief has no origin section.
+	OriginJournal string `json:"origin_journal,omitempty"`
+	OriginLine    int    `json:"origin_line,omitempty"`
+	Brief         string `json:"brief"`
 	// Deliverable is what must exist when the node is over. It is omitempty for
 	// Request's reason and for one more: a task the PERSON wrote themselves names
 	// no deliverable separately, and a heading over nothing is not written
@@ -665,49 +671,51 @@ func (n *TaskNode) recordLocked() taskRecord {
 		beat = n.graph.store.beatPath(n.id)
 	}
 	return taskRecord{
-		ID:          n.id,
-		Title:       n.spec.title,
-		Summary:     n.spec.summary,
-		Request:     n.spec.request,
-		Brief:       n.spec.brief,
-		Deliverable: n.spec.deliverable,
-		Where:       n.spec.where,
-		Ground:      n.Ground,
-		Mode:        n.Mode,
-		Rung:        n.Rung,
-		Seal:        n.Seal,
-		Base:        n.Base,
-		Universe:    n.Universe,
-		Frozen:      n.Frozen,
-		Acceptance:  n.spec.acceptance,
-		DependsOn:   dependsOn,
-		Parent:      n.parent,
-		Depth:       n.depth,
-		State:       n.state,
-		Report:      n.report,
-		Ending:      n.endingLocked(),
-		Claim:       n.claim,
-		Changed:     changed,
-		Wrote:       wrote,
-		Branch:      n.branch,
-		Worktree:    n.worktree,
-		Merge:       n.merge,
-		Journal:     n.journal,
-		Beat:        beat,
-		Model:       n.spec.model,
-		Effort:      n.spec.effort.String(),
-		MaxSteps:    n.spec.maxSteps,
-		NoProgress:  n.spec.noProgress,
-		ElapsedMS:   elapsed.Milliseconds(),
-		CostUSD:     n.cost,
-		Input:       n.input,
-		Output:      n.output,
-		CacheRead:   n.cacheRead,
-		CacheWrite:  n.cacheWrite,
-		Noted:       n.noted,
-		Interrupted: n.interrupted,
-		Kind:        n.kind,
-		Offer:       n.offer,
+		ID:            n.id,
+		Title:         n.spec.title,
+		Summary:       n.spec.summary,
+		Request:       n.spec.request,
+		OriginJournal: n.spec.origin.journal,
+		OriginLine:    n.spec.origin.line,
+		Brief:         n.spec.brief,
+		Deliverable:   n.spec.deliverable,
+		Where:         n.spec.where,
+		Ground:        n.Ground,
+		Mode:          n.Mode,
+		Rung:          n.Rung,
+		Seal:          n.Seal,
+		Base:          n.Base,
+		Universe:      n.Universe,
+		Frozen:        n.Frozen,
+		Acceptance:    n.spec.acceptance,
+		DependsOn:     dependsOn,
+		Parent:        n.parent,
+		Depth:         n.depth,
+		State:         n.state,
+		Report:        n.report,
+		Ending:        n.endingLocked(),
+		Claim:         n.claim,
+		Changed:       changed,
+		Wrote:         wrote,
+		Branch:        n.branch,
+		Worktree:      n.worktree,
+		Merge:         n.merge,
+		Journal:       n.journal,
+		Beat:          beat,
+		Model:         n.spec.model,
+		Effort:        n.spec.effort.String(),
+		MaxSteps:      n.spec.maxSteps,
+		NoProgress:    n.spec.noProgress,
+		ElapsedMS:     elapsed.Milliseconds(),
+		CostUSD:       n.cost,
+		Input:         n.input,
+		Output:        n.output,
+		CacheRead:     n.cacheRead,
+		CacheWrite:    n.cacheWrite,
+		Noted:         n.noted,
+		Interrupted:   n.interrupted,
+		Kind:          n.kind,
+		Offer:         n.offer,
 	}
 }
 
@@ -1148,6 +1156,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			title:       record.Title,
 			summary:     record.Summary,
 			request:     record.Request,
+			origin:      taskOrigin{journal: record.OriginJournal, line: record.OriginLine},
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
 			where:       record.Where,
