@@ -61,20 +61,37 @@ func (stubAgent) RewindAt(int) ([]session.DisplayEntry, error)              { re
 
 var _ remote.WrappedAgent = stubAgent{}
 
-// shortHome is a state root a socket can actually be named in.
+// shortHome is a state root a socket can actually be named in, and it is what
+// every test in this package that builds a real socket path uses for
+// AFORGE_HOME. The one test that wants a path too long for a socket
+// ([TestASocketPathTooLongIsRefusedAtTheDoor]) builds its own on purpose.
 //
-// It is NOT t.TempDir, and the reason is the point of [socketLimit] rather than
-// an inconvenience: Go names a temp directory after the test, this package's
-// test names are sentences, and a socket path has about a hundred bytes to
-// spend. A test that ran out of them would be failing the same honest refusal a
-// person with a deep AFORGE_HOME gets.
+// It is NOT t.TempDir, and it does not honour $TMPDIR either, and the reason is
+// the point of [socketLimit] rather than an inconvenience: a unix socket path
+// has a hard ceiling of [socketLimit] bytes, Go names a temp directory after
+// the test, this package's test names are sentences, and a Mac's own $TMPDIR
+// (/var/folders/…/T/…) spends most of the budget before the test has said
+// anything. WHETHER THIS SUITE PASSES MUST NOT BE A FUNCTION OF HOW DEEP
+// $TMPDIR IS, so the root is named directly under /tmp, where it costs about
+// twenty bytes wherever the test runs. A test that ran out of bytes would be
+// failing the same honest refusal a person with a deep AFORGE_HOME gets —
+// which is a law with a test of its own, not something the rest of the package
+// should keep re-discovering by accident, and not a reason for the ledger in
+// .github/known-red.txt to carry a socket test on macOS.
+//
+// If /tmp cannot be written — a locked-down machine, or Windows — the fallback
+// is t.TempDir, which is no worse than what was here before, and the log says
+// so, because a socket refusal that follows would otherwise look like a bug in
+// the host rather than in the room the test was given.
 func shortHome(t *testing.T) string {
 	t.Helper()
-	root, err := os.MkdirTemp("", "eh")
+	root, err := os.MkdirTemp("/tmp", "eh-")
 	if err != nil {
-		t.Fatalf("make a state root: %v", err)
+		root = t.TempDir()
+		t.Logf("no short home under /tmp (%v); using %s, which may be too long for a socket", err, root)
+	} else {
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	t.Setenv("AFORGE_HOME", root)
 	return root
 }
@@ -100,8 +117,7 @@ func stubHost(t *testing.T, workspace string) *Host {
 // ── where a host lives ──────────────────────────────────────────────────────
 
 func TestTheSocketMovesWithTheStateRoot(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("AFORGE_HOME", root)
+	root := shortHome(t)
 
 	socket, err := SocketPath("/home/somebody/api")
 	if err != nil {
@@ -276,7 +292,11 @@ func TestAHostAnswersOnItsSocketAndHoldsTheConversation(t *testing.T) {
 // ── the fallback is not optional ────────────────────────────────────────────
 
 func TestAttachGivesUpQuietlyWhenNoHostCanStart(t *testing.T) {
-	t.Setenv("AFORGE_HOME", t.TempDir())
+	// The home is short so that the refusal below is the one this test is
+	// about: with a home too deep for a socket, Attach would refuse at the
+	// door for the wrong reason and the test would pass without having asked
+	// its question.
+	shortHome(t)
 	// A spawn that starts nothing is every real way this can fail — no binary,
 	// a machine that refuses, a host that died on its first line — and the
 	// answer has to be an error the caller can fall back from.

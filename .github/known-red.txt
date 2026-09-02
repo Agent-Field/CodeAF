@@ -24,10 +24,6 @@ TestEveryGoroutineInTheGuardedTreeIsGuarded
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
 TestEveryMessageWriteUsesThreadPost
 
-# Fails where the temp path is too long for a unix socket. Green on Linux with a
-# short TMPDIR, so this line may well be removable — check before trusting it.
-TestTheSocketMovesWithTheStateRoot
-
 # The four cmd/harness-design tests, finally named by the Linux run. CLAUDE.md
 # had only been able to say "four cmd/harness-design tests".
 TestTheGuidesRender
