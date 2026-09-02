@@ -599,12 +599,13 @@ func (a *app) runPickedHarness(text string) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	spoken, shown := a.composed(text)
 	ctx := a.ctx
-	return a.submitting(text, func() (<-chan session.Event, error) {
+	return a.submittingShown(spoken, shown, func() (<-chan session.Event, error) {
 		// No model is named here. A word chosen in the box travels on the turn's
 		// own text for the offer lane to read; the picker chose a harness, not a
 		// model, and inventing one would be the surface answering a question
 		// nobody asked (internal/session's harnessTurnModel).
-		return runner.RunHarnessRequest(ctx, name, text, "")
+		return runner.RunHarnessRequest(ctx, name, spoken, "")
 	})
 }

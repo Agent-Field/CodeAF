@@ -894,7 +894,9 @@ func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user use
 	hub.send(Event{Kind: EventNotice, Text: loopLeftUndoneNote})
 	a.record(textMessage("assistant", loopLeftUndoneNote))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
-	a.maybeTitle(ctx, hub)
+	// Naming is post-turn housekeeping; its update rides the lifetime lane and
+	// never holds this turn's stream open (title.go).
+	a.maybeTitle(ctx)
 	return true
 }
 

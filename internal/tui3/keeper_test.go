@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +79,33 @@ func TestGoingBackToAConversationSwapsThemRatherThanOpeningOne(t *testing.T) {
 	last, ok := a.lastBehind()
 	if !ok || last != convKey("/tmp/lab/two/transcript.jsonl") {
 		t.Fatalf("the way back points at %q", last)
+	}
+}
+
+func TestAConversationSwitchCarriesItsDraftPasteIdentity(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan string, stirDepth)
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, " inspect this")
+	wantDraft := a.input.String()
+
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+	if len(a.pastes) != 0 {
+		t.Fatalf("the new conversation inherited %+v", a.pastes)
+	}
+	cmd, ours := a.bringForward("/tmp/lab/one/transcript.jsonl")
+	if !ours {
+		t.Fatal("the first conversation was not kept")
+	}
+	drain(t, a, cmd)
+	if a.input.String() != wantDraft || len(a.pasteSpans()) != 1 {
+		t.Fatalf("the restored draft is %q with pastes %+v", a.input.String(), a.pastes)
+	}
+	if spoken := a.pastesUnfolded(a.input.String()); !strings.Contains(spoken, "alpha\nbeta\ngamma") || strings.Count(spoken, "paste 1:\n") != 1 {
+		t.Fatalf("the restored draft speaks as %q", spoken)
 	}
 }
 

@@ -1648,11 +1648,21 @@ func thresholdOr(value, fallback int) int {
 	return value
 }
 
-// setCancel hands the node the handle that ends its run.
-func (n *TaskNode) setCancel(cancel context.CancelFunc) {
+// setCancel hands the node the handle that ends its run, or refuses it when a
+// stop won the small window between the scheduler publishing "running" and the
+// goroutine arriving here. In that case the stop has already settled the node;
+// installing a handle afterwards would let work start behind a finished row and
+// eventually settle (and close its done channel) a second time.
+func (n *TaskNode) setCancel(cancel context.CancelFunc) bool {
 	n.graph.mu.Lock()
+	if n.state != TaskRunning || n.stopped {
+		n.graph.mu.Unlock()
+		cancel()
+		return false
+	}
 	n.cancel = cancel
 	n.graph.mu.Unlock()
+	return true
 }
 
 // finish writes the node's leavings before its state changes, so the update
@@ -2753,8 +2763,10 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 	}
 }
 
-// TaskUpdates is a standing subscription to every task update this session
-// emits, for the whole life of the session rather than one turn.
+// TaskUpdates is a standing subscription to every long-lived update this
+// session emits, for the whole life of the session rather than one turn. The
+// name is retained for its public contract; task state is most of the lane, and
+// an asynchronously earned session title also rides it (title.go).
 //
 // It exists because a node's most important event — it finished, here is the
 // report, here is what merged — happens when no turn is running and no Submit
@@ -2805,6 +2817,7 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	a.taskWatchers = append(a.taskWatchers, stream)
 	news := a.standingNews
 	a.standingNews = nil
+	title := strings.TrimSpace(a.title)
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -2815,6 +2828,14 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
+	// A title is a session-lifetime fact just like the roster. If the naming
+	// errand finished before this surface opened its lane, replay it here; if the
+	// surface registered first, emitTitleChanged includes it in the live fanout.
+	// Thus asynchronous subscription gets the title on one side of the lock or
+	// the other instead of depending on lucky timing.
+	if title != "" {
+		stream.send(Event{Kind: EventTitleChanged, Text: title})
+	}
 	// THE BACKLOG GOES OUT BEFORE THE STREAM DOES: news the standing side raised
 	// while nobody was watching is replayed onto this stream, so a surface that
 	// attached a moment late still sees the card rather than a lane that looks
@@ -2960,7 +2981,9 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// job registry; time is checked only between completed turns below.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	node.setCancel(cancel)
+	if !node.setCancel(cancel) {
+		return
+	}
 
 	// AND THE STORE LEARNS IT IS ALIVE AT THE CADENCE OF ITS WORK (task_beat.go).
 	// The checkpoint is written at admission and at landing, so between them the

@@ -55,6 +55,10 @@ type aside struct {
 	// [app.leavingDraft] assembles exactly this string for the same reason).
 	draft string
 	chips []chip
+	// pastes are the held documents whose position identities are in draft.
+	// They travel together or not at all: a visible token without this slice is
+	// literal text, and this slice against another draft is hidden replacement.
+	pastes []pasteChip
 	// offset is where they were reading and stick whether they were pinned to
 	// the foot of the transcript.
 	offset int
@@ -217,12 +221,26 @@ func (a *app) front() Conversation {
 // The caller is what decides where the agent goes — the keeper, or
 // [app.closeFront], which closes it for real.
 func (a *app) detachConversation() *aside {
+	// A mode may be holding the real draft while its own editor is on screen.
+	// Restore that draft before taking the sidecar snapshot; closing the mode
+	// afterwards is one snapshot too late and loses both words and paste IDs.
+	if a.rewSheet.open {
+		a.closeRewindSheet(true)
+	}
+	if a.rew.on {
+		a.leaveRewind(true)
+	}
+	if a.recalling() {
+		a.recallCancel()
+	}
+	draft, pastes := a.leavingDraftState()
 	side := &aside{
 		// The box and the parked messages, in the order they would have been
 		// sent (quitarm.go's [app.leavingDraft] is the same assembly the door
 		// out of the program makes, and for the same reason).
-		draft:  a.leavingDraft(),
+		draft:  draft,
 		chips:  a.chips,
+		pastes: pastes,
 		offset: a.offset,
 		stick:  a.stick,
 		since:  a.now(),
@@ -342,6 +360,7 @@ func (a *app) clearConversation() {
 	// it, and the arriving conversation has its own.
 	a.input.setText("")
 	a.chips = nil
+	a.pastes = nil
 	a.parks = nil
 	a.touch()
 }
@@ -523,10 +542,7 @@ func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
 
 // restoreAside puts the person's own readings back.
 func (a *app) restoreAside(side *aside) tea.Cmd {
-	if side.draft != "" {
-		a.input.setText(side.draft)
-	}
-	a.chips = side.chips
+	a.restoreAsideDraft(side)
 	a.offset, a.stick = side.offset, side.stick
 	// THE COUNTDOWN IS HANDED BACK RATHER THAN RESTAMPED, and only to a question
 	// THE ENGINE STILL HOLDS. It is consumed by [app.startAskClock] when the
@@ -547,6 +563,17 @@ func (a *app) restoreAside(side *aside) tea.Cmd {
 	// from the rail would do anyway (room.go).
 	a.openRoom(side.room, "")
 	return a.takeRoomPump()
+}
+
+// restoreAsideDraft is the common person-owned cargo used by switch, new,
+// resume and takeover. Keeping these three fields behind one door prevents a
+// new transition from restoring the visible token while losing its document.
+func (a *app) restoreAsideDraft(side *aside) {
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
+	a.pastes = append([]pasteChip(nil), side.pastes...)
 }
 
 // enginePending reports whether the agent is still holding an approval question.

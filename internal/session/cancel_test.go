@@ -79,6 +79,67 @@ func TestCancelCutsARunningTask(t *testing.T) {
 	}
 }
 
+// The frontier marks a node running before its goroutine can install the
+// cancellation handle. An immediate stop owns that gap: the row lands once,
+// its booked lane returns, and the late goroutine must not start work or close
+// the node's done channel a second time.
+func TestCancelWinsBeforeARunningTaskOwnsItsHandle(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	returned := make(chan struct{})
+	worked := make(chan struct{}, 1)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		close(started)
+		<-release
+		_, stop := context.WithCancel(context.Background())
+		defer stop()
+		if !node.setCancel(stop) {
+			close(returned)
+			return
+		}
+		select {
+		case worked <- struct{}{}:
+		default:
+		}
+		node.graph.complete(node, TaskDone)
+	})
+	graph.mu.Lock()
+	graph.limit = 1
+	graph.mu.Unlock()
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "the narrow window", brief: "work", acceptance: "done"})
+	waitSignal(t, started, "the scheduled goroutine")
+
+	line, err := agent.Cancel("task:" + itoa64(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "stopped") || strings.Contains(line, "stopping") {
+		t.Fatalf("the immediate stop reads %q", line)
+	}
+	close(release)
+	waitSignal(t, returned, "the late runner to refuse its handle")
+
+	select {
+	case <-worked:
+		t.Fatal("work started after the task had already settled")
+	default:
+	}
+	graph.mu.Lock()
+	running := graph.running
+	graph.mu.Unlock()
+	if running != 0 {
+		t.Fatalf("%d lanes remain booked after the pre-start stop", running)
+	}
+	select {
+	case <-graph.node(id).done:
+	default:
+		t.Fatal("the stopped node's done channel remains open")
+	}
+}
+
 // THE STOP IS PUBLISHED WHEN IT IS TAKEN, and not whenever the accounting next
 // says something. A running node stays RUNNING for as long as its child takes to
 // wind up, which is why the line above promises "stopping" — so the news arrives

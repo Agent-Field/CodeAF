@@ -179,8 +179,9 @@ type rewindSheet struct {
 	query editor
 	// draft and caret are the person's own sentence, held for them exactly as the
 	// inline mode holds it ([rewindMode.draft]).
-	draft []rune
-	caret int
+	draft  []rune
+	caret  int
+	pastes []pasteChip
 	// said is the foot's feedback line: the engine's refusal, in the engine's own
 	// words, until a key moves the pick.
 	said string
@@ -220,6 +221,7 @@ func (a *app) openRewindSheet() tea.Cmd {
 		rows:   a.rewindSheetRows(points),
 		draft:  append([]rune(nil), a.input.value...),
 		caret:  a.input.cursor,
+		pastes: append([]pasteChip(nil), a.pastes...),
 	}
 	// THE PICK STARTS AT THE LAST THING THE PERSON SAID, which is the inline
 	// mode's own opening position ([lastTurnPoint]) and for its reason: it is what
@@ -227,6 +229,7 @@ func (a *app) openRewindSheet() tea.Cmd {
 	// older is a walk away.
 	a.rewindSheetGoTo(lastTurnPoint(points))
 	a.input.reset()
+	a.pastes = nil
 	a.sel = -1
 	a.touch()
 	return a.wake()
@@ -243,7 +246,7 @@ func (a *app) liftRewind() tea.Cmd {
 		return nil
 	}
 	points, at := a.rew.points, a.rew.at
-	draft, caret := a.rew.draft, a.rew.cursor
+	draft, caret, pastes := a.rew.draft, a.rew.cursor, a.rew.pastes
 	// The inline mode leaves WITHOUT restoring: this page is taking the stash on,
 	// and a draft put back into a box that is about to be replaced by a page would
 	// be a sentence the next esc restores twice.
@@ -254,6 +257,7 @@ func (a *app) liftRewind() tea.Cmd {
 		rows:   a.rewindSheetRows(points),
 		draft:  draft,
 		caret:  caret,
+		pastes: pastes,
 	}
 	a.rewindSheetGoTo(at)
 	a.touch()
@@ -270,6 +274,7 @@ func (a *app) closeRewindSheet(restore bool) {
 	if restore {
 		a.input.value = append(a.input.value[:0], a.rewSheet.draft...)
 		a.input.cursor = min(a.rewSheet.caret, len(a.input.value))
+		a.pastes = a.rewSheet.pastes
 	}
 	a.rewSheet = rewindSheet{}
 	a.dropHover()
@@ -764,8 +769,8 @@ func (a *app) commitRewindSheet() {
 	// The count is taken BEFORE the cut, because after it the rows it counted are
 	// gone.
 	word := a.rewindSheetDropWord()
-	stash, caret := a.rewSheet.draft, a.rewSheet.caret
-	err := a.rewindLand(point, word, stash, caret, func() { a.rewSheet = rewindSheet{} })
+	stash, caret, pastes := a.rewSheet.draft, a.rewSheet.caret, a.rewSheet.pastes
+	err := a.rewindLand(point, word, stash, caret, pastes, func() { a.rewSheet = rewindSheet{} })
 	if err != nil {
 		// THE ARMING SURVIVES A REFUSAL. The one refusal the engine raises is a
 		// turn still winding down, and the answer to it is the same key a moment

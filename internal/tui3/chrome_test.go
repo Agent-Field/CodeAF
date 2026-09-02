@@ -916,6 +916,25 @@ func TestARecentSessionResumesThroughTheSeam(t *testing.T) {
 	}
 }
 
+func TestARecentSessionResumeCarriesTheDraftPaste(t *testing.T) {
+	recent := fourSessions()
+	a, _ := welcomeApp(t, recent)
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, " inspect")
+	want := a.input.String()
+	// Pasting dismisses the welcome by design. Re-open the same populated unit
+	// to exercise its resume door with a draft already in progress.
+	a.welcome = welcome{open: true, sel: 0, recent: recent}
+
+	drive(t, a, key("enter"))
+	if a.input.String() != want || len(a.pasteSpans()) != 1 {
+		t.Fatalf("resume restored draft=%q pastes=%+v", a.input.String(), a.pastes)
+	}
+	if spoken := a.pastesUnfolded(a.input.String()); !strings.Contains(spoken, "alpha\nbeta\ngamma") {
+		t.Fatalf("the resumed paste speaks as %q", spoken)
+	}
+}
+
 // A CLICK ON A ROW RESUMES THAT ROW, a click on the message box leaves the
 // greeting standing, and a click anywhere else on it dismisses.
 func TestAClickOnARecentSessionResumesIt(t *testing.T) {

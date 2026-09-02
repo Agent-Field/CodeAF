@@ -137,6 +137,13 @@ func (sess *Session) pumpTasks(s *server, generation uint64, lane <-chan session
 		if quiet {
 			continue
 		}
+		// A late title rides this session-lifetime lane because its originating
+		// turn has already closed. Keep the remote replica's facts in the same
+		// order as the ordinary turn pump: the updated title is announced before
+		// the event that tells a surface to read it.
+		if event.Kind == session.EventTitleChanged {
+			sess.announce()
+		}
 		payload, err := json.Marshal(WireEvent(event))
 		if err != nil {
 			// An event that cannot be encoded is a field somebody added that

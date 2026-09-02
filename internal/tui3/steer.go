@@ -150,6 +150,9 @@ func (p parked) steerable() bool {
 // its own text (pastechip.go's [unfoldPastes]). The chips stay on the message,
 // because a refusal puts it back whole and ↑ pulls it back into the box.
 func (p parked) spoken() string {
+	if p.tag.to > p.tag.from {
+		return unfoldPastesWithoutTag(p.text, p.pastes, p.tag)
+	}
 	return unfoldPastes(p.text, p.pastes)
 }
 

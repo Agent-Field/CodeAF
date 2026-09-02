@@ -138,6 +138,7 @@ func TestTheEarnedNameReachesTheFolder(t *testing.T) {
 		config.SessionFile = place.Transcript()
 	})
 	collect(t, mustSubmitTo(t, agent, "why does the box flicker?"))
+	waitTitleJob(t, agent)
 
 	meta, _ := LoadMeta(dir)
 	if meta.Title != "the flickering box" {

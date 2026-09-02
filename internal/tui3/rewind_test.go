@@ -473,6 +473,28 @@ func TestTheStashComesBackOnCancelAndOnAStepCut(t *testing.T) {
 	}
 }
 
+func TestRewindCancelRestoresPasteMetadataAndATurnCutClearsIt(t *testing.T) {
+	a, _ := newRewindApp(t, rewindPast())
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, " inspect")
+	want := a.input.String()
+
+	runCmd(a.enterRewind())
+	if len(a.pastes) != 0 {
+		t.Fatalf("rewind mode left live metadata %+v", a.pastes)
+	}
+	drive(t, a, key("esc"))
+	if a.input.String() != want || len(a.pasteSpans()) != 1 {
+		t.Fatalf("cancel restored %q with %+v", a.input.String(), a.pastes)
+	}
+
+	runCmd(a.enterRewind())
+	drive(t, a, key("enter"))
+	if len(a.pastes) != 0 {
+		t.Fatalf("a transcript message inherited stale paste metadata: %+v", a.pastes)
+	}
+}
+
 // The engine refuses while a turn is winding down. The sentence is the engine's
 // own, it is drawn where the mode's feedback belongs, and the mode stays up so
 // the same key can be pressed again a moment later.

@@ -145,6 +145,7 @@ func TestAResumedSessionComesBackHoldingItsSpend(t *testing.T) {
 	}}
 	first, workspace := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
 	collect(t, mustSubmit(t, first, "what does this cost?"))
+	waitTitleJob(t, first)
 	spent := first.Usage()
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

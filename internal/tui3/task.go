@@ -659,6 +659,11 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
 	var pilot, mentions tea.Cmd
 	switch ev.Kind {
+	case session.EventTitleChanged:
+		// Naming finishes off the turn stream and announces its result on this
+		// lifetime lane. A title is conversation state, not task state, but this
+		// is the route that remains alive after the first response has closed.
+		a.setTitle(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
 	case session.EventTaskUpdate:
@@ -1385,6 +1390,7 @@ func (a *app) answerTask(approve bool, redirect string) {
 		a.beginProposalWait(card)
 	}
 	a.input.reset()
+	a.pastes = nil
 	a.endRecall()
 	a.closeLists()
 	a.markCardStale(card)

@@ -117,6 +117,16 @@ func (a *Agent) callRole(
 		callCtx := provider.WithRole(
 			provider.WithRoutingIntent(provider.WithoutStream(ctx), provider.IntentBackground),
 			errandRole(role))
+		// A NAME HAS A TINY ANSWER CEILING, so an unasked thinking pass is not
+		// merely wasted work: reasoning tokens count against max_tokens and can
+		// consume the entire reply, leaving no visible name. Ask title models to
+		// turn that pass off as part of the call's correctness. An explicit tier
+		// suffix below still wins and receives the enlarged reasoning-aware wire
+		// ceiling; endpoints that refuse or ignore off are repaired by the
+		// provider's learned-quirk path.
+		if role == roles.RoleTitle || role == roles.RoleTaskName {
+			callCtx = provider.WithRequiredReasoningEffort(callCtx, provider.EffortOff)
+		}
 		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
 		// answer for it is nothing (internal/effort's RoleErrand): naming a
 		// conversation and judging a route are the session's own housekeeping,
@@ -131,11 +141,12 @@ func (a *Agent) callRole(
 		// crew, sitting above the role's floor and below nothing.
 		if tier, ok := effort.Parse(rung.Effort); ok {
 			if asked := effort.Resolve(effort.Scope{Task: tier, Role: effort.RoleErrand}); asked != effort.None {
-				// WithEffortRung and not the configured setter: a level carried
-				// on a tier value is a HARNESS default, which the adapter drops
-				// for a model no catalog can vouch for. A person's own ctrl+t is
-				// the other setter and does not reach an errand at all.
-				callCtx = provider.WithEffortRung(callCtx, asked)
+				// A suffix written on the configured tier is an operator choice,
+				// not a harness guess. Keep it explicit on a catalog-silent model:
+				// dropping it here would also overwrite the required reasoning-off
+				// request above and leave a name's tiny answer ceiling exposed to
+				// the model's default thinking pass.
+				callCtx = provider.WithConfiguredEffortRung(callCtx, asked)
 			}
 		}
 		// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name

@@ -2395,10 +2395,10 @@ type Agent struct {
 	// reserved, nothing is admitted, and the only thing the number has to do is
 	// name one outstanding question until it is answered (tools_standing.go).
 	standingSeq uint64
-	// taskWatchers are the standing subscriptions to task updates
+	// taskWatchers are the standing subscriptions to session-lifetime updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
-	// it: a node's most important event lands minutes after the turn that
-	// proposed it ended, when there is no hub to send it to.
+	// it: a node's completion and the session's asynchronously earned title both
+	// land after the turn that started them has ended.
 	taskWatchers []*eventStream
 	// standingNews is what fired while this window was SHUT, waiting for a
 	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
@@ -2418,6 +2418,21 @@ type Agent struct {
 	// journal, so it never re-names itself.
 	title      string
 	titleTried bool
+	// titleCancel and titleDone own the one title call after its turn has
+	// finished. The call is detached from the turn so it cannot keep the session
+	// busy, but Close still cancels and settles it before closing the journal.
+	titleCancel context.CancelFunc
+	titleDone   chan struct{}
+
+	// taskNamesCtx is the lifetime shared by every asynchronous task naming
+	// errand, and taskNameJobs counts them through the rename/publication at the
+	// end rather than only through the provider call. A task can be admitted at
+	// the end of a turn and renamed after it; Close cancels this context and
+	// settles this group before closing the graph's store and session journal
+	// (taskname.go).
+	taskNamesCtx  context.Context
+	taskNamesStop context.CancelFunc
+	taskNameJobs  sync.WaitGroup
 
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose

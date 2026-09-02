@@ -68,7 +68,7 @@ func (a *Agent) stampUserLocked(text string) {
 // name that turned out not to be one is thrown away and the words have to come
 // back ([openingPlaceholder]).
 func placeholderTitle(text string) string {
-	return clip(strings.Join(strings.Fields(firstLine(text)), " "), metaTitleLimit)
+	return clip(strings.Join(strings.Fields(firstLine(namingText(text))), " "), metaTitleLimit)
 }
 
 // openingPlaceholder reads the person's opening words back off the journal, for

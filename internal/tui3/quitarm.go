@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -187,18 +188,72 @@ func quitCountWord(n int, unit string) string {
 // is in; the parked messages follow in the order they were parked, which is the
 // order they would have been sent in.
 func (a *app) leavingDraft() string {
+	text, _ := a.leavingDraftState()
+	return text
+}
+
+// leavingDraftState folds the box and its waiting messages into one editable
+// draft while carrying every held paste to its new rune offset. Paste numbers
+// are preserved unless two formerly separate messages both used one; only the
+// later collision is renamed, so every editor action still names one document.
+func (a *app) leavingDraftState() (string, []pasteChip) {
 	text := a.input.String()
 	if len(a.parks) == 0 {
-		return text
+		return text, append([]pasteChip(nil), a.pastes...)
 	}
-	lines := make([]string, 0, len(a.parks)+1)
+	type part struct {
+		text   string
+		pastes []pasteChip
+	}
+	parts := make([]part, 0, len(a.parks)+1)
 	if strings.TrimSpace(text) != "" {
-		lines = append(lines, text)
+		parts = append(parts, part{text: text, pastes: a.pastes})
 	}
 	for _, p := range a.parks {
 		if strings.TrimSpace(p.text) != "" {
-			lines = append(lines, p.text)
+			parts = append(parts, part{text: p.text, pastes: p.pastes})
 		}
 	}
-	return strings.Join(lines, "\n")
+	maxID := 0
+	for _, one := range parts {
+		for _, held := range one.pastes {
+			maxID = max(maxID, held.n)
+		}
+	}
+	used := map[int]bool{}
+	var joined []rune
+	var joinedPastes []pasteChip
+	for _, one := range parts {
+		if len(joined) > 0 {
+			joined = append(joined, '\n')
+		}
+		base := len(joined)
+		value := []rune(one.text)
+		ordered := append([]pasteChip(nil), one.pastes...)
+		sort.Slice(ordered, func(i, j int) bool { return ordered[i].from < ordered[j].from })
+		var rewritten []rune
+		at := 0
+		for _, held := range ordered {
+			old := pasteToken(held.n, pasteLineCount(held.text))
+			if held.from < at || held.to > len(value) || held.from >= held.to || string(value[held.from:held.to]) != old {
+				continue
+			}
+			oldEnd := held.to
+			rewritten = append(rewritten, value[at:held.from]...)
+			if used[held.n] {
+				maxID++
+				held.n = maxID
+			}
+			used[held.n] = true
+			token := []rune(pasteToken(held.n, pasteLineCount(held.text)))
+			held.from = base + len(rewritten)
+			rewritten = append(rewritten, token...)
+			held.to = base + len(rewritten)
+			joinedPastes = append(joinedPastes, held)
+			at = oldEnd
+		}
+		rewritten = append(rewritten, value[at:]...)
+		joined = append(joined, rewritten...)
+	}
+	return string(joined), joinedPastes
 }

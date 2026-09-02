@@ -1,9 +1,14 @@
 package tui3
 
 import (
-	"github.com/Agent-Field/aforge-v2/internal/session"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 func TestLargePasteBecomesOneEditableChipAndSendsWhole(t *testing.T) {
@@ -38,16 +43,16 @@ func TestLargePasteBecomesOneEditableChipAndSendsWhole(t *testing.T) {
 	}
 }
 
-func TestSmallAndSlashPastesStayTextAndBackspaceDropsAChip(t *testing.T) {
+func TestSmallAndKnownCommandPastesStayTextAndBackspaceDropsAChip(t *testing.T) {
 	_, a := wired(nil)
 	a.paste("one\ntwo")
 	if got := a.input.String(); got != "one\ntwo" {
 		t.Fatalf("small paste became %q", got)
 	}
-	a.input.setText("/ask ")
+	a.input.setText("/task ")
 	a.paste("one\ntwo\nthree")
 	if strings.Contains(a.input.String(), pasteTokenHead) {
-		t.Fatalf("slash paste became a chip: %q", a.input.String())
+		t.Fatalf("known-command paste became a chip: %q", a.input.String())
 	}
 
 	a.input.reset()
@@ -62,6 +67,160 @@ func TestSmallAndSlashPastesStayTextAndBackspaceDropsAChip(t *testing.T) {
 func TestPasteThresholdIsTheManualsThreshold(t *testing.T) {
 	if pasteChipLines != 3 {
 		t.Fatalf("manual says three lines; threshold is %d", pasteChipLines)
+	}
+}
+
+func TestALiteralPasteTokenIsNotTheHeldPaste(t *testing.T) {
+	_, a := wired(nil)
+	literal := pasteToken(1, 3)
+	a.input.setText(literal)
+	a.input.end()
+	a.paste("alpha\nbeta\ngamma")
+	held := a.pastes[0]
+	a.input.cursor = held.from
+	block, _, _ := a.pasteDraftBlock(200, draftRows)
+	painted := strings.Join(block, "\n")
+	// The ordinary ink run includes the separating space; the owned token
+	// starts a different styled run at its exact source span.
+	plainAt := strings.Index(painted, a.pal.ink(literal+" "))
+	marked := a.pal.mark(a.pal.chip(literal), ansi.StringWidth(literal))
+	markedAt := strings.Index(painted, marked)
+	if plainAt < 0 || markedAt < 0 || plainAt >= markedAt {
+		t.Fatalf("literal and owned token were painted in the wrong order: %q", painted)
+	}
+	spoken, _ := a.composed(a.input.String())
+	if strings.Count(spoken, literal) != 1 || strings.Count(spoken, "paste 1:\n") != 1 {
+		t.Fatalf("literal and held token lost their identities in %q", spoken)
+	}
+}
+
+func TestPasteNumbersAreNeverReusedWhileAHigherChipRemains(t *testing.T) {
+	_, a := wired(nil)
+	a.paste("one\ntwo\nthree")
+	a.paste("four\nfive\nsix")
+	first := a.pasteSpans()[0]
+	a.removePaste(first, a.pasteForSpan(first))
+	a.input.end()
+	a.paste("seven\neight\nnine")
+	if len(a.pastes) != 2 || a.pastes[0].n != 2 || a.pastes[1].n != 3 {
+		t.Fatalf("paste identities are %+v", a.pastes)
+	}
+}
+
+func TestLeavingDraftOffsetsAndRenumbersParkedPastes(t *testing.T) {
+	_, a := wired(nil)
+	a.paste("parked alpha\nparked beta\nparked gamma")
+	parkedText := a.input.String()
+	a.parks = []parked{{text: parkedText, pastes: append([]pasteChip(nil), a.pastes...)}}
+	a.input.reset()
+	a.pastes = nil
+	a.paste("draft alpha\ndraft beta\ndraft gamma")
+	typeInto(t, a, " inspect")
+
+	text, pastes := a.leavingDraftState()
+	if len(pastes) != 2 || pastes[0].n == pastes[1].n {
+		t.Fatalf("the folded draft has paste identities %+v", pastes)
+	}
+	for _, held := range pastes {
+		value := []rune(text)
+		if held.from < 0 || held.to > len(value) || string(value[held.from:held.to]) != pasteToken(held.n, pasteLineCount(held.text)) {
+			t.Fatalf("paste %d points outside %q: %+v", held.n, text, held)
+		}
+	}
+	spoken := unfoldPastes(text, pastes)
+	for _, want := range []string{"parked alpha\nparked beta", "draft alpha\ndraft beta"} {
+		if !strings.Contains(spoken, want) {
+			t.Fatalf("the folded draft lost %q in %q", want, spoken)
+		}
+	}
+}
+
+func TestFailedRoomSteerGuardSendsPasteWholeToMainOrRevive(t *testing.T) {
+	for _, choice := range []string{"m", "r"} {
+		a, agent, _ := roomApp(t)
+		agent.steerErr = errString("task 7 is done, not running")
+		clickRail(t, a, 0)
+		a.paste("alpha\nbeta\ngamma")
+		typeInto(t, a, " inspect")
+		drive(t, a, key("enter"))
+		if !a.guarding() || len(a.pastes) != 1 {
+			t.Fatalf("%s guard has pastes=%+v open=%v", choice, a.pastes, a.guarding())
+		}
+		drive(t, a, key(choice))
+		if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], "alpha\nbeta\ngamma") ||
+			strings.Count(agent.sent[0], "paste 1:\n") != 1 {
+			t.Fatalf("%s sent %q", choice, agent.sent)
+		}
+		if len(a.pastes) != 0 {
+			t.Fatalf("%s left paste metadata %+v", choice, a.pastes)
+		}
+	}
+}
+
+func TestUnknownSlashProseStillFoldsALongPaste(t *testing.T) {
+	_, a := wired(nil)
+	a.input.setText("/api/v1 is broken ")
+	a.input.end()
+	a.paste("alpha\nbeta\ngamma")
+	if len(a.pastes) != 1 || !strings.Contains(a.input.String(), pasteTokenHead) {
+		t.Fatalf("unknown slash prose kept no paste identity: %q %+v", a.input.String(), a.pastes)
+	}
+	spoken, _ := a.composed(a.input.String())
+	if !strings.Contains(spoken, "/api/v1 is broken") || !strings.Contains(spoken, "alpha\nbeta\ngamma") {
+		t.Fatalf("unknown slash prose composed as %q", spoken)
+	}
+}
+
+func TestMarginTaskAndImageEditsKeepAPasteWhole(t *testing.T) {
+	pasted := "alpha\nbeta\ngamma"
+
+	door := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a := newTestApp(door)
+	a.paste(pasted)
+	a.marginType(marginTaskType)
+	drive(t, a, key("enter"))
+	if !strings.Contains(door.brief, pasted) || strings.Count(door.brief, "paste 1:\n") != 1 {
+		t.Fatalf("margin task received %q", door.brief)
+	}
+
+	a, _, dir := attachLab(t, map[string]int{"shot.png": 12})
+	a.paste(pasted)
+	a.input.cursor = 0
+	pasteText(t, a, filepath.Join(dir, "shot.png"))
+	if len(a.chips) != 1 || len(a.pastes) != 1 {
+		t.Fatalf("mixed tray has %d images and %d pastes", len(a.chips), len(a.pastes))
+	}
+	a.removeChip(0)
+	spoken, _ := a.composed(a.input.String())
+	if !strings.Contains(spoken, pasted) || strings.Count(spoken, "paste 1:\n") != 1 {
+		t.Fatalf("image insertion/removal moved the paste out of %q", spoken)
+	}
+}
+
+func TestMarginStandingPasteStaysCompactWhileParkedAndSendsWhole(t *testing.T) {
+	a, agent := marginApp(t)
+	a.stands.Items = func(string) []standing.Item { return nil }
+	pasted := "alpha\nbeta\ngamma"
+
+	a.paste(pasted)
+	a.marginType(marginStandType)
+	a.state = stateWorking
+	drive(t, a, key("enter"))
+
+	if len(a.parks) != 1 || !a.parks[0].standing || len(a.parks[0].pastes) != 1 {
+		t.Fatalf("margin standing did not park its paste identity: %+v", a.parks)
+	}
+	if strings.Contains(a.parks[0].text, "beta") || !strings.Contains(a.parks[0].text, pasteTokenHead) {
+		t.Fatalf("waiting row did not keep the compact text: %q", a.parks[0].text)
+	}
+
+	a.state = stateIdle
+	drive(t, a, runCmd(a.sendParked())...)
+	if len(agent.marked) != 1 || !strings.Contains(agent.marked[0], pasted) || strings.Count(agent.marked[0], "paste 1:\n") != 1 {
+		t.Fatalf("marked door received %q", agent.marked)
+	}
+	if got := a.entries[len(a.entries)-1].text; strings.Contains(got, "beta") || !strings.Contains(got, pasteTokenHead) {
+		t.Fatalf("transcript did not keep the compact text: %q", got)
 	}
 }
 
@@ -109,6 +268,8 @@ func TestAPasteSteeredIntoARoomReachesTheWorkerWhole(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	clickRail(t, a, 0)
 	pasted := "alpha\nbeta\ngamma\ndelta"
+	a.input.setText(" \u2003")
+	a.input.end()
 	a.paste(pasted)
 	typeInto(t, a, "fix this")
 	drive(t, a, key("enter"))

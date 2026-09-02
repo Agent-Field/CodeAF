@@ -555,10 +555,16 @@ func (a *app) mentionTask(entry *session.TaskIndexEntry) {
 	if name == "" {
 		return
 	}
-	text := strings.TrimRight(string(a.input.value), " ")
-	if text != "" {
-		text += " "
+	raw := string(a.input.value)
+	text := strings.TrimRight(raw, " ")
+	trimmed := len([]rune(raw)) - len([]rune(text))
+	if trimmed > 0 {
+		a.replaceInput(len(a.input.value)-trimmed, len(a.input.value), "")
 	}
-	a.input.setText(text + "@" + name + " ")
+	if text != "" {
+		a.replaceInput(len(a.input.value), len(a.input.value), " ")
+	}
+	a.replaceInput(len(a.input.value), len(a.input.value), "@"+name+" ")
+	a.input.cursor = len(a.input.value)
 	a.touch()
 }
