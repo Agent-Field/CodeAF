@@ -333,7 +333,7 @@ func waitForSteerMark(t *testing.T, home, words string, within time.Duration) se
 			return nil
 		})
 		for _, path := range seen {
-			for _, entry := range session.ReadTranscript(path) {
+			for _, entry := range session.ReadTranscript(path).Entries {
 				if strings.TrimSpace(entry.Text) == words && entry.Steer != nil {
 					return *entry.Steer
 				}

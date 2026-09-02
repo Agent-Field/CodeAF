@@ -59,7 +59,7 @@ func TestALineDeliveredToANodeIsMarkedInItsRecord(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	reopened := steeredEntry(t, ReadTranscript(path), said)
+	reopened := steeredEntry(t, ReadTranscript(path).Entries, said)
 	if reopened.Steer.Landing != SteerDelivered(false) || !reopened.Steer.Consumed {
 		t.Fatalf("the mark did not survive the file: %+v", *reopened.Steer)
 	}
@@ -78,7 +78,7 @@ func TestALineThatWokeAParkedNodeSaysSoInTheRecord(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	entry := steeredEntry(t, ReadTranscript(path), said)
+	entry := steeredEntry(t, ReadTranscript(path).Entries, said)
 	if entry.Steer.Landing != SteerDelivered(true) {
 		t.Fatalf("landing = %q, want %q", entry.Steer.Landing, SteerDelivered(true))
 	}
@@ -128,8 +128,8 @@ func TestAnUnansweredCallReadsBackAsUnansweredWithItsIdentity(t *testing.T) {
 		t.Fatalf("writing the record: %v", err)
 	}
 	for name, entries := range map[string][]DisplayEntry{
-		"path":  ReadTranscript(path),
-		"bytes": ReadTranscriptBytes([]byte(midCallRecord)),
+		"path":  ReadTranscript(path).Entries,
+		"bytes": ReadTranscriptBytes([]byte(midCallRecord)).Entries,
 	} {
 		calls := map[string]DisplayEntry{}
 		for _, entry := range entries {
@@ -173,13 +173,13 @@ func TestReadingARecordKeepsTheBatchAResumeWouldDrop(t *testing.T) {
 			}
 		}
 	}
-	for _, entry := range ReadTranscript(path) {
+	for _, entry := range ReadTranscript(path).Entries {
 		if entry.CallID == "c2" {
 			return
 		}
 	}
 	t.Fatalf("the reading dropped the call a page opened mid-flight exists to draw: %#v",
-		ReadTranscript(path))
+		ReadTranscript(path).Entries)
 }
 
 // A RECORD THAT IS NOT THERE IS NOT AN ERROR. The file belongs to whoever is
@@ -187,9 +187,9 @@ func TestReadingARecordKeepsTheBatchAResumeWouldDrop(t *testing.T) {
 // would refuse to show the live work beside it as well.
 func TestAnAbsentRecordReadsAsNothing(t *testing.T) {
 	for name, entries := range map[string][]DisplayEntry{
-		"empty path":   ReadTranscript(""),
-		"missing file": ReadTranscript(filepath.Join(t.TempDir(), "gone.jsonl")),
-		"no bytes":     ReadTranscriptBytes(nil),
+		"empty path":   ReadTranscript("").Entries,
+		"missing file": ReadTranscript(filepath.Join(t.TempDir(), "gone.jsonl")).Entries,
+		"no bytes":     ReadTranscriptBytes(nil).Entries,
 	} {
 		if len(entries) != 0 {
 			t.Fatalf("%s read as %d entries, want none", name, len(entries))
@@ -212,7 +212,7 @@ func TestTheDoorKeepsASessionsOwnLineOutOfThePersonsColumn(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	for _, entry := range ReadTranscript(path) {
+	for _, entry := range ReadTranscript(path).Entries {
 		if strings.TrimSpace(entry.Text) == note {
 			if entry.Role != "aside" {
 				t.Fatalf("the session's own line reads as %q, want aside", entry.Role)
@@ -220,5 +220,123 @@ func TestTheDoorKeepsASessionsOwnLineOutOfThePersonsColumn(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf("the session's own line is not in the reading: %#v", ReadTranscript(path))
+	t.Fatalf("the session's own line is not in the reading: %#v", ReadTranscript(path).Entries)
+}
+
+// ── the reading opens no picture's file ─────────────────────────────────────
+
+// A READING DOOR NEVER OPENS A PICTURE. The messages it builds are shaped for
+// display and thrown away; a room re-reads on every open and a run page four
+// times a second, and rebuilding the bytes would be three syscalls and a hash
+// per picture per read.
+//
+// AND ON A HOSTED RECORD IT WOULD ALSO BE FALSE: the paths belong to the other
+// machine, so every one of them fails to open here and the rebuild writes
+// `[image /their/path — file changed or gone]` into the person's own line about
+// a file sitting untouched where it was made. This asserts the honest half —
+// a path that IS NOT THERE still leaves the person's words alone and still gives
+// the page the picture's name.
+func TestAReadingDoorNeverOpensAPicture(t *testing.T) {
+	const said = "what is wrong with this"
+	gone := filepath.Join(t.TempDir(), "not-on-this-machine", "chart.png")
+	record := `{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}
+{"type":"message","role":"user","content":"` + said + `","parts":[{"type":"image","path":"` + gone +
+		`","sha256":"deadbeef","mime":"image/png"}]}
+`
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	for name, entries := range map[string][]DisplayEntry{
+		"path":  ReadTranscript(path).Entries,
+		"bytes": ReadTranscriptBytes([]byte(record)).Entries,
+	} {
+		if len(entries) != 1 {
+			t.Fatalf("%s: %d entries, want the one message: %#v", name, len(entries), entries)
+		}
+		got := entries[0]
+		if got.Text != said {
+			t.Fatalf("%s: the person's line reads %q, want %q — the reading opened the file",
+				name, got.Text, said)
+		}
+		if strings.Contains(got.Text, "file changed or gone") || strings.Contains(got.Text, gone) {
+			t.Fatalf("%s: a placeholder about a file this machine cannot see got into the line: %q",
+				name, got.Text)
+		}
+		// AND THE PICTURE IS STILL NAMED. The reference is what the page draws the
+		// marker from, so refusing to open the file costs nothing on screen.
+		if len(got.ImageRefs) != 1 || got.ImageRefs[0] != gone {
+			t.Fatalf("%s: the picture lost its name: %#v", name, got.ImageRefs)
+		}
+	}
+
+	// AND THE RESUME PATH STILL REBUILDS, which is the other half of the same
+	// decision: that transcript is about to be SENT.
+	replayed, err := replaySessionFile(path)
+	if err != nil {
+		t.Fatalf("replaySessionFile: %v", err)
+	}
+	if got := messageContentText(replayed.messages[0]); !strings.Contains(got, "file changed or gone") {
+		t.Fatalf("the resume path stopped rebuilding the picture: %q", got)
+	}
+}
+
+// ── a line this build cannot read ──────────────────────────────────────────
+
+// A READER KEEPS EVERYTHING IT COULD READ AND NAMES THE LINE IT COULD NOT.
+//
+// A journaled message can be a whole file's content and the scanner's buffer has
+// a ceiling, so one very large paste makes one unreadable line. That used to end
+// the read with no messages at all — and every caller took it for "this file is
+// not readable", so the conversation resumed EMPTY. The person had not lost a
+// line, they had lost the session.
+func TestALineTooLongKeepsEveryLineAboveItOnBothPaths(t *testing.T) {
+	huge := strings.Repeat("x", 5<<20) // past readJournal's own 8MiB-per-line ceiling once quoted
+	record := `{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}
+{"type":"message","role":"user","content":"Fix the nil-map crash"}
+{"type":"message","role":"assistant","content":"Found it — the map is never made."}
+{"type":"message","role":"user","content":"` + huge + huge + `"}
+{"type":"message","role":"assistant","content":"never read"}
+`
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	read := ReadTranscript(path)
+	if len(read.Entries) != 2 {
+		t.Fatalf("the door kept %d entries, want the two above the line it could not read: %#v",
+			len(read.Entries), read.Entries)
+	}
+	if read.Entries[0].Text != "Fix the nil-map crash" {
+		t.Fatalf("the door lost the first line: %#v", read.Entries)
+	}
+	// AND IT SAYS WHICH LINE. "Something went wrong somewhere in this file" is
+	// not an answer somebody can act on; a line number is.
+	if read.UnreadFrom != 4 {
+		t.Fatalf("UnreadFrom = %d, want line 4 — the over-long one", read.UnreadFrom)
+	}
+
+	// THE RESUME PATH ANSWERS THE SAME, because it is the same fact about the
+	// same file: the conversation comes back with everything above the line.
+	replayed, err := replaySessionFile(path)
+	if err != nil {
+		t.Fatalf("replaySessionFile: %v", err)
+	}
+	if len(replayed.messages) != 2 || replayed.unread != 4 {
+		t.Fatalf("the resume kept %d messages and named line %d, want 2 and 4",
+			len(replayed.messages), replayed.unread)
+	}
+	agent, agentErr := newAgent(Config{
+		Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", SessionFile: path,
+	}, &scriptedCompleter{})
+	if agentErr != nil {
+		t.Fatalf("a session with one unreadable line refused to open: %v", agentErr)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	if got := agent.Transcript(); len(got) != 2 {
+		t.Fatalf("the resumed conversation holds %d entries, want the two that were readable: %#v",
+			len(got), got)
+	}
 }

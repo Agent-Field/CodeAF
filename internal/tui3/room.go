@@ -510,8 +510,8 @@ func (a *app) openRoom(id uint64, title string) {
 		title = taskIDWord(id)
 	}
 	room := a.newRoom(id, title)
-	room.entries, room.turn = a.replayBlocks(
-		session.ReadTranscript(doors.TaskJournal(id)), roomReplay(roomTail))
+	room.entries, room.turn = a.roomRecord(
+		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
 	a.room = room
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
@@ -602,8 +602,8 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	}
 	a.room.loading = false
 	if msg.err == nil {
-		a.room.entries, a.room.turn = a.replayBlocks(
-			session.ReadTranscriptBytes(msg.record.Journal), roomReplay(roomTail))
+		a.room.entries, a.room.turn = a.roomRecord(
+			session.ReadTranscriptBytes(msg.record.Journal), roomTail)
 	}
 	a.room.resolveUnfinished()
 	a.roomTouched()

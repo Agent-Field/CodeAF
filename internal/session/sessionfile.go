@@ -744,6 +744,32 @@ func (p journalPart) contentPart() ai.ContentPart {
 	}}
 }
 
+// reference is one journaled part as a REFERENCE AND NOTHING MORE: where the
+// picture was, never its bytes.
+//
+// IT IS WHAT A READING DOOR REBUILDS, and the difference from [contentPart] is
+// the whole of it. That one opens the file, hashes it and base64s it, because
+// the messages it builds are about to be SENT and the model has to see the
+// picture. A reading door builds messages nobody sends — they are shaped for
+// display and thrown away ([ReadTranscript]) — so opening the file would be
+// three syscalls and a hash per picture per read, on every room opened, every
+// hosted record fetched and every beat of a run page's four-times-a-second poll.
+//
+// AND ON A HOSTED PAGE THE REBUILD WOULD ALSO BE FALSE. The paths in a record
+// carried over a wire are the OTHER machine's, so every one of them fails to
+// open here and [journalPart.placeholder] writes `[image /their/path — file
+// changed or gone]` into the person's own line, about a file sitting untouched
+// on the machine that made it.
+//
+// THE PATH IS CARRIED IN THE PART so that two pictures in one message stay two
+// parts: [partKey] fingerprints a part by its body, and two empty parts would be
+// one key — which is what lets [sessionFile.imageRefs] hand each of them its own
+// name back. It is not a "text" part, so it puts no words in the person's line
+// ([messageContentText] takes text parts and nothing else).
+func (p journalPart) reference() ai.ContentPart {
+	return ai.ContentPart{Type: p.Type, Text: p.Path}
+}
+
 // placeholder is what the model reads where a picture used to be. It names the
 // path, because the person can often put the file back. The reason clause is
 // the caller's, because the two callers know two different truths: a replay
@@ -1221,7 +1247,9 @@ func replaySessionFile(path string) (replayedSession, error) {
 	}
 	defer file.Close()
 
-	replayed, err := readJournal(file, path)
+	// TRUE, because this is the transcript that gets SENT: a resumed turn has to
+	// put the same bytes on the wire the original turn did.
+	replayed, err := readJournal(file, path, true)
 	if err != nil {
 		return replayed, err
 	}
@@ -1259,9 +1287,25 @@ func replaySessionFile(path string) (replayedSession, error) {
 // draw ([ReadTranscript]); [replaySessionFile] is where a transcript that is
 // about to be SENT is made legal again.
 //
+// rebuild says whether a journaled picture is rebuilt into its BYTES or kept as
+// a reference to where it was ([journalPart.reference]). A transcript that is
+// about to be sent needs the bytes; a reading that only draws must not pay three
+// syscalls and a hash per picture per read, and on a hosted record must not open
+// the other machine's paths at all.
+//
 // path is named only in the error a newer file's format version raises, so a
 // reader with no path (a tail carried across a wire) passes "".
-func readJournal(reader io.Reader, path string) (replayedSession, error) {
+//
+// ── A READER KEEPS EVERYTHING IT COULD READ AND NAMES THE LINE IT COULD NOT ──
+//
+// A line too long for the scanner's buffer used to end this function with an
+// error and NO MESSAGES, and every caller took that for "this file is not
+// readable": a conversation with one very large paste in it resumed EMPTY. The
+// person had not lost a line, they had lost the session. So the scan now keeps
+// every message above the line it could not get past and says which line that
+// was ([replayedSession.unread]) — the same answer on the resume path and at
+// both reading doors, because it is the same fact about the same file.
+func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
 		messages  []ai.Message
 		reasoning []provider.MessageReasoning
@@ -1270,6 +1314,7 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 		title     string
 		id        string
 		lines     int
+		scanned   int
 		spent     Usage
 		created   []fileChange
 	)
@@ -1299,6 +1344,10 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 		// every string they keep out of it. Text() would instead allocate a copy
 		// of the line, and []byte(...) of that copy a second one — two copies of
 		// every line of the journal, and a tool result is tens of kilobytes.
+		// Counted before the blank check so the number below is a LINE OF THE
+		// FILE, which is what somebody opening it in an editor needs, and not a
+		// count of the lines this reader found interesting.
+		scanned++
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
@@ -1334,7 +1383,7 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 			if entry.Role == "" {
 				continue
 			}
-			message := replayedMessage(entry)
+			message := replayedMessage(entry, rebuild)
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -1374,7 +1423,7 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
-			rebuilt := compactionMessages(entry)
+			rebuilt := compactionMessages(entry, rebuild)
 			// AND THE REGION IS ONLY KEPT IF IT CAN BE PLACED. The pass wrote its
 			// whole rebuilt window back below the marker, so the lines above it
 			// and the first Window lines below it are two renderings of ONE
@@ -1514,11 +1563,20 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+	// The line the reading stopped at, and zero for a file read to its end. It is
+	// a FACT ON THE READING and not an error, because an error here is what every
+	// caller already reads as "refuse to open this file" — which is the loss this
+	// arm exists to end. The one thing that still refuses is a file written by a
+	// newer aforge, above, where refusing is the honest answer.
+	var unread int
+	if scanner.Err() != nil {
+		// The failing Scan never enters the loop, so the line nobody could read is
+		// the one AFTER the last one counted.
+		unread = scanned + 1
 	}
 	return replayedSession{
 		messages:  messages,
+		unread:    unread,
 		reasoning: reasoning,
 		earlier:   earlier,
 		overlap:   overlap,
@@ -1544,7 +1602,7 @@ func readJournal(reader io.Reader, path string) (replayedSession, error) {
 // A line WITH references is text-then-parts, which is the order [imageUserMessage]
 // assembled and therefore the order the model read the first time. The text part
 // is dropped when there was no text, for the same reason it was never added.
-func replayedMessage(entry sessionEntry) ai.Message {
+func replayedMessage(entry sessionEntry, rebuild bool) ai.Message {
 	message := ai.Message{
 		Role:       entry.Role,
 		Content:    []ai.ContentPart{{Type: "text", Text: entry.Content}},
@@ -1559,10 +1617,20 @@ func replayedMessage(entry sessionEntry) ai.Message {
 		content = append(content, ai.ContentPart{Type: "text", Text: entry.Content})
 	}
 	for _, part := range entry.Parts {
-		content = append(content, part.contentPart())
+		content = append(content, rebuiltPart(part, rebuild))
 	}
 	message.Content = content
 	return message
+}
+
+// rebuiltPart is the one place the two rebuilds are chosen between: the bytes
+// for a transcript about to be sent, the reference for a reading that only
+// draws ([journalPart.reference] says why in full).
+func rebuiltPart(part journalPart, rebuild bool) ai.ContentPart {
+	if rebuild {
+		return part.contentPart()
+	}
+	return part.reference()
 }
 
 // compactionMessages rebuilds one compaction marker into the context prefix it
@@ -1582,7 +1650,7 @@ func replayedMessage(entry sessionEntry) ai.Message {
 //     matches ([journalPart]), with the summary of any overflow after them.
 //
 // Neither is written any more.
-func compactionMessages(entry sessionEntry) []ai.Message {
+func compactionMessages(entry sessionEntry, rebuild bool) []ai.Message {
 	summary := strings.TrimSpace(entry.Summary)
 	if len(entry.Parts) == 0 {
 		if summary == "" {
@@ -1593,7 +1661,7 @@ func compactionMessages(entry sessionEntry) []ai.Message {
 	content := make([]ai.ContentPart, 0, len(entry.Parts)+1)
 	content = append(content, ai.ContentPart{Type: "text", Text: legacyFramesNote})
 	for _, part := range entry.Parts {
-		content = append(content, part.contentPart())
+		content = append(content, rebuiltPart(part, rebuild))
 	}
 	messages := []ai.Message{{Role: "user", Content: content}}
 	if summary != "" {
@@ -1699,6 +1767,11 @@ type replayedSession struct {
 	// already running, keyed by [noteKey] — the index [sessionFile.steers] is
 	// opened holding (steer.go).
 	steers map[string]SteerMark
+	// unread is the 1-based line of the file this reading could not get past, and
+	// zero for a file read to its end. Everything above it is in `messages`; the
+	// number is what lets a caller say WHICH line rather than "something went
+	// wrong somewhere" (see [readJournal]).
+	unread int
 	// usage is the SUM of the file's usage lines — what this conversation has
 	// spent across every process that ever held it. Summed rather than stored,
 	// so the total cannot drift from the lines it is made of.

@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,4 +178,126 @@ func TestTheShapingKeepsWhatALiveEndPairsOn(t *testing.T) {
 	if chat[0].status.live() {
 		t.Fatalf("the conversation left a resumed call running: %#v", chat[0])
 	}
+}
+
+// ── the region a compaction pass edited away ────────────────────────────────
+
+// A NODE'S PAGE DRAWS WHAT THE PASS SHORTENED, above the seam that says where
+// the shortening starts.
+//
+// A compaction rewrites the work it folds and journals the rewritten copy again,
+// so the same conversation is in the record twice: once as it happened, and once
+// with its results stubbed and its long runs folded. A page that drew only the
+// copy would be showing a person a summary of their own work as though it were
+// the work — every call above the marker opening onto a stub — and THE LENS MAY
+// LOWER SALIENCE; IT MAY NOT DROP A FACT (#252).
+func TestATaskPageDrawsTheWorkACompactionShortened(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	record := strings.Join([]string{
+		`{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"reading the loader","toolCalls":[` +
+			`{"id":"c1","function":{"name":"read","arguments":"{\"path\":\"load.go\"}"}}]}`,
+		`{"type":"message","role":"tool","toolCallId":"c1","content":"189 lines of the real file"}`,
+		// The pass rewrote those three and journaled all three again.
+		`{"type":"compaction","stubbed":3,"window":3,"tokensBefore":84000}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"[folded]"}`,
+		`{"type":"message","role":"tool","toolCallId":"c1","content":"[stubbed]"}`,
+		// And this happened after the pass.
+		`{"type":"message","role":"assistant","content":"the map is never made"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	a := newTestApp(&fakeAgent{})
+	blocks, turns := a.roomRecord(session.ReadTranscript(path), 0)
+	if turns != 1 {
+		t.Fatalf("the page counted %d turns, want the one its instruction opened", turns)
+	}
+
+	seam := -1
+	for i := range blocks {
+		if blocks[i].kind == entrySeam {
+			seam = i
+		}
+	}
+	if seam < 0 {
+		t.Fatalf("the page drew no seam over a record that was compacted: %#v", blocks)
+	}
+	// ABOVE THE SEAM the work is what happened: the call opens onto the file it
+	// really read, and the prose is the prose.
+	above := blocks[:seam]
+	var call *entry
+	for i := range above {
+		if above[i].kind == entryTool && above[i].tool == "read" {
+			call = &above[i]
+		}
+	}
+	if call == nil {
+		t.Fatalf("the call the pass shortened is not on the page above the seam: %#v", above)
+	}
+	if !strings.Contains(call.detail.Output, "189 lines of the real file") {
+		t.Fatalf("the call above the seam opens onto the pass's stub: %q", call.detail.Output)
+	}
+	if !blockSaying(above, "reading the loader") {
+		t.Fatalf("the prose the pass folded is not above the seam: %#v", above)
+	}
+	// AND THE COPY IT REPLACES IS NOT DRAWN, or the page would show the node's
+	// work to itself twice.
+	if blockSaying(blocks, "[folded]") {
+		t.Fatalf("the page drew the pass's own rewritten copy as well: %#v", blocks)
+	}
+	// BELOW THE SEAM is the conversation the model still carries.
+	if !blockSaying(blocks[seam:], "the map is never made") {
+		t.Fatalf("the work after the pass is not below the seam: %#v", blocks[seam:])
+	}
+	// And the instruction is marked once, above the seam, where the person said it.
+	briefs := 0
+	for i := range blocks {
+		if blocks[i].brief {
+			briefs++
+		}
+	}
+	if briefs != 1 || !blocks[0].brief {
+		t.Fatalf("%d blocks are marked as the instruction, want the first one only", briefs)
+	}
+}
+
+// AND AN ORDINARY RECORD DRAWS NO SEAM AT ALL. The row is a statement about a
+// boundary, and a page with no boundary has nothing to state.
+func TestATaskPageThatWasNeverCompactedDrawsNoSeam(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	if err := os.WriteFile(path, []byte(midCallRoomRecord), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+	a := newTestApp(&fakeAgent{})
+	blocks, _ := a.roomRecord(session.ReadTranscript(path), 0)
+	for i := range blocks {
+		if blocks[i].kind == entrySeam {
+			t.Fatalf("a record nobody compacted drew a seam: %#v", blocks)
+		}
+	}
+	if !blockSaying(blocks, "Looking at the loader") {
+		t.Fatalf("the page is missing the work: %#v", blocks)
+	}
+}
+
+// midCallRoomRecord is an ordinary node's record: one instruction, one call that
+// came back, and one the record left open.
+const midCallRoomRecord = `{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}
+{"type":"message","role":"user","content":"Fix the nil-map crash"}
+{"type":"message","role":"assistant","content":"Looking at the loader.","toolCalls":[{"id":"c1","function":{"name":"read","arguments":"{\"path\":\"load.go\"}"}}]}
+{"type":"message","role":"tool","toolCallId":"c1","content":"189 lines"}
+`
+
+// blockSaying reports whether any block carries these words.
+func blockSaying(blocks []entry, words string) bool {
+	for i := range blocks {
+		if strings.Contains(blocks[i].text, words) {
+			return true
+		}
+	}
+	return false
 }

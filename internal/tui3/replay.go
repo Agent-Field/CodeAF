@@ -518,6 +518,58 @@ func roomReplay(tail int) replayShape {
 	return replayShape{tail: tail, brief: true, running: true}
 }
 
+// roomRecord is a whole record shaped for a node's page: the region a compaction
+// pass edited away, the seam that says where it ends, and the conversation the
+// model still carries. It answers the blocks and how many of the person's
+// messages were in them, exactly as [app.replayBlocks] does.
+//
+// THE REGION IS DRAWN AND NOT DROPPED. A pass rewrites the work it shortens and
+// journals the rewritten copy again, so the same conversation is in the file
+// twice — once as it happened, above the marker, and once with its results
+// stubbed and its long runs folded, below. A page that drew only the copy would
+// be showing a person a summary of their own work as though it were the work,
+// and every call above the marker would open onto a stub. So the region is drawn
+// in the words it was said in and the copy it replaces is skipped
+// ([session.Record]'s contract), which is what the conversation already does
+// with the same two halves ([app.replay]).
+//
+// THE SEAM IS THE ROW THAT MAKES IT HONEST, and it is the conversation's own
+// ([app.prepend], render.go's entrySeam): above it the page is complete and the
+// model's copy of it is not, and the row says both halves because either half
+// alone is a lie.
+//
+// THE WINDOW IS TAKEN ONCE, over the two halves joined, because it is a budget
+// for the PAGE — a helping cut from each half would keep a screenful of a region
+// nobody scrolled to and drop the work that is happening now.
+func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
+	live := record.Entries
+	if record.Floor > 0 && record.Floor <= len(live) {
+		live = live[record.Floor:]
+	}
+	if len(record.Earlier) == 0 {
+		return a.replayBlocks(live, roomReplay(tail))
+	}
+	// Neither half is windowed on its own; the join below is.
+	shape := roomReplay(0)
+	blocks, turns := a.replayBlocks(record.Earlier, shape)
+	blocks = append(blocks, entry{kind: entrySeam, text: seamMark, turn: turns})
+	// The instruction is the FIRST of the person's messages and it is above the
+	// marker — a pass never folds what somebody said — so the half below opens no
+	// second one, and its turns carry on from the half above.
+	shape.turn, shape.brief = turns, false
+	rest, more := a.replayBlocks(live, shape)
+	return keepTail(append(blocks, rest...), tail), turns + more
+}
+
+// keepTail is the window a page holds: the last `tail` blocks, or every one of
+// them when the caller set no budget.
+func keepTail(blocks []entry, tail int) []entry {
+	if tail > 0 && len(blocks) > tail {
+		return blocks[len(blocks)-tail:]
+	}
+	return blocks
+}
+
 // replayBlocks turns a window of the record into blocks, on the shape the page
 // asked for. It returns the blocks and how many of the person's messages were in
 // them, which is what the caller needs to keep its own counter straight.
@@ -667,10 +719,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 	// THE WINDOW IS TAKEN LAST, so that the turn numbering and the count above are
 	// done over the whole of what was read: a page showing the tail of a record
 	// still knows which turn it is standing in.
-	if shape.tail > 0 && len(blocks) > shape.tail {
-		blocks = blocks[len(blocks)-shape.tail:]
-	}
-	return blocks, turns
+	return keepTail(blocks, shape.tail), turns
 }
 
 // replayUserLine is a replayed message as the person sent it: their words, and
