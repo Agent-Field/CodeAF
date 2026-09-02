@@ -201,6 +201,76 @@ func TestTheCueFiresWhereTheCorpusSaysTheMessageIsAboutIt(t *testing.T) {
 	}
 }
 
+// AND A QUESTION ASKED OVER A PICTURE IS STILL A QUESTION. A message with a
+// screenshot on it ends in the picture, and the block joins the last TEXT part
+// rather than the last part, so it lands beside the words instead of being
+// dropped.
+func TestAQuestionAskedOverAPictureStillGetsTheCue(t *testing.T) {
+	words := "who can see my files in aforge"
+	message := ai.Message{Role: "user", Content: []ai.ContentPart{
+		{Type: "text", Text: words},
+		{Type: "image_url", ImageURL: &ai.ImageURLData{URL: "data:image/png;base64,AAAA"}},
+	}}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	agent.messages = append(agent.messages, message)
+	agent.cued = manualCueTurn{block: manualCueFor(words), words: words, at: len(agent.messages) - 1}
+
+	carried := agent.withManualCue(append([]ai.Message(nil), agent.messages...))
+	sent := carried[len(carried)-1]
+	if len(sent.Content) != 2 || sent.Content[1].Type != "image_url" {
+		t.Fatalf("the picture did not survive the attaching: %+v", sent.Content)
+	}
+	if !strings.HasPrefix(sent.Content[0].Text, words) || !strings.Contains(sent.Content[0].Text, manualCueMark) {
+		t.Fatalf("the block did not join the words:\n%s", sent.Content[0].Text)
+	}
+}
+
+// ORDINARY WORK ALSO CUES, AND THAT IS THE COST — logged as a measurement rather
+// than tuned away.
+//
+// [manual.Corpus.Cued] answers "does this message reach for the manual's own
+// vocabulary", and this manual describes a GENERAL-PURPOSE program: its headings
+// are written in the same words work is asked for in, so a sentence about a file
+// or a folder or a model reaches them whether or not it is a question about
+// aforge. What that costs is under a kilobyte of prompt, once, on that turn.
+//
+// THE ASSERTION IS DELIBERATELY WEAK — that some of these do NOT cue, so a gate
+// that had quietly become "always" would be caught, and that a plain sentence
+// with none of the manual's words in it never does. A floor at today's exact
+// figure would be a test of one afternoon's wording, and the fix for a bad
+// number here is a better gate measured on the wire, never a rewritten sentence.
+func TestOrdinaryWorkAlsoCuesAndThatIsTheCost(t *testing.T) {
+	work := []string{
+		"fix the failing test in parser.go",
+		"write me a python script that renames files by date",
+		"commit and push the branch",
+		"summarise this log for me",
+		"run the tests and tell me what broke",
+		"add a dark mode to the settings screen",
+		"explain this stack trace",
+		"refactor the handler into smaller functions",
+		"what is the capital of France",
+		"draft an email to the landlord about the boiler",
+		"deploy to staging",
+		"what time is it in Tokyo",
+		"translate this paragraph into German",
+		"find every TODO in the repo",
+	}
+	cued := 0
+	for _, said := range work {
+		if manualCueFor(said) != "" {
+			cued++
+		}
+	}
+	t.Logf("the gate fires on %d of %d ordinary work sentences", cued, len(work))
+	if cued == len(work) {
+		t.Errorf("every ordinary sentence cued: the gate has stopped gating")
+	}
+	if manualCueFor("what is the capital of France") != "" {
+		t.Error("a question with none of the manual's words in it cued anyway")
+	}
+}
+
 // AND IT IS ABSENT WHERE IT WOULD BE ANSWERING NOBODY. A task node's opening
 // message is a brief rather than a question, and the switch is what lets the
 // wire lane measure a pass without it on the same night and the same model.

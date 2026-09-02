@@ -31,6 +31,17 @@ package session
 //     that drift. An uncued turn is byte-identical to what it was before this
 //     file existed.
 //
+//     THE GATE IS LOOSE AND THE NUMBER IS WRITTEN DOWN. It fires on 23 of the
+//     twenty-five plain questions and 21 of the twenty-two held-out ones — and
+//     on eight of fourteen ordinary work sentences that are not
+//     about aforge at all, because this manual describes a general-purpose
+//     program and its headings are written in the same words work is asked for
+//     in. TestOrdinaryWorkAlsoCuesAndThatIsTheCost holds that measurement so it
+//     is a fact somebody can act on rather than a risk nobody sized. The cost of
+//     a false one is under a kilobyte of prompt, once, on that turn; the cost of
+//     a tighter hand-written gate is a second reading of "is this about aforge"
+//     drifting away from the corpus's own, which is why there is not one.
+//
 //   - IT NEVER ENTERS THE FIXED PREFIX. The block rides in the user message of
 //     the turn that earned it, not in prompts/system.md and not in a tool
 //     schema, so the ~150 bytes of headroom
@@ -120,6 +131,12 @@ type manualCueTurn struct {
 // brief and not somebody asking a question, which is the same reason
 // tools_manual.go reads the node's frozen request there: nobody is sitting in a
 // worktree. A woken turn and the session's own notes are nobody asking either.
+//
+// AND IT IS DECIDED ONCE, AT THE OPENING. A sentence spliced into a turn already
+// running (steer.go) gets no cue of its own: it is a course correction to work
+// in flight rather than a question opening a turn, and a second block arriving
+// mid-turn would be the harness talking over an answer it is already helping
+// with.
 func (a *Agent) cueTurnLocked(user userMessage) {
 	a.cued = manualCueTurn{}
 	if a.config.ManualCueOff || a.config.InTask {
@@ -168,10 +185,17 @@ func (a *Agent) withManualCue(messages []ai.Message) []ai.Message {
 	// The block joins the LAST TEXT PART rather than becoming a part of its own,
 	// so the message keeps the shape it had: one text part in, one text part
 	// out, and a reader that expected the person's words at Content[0] still
-	// finds them there.
+	// finds them there. It is the last TEXT part rather than the last part
+	// because a message with a picture on it ends in the picture, and a question
+	// asked over a screenshot is still a question.
 	content := append([]ai.ContentPart(nil), carried.Content...)
-	last := len(content) - 1
-	if content[last].Type != "text" {
+	last := -1
+	for index, part := range content {
+		if part.Type == "text" {
+			last = index
+		}
+	}
+	if last < 0 {
 		return messages
 	}
 	content[last].Text += "\n\n" + cued.block
