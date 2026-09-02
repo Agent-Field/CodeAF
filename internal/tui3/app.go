@@ -1469,9 +1469,9 @@ type app struct {
 	// it is on and where it is scrolled to (jobpage.go). It is nil whenever no
 	// page is open, and it is replaced rather than reused when the page moves to
 	// another job.
-	jobDraw *jobDraw
-	taskLane    <-chan session.Event
-	taskGen     int
+	jobDraw  *jobDraw
+	taskLane <-chan session.Event
+	taskGen  int
 	// railStamp counts the times this window's own row-space MOVED — a node
 	// upserted off either lane, or a far index read landing. It is a counter and
 	// not a time because it is compared and never displayed, and it exists for

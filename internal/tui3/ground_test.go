@@ -150,7 +150,7 @@ func TestAGroundStepCoversEveryCellItIsGiven(t *testing.T) {
 			row := tc.row(p)
 			width := ansi.StringWidth(ansi.Strip(row))
 			for _, step := range []struct {
-				name string
+				name  string
 				paint func(string, int) string
 			}{
 				{"mark", p.mark},

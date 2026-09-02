@@ -211,15 +211,16 @@ here is a proposal, and the template is for defects.
 
 ## Tests
 
-`go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
-**not** yours: `internal/tui TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four
-`cmd/harness-design` tests, two `internal/guard`
-tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
-`internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly),
-and on macOS `internal/enginehost
-TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
-green with `TMPDIR=/tmp/eh`) — all verified failing at what is now `origin/dev`
-on 2026-08-26. Confirm anything else with a stash-and-rerun before chasing it.
+`go test ./internal/tui3/` takes ~150s alone and about 485s on a loaded box or a
+two-core runner; budget for it, and give it `-timeout 15m`, never `8m`, or it is
+cut off at the finish line and reports whichever test was running as a hang.
+
+**The tests that fail on a clean tree are listed in `.github/known-red.txt` and
+nowhere else.** `make test` skips them by name, and so does CI, through the same
+target — so `make check` passes on a clean tree and a red in either place means
+the change caused it. The ledger only shrinks (`internal/ci` ratchets its count):
+fix a test, delete its line, lower `knownRedEntries` in the same commit. Never
+add a line. Confirm any other red with a stash-and-rerun before chasing it.
 
 There is no longer a "flakes under load" list here. The three that were on it —
 `TestOnlyADesignsOwnThreadCarriesTheReviseVerb`,
@@ -230,9 +231,11 @@ two more that were never written down, and it was fixed rather than described
 beside it is now a bug report, not a known shape: **reproduce it, do not rerun it
 in isolation and move on.**
 
-**This list is also `.github/known-red.txt`, which CI reads and skips**, so that red
-in the full run means the change caused it. The two are the same debt written twice;
-fix a test and delete it from both in the same commit.
+**The laws run on every pull request.** `make test-laws` is every test that reads
+the tree itself with `go/ast` or `go/parser`, found by that import
+(`scripts/laws.sh`) and run in about twenty seconds; the pull-request gate runs it
+and the full suite of every package the change touched. Write a structural test
+with that import and it is on the gate the day it lands.
 
 **The tmux TUI suite** is the only test that drives the real binary in a real
 terminal against a real model, and it is how a wave verifies that the surface

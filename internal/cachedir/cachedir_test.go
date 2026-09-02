@@ -70,12 +70,12 @@ func TestAnAbsentCacheIsZeroAndNoError(t *testing.T) {
 // a person deciding whether to delete something.
 func TestHumanReadsAtEveryRung(t *testing.T) {
 	cases := map[int64]string{
-		0:                "0 B",
-		512:              "512 B",
-		1536:             "1.5 KB",
-		539 * 1 << 20:    "539.0 MB",
-		2761 * 1 << 20:   "2.7 GB",
-		3 * 1 << 30 / 2:  "1.5 GB",
+		0:               "0 B",
+		512:             "512 B",
+		1536:            "1.5 KB",
+		539 * 1 << 20:   "539.0 MB",
+		2761 * 1 << 20:  "2.7 GB",
+		3 * 1 << 30 / 2: "1.5 GB",
 	}
 	for size, want := range cases {
 		if got := Human(size); got != want {
