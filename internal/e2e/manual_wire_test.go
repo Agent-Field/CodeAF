@@ -95,10 +95,11 @@ func TestManualOnTheWire(t *testing.T) {
 	w := newManualWorld(t)
 	started := time.Now()
 
-	plain := askOnTheWire(t, w, "the twenty-five", asked.Plain)
-	held := askOnTheWire(t, w, "held out", asked.HeldOut)
+	plain, plainUSD := askOnTheWire(t, w, "the twenty-five", asked.Plain)
+	held, heldUSD := askOnTheWire(t, w, "held out", asked.HeldOut)
 
-	t.Logf("THE WIRE, in %s", time.Since(started).Round(time.Second))
+	t.Logf("THE WIRE, in %s · THIS PASS SPENT $%.4f (the twenty-five $%.4f, held out $%.4f)",
+		time.Since(started).Round(time.Second), float64(plainUSD+heldUSD), float64(plainUSD), float64(heldUSD))
 	plain.report(t, "the twenty-five")
 	held.report(t, "held out")
 
@@ -159,6 +160,16 @@ func (a wireAsk) mark() string {
 // wireRun is one set of questions, asked.
 type wireRun []wireAsk
 
+// wireSpend is what one set of questions cost, summed off the machine's own
+// ledger as each question is asked.
+//
+// IT IS SUMMED HERE BECAUSE IT CANNOT BE SUMMED AFTERWARDS. The ledger lives
+// under the throwaway home this lane runs on ([newWorld]), which goes with the
+// test, and a lane that reports a measurement without its price is a lane whose
+// next pass has to be argued for from memory. The figure was recoverable
+// nowhere at all until this line existed (#321).
+type wireSpend float64
+
 func (r wireRun) count() (opened, first, within int) {
 	for _, one := range r {
 		if one.opened {
@@ -216,29 +227,33 @@ func (r wireRun) hold(t *testing.T, name string, firstFloor, withinFloor int) {
 }
 
 // askOnTheWire puts every question of one set to its own fresh conversation.
-func askOnTheWire(t *testing.T, w *world, name string, set []asked.Question) wireRun {
+func askOnTheWire(t *testing.T, w *world, name string, set []asked.Question) (wireRun, wireSpend) {
 	t.Helper()
 	run := make(wireRun, 0, len(set))
+	spent := wireSpend(0)
 	for at, question := range set {
-		one := askOneOnTheWire(t, w, question)
+		one, usd := askOneOnTheWire(t, w, question)
+		spent += wireSpend(usd)
 		run = append(run, one)
 		t.Logf("  %s %2d/%2d %s %-52s searched=%q got=%v",
 			name, at+1, len(set), one.mark(), one.question, one.query, one.pages)
 	}
-	return run
+	return run, spent
 }
 
 // askOneOnTheWire is one question, one conversation, and the journal read back.
 // A turn where the model never opened the manual is asked once more — see
 // [wireAttempts] — and a lookup that happened stands whatever it returned.
-func askOneOnTheWire(t *testing.T, w *world, question asked.Question) wireAsk {
+func askOneOnTheWire(t *testing.T, w *world, question asked.Question) (wireAsk, float64) {
 	t.Helper()
 	found := wireAsk{question: question.Ask, want: question.Want}
+	spent := 0.0
 	for attempt := 1; attempt <= wireAttempts; attempt++ {
 		started := time.Now()
 		agent, place := w.open(aPlainWorkspace(t), manualConfig)
 		out := w.say(agent, question.Ask, answerYes)
 		usd, models := ledgerSince(t, started)
+		spent += usd
 		found.broke = out.Err != nil
 		if found.broke {
 			t.Logf("    %q never got an answer: %v", question.Ask, out.Err)
@@ -256,13 +271,13 @@ func askOneOnTheWire(t *testing.T, w *world, question asked.Question) wireAsk {
 		found.query, found.pages = searchedFor(calls), pagesReturnedTo(calls)
 		found.opened = len(calls) > 0
 		if found.opened {
-			return found
+			return found, spent
 		}
 		if attempt < wireAttempts {
 			t.Logf("    %q was answered without opening the manual (%v); asking once more", question.Ask, out.names())
 		}
 	}
-	return found
+	return found, spent
 }
 
 // searchedFor is the query the model composed, which is the whole subject of
