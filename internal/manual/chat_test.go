@@ -47,6 +47,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// a context size asks for "tokens", never for "in" and "out", so the
 		// asker's word is what the heading has to carry.
 		{"how many tokens did that call use", "models-and-cost"},
+		// THE DEBUG RECORD, asked the four ways somebody arrives at it: wanting
+		// the record, wanting the switch, hunting the folder afterwards, and
+		// bringing the word every other program taught them for it.
+		{"how do I see what happened", "debug-record"},
+		{"how do I turn on the debug log", "debug-record"},
+		{"where is the debug record", "debug-record"},
+		{"turn on logging", "debug-record"},
+		{"what does /debug do", "debug-record"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.

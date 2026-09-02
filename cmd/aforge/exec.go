@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 // execEnvelope is the machine contract for one-shot harness callers. It
@@ -40,9 +41,20 @@ func runExec(args []string) error {
 	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
 	asJSON := flags.Bool("json", false, "print a machine-readable result")
 	output := flags.String("o", "", "write the machine-readable result to this file")
+	debug := flags.Bool("debug", false,
+		"keep the full record of this run — call bodies, tool calls and the choices made — "+
+			"in a folder of its own under the state root (env AFORGE_DEBUG)")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
+	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
+	// can make a call, so every record this run leaves names the same run. The
+	// folder is announced on the way out and only when something was written.
+	if *debug {
+		trace.Enable()
+	}
+	traced := trace.Begin(context.Background())
+	defer trace.Announce(traced, os.Stderr)
 	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
 		return err
 	}
@@ -80,7 +92,7 @@ func runExec(args []string) error {
 	}
 	defer closeRouter(client)
 
-	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stopSignals := signal.NotifyContext(traced, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	deadline := execDeadline(*maxTokens, *timeout)
 	if *timeout > 0 {

@@ -27,6 +27,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -93,17 +94,30 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many hours an unattended --yolo session may carry its own work on (env AFORGE_MAX_HOURS)")
 	maxCost := flags.Float64("max-cost", envFloat("AFORGE_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env AFORGE_MAX_COST)")
+	debug := flags.Bool("debug", false,
+		"keep the full record of this run — call bodies, tool calls and the choices made — "+
+			"in a folder of its own under the state root (env AFORGE_DEBUG; /debug turns it on mid-session)")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
+	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
+	// door, before anything can make a call — because a record written under a
+	// second id, or under none, is a record nothing can be joined to. The id is
+	// minted whether or not the switch is on: /debug can turn the record on
+	// halfway through a conversation, and it needs a run to turn it on for.
+	if *debug {
+		trace.Enable()
+	}
+	ctx := trace.Begin(context.Background())
+	defer trace.Announce(ctx, os.Stderr)
 	if flags.NArg() != 0 {
 		// Resume's usage names no --once and no --session: it opens a list of
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -293,7 +307,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// too would be a second copy of a decision that is made correctly one
 		// layer down, and it would take the `/subharness` list away from a door
 		// that may yet grow one.
-		return runChatV3Once(cfg, text, level, resumed)
+		return runChatV3Once(ctx, cfg, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
@@ -431,7 +445,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		}()
 	}
 
-	return tui3.Run(context.Background(), tui3.Options{
+	return tui3.Run(ctx, tui3.Options{
 		Agent: agent,
 		Build: buildinfo.String(),
 		// The memory place and the search place read the SAME database the
@@ -2117,7 +2131,7 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(cfg session.Config, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
@@ -2131,7 +2145,7 @@ func runChatV3Once(cfg session.Config, text, level string, resumed bool) error {
 	}
 	defer func() { _ = agent.Close() }()
 
-	events, err := agent.Submit(context.Background(), text)
+	events, err := agent.Submit(ctx, text)
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 // THE COMMAND LIST: type "/" and what you can type appears.
@@ -384,6 +385,15 @@ var commands = []command{
 	{name: "manual", desc: "aforge's own manual · every page, one per line"},
 	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
 	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
+	// AND THE ROW FOR THE DAY SOMETHING GOES WRONG, directly above /help for the
+	// reason /manual sits there: it is the third thing a person reaches for when
+	// they are stuck, after the list of commands and the page that explains one.
+	//
+	// It is this far down the table because [menuRows] shows eight rows at once
+	// and position here is a claim about frequency — nobody turns the record on
+	// twice in a day, and a row inserted higher would push a daily command
+	// behind a scroll.
+	{name: "debug", desc: "keep the full record of this run · says where it goes"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
@@ -986,4 +996,34 @@ func modelArg(rest string) (modelIntent, string) {
 		return modelQuery, rest
 	}
 	return modelSwitch, rest
+}
+
+// runDebugCommand is /debug: keep the full record of this run from here on.
+//
+// IT IS ONE-WAY, and that is the whole design. A person types it because
+// something has already gone wrong, and a switch that could be turned off again
+// would only ever produce half a record — the half after the thing they were
+// trying to catch. The other two doors mean the same thing (--debug on the
+// command line, AFORGE_DEBUG in a shell), and this one exists for the case
+// neither of them can serve: the conversation is already open, and the turn
+// worth recording is the next one.
+//
+// It ANSWERS both ways round. Turning it on says where the record goes, because
+// a command that recorded something and did not say where would leave a person
+// hunting a folder; typing it twice says it is already on and where, because
+// silence after a deliberate command reads as a command that broke.
+func (a *app) runDebugCommand() {
+	folder := trace.Dir(trace.RunFrom(a.ctx))
+	if folder == "" {
+		// No run to record — a surface opened by something that did not begin
+		// one. Saying so is better than turning on a record that goes nowhere.
+		a.note("this conversation has no run to record.")
+		return
+	}
+	if trace.Enabled() {
+		a.note("the record is already on · it goes to " + folder)
+		return
+	}
+	trace.Enable()
+	a.note("recording this run · it goes to " + folder)
 }
