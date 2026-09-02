@@ -1958,3 +1958,127 @@ Nothing here chooses between them.
 **No constant was touched, no arm was re-run for a better number, and the
 tiebreaker is disclosed in full** — all four figures above travel together
 wherever this arm is reported.
+
+## The long-think gate, restated — and the ungated regime is permanent
+
+**The gate is now: ≥95% enforced at full force on every WARMED arm, and
+REPORTED on cold ones.** Not an allowance for being cold. What follows is the
+mechanism, measured twice — once off the code and once in the rig — because the
+claim that made the restatement reasonable ("cold is transient") turned out to
+be false, and the report says what the number says.
+
+### (a) From the code: the duration clock's gate never closes
+
+§B's second test asks whether a wait is past the `1 − p` quantile of the
+survival its clock reads. For the duration clock that survival is
+`lane.Thinks` → `chains.Think(...).Survival(SpreadFloor, 1)`, and the line that
+decides everything is `Chain.Survival` in `internal/lane/waiting.go`:
+
+```go
+return control.Survival{Mu: mu - math.Log(unit), Sigma: math.Max(math.Sqrt(variance), draw)}
+```
+
+**σ is the LARGER of the estimate's spread and the draw's, and a thinking phase
+has no published draw** — `Thinks` passes `SpreadFloor` and says so: *"A THINKING
+PHASE HAS NO PUBLISHED DISPERSION. No sheet says how much one run of thought
+varies around this model's usual one, so the prior stands here."* So σ can never
+fall below 1.0 nat however much evidence arrives, and the quantile is pinned at
+`median · e^(z·1.0)`.
+
+`TestWhenTheThinkGateCloses` (`bench/lanelab/gosim/thinkgate_test.go`) folds
+thoughts through the real `lane.NoteThought` door and reads it back:
+
+| observations *n* | μ | **σ** | median | quantile at z = 2.7131 | inside the 10 s ceiling |
+|---:|---:|---:|---:|---:|---|
+| 0 | 2.079 | 1.432 | 8.00 s | 389.14 s | no |
+| 1 | 1.745 | 1.040 | 5.73 s | 96.28 s | no |
+| 2 | 1.712 | **1.000** | 5.54 s | 83.55 s | no |
+| 5 | 1.705 | **1.000** | 5.50 s | 82.93 s | no |
+| 10 | 1.705 | **1.000** | 5.50 s | 82.91 s | no |
+| 20 | 1.705 | **1.000** | 5.50 s | 82.91 s | no |
+| 60 | 1.705 | **1.000** | 5.50 s | 82.91 s | no |
+
+**σ bottoms out at exactly `SpreadFloor` by n = 2 and never moves again.** The
+quantile settles at **82.9 s against a 10 s ceiling**. Rearranged, the duration
+clock can act before the ceiling only for a model believed to think for less
+than `ceiling · e^(−z·SpreadFloor)` = **0.663 s**. The test fails the build if
+that ever stops being true, so this table cannot go stale silently.
+
+### (b) In the rig: warming the think chain changes nothing
+
+The disputed arm — `cold · shipped · stress`, seeds **31 / 37 / 41**, **150
+requests per row per seed**, 450 trials a row, **2,250 trials per point** — with
+the think chain warmed by *n* observations per model and nothing else changed:
+
+| *n* | long think, not hedged | phases |
+|---:|---:|---:|
+| 0 | 96.85% | 222 |
+| 1 | 94.64% | 224 |
+| 2 | 96.85% | 222 |
+| 5 | 97.74% | 221 |
+| 10 | 95.41% | 218 |
+| 20 | 95.48% | 221 |
+| 60 | **93.72%** | 223 |
+
+**There is no trend.** The seven points scatter between 93.72% and 97.74% with
+no monotone improvement, and **the largest n is the lowest reading**. That is
+what a quantity independent of *n* looks like, and it is what the code above
+predicts: the duration clock never fires either way, so the rate is measuring
+the world's think-tail rather than anything a warmed chain would sharpen.
+
+### The deliverable, in the form it was asked for
+
+> **The gate closes at n ≈ never.** σ is pinned at `SpreadFloor` from n = 2
+> onward and the quantile stays 8× the ceiling forever.
+>
+> **The long-think rate crosses 95% at n ≈ nothing — it is not a function of
+> n.** It scatters either side of 95% at every n tried, including n = 0 and
+> n = 60.
+
+### THE LIMITATION, NAMED
+
+**For the duration clock there is no warm-up period: the ungated regime is
+permanent.** A person using any model that deliberates for more than about two
+thirds of a second is in it on their first answer and on their ten-thousandth,
+and **only the role's 10 s ceiling protects a long think** — the abnormality
+test that was supposed to tell a deliberating model from a hung one cannot fire
+before that ceiling at any amount of evidence. On a `talk` turn that is a
+bounded, ordinary wait; on the roles whose ceilings are 30 and 60 seconds it is
+the same structure with a longer bound.
+
+**What would shrink it, named:** (1) **seed the think chain's spread from the
+hierarchy's own prior** so the estimate can beat `SpreadFloor` and σ falls with
+evidence, which is what already happens for the first-token and gap clocks
+because the sheet publishes a dispersion for them; or (2) **give the duration
+clock a drift quantile of its own** — judge a stopped thought against the gap
+between reasoning deltas rather than against the whole phase's length, which is
+a distribution that does sharpen. Both are mechanism changes and neither is
+taken here.
+
+### The verdicts at the restated gate
+
+| arm | long think | at the restated gate |
+|---|---:|---|
+| cold · shipped · stress, familiar | 94.67% of 225 | **REPORTED** |
+| cold · flat · stress, familiar | 95.52% of 223 | REPORTED |
+| cold · shipped · stress, held out | 97.33% of 225 | REPORTED |
+| cold · flat · stress, held out | 95.54% of 224 | REPORTED |
+| warmed · shipped · stress, familiar | **98.22% of 225** | **PASS** |
+| warmed · flat · stress, familiar | 97.77% of 224 | PASS |
+| warmed · shipped · natural, familiar | **97.66% of 427** | **PASS** |
+| warmed · flat · natural, familiar | 97.64% of 424 | PASS |
+| warmed · shipped · stress, held out | **97.33% of 225** | **PASS** |
+| warmed · flat · stress, held out | 98.67% of 225 | PASS |
+| warmed · shipped · natural, held out | **97.18% of 426** | **PASS** |
+| warmed · flat · natural, held out | 97.18% of 425 | PASS |
+
+**Every warmed arm passes at full force on both seed sets**, the closest being
+97.18%. The disputed cold arm is reported rather than gated, and the four
+figures that were in dispute — 94.67, 97.33, 95.52 and 95.53 with a Wilson
+interval of [93.97%, 96.70%] — stand exactly as measured; the threshold finding
+above is not withdrawn, it is explained.
+
+**The committed artifacts predate the restatement**, so their `gated` flags on
+this criterion still read `true` for the cold arms. Every measured value is
+unchanged; only which of them carries a verdict has moved, and the table above is
+that mapping.

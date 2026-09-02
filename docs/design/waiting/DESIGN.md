@@ -950,11 +950,50 @@ rather than about the average:
 | **time-to-action, stalled lane, cold store, talk role** | ≤ 10 s in **100%** of trials | it is the invariant. Not a percentile: a ceiling that holds 99% of the time is not a ceiling. |
 | **false hedges on a healthy lane** | ≤ **2%** of requests | Dean & Barroso's measured figure for how much extra traffic removes most of a p99. Above it the deadline is firing early and the money is real. |
 | **spend overhead** | ≤ **3%** of the arm's own bill | the sheet's own price spread is 4.7× between the dearest and the median lane, so 3% is well inside the noise of choosing a different lane at all. |
-| **long think, not hedged** | ≥ **95%** of legitimate thinking phases finish without an arm | the failure mode this design most risks introducing. |
+| **long think, not hedged** | ≥ **95%** of legitimate thinking phases finish without an arm — **on an arm whose store has been warmed**; REPORTED where it has not | the failure mode this design most risks introducing. The warmed/cold split is not an allowance, and the next paragraph is why. |
 
 Two more, reported and not gated, because they are what the next argument will
 be about: the distribution of `s` at the moment of action, and the share of
 actions that were `Report` rather than `Hedge`.
+
+**Where each criterion is enforced.** The four are measured on several arms — a
+store that has watched answers and one that has not, a rig that breaks half of
+everything and a mix that breaks one request in twenty — and they do not all
+mean the same thing on all of them. The shape, with `bench/lanelab/REPORT.md`
+carrying the numbers:
+
+| criterion | gated on | reported on |
+| --- | --- | --- |
+| time-to-action | every arm — it is the invariant | — |
+| false hedges ≤ 2% | warmed arms | cold arms, where an arm is exploration |
+| spend, avoidable | a warmed arm at the natural fault rate | everywhere else |
+| spend, total | — | every arm, against the no-policy baseline |
+| long think ≥ 95% | **warmed arms, at full force** | **cold arms** |
+
+**And why the long think splits that way, which is a defect rather than a
+convenience.** §B's second test asks whether a wait is past the `1 − p` quantile
+of the survival its clock reads. For the duration clock that survival is the
+model's whole thinking phase — and **a thinking phase has no published
+dispersion**, so `Chain.Survival` floors its spread at `SpreadFloor` and the
+quantile settles at about `median · e^(z·SpreadFloor)`: roughly fifteen times
+the believed median, which for a ten-second ceiling is **eighty-three seconds**.
+
+**That floor never lifts.** The spread is the larger of the estimate's and the
+draw's, and there is no published draw for the estimate ever to beat, so no
+amount of evidence moves it — measured at 0, 1, 2, 3, 4, 5, 10, 20 and 60
+observations, σ is exactly `SpreadFloor` at every one. **So the duration clock
+can never act before the ceiling for any model that deliberates for more than
+about two thirds of a second**, and on an arm with no timing belief the
+long-think rate stops being a fact about the controller: it counts how often the
+world's own thinking phase outlasts the ceiling. That is a property of the model
+and of the role's patience, and no correct policy changes it. On a warmed arm
+the first-token and gap clocks are sharp, the arms that land inside a thought
+are ones a policy really does decide, and the criterion is about the build
+again — so that is where it binds.
+
+**The fix is named and not taken here**: seed the think chain from the
+hierarchy's own prior so the estimate can beat the floor, or give the duration
+clock a drift quantile of its own. Both change a mechanism.
 
 ### The live A/B
 
