@@ -80,17 +80,23 @@ var (
 	// stepped over.
 	deadlineAssignment = regexp.MustCompile(`(^|[^=!<>])(:?=)([^=]|$)`)
 	// deadlineFieldKey is the other way a room is handed over: a struct
-	// literal's `Deadline: 20 * time.Minute,`. The key must be an identifier,
-	// which keeps map literals keyed by string and `case` clauses out.
-	deadlineFieldKey = regexp.MustCompile(`^([A-Za-z_]\w*)\s*:\s*(\S.*?),?$`)
+	// literal's `Deadline: 20 * time.Minute`, wherever on the line it sits —
+	// `cfg := Config{Deadline: 20 * time.Minute}` hands one over as squarely as
+	// its own line does. The key must be an identifier standing directly before
+	// the colon and directly after a brace, a comma or the start of the line,
+	// which keeps `case x:` clauses and map literals keyed by strings out. A
+	// value stops at a brace as well as a comma, so that the outer write on
+	// `cfg := Config{...}` does not swallow the field write inside it.
+	deadlineFieldKey = regexp.MustCompile(`(?:^|[{,])\s*([A-Za-z_]\w*)\s*:\s*([^,{}]+)`)
 	// deadlineTarget is what makes a write a LEAF-ROOM write: the thing being
 	// written is called a deadline or a watchdog. A selector counts, because
-	// `shaped.deadline` is the same act as `deadline`.
-	deadlineTarget = regexp.MustCompile(`(?i)deadline|watchdog`)
+	// `shaped.deadline` is the same act as `deadline`. The word ends where the
+	// name does: `leafDeadline` is a room, and `deadlineExceeded` is an error.
+	deadlineTarget = regexp.MustCompile(`(?i)(deadline|watchdog)\b`)
 	// deadlineSized is a right-hand side that decides a length of time for
 	// itself rather than being handed one — a unit, or a duration built out of
 	// a number.
-	deadlineSized = regexp.MustCompile(`time\.(Minute|Second|Hour)\b|time\.Duration\(`)
+	deadlineSized = regexp.MustCompile(`time\.(Minute|Second|Hour|Millisecond)\b|time\.Duration\(`)
 	// deadlineAsks is the whole of the permitted way to come by a leaf's room:
 	// the table's two doors onto the shape, and the one door onto the pad.
 	deadlineAsks = regexp.MustCompile(`\.Deadline\(|\.Watchdog\(|WatchdogAbove\(`)
@@ -98,7 +104,10 @@ var (
 	// arithmetic in any spelling at all: a token count turned into a duration.
 	// It catches the copy that names its variable something else entirely,
 	// which the target rule above would let through.
-	deadlineFromTokens = regexp.MustCompile(`(?i)time\.Duration\([^)]*okens[^)]*\)\s*\*|okens\s*/\s*\d[\d_]*\s*\)?\s*\*\s*time\.(minute|second|hour)`)
+	// The cast is matched greedily rather than up to the first `)`, so that a
+	// token count wrapped in a call of its own — `time.Duration(max(tokens, 1))`
+	// — is the same copy of the arithmetic it plainly is.
+	deadlineFromTokens = regexp.MustCompile(`(?i)time\.Duration\(.*okens.*\)\s*\*\s*time\.|okens\s*/\s*\d[\d_]*\s*\)?\s*\*\s*time\.(minute|second|hour)`)
 	// deadlinePad is a pad added to something called a deadline. It is
 	// deliberately not a search for "2 * time.Minute": two minutes is an
 	// ordinary length of time and several unrelated ones are correct; what is
@@ -115,25 +124,31 @@ const (
 	roomSizes   = "size"
 )
 
-// deadlineWriteTarget returns the thing a line of code writes to, and the value
-// it writes, for the two shapes a leaf's room is ever handed over in: an
-// assignment, and a struct literal's field. It returns false for a line that
-// writes nothing.
+// deadlineWrite is one place a line of code hands something over: the thing
+// written to, and the value written there.
+type deadlineWrite struct{ target, value string }
+
+// deadlineWrites returns every write on a line, in the two shapes a leaf's room
+// ever arrives in: an assignment, and a struct literal's field. A line can do
+// both at once — `cfg := Config{Deadline: 20 * time.Minute}` writes to cfg and
+// to Deadline — and it is the inner one the law is about, so every write is
+// returned rather than the first one found.
 //
 // It is deliberately textual rather than a parse of the file. The law is about
 // one line a reader's eye lands on, the failure names that line back to them,
 // and the fixtures below can then be exactly the strings a person would write.
-func deadlineWriteTarget(code string) (target, value string, writes bool) {
+func deadlineWrites(code string) []deadlineWrite {
+	var writes []deadlineWrite
 	if seam := deadlineAssignment.FindStringSubmatchIndex(code); seam != nil {
 		// Group two is the operator itself; everything before it is the target,
 		// with any compound-assignment operator trimmed off the end.
 		left := strings.TrimRight(code[:seam[4]], " \t+-*/%&|^")
-		return strings.TrimSpace(left), strings.TrimSpace(code[seam[5]:]), true
+		writes = append(writes, deadlineWrite{strings.TrimSpace(left), strings.TrimSpace(code[seam[5]:])})
 	}
-	if field := deadlineFieldKey.FindStringSubmatch(code); field != nil {
-		return field[1], field[2], true
+	for _, field := range deadlineFieldKey.FindAllStringSubmatch(code, -1) {
+		writes = append(writes, deadlineWrite{field[1], strings.TrimSpace(field[2])})
 	}
-	return "", "", false
+	return writes
 }
 
 // leafRoomFinding is the whole predicate, on one line of code, with the file it
@@ -143,11 +158,12 @@ func leafRoomFinding(code string) string {
 	if deadlinePad.MatchString(code) {
 		return roomPads
 	}
-	if target, value, writes := deadlineWriteTarget(code); writes &&
-		deadlineTarget.MatchString(target) &&
-		deadlineSized.MatchString(value) &&
-		!deadlineAsks.MatchString(value) {
-		return roomSizes
+	for _, write := range deadlineWrites(code) {
+		if deadlineTarget.MatchString(write.target) &&
+			deadlineSized.MatchString(write.value) &&
+			!deadlineAsks.MatchString(write.value) {
+			return roomSizes
+		}
 	}
 	if deadlineFromTokens.MatchString(code) {
 		return roomSizes
@@ -230,14 +246,20 @@ func TestTheLeafRoomLawReadsTheActNotTheSpelling(t *testing.T) {
 			"nothing here is called a deadline; the room came from elsewhere"},
 		{"for giveUpAt := time.Now().Add(5 * time.Second); r.promotingNow() && time.Now().Before(giveUpAt); {", roomAllowed,
 			"an instant a poll loop gives up at is not a room; naming it so is the fix, not an exception"},
+		{"deadlineExceeded := 5 * time.Minute", roomAllowed,
+			"the word ends where the name does; an error is not a room"},
 		{"deadline := 900 * time.Second", roomSizes,
 			"the old predicate read digits and this spelling walked past it"},
 		{"shaped.deadline = 15 * time.Minute", roomSizes,
 			"a leaf's room written out longhand, which is the whole law"},
 		{"Deadline: 20 * time.Minute,", roomSizes,
 			"a struct field hands a room over exactly as an assignment does"},
+		{"cfg := Config{Deadline: 20 * time.Minute}", roomSizes,
+			"a field hands a room over wherever on the line it sits"},
 		{"leafDeadline = time.Duration(tokens/50_000) * time.Minute", roomSizes,
 			"the table's own arithmetic, copied"},
+		{"deadline := time.Duration(max(tokens, 1)) * time.Minute", roomSizes,
+			"a call around the token count does not make it a different copy"},
 		{"watchdog := deadline + 2*time.Minute", roomPads,
 			"a watchdog derived from a deadline by hand"},
 	} {
