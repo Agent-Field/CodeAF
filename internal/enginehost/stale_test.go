@@ -7,8 +7,8 @@ package enginehost
 //
 // These stand a REAL host on a REAL unix socket, which is why they go through
 // [shortHome] — a socket path has about a hundred bytes to spend and a Mac's
-// TMPDIR eats most of them before the test has said anything (CLAUDE.md names
-// the workaround: TMPDIR=/tmp/eh).
+// TMPDIR eats most of them before the test has said anything, so the home is
+// made under /tmp directly and never under whatever TMPDIR happens to be.
 
 import (
 	"os"
