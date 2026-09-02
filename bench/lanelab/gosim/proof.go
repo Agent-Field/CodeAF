@@ -119,30 +119,44 @@ const (
 	// gateAvoidablePct is what a controller may spend on arms that bought
 	// nothing, as a share of the arm's own bill.
 	//
-	// ── WHERE THIS NUMBER COMES FROM, AND WHY IT IS NOT THREE ───────────────
+	// ── WHY THE FLAT 3% ON THE TOTAL IS NOT THE GATE ────────────────────────
 	//
-	// §K's spend clause was a flat 3% of the bill and it is withdrawn on the
-	// natural mix as infeasible by arithmetic: a rescue is a whole second
-	// request, so rescue overhead is about the fault rate whatever the policy
-	// is, and at one fault in twenty no controller that rescues stalls — not
-	// even one that armed the broken requests and only those — can come in
-	// under three per cent. The baseline arm measures that floor rather than
-	// arguing it.
+	// §K's spend clause was a flat 3% of the whole bill, and on the natural mix
+	// it is REPORTED rather than gated. The reason is not that the total is
+	// forced: a lane of this bench once claimed a rescue was an unavoidable
+	// arithmetic floor, and THE BASELINE ARM REFUTED IT — a build with no
+	// waiting policy at all, which never arms and never rescues, came in at
+	// $1.3930 and $1.4194 against the policy's $1.3725 and $1.4812 on the same
+	// worlds. A cheaper way to spend the money exists; it just answers a broken
+	// request twenty seconds later instead of ten.
 	//
-	// What a controller CAN be held to is the avoidable half: arms on healthy
-	// requests, and arms on faults that then lost to the lane they were
-	// rescuing. That was measured at 0.85% and 0.64% on the two seed sets, a
-	// spread of about two tenths of a point, so a ceiling of 3% would tolerate
-	// a three-and-a-half-fold regression before it said anything — which is a
-	// gate that cannot fail and therefore is not a gate.
+	// So the total is a PRICE and not a floor, and what it buys is latency. It
+	// is reported with the baseline beside it so that a reader can see the
+	// exchange rate rather than be told a number was inevitable.
 	//
-	// THE CEILING IS THE MEASUREMENT TIMES A HALF AGAIN: max(0.85, 0.64) × 1.5
-	// = 1.28%, rounded to 1.3%. Half again is roughly six times the observed
-	// seed-to-seed spread, so an honest seed cannot fail it; anything larger is
-	// a real regression and this gate is meant to catch one. It is a figure
-	// about THIS bench's world and it moves when the measurement does — which
-	// is the point of writing the derivation down beside it.
-	gateAvoidablePct = 1.3
+	// ── WHAT A CONTROLLER CAN BE HELD TO ────────────────────────────────────
+	//
+	// The avoidable half: arms on healthy requests, and arms on faults that then
+	// lost to the lane they were rescuing. Nothing else in the bill is a
+	// decision this package makes badly rather than a decision it makes.
+	//
+	// THE CEILING IS THE MEASURED MAXIMUM ACROSS BOTH SEED SETS TIMES A HALF
+	// AGAIN. On the four gated arms — a warmed store at the natural rate,
+	// against both doors, on seeds 7/9/11 and 23/25/27 — avoidable measured
+	// 0.55%, 0.60%, 0.41% and 0.50%. The maximum is 0.60% and 0.60 × 1.5 = 0.90.
+	// The seed-to-seed spread on one door is 0.14 and 0.10 points, so half again
+	// leaves about two to three times that as headroom: an honest seed cannot
+	// fail it and a doubling is caught.
+	//
+	// IT WAS RE-DERIVED, AND THE FIRST DERIVATION WAS NOT THIS. An earlier pass
+	// set it at 1.3% from `waste on a healthy lane` — a PROXY measured before
+	// the avoidable metric existed — on both seed sets. This figure is derived
+	// from the avoidable metric itself, on both seed sets, and it is lower.
+	//
+	// AND A CEILING FITTED TO ITS OWN RUN CANNOT FAIL THAT RUN. This bound is a
+	// ratchet against the next change, not an independent test of this one, and
+	// REPORT.md says so where the number appears.
+	gateAvoidablePct = 0.90
 )
 
 // ── THE STAGING ─────────────────────────────────────────────────────────────
@@ -603,16 +617,16 @@ type proofRow struct {
 	// Of the money a second request costs, some of it could not have been
 	// spent differently by ANY policy and some of it could. An arm on a request
 	// that was never in trouble bought nothing, won or lost. An arm that
-	// rescued a genuine stall bought the answer — the first attempt was
-	// unavoidable, because nothing knew it would stall, and the second was
-	// necessary, because it is what answered. What is left over is an arm that
+	// rescued a genuine stall bought the answer — nothing knew the first attempt
+	// would stall, and the second is what answered. What is left over is an arm that
 	// went out on a fault and then LOST to the lane it was rescuing: the stall
 	// ended on its own and the money is gone.
 	//
 	// So Avoidable is every healthy arm plus every rescue arm that lost, and it
-	// is the figure a gate can hold a controller to. The rest is the arithmetic
-	// floor under any build that rescues stalls at all, which the baseline arm
-	// measures rather than argues.
+	// is the figure a gate can hold a controller to. The rest is what a rescue
+	// COSTS rather than what any build must pay: the baseline arm answers the
+	// same workload without arming at all, for a comparable bill and a wait
+	// twice as long on the requests that went wrong.
 	Avoidable    float64 `json:"usd_avoidable"`
 	AvoidablePct float64 `json:"avoidable_overhead_pct"`
 	ArmsLost     int     `json:"arms_on_a_fault_that_lost"`
@@ -1902,15 +1916,15 @@ func proofGates(rows []proofRow, store, mix, policy string) []proofGate {
 		// mechanism add to a real bill — so the TOTAL is gated.
 		// AVOIDABLE IS THE ONLY HALF A CONTROLLER IS GRADED ON, and it is gated
 		// on the mix where a bill means something. §K's flat clause on the TOTAL
-		// is withdrawn on the natural mix as infeasible by arithmetic — see
-		// [gateAvoidablePct] and the baseline arm — and reported everywhere.
+		// is reported instead — see [gateAvoidablePct]: the total is a price and
+		// the baseline arm is what says what it buys.
 		{Criterion: "spend overhead, avoidable",
 			Threshold: fmt.Sprintf("<= %.1f%% of the arm's own bill", gateAvoidablePct),
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", avoidPct, usd),
 			Where:     "healthy arms, and rescues that lost",
 			Value:     avoidPct, Gated: steady && natural, Pass: avoidPct <= gateAvoidablePct},
 		{Criterion: "spend overhead, total",
-			Threshold: "reported; a rescue is a whole second request",
+			Threshold: "reported; read it against the baseline arm's bill",
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", spendPct, usd),
 			Where:     "every case",
 			Value:     spendPct, Gated: false},

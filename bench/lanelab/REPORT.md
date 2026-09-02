@@ -1673,3 +1673,162 @@ and no alternative, so every act it can possibly raise is a `Report`: it armed
 seeds and the same world. A cold-store cost figure is therefore a floor produced
 in part by having nowhere to go, and the correct comparison for any future
 candidate is the warmed arm, where the frontier is real and an arm is a choice.
+
+## The baseline, the price of a rescue, and one red gate
+
+*`go run ./bench/lanelab/gosim -proof` twice, 2026-09-01, on `feat/waiting-policy`
+at `a4293566`. **Seven arms per seed set**: a cold store on the stress mix and a
+warmed store on both mixes, each against both doors, plus **a baseline with no
+waiting policy at all** on the warmed natural mix. Five rows an arm,
+**150 requests per row per seed**, **450 trials per row**, **2,250 per arm**,
+**15,750 per seed set**, **31,500 in all**. Familiar seeds **7 / 9 / 11**;
+held out **23 / 25 / 27**, never used in this lane before. `gosim/proof.json`
+and `gosim/proof-fresh.json` are the two runs.*
+
+**The stress mix stages a fault on 50% of requests; the natural mix on 5%** —
+one in twenty, scattered, never the first. Both rates are printed on every table.
+
+### A premise this lab asserted, and the measurement that refuted it
+
+An earlier section of this file argued that the spend clause could not be met
+because a rescue is a whole second request, and called the residue a floor under
+any build that rescues stalls. **That was an argument, not a measurement, and
+the baseline arm refutes it.** A build with no controller, no deadline and no
+arms — the transport's own guard, and a serial re-send when it fires — answers
+the same workload:
+
+| natural mix, warmed store | bill | every request p50 / p90 | **on a fault** p50 / p90 |
+|---|---:|---|---|
+| **baseline**, no waiting policy, familiar | $1.3930 | 0.91 s / 10.75 s | **20.15 s / 30.95 s** |
+| policy, `shipped` door, familiar | $1.3725 | 0.92 s / 10.53 s | **10.76 s / 20.18 s** |
+| policy, `flat` door, familiar | $1.4398 | 0.93 s / 10.79 s | 10.92 s / 20.19 s |
+| **baseline**, no waiting policy, held out | $1.4194 | 0.89 s / 11.01 s | **20.13 s / 30.49 s** |
+| policy, `shipped` door, held out | $1.4812 | 0.90 s / 10.84 s | **10.18 s / 20.22 s** |
+| policy, `flat` door, held out | $1.4708 | 0.87 s / 11.09 s | 10.90 s / 20.21 s |
+
+**A cheaper way to spend the money exists.** It answers a broken request about
+ten seconds later. So the rescue premium is **a price, and what it buys is
+latency** — not a floor anybody is forced to pay.
+
+**The exchange rate, stated:** on the fault case the policy halves the wait —
+20.15 s → 10.76 s at the median on familiar seeds, 20.13 s → 10.18 s on held-out
+ones, and 30.95 s → 20.18 s and 30.49 s → 20.22 s at the ninetieth — for a bill
+that lands between **1.5% cheaper and 4.4% dearer** than the baseline's. On
+overall per-request waits the two are indistinguishable at this fault rate
+(0.92/10.53 against 0.91/10.75; 0.90/10.84 against 0.89/11.01), which is what a
+5% fault rate should look like and is the fair half of the trade.
+
+**The sign of the bill difference is not resolved by this rig.** On familiar
+seeds the policy on the door that ships is **1.5% cheaper** than the baseline; on
+held-out seeds it is **4.4% dearer**. That spread is the same size as the spread
+between the two doors on one seed set, so what this bench can say is that the
+bill moves by a few per cent in either direction and the fault-case wait halves.
+The design's own purse allows a tenth of recent spend; every measurement here is
+inside it.
+
+### The avoidable ceiling, re-derived
+
+**It was derived twice and the first derivation was a different quantity.** An
+earlier pass set it at 3% → 1.3% from **waste on a healthy lane**, a proxy
+measured on both seed sets before the avoidable metric existed. It is now derived
+from **avoidable itself**, on both seed sets, over the four arms the gate applies
+to — a warmed store at the natural rate, both doors:
+
+| | familiar | held out |
+|---|---:|---:|
+| avoidable, `shipped` | 0.55% | 0.41% |
+| avoidable, `flat` | 0.60% | 0.50% |
+
+Read to four places from `proof.json` and `proof-fresh.json`, those are
+**0.5505, 0.5973, 0.4066 and 0.4973**. The maximum over both seed sets and both
+doors is **0.5973%**, and **0.5973 × 1.5 = 0.8960%**, which to two places is the
+gate: **0.90%**. The seed-to-seed spread is 0.14 points on one door and 0.10 on
+the other, so half again leaves two to three times the observed spread as
+headroom: an honest seed cannot fail it, and a doubling is caught. A flat 3%
+would have tolerated a five-fold regression.
+
+**A discrepancy, recorded rather than smoothed.** The ruling that ordered this
+derivation quoted the two per-door maxima as **0.60 and 0.62**, giving
+`0.62 × 1.5 = 0.93%`. **No 0.62 appears in either artifact.** The four measured
+values are the ones above; the per-door maxima are 0.5973 (familiar, `flat`) and
+0.4973 (held out, `flat`). The rule is applied to the numbers this run actually
+produced, which is what makes it a derivation, and the figure is 0.90% rather
+than 0.93%. **Every verdict is identical at either ceiling** — the largest
+measurement is 0.5973 and both bounds are well above it — so nothing in the
+table below turns on which of the two is used.
+
+**A ceiling fitted to its own run cannot fail that run**, and this one is a
+ratchet against the next change rather than an independent test of this one. It
+is stated here so nobody reads the four PASSes below as evidence they are not.
+
+**The committed tables print the pre-derivation threshold of 1.3%**, because the
+constant was re-derived after the run that produced them; every verdict is the
+same at any of the three figures, and the next run's tables will print 0.90%.
+
+### The gates, both seed sets
+
+| arm | time-to-action | false hedges ≤2% | avoidable ≤0.90% | long think ≥95% | purse ≤10% |
+|---|---|---|---|---|---|
+| **familiar 7/9/11** | | | | | |
+| cold · shipped · stress | 100.00% of 225 **PASS** | 1.16% *(reported)* | 0.54% *(reported)* | **94.67% of 225 — FAIL** | 4.11% **PASS** |
+| cold · flat · stress | 100.00% of 225 **PASS** | 1.07% *(reported)* | 0.51% *(reported)* | 95.52% of 223 **PASS** | 4.02% **PASS** |
+| warmed · shipped · stress | 100.00% of 225 **PASS** | 0.62% **PASS** | 0.26% *(reported)* | 98.22% of 225 **PASS** | 4.25% **PASS** |
+| warmed · flat · stress | 100.00% of 225 **PASS** | 0.98% **PASS** | 0.44% *(reported)* | 97.77% of 224 **PASS** | 4.38% **PASS** |
+| **warmed · shipped · natural** | 100.00% of 21 **PASS** | 0.56% **PASS** | **0.55% PASS** | 97.66% of 427 **PASS** | — |
+| warmed · flat · natural | 100.00% of 21 **PASS** | 0.70% **PASS** | 0.60% **PASS** | 97.64% of 424 **PASS** | — |
+| **held out 23/25/27** | | | | | |
+| cold · shipped · stress | 100.00% of 225 **PASS** | 0.53% *(reported)* | 0.28% *(reported)* | 97.33% of 225 **PASS** | 3.71% **PASS** |
+| cold · flat · stress | 100.00% of 225 **PASS** | 1.07% *(reported)* | 0.53% *(reported)* | 95.54% of 224 **PASS** | 3.83% **PASS** |
+| warmed · shipped · stress | 100.00% of 225 **PASS** | 0.53% **PASS** | 0.22% *(reported)* | 97.33% of 225 **PASS** | 4.36% **PASS** |
+| warmed · flat · stress | 100.00% of 225 **PASS** | 0.27% **PASS** | 0.08% *(reported)* | 98.67% of 225 **PASS** | 3.85% **PASS** |
+| **warmed · shipped · natural** | 100.00% of 21 **PASS** | 0.56% **PASS** | **0.41% PASS** | 97.18% of 426 **PASS** | — |
+| warmed · flat · natural | 100.00% of 21 **PASS** | 0.61% **PASS** | 0.50% **PASS** | 97.18% of 425 **PASS** | — |
+
+Stress-mix TOTAL spend is REPORTED on every arm — 3.96% to 4.38% — and is not a
+verdict anywhere. The natural-mix time-to-action denominator is **21 acts**, not
+225, because a 5% fault rate is what it is; the stress rows are where that
+invariant is proved 225 times over.
+
+> **One gate is red: `cold · shipped · stress`, long think, 94.67% of 225
+> against ≥95%.** It is a third of a point under, the same arm reads 97.33% on
+> the held-out seeds, and the two flat-door cold arms read 95.52% and 95.54% —
+> which is this instrument's own run-to-run spread sitting on top of the bound.
+> **It is red and it is reported as red. Nothing was tuned and nothing was
+> re-rolled**, and the lane stopped here rather than continuing to the rebase.
+
+### The stalled run of thought — the one case a person reported
+
+**How often, and what it costs, side by side.** The frequency is measured on the
+natural mix; the before-number is the drift-clock era, before §B's abnormality
+gate, on the arm that was measured then.
+
+| | before the gate | after |
+|---|---:|---:|
+| time-to-action, stalled thinking phase, p50 | **4.95 s** | **10.00 s** |
+| the same, p90 | **7.06 s** | **10.00 s** |
+| which clock decided | `drift` 209 of 228 acts | `ceiling` 228 of 231 |
+| how often it happens, natural mix | — | **21 of 450 in its own row (4.67%), 0.93% of every request in the arm**, both seed sets |
+
+So the abnormality gate moved a stalled thought from the drift clock at about
+five seconds to the ceiling at ten, on a case that is **one request in a
+hundred** at the natural rate. It is a real cost, it is carried deliberately, and
+**the refinement it points at is a think-phase drift quantile** — the drift clock
+judged against the THINK survival rather than the gap survival, which would let a
+stopped thought be abnormal before the ceiling without letting an ordinary one
+be. That is a mechanism change and it is not taken here.
+
+### Where this model is wrong — two more, from this run
+
+- **The baseline's transport bounds are a COPY.** `gosim` does not import
+  `internal/provider`, so `transportBound` restates the 90 s first-delta bound,
+  the 45 s mid-stream one, the patience scaling and the twice-the-ceiling floor.
+  A change to those in the transport that this file did not follow would make
+  the baseline arm quietly wrong. `TestTheTransportBoundClearsTheControllersCeiling`
+  pins the only property the arm depends on; nothing pins that the figures still
+  match their source.
+- **The staged fault is shorter than the guard, and that decides the baseline.**
+  A row goes quiet for 20 s and the transport's mid-stream bound is 45 s, so the
+  guard never fires and the baseline never actually retries — it waits. Its
+  serial-retry half is therefore exercised by no row in this run, and a rig whose
+  fault outlasted the guard would show the baseline paying for two streams AND
+  waiting longer. What is measured here is the cheaper, slower half of it.

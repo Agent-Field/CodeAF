@@ -91,6 +91,24 @@ Nothing was tuned in response and `docs/design/waiting/DESIGN.md` §K is
 unchanged: the ruling's premise is not what the measurement says, and the
 decision is the owner's.
 
+**A rescue is a price, not a floor, and the baseline arm is what says so.** An
+earlier reading of this lab argued that §K's spend clause could not be met
+because a rescue is a whole second request. That was an argument; the
+measurement refutes it. `bench/lanelab/gosim` now runs an arm with **no waiting
+policy at all** — the transport's own guard and a serial re-send when it fires —
+and on a warmed store at a 5% fault rate it answers the same workload for
+**$1.3930 / $1.4194** against the policy's **$1.3725 / $1.4812** on the two seed
+sets, and takes **20.15 s / 20.13 s** at the median to get past a broken request
+where the policy takes **10.76 s / 10.18 s** (30.95/30.49 against 20.18/20.22 at
+the ninetieth). Overall per-request waits are indistinguishable at that fault
+rate — 0.92/10.53 against 0.91/10.75. So what the premium buys is **latency on
+the requests that go wrong**, at a bill that moves between 1.5% cheaper and 4.4%
+dearer depending on the seed and the door, well inside the purse's own tenth.
+The spend clause on the TOTAL is reported with that comparison beside it; what
+is gated is the **avoidable** half — arms on healthy requests, and rescue arms
+that lost to the lane they were rescuing — at **0.90%**, which is the measured
+maximum across both seed sets and both doors (0.5973%) times a half again.
+
 **And the warmed failure was a controller defect, which is now fixed and
 measured.** The hazard inequality alone answered two questions — *does acting
 pay* and *is the lane misbehaving* — and with a tight, correct belief it
