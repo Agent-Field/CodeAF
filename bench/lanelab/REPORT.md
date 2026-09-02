@@ -1891,3 +1891,23 @@ reported beside it so that nobody has to wonder what the first run said.
    familiar 94.67%, held out 97.33%, the first tiebreaker 95.52%, and the
    amended one — appear together wherever this arm is reported. **The tiebreaker
    is disclosed and never folded into a green table.**
+
+#### Which of the two runs is the verdict — assigned before the second result was known
+
+**THE LARGE RUN IS THE VERDICT.** The 600-requests-per-row-per-seed run on seeds
+31 / 37 / 41 is what decides this arm, and the three pre-stated outcomes — a
+Wilson interval wholly at or above 95% passes, wholly below is a real red, one
+that straddles 95% is a threshold finding — **apply to that interval and to
+nothing else.**
+
+**The 150-per-cell run (95.52% of 223, which reads PASS) is reported beside it
+and is explicitly NOT the verdict.** It carries exactly the coarseness that made
+94.67% unreadable in the first place: at that size one phase is 0.45 points, and
+a half-point margin cannot be settled at a resolution coarser than itself. **So
+its passing rescues nothing, precisely as its failing would have condemned
+nothing.** Both runs are shown; the ordering between them is stated rather than
+left to a reader to infer.
+
+**This paragraph was written and committed while the large run was still in
+flight**, before anybody had seen its result — which is the only condition under
+which assigning authority between two runs is not a choice about the answer.
