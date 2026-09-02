@@ -591,6 +591,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// AND THE ONE KEY A WAIT OFFERS (keys.go). It is read here, under every
+	// overlay and card above and over the plain switch below, because it is a
+	// LETTER: the guard is that a question is really standing over this model
+	// and the box is really empty, and with either of those false the `y` types
+	// exactly as it always did.
+	if a.offerKey(msg) {
+		return nil
+	}
+
 	switch msg.String() {
 	case "esc":
 		// esc during a recall is the recall's: it puts the person's own draft

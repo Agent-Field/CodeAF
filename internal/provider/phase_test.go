@@ -82,7 +82,7 @@ func TestAHealthyAnswerTellsItsPhasesInOrderAndThenStops(t *testing.T) {
 	)
 	rig.believes("A", 5, 200)
 
-	ctx := WithLaneChoice(context.Background(), choiceFor(rig.model, 500*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 500*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestAStallInsideTheThinkingShowsTheCountdownAndThenTheSwitch(t *testing.T) 
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
@@ -161,6 +161,21 @@ func TestAStallInsideTheThinkingShowsTheCountdownAndThenTheSwitch(t *testing.T) 
 	}
 }
 
+// alone strips a choice down to the one lane it leads with: no ranking behind
+// it and no candidate set beside it, which is what `routing off`, a ledger that
+// has heard of one machine and an endpoint that is not a router all look like
+// from here. There is then nothing for a rescue to go to, and the clock may
+// promise nothing.
+func alone(choice lanes.Choice) lanes.Choice {
+	if len(choice.Order) > 1 {
+		choice.Order = choice.Order[:1]
+	}
+	if len(choice.Frontier) > 1 {
+		choice.Frontier = choice.Frontier[:1]
+	}
+	return choice
+}
+
 func TestWithNowhereToGoTheClockPromisesNothing(t *testing.T) {
 	told := listen(t)
 	rig := newLaneRig(t, "phase/alone",
@@ -170,9 +185,8 @@ func TestWithNowhereToGoTheClockPromisesNothing(t *testing.T) {
 
 	// A choice with no alternative is what `routing off`, a strict pin and a
 	// ledger that has heard of one lane all look like from here.
-	choice := choiceFor(rig.model, 12*time.Millisecond)
-	choice.Alt = ""
-	ctx := WithLaneChoice(context.Background(), choice)
+	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choice)
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}
@@ -196,12 +210,49 @@ func TestTheGuardStillProtectsWhenNoRescueIsPossible(t *testing.T) {
 	)
 	rig.believes("A", 2, 2000)
 
-	choice := choiceFor(rig.model, 12*time.Millisecond)
-	choice.Alt = ""
-	ctx := WithLaneChoice(context.Background(), choice)
+	choice := alone(choiceFor(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choice)
 	_, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if _, cut := CutFrom(err); !cut {
 		t.Fatalf("err = %v, want the stall guard's cut: with no rescue possible it is the last thing standing between a person and forever", err)
+	}
+}
+
+// TestAWaitNothingCanEndIsSaidOutLoud is the visible half of [control.Report],
+// proved through the wire rather than through the phase clock alone.
+//
+// SILENCE WAS THE OLD BEHAVIOUR AND IT IS THE ONE THING THAT IS NEVER RIGHT. A
+// request with nowhere better to go still reaches its ceiling, and what it does
+// there is say so: the phase moves to [PhaseAllSlow] and the surface draws `all
+// lanes slow · still waiting`. The clock does not restart, because nothing about
+// the wait did — what changed is that this build has now weighed the
+// alternatives and found none.
+func TestAWaitNothingCanEndIsSaidOutLoud(t *testing.T) {
+	told := listen(t)
+	rig := newLaneRig(t, "phase/allslow",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 2000, Tokens: 40,
+			StallAfter: 4, StallFor: 400 * time.Millisecond,
+		}},
+	)
+	rig.believes("A", 2, 2000)
+	rig.patience(t, 100*time.Millisecond)
+
+	ctx := WithLaneChoice(talking(), alone(choiceFor(rig.model, 12*time.Millisecond)))
+	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	said, reported := told.find(PhaseAllSlow)
+	if !reported {
+		t.Fatalf("a wait with nowhere to go told the person %v", told.story())
+	}
+	// AND THE COUNT-UP IS THE WAIT'S OWN. A report that restarted the clock
+	// would draw a fresh nought under a stall that had already run.
+	if writing, ok := told.find(PhaseWriting); ok && said.Since.After(writing.Since) {
+		t.Fatalf("the report restarted the clock at %v, past the wait it is about (%v)", said.Since, writing.Since)
+	}
+	if said.Then != "" || !said.Deadline.IsZero() {
+		t.Fatalf("a wait nothing can end promised %q at %v", said.Then, said.Deadline)
 	}
 }
 
@@ -245,7 +296,7 @@ func TestNoCountdownIsDrawnOverARescueNobodyCanAfford(t *testing.T) {
 	// A budget with no bucket is how the speed guard is switched off.
 	SetHedgeBudget(lanes.NewBudget(0, 0))
 
-	ctx := WithLaneChoice(context.Background(), choiceFor(rig.model, 12*time.Millisecond))
+	ctx := WithLaneChoice(talking(), choiceFor(rig.model, 12*time.Millisecond))
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"context"
 	"math"
 	"testing"
 	"time"
@@ -42,7 +41,7 @@ func TestAStallInsideTheThinkingIsRescued(t *testing.T) {
 	rig.believes("A", 2, 250)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
@@ -73,7 +72,7 @@ func TestAStallInsideTheThinkingIsRescued(t *testing.T) {
 // had arrived and NONE of them were on the screen.
 func TestTheThinkingIsNotSaidOutLoudSoItBuysNoCommitment(t *testing.T) {
 	watch := lanes.NewWatch(
-		lanes.Choice{Order: []string{"A"}, Alt: "B", Deadline: time.Second},
+		lanes.Choice{Order: []string{"A", "B"}},
 		believedAt(2, 250),
 		time.Unix(0, 0),
 	)
@@ -85,15 +84,25 @@ func TestTheThinkingIsNotSaidOutLoudSoItBuysNoCommitment(t *testing.T) {
 			t.Fatalf("hedged at thought %d on an ordinary gap", token)
 		}
 	}
-	// And then the stall. Sixty seconds is past [lumpGap] on its own.
+	// And then the stall. Sixty seconds of silence inside a run of thought is
+	// judged by the liveness clock — the gap between two deltas, at the lane's
+	// own believed rate — and no absolute anywhere.
 	if verdict := watch.Silence(now.Add(60 * time.Second)); !verdict.Hedge {
 		t.Fatalf("a sixty-second silence inside the thinking was not acted on")
 	}
 }
 
-// TestAnAnswerOnTheScreenStillCommits is the other half of the same rule, and
-// it is the one the change must not have broken: past sixty-four VISIBLE
-// tokens the stream is somebody's half-read reply, and it is not taken away.
+// TestAnAnswerOnTheScreenStillCommits is the other half of the same rule, and it
+// is the one the change must not have broken.
+//
+// SIXTY-FOUR TOKENS ARE NOT A CONSTANT ANY MORE and the law they stood for is.
+// What used to be a counter is the rewrite term of the same inequality: leaving
+// costs a fresh first token plus writing again everything a person has already
+// read, so an answer on the screen commits itself, later the longer it is. A
+// second arm may still go out — the purse is what bounds arms, not a boolean —
+// but THE VOICE DOES NOT MOVE and the words do not disappear: whichever arm
+// wrote the first word a person could read is the arm they go on hearing, and
+// the rest are cancelled the moment staying is cheaper than leaving.
 func TestAnAnswerOnTheScreenStillCommits(t *testing.T) {
 	rig := newLaneRig(t, "reason/committed",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
@@ -106,19 +115,30 @@ func TestAnAnswerOnTheScreenStillCommits(t *testing.T) {
 	)
 	rig.believes("A", 2, 250)
 
+	// AND THE ALTERNATIVE WRITES AT A REAL MACHINE'S SPEED. The rig's other
+	// lanes are scripted at two thousand tokens a second, which is the wire and
+	// not a model: at that rate re-writing eighty words costs forty milliseconds
+	// and nothing is ever worth staying for. Sixty a second is what the measured
+	// sheet publishes, and it is what makes the rewrite term mean anything.
+	choice := choiceFor(rig.model, 12*time.Millisecond)
+	for index := range choice.Frontier {
+		choice.Frontier[index].Rate = 60
+	}
+
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
-	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
+	ctx := WithHedgeReport(talking(), report)
+	ctx = WithLaneChoice(ctx, choice)
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Hedged() {
-		t.Fatalf("took away eighty words a person was reading; reason %q", report.Reason())
+		t.Fatalf("eighty words on the screen bought no commitment; reason %q", report.Reason())
 	}
-	if got := rig.server.Requests("B"); got != 0 {
-		t.Fatalf("Requests(B) = %d, want none", got)
+	winner, _ := report.Lanes()
+	if winner != "" && winner != "A" {
+		t.Fatalf("the voice moved to %q; eighty words a person was reading were taken away", winner)
 	}
 	if tokens := answerTokens(response); tokens != 200 {
 		t.Fatalf("the answer is %d tokens, want all 200 of A's", tokens)
@@ -141,7 +161,7 @@ func TestAThinkingStallStillObeysTheBudget(t *testing.T) {
 	SetHedgeBudget(lanes.NewBudget(0, 0))
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 
 	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
@@ -183,9 +203,15 @@ func TestATaskLeafIsRescuedFromAThinkingStallToo(t *testing.T) {
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
 	rig.believes("A", 2, 250)
+	// A NODE NOBODY IS WATCHING IS WORTH NO MONEY AND IS STILL BOUNDED. λ is
+	// zero for this role by construction, so nothing under the ceiling can ever
+	// cross — and the ceiling is what acts, which is the whole of the claim. It
+	// is stated here rather than waited out because the role's own is three
+	// times a person's patience.
+	rig.patience(t, 200*time.Millisecond)
 
 	report := &HedgeReport{}
-	ctx := WithHedgeReport(context.Background(), report)
+	ctx := WithHedgeReport(talking(), report)
 	ctx = WithRole(ctx, lanes.RoleLeafUnattended)
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
 

@@ -124,18 +124,56 @@ type ledger struct {
 	// that went looking for a sheet by itself would be the reach-around the
 	// registry exists to prevent.
 	pages Sheet
+	// wait, rate and think are the three hierarchies this ledger answers
+	// [Hierarchy] from, and judged is the quality evidence above a pair. They
+	// are FED BY THE SAME OBSERVATIONS as the flat beliefs above, in the same
+	// call, because two accounts of one lane updated separately would disagree
+	// the first time one of them was fixed.
+	wait   chains
+	rate   chains
+	think  chains
+	judged tallies
+	// shifted names the pairs whose leaf a change point has just reset. It is
+	// read once and cleared, which is what makes it a piece of news rather than
+	// a state somebody has to remember to acknowledge.
+	shifted map[ID]bool
+	// carried is what this ledger had measured BEFORE it was given anywhere to
+	// write. Those observations are in no journal, so they are the one thing a
+	// rebuild cannot recover by replaying, and they are re-adopted every time.
+	carried []Belief
+	// appended is how many observations have gone into the journal since the
+	// last compaction, and settled whether this process has compacted at all.
+	// skipped counts the journal lines that would not parse.
+	appended int
+	settled  bool
+	skipped  int
 }
 
-// spread is one lane's prior variance for each filter.
+// spread is one lane's prior variance for each filter, as the sheet published
+// it. It is written down with the beliefs because it is not decoration: it is
+// the observation noise a real sighting is folded in with AND the floor ageing
+// may not widen past, so a process that reloaded the beliefs without it would
+// weigh its next measurement against a default it never measured.
 type spread struct {
-	ttft float64
-	rate float64
+	ID   ID      `json:"id"`
+	TTFT float64 `json:"ttft,omitempty"`
+	Rate float64 `json:"rate,omitempty"`
 }
 
 // newLedger builds the live ledger. It is called from the registry and nowhere
 // else.
 func newLedger() *ledger {
-	return &ledger{beliefs: map[ID]Belief{}, priors: map[ID]spread{}}
+	fresh := &ledger{beliefs: map[ID]Belief{}, priors: map[ID]spread{}, shifted: map[ID]bool{}}
+	fresh.pace()
+	return fresh
+}
+
+// pace asserts where each chain's world level starts. The three figures are
+// properties of the measured world rather than of anything this process learns,
+// so they are re-asserted after every read rather than trusted to a file that
+// an older build may have written.
+func (l *ledger) pace() {
+	l.wait.Pace, l.rate.Pace, l.think.Pace = waitPace, ratePace, thinkPace
 }
 
 // keepIn attaches the store this ledger writes through. Yesterday's beliefs are
@@ -145,6 +183,7 @@ func (l *ledger) keepIn(keeper Store) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.keeper, l.loaded = keeper, false
+	l.carried = l.held()
 }
 
 // readFrom attaches the sheet this ledger dresses a newly seen lane from. It
@@ -155,52 +194,221 @@ func (l *ledger) readFrom(pages Sheet) {
 	l.pages = pages
 }
 
-// restore reads yesterday's beliefs, once. It is called with the lock held.
+// restore reads what is written down, once. It is called with the lock held.
 func (l *ledger) restore() {
 	if l.loaded {
 		return
 	}
 	l.loaded = true
-	l.foldInFile()
+	l.readBack()
 }
 
-// reload folds the file into memory again, however many times it is called.
+// reload reads the file and the journal again, however many times it is called,
+// and compacts what it found.
 //
-// IT IS THE OTHER HALF OF THE MULTI-PROCESS CONTRACT (store.go, "two processes,
-// one file"). A save already comes back with the merged set, so a process that
-// is writing stays current for nothing; this is for the process that is not.
-// The beat calls it before it primes, which is the one moment a session is
-// already doing a round of bookkeeping and the one moment a stale ledger would
-// otherwise be about to overwrite a fresher file.
+// IT IS THE OTHER HALF OF THE MULTI-PROCESS CONTRACT (store.go, "state, and the
+// observations since"). Another aforge may have been running the whole time
+// this one was, learning about models this session has never mentioned; its
+// observations are in the journal and this is where they are folded in. The
+// beat calls it, which is the one moment a session is already doing a round of
+// bookkeeping and is nowhere near a send.
 //
 // NOTHING ON THE SEND PATH CALLS IT. A choice reads memory.
 func (l *ledger) reload() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.loaded = true
-	l.foldInFile()
+	if deep, ok := l.keeper.(deepStore); ok {
+		l.compact(deep)
+		return
+	}
+	l.readBack()
 }
 
-// foldInFile merges what is on disk into memory. It is called with the lock
+// readBack builds memory from what is written down. It is called with the lock
 // held.
 //
-// WHAT IS ON DISK NO LONGER LOSES OUTRIGHT TO WHAT IS IN MEMORY, and that is a
-// correction rather than a preference. The old rule — memory always wins —
-// was written for one process reading its own file at open, where it is
-// exactly right: a sighting that landed while a slow read was happening must
-// not be undone by it. With two processes the same rule silently discards
-// everything the other one learned. [fresher] keeps both readings of the rule:
-// a measurement this process has already made is newer than the file and still
-// wins, and a model it has never heard of arrives intact.
-func (l *ledger) foldInFile() {
+// A store that keeps only beliefs gets the old contract, unchanged: load the
+// set and fold it in by [fresher], so a bench or a test that answers the plain
+// [Store] seam behaves exactly as it always did. A store that keeps a whole
+// hierarchy gets the new one, where memory is a pure function of the file and
+// the journal beside it.
+func (l *ledger) readBack() {
 	if l.keeper == nil {
 		return
 	}
-	kept, err := l.keeper.Load()
-	if err != nil {
+	deep, ok := l.keeper.(deepStore)
+	if !ok {
+		if kept, err := l.keeper.Load(); err == nil {
+			l.adopt(kept)
+		}
 		return
 	}
-	l.adopt(kept)
+	held, records, skipped := deep.state()
+	l.rebuild(held, records, skipped)
+}
+
+// rebuild makes memory a pure function of what is written down: the compacted
+// state, every observation journalled since it was written, in time order, and
+// whatever this process measured before it had anywhere to write.
+//
+// REPLACING RATHER THAN MERGING IS WHAT KEEPS AN OBSERVATION FROM BEING FOLDED
+// TWICE. Everything this process has learned since the store was attached is
+// already in the journal, so a replay restores it exactly; folding the journal
+// on top of a memory that already held it would leave the filter more certain
+// than the evidence, once per beat, for ever.
+func (l *ledger) rebuild(held storeState, records []record, skipped int) {
+	l.beliefs = map[ID]Belief{}
+	l.priors = map[ID]spread{}
+	for _, prior := range held.Priors {
+		l.priors[prior.ID] = prior
+	}
+	l.wait, l.rate, l.think, l.judged = held.Wait, held.Rate, held.Think, held.Judged
+	l.pace()
+	l.skipped += skipped
+	l.adopt(held.Beliefs)
+	l.migrate(held)
+	for _, entry := range records {
+		l.replay(entry)
+	}
+	l.adopt(l.carried)
+}
+
+// migrate folds a version 1 file's beliefs into the hierarchy.
+//
+// A flat file says what a PAIR was believed to be and nothing about how much of
+// that was the provider and how much the model, so each belief enters the chain
+// the way any observation does — at exactly the certainty it was written with —
+// and the four levels share it out among themselves. Nothing is thrown away and
+// nothing is claimed that was not measured.
+//
+// Pasting the belief into the leaf instead would break the sum the moment a
+// parent learned an offset: ln T is μ + a + b + e, and a leaf holding the whole
+// of ln T is a leaf that would then be counted twice.
+func (l *ledger) migrate(held storeState) {
+	if held.Version >= stateVersion || len(held.Beliefs) == 0 {
+		return
+	}
+	inOrder := append([]Belief(nil), held.Beliefs...)
+	sort.SliceStable(inOrder, func(i, j int) bool { return inOrder[i].At.Before(inOrder[j].At) })
+	for _, belief := range inOrder {
+		if belief.At.IsZero() {
+			continue
+		}
+		of := pairOf(belief.ID)
+		if belief.TTFT.Known() {
+			l.wait.fold(of, everyLevel, belief.TTFT.X, belief.TTFT.P, belief.At)
+		}
+		if belief.Rate.Known() {
+			l.rate.fold(of, everyLevel, belief.Rate.X, belief.Rate.P, belief.At)
+		}
+	}
+}
+
+// replay folds one journalled observation back in, without journalling it
+// again. It is the same arithmetic the live doors run and deliberately not a
+// second copy of it.
+func (l *ledger) replay(entry record) {
+	switch {
+	case entry.Sight != nil:
+		l.see(*entry.Sight)
+	case entry.Out != nil:
+		l.weigh(*entry.Out)
+	case entry.Row != nil:
+		l.primeRow(*entry.Row, entry.Weight)
+	case entry.Think != nil:
+		l.deliberated(*entry.Think)
+	}
+}
+
+// keep writes one observation down. It is called with the lock held.
+//
+// A journal line is one small append; the whole set is written only when the
+// journal has grown long enough to be worth compacting, and once at the start
+// so that a session which learns anything leaves a state file behind it.
+//
+// ── AND THE COMPACTION IS STILL IN FRONT OF SOMEBODY, SOMETIMES ─────────────
+//
+// This comment used to say "never on a send path" and that was not true.
+// [ledger.compact] replays the journal under the store's EXCLUSIVE lock, and
+// this function calls it on the first record of a process and on every
+// [journalLimit]th after — while `internal/provider`'s stream loop calls
+// [NoteThought] mid-answer, on the first visible word after a run of thought
+// (client.go, "THE FIRST WORD OF ANSWER IS WHAT ENDS A THOUGHT"). So one
+// request in five hundred and twelve, and the first one of every process, can
+// block on a file lock with a person watching the stream.
+//
+// The per-observation `save()` is gone and that was the big one — every
+// sighting used to marshal every belief and rename a file. What is left is
+// issue #264: an off-path writer and a non-blocking lock. It is recorded here
+// rather than fixed here because it is a change to who owns the writing, and
+// this lane may not take it.
+func (l *ledger) keep(entry record) {
+	if l.keeper == nil {
+		return
+	}
+	deep, ok := l.keeper.(deepStore)
+	if !ok {
+		l.save()
+		return
+	}
+	if err := deep.log(entry); err != nil {
+		return
+	}
+	l.appended++
+	if !l.settled || l.appended >= journalLimit {
+		l.compact(deep)
+	}
+}
+
+// compact replays the journal under the exclusive lock, writes the state it
+// folded into, and empties the journal. It is called with the lock held.
+func (l *ledger) compact(deep deepStore) {
+	l.settled, l.appended = true, 0
+	_ = deep.hold(func(held storeState, records []record, skipped int) (storeState, bool) {
+		l.rebuild(held, records, skipped)
+		return l.snapshot(), true
+	})
+}
+
+// snapshot is everything this ledger would have written down.
+func (l *ledger) snapshot() storeState {
+	return storeState{
+		Beliefs: l.held(),
+		Priors:  l.spreads(),
+		Wait:    l.wait,
+		Rate:    l.rate,
+		Think:   l.think,
+		Judged:  l.judged,
+	}
+}
+
+// spreads is the sheet's own prior variances as a sorted slice, in the same
+// spirit as [ledger.held]: two processes writing the same set write the same
+// bytes.
+func (l *ledger) spreads() []spread {
+	all := make([]spread, 0, len(l.priors))
+	for _, prior := range l.priors {
+		all = append(all, prior)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].ID.String() < all[j].ID.String() })
+	return all
+}
+
+// held is the belief set as a sorted slice, so that two processes writing the
+// same set write the same bytes.
+func (l *ledger) held() []Belief {
+	all := make([]Belief, 0, len(l.beliefs))
+	for _, belief := range l.beliefs {
+		all = append(all, belief)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].ID.Model != all[j].ID.Model {
+			return all[i].ID.Model < all[j].ID.Model
+		}
+		return all[i].ID.Lane < all[j].ID.Lane
+	})
+	return all
 }
 
 // adopt folds a set of beliefs into memory by [fresher]. It is called with the
@@ -219,30 +427,17 @@ func (l *ledger) adopt(beliefs []Belief) {
 	}
 }
 
-// save writes the whole set through the store, and takes back what the file
-// then holds. It is called with the lock held, which is what keeps two updates
-// from landing on disk in the wrong order; the file is tens of kilobytes and
-// the write is one rename.
+// save writes the whole set through the store. It is the fallback for a store
+// that keeps beliefs and nothing else, and it is called with the lock held.
 //
 // THE MERGE IS THE SAVE. A store that can read-merge-write hands the merged set
 // straight back ([store.saveMerging]), so the same lock that made the write
-// safe also tells this process what the other one wrote — no second read, no
-// second decode, and no window in which two ledgers are each sure they are the
-// only one.
+// safe also tells this process what the other one wrote.
 func (l *ledger) save() {
 	if l.keeper == nil {
 		return
 	}
-	all := make([]Belief, 0, len(l.beliefs))
-	for _, belief := range l.beliefs {
-		all = append(all, belief)
-	}
-	sort.Slice(all, func(i, j int) bool {
-		if all[i].ID.Model != all[j].ID.Model {
-			return all[i].ID.Model < all[j].ID.Model
-		}
-		return all[i].ID.Lane < all[j].ID.Lane
-	})
+	all := l.held()
 	if merging, ok := l.keeper.(interface {
 		saveMerging([]Belief) ([]Belief, error)
 	}); ok {
@@ -282,6 +477,14 @@ func (l *ledger) Prime(row Row, k float64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
+	l.primeRow(row, k)
+	l.keep(record{At: row.At, Row: &row, Weight: k})
+}
+
+// primeRow is [ledger.Prime]'s arithmetic without the door. It is called with
+// the lock held, by the door and by a replay of the journal, so that a belief
+// rebuilt from the file is the belief that was written.
+func (l *ledger) primeRow(row Row, k float64) {
 	belief := l.beliefs[row.ID]
 	belief.ID = row.ID
 	belief.Facts = row.Facts
@@ -290,7 +493,7 @@ func (l *ledger) Prime(row Row, k float64) {
 		ttft := fit(row.TTFTp50, row.TTFTp90)
 		rate := fit(row.Ratep50, row.Ratep90)
 		prior := l.priors[row.ID]
-		l.priors[row.ID] = spread{ttft: ttft.P, rate: rate.P}
+		l.priors[row.ID] = spread{ID: row.ID, TTFT: ttft.P, Rate: rate.P}
 		// AGE FIRST, FOLD SECOND — the same order [Ledger.Note] keeps and for
 		// the same reason. A reading taken now weighed against the confidence a
 		// belief had ten minutes ago is a public number that cannot move a stale
@@ -298,20 +501,30 @@ func (l *ledger) Prime(row Row, k float64) {
 		// to. See [Row.At]; a row with no moment ages nothing, which is what
 		// every caller that primes from a fixture wants.
 		if !row.At.IsZero() && !belief.At.IsZero() {
-			belief.TTFT = age(belief.TTFT, row.At.Sub(belief.At), prior.ttft)
-			belief.Rate = age(belief.Rate, row.At.Sub(belief.At), prior.rate)
+			belief.TTFT = age(belief.TTFT, row.At.Sub(belief.At), prior.TTFT)
+			belief.Rate = age(belief.Rate, row.At.Sub(belief.At), prior.Rate)
 		}
 		belief.TTFT = prime(belief.TTFT, ttft, k)
 		belief.Rate = prime(belief.Rate, rate, k)
+		// AND THE SAME ROW REACHES THE HIERARCHY, at the same weight and into
+		// b[model] AND e[model, lane] ONLY. A sheet is published per model, so
+		// folding it into μ or a[lane] would let one refresh move every belief
+		// this process holds — including its opinion of providers the sheet was
+		// not about. A row with no moment on it reaches neither: a component
+		// stamped with a time that never happened is a component that can never
+		// be aged. See [Row.At].
+		if !row.At.IsZero() {
+			l.wait.fold(modelOf(row.ID), publishedLevels, ttft.X, ttft.P*k, row.At)
+			l.rate.fold(modelOf(row.ID), publishedLevels, rate.X, rate.P*k, row.At)
+		}
 	}
 	// The quality prior is set once and never re-asserted: a lane that has
 	// spent the afternoon returning tool calls the decoder refused must not be
 	// handed its optimism back every five minutes by the beat.
 	if !belief.Quality.Known() {
-		belief.Quality = qualityPrior(row.Facts.Quant)
+		belief.Quality = l.judged.start(row.ID, qualityPrior(row.Facts.Quant))
 	}
 	l.beliefs[row.ID] = belief
-	l.save()
 }
 
 // dress fills in what the sheet already knows about a lane this process has
@@ -344,7 +557,7 @@ func (l *ledger) dress(belief *Belief) {
 	belief.Facts = row.Facts
 	if row.Known() {
 		ttft, rate := fit(row.TTFTp50, row.TTFTp90), fit(row.Ratep50, row.Ratep90)
-		l.priors[belief.ID] = spread{ttft: ttft.P, rate: rate.P}
+		l.priors[belief.ID] = spread{ID: belief.ID, TTFT: ttft.P, Rate: rate.P}
 		// THE POSTERIORS ARE ADOPTED AND NEVER FOLDED IN, for the reason
 		// [Ledger.Prime] adopts them on a lane nobody has measured: k says how
 		// much less the public number weighs THAN OURS, and there is nothing
@@ -358,7 +571,7 @@ func (l *ledger) dress(belief *Belief) {
 		}
 	}
 	if !belief.Quality.Known() {
-		belief.Quality = qualityPrior(row.Facts.Quant)
+		belief.Quality = l.judged.start(belief.ID, qualityPrior(row.Facts.Quant))
 	}
 }
 
@@ -453,14 +666,21 @@ func (l *ledger) Note(s Sighting) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
+	l.see(s)
+	l.keep(record{At: s.At, Sight: &s})
+}
+
+// see is [ledger.Note]'s arithmetic without the door. It is called with the
+// lock held, by the door and by a replay of the journal.
+func (l *ledger) see(s Sighting) {
 	belief := l.beliefs[s.ID]
 	belief.ID = s.ID
 	l.dress(&belief)
 	prior := l.priors[s.ID]
 
 	if !belief.At.IsZero() {
-		belief.TTFT = age(belief.TTFT, s.At.Sub(belief.At), prior.ttft)
-		belief.Rate = age(belief.Rate, s.At.Sub(belief.At), prior.rate)
+		belief.TTFT = age(belief.TTFT, s.At.Sub(belief.At), prior.TTFT)
+		belief.Rate = age(belief.Rate, s.At.Sub(belief.At), prior.Rate)
 	}
 
 	// AN ANSWER WITH NO TOKENS IN IT TEACHES QUALITY AND NOTHING ELSE.
@@ -478,11 +698,20 @@ func (l *ledger) Note(s Sighting) {
 		// endpoint could have avoided, so it is a noisier claim about the lane
 		// the longer the conversation is. A PROBE is the opposite: one token,
 		// sent on purpose, measuring exactly our path to this lane right now.
-		noise := variance(prior.ttft) * promptNoise(s.PromptTokens)
+		noise := variance(prior.TTFT) * promptNoise(s.PromptTokens)
 		if s.Probe {
-			noise = variance(prior.ttft) * 0.5
+			noise = variance(prior.TTFT) * 0.5
 		}
-		belief.TTFT = belief.TTFT.Update(math.Log(msOf(s.TTFT)), noise)
+		waited := math.Log(msOf(s.TTFT))
+		belief.TTFT = belief.TTFT.Update(waited, noise)
+		// AND THE SAME MEASUREMENT REACHES ALL FOUR LEVELS, which is what makes
+		// the next pair nobody has measured predictable. The change-point test
+		// rides on OUR OWN sightings and never on the sheet: a half-hour
+		// aggregate re-published every beat would re-assert one surprise until
+		// it tripped an alarm about a step that never happened.
+		if l.wait.note(pairOf(s.ID), waited, noise, s.At) {
+			l.stepped(s.ID)
+		}
 	}
 	// A SHORT ANSWER TEACHES THE FIRST TOKEN AND NEVER THE RATE. A probe is one
 	// token sent on purpose and rates the handshake; a handful of tokens rates a
@@ -491,12 +720,24 @@ func (l *ledger) Note(s Sighting) {
 	// cannot be believed fast on the strength of an answer that never got going.
 	if !s.Probe && s.Tokens >= ratedFloor && s.Gen > 0 {
 		if rate := s.Rate(); rate > 0 {
-			belief.Rate = belief.Rate.Update(math.Log(rate), variance(prior.rate))
+			written, noise := math.Log(rate), variance(prior.Rate)
+			belief.Rate = belief.Rate.Update(written, noise)
+			if l.rate.note(pairOf(s.ID), written, noise, s.At) {
+				l.stepped(s.ID)
+			}
 		}
 	}
 	belief.At = s.At
 	l.beliefs[s.ID] = belief
-	l.save()
+}
+
+// stepped records that a change point has reset one pair's own component toward
+// its parents. It is called with the lock held.
+func (l *ledger) stepped(id ID) {
+	if l.shifted == nil {
+		l.shifted = map[ID]bool{}
+	}
+	l.shifted[id] = true
 }
 
 // NoteOutcome folds in whether an answer could be used.
@@ -512,12 +753,19 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
+	l.weigh(o)
+	l.keep(record{At: o.At, Out: &o})
+}
+
+// weigh is [ledger.NoteOutcome]'s arithmetic without the door. It is called
+// with the lock held, by the door and by a replay of the journal.
+func (l *ledger) weigh(o Outcome) {
 	belief := l.beliefs[o.ID]
 	belief.ID = o.ID
 	l.dress(&belief)
 	prior := qualityPrior(belief.Facts.Quant)
 	if !belief.Quality.Known() {
-		belief.Quality = prior
+		belief.Quality = l.judged.start(o.ID, prior)
 	}
 	// Forget first and observe second, for the same reason [Ledger.Note]
 	// predicts before it updates: three refusals this afternoon and three from
@@ -530,8 +778,11 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	if !o.At.IsZero() {
 		belief.QualityAt = o.At
 	}
+	// And what the PROVIDER and the MODEL have shown moves too, so that the
+	// next lane of this provider nobody has judged starts leaning the way its
+	// provider has been shown to lean rather than at the flat prior.
+	l.judged.observe(o.ID, o.Accepted, o.At, prior)
 	l.beliefs[o.ID] = belief
-	l.save()
 }
 
 // age widens a belief that has been sitting still, and stops where the public
@@ -628,4 +879,136 @@ func (l *ledger) Beliefs(model string) []Belief {
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].ID.Lane < found[j].ID.Lane })
 	return found
+}
+
+// ── THE HIERARCHY'S DOOR ────────────────────────────────────────────────────
+//
+// The same ledger answers [Hierarchy]. It is a SECOND DOOR ONTO ONE OBJECT and
+// not a second object: one sighting moves the chain and the flat belief in the
+// same call, so the two can never be two accounts of one lane that disagree.
+//
+// Unlike [Ledger.Belief] these take the moment, because a chain is only ever
+// wanted aged: what the controller waits against is what is believed NOW, and
+// asking the caller to age four components itself would be four chances to age
+// them by four different rules.
+
+// Wait is the chain over ln first-token in MILLISECONDS for one pair.
+func (l *ledger) Wait(id ID, now time.Time) Chain { return l.chainFor(&l.wait, id, now) }
+
+// Rate is the chain over ln tokens-a-second for one pair.
+func (l *ledger) Rate(id ID, now time.Time) Chain { return l.chainFor(&l.rate, id, now) }
+
+// Draw is how much ONE ANSWER from this pair moves around what is believed
+// about it: the sheet's own published dispersion, and [SpreadFloor] where
+// nothing has been published.
+//
+// IT IS THE SAME NUMBER A SIGHTING IS WEIGHED AGAINST, said for a different
+// purpose. [ledger.priors] holds the distance between a lane's published p50
+// and its p90 because that is the observation noise one measurement of it
+// carries; it is also, and for the same reason, how variable one answer from it
+// is — and a wait is judged against exactly that. Nothing here ages: a machine
+// does not become steadier because nobody has looked at it lately.
+func (l *ledger) Draw(id ID) (first, gap float64) {
+	if id.Zero() {
+		return SpreadFloor, SpreadFloor
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	prior := l.priors[id.bare()]
+	return drawSpread(prior.TTFT), drawSpread(prior.Rate)
+}
+
+// drawSpread is one published variance as a spread, and the prior where there
+// is none.
+func drawSpread(variance float64) float64 {
+	if variance <= 0 {
+		return SpreadFloor
+	}
+	return math.Sqrt(variance)
+}
+
+// chainFor is one timing chain, aged to now. A zero id is no chain at all
+// rather than the world's own pace filed under nothing.
+func (l *ledger) chainFor(of *chains, id ID, now time.Time) Chain {
+	if id.Zero() {
+		return Chain{}
+	}
+	id = id.bare()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	return of.look(pairOf(id), now)
+}
+
+// Think is the chain over ln SECONDS of a whole thinking phase for one model at
+// one effort rung.
+func (l *ledger) Think(model, rung string, now time.Time) Chain {
+	if BareModel(model) == "" {
+		return Chain{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	return l.think.look(thoughtOf(model, rung), now)
+}
+
+// Shifted reports whether a change point has just reset this pair's own
+// component toward its parents, and clears the flag.
+func (l *ledger) Shifted(id ID) bool {
+	if id.Zero() {
+		return false
+	}
+	id = id.bare()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.shifted[id] {
+		return false
+	}
+	delete(l.shifted, id)
+	return true
+}
+
+// NoteThinking folds in how long one whole run of reasoning lasted.
+//
+// IT IS A THIRD KIND OF SIGHTING and it is separate from [Ledger.Note] because
+// it is a fact about a MODEL rather than about a deployment: a lane cannot make
+// a model think less, it can only make the same thought arrive faster, which
+// the rate chain already says. Judging a long think against the lane's
+// first-token belief is what made a legitimate minute of deliberation look like
+// a stall.
+func (l *ledger) NoteThinking(model, rung string, took time.Duration, at time.Time) {
+	model = BareModel(model)
+	if model == "" || took <= 0 || at.IsZero() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	seen := thought{Model: model, Rung: rung, Took: took, At: at}
+	l.deliberated(seen)
+	l.keep(record{At: at, Think: &seen})
+}
+
+// deliberated folds one thinking duration into the think chain. It is called
+// with the lock held, by the door and by a replay of the journal.
+//
+// A thinking duration is believed in SECONDS — the unit a person would say it
+// in and the unit the controller waits in — and it is folded at the leaf's own
+// prior width, because one timed thought is worth about as much as the spread
+// between two thoughts of one model at one rung.
+func (l *ledger) deliberated(seen thought) {
+	if seen.Took <= 0 || seen.At.IsZero() {
+		return
+	}
+	l.think.fold(thoughtOf(seen.Model, seen.Rung), everyLevel, math.Log(seen.Took.Seconds()), levelVariance(LevelPair), seen.At)
+}
+
+// Skipped is how many journal lines this ledger could not read. A half-written
+// record from a machine that lost power is one observation lost; the count is
+// what keeps that from being a silent loss.
+func (l *ledger) Skipped() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.skipped
 }

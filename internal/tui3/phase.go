@@ -177,6 +177,8 @@ func (a *app) livePhase() (PhaseNews, bool) {
 //	via coreweave · first word 3.1s → parasail at 4.4s
 //	thinking · 12s · friendli 38 t/s
 //	writing · 4s · friendli 61 t/s
+//	coreweave is slow · switch to auto? (y)
+//	all lanes slow · still waiting
 //	paced · retry in 6s
 //	trying again · 2 of 6
 //	stalled 9s · switching to parasail
@@ -280,6 +282,31 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// worker" is the sentence that tells somebody watching their turn stop
 		// what is about to happen to it.
 		return []rowField{rowSay(phaseJoinWord(word, news.Detail), word), rowSay(countUpWord(since))}
+	case session.PhaseAsking:
+		// A WAIT A PERSON CAN END, and the only sentence on this surface that
+		// asks for a keystroke while a turn is running.
+		//
+		// THE MACHINE'S NAME LEADS because it is the fact a person acts on:
+		// which of their pinned machines has gone quiet is what tells them
+		// whether to answer at all, and the question is the label on it. A narrow
+		// row therefore keeps "coreweave is slow" and shortens the question, and
+		// the key never goes: an offer whose key was cut is a question nobody
+		// can answer.
+		question := "switch to " + strings.ToLower(news.Then) + "? (y)"
+		if news.Then == "" {
+			question = "switch? (y)"
+		}
+		if news.Detail == "" {
+			return []rowField{rowSay(question, "(y)")}
+		}
+		return []rowField{rowSay(news.Detail), rowSay(question, "switch? (y)", "(y)")}
+	case session.PhaseAllSlow:
+		// EVERY REACHABLE LANE IS BELIEVED SLOW, so there is nowhere better to
+		// go and acting would buy nothing. Saying so is the act: this row is the
+		// visible half of the controller's report, and the alternative — which is
+		// what this surface did before — is a person watching a line that says
+		// nothing while a real wait runs.
+		return []rowField{rowSay("all lanes slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
 	case provider.PhaseChecking, provider.PhaseTidying, provider.PhaseTakingStock:
 		// THREE WORDS WITH ONE SHAPE: a stage named by nothing but itself, and
 		// the clock a person is reading it against. `taking stock` shares the arm

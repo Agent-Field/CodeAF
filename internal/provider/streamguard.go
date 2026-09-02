@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 // THE GUARD OVER ONE MODEL STREAM.
@@ -214,6 +216,115 @@ var (
 	stallGapLumpTokens = streamGapLumpTokens
 )
 
+// ── THE BOUNDS BELONG TO THE ROLE, AND THEY SIT ABOVE THE CONTROLLER ────────
+//
+// THE TRANSPORT IS THE LAST RESORT AND NOT A SECOND CONTROLLER. Decision 10 of
+// docs/ARCHITECTURE.md states the order and the waiting design (§A, and "what
+// this deliberately does not do") restates it: the waiting controller acts on a
+// silence — it hedges, it asks, it reports — and every bound in this file exists
+// for the one case where no action is possible at all. So each of them must sit
+// strictly ABOVE the ceiling the controller acts at.
+//
+// THEY DID NOT, AND THE ARITHMETIC SAYS SO PLAINLY. A role's ceiling is its
+// patience times [lane.VisiblePatience]: thirty seconds for `leaf.unattended`,
+// `memory` and `auxiliary`, sixty for `standing`, `judge` and `design`. A
+// mid-stream bound of forty-five seconds — fifteen once [gapFor] had narrowed it
+// onto a fast lane — cut those streams BEFORE the controller had reached the
+// ceiling it would have rescued them at. The two are not the same event and the
+// order between them is not a detail: the controller's act is a second request
+// beside a stream that is still open, and the transport's is a torn one plus a
+// whole retry that pays the prompt again. The cheap rescue has to come first.
+//
+// SO THE THREE FIGURES ABOVE ARE WHAT A PATIENCE OF ONE GETS, and every request
+// is guarded by them scaled to the role that asked. Scaling keeps each argument
+// intact — the ninety seconds is still past every healthy first token, the
+// forty-five is still half of it — and moves the whole family with the ceiling
+// it has to clear, because the ceiling is the same multiplier applied to the
+// same ten seconds.
+
+const (
+	// transportHeadroom is how many of the controller's own ceilings this
+	// file's bounds must clear it by, and it exists because SCALING ALONE IS
+	// NOT ENOUGH AT THE EDGES: [gapFor] derives the mid-stream bound from a
+	// lane's measured rate, and a lane fast enough drives that derivation down
+	// to a figure no multiplier rescues.
+	//
+	// TWO, because the controller acting is not the controller finished. At the
+	// ceiling it puts a second request on the wire, and that request has its own
+	// handshake, its own router hop and its own first token to pay before it can
+	// rescue anything — which is the same order of time as the ceiling itself. A
+	// transport bound one ceiling above would cut the stream while the rescue it
+	// triggered was still in flight, which buys the torn request straight back.
+	// Two gives the act a whole ceiling of room to land in, and it is still well
+	// inside the flat figures: the mid-stream bound is four and a half ceilings
+	// wide at every patience in the table, so this floor only ever bites where a
+	// derivation has already narrowed one.
+	transportHeadroom = 2
+)
+
+// stallBounds are the three silence bounds ONE REQUEST is guarded by. They are a
+// per-request figure rather than three package constants read directly because
+// the role that asked is what decides how long a silence may last (§F of
+// docs/design/waiting/DESIGN.md), and because the ceiling they have to clear is
+// that same role's.
+type stallBounds struct {
+	first, gap, buffered time.Duration
+	// floor is the least any of them may be — and, the half that matters, the
+	// least any DERIVATION may narrow one to. [gapFor] tightens the gap onto the
+	// lane's measured rate, and a tightening that crossed the controller's
+	// ceiling would be the transport taking back the very silence the controller
+	// was about to act on.
+	floor time.Duration
+}
+
+// boundsFor is the three bounds in the patience of the role that asked. A role
+// the table has never heard of reads as [lane.RoleUnknown] — a background errand
+// — which is the conservative direction: it waits longer than a person does,
+// never less.
+func boundsFor(role lanes.Role) stallBounds {
+	patience := stallPatience(role)
+	gap := stretch(stallGapBound, patience)
+	floor := transportHeadroom * role.Ceiling()
+	// A FLOOR MAY NOT OUTRANK THE BOUND IT STANDS UNDER. In the shipped figures
+	// it never comes close — the flat gap is four and a half ceilings and the
+	// floor is two — and this line is what keeps the seam a seam: a test proving
+	// this machinery at sixty milliseconds must not have a minute-wide floor
+	// quietly substituted for the figure it set.
+	if floor > gap {
+		floor = gap
+	}
+	return stallBounds{
+		first:    max(stretch(stallFirstBound, patience), floor),
+		gap:      max(gap, floor),
+		buffered: max(stretch(stallBufferedBound, patience), floor),
+		floor:    floor,
+	}
+}
+
+// narrow is how far a derivation may take this request's mid-stream bound down.
+// [gapFor] produces a figure about the LANE; this is the band the ROLE leaves it
+// in, and [stallWatch.regap] is where the two meet.
+func (b stallBounds) narrow(gap time.Duration) time.Duration {
+	return min(max(gap, b.floor), b.gap)
+}
+
+// stretch scales one flat bound by a role's patience.
+func stretch(bound time.Duration, patience float64) time.Duration {
+	return time.Duration(float64(bound) * patience)
+}
+
+// stallPatience is the role's multiplier, READ BACK OFF ITS CEILING rather than
+// out of the facts table, so that a bound and the ceiling it has to clear can
+// never be scaled by two different numbers.
+//
+// It is a variable for the reason the three bounds above are: the seam. A test
+// that shortens the transport to milliseconds is asking whether the machinery
+// cuts, not whose errand it was, so shortenStallBounds holds this at one and the
+// figures such a test sets are the figures its watch runs on.
+var stallPatience = func(role lanes.Role) float64 {
+	return float64(role.Ceiling()) / float64(lanes.VisiblePatience)
+}
+
 // wallFor turns the longest reply a lane has COMPLETED into the wall its next
 // reply is bounded by. A lane nothing is known about — a cold process, a model
 // whose first request this is, or a session with `routing off` — passes zero
@@ -255,6 +366,13 @@ func wallFor(longest time.Duration) time.Duration {
 //
 // A rate of zero is a lane this process has not rated: it gets the flat bound,
 // which is what it always got.
+//
+// WHAT IT PRODUCES IS A FACT ABOUT THE LANE AND NOT A BOUND ANY REQUEST RUNS
+// ON. Three and a half thousand tokens is a measurement of an endpoint's biggest
+// buffered write, which is the same measurement whoever is waiting for it, so
+// the derivation is not scaled by anybody's patience. It is [stallBounds.narrow]
+// that decides how much of the tightening a given request may keep: below the
+// role's floor the transport would be answering a silence the controller owns.
 func gapFor(rate float64) time.Duration {
 	if rate <= 0 {
 		return stallGapBound
@@ -506,6 +624,11 @@ type stallWatch struct {
 	wallTimer *time.Timer
 	walled    time.Duration
 	rewalled  bool
+	// bounds are the three silence bounds this request is guarded by, in the
+	// patience of the role that asked for it. They are read here rather than
+	// out of the package vars because the ceiling they must sit above is the
+	// role's ([boundsFor]).
+	bounds stallBounds
 	// gap is the mid-stream silence bound in force. It opens at the flat bound
 	// every stranger gets and narrows once the stream names its lane, to what
 	// that lane's measured rate says a gap should be ([gapFor], [regap]).
@@ -521,13 +644,19 @@ type stallWatch struct {
 // The wall is passed in rather than read here because deriving it needs the
 // ledger, and this file is deliberately the layer that only detects and cuts.
 // A caller with nothing to derive from passes wallFor(0), which is the floor.
-func newStallWatch(cancel context.CancelFunc, wall time.Duration) *stallWatch {
-	watch := &stallWatch{cancel: cancel, clock: time.Now}
+//
+// THE SILENCE BOUNDS COME OFF THE CONTEXT, because they are the role's and the
+// role rides the context (roles.go says why: a role belongs to the errand, so it
+// survives a wrapper, a retry, a relax rung and a hedge arm without anybody
+// re-stating it). A call that named none reads as [lane.RoleUnknown], a hidden
+// background errand, which waits longer rather than less.
+func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration) *stallWatch {
+	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx))}
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled = wall
-	watch.gap = stallGapBound
-	watch.timer = time.AfterFunc(stallFirstBound, func() { watch.fire() })
+	watch.gap = watch.bounds.gap
+	watch.timer = time.AfterFunc(watch.bounds.first, func() { watch.fire() })
 	watch.wallTimer = time.AfterFunc(wall, func() { watch.overran() })
 	return watch
 }
@@ -579,10 +708,18 @@ func (w *stallWatch) rewall(wall time.Duration) {
 // timer from when the stream last WROTE rather than from now, so narrowing is
 // real: a lane whose new bound is already spent is cut immediately instead of
 // being given the whole of it again.
+//
+// AND IT NARROWS ONLY AS FAR AS THE ROLE ALLOWS. The derivation is about the
+// lane; how much of it this request may keep is [stallBounds.narrow]'s answer,
+// which never lets a bound down past the controller's ceiling and the headroom
+// over it.
 func (w *stallWatch) regap(gap time.Duration) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.tripped != nil || w.regapped || gap <= 0 || gap >= w.gap {
+	if w.tripped != nil || w.regapped || gap <= 0 {
+		return
+	}
+	if gap = w.bounds.narrow(gap); gap >= w.gap {
 		return
 	}
 	w.regapped = true
@@ -675,7 +812,7 @@ func (w *stallWatch) verdict() context.CancelFunc {
 		return nil
 	}
 	now := w.clock()
-	bound := stallFirstBound
+	bound := w.bounds.first
 	// speaking is the window a keepalive has to land inside to buy the stream
 	// more patience, and IT IS THE FLAT BOUND EVEN WHEN THE SILENCE BOUND HAS
 	// NARROWED. Whether an endpoint is still on the line is a question about the
@@ -683,10 +820,10 @@ func (w *stallWatch) verdict() context.CancelFunc {
 	// lane, and narrowing the second must not quietly answer the first. A
 	// buffering endpoint sending a comment every twenty seconds is alive at any
 	// rate it has ever been measured at, and the cap above is what bounds it.
-	speaking := stallFirstBound
+	speaking := w.bounds.first
 	if w.spoken {
 		bound = w.gap
-		speaking = stallGapBound
+		speaking = w.bounds.gap
 	}
 	// THE EXTENSION, and its two conditions. The endpoint must still be
 	// speaking — a keepalive inside the bound that just elapsed — and the
@@ -694,7 +831,7 @@ func (w *stallWatch) verdict() context.CancelFunc {
 	// re-armed for the shorter of another bound and what remains of the cap;
 	// either false, the cut below is the answer. The re-arm happens with the
 	// lock held and the timer already fired, so it cannot race a second fire.
-	allowance := w.quietSince.Add(stallBufferedBound).Sub(now)
+	allowance := w.quietSince.Add(w.bounds.buffered).Sub(now)
 	if now.Sub(w.lastAlive) <= speaking && allowance > 0 {
 		wait := bound
 		if allowance < wait {
@@ -708,7 +845,7 @@ func (w *stallWatch) verdict() context.CancelFunc {
 	// ran out — so the sentence a person reads matches the wait they watched.
 	waited := bound
 	if allowance <= 0 {
-		waited = stallBufferedBound
+		waited = w.bounds.buffered
 	}
 	if w.spoken {
 		w.tripped = &StreamCut{Reason: CutStalled, Waited: waited}

@@ -305,6 +305,16 @@ func TestAModelNobodyHasFetchedPublishesNothing(t *testing.T) {
 // cache carries a stamp: opening a session a minute after closing one should
 // cost nothing.
 func TestTheBeatFetchesWhatIsStaleAndLeavesWhatIsFresh(t *testing.T) {
+	// A HOME OF ITS OWN, FIRST. [Beat] primes the DEFAULT ledger from every
+	// reading, and that ledger writes through a store rooted at AFORGE_HOME —
+	// so a test that leaves the state root alone folds this file's scripted
+	// lanes into the belief file of whoever ran it, and reads them back on
+	// their next real session. The neighbour below has always done this; this
+	// one did not, and the junk in a developer's `~/.aforge/v3/lanes.json` came
+	// from here.
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Cleanup(Default().Reset)
+	Default().Reset()
 	const other = "qwen/qwen3.5-9b"
 	s, stub, _ := wired(t)
 	stub.Model(other, scripted()...)

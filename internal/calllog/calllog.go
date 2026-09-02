@@ -167,6 +167,44 @@ type Record struct {
 	// says they were a pair.
 	Hedged bool `json:"hedged,omitempty"`
 
+	// ── why it waited, and what was done about it
+	//
+	// The four fields above say what was BELIEVED before the request went out.
+	// These say what happened to the wait itself, and they are what makes an
+	// autopsy possible in one line rather than in a correlation of two: when
+	// the silence was acted on, what the act was, how many requests one
+	// question became, and what the arms that did not answer cost.
+	//
+	// A row with none of them is a call nothing had to be done about, which is
+	// almost every row and is exactly the state the emptiness law leaves blank.
+
+	// SilenceMs is how long the stream had been silent — nothing visible, and
+	// for a first token nothing at all — at the moment something was done about
+	// it.
+	SilenceMs int64 `json:"silence_ms,omitempty"`
+	// Action is what was done: "hedge", "ask", "report", "escalate" or
+	// "commit", in the controller's own words. Absent on a call that was never
+	// acted on.
+	Action string `json:"action,omitempty"`
+	// Arms is how many requests this one question put on the wire, counting the
+	// original. One is the ordinary case and is left off the row.
+	Arms int `json:"arms,omitempty"`
+	// WasteUSD is what the arms that did not answer cost, by the router's own
+	// figure where one arrived and by the frontier's estimate where the arm was
+	// cancelled before its usage frame.
+	WasteUSD float64 `json:"waste_usd,omitempty"`
+	// WaitS and CostS are the two numbers the decision was actually made on:
+	// the expected remaining wait, and what acting was expected to cost, both
+	// in seconds at the moment of the act. A row that recorded the action
+	// without them could only ever confirm what somebody already suspected.
+	WaitS float64 `json:"wait_s,omitempty"`
+	CostS float64 `json:"cost_s,omitempty"`
+	// Note is one sentence, in words, about something this call decided that no
+	// other field can say — "pinned lane coreweave was silent for 10s —
+	// borrowing auto for this answer". It is empty on almost every row, and it
+	// is where a decision taken with nobody watching leaves its account.
+	Note string `json:"note,omitempty"`
+
 	PromptTokens     int     `json:"prompt_tokens,omitempty"`
 	CompletionTokens int     `json:"completion_tokens,omitempty"`
 	ReasoningTokens  int     `json:"reasoning_tokens,omitempty"`

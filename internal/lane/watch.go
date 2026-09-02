@@ -4,189 +4,186 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 )
 
-// ── THE WATCH: RESCUING A REQUEST THAT IS ALREADY SLOW ──────────────────────
+// ── THE WATCH: ONE CONTROLLER, DRIVEN BY ONE STREAM ─────────────────────────
 //
 // Everything before this point picks a lane before the request goes out. The
-// watch is the half that can still act after it has gone, and it is worth
-// having because a first-token distribution with a heavy tail has a property
-// that feels wrong until it is written down: FOR A LOG-NORMAL, THE LONGER YOU
-// HAVE WAITED, THE LONGER YOU SHOULD EXPECT TO GO ON WAITING. A stream that is
-// four seconds late is not four seconds from finishing; it is a draw from the
-// tail, and the cheapest thing to do with it is to ask somebody else.
+// watch is the half that can still act after it has gone, and since
+// `docs/design/waiting/DESIGN.md` it decides nothing itself: it is the ADAPTER
+// between the shape a stream loop has — tokens, heartbeats, a beat asking
+// whether anything has arrived — and [control.Controller], which holds the one
+// inequality every phase of every call is judged by.
 //
-// So the hedge time is derived, per request, from the posterior of the lane we
-// expect to serve — the smallest wait at which the expected REMAINING wait
-// exceeds what the alternative would take from cold, plus what the second
-// request costs. The chooser computes it and hands it over in [Choice.Deadline];
-// a watch given none falls back to the serving lane's own believed p90 first
-// token, clamped to a range where hedging can pay for itself at all. A lane
-// whose normal is four hundred milliseconds hedges at about a second; a lane
-// whose normal is two seconds does not hedge there at all. That is the whole
-// reason there is no constant for "slow" in this file.
+// WHAT THAT REPLACED, AND WHY EACH ONE WENT. This file used to hold four
+// absolutes and each of them was a belief wearing an invariant's clothes:
 //
-// Three things are watched and they are different claims:
+//   - a fifteen-second gap that alarmed on its own, which said the same thing
+//     about a lane writing six tokens a second and one writing two hundred;
+//   - sixty-four tokens of commitment, which was right for a four-hundred token
+//     reply and wrong for a four-thousand token one;
+//   - an eight-second ceiling on a derived deadline, which existed only when a
+//     belief did — so the one case that most needed a clock, a model nobody has
+//     measured, was the one case that got none;
+//   - one hedge per request, which is a counter where a purse belongs.
 //
-//   - THE HEARTBEAT. A router emits comment lines before the first token. A
-//     stream with neither a heartbeat nor a byte for well past its deadline is
-//     a dead path, not a slow lane, and the lane's belief is NOT charged for
-//     it — that would be teaching the ledger a fact about a machine that was
-//     never asked. [Watch.PathFault] is how the caller knows not to.
-//   - THE FIRST TOKEN. Late past the deadline is a hedge.
-//   - THE GAPS BETWEEN TOKENS, once they flow, as a one-sided CUSUM against
-//     what this lane's believed rate says a gap should be. A single long gap
-//     is buffered delivery — an answer arriving in lumps is still an answer.
-//     An accumulating drift is a lane that has BECOME slow mid-answer.
+// They are all one line now: act when the expected remaining wait exceeds what
+// acting would cost, and at the role's ceiling whatever the two say. The
+// ceiling is the only absolute left, and it is the only one that is about a
+// person rather than about a machine.
 //
-// THE THREE NUMBERS IN THE DRIFT TEST ARE NOT THRESHOLDS ON SPEED. The slack k
-// and the alarm height h are measured in NATS OF SURPRISE against the lane's
-// own believed rate, so they mean the same thing on a lane that writes six
-// tokens a second and on one that writes two hundred; that is exactly what the
-// fixed thirty-tokens-a-second in the strike table could not do. The one
-// wall-clock figure left, the fifteen seconds at which a single gap alarms on
-// its own, is today's [Sighting.Gap] meaning kept unchanged on purpose: a
-// quarter-minute of nothing is a complaint whatever the lane's normal is.
-//
-// And a commitment rule, because sunk cost is real here: past the first tokens
-// the stream is only abandoned when the drift alarms AND finishing here would
-// take longer than redoing the whole answer somewhere else from zero.
-//
-// COMMITMENT COUNTS THE TOKENS A PERSON CAN READ, AND NOTHING ELSE. A reasoning
-// model writes its thinking on the same stream, billed and streamed exactly
-// like an answer — and none of it is on the screen. Abandoning a thousand
-// tokens of thought throws away money that is already spent; abandoning a
-// thousand tokens of ANSWER throws away text somebody is in the middle of
-// reading, and takes it off the screen to do it. Those are different costs, so
-// they are different counters: [Watch.Token] is told how many of the tokens so
-// far were visible, and the commitment rule is about that figure alone. The
-// measured defect this fixes: a stream that stalled sixty seconds into its
-// reasoning was past sixty-four tokens, so every hedge was refused, and the
-// answer waited on the transport's stall guard — two and a half minutes away —
-// while the surface said "still working".
-//
-// A HEDGE IS A MEASUREMENT. The second request is also the only cheap way to
-// learn what the alternative lane would have done, so whichever way it lands it
-// goes back into the ledger as a sighting.
-//
-// The watch is PURE: it holds no clock, no lock and no channel, every method
-// takes the moment as an argument, and it fires at most one verdict in its
-// life. Whoever drives it — one stream loop, one goroutine at a time — owns the
-// serialization, and `internal/provider/hedge.go` is that owner.
+// The watch is still PURE: it holds no clock, no lock and no channel, and every
+// method takes the moment as an argument. Whoever drives it — one stream loop
+// and one beat, one call at a time — owns the serialization, and
+// `internal/provider/hedge.go` is that owner.
 
-const (
-	// deadlineFloor and deadlineCeiling bound a derived deadline. Below the
-	// floor a hedge is racing the network rather than the lane — the second
-	// request has its own handshake to pay — and above the ceiling nobody is
-	// still reading anyway, so a bound that never fires is a bound that lies.
-	deadlineFloor   = 700 * time.Millisecond
-	deadlineCeiling = 8 * time.Second
-	// deadPathFloor is the shortest silence that may be read as a dead path.
-	// Two deadlines is the shape of the rule — a path that has said nothing at
-	// all for twice as long as the lane's whole expected wait is not a slow
-	// lane — and three seconds is the floor under it, because a fast lane's
-	// deadline doubled is still less time than a TLS handshake and a cold
-	// connection can honestly take.
-	deadPathFloor = 3 * time.Second
-	// lumpGap is one gap long enough to complain about on its own, whatever
-	// the lane's believed rate. It is today's velocity ledger's LagGap and it
-	// keeps its meaning exactly.
-	lumpGap = 15 * time.Second
-	// commitTokens is where an answer stops being cheap to abandon. Past it a
-	// drift alarm is not enough on its own: see [Watch.worthLeaving]. IT COUNTS
-	// VISIBLE TOKENS: a run of thought is money already spent and nothing a
-	// person would watch disappear, so it buys no commitment at all.
-	commitTokens = 64
-	// driftSlack (k) is how much slower than believed a gap may be before it
-	// counts as evidence at all, and driftAlarm (h) is how much evidence is
-	// needed. Both are in nats of log-gap, so a lane's own rate is what they
-	// are measured against. k = 0.5 lets a gap be about a two-thirds again
-	// longer than expected without accumulating anything, which is ordinary
-	// jitter; h = 3.0 then needs several such gaps in a row, or one very much
-	// worse, before the answer is given up on.
-	driftSlack = 0.5
-	driftAlarm = 3.0
-)
+// DeadPathFloor is the shortest silence that may be read as a DEAD PATH rather
+// than as a slow lane.
+//
+// It is the one claim the controller cannot make, because it is not about time
+// at all: a stream that has carried neither a token nor a heartbeat says
+// nothing about how fast the endpoint behind it writes — nothing ever reached
+// it, or nothing ever came back — and charging the lane for it would demote a
+// machine on the evidence of somebody's wifi. Three seconds is the floor under
+// it because a TLS handshake and a cold connection can honestly take longer
+// than a fast lane's whole believed wait.
+const DeadPathFloor = 3 * time.Second
 
 // Watch follows one stream from the moment it is sent.
-//
-// It is fed by the stream loop and it holds no clock of its own: every method
-// takes the moment as an argument, for the same reason the chooser does.
 type Watch struct {
-	// deadline and alt are the choice's own, decided at send time. The moment
-	// a hedge is wanted is the worst possible moment to start choosing where
-	// to send it.
-	deadline time.Duration
-	alt      string
-	// belief is what was expected of the lane serving this stream. It is what
-	// turns a gap into a surprise rather than into a threshold.
-	belief Belief
-	// altTTFT and altRate are what the frontier believed about the lane a
-	// hedge would go to — milliseconds and tokens per second — read out of the
-	// choice once, because the commitment rule compares finishing here against
-	// starting there and a watch that had to ask the ledger mid-stream would be
-	// reading a belief the choice never saw.
-	altTTFT float64
-	altRate float64
-	// head is the lane the deadline was computed for, so that a stream served
-	// by somebody else can be judged against the machine that is really
-	// answering it ([Watch.Serving]).
-	head string
-	// began is when the request went out, tokens counts every delta that has
-	// arrived, and visible counts the ones a person can read. The two differ by
-	// the run of thought, which is the whole of the commitment rule's argument
-	// above.
-	began   time.Time
+	// plan is what the controller is built from, and it is held so that
+	// [Watch.SetExpectedTokens] can still reach it before the stream starts.
+	plan control.Plan
+	// asked is the controller, built once and lazily for that reason.
+	asked control.Controller
+	began time.Time
+	// tokens is every delta that has arrived and visible the ones a person can
+	// read. They are kept because the transport hands over totals and the
+	// controller is fed the difference.
 	tokens  int
 	visible int
-	// expected is how long this answer is thought to be, in output tokens. It
-	// is the other half of the commitment rule and it is set by whoever knows
-	// it ([Watch.SetExpectedTokens]); zero means "no idea", under which a
-	// committed stream is never abandoned.
-	expected int
-	// beat is the last sign of life of any kind — a heartbeat comment or a
-	// token — and last is the last TOKEN. They are separate because they
-	// answer different questions: whether the path is alive, and whether the
-	// model is writing.
-	beat time.Time
-	last time.Time
-	// drift is the CUSUM's accumulated surprise, in nats, never below zero.
-	drift float64
-	// hedged is set once, because a request gets one hedge and not a race.
-	hedged bool
-	// fault records that the verdict was about the PATH rather than the lane,
-	// so the caller can decline to charge a belief for it.
+	// alive is the last sign of life of ANY kind — a heartbeat or a delta — and
+	// it is the whole of the dead-path claim.
+	alive time.Time
+	// last is the act that last fired, so a caller can log the numbers it was
+	// decided on rather than only the outcome.
+	last  control.Act
 	fault bool
 }
 
-// NewWatch starts a watch over one stream.
-func NewWatch(choice Choice, belief Belief, now time.Time) *Watch {
-	watch := &Watch{
-		deadline: choice.Deadline,
-		alt:      choice.Alt,
-		belief:   belief,
-		head:     headOf(choice),
-		began:    now,
-		beat:     now,
-	}
-	if watch.deadline <= 0 {
-		watch.deadline = derivedDeadline(belief)
-	}
-	// The alternative's numbers as the choice scored them, so that the
-	// commitment rule and the picker's explanation are reading one arithmetic.
-	for _, scored := range choice.Frontier {
-		if scored.ID.Lane == choice.Alt {
-			watch.altTTFT, watch.altRate = scored.TTFT, scored.Rate
-			break
-		}
-	}
-	return watch
+// Watching builds a watch over a plan. It is the door a caller that knows the
+// role, the purse and the frontier uses; [NewWatch] is the older one.
+func Watching(plan control.Plan) *Watch {
+	return &Watch{plan: plan, began: plan.Began, alive: plan.Began}
 }
 
-// headOf is the lane this request was expected to land on: the pin if there is
-// one, else the head of the order. It is what the deadline in hand was computed
-// for, and [Watch.Serving] compares the stream's own answer against it.
-func headOf(choice Choice) string {
+// NewWatch starts a watch over one stream from the choice that sent it.
+//
+// IT ASSUMES A PERSON IS READING, because a race is a rescue and a rescue is
+// the errand it is rescuing. A caller that knows better builds its own [Plan]
+// with [PlanFor] and hands it to [Watching]; nothing here may guess a role.
+func NewWatch(choice Choice, belief Belief, now time.Time) *Watch {
+	return Watching(PlanFor(choice, PaceOf(belief), RoleTalk, now))
+}
+
+// Pace is what is believed about the machine expected to serve, as the two
+// distributions a wait is judged against: how long its first word takes, and
+// how long a gap between two visible ones may be. Both are in SECONDS, and an
+// unknown one is a real state that leaves the ceiling as the only bound.
+type Pace struct {
+	First control.Survival
+	Gap   control.Survival
+}
+
+// PlanFor turns a routing answer into a waiting one, and it is the ONE place a
+// plan is built.
+//
+// ROUTING AND WAITING ARE TWO QUESTIONS. The choice says WHICH LANE and this
+// says WHEN TO ACT, and a choice that expressed no preference at all still
+// yields a plan — with a ceiling, with a floor, and with whatever alternatives
+// the frontier named. That is the whole of "a cold ledger may not switch the
+// clock off".
+//
+// IT TAKES A [Pace] RATHER THAN A BELIEF, and the difference is where the
+// belief came from. A test scripts one with [PaceOf]; the transport asks
+// [PaceFor], which prefers the four-level chain — the world's pace plus the
+// provider's offset plus the model's — over a flat belief about a pair nobody
+// has measured. Both answer the same two questions, so the plan is built once
+// and not twice.
+func PlanFor(choice Choice, pace Pace, role Role, now time.Time) control.Plan {
+	head := HeadOf(choice)
+	return control.Plan{
+		Lane:    head,
+		Ceiling: role.Ceiling(),
+		Floor:   ActionFloor,
+		Lambda:  role.Lambda(),
+		Margin:  Hysteresis.Seconds(),
+		First:   pace.First,
+		Gap:     pace.Gap,
+		Alts:    alternatives(choice, head),
+		Began:   now,
+	}
+}
+
+// PaceFor is what THIS PROCESS believes about one pair right now.
+//
+// IT ASKS FOR THE BETTER DOOR AND FALLS BACK TO THE PLAINER ONE. A four-level
+// chain answers for a pair nobody has measured — which is the whole of cold
+// start — and a flat belief answers only for a pair it has seen. The ledger is
+// one object that may be both ([Hierarchy] beside [Ledger]), so a build whose
+// ledger is only the plainer kind still gets a plan, with a ceiling under it
+// either way.
+func PaceFor(id ID, now time.Time) Pace {
+	if id.Lane == "" || id.Model == "" {
+		return Pace{}
+	}
+	ledger := Default().Ledger()
+	// WHAT ONE ANSWER'S OWN VARIABILITY IS, ASKED ONCE, FOR BOTH DOORS. It is
+	// not the chain's and it is not the flat belief's — it is a property of the
+	// machine, published as the distance between a p50 and a p90 — so it is
+	// asked of the ledger once and added to whichever belief answers.
+	first, gap := SpreadFloor, SpreadFloor
+	if chains, ok := ledger.(Hierarchy); ok {
+		first, gap = chains.Draw(id)
+		pace := Pace{
+			First: chains.Wait(id, now).Survival(first, millisecondsInASecond),
+			Gap:   reciprocal(chains.Rate(id, now).Survival(gap, 1)),
+		}
+		if pace.First.Known() || pace.Gap.Known() {
+			return pace
+		}
+	}
+	belief, ok := ledger.Belief(id)
+	if !ok {
+		return Pace{}
+	}
+	return paceWith(belief, first, gap)
+}
+
+// millisecondsInASecond is how many of the first-token chain's own units make
+// the second [control] waits in. It is spelled rather than written as 1000 in
+// the middle of a conversion, because a unit error here is a deadline off by
+// three orders of magnitude and nothing would look wrong.
+const millisecondsInASecond = 1000
+
+// reciprocal turns a belief about tokens a second into one about the seconds
+// between two tokens. The log of a reciprocal is the negated log and the spread
+// is unchanged, which is the whole conversion.
+func reciprocal(rate control.Survival) control.Survival {
+	if !rate.Known() {
+		return control.Survival{}
+	}
+	return control.Survival{Mu: -rate.Mu, Sigma: rate.Sigma}
+}
+
+// HeadOf is the lane this request was expected to land on: the pin if there is
+// one, else the head of the order. It is exported because the transport asks it
+// the same question before it can ask what is believed about the answer, and two
+// spellings of "which lane did we mean" is how a plan comes to be built against
+// one machine and drawn against another.
+func HeadOf(choice Choice) string {
 	if len(choice.Only) > 0 {
 		return choice.Only[0]
 	}
@@ -196,247 +193,278 @@ func headOf(choice Choice) string {
 	return ""
 }
 
-// derivedDeadline is the fallback when the choice named none: the serving
-// lane's own believed ninetieth-percentile first token, clamped.
+// PaceOf is one lane's FLAT belief as a [Pace], with nothing known about how
+// variable one answer from it is.
 //
-// It is a fallback and not the rule. The chooser has the alternative's
-// posterior and the price of a second in front of it and can solve for the
-// moment the expected remaining wait exceeds a fresh start; a watch holding one
-// belief can only say "this is already past what this lane usually does". A
-// lane nothing is believed about gets no deadline at all, because a hedge fired
-// on no evidence is a second bill for a guess.
-func derivedDeadline(belief Belief) time.Duration {
-	if !belief.TTFT.Known() {
-		return 0
+// It is the door for a caller holding a belief and no ledger, so what one draw
+// moves by is [SpreadFloor], the prior. [PaceFor] asks the ledger for the
+// lane's own published figure and is what the transport waits against.
+func PaceOf(belief Belief) Pace { return paceWith(belief, SpreadFloor, SpreadFloor) }
+
+// paceWith is one flat belief as the two distributions a wait is judged
+// against, given how much one answer from this lane moves.
+func paceWith(belief Belief, first, gap float64) Pace {
+	var pace Pace
+	if belief.TTFT.Known() {
+		pace.First = control.Survival{
+			Mu:    belief.TTFT.X - math.Log(millisecondsInASecond),
+			Sigma: predictiveSpread(belief.TTFT.P, first),
+		}
 	}
-	// 1.2816 is the standard normal's ninetieth percentile — the same figure the
-	// sheet's prior fit is derived with. It is spelled out rather than named
-	// because this is the only line in this file that needs it.
-	p90 := belief.TTFT.Quantile(1.2816)
-	if p90 <= 0 {
-		return 0
+	if belief.Rate.Known() {
+		// A gap is one over a rate, so its log is the rate's negated and its
+		// spread is the same.
+		pace.Gap = control.Survival{Mu: -belief.Rate.X, Sigma: predictiveSpread(belief.Rate.P, gap)}
 	}
-	deadline := time.Duration(p90 * float64(time.Millisecond))
-	if deadline < deadlineFloor {
-		return deadlineFloor
-	}
-	if deadline > deadlineCeiling {
-		return deadlineCeiling
-	}
-	return deadline
+	return pace
 }
 
-// Deadline is when this stream was expected to start answering, zero when the
-// choice asked for no hedging. It is exposed so the transport can arm a timer
-// against it rather than poll.
-func (w *Watch) Deadline() time.Duration { return w.deadline }
+// predictiveSpread is a predictive standard deviation in nats, floored at how
+// variable one answer from this lane really is. See [Chain.Survival], which is
+// the same rule on the four-level belief.
+func predictiveSpread(variance, draw float64) float64 {
+	return math.Max(math.Sqrt(variance), draw)
+}
 
-// Alt is the lane a hedge would go to, empty when there is nobody worth hedging
-// to.
-func (w *Watch) Alt() string { return w.alt }
-
-// Hedged reports whether this request has already spent its one hedge.
-func (w *Watch) Hedged() bool { return w.hedged }
-
-// PathFault reports whether the verdict this watch gave was about the path
-// rather than about the lane.
-//
-// It is the flag that keeps a belief honest. A connection that carried neither
-// a heartbeat nor a byte says nothing about how fast the endpoint behind it
-// writes — nothing ever reached it, or nothing ever came back — and charging
-// the lane for it would demote a machine on the evidence of somebody's wifi.
-func (w *Watch) PathFault() bool { return w.fault }
-
-// SetExpectedTokens says roughly how long this answer is going to be.
-//
-// It is the sunk-cost half of the commitment rule: two hundred VISIBLE tokens in
-// with twenty to go is a stream worth finishing however slowly it is going, and
-// the only way to know that is to know how many were expected. It is an answer
-// length and never a thinking length — the run of thought is not counted on
-// either side of the comparison. Without it a
-// committed stream is never abandoned, which is the safe direction — the cost
-// of staying is one slow answer and the cost of leaving wrongly is the whole
-// answer again.
-func (w *Watch) SetExpectedTokens(n int) {
-	if n > 0 {
-		w.expected = n
+// expected is a point estimate of an interval, in seconds, as the distribution
+// whose MEAN is exactly that. The frontier scores lanes with medians, and a
+// median read as a mean would price every alternative as cheaper than it is.
+func expected(seconds float64) control.Survival {
+	if seconds <= 0 {
+		return control.Survival{}
 	}
+	return control.Survival{Mu: math.Log(seconds) - SpreadFloor*SpreadFloor/2, Sigma: SpreadFloor}
+}
+
+// alternatives is where acting could go, best first, with what the frontier
+// already scored them at.
+//
+// AN EMPTY LIST IS A REAL STATE and the reason [control.Report] exists: a call
+// with nowhere better to go still has a ceiling, and what it does there is say
+// so. It is what `routing off`, an endpoint that is not a router, and a ledger
+// that has heard of one machine all look like from here.
+//
+// THE LANES THE CHOICE RULED OUT ARE NOT ALTERNATIVES. Ignore names the lanes
+// this process is SURE about rather than the ones it is merely unlucky with,
+// and a rescue that went to one would be sending somebody's answer to the
+// machine the belief just refused.
+func alternatives(choice Choice, head string) []control.Alternative {
+	numbers := make(map[string]Scored, len(choice.Frontier))
+	for _, scored := range choice.Frontier {
+		numbers[strings.ToLower(scored.ID.Lane)] = scored
+	}
+	seen := map[string]bool{strings.ToLower(head): true}
+	for _, refused := range choice.Ignore {
+		seen[strings.ToLower(strings.TrimSpace(refused))] = true
+	}
+	alts := make([]control.Alternative, 0, len(choice.Frontier))
+	add := func(lane string) {
+		key := strings.ToLower(strings.TrimSpace(lane))
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		scored := numbers[key]
+		alts = append(alts, control.Alternative{
+			Lane:  lane,
+			First: expected(scored.TTFT / 1000),
+			Rate:  scored.Rate,
+			Extra: scored.Price,
+		})
+	}
+	// The order is a ranking and the frontier is a set; the ranking wins where
+	// there is one, and the rest of the frontier follows it.
+	for _, lane := range choice.Order {
+		add(lane)
+	}
+	for _, scored := range choice.Frontier {
+		add(scored.ID.Lane)
+	}
+	return alts
+}
+
+// Spending is a budget as the rail the controller asks before it acts.
+//
+// It is a small adapter and not a method on [Budget] because the direction of
+// the dependency matters: the controller may not know what a budget is, and the
+// budget may not know what a controller is. A nil budget refuses, which is how
+// hedging is switched off and has always been.
+func Spending(budget *Budget) control.Purse { return purse{budget} }
+
+type purse struct{ budget *Budget }
+
+// Allows ASKS AND DOES NOT SPEND, which is [Budget.Affordable] and deliberately
+// not [Budget.Allow].
+//
+// The two halves of a rescue are two different moments. The controller asks
+// whether an arm is affordable while it is still deciding — a reading, and one
+// it may take several times over one silence — and the race takes the allowance
+// at the instant the arm really goes out, which is the decision. A controller
+// that reserved would leave allowances held by every request that recovered on
+// its own, and one that counted here as well would charge the budget twice for
+// one arm.
+func (p purse) Allows(usd float64, now time.Time) bool { return p.budget.Affordable(now, usd) }
+
+// ── DRIVING IT ──────────────────────────────────────────────────────────────
+
+// controller is the one this watch was built with, from the one factory.
+//
+// It is built lazily so that everything a caller sets between the constructor
+// and the first byte — the expected length, most of all — is in the plan the
+// controller sees. A build with nothing installed is a legal build and gets an
+// inert watch rather than a panic.
+func (w *Watch) controller() control.Controller {
+	if w.asked == nil {
+		if build := Controller(); build != nil {
+			w.asked = build(w.plan)
+		} else {
+			w.asked = idle{}
+		}
+	}
+	return w.asked
+}
+
+// Plan is what this watch is waiting against.
+func (w *Watch) Plan() control.Plan { return w.plan }
+
+// SetExpectedTokens says roughly how long this answer is going to be, which is
+// the other half of the commitment arithmetic. It has to be said before the
+// stream starts, which is where the transport says it.
+func (w *Watch) SetExpectedTokens(n int) {
+	if n > 0 && w.asked == nil {
+		w.plan.Expected = n
+	}
+}
+
+// Read folds in one moment of the stream and returns the verdict with the
+// numbers it was made on. It is the surface everything else here is written in
+// terms of.
+func (w *Watch) Read(reading control.Reading) control.Act {
+	if reading.Visible > 0 || reading.Hidden > 0 || reading.Beat {
+		w.sign(reading.At)
+	}
+	return w.record(w.controller().Note(reading), reading.At)
+}
+
+// Quiet says nothing has arrived by now, and asks the same question.
+func (w *Watch) Quiet(now time.Time) control.Act {
+	return w.record(w.controller().Quiet(now), now)
+}
+
+// Last is the act that fired, empty until one has.
+func (w *Watch) Last() control.Act { return w.last }
+
+// Phase is which distribution is governing right now.
+func (w *Watch) Phase() control.Phase { return w.controller().Phase() }
+
+// record keeps what the caller needs after the fact: the act, and whether it
+// was about the PATH rather than about the lane.
+func (w *Watch) record(act control.Act, now time.Time) control.Act {
+	if act.Kind == control.None {
+		return act
+	}
+	if w.tokens == 0 && !w.alive.After(w.began) && now.Sub(w.began) >= DeadPathFloor {
+		w.fault = true
+		act.Reason = "no heartbeat"
+	}
+	w.last = act
+	return act
 }
 
 // Serving says which lane the stream itself named, with what is believed about
 // it, so that everything after the first chunk is judged against the machine
 // that is really answering.
-//
-// A ROUTER IS FREE TO HONOUR ANY OF AN ORDER, and it says which way it went on
-// every chunk. Until it does, the only belief there is belongs to the lane at
-// the head of the order — that is what the deadline was solved for and what the
-// drift test would otherwise keep measuring gaps against. Judging parasail's
-// stream against friendli's believed rate is a surprise about nobody.
-//
-// The deadline moves with it only while nothing has arrived yet: past the first
-// token a deadline has nothing left to bound, and a lane named after the answer
-// started must not reopen a window that has already closed.
 func (w *Watch) Serving(lane string, belief Belief, now time.Time) {
-	if w.hedged || lane == "" || equalLane(lane, w.head) || !belief.Known() {
-		return
-	}
-	w.head, w.belief = lane, belief
-	if w.tokens > 0 {
-		return
-	}
-	if deadline := derivedDeadline(belief); deadline > 0 {
-		w.deadline = deadline
+	pace := PaceOf(belief)
+	w.controller().Serving(lane, pace.First, pace.Gap, now)
+}
+
+// Heartbeat records a sign of life that is not a token.
+//
+// IT IS NOT A QUESTION. A comment line is proof about the PATH and about
+// nothing else, so it moves the dead-path claim and nothing in the controller —
+// and a caller that has no verdict to honour cannot drop one. The beat is what
+// asks; this only answers "somebody is still on the other end".
+func (w *Watch) Heartbeat(t time.Time) { w.sign(t) }
+
+// sign records a sign of life. It only ever moves forward: two drivers feed
+// this and neither owns the other's clock.
+func (w *Watch) sign(t time.Time) {
+	if t.After(w.alive) {
+		w.alive = t
 	}
 }
 
-// equalLane compares two lane names the way every other comparison in this
-// design does: the wire spells a lane however it likes.
-func equalLane(a, b string) bool { return strings.EqualFold(a, b) }
-
-// Heartbeat records a sign of life that is not a token — the router's own
-// comment line before the model has said anything. It is proof about the PATH
-// and never about the endpoint.
-func (w *Watch) Heartbeat(t time.Time) { w.beat = t }
-
 // Token records that n tokens have now arrived — of which visible are tokens a
-// person can read — and says whether the stream should be given up on.
+// person can read — and says whether the stream should be acted on.
 //
-// The first token carries no gap — there is nothing before it to measure
-// against — so it only stops the deadline clock. Every one after it is folded
-// into the drift.
-//
-// THE TWO COUNTS ARE NOT INTERCHANGEABLE. n is progress: it is what says the
-// endpoint is writing at all, and it is what the gaps are measured between.
-// visible is what is on the screen, and it is the only thing the commitment
-// rule is allowed to read (see the header).
+// THE TWO COUNTS ARE NOT INTERCHANGEABLE. Visible text is progress and starts
+// the wait again. A hidden delta is the endpoint writing where nobody can read,
+// so it moves the phase and leaves the silence exactly where it was.
 func (w *Watch) Token(n, visible int, t time.Time) Verdict {
-	previous := w.last
-	w.tokens = n
-	w.visible = visible
-	w.beat, w.last = t, t
-	if previous.IsZero() {
-		return Verdict{}
-	}
-	alarm, reason := w.alarm(t.Sub(previous), true)
-	if !alarm {
-		return Verdict{}
-	}
-	return w.verdict(reason, false)
+	reading := control.Reading{At: t, Visible: visible - w.visible, Hidden: (n - w.tokens) - (visible - w.visible)}
+	w.tokens, w.visible = n, visible
+	return verdictOf(w.Read(reading))
 }
 
 // Silence records that nothing has arrived by t, and says whether that silence
 // has gone on long enough to act on.
+func (w *Watch) Silence(t time.Time) Verdict { return verdictOf(w.Quiet(t)) }
+
+// verdictOf is the older, narrower answer: a hedge or nothing. Everything the
+// ladder gained since — an offer, a report, an escalation, a commitment — is
+// read off [Watch.Last] by the callers that know what to do with it.
+func verdictOf(act control.Act) Verdict {
+	if act.Kind != control.Hedge {
+		return Verdict{}
+	}
+	return Verdict{Hedge: true, Reason: act.Reason}
+}
+
+// DeadlineAt is the next moment worth waking for, so a beat arms a timer rather
+// than polls. It is never in the past.
+func (w *Watch) DeadlineAt() time.Time { return w.controller().Deadline() }
+
+// Deadline is that moment as a wait from the request going out, which is what
+// the phase clock draws a countdown against.
+func (w *Watch) Deadline() time.Duration {
+	if wait := w.DeadlineAt().Sub(w.began); wait > 0 {
+		return wait
+	}
+	return 0
+}
+
+// Alt is the lane an act would go to, empty when there is nobody worth acting
+// on.
+func (w *Watch) Alt() string {
+	if len(w.plan.Alts) == 0 {
+		return ""
+	}
+	return w.plan.Alts[0].Lane
+}
+
+// Hedged reports whether this request has already put a second arm on the wire.
 //
-// It answers three different questions in one call because the stream loop has
-// one timer to spend: is the path dead, is the first token late, and has the
-// gap now open already gone on longer than this lane's drift can excuse. THE
-// THIRD IS WHY SILENCE IS ASKED MID-STREAM AT ALL: a lane that stalls for
-// twenty seconds delivers no token to notice it with, so a watch driven only by
-// [Watch.Token] would find out about the stall when it ended.
-func (w *Watch) Silence(t time.Time) Verdict {
-	if w.hedged || w.alt == "" {
-		return Verdict{}
-	}
-	if w.tokens == 0 {
-		// THE DEAD PATH OUTRANKS THE LATE FIRST TOKEN, because it is a
-		// different claim and the belief must not be charged for it. A router
-		// that is working says so in comments long before the model does.
-		if t.Sub(w.beat) >= w.deadPath() {
-			w.fault = true
-			return w.verdict("no heartbeat", true)
-		}
-		if w.deadline > 0 && t.Sub(w.began) > w.deadline {
-			return w.verdict("first token late", true)
-		}
-		return Verdict{}
-	}
-	// A gap that is ALREADY this long is at least this long, so it is judged
-	// without being folded in: the token that finally arrives folds the real
-	// figure, once.
-	alarm, reason := w.alarm(t.Sub(w.last), false)
-	if !alarm {
-		return Verdict{}
-	}
-	return w.verdict(reason, false)
-}
+// IT IS NO LONGER A BOOLEAN THAT REFUSES THE NEXT ONE. A request may earn more
+// than one arm and what bounds them is the purse; this only says whether one
+// has gone out.
+func (w *Watch) Hedged() bool { return w.controller().Acted(control.Hedge) }
 
-// deadPath is how long a silence with no sign of life at all may run.
-func (w *Watch) deadPath() time.Duration {
-	dead := 2 * w.deadline
-	if dead < deadPathFloor {
-		return deadPathFloor
-	}
-	return dead
-}
+// Asked reports whether an offer has been raised on this request. A pin is
+// asked, never overridden, and it is asked once.
+func (w *Watch) Asked() bool { return w.controller().Acted(control.Ask) }
 
-// alarm judges one gap against what this lane's believed rate says a gap should
-// be, folding it into the drift when it is a gap that really happened.
-//
-// It returns the machine word for the log: a lump is one long delivery and a
-// drift is a lane that has become slow, and the two are worth telling apart
-// afterwards even though the answer to both is the same request.
-func (w *Watch) alarm(gap time.Duration, fold bool) (bool, string) {
-	if gap >= lumpGap {
-		return true, "gap"
-	}
-	rate := w.belief.Rate.Mean()
-	if rate <= 0 || gap <= 0 {
-		// Nothing is believed about how fast this lane writes, so no gap is
-		// surprising. Inventing an expectation here is the one thing the
-		// ledger's emptiness law forbids.
-		return false, ""
-	}
-	expected := 1 / rate
-	drift := w.drift + math.Log(gap.Seconds()) - math.Log(expected) - driftSlack
-	if drift < 0 {
-		drift = 0
-	}
-	if fold {
-		w.drift = drift
-	}
-	return drift >= driftAlarm, "drift"
-}
+// PathFault reports whether the act this watch raised was about the path rather
+// than about the lane, which is the flag that keeps a belief honest.
+func (w *Watch) PathFault() bool { return w.fault }
 
-// verdict is the one place a hedge is asked for, so that the commitment rule
-// and the once-only rule are impossible to route around.
-func (w *Watch) verdict(reason string, path bool) Verdict {
-	if w.hedged || w.alt == "" || reason == "" {
-		return Verdict{}
-	}
-	if !path && w.visible >= commitTokens && !w.worthLeaving() {
-		// Committed: the answer is already most of the way here and starting
-		// again somewhere else would cost more than finishing slowly.
-		return Verdict{}
-	}
-	w.hedged = true
-	return Verdict{Hedge: true, Reason: reason}
-}
+// idle is the controller a build with none installed gets: it watches, it says
+// nothing, and it never invents a moment.
+type idle struct{}
 
-// worthLeaving reports whether finishing on this lane really would take longer
-// than redoing the whole answer on the alternative from cold.
-//
-// The comparison is deliberately asymmetric in the sunk cost's favour: what is
-// left here is only the tokens still to come, while the alternative pays its
-// first-token wait AND writes the answer from the beginning. That is what stops
-// a router abandoning a nearly-finished reply to a lane that is merely faster.
-func (w *Watch) worthLeaving() bool {
-	rate := w.belief.Rate.Mean()
-	if rate <= 0 || w.expected <= 0 {
-		return false
-	}
-	remaining := float64(w.expected - w.visible)
-	if remaining <= 0 {
-		return false
-	}
-	altRate := w.altRate
-	if altRate <= 0 {
-		altRate = rate
-	}
-	altTTFT := w.altTTFT
-	if altTTFT <= 0 {
-		altTTFT = w.belief.TTFT.Mean()
-	}
-	here := remaining / rate
-	there := altTTFT/1000 + float64(w.expected)/altRate
-	return here > there
-}
+func (idle) Note(control.Reading) control.Act                              { return control.Act{} }
+func (idle) Quiet(time.Time) control.Act                                   { return control.Act{} }
+func (idle) Serving(string, control.Survival, control.Survival, time.Time) {}
+func (idle) Deadline() time.Time                                           { return time.Time{} }
+func (idle) Phase() control.Phase                                          { return control.PhaseSilent }
+func (idle) Acted(control.Kind) bool                                       { return false }

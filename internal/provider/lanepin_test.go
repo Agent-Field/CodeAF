@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,10 +62,11 @@ func TestAPinnedLaneGoesNowhereElse(t *testing.T) {
 	}
 }
 
-// AND IT CARRIES NO ALTERNATIVE, so nothing can rescue away from it. The Choice
-// the transport decided is what the watch reads, and a pin that named a second
-// lane would be a pin a slow answer could quietly leave.
-func TestAStrictPinLeavesNowhereToBeRescuedTo(t *testing.T) {
+// AND IT RANKS NOTHING, so nothing can quietly route around it — while still
+// carrying the candidate set, so that the question a stalled pin raises can name
+// where a `y` would go. The two are the whole of "a pin is asked, never
+// overridden": the wire is sent `Only` and the offer is pointed at the frontier.
+func TestAStrictPinRanksNothingAndStillKnowsWhereToOffer(t *testing.T) {
 	client, _, model := stubbedRouter(t)
 	primed(t, model,
 		laneBelief(model, "quicksilver", 400, 70, 0.25),
@@ -76,11 +78,21 @@ func TestAStrictPinLeavesNowhereToBeRescuedTo(t *testing.T) {
 	if !made {
 		t.Fatal("a pin made no choice at all")
 	}
-	if choice.Alt != "" {
-		t.Fatalf("a pinned request would hedge to %q", choice.Alt)
-	}
 	if len(choice.Order) != 0 {
 		t.Fatalf("a pinned request ranked %v", choice.Order)
+	}
+	if len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "brass") {
+		t.Fatalf("only = %v, want the pinned machine and nothing else", choice.Only)
+	}
+	// AND THE OFFER HAS SOMEWHERE TO POINT. A plan over this choice is pinned,
+	// so the act is a question rather than a rescue — and a question that could
+	// not name a lane would be one nobody could answer.
+	plan := lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now())
+	if !plan.Pinned && len(choice.Only) > 0 {
+		plan.Pinned = true
+	}
+	if len(plan.Alts) == 0 {
+		t.Fatal("a stalled pin could raise no offer: the plan names nowhere a `y` would go")
 	}
 }
 
@@ -121,8 +133,11 @@ func TestABorrowablePinLeadsTheOrderAndKeepsARescue(t *testing.T) {
 	withPin, _ := client.laneChoiceFor(callKnobs{}, model, request)
 	SetLanePin(LanePin{})
 	without, _ := client.laneChoiceFor(callKnobs{}, model, request)
-	if without.Alt != "" && withPin.Alt == "" {
-		t.Fatalf("the belief would have rescued to %q and the borrowable pin took it away", without.Alt)
+	rescues := func(choice lanes.Choice) int {
+		return len(lanes.PlanFor(choice, lanes.Pace{}, lanes.RoleTalk, time.Now()).Alts)
+	}
+	if rescues(without) > 0 && rescues(withPin) == 0 {
+		t.Fatalf("the belief would have rescued from %v and the borrowable pin took it away", without.Order)
 	}
 }
 

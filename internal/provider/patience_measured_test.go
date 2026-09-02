@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 // ── PATIENCE FOLLOWS THE MEASURED RATE ──────────────────────────────────────
@@ -180,6 +182,20 @@ func TestAHungStreamIsCutInProportionToItsBaselineAndNotAtTheColdFloor(t *testin
 	}
 }
 
+// talking is a request somebody is reading, and it is the role every scenario in
+// this package's wire tests asks as.
+//
+// IT IS THE ROLE THE FLAT BOUNDS IN streamguard.go ARE WRITTEN IN (patience ×1),
+// and it is also what makes a wait worth acting on at all: λ is seconds per
+// dollar, a call that names no role reads as [lane.RoleUnknown] — a hidden
+// background errand, worth nothing per second by construction (roles.go) — and
+// under that reading nothing short of the ceiling is ever worth a second
+// request. The conservative default is right in production and wrong in a
+// fixture about somebody waiting.
+func talking() context.Context {
+	return WithRole(context.Background(), lanes.RoleTalk)
+}
+
 // TestAKeepaliveStillBuysPatienceOnAFastLane is the guard on the change.
 //
 // Narrowing the silence bound must not narrow the window a keepalive has to
@@ -191,7 +207,7 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 	restore := shortenStallBounds(t, 200*time.Millisecond, 120*time.Millisecond)
 	defer restore()
 	cut := false
-	watch := newStallWatch(func() { cut = true }, time.Hour)
+	watch := newStallWatch(talking(), func() { cut = true }, time.Hour)
 	// The timers are stopped and the verdict is asked for directly: this is a
 	// test about the REASONING, and a timer firing under it would be a second
 	// caller of the same once-only decision.
@@ -215,7 +231,7 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 
 	// And the other half: the same narrowed bound DOES cut a stream whose
 	// endpoint has gone silent as well, which is the whole point of narrowing.
-	silent := newStallWatch(func() {}, time.Hour)
+	silent := newStallWatch(talking(), func() {}, time.Hour)
 	silent.stop()
 	silent.spoken = true
 	silent.gap = 10 * time.Millisecond
@@ -237,21 +253,24 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 // which are [stallWatch.rewall]'s: a bound a chunk could push out repeatedly
 // would not be a bound.
 func TestTheGapNarrowsOnceAndOnlyDownwards(t *testing.T) {
-	watch := newStallWatch(func() {}, time.Hour)
+	watch := newStallWatch(talking(), func() {}, time.Hour)
 	defer watch.stop()
 	if watch.gap != stallGapBound {
 		t.Fatalf("a fresh watch opens at %s, want the flat bound %s", watch.gap, stallGapBound)
 	}
-	watch.regap(5 * time.Second)
-	if watch.gap != 5*time.Second {
+	// The two figures are inside the band this role's ceiling leaves the
+	// derivation ([stallBounds.narrow]): a bound below that is not a narrowing
+	// this layer is allowed to make, whatever the lane's rate says.
+	watch.regap(30 * time.Second)
+	if watch.gap != 30*time.Second {
 		t.Fatalf("gap = %s, want the narrowed bound", watch.gap)
 	}
-	watch.regap(time.Second)
-	if watch.gap != 5*time.Second {
+	watch.regap(25 * time.Second)
+	if watch.gap != 30*time.Second {
 		t.Fatalf("gap = %s after a second narrowing, want the first one to stand", watch.gap)
 	}
 
-	fresh := newStallWatch(func() {}, time.Hour)
+	fresh := newStallWatch(talking(), func() {}, time.Hour)
 	defer fresh.stop()
 	fresh.regap(time.Hour)
 	if fresh.gap != stallGapBound {

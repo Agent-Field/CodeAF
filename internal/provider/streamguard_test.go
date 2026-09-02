@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -513,11 +515,21 @@ func shortenStallBounds(t *testing.T, first, gap time.Duration) func() {
 	return shortenStallBoundsCapped(t, first, gap, 4*gap)
 }
 
+// It holds the ROLE MULTIPLIER at one as well, and that is part of the same
+// seam. Every bound below is scaled by the patience of the role that asked
+// ([boundsFor]); a test that shortens the transport to milliseconds is asking
+// whether the machinery cuts rather than whose errand it was, so the figures it
+// states here are the figures its watch runs on.
 func shortenStallBoundsCapped(t *testing.T, first, gap, buffered time.Duration) func() {
 	t.Helper()
 	oldFirst, oldGap, oldBuffered := stallFirstBound, stallGapBound, stallBufferedBound
+	oldPatience := stallPatience
 	stallFirstBound, stallGapBound, stallBufferedBound = first, gap, buffered
-	return func() { stallFirstBound, stallGapBound, stallBufferedBound = oldFirst, oldGap, oldBuffered }
+	stallPatience = func(lanes.Role) float64 { return 1 }
+	return func() {
+		stallFirstBound, stallGapBound, stallBufferedBound = oldFirst, oldGap, oldBuffered
+		stallPatience = oldPatience
+	}
 }
 
 func deltaChunk(text string) string {

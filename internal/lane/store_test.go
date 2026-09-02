@@ -76,20 +76,18 @@ func TestTheBeliefFileIsWrittenWholeOrNotAtAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the directory: %v", err)
 	}
-	// The lock file is the one other thing a save is entitled to leave: it is
-	// created once, never replaced, and it is what makes two processes writing
-	// this file safe (store.go, "two processes, one file"). A TEMPORARY is what
-	// this test refuses — a half-written set with a name somebody could read.
+	// Three names are legitimate and no more: the state, the lock that
+	// serialises writers of it, and the observation journal beside it. A
+	// TEMPORARY is what this test refuses — a half-written set with a name
+	// somebody could read.
+	allowed := map[string]bool{"lanes.json": true, "lanes.json" + lockSuffix: true, "lanes.log": true}
 	for _, entry := range entries {
-		if entry.Name() != "lanes.json" && entry.Name() != "lanes.json"+lockSuffix {
+		if !allowed[entry.Name()] {
 			t.Fatalf("a write left %q behind", entry.Name())
 		}
 	}
-	if len(entries) != 2 {
-		t.Fatalf("three writes left %d files", len(entries))
-	}
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.HasPrefix(string(data), "[") {
+	if err != nil || !strings.HasPrefix(string(data), `{"version":2`) {
 		t.Fatalf("the belief file reads %q (%v)", string(data), err)
 	}
 }
@@ -326,12 +324,18 @@ func TestFourLedgersOverOneFileKeepEverybodysBeliefs(t *testing.T) {
 	}
 	running.Wait()
 
-	held, err := newStore().at(path).Load()
-	if err != nil {
-		t.Fatalf("loading the file four processes wrote: %v", err)
+	// Read back the way a fifth process would: the compacted state plus every
+	// observation journalled since it was written. What a process HAS NOT
+	// COMPACTED IS NOT LOST — that is the whole point of the journal — so the
+	// state file alone is not the question anybody asks of this store.
+	fifth := newLedger()
+	fifth.keepIn(newStore().at(path))
+	held := 0
+	for writer := range writers {
+		held += len(fifth.Beliefs(fmt.Sprintf("vendor/model-%d", writer)))
 	}
-	if len(held) != writers*each {
-		t.Fatalf("four processes wrote %d beliefs between them and the file holds %d",
-			writers*each, len(held))
+	if held != writers*each {
+		t.Fatalf("four processes wrote %d beliefs between them and a fifth reads %d",
+			writers*each, held)
 	}
 }

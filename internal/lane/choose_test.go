@@ -1,9 +1,13 @@
 package lane
 
 import (
+	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // ── THE MEASURED WORLD, AS A FIXTURE ────────────────────────────────────────
@@ -81,6 +85,20 @@ func (lane sheetLane) belief(model string, sightings float64) Belief {
 		TTFT:    Posterior{X: math.Log(lane.ttftP50), P: ttftSigma * ttftSigma / sightings},
 		Rate:    Posterior{X: math.Log(lane.rateP50), P: rateSigma * rateSigma / sightings},
 		Quality: Beta{A: 39, B: 1},
+	}
+}
+
+// row is the same line of that table as the SHEET publishes it: percentiles and
+// facts, with no belief fitted from them yet. It is what a cold process holds
+// in memory before it has measured anything of its own.
+func (lane sheetLane) row(model string) Row {
+	return Row{
+		ID:      ID{Model: model, Lane: lane.name},
+		Facts:   lane.belief(model, 1).Facts,
+		TTFTp50: lane.ttftP50,
+		TTFTp90: lane.ttftP90,
+		Ratep50: lane.rateP50,
+		Ratep90: lane.rateP90,
 	}
 }
 
@@ -396,7 +414,7 @@ func TestTheChoiceIsReproducible(t *testing.T) {
 			t.Fatalf("the same request chose %v and then %v", first.Order, second.Order)
 		}
 	}
-	if first.Deadline != second.Deadline || first.Why != second.Why {
+	if first.Why != second.Why {
 		t.Fatal("the same request explained itself two ways")
 	}
 }
@@ -462,56 +480,32 @@ func TestTheLaneHoldingThePrefixIsCheaperByExactlyTheDiscount(t *testing.T) {
 	}
 }
 
-// ── THE HEDGE TIME ──────────────────────────────────────────────────────────
+// ── WHAT A CHOICE DOES NOT CARRY ────────────────────────────────────────────
 
-// TestTheHedgeTimeComesFromTheBeliefAndNotFromAConstant is the arithmetic of
-// Part I §4: for a log-normal the longer you have waited the longer you should
-// expect to go on waiting, so the moment to ask somebody else is a property of
-// this lane's belief and of what the alternative would take.
-func TestTheHedgeTimeComesFromTheBeliefAndNotFromAConstant(t *testing.T) {
-	quick := Belief{TTFT: Posterior{X: math.Log(400), P: 1}}
-	alt := Belief{TTFT: Posterior{X: math.Log(800), P: 0.09}}
-	deadline := hedgeTime(quick, alt)
-	if deadline < 700*time.Millisecond || deadline > 2*time.Second {
-		t.Fatalf("a lane whose normal is 0.4s with a 0.8s alternative hedges at %s", deadline)
-	}
-	slower := hedgeTime(quick, Belief{TTFT: Posterior{X: math.Log(2500), P: 0.09}})
-	if slower <= deadline {
-		t.Fatalf("hedging to a slower alternative got no later: %s then %s", deadline, slower)
-	}
-	// And the whole scale moves with the lane's own belief rather than with a
-	// constant: a lane whose normal is 2s, beside an alternative whose normal is
-	// 4s, waits far longer before anybody asks somebody else.
-	patient := hedgeTime(
-		Belief{TTFT: Posterior{X: math.Log(2000), P: 1}},
-		Belief{TTFT: Posterior{X: math.Log(4000), P: 0.09}})
-	if patient <= deadline {
-		t.Fatalf("a lane whose normal is 2s hedged at %s, no later than a lane whose normal is 0.4s (%s)",
-			patient, deadline)
-	}
-	if none := hedgeTime(Belief{}, alt); none != 0 {
-		t.Fatalf("a lane nothing is believed about was given a deadline of %s", none)
-	}
-	lonely := hedgeTime(quick, Belief{})
-	if lonely < hedgeFloor || lonely > hedgeCeiling {
-		t.Fatalf("with nobody to hedge to the deadline was %s", lonely)
-	}
-}
-
-// TestAChoiceCarriesItsDeadlineAndItsAlternative keeps the two halves of a
-// rescue together: the moment a hedge is wanted is the worst moment to start
-// choosing where to send it.
-func TestAChoiceCarriesItsDeadlineAndItsAlternative(t *testing.T) {
+// TestAChoiceCarriesTheFrontierAndNothingAboutTime is the law that this whole
+// wave turns on, read from the chooser's own answer.
+//
+// A choice answers WHICH LANE. Where a rescue would go and when it would go
+// there are [PlanFor]'s, and they are built for every call — including the ones
+// this chooser has no opinion about at all. What the choice owes the plan is
+// the frontier: the candidate set, already gated and already scored, so that
+// the moment a rescue is wanted is not the moment somebody starts choosing one.
+func TestAChoiceCarriesTheFrontierAndNothingAboutTime(t *testing.T) {
 	chooser := &chooser{ledger: measured(20, noon.Add(-time.Minute))}
 	choice := chooser.Choose(talk())
-	if choice.Alt == "" || choice.Alt == choice.Order[0] {
-		t.Fatalf("the alternative was %q beside an order of %v", choice.Alt, choice.Order)
-	}
-	if choice.Deadline < hedgeFloor || choice.Deadline > hedgeCeiling {
-		t.Fatalf("the deadline was %s, outside the band a hedge is worth having in", choice.Deadline)
+	if len(choice.Frontier) < 2 {
+		t.Fatalf("the frontier named %d lanes, so a rescue has nowhere to be chosen from", len(choice.Frontier))
 	}
 	if choice.Why == "" {
 		t.Fatal("a choice with an opinion said nothing about it")
+	}
+	// AND THE PLAN IS WHAT CARRIES THE CLOCK, out of that same frontier.
+	plan := PlanFor(choice, Pace{}, RoleTalk, noon)
+	if plan.Ceiling != RoleTalk.Ceiling() {
+		t.Fatalf("the plan's ceiling is %s, want the role's %s", plan.Ceiling, RoleTalk.Ceiling())
+	}
+	if len(plan.Alts) == 0 || strings.EqualFold(plan.Alts[0].Lane, choice.Order[0]) {
+		t.Fatalf("a rescue would go to %+v beside an order of %v", plan.Alts, choice.Order)
 	}
 }
 
@@ -523,7 +517,7 @@ func TestAChoiceCarriesItsDeadlineAndItsAlternative(t *testing.T) {
 func TestAnEmptyLedgerIsAnEmptyChoice(t *testing.T) {
 	chooser := &chooser{ledger: &fakeLedger{}}
 	choice := chooser.Choose(talk())
-	if !choice.Empty() || choice.Why != "" || len(choice.Frontier) != 0 || choice.Deadline != 0 {
+	if !choice.Empty() || choice.Why != "" || len(choice.Frontier) != 0 {
 		t.Fatalf("an empty ledger produced an opinion: %+v", choice)
 	}
 }
@@ -591,5 +585,217 @@ func TestThePriceIsCacheAwareAndInDollars(t *testing.T) {
 	noDiscount := Facts{PriceIn: facts.PriceIn, PriceOut: facts.PriceOut}
 	if PriceWithCache(noDiscount, request, 20_000) != PriceOf(noDiscount, request) {
 		t.Fatal("a lane with no cache tariff gave a discount it does not publish")
+	}
+}
+
+// ── COLD START ──────────────────────────────────────────────────────────────
+//
+// The three tests below are the reported defect said as arithmetic: a model
+// nobody has measured must still produce an order, the sheet it has no rows for
+// must be ASKED for without anybody waiting, and the beat is what does the
+// asking.
+
+// fakeHierarchy is the second door onto a belief store: it knows a handful of
+// PROVIDERS from every other model they have served and nothing at all about
+// the pair in front of it, which is exactly the state a picked model arrives in.
+type fakeHierarchy struct {
+	// knows is the lanes this process has seen serving something; wait and rate
+	// are what it believes about them, in the chains' own units.
+	knows map[string]bool
+	wait  Chain
+	rate  Chain
+}
+
+func (h fakeHierarchy) chain(id ID, believed Chain) Chain {
+	if h.knows[id.Lane] {
+		return believed
+	}
+	return Chain{}
+}
+
+func (h fakeHierarchy) Wait(id ID, _ time.Time) Chain { return h.chain(id, h.wait) }
+func (h fakeHierarchy) Rate(id ID, _ time.Time) Chain { return h.chain(id, h.rate) }
+func (h fakeHierarchy) Think(string, string, time.Time) Chain {
+	return Chain{}
+}
+func (h fakeHierarchy) Shifted(ID) bool { return false }
+
+// Nothing is published about this world's lanes, so one answer's own
+// variability is the prior — which is what a pair the sheet does not carry gets
+// from the real ledger too.
+func (h fakeHierarchy) Draw(ID) (float64, float64) { return SpreadFloor, SpreadFloor }
+
+// It learns nothing: this double is a WORLD, scripted, and a fold here would be
+// the test rewriting the fixture it is asserting against.
+func (h fakeHierarchy) NoteThinking(string, string, time.Duration, time.Time) {}
+
+// worldOf is a hierarchy that has seen these lanes at about a second to the
+// first token and about forty tokens a second, honestly wide.
+func worldOf(lanes ...string) fakeHierarchy {
+	knows := map[string]bool{}
+	for _, lane := range lanes {
+		knows[lane] = true
+	}
+	return fakeHierarchy{
+		knows: knows,
+		wait:  Chain{{X: math.Log(900), P: 1.44}, {X: 0.1, P: 0.81}, {}, {}},
+		rate:  Chain{{X: math.Log(40), P: 1.0}, {X: -0.1, P: 0.5}, {}, {}},
+	}
+}
+
+// fakeSheet is a sheet with rows nobody fetched, a roster of every lane it has
+// ever named, and a fetch that can be made to hang.
+type fakeSheet struct {
+	rows map[string][]Row
+	// names is the roster: every lane seen across every model.
+	names []string
+	// asked receives every model Refresh was called for, and hang holds Refresh
+	// open until it is closed.
+	asked chan string
+	hang  chan struct{}
+	// queue is this sheet's own one-shot queue.
+	queue chan string
+}
+
+func newFakeSheet() *fakeSheet {
+	return &fakeSheet{
+		rows:  map[string][]Row{},
+		asked: make(chan string, 8),
+		queue: make(chan string, 8),
+	}
+}
+
+func (s *fakeSheet) Rows(model string) []Row { return s.rows[BareModel(model)] }
+
+func (s *fakeSheet) Refresh(ctx context.Context, model string) error {
+	select {
+	case s.asked <- model:
+	default:
+	}
+	if s.hang != nil {
+		select {
+		case <-s.hang:
+		case <-ctx.Done():
+		}
+	}
+	return errSheetEmpty
+}
+
+func (s *fakeSheet) Roster() []string      { return s.names }
+func (s *fakeSheet) Wanted() <-chan string { return s.queue }
+func (s *fakeSheet) Wants(model string) {
+	select {
+	case s.queue <- BareModel(model):
+	default:
+	}
+}
+
+// TestAModelWithNoLedgerEntryStillGetsAnOrder is the defect's first half.
+//
+// A cold ledger used to switch the router off: fewer than two beliefs and the
+// answer was the zero Choice, so the one case that most needs an opinion — a
+// model nobody has measured — was the one case that got none. The lanes are
+// known through their PROVIDERS, which is what the hierarchy is for.
+func TestAModelWithNoLedgerEntryStillGetsAnOrder(t *testing.T) {
+	picked := &chooser{
+		ledger: &fakeLedger{},
+		pages:  newFakeSheet(),
+		hier:   worldOf("CoreWeave", "Parasail", "DeepInfra"),
+	}
+	picked.pages.(*fakeSheet).names = []string{"CoreWeave", "Parasail", "DeepInfra"}
+
+	req := talk()
+	req.Model = "somebody/brand-new-model"
+	choice := picked.Choose(req)
+	if choice.Empty() {
+		t.Fatal("a model with no ledger entry got no opinion at all — cold start is the steady state and it must still route")
+	}
+	if len(choice.Order) < 2 {
+		t.Fatalf("the order names %d lanes; a ranking takes two", len(choice.Order))
+	}
+	for _, lane := range choice.Order {
+		if !named([]string{"CoreWeave", "Parasail", "DeepInfra"}, lane) {
+			t.Errorf("the order names %q, which no belief in this process reaches", lane)
+		}
+	}
+}
+
+// TestTheSheetsOwnLanesAreEnoughForAColdModel is the same law one step earlier:
+// a sheet in memory names every machine that serves the model and publishes
+// what each of them does, so a ledger that has never heard of the model is not
+// a process that knows nothing about it.
+func TestTheSheetsOwnLanesAreEnoughForAColdModel(t *testing.T) {
+	pages := newFakeSheet()
+	for _, lane := range measuredLanes[:4] {
+		pages.rows[testModel] = append(pages.rows[testModel], lane.row(testModel))
+	}
+	cold := &chooser{ledger: &fakeLedger{}, pages: pages}
+
+	choice := cold.Choose(talk())
+	if len(choice.Order) < 2 {
+		t.Fatalf("a model with a sheet and no ledger got an order of %d", len(choice.Order))
+	}
+	if choice.Why == "" {
+		t.Error("a choice made on published percentiles can say why it was made")
+	}
+}
+
+// TestTheColdRefreshIsQueuedAndNeverAwaited is the send-path law, which this
+// wave could most easily have broken.
+//
+// A model with no sheet is discovered immediately before a send. The fetch that
+// would fix that may never happen there — a router having a bad minute would
+// become every request having a bad minute — so the name is left on a queue and
+// the choice is answered from what is already believed. Here the sheet's fetch
+// never returns at all, and the choice still does.
+func TestTheColdRefreshIsQueuedAndNeverAwaited(t *testing.T) {
+	pages := newFakeSheet()
+	pages.hang = make(chan struct{})
+	defer close(pages.hang)
+	cold := &chooser{ledger: &fakeLedger{}, pages: pages, hier: worldOf("CoreWeave", "Parasail")}
+	pages.names = []string{"CoreWeave", "Parasail"}
+
+	answered := make(chan Choice, 1)
+	go func() {
+		req := talk()
+		req.Model = "somebody/never-fetched"
+		answered <- cold.Choose(req)
+	}()
+	select {
+	case choice := <-answered:
+		if choice.Empty() {
+			t.Fatal("the choice came back empty, so the queue bought nothing")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the choice waited for a sheet — nothing on a send path may fetch (internal/lane's probe.go states the law)")
+	}
+	select {
+	case model := <-pages.Wanted():
+		if model != "somebody/never-fetched" {
+			t.Errorf("the queue holds %q", model)
+		}
+	default:
+		t.Error("a model with no sheet was not queued for the beat, so it stays cold for the life of the session")
+	}
+}
+
+// TestTheBeatFetchesWhatWasWanted is the other side of that channel: the beat
+// picks a queued model up at once and joins it to its round, which is what makes
+// a model picked after launch as warm as one named at launch.
+func TestTheBeatFetchesWhatWasWanted(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	pages := newFakeSheet()
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go Beat(ctx, pages, nil, time.Hour)
+
+	pages.Wants("somebody/picked-at-runtime")
+	select {
+	case model := <-pages.asked:
+		if model != "somebody/picked-at-runtime" {
+			t.Errorf("the beat fetched %q", model)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the beat never fetched the model that was queued for it")
 	}
 }
