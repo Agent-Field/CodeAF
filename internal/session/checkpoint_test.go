@@ -419,10 +419,45 @@ const (
 // past-the-end answer would then be read as a sketch and as a brief.
 const checkpointSlack = checkpointMarks + 3
 
+// answerTheNamerOffTheQueue installs the aside every handover fixture needs
+// ([scriptedCompleter.aside]).
+//
+// THE NAMER IS NOT ONE OF THE TURN'S ROUNDS, so it must not spend one of the
+// turn's steps. The ceiling's handover asks for a name the moment it decides to
+// move the work, on a goroutine of its own and ahead of the two model calls that
+// write the brief (checkpoint.go, taskname.go's [nameAhead]) — which is #333's
+// design and is correct. What was wrong was here: this file scripted ONE
+// positional queue, so on a machine with a spare processor the namer's call took
+// whichever step the turn was about to take, and three tests failed about one run
+// in five (#392).
+//
+// IT IS ANSWERED WITH AN EMPTY NAME, which is a namer that could not name — the
+// one answer that changes nothing anywhere. [cleanTaskName] hands "" back,
+// [Agent.launchRouteTask] adopts a landed name only when it is non-empty, and
+// [TaskGraph.nameNode]'s fallback ask carries the same system line and so is
+// answered off the queue too. So the row and the told-after line keep the
+// person's own words, which is what every assertion on these pages was written
+// against.
+//
+// A completer that is not scripted has no queue to protect and is left alone.
+func answerTheNamerOffTheQueue(completer Completer) {
+	scripted, ok := completer.(*scriptedCompleter)
+	if !ok {
+		return
+	}
+	scripted.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if !isNameCall(messages) {
+			return nil, false
+		}
+		return textResponse(""), true
+	}
+}
+
 // checkpointAgent is a watched conversation with a mastermind the mark can be
 // read by. Everything else is [newTestAgent]'s.
 func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
 	t.Helper()
+	answerTheNamerOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
@@ -1176,8 +1211,10 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 		t.Errorf("the task runs on %q; a brief that is not prose falls back to the person's words %q",
 			node.spec.brief, asked)
 	}
-	// AND THE LINE THE PERSON READS IS ABOUT THEIR WORK. This is the told-after
-	// line as it is drawn, before the namer has had its second at it.
+	// AND THE LINE THE PERSON READS IS ABOUT THEIR WORK. The namer runs AHEAD of
+	// this line now, on purpose (#333), and the fixture answers it with no name
+	// ([answerTheNamerOffTheQueue]) — so what is left to read here is the
+	// told-after line as the road itself draws it, off the person's own sentence.
 	notice := routeNotice(collected)
 	if notice == "" {
 		t.Fatalf("no task was announced; notices were %q", noticeTexts(collected))
@@ -1188,6 +1225,21 @@ func TestADowryOfMachineMarkupIsRefusedAndNeverBecomesTheName(t *testing.T) {
 	if !strings.Contains(notice, "work through the four things") {
 		t.Errorf("the task was announced as %q, want the person's own words", notice)
 	}
+	// AND THE NAMER DID ASK, off the queue rather than out of the turn's script.
+	// Without this the three assertions above would still pass on a fixture that
+	// had quietly stopped running the namer at all, and the race #392 was about
+	// would come back the next time anything moved.
+	//
+	// IT IS AWAITED AND NOT SAMPLED, because the ask is an errand and nothing in
+	// the turn's path orders it against the turn — that is the whole subject of
+	// this fix. The ask rides [Agent.nameAhead]'s own goroutine, and the fallback
+	// ask [TaskGraph.nameNode] makes when the first came back empty rides another
+	// one (taskname.go), so on a starved box either can land after this line runs.
+	// Reading the count once would be this test failing on the scheduler, which is
+	// exactly the class of failure #392 was.
+	waitFor(t, "the namer's ask, answered off the queue", func() bool {
+		return completer.asideRequests() > 0
+	})
 }
 
 // AND A CONTINUATION SAYING NOTHING IS LEFT DROPS THE CEILING'S HANDOVER — WHEN
