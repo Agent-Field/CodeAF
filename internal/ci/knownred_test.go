@@ -33,7 +33,7 @@ import (
 // on 2026-09-02 at 1de89c08, after #408 took five out. A change that fixes one
 // lowers this by one in the same commit; a change that would raise it has no
 // road.
-const knownRedEntries = 5
+const knownRedEntries = 4
 
 // knownRedPath is where the ledger lives, relative to the repository root.
 const knownRedPath = ".github/known-red.txt"
