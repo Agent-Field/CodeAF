@@ -1217,14 +1217,16 @@ type app struct {
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
-	// searchStore is the conversation index the search place reads, and
-	// usageLedger is the file the spend place reads. Both are optional and both
-	// are absent rather than broken when they are: search says what it is for,
-	// and an empty ledger draws the spend place's own teaching.
-	searchStore SearchStore
-	usageLedger string
-	ledger      func(time.Time) ([]session.UsageLine, bool, bool)
-	archive     func(string, bool) error
+	// searchStore is the conversation index the search place reads, while
+	// searchStatus names the web plug the session's next call will use.
+	// usageLedger is the file the spend place reads. Each is optional and absent
+	// rather than broken when it is: search says what it is for, /status keeps no
+	// empty row, and an empty ledger draws the spend place's own teaching.
+	searchStore  SearchStore
+	searchStatus func() string
+	usageLedger  string
+	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
+	archive      func(string, bool) error
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -2093,6 +2095,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
 		searchStore:         opts.Search,
+		searchStatus:        opts.SearchStatus,
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,

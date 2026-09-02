@@ -37,6 +37,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
+		{"which search engine answered?", "what-i-can-do"},
+		{"I set a search key and nothing changed", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
 		// A finished task's room after aforge was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
@@ -1455,6 +1457,7 @@ func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
 			"Firecrawl: keyless, with a free monthly allowance and no key needed",
 			"DuckDuckGo remains available as an explicit pin",
 			"Search failed (firecrawl): <err>",
+			"5 of 12 results · firecrawl",
 		} {
 			if !strings.Contains(section.Body, want) {
 				t.Errorf("search section does not contain %q:\n%s", want, section.Body)
@@ -1463,6 +1466,54 @@ func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
 		return
 	}
 	t.Fatalf("search question did not retrieve its section: %#v", found)
+}
+
+// V6 and V9: the searchable account says settings are live, names receipts,
+// and contains no stale next-session promise about search.
+func TestSearchManualDescribesLiveSettingsAndNamedReceipts(t *testing.T) {
+	for _, test := range []struct {
+		question string
+		title    string
+		wants    []string
+	}{
+		{
+			question: "which search engine answered?",
+			title:    "Which search engine answered?",
+			wants:    []string{"5 results · firecrawl", "3 of 8 results · exa", "no results · firecrawl", "search"},
+		},
+		{
+			question: "I set a search key and nothing changed",
+			title:    "I set a search key and nothing changed",
+			wants:    []string{"next search in this conversation", "Search failed (exa): no API key", "now firecrawl, keyless"},
+		},
+	} {
+		found := Chat().Search(test.question, DefaultResults)
+		var body string
+		for _, section := range found {
+			if section.Page == "what-i-can-do" && section.Title == test.title {
+				body = section.Body
+				break
+			}
+		}
+		if body == "" {
+			t.Errorf("%q did not retrieve %q: %#v", test.question, test.title, found)
+			continue
+		}
+		for _, want := range test.wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%q section does not contain %q:\n%s", test.title, want, body)
+			}
+		}
+	}
+
+	for _, section := range Chat().Sections() {
+		body := strings.ToLower(strings.Join(strings.Fields(section.Title+"\n"+section.Body), " "))
+		for _, sentence := range strings.Split(body, ". ") {
+			if (strings.Contains(sentence, "web_search") || strings.Contains(sentence, "search.exakey") || strings.Contains(sentence, "search.firecrawlkey")) && strings.Contains(sentence, "next session") {
+				t.Errorf("search sentence in %s/%s still promises the next session: %s", section.Page, section.Title, strings.TrimSpace(sentence))
+			}
+		}
+	}
 }
 
 // The two corpora must stay strangers. This is the package-level half of the

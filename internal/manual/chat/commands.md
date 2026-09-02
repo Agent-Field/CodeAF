@@ -578,7 +578,7 @@ session holds right now.
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
 reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
+words — `search`, `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
 `approvals`, `state` — then `tasks`, `place`, `keys`, and last `file`. Labels are padded
 into two aligned columns.
 
@@ -1447,6 +1447,13 @@ errands on two screens. Neither is the conversation's own money limit here any m
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "firecrawl key", "jina key".
+
+The selected **searching** row is a live explanation rather than a static
+description. On untouched `auto` it reads `now firecrawl, keyless — set
+search.exaKey or search.firecrawlKey to raise it`; a pinned Exa row with no key
+quotes the exact `Search failed (exa): no API key` answer; a configured pin
+reads `exa, with your key`. Provider and key changes land on the next search in
+the conversation already open.
 
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",

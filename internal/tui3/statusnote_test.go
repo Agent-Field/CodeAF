@@ -209,6 +209,41 @@ func TestStatusPrintsTheSheetsOwnList(t *testing.T) {
 	}
 }
 
+// V2 and V8: /status asks the live seam each time and omits search entirely
+// when the session has no web-search hand.
+func TestStatusNamesTheNextSearchAndKeepsAnAbsentHandSilent(t *testing.T) {
+	status := "firecrawl · keyless"
+	a := newApp(t.Context(), Options{
+		Agent:        &fakeAgent{model: "m"},
+		SearchStatus: func() string { return status },
+	})
+	a.slash("/status")
+	if text := lastNote(t, a); !strings.Contains(text, "search") || !strings.Contains(text, "firecrawl · keyless") {
+		t.Fatalf("status did not name the next search:\n%s", text)
+	}
+
+	status = "exa · key not set — searches fail"
+	a.slash("/status")
+	if text := lastNote(t, a); !strings.Contains(text, "search") || !strings.Contains(text, "exa · key not set — searches fail") {
+		t.Fatalf("status hid the broken pin:\n%s", text)
+	}
+
+	status = "exa · with your key"
+	a.slash("/status")
+	if text := lastNote(t, a); !strings.Contains(text, "search") || !strings.Contains(text, "exa · with your key") {
+		t.Fatalf("status stayed on the launch-time search:\n%s", text)
+	}
+
+	without := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}})
+	without.slash("/status")
+	text := lastNote(t, without)
+	for _, line := range strings.Split(text, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "search" {
+			t.Fatalf("a session with no search hand grew a row:\n%s", text)
+		}
+	}
+}
+
 // A BILL OF ZERO IS NOT A BILL, and the two commands have to agree about that:
 // the status line draws "$0.00" because it is a live row whose segments must
 // not jump sideways, and a note is written once (statusnote.go states the
