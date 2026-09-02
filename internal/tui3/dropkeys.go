@@ -288,7 +288,7 @@ func (a *app) spendDrop() bool {
 	// what tells the two apart: what is left is the command, or nothing at all.
 	box.value = append(box.value[:at], box.value[end:]...)
 	box.cursor = at
-	a.editBoxTags(box, at, end, 0)
+	box.editTags(at, end, 0)
 	took := a.pasteFilesInto(box, chips, run)
 	if took {
 		a.drop.took++
@@ -299,7 +299,7 @@ func (a *app) spendDrop() bool {
 		// the person was looking at.
 		box.cursor = at
 		box.insert(run)
-		a.editBoxTags(box, at, at, end-at)
+		box.editTags(at, at, end-at)
 	}
 	// AND THE SURFACE OWES THE SAME FOLLOW-UP EITHER WAY, because either way the
 	// box and the tray under it have changed ([app.dropLanded]).
@@ -491,8 +491,8 @@ func (a *app) droppedFiles(text string) bool {
 // silent while a person is mid-gesture; here the gesture is finished, enter has
 // been pressed, and "that is a folder" is the answer to what they just did.
 //
-// A path-shaped sentence that names nothing on this machine is not evidence of
-// a drop. It returns false and the caller sends the text unchanged.
+// An unknown command that names nothing on the disk still refuses exactly as it
+// always did: this returns false and the caller writes its own sentence.
 func (a *app) droppedLine(line string) bool {
 	return a.droppedLineInto(&a.input, &a.chips, line)
 }
@@ -503,14 +503,6 @@ func (a *app) droppedLine(line string) bool {
 // folder, or size note has been said.
 func (a *app) inputDroppedLine(line string) bool {
 	held := len(a.chips)
-	// A miss is only a LOOK. Keep the exact editor state so probing an unknown
-	// leading slash cannot reactivate an inline send-door tag the person made
-	// plain, move their caret, or trim their draft before ordinary submission.
-	before := editor{
-		value:       append([]rune(nil), a.input.value...),
-		cursor:      a.input.cursor,
-		demotedTags: append([]segment(nil), a.input.demotedTags...),
-	}
 	// Enter ends this gesture even when the file is absent. A quiet-window
 	// wakeup already in flight may still arrive, but it must not ask the disk
 	// about the finished line again.
@@ -518,7 +510,7 @@ func (a *app) inputDroppedLine(line string) bool {
 	a.input.reset()
 	took := a.droppedLine(line)
 	if len(a.chips) == held {
-		a.input = before
+		a.input.setText(line)
 	}
 	a.touch()
 	return took
@@ -533,6 +525,12 @@ func (a *app) droppedLineInto(box *editor, chips *[]chip, line string) bool {
 	hits, looked := a.pasteResolve(line, false)
 	a.drop.looked += looked
 	if hits == nil {
+		// A LINE SHAPED LIKE A DROP THAT NAMES NOTHING HERE IS A DROP FROM
+		// ANOTHER MACHINE, and the attachment door says so in its own sentence.
+		if droppedPathShape(line) {
+			a.pasteFilesInto(box, chips, line)
+			return true
+		}
 		return false
 	}
 	files := 0

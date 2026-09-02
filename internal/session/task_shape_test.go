@@ -60,7 +60,7 @@ func settled(t *testing.T, ran <-chan uint64) {
 
 const (
 	shapedAsk        = "write a blog post about our launch"
-	shapedTitle      = "existing user launch"
+	shapedTitle      = "launch post for existing users"
 	shapedAcceptance = "The post is at blog/launch.md and names the three features by their shipped spelling."
 )
 
@@ -253,9 +253,6 @@ func TestTheShapedNameIsCleanedAndIsSurvivableWhenAbsent(t *testing.T) {
 		{"a quoted one", `{"title":"\"launch post\"","brief":"do it","acceptance":"c"}`, "launch post"},
 		{"one that stopped", `{"title":"launch post.","brief":"do it","acceptance":"c"}`, "launch post"},
 		{"a welded one", `{"title":"launch_post_draft","brief":"do it","acceptance":"c"}`, "launch post draft"},
-		{"a transport ordinal", `{"title":"paste 1","brief":"do it","acceptance":"c"}`, ""},
-		{"a path", `{"title":"/tmp/launch.md","brief":"do it","acceptance":"c"}`, ""},
-		{"an overlong name", `{"title":"launch post for existing users","brief":"do it","acceptance":"c"}`, "launch post for"},
 		// NO NAME IS NOT A FAILED ANSWER. The brief is the field no default can
 		// stand in for; a name has [taskPersonTitle] behind it, so a shaper that
 		// answered with two fields where three were asked for costs a good name

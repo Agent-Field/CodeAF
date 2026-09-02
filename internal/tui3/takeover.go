@@ -489,7 +489,10 @@ func (a *app) takeOverFresh() tea.Cmd {
 	// promised in those words: they are sitting here, and the words are theirs.
 	// The one written to the DRAFT FILE above is a different copy, for the window
 	// that is about to open the conversation this one just let go of.
-	a.restoreAsideDraft(side)
+	if side.draft != "" {
+		a.input.setText(side.draft)
+	}
+	a.chips = side.chips
 	return cmd
 }
 

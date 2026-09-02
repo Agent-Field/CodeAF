@@ -49,16 +49,6 @@ func TestDroppingAPictureLeavesATokenAndAttachesTheFile(t *testing.T) {
 	}
 }
 
-func TestUnknownSlashProseCanStillAttachAnImage(t *testing.T) {
-	a, _, dir := attachLab(t, map[string]int{"shot.png": 12})
-	a.input.setText("/api/v1 is broken ")
-	a.input.end()
-	pasteText(t, a, filepath.Join(dir, "shot.png"))
-	if len(a.chips) != 1 || !strings.Contains(a.input.String(), "[image #1]") {
-		t.Fatalf("unknown slash prose left image as text: %q %v", a.input.String(), chipNames(a))
-	}
-}
-
 // P1: a raw-space picture paste becomes one numbered chip and one draft token.
 func TestARawSpacePicturePasteBecomesOneNumberedChip(t *testing.T) {
 	name := "Screen Shot 2026-08-21 at 5.21.40 PM.png"

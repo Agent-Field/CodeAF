@@ -52,7 +52,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -82,9 +81,9 @@ const titleClip = 2000
 // second attempt at the instruction.
 const titleLimit = 80
 
-// maybeTitle schedules the session's name if it has no name yet. It runs at the
-// end of a completed turn, but the provider call is not part of that turn.
-func (a *Agent) maybeTitle(ctx context.Context) {
+// maybeTitle names the session if it has no name yet. It runs at the end of a
+// completed turn, on that turn's context and hub.
+func (a *Agent) maybeTitle(ctx context.Context, hub *eventHub) {
 	a.mu.Lock()
 	if a.file == nil || a.titleTried || strings.TrimSpace(a.title) != "" || a.closed {
 		a.mu.Unlock()
@@ -96,34 +95,11 @@ func (a *Agent) maybeTitle(ctx context.Context) {
 	a.titleTried = true
 	question, answer := a.firstExchangeLocked()
 	model := a.model
-	if question == "" {
-		a.mu.Unlock()
-		return
-	}
-	// The naming call outlives this turn but not this session. WithoutCancel
-	// preserves request-scoped values while preventing the turn cleanup from
-	// killing housekeeping it no longer waits for; Close owns the new cancel.
-	titleCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	done := make(chan struct{})
-	a.titleCancel = cancel
-	a.titleDone = done
 	a.mu.Unlock()
 
-	go a.makeTitle(titleCtx, cancel, done, model, namingText(question), answer)
-}
-
-func (a *Agent) makeTitle(ctx context.Context, cancel context.CancelFunc, done chan struct{}, model, question, answer string) {
-	defer cancel()
-	defer func() {
-		a.mu.Lock()
-		if a.titleDone == done {
-			a.titleCancel = nil
-			a.titleDone = nil
-		}
-		close(done)
-		a.mu.Unlock()
-	}()
-
+	if question == "" {
+		return
+	}
 	// One errand, through the one door errands go through (auxiliary.go): the
 	// role's tier bounds how long eight words may take, and a model that cannot
 	// answer at all costs one fall-through down the ladder rather than the
@@ -154,72 +130,24 @@ func (a *Agent) makeTitle(ctx context.Context, cancel context.CancelFunc, done c
 		return
 	}
 	a.setTitle(title)
+	if hub != nil {
+		hub.send(Event{Kind: EventTitleChanged, Text: title})
+	}
 }
 
-// titleLanding is one title's state change and the exact watcher generation
-// entitled to hear it live. Capturing both under the agent lock is the seam
-// between replay and publication: a watcher belongs either to this slice or to
-// the later replay of a.title, never both.
-type titleLanding struct {
-	title    string
-	file     *sessionFile
-	watchers []*eventStream
-}
-
-// beginTitleLanding records a title and takes the live delivery set in one
-// critical section. [Agent.WatchTaskUpdates] takes the same lock while it
-// registers and reads a.title, so there are only two possible orderings:
-//
-//   - the watcher registers first and appears in this landing's live set; or
-//   - the title lands first and the watcher replays it when it registers.
-//
-// Splitting the state write and watcher snapshot across two lock acquisitions
-// admits a third, broken ordering: a watcher can replay the new title and then
-// be included in its live fanout as well.
-func (a *Agent) beginTitleLanding(title string) titleLanding {
+// setTitle records the name in the agent and in the journal.
+func (a *Agent) setTitle(title string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return titleLanding{}
-	}
 	a.title = title
-	return titleLanding{
-		title:    title,
-		file:     a.file,
-		watchers: append([]*eventStream(nil), a.taskWatchers...),
-	}
-}
-
-// finishTitleLanding keeps and publishes the landing after its ownership was
-// decided above. File writes do not hold the agent lock; a surface subscribing
-// while they run reads a.title and replays it, but cannot also appear in the
-// already-frozen live set.
-func (a *Agent) finishTitleLanding(landing titleLanding) {
-	if landing.title == "" {
-		return
-	}
-	if landing.file != nil {
-		landing.file.appendTitle(landing.title)
+	file := a.file
+	a.mu.Unlock()
+	if file != nil {
+		file.appendTitle(title)
 	}
 	// The folder's row says what the journal says. Until now it has carried the
 	// person's opening words as a placeholder (placemeta.go); this is the name
 	// the conversation actually earned.
-	a.stampTitle(landing.title)
-
-	event := Event{Kind: EventTitleChanged, Text: landing.title}
-	for _, watcher := range landing.watchers {
-		watcher.send(event)
-	}
-}
-
-// setTitle records the name in the agent and journal, then publishes it on the
-// session-lifetime lane. A title is produced after its first turn has ended, so
-// keeping that turn's stream open would keep a surface in its busy state and
-// make the next message look like steering. The standing lane already exists
-// for events whose lifetime exceeds a turn.
-func (a *Agent) setTitle(title string) {
-	landing := a.beginTitleLanding(title)
-	a.finishTitleLanding(landing)
+	a.stampTitle(title)
 }
 
 // firstExchangeLocked returns the session's opening question and the first
@@ -289,19 +217,7 @@ func messageContentText(message ai.Message) string {
 // words, which meta.json has carried since their first message (placemeta.go's
 // [Agent.stampUserLocked]).
 func cleanTitle(raw string) string {
-	title := cleanTitleCandidate(raw)
-	if title == "" || namesTheInstruction(title) || orchestrate.IsGenericOrdinalName(title) {
-		return ""
-	}
-	return title
-}
-
-// cleanTitleCandidate repairs the presentation around a proposed name without
-// deciding whether the repaired text is actually a name. That split lets task
-// proposals retain a generic placeholder long enough to be admitted and named
-// asynchronously, while session titles and namer answers can refuse it.
-func cleanTitleCandidate(raw string) string {
-	title := stripMarkup(strings.TrimSpace(firstTitleLine(raw)))
+	title := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	title = strings.Trim(title, `"'“”`)
 	title = stripOpener(title)
 	title = strings.Trim(title, `"'“”`)
@@ -314,81 +230,11 @@ func cleanTitleCandidate(raw string) string {
 		title = strings.NewReplacer("_", " ", "-", " ").Replace(title)
 		title = strings.Join(strings.Fields(title), " ")
 	}
-	return clip(strings.TrimSpace(title), titleLimit)
-}
-
-// firstTitleLine reads a model's first line of content, not the language label
-// on a Markdown fence. Cheap naming models sometimes wrap their two-word reply
-// in a fenced block; reading that block as a title used to name the work
-// "text", "markdown" or "plain" instead of reading the line inside it.
-func firstTitleLine(raw string) string {
-	lines := strings.Split(strings.TrimSpace(raw), "\n")
-	for at, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if fenceWrapperLine(line) {
-			for _, inside := range lines[at+1:] {
-				inside = strings.TrimSpace(inside)
-				if inside == "" {
-					continue
-				}
-				if fenceWrapperLine(inside) {
-					return ""
-				}
-				return inside
-			}
-			return ""
-		}
-		return line
+	title = clip(strings.TrimSpace(title), titleLimit)
+	if namesTheInstruction(title) {
+		return ""
 	}
-	return ""
-}
-
-// fenceWrapperLine recognizes a fence delimiter and its optional one-token
-// language label. An inline code span that happens to use three marks is
-// content, not a wrapper, and remains available to the ordinary markup cleaner.
-func fenceWrapperLine(line string) bool {
-	line = strings.TrimSpace(line)
-	mark := byte(0)
-	if strings.HasPrefix(line, "```") {
-		mark = '`'
-	} else if strings.HasPrefix(line, "~~~") {
-		mark = '~'
-	} else {
-		return false
-	}
-	at := 0
-	for at < len(line) && line[at] == mark {
-		at++
-	}
-	rest := strings.TrimSpace(line[at:])
-	return rest == "" || (!strings.ContainsAny(rest, "`~ \t") && len(rest) <= 32)
-}
-
-// namingText removes transport wrappers from text shown to a naming model or
-// used as an unnamed session's placeholder. A paste chip is unfolded for the
-// reasoner as "paste N:" plus a fenced body; those are useful coordinates in
-// conversation and terrible names. The naming view keeps the body and drops
-// only that wrapper. A plain fenced opening is treated the same way.
-func namingText(text string) string {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		withoutColon := strings.TrimSpace(strings.TrimSuffix(trimmed, ":"))
-		if strings.HasSuffix(trimmed, ":") &&
-			strings.HasPrefix(strings.ToLower(withoutColon), "paste") &&
-			orchestrate.IsGenericOrdinalName(withoutColon) {
-			continue
-		}
-		if fenceWrapperLine(trimmed) {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	return strings.TrimSpace(strings.Join(kept, "\n"))
+	return title
 }
 
 // stripMarkup takes the markdown off a name.
@@ -626,7 +472,7 @@ func uniqueWords(words []string) []string {
 // completed turn and the next good name is appended as every name always is.
 func healedTitle(stored string) string {
 	stored = strings.TrimSpace(stored)
-	if stored == "" || namesTheInstruction(stored) || orchestrate.IsGenericOrdinalName(stored) {
+	if stored == "" || namesTheInstruction(stored) {
 		return ""
 	}
 	return stored

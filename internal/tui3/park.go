@@ -55,9 +55,6 @@ type parked struct {
 	text   string
 	chips  []chip
 	pastes []pasteChip
-	// tag is an inline send-door token retained in the displayed text and
-	// removed only from the model payload when this message leaves the queue.
-	tag segment
 	// standing says the person MARKED this one as something to keep true
 	// (standmark.go). It travels with the words for the chips' own reason: the
 	// gesture was made when the message was typed, and a queue that forgot it
@@ -87,20 +84,6 @@ func (a *app) park(text string, standing bool) tea.Cmd {
 	}
 	a.chips = nil
 	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, standing: standing})
-	a.pastes = nil
-	a.follow()
-	a.touch()
-	return nil
-}
-
-func (a *app) parkTagged(text string, tag segment, standing bool) tea.Cmd {
-	text = strings.TrimSpace(text)
-	chips := append([]chip(nil), a.chips...)
-	if text == "" && len(chips) == 0 {
-		return nil
-	}
-	a.chips = nil
-	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, tag: tag, standing: standing})
 	a.pastes = nil
 	a.follow()
 	a.touch()
@@ -187,7 +170,6 @@ func (a *app) recallParked() bool {
 	a.parks = a.parks[:len(a.parks)-1]
 	a.input.setText(last.text)
 	a.chips = append(a.chips, last.chips...)
-	a.pastes = last.pastes
 	a.stick = true
 	a.touch()
 	return true
@@ -204,7 +186,6 @@ func (a *app) recallParkedAt(i int) bool {
 	a.parks = append(a.parks[:i], a.parks[i+1:]...)
 	a.input.setText(one.text)
 	a.chips = append(a.chips, one.chips...)
-	a.pastes = one.pastes
 	a.stick = true
 	a.touch()
 	return true

@@ -325,15 +325,6 @@ func TestTheTitleReachesTheStatusLineLiveAndOnResume(t *testing.T) {
 	}
 }
 
-func TestTheLifetimeLaneAppliesAnAsyncTitle(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.taskLane = make(chan session.Event)
-	a.taskEvent(session.Event{Kind: session.EventTitleChanged, Text: "repairing text boundaries"})
-	if a.title != "repairing text boundaries" {
-		t.Fatalf("the lifetime lane left the title at %q", a.title)
-	}
-}
-
 // ── 3. ctrl+q ───────────────────────────────────────────────────────────────
 
 func ctrlQ() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl} }

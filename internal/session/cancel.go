@@ -160,20 +160,15 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 	case node.state == TaskRunning:
 		node.stopped = true
 		cut = node.cancel
-		// A RUNNING ROW MAY NOT HAVE ITS HANDLE YET. The frontier publishes the
-		// transition before it starts the goroutine, so an immediate stop can land
-		// in that intentional scheduling window. It settles HERE; setCancel then
-		// refuses the late runner before it does work. A card promising "stopping"
-		// over work that has not started is the one answer this must not give.
+		// A RUNNING NODE ALWAYS HAS A HANDLE — [Agent.runTaskNode] sets it before
+		// the first line of work, and a node restored from a checkpoint is turned
+		// into a failed one before the graph ever holds it (task_store.go's
+		// interrupt). If one somehow has none, nothing is ever going to settle it,
+		// so it settles HERE: a card promising "stopping" over work that nothing
+		// is doing is the one answer this must not give.
 		dropped = cut == nil
 		if dropped {
 			node.state, node.report, node.held = TaskFailed, taskStoppedWord, ""
-			// The scheduler booked the lane at the same moment it published running,
-			// even though the goroutine had not yet claimed its handle. Hand that
-			// booking back exactly once before the frontier is turned below.
-			if g.running > 0 && node.takesSlot() {
-				g.running--
-			}
 			line = "stopped " + name
 			break
 		}

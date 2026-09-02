@@ -1099,12 +1099,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// pressed enter inside two frames meant the drop, and the line they send is
 	// the one with the chip in it (dropkeys.go).
 	a.spendDrop()
-	// Outer whitespace is submission framing, not part of the message. Once it
-	// is removed, every remaining rune is preserved unless a documented local
-	// command or live send-door tag consumes it.
-	rawLine := a.input.String()
-	line := strings.TrimSpace(rawLine)
-	command := isCommandLine(line)
+	line := strings.TrimSpace(a.input.String())
 	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
 	// empty message — "what is this?" is often the picture itself — so the two
 	// tests below both ask about the tray as well as about the words.
@@ -1116,10 +1111,11 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.openTool(a.sel)
 		return nil
 	}
-	// A COMPLETE EXISTING PATH IS STILL A DROP, in every terminal spelling. It
-	// is tried only after known commands win; a slash-shaped sentence or a path
-	// absent on this machine is ordinary model text and stays byte-for-byte.
-	if !command && (droppedPathShape(line) || strings.HasPrefix(line, "/")) && a.inputDroppedLine(line) {
+	// A WINDOWS DROP DOES NOT BEGIN WITH THE SLASH THAT REACHES THE OLDER ENTER
+	// NET. Once enter says the gesture is finished, a complete drive or WSL UNC
+	// path takes that same door: a real file lands on the tray and a missing one
+	// keeps its text and says so, with neither becoming a model message.
+	if windowsDroppedLineShape(line) && a.inputDroppedLine(line) {
 		return a.edited()
 	}
 	// A MODEL MESSAGE WITH NO DEFAULT-PROVIDER KEY OPENS THE CONNECTION BEFORE
@@ -1129,7 +1125,7 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// the provider's "no API key" refusal. Slash commands stay local and keep
 	// working — /help and /settings do not need a model — and a custom endpoint
 	// has no OpenRouter seam, so it keeps its own credential path.
-	if !command && (line != "" || held) &&
+	if !strings.HasPrefix(line, "/") && (line != "" || held) &&
 		a.routerConnect != nil && !config.APIKeyConfigured(a.profileDir) {
 		a.openSetup(false)
 		return nil
@@ -1138,24 +1134,17 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	// winner safely: falling back to an ordinary send is precisely the failure
 	// these alternate doors exist to prevent, so the words stay in the box.
 	tags := a.liveTags()
-	if !command && len(tags) > 1 {
+	if !strings.HasPrefix(line, "/") && len(tags) > 1 {
 		a.note(slashTagRefusal)
 		return nil
 	}
 	var tagDoor sendDoor
-	var tag segment
-	if !command && len(tags) == 1 {
-		tag = tags[0]
+	var tagWords string
+	tagShown := line
+	if !strings.HasPrefix(line, "/") && len(tags) == 1 {
+		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
-	}
-	// Every draft-preserving refusal is above this point. From here enter owns
-	// the line and resets the editor, so move paste identities into the trimmed
-	// message's coordinates exactly once.
-	cut := len([]rune(rawLine)) - len([]rune(strings.TrimLeftFunc(rawLine, unicode.IsSpace)))
-	a.trimPastePositions(rawLine)
-	if tagDoor != sendDoorNone {
-		tag.from -= cut
-		tag.to -= cut
+		tagWords = removeSlashTag(a.input.value, tag)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1172,49 +1161,24 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		a.remember(line)
 	}
 	a.dropDraft()
-	if command {
+	if strings.HasPrefix(line, "/") {
 		// A command with a tray full is still a command: /image adds a second
 		// picture rather than sending the first (attach.go). A picked harness
 		// waits through it for the same reason — a slash is a thing said to this
 		// surface, and the request is a thing said to the harness.
-		name, _, _ := splitCommandLine(line)
-		switch canonicalCommand(name) {
-		case "task":
-			spoken, _, _ := a.composedCommandArgument(line)
-			return a.runTaskCommand(spoken)
-		case "standing":
-			spoken, shown, pastes := a.composedCommandArgument(line)
-			if shown == "" {
-				return a.showPage(pageStanding)
-			}
-			// A marked sentence may still have to wait behind the current
-			// answer. Keep the compact text and its identities together so
-			// the waiting row stays compact and a recall can still send the
-			// exact held text.
-			if a.parking() {
-				a.pastes = pastes
-			}
-			return a.standingSayShown(spoken, shown)
-		default:
-			return a.slash(line)
-		}
+		return a.slash(line)
 	}
 	// Send-door tags use the command's existing bare and argument forms. Both
 	// roads stop at a visible card or chooser, so this act cannot become silent
 	// work merely because the token arrived in pasted prose.
 	switch tagDoor {
 	case sendDoorStanding:
-		if a.parking() {
-			return a.parkTagged(line, tag, true)
-		}
-		spoken, shown := a.composedWithoutTag(line, tag)
-		if spoken == "" {
+		if tagWords == "" {
 			return a.openStanding()
 		}
-		return a.standingSayShown(spoken, shown)
+		return a.standingSayShown(tagWords, tagShown)
 	case sendDoorTask:
-		spoken, _ := a.composedWithoutTag(line, tag)
-		return a.runTaskCommand(spoken)
+		return a.runTaskCommand(tagWords)
 	}
 	// A PICKED HARNESS TAKES THE SENTENCE, and it takes it whole: the person
 	// chose the shape of the work off a list and then said what the work is, so
@@ -1436,16 +1400,6 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint, lead string) (
 }
 
 func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead string, demoted []segment) ([]string, int, int) {
-	return draftBlockPainted(e, pal, width, maxRows, hint, lead, func(s segment, boundary bool) string {
-		return paintDraftCommands(string(e.value[s.from:s.to]), pal, pal.ink, s.from, boundary, demoted)
-	})
-}
-
-// draftBlockPainted owns draft geometry while its caller owns how each exact
-// source span is painted. Paste chips need that source position: their visible
-// spelling is also valid literal text, so a post-render string search cannot
-// tell which occurrence owns a held document.
-func draftBlockPainted(e *editor, pal palette, width, maxRows int, hint, lead string, paint func(segment, bool) string) ([]string, int, int) {
 	head := ansi.StringWidth(lead) + ansi.StringWidth(prompt)
 	room := width - head
 	if room < 4 {
@@ -1496,8 +1450,9 @@ func draftBlockPainted(e *editor, pal palette, width, maxRows int, hint, lead st
 		// space where it can, but a word longer than the box breaks mid-word, and
 		// a row that opens in the middle of "cmd/aforge" does not open a token.
 		at := segments[i].from
-		boundary := at == 0 || unicode.IsSpace(e.value[at-1])
-		out = append(out, row0+paint(segments[i], boundary))
+		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
+		row := string(e.value[at:segments[i].to])
+		out = append(out, row0+paintDraftCommands(row, pal, pal.ink, at, boundary, demoted))
 	}
 	return out, head + caretColumn, caretRow - top
 }

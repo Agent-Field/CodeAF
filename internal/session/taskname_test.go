@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -43,47 +41,6 @@ func nameSettings() func(string) (string, bool) {
 	}
 }
 
-func TestNamingRolesDisableAnUnaskedThinkingPass(t *testing.T) {
-	for _, role := range []roles.Role{roles.RoleTitle, roles.RoleTaskName} {
-		t.Run(string(role), func(t *testing.T) {
-			client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
-				return textResponse("parser boundary audit"), nil
-			}}}
-			agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
-			if _, _, err := agent.callRole(context.Background(), role, "talk/model", []ai.Message{
-				textMessage("user", "name this"),
-			}, ai.WithMaxTokens(taskNameTokens)); err != nil {
-				t.Fatal(err)
-			}
-			if len(client.efforts) != 1 || client.efforts[0] != provider.EffortOff {
-				t.Fatalf("naming effort = %v, want required off", client.efforts)
-			}
-		})
-	}
-}
-
-func TestANamingTierEffortSuffixOverridesTheRequiredOff(t *testing.T) {
-	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
-		return textResponse("parser boundary audit"), nil
-	}}}
-	agent, _ := newTestAgent(t, client, func(c *Config) {
-		c.RolesSource = func(key string) (string, bool) {
-			if key == roles.TierKey(roles.TierLow) {
-				return "uncatalogued/model:high", true
-			}
-			return "", false
-		}
-	})
-	if _, _, err := agent.callRole(context.Background(), roles.RoleTaskName, "talk/model", []ai.Message{
-		textMessage("user", "name this"),
-	}, ai.WithMaxTokens(taskNameTokens)); err != nil {
-		t.Fatal(err)
-	}
-	if len(client.efforts) != 1 || client.efforts[0] != provider.EffortHigh {
-		t.Fatalf("naming effort = %v, want configured high", client.efforts)
-	}
-}
-
 // THE PREDICATE IS THE WHOLE ECONOMY OF THIS FEATURE: everything it calls a name
 // costs nothing, and everything else costs one cheap call.
 func TestTaskNameNeededTellsANameFromASentenceOrAPath(t *testing.T) {
@@ -93,7 +50,6 @@ func TestTaskNameNeededTellsANameFromASentenceOrAPath(t *testing.T) {
 	}{
 		{"", true},
 		{"   ", true},
-		{"termination", true},
 		{"nil-map crash fix", false},
 		{"frieren pdf summary", false},
 		{"launch post", false},
@@ -107,35 +63,10 @@ func TestTaskNameNeededTellsANameFromASentenceOrAPath(t *testing.T) {
 		{"/var/folders/j7/59f75dnd", true},
 		{"read /Users/me", true},
 		{`C:\Users\me`, true},
-		{"paste 1", true},
-		{"step-2", true},
-		{"issue 376", false},
-		{"phase 2", false},
-		{"step 2 parser", false},
 	} {
 		if got := taskNameNeeded(c.title); got != c.want {
 			t.Errorf("taskNameNeeded(%q) = %v, want %v", c.title, got, c.want)
 		}
-	}
-}
-
-func TestTheTaskNamerReadsBodiesRatherThanPasteWrappers(t *testing.T) {
-	client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-		asked := messageContentText(messages[len(messages)-1])
-		for _, want := range []string{"summary", "alpha parser", "beta handler", "acceptance"} {
-			if !strings.Contains(asked, want) {
-				t.Errorf("the namer lost %q:\n%s", want, asked)
-			}
-		}
-		if strings.Contains(asked, "paste 1:") || strings.Contains(asked, "paste 2:") || strings.Contains(asked, "```") {
-			t.Errorf("the namer read paste transport instead of its body:\n%s", asked)
-		}
-		return textResponse("parser comparison"), nil
-	}}}
-	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
-	subject := "summary\n\npaste 1:\n```text\nalpha parser\n```\n\npaste 2:\n```text\nbeta handler\n```\n\nacceptance"
-	if got := agent.taskName(context.Background(), subject); got != "parser comparison" {
-		t.Fatalf("taskName = %q", got)
 	}
 }
 
@@ -156,7 +87,6 @@ func TestCleanTaskNameCutsToThreeWordsAndRefusesWhatIsNotAName(t *testing.T) {
 		{"", ""},
 		{"   ", ""},
 		{"/var/folders/j7/59f75dnd", ""},
-		{"termination", ""},
 	} {
 		if got := cleanTaskName(c.raw); got != c.want {
 			t.Errorf("cleanTaskName(%q) = %q, want %q", c.raw, got, c.want)
@@ -244,112 +174,6 @@ func TestTheWorkStartsBeforeTheNameIsAskedFor(t *testing.T) {
 		t.Fatalf("the row is drawn as %q before the name lands", got)
 	}
 	close(release)
-}
-
-// Task naming belongs to the session, not to the turn that happened to start
-// it and not to a bare background context. Close cuts every naming door and
-// waits through its last possible rename. The provider deliberately returns a
-// priced answer AFTER cancellation: accepting that answer would expose all
-// three failures at once — post-close spend, a changed name, and a late row.
-func TestCloseCancelsAndSettlesEveryTaskNamingDoor(t *testing.T) {
-	tests := []struct {
-		name  string
-		start func(*testing.T, *Agent) func() bool
-	}{
-		{
-			name: "admitted node",
-			start: func(t *testing.T, agent *Agent) func() bool {
-				graph := stubbedGraph(agent, func(*TaskNode) {})
-				id := graph.reserve()
-				original := "paste 1"
-				graph.admit(id, taskSpec{title: original, brief: "inspect the parser race", acceptance: "a report"})
-				return func() bool { return graph.node(id).title() == original }
-			},
-		},
-		{
-			name: "ahead name",
-			start: func(t *testing.T, agent *Agent) func() bool {
-				ahead := agent.nameAhead("inspect the parser race before admitting its task")
-				if ahead == nil {
-					t.Fatal("the ahead naming job was not started")
-				}
-				return func() bool { return ahead.wait() == "" }
-			},
-		},
-		{
-			name: "adaptive run",
-			start: func(t *testing.T, agent *Agent) func() bool {
-				goal := "inspect every parser implementation and compare their race handling"
-				family := agent.newOrchestrateFamily(goal, "cheap/model", "run-1")
-				family.mu.Lock()
-				original := family.title
-				family.mu.Unlock()
-				family.nameRun(goal)
-				return func() bool {
-					family.mu.Lock()
-					defer family.mu.Unlock()
-					return family.title == original
-				}
-			},
-		},
-		{
-			name: "adaptive worker",
-			start: func(t *testing.T, agent *Agent) func() bool {
-				family := agent.newOrchestrateFamily("inspect the parser family", "cheap/model", "run-1")
-				result := make(chan string, 1)
-				go func() {
-					result <- family.nameWorker(context.Background(), orchestrate.Node{
-						ID: "r1", Goal: "inspect the parser worker and report its race",
-					})
-				}()
-				return func() bool { return <-result == "" }
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			started := make(chan struct{})
-			cancelled := make(chan struct{})
-			client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-				close(started)
-				<-ctx.Done()
-				close(cancelled)
-				// A misbehaving transport may still hand back a response after its
-				// context is cut. The lifecycle guard, not its manners, owns this.
-				return textResponse("late parser rename"), nil
-			}}}
-			agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
-			unchanged := test.start(t, agent)
-
-			select {
-			case <-started:
-			case <-time.After(5 * time.Second):
-				t.Fatal("the naming provider did not start")
-			}
-			closed := make(chan error, 1)
-			go func() { closed <- agent.Close() }()
-			select {
-			case <-cancelled:
-			case <-time.After(2 * time.Second):
-				t.Fatal("Close did not cancel the task namer")
-			}
-			select {
-			case err := <-closed:
-				if err != nil {
-					t.Fatalf("Close: %v", err)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("Close did not settle the task namer")
-			}
-			if !unchanged() {
-				t.Fatal("the cancelled naming answer changed session state after Close")
-			}
-			if used := agent.Usage(); used.Calls != 0 || used.Input != 0 || used.Output != 0 {
-				t.Fatalf("cancelled naming answer was billed after Close: %+v", used)
-			}
-		})
-	}
 }
 
 // EVERY FAILURE LEAVES THE ROW AS IT WAS. There is no state for "a small thing
@@ -753,55 +577,6 @@ func TestANameStillInFlightAtAdmissionIsWaitedFor(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if got := client.requests(); got != 1 {
 		t.Fatalf("%d calls were made to name one task", got)
-	}
-}
-
-// A completed ahead call whose answer is still a placeholder is not accepted
-// as the task's name. Admission starts exactly one ordinary asynchronous
-// fallback, so rejection neither suppresses naming nor duplicates the call.
-func TestARejectedAheadNameStartsExactlyOneFallback(t *testing.T) {
-	fallbackStarted := make(chan struct{})
-	releaseFallback := make(chan struct{})
-	client := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("paste 1"), nil
-		},
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			close(fallbackStarted)
-			select {
-			case <-releaseFallback:
-				return textResponse("parser audit"), nil
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		},
-	}}
-	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
-	graph := stubbedGraph(agent, func(*TaskNode) {})
-
-	asked := "paste 1:\n```text\nreview the parser race\n```"
-	ahead := agent.nameAhead(asked)
-	if got := ahead.wait(); got != "" {
-		t.Fatalf("generic ahead answer was accepted as %q", got)
-	}
-	_, id := agent.launchRouteTask(newEventHub(), routeVerdict{
-		Work: true, Goal: asked, Why: "an audit",
-	}, asked, drawnDivision{}, ahead)
-	select {
-	case <-fallbackStarted:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the rejected ahead answer suppressed the fallback")
-	}
-	if got := client.requests(); got != 2 {
-		t.Fatalf("requests = %d, want the ahead call and one fallback", got)
-	}
-	close(releaseFallback)
-	if !nameLanded(func() bool { return graph.node(id).title() == "parser audit" }) {
-		t.Fatalf("the node is still called %q", graph.node(id).title())
-	}
-	time.Sleep(100 * time.Millisecond)
-	if got := client.requests(); got != 2 {
-		t.Fatalf("requests after landing = %d, want exactly two", got)
 	}
 }
 
