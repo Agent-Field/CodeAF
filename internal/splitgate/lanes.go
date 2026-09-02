@@ -19,8 +19,12 @@ import "strings"
 
 // Lanes is [Items] plus the shapes a written-down division takes. It is never
 // smaller than [Items], so the bench corpus decisions it was measured on can
-// only move in one direction, and the table in lanes_test.go pins that they do
+// only move in one direction, and the table in modes_test.go pins that they do
 // not move at all.
+//
+// It is a COUNT, and a count is weighed against [Floor] like any other. The one
+// reading that skips the floor is [ExplicitDivision] below, and it is separate
+// from this function for exactly that reason.
 func Lanes(text string) int {
 	most := Items(text)
 	for _, reading := range []func(string) int{
@@ -215,4 +219,103 @@ func looksLikePath(run string) bool {
 		}
 	}
 	return true
+}
+
+// THE MODE'S ONE LAW: A DIVISION SOMEBODY WROTE OUT IS NOT A PILE TO BE
+// COUNTED. [Floor] was calibrated on counts of ITEMS — twelve image files paid,
+// four modules and three bugs did not — and every one of those numbers answers
+// the question "is there enough here that handing it out beats doing it in
+// order?". A person who has written `L1 … L3`, or `lane 1 / lane 2`, or `part A
+// / part B` has already answered a different question and answered it
+// themselves: they are not reporting how much material there is, they are
+// naming the workers. So an explicit division is kept outright, with no floor
+// applied, and this is the only reading in the package that skips it.
+//
+// A PLAIN LIST IS NOT AN EXPLICIT DIVISION, and this is where the law has an
+// edge somebody will want to move. A numbered or bulleted list is how people
+// write down ITEMS — the bench corpus's own bugfix task numbers its three bugs
+// down the page and its codegen task numbers its four modules, and those two
+// are the measurement that three and four do not pay. Reading a list marker as
+// a named lane would re-decide both of them and throw the calibration away to
+// fix a phrasing. So list markers stay in [Lanes], counted against the floor
+// like everything else, and only a LABEL — a name attached to a part — buys the
+// bypass.
+
+// laneWords are the words people put in front of a designator when they are
+// naming who does what rather than what there is. Kept short and singular on
+// purpose: this list is the bypass, so every word on it must be one that a
+// person writes only when dividing labour.
+var laneWords = map[string]bool{
+	"lane": true, "part": true, "phase": true, "track": true,
+	"batch": true, "stream": true, "worker": true, "agent": true,
+}
+
+// ExplicitDivision reports whether the text names its parts as parts: a family
+// of at least two labels, either stuck together (`L1`, `L2`, `p3`) or written
+// as a lane word and a designator (`lane 1`, `part A`).
+//
+// Two is the threshold and not six, because two named lanes are two people's
+// work however small each one is; the floor is a statement about material and
+// this is a statement about labour.
+func ExplicitDivision(text string) bool {
+	return len(stuckLabels(text)) >= 2 || len(spelledOutLanes(text)) >= 2
+}
+
+// stuckLabels collects the largest family of labels written as a prefix with a
+// number stuck to it — the `L1 … L3` shape. The family is what makes it a
+// division: one `v2` in a sentence is a version, and `L1` beside `L2` is a plan.
+func stuckLabels(text string) map[string]bool {
+	families := map[string]map[string]bool{}
+	largest := map[string]bool{}
+	for _, tok := range tokenize(strings.ToLower(text)) {
+		split := 0
+		for split < len(tok.text) && tok.text[split] >= 'a' && tok.text[split] <= 'z' {
+			split++
+		}
+		if split == 0 || split > 4 || split == len(tok.text) || len(tok.text)-split > 3 {
+			continue
+		}
+		if numeric(tok.text[split:]) < 1 {
+			continue
+		}
+		family := families[tok.text[:split]]
+		if family == nil {
+			family = map[string]bool{}
+			families[tok.text[:split]] = family
+		}
+		family[tok.text[split:]] = true
+		if len(family) > len(largest) {
+			largest = family
+		}
+	}
+	return largest
+}
+
+// spelledOutLanes collects the distinct designators that follow one lane word —
+// the `lane 1 / lane 2` and `part A / part B` shapes. A designator is a number
+// or a single letter, and nothing else: "part of the report" names no part.
+func spelledOutLanes(text string) map[string]bool {
+	byWord := map[string]map[string]bool{}
+	largest := map[string]bool{}
+	tokens := tokenize(strings.ToLower(text))
+	for i := 0; i+1 < len(tokens); i++ {
+		word := strings.TrimSuffix(tokens[i].text, "s")
+		if !laneWords[word] {
+			continue
+		}
+		designator := tokens[i+1].text
+		if numeric(designator) < 1 && !(len(designator) == 1 && designator[0] >= 'a' && designator[0] <= 'z') {
+			continue
+		}
+		family := byWord[word]
+		if family == nil {
+			family = map[string]bool{}
+			byWord[word] = family
+		}
+		family[designator] = true
+		if len(family) > len(largest) {
+			largest = family
+		}
+	}
+	return largest
 }

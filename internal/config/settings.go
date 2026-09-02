@@ -1008,10 +1008,18 @@ var OperatorEnvPins = []string{
 	// disappears when nobody has a reason to turn the default off any more,
 	// which is exactly the lifetime a persisted setting must not have.
 	"AFORGE_SWARM",
-	// AFORGE_SPLITGATE is the split gate's rollback switch
+	// AFORGE_SPLITGATE names which reading of the split gate the binary runs
 	// (internal/splitgate, read by cmd/aforge/cooperative.go and by
-	// internal/session's task_divide.go): set to 0 and a request to divide is
-	// taken at its word instead of being weighed against the evidence it names.
+	// internal/session's task_divide.go). It is four values, not two: unset or
+	// `1` is the gate as shipped, weighing a division against the items its
+	// evidence enumerates; `0` is the rollback it has always been, taking a
+	// request to divide at its word; `lanes` counts the shapes a division is
+	// written down in as well, and takes a division somebody wrote out as
+	// labelled lanes at its word with no floor applied; `judgment` asks the
+	// plan's own sizing instead of the text. Anything else reads as the shipped
+	// gate, so a typo cannot quietly move a run onto an experimental arm.
+	// The three beyond `0` are a measurement in progress (#418): one of them
+	// becomes the gate and the others stop being words anybody can type.
 	// It matters more now that swarm is the default, because the gate is what
 	// makes that default free: it is the thing that refuses narrow work. It is
 	// plumbing for the reason AFORGE_SWARM is — a wave's escape hatch while the

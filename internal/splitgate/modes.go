@@ -47,11 +47,15 @@ const (
 	// down in: labelled lanes, a numbered or bulleted list, a spelled-out
 	// number beside a plural, a list of distinct file paths.
 	//
-	// IT MOVES THE COUNT AND NOT THE FLOOR, which means a brief naming three
-	// lanes still folds: three is under six. That is the mode honestly stated
-	// rather than a hole in it — the count was wrong about "thirty chapters"
-	// and about a list of twelve files, and this fixes those; it does not claim
-	// that naming your parts is by itself enough to buy a worker apiece.
+	// AND IT HAS ONE LAW ON TOP OF THE COUNT: A DIVISION SOMEBODY WROTE OUT IS
+	// NOT A PILE TO BE COUNTED. Where the brief names its parts as parts — a
+	// family of labels, `L1 … L3` or `lane 1 / lane 2` or `part A / part B` —
+	// the division stands with no floor applied at all, because [Floor] was
+	// calibrated on counts of ITEMS and a person naming lanes has already
+	// answered the question the floor exists to ask. Everything else the wider
+	// reading sees — spelled numbers, file lists, plain list markers — is a
+	// count and is weighed against the floor exactly as before, which is what
+	// keeps "four modules" folding. lanes.go carries the law and the edge.
 	ModeLanes GateMode = "lanes"
 
 	// ModeJudgment is #418's recommended repair — stop reading the brief. The
@@ -140,6 +144,12 @@ func Judge(text string, leaves []Leaf) Decision {
 	mode := Mode()
 	if mode == ModeOff {
 		return Decision{Keep: true, Items: Items(text)}
+	}
+	if mode == ModeLanes && ExplicitDivision(text) {
+		// The person did the dividing. See lanes.go's law: the floor is a
+		// statement about how much material there is, and this is a statement
+		// about labour, so the floor has nothing to say here.
+		return Decision{Keep: true, Items: Lanes(text)}
 	}
 	if mode == ModeJudgment && sizedIndependentDivision(leaves) {
 		// The plan said yes and the plan is the better witness. The count is

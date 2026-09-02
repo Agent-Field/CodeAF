@@ -2893,9 +2893,13 @@ back, not preferences, which is why neither is in the settings panel.
 **The width test is under measurement right now, and `AFORGE_SPLITGATE` picks which reading
 you get.** Unset, or `1`, is the one described above: the work has to name at least six
 separate things. `lanes` reads the shapes a person actually writes a division down in as
-well — a numbered or bulleted list, lanes labelled `L1 … L3`, a number spelled out in words,
-a list of files — so "thirty chapters" counts as thirty where today it counts as nothing;
-it moves the counting and not the six, so a brief naming three lanes is still one sitting.
+well — a numbered or bulleted list, a number spelled out in words, a list of files — so
+"thirty chapters" counts as thirty where today it counts as nothing. And where you have
+**named the parts yourself** — `L1 … L3`, `lane 1 / lane 2`, `part A / part B` — it takes
+that at its word and the six does not apply at all, because you have already done the
+dividing. A plain numbered list does not count as naming them: that is how people write
+down items, and three or four items is exactly the size that measured out slower divided
+than done in order.
 `judgment` stops reading your words for a number at all and asks the plan instead: if every
 part is already the size of one sitting and none of them waits on another, the parts stand,
 whatever the brief counted. Anything else you type reads as the first one. All of this is a

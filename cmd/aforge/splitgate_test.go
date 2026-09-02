@@ -31,7 +31,7 @@ func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 		{"", 3, "the shipped gate reads no digit beside a plural and folds, which is the bug #418 reports"},
 		{"1", 3, "the same gate, named"},
 		{"0", 0, "the rollback switch has always taken the gate away entirely"},
-		{"lanes", 3, "the wider counting reads three named parts and three is still under the six-item floor"},
+		{"lanes", 3, "this brief names no lanes, so the wider counting is still a count and three is under the six-item floor"},
 		{"judgment", 0, "three sittings that owe each other nothing are a real division whatever the brief counted"},
 	} {
 		t.Run(probe.pin, func(t *testing.T) {
@@ -46,6 +46,31 @@ func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 			}
 			if got := len(graph.Leaves()); got != want {
 				t.Fatalf("AFORGE_SPLITGATE=%q left %d work nodes, want %d", probe.pin, got, want)
+			}
+		})
+	}
+}
+
+// AND A BRIEF THAT NAMES ITS LANES PARTS THE TWO COUNTING MODES. It is the
+// brief #418 opens with: the gate as it ships folds it, and the wider reading
+// takes the person's own division at its word and leaves it standing.
+func TestThePlanDoorKeepsAWrittenOutDivisionOnlyUnderLanes(t *testing.T) {
+	const labelled = "HANDBOOK.md is one file. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section."
+	for _, probe := range []struct {
+		pin    string
+		folded int
+	}{
+		{"", 3},
+		{"1", 3},
+		{"lanes", 0},
+		{"judgment", 0},
+		{"0", 0},
+	} {
+		t.Run(probe.pin, func(t *testing.T) {
+			t.Setenv("AFORGE_SPLITGATE", probe.pin)
+			graph := threeIndependentSittings(labelled)
+			if got := gatePlanDivision(graph, labelled); got != probe.folded {
+				t.Fatalf("AFORGE_SPLITGATE=%q folded %d leaves of the three-lane brief, want %d", probe.pin, got, probe.folded)
 			}
 		})
 	}

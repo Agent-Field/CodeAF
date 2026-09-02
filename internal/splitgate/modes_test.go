@@ -128,18 +128,68 @@ func TestLanesCountsNamedPartsAndStillRefusesParameters(t *testing.T) {
 			t.Errorf("Lanes(%q) read fewer items than Items did; the wider reading may only widen", probe.text)
 		}
 	}
-	// AND IT MOVES THE COUNT, NOT THE FLOOR. Three named lanes read as three
-	// and three is still under six, so this mode folds the brief #418 opens
-	// with. That is the mode as designed and it is half of why the experiment
-	// exists: the count was wrong about "thirty chapters" and this fixes it;
-	// whether naming your parts is by itself enough to buy a worker apiece is
-	// the question ModeJudgment answers differently.
 	t.Setenv("AFORGE_SPLITGATE", "lanes")
 	if !Judge("HANDBOOK.md is one file of thirty chapters. Deliver three lanes.", nil).Keep {
 		t.Error("lanes folded a brief naming thirty chapters; that is the reading the shipped counter got wrong")
 	}
-	if Judge("L1: headings. L2: links. L3: contents.", nil).Keep {
-		t.Error("lanes kept a three-lane brief; this mode moves the count and not the floor, and three is under six")
+}
+
+// A DIVISION SOMEBODY WROTE OUT IS NOT A PILE TO BE COUNTED — the mode's one
+// law, and the only reading in the package that skips the floor. Each keep row
+// is a brief in which the person named the workers rather than the material;
+// each fold row is material, counted against the floor exactly as before.
+func TestLanesTakesAWrittenOutDivisionAtItsWordAndStillCountsEverythingElse(t *testing.T) {
+	for _, probe := range []struct {
+		text     string
+		explicit bool
+		why      string
+	}{
+		// #418's replication, and the case the mode exists to answer.
+		{"HANDBOOK.md is one file of thirty chapters. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section.", true,
+			"three labelled lanes over one file are three people's work, however few the lanes"},
+		{"lane 1 takes the parser, lane 2 takes the cache", true, "a lane word and a designator, twice"},
+		{"part A is the schema and part B is the migration", true, "letter designators count the same as numbers"},
+		{"split it into p1, p2 and p3", true, "the label family is what makes it a division"},
+		// Material, not labour: still a count, still against the floor.
+		{"Create four separate, independent Python utility modules", false,
+			"four modules is the bench measurement that four does not pay"},
+		{"1. rewrite the header\n2. link the index\n3. add a summary\n", false,
+			"a numbered list is how people write down items; the corpus numbers its three bugs that way"},
+		{"- the parser\n- the cache\n- the units\n", false, "a bulleted list is the same shape as a numbered one"},
+		{"there are 12 image files", false, "a count is a count however large"},
+		{"rewrite server.py, client.py and parser.py", false, "naming the files says how much there is, not who does what"},
+		// One label is a version, a port or an identifier — never a lane.
+		{"upgrade to v2 before shipping", false, "one label is not a family"},
+		{"part of the report needs a rewrite", false, "`part of` names no part"},
+		{"the run took 90 seconds and used 3 retries", false, "parameters stay parameters"},
+	} {
+		if got := ExplicitDivision(probe.text); got != probe.explicit {
+			t.Errorf("ExplicitDivision(%q) = %v, want %v — %s", probe.text, got, probe.explicit, probe.why)
+		}
+	}
+
+	// AND THE LAW IS WHAT SEPARATES THIS ARM FROM THE SHIPPED ONE. The brief
+	// #418 opens with is folded by the gate as it ships and kept here, which is
+	// the whole of what the experiment is asking about.
+	const threeLanes = "HANDBOOK.md is one file. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section."
+	t.Setenv("AFORGE_SPLITGATE", "")
+	if Judge(threeLanes, nil).Keep {
+		t.Error("the shipped gate kept the three-lane brief; #418 reports that it folds it")
+	}
+	t.Setenv("AFORGE_SPLITGATE", "lanes")
+	if !Judge(threeLanes, nil).Keep {
+		t.Error("lanes folded a brief that names its three lanes; a division somebody wrote out is not a pile to be counted")
+	}
+	// Four modules is the bench corpus's own measurement and it may not move.
+	if Judge("Create four separate, independent Python utility modules, one file each", nil).Keep {
+		t.Error("lanes kept four modules; four modules is the measurement that four does not pay")
+	}
+	// The bypass is the lanes mode's alone. It is not a second counter and it
+	// is not something the judgment arm inherits, or the experiment could not
+	// say which repair moved a result.
+	t.Setenv("AFORGE_SPLITGATE", "judgment")
+	if Judge(threeLanes, nil).Keep {
+		t.Error("judgment took a written-out division at its word; its one repair is the plan's sizing")
 	}
 }
 
