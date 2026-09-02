@@ -59,8 +59,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -177,13 +176,13 @@ func sessionIsOpen(dir string) bool {
 		return true
 	}
 	defer file.Close()
-	err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	err = filelock.Lock(file, true, true)
 	if err != nil {
 		// Held by another window, or a filesystem with no locks to offer. Both
 		// answer "leave it".
 		return true
 	}
-	_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	_ = filelock.Unlock(file)
 	return false
 }
 

@@ -70,11 +70,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -314,12 +314,12 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 	process.Env = os.Environ()
 	// A new SESSION, for the reason jobs.go states: the group-kill is unchanged
 	// and a probe's child cannot reach the person's terminal.
-	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(process)
 	// The whole GROUP, not just the shell: a probe that ran `curl … | grep x`
 	// leaves two processes, and killing the parent alone would leak the rest of
 	// them once per check, forever (tools_watch.go's runTick).
 	process.Cancel = func() error {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil
 	}
 	process.WaitDelay = 2 * time.Second
