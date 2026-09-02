@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1220,6 +1221,47 @@ func replaySessionFile(path string) (replayedSession, error) {
 	}
 	defer file.Close()
 
+	replayed, err := readJournal(file, path)
+	if err != nil {
+		return replayed, err
+	}
+	// THE REPAIR BELONGS TO THE CALLER THAT IS GOING TO SEND THESE MESSAGES, and
+	// this is that caller: a resumed conversation goes to a provider on its next
+	// request and an illegal transcript is a 400 forever. A reader that only
+	// DRAWS the record wants the record ([ReadTranscript]) — an unanswered call
+	// is what it is there to show, not a shape to mend.
+	original := append([]ai.Message(nil), replayed.messages...)
+	replayed.messages = repairTranscript(replayed.messages)
+	replayed.reasoning = reasoningAfterRepair(replayed.messages, original, replayed.reasoning)
+	// The earlier region goes through the SAME repair as the live one. It is
+	// never sent, so the 400 the repair exists to prevent cannot happen to it —
+	// but a tool result whose call is missing is a row a surface would draw with
+	// nothing above it either way, and two shapings of one journal that disagreed
+	// about which lines are real would be the seam lying in a second way.
+	replayed.earlier = repairTranscript(replayed.earlier)
+	// The overlap was counted against the lines the file holds and is applied to
+	// the transcript the repair left behind, so it is clamped to it. The repair
+	// only ever drops an unanswered trailing batch and orphaned results — the tail
+	// and the rare stray — so the two agree in every session that was not killed
+	// mid-batch, and a message of drift at the seam is a row nobody can see.
+	if replayed.overlap > len(replayed.messages) {
+		replayed.overlap = len(replayed.messages)
+	}
+	return replayed, nil
+}
+
+// readJournal is the scan itself, over any reader of a session file: every line
+// rebuilt into the message it was, with the three indexes a display shaping asks
+// the journal for built in the same pass.
+//
+// IT REPAIRS NOTHING. What it hands back is what the file says, unanswered calls
+// and all, which is what a page reading somebody else's work has to be able to
+// draw ([ReadTranscript]); [replaySessionFile] is where a transcript that is
+// about to be SENT is made legal again.
+//
+// path is named only in the error a newer file's format version raises, so a
+// reader with no path (a tail carried across a wire) passes "".
+func readJournal(reader io.Reader, path string) (replayedSession, error) {
 	var (
 		messages  []ai.Message
 		reasoning []provider.MessageReasoning
@@ -1246,7 +1288,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// an ordinary user message once it has been rebuilt, and the mark that says
 	// it was typed INTO the turn above it is on the line (steer.go).
 	steers := make(map[string]SteerMark)
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(reader)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
 	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
@@ -1475,27 +1517,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 	if err := scanner.Err(); err != nil {
 		return replayedSession{title: title, id: id, images: images, notes: notes, replyTags: replyTags, steers: steers, usage: spent, created: created, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
-	original := append([]ai.Message(nil), messages...)
-	repaired := repairTranscript(messages)
-	repairedReasoning := reasoningAfterRepair(repaired, original, reasoning)
-	// The overlap was counted against the lines the file holds and is applied to
-	// the transcript the repair left behind, so it is clamped to it. The repair
-	// only ever drops an unanswered trailing batch and orphaned results — the tail
-	// and the rare stray — so the two agree in every session that was not killed
-	// mid-batch, and a message of drift at the seam is a row nobody can see.
-	if overlap > len(repaired) {
-		overlap = len(repaired)
-	}
 	return replayedSession{
-		messages:  repaired,
-		reasoning: repairedReasoning,
-		// The earlier region goes through the SAME repair as the live one. It is
-		// never sent, so the 400 the repair exists to prevent cannot happen to
-		// it — but a tool result whose call is missing is a row a surface would
-		// draw with nothing above it either way, and two shapings of one journal
-		// that disagreed about which lines are real would be the seam lying in a
-		// second way.
-		earlier:   repairTranscript(earlier),
+		messages:  messages,
+		reasoning: reasoning,
+		earlier:   earlier,
 		overlap:   overlap,
 		title:     title,
 		id:        id,
@@ -1877,23 +1902,29 @@ func (s *sessionFile) appendNote(message ai.Message, tags ...[]TaskReplyTag) {
 	s.append(message, true, nil, tags...)
 }
 
-// appendSteer is appendMessage for a person's line that was SPLICED into a turn
-// already running (steer.go). It is the same message line every other user
-// message writes, with the mark that says it did not open the turn it sits in
-// and the instant the person actually sent it.
+// appendSteer is appendMessage for a person's line that was typed INTO work
+// already running: spliced into this conversation's turn (steer.go), or carried
+// across to a node the person is standing in the room of (task_room.go). It is
+// the same message line every other user message writes, with the mark that says
+// it did not open the turn it sits in and the instant the person actually sent
+// it.
+//
+// ONE DOOR FOR BOTH, because the record keeps one fact about both: the person
+// corrected work that was moving. The two engine doors stay two doors — one
+// splices a turn and one delivers to another agent, and they promise different
+// things — and what the mark carries says which promise was kept ([SteerMark]).
 //
 // It is a separate door rather than a flag on the common one, on
 // [sessionFile.appendNote]'s terms: exactly one caller has the answer —
-// [Agent.recordUserLocked], which is holding the [userMessage] the slip comes
+// [Agent.recordUserLocked], which is holding the [userMessage] the mark comes
 // off — and every other call site should stay the call it was.
 //
-// A steer carries no pictures ([Agent.Steer] takes words only), which is why
-// this door takes no references.
-func (s *sessionFile) appendSteer(message ai.Message, note SteerNote) {
+// A steer carries no pictures (neither door takes any), which is why this takes
+// no references.
+func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) {
 	if s == nil {
 		return
 	}
-	mark := SteerMark{At: note.At, Consumed: true, Landing: note.Landing}
 	s.mu.Lock()
 	if s.steers == nil {
 		s.steers = make(map[string]SteerMark, 4)
@@ -1904,7 +1935,7 @@ func (s *sessionFile) appendSteer(message ai.Message, note SteerNote) {
 		Type:      "message",
 		Role:      message.Role,
 		Content:   messageContentText(message),
-		Steer:     &journalSteer{At: steerStamp(note.At), Consumed: true, Landing: note.Landing},
+		Steer:     &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
 		Timestamp: stamp(),
 	})
 }
@@ -2045,7 +2076,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		// its mark would come back from the next resume as a question of its own,
 		// and the turn it was typed into would lose the correction that shaped it.
 		if mark := s.steerMark(message); mark != nil {
-			s.appendSteer(message, SteerNote{At: mark.At, Landing: mark.Landing})
+			s.appendSteer(message, *mark)
 			continue
 		}
 		var reasoning provider.MessageReasoning

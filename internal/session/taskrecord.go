@@ -58,7 +58,7 @@ type TaskRecord struct {
 	//
 	// IT IS A TAIL AND NEVER THE FILE. A node's transcript is megabytes and the
 	// page that draws it keeps the last screenful of blocks anyway
-	// ([tui3.readRoomJournalTail]), so sending the whole of one would be paying a
+	// ([ReadTranscriptBytes], shaped by tui3's roomReplay), so sending the whole of one would be paying a
 	// connection for lines nothing will draw. The cut is made at a LINE BOUNDARY
 	// — the first newline after it is dropped along with the partial line before
 	// it — because a torn first line is a line the reader throws away and a
