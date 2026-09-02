@@ -102,7 +102,14 @@ func TestRenderTerrainIsByteStable(t *testing.T) {
 // a great many directories may not buy itself a larger share of the prompt.
 func TestRenderTerrainStaysUnderTheCap(t *testing.T) {
 	layout := map[string]string{}
-	long := strings.Repeat("観測", 90) // 3-byte runes, so a naive cut lands mid-character
+	// Three-byte runes, so a naive cut lands mid-character. FORTY REPEATS, NOT MORE:
+	// each of the fourteen names must stay under 255 BYTES, which is what ext4 and
+	// tmpfs cap a single path component at. APFS caps it at 255 CHARACTERS instead,
+	// so the ninety repeats this fixture was written with — 541 bytes, 181 characters
+	// — created happily on the Mac it was written on and could never be created on
+	// Linux at all. At forty the name is 241 bytes, and fourteen of them are 3374,
+	// still well past the cap below, so the clipping this test exists for still bites.
+	long := strings.Repeat("観測", 40)
 	for _, suffix := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"} {
 		layout[long+suffix+"/entry.csv"] = "1,2\n"
 	}
