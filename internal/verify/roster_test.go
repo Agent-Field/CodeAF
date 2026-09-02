@@ -234,3 +234,41 @@ func TestTheChecksASourceDeclaresComeBackInTheOrderItDeclaresThem(t *testing.T) 
 			got, want)
 	}
 }
+
+// A ` > ` A RUNNER PRINTED IS NESTING; A ` > ` AN AUTHOR TYPED IS TWO WORDS.
+//
+// The reader that splits a check off the headings it sits under was splitting
+// declarations too, so a suite holding `it("renders a > b")` declared a check
+// called `b` — a name nothing in any output matches, in the roster the gate maps
+// behaviours against and in the sentence that says a check was deleted.
+func TestADescriptionIsNotANestingChainWhenItIsReadOutOfSource(t *testing.T) {
+	source := "describe(\"markdown\", () => {\n  it(\"renders a > blockquote\", () => {})\n})\n"
+	declared := DeclaredChecks(source)
+	want := []string{"renders a > blockquote"}
+	if !reflect.DeepEqual(declared, want) {
+		t.Errorf("DeclaredChecks = %#v, want the description whole: %#v", declared, want)
+	}
+	// The runner's own reading of that same check is the last segment of what
+	// it printed, because a title holding ` > ` cannot be told from a chain once
+	// it has been printed. That is the ambiguity CheckIdentity states, and it
+	// runs in the safe direction: the two readings meet at the same segment, so
+	// the check unions as one check and not as two.
+	banner := "spec/markdown.test.ts > markdown > renders a > blockquote"
+	if got := CheckIdentity(banner); got != "blockquote" {
+		t.Errorf("the runner's own name %q reduced to %q, want its last segment %q",
+			banner, got, "blockquote")
+	}
+	if union := UniqueChecks([]string{declared[0], banner}); len(union) != 1 {
+		t.Errorf("one check declared and printed was unioned as %#v", union)
+	}
+	// And the far end of the same ambiguity, which costs nothing: a title whose
+	// last segment is one character has no readable identity — a one-letter name
+	// is not a name — so the union keeps both readings rather than losing
+	// either. A CHECK THE GATE STOPS SEEING IS THE ONE THING THIS MAY NOT DO.
+	if got := CheckIdentity("spec > renders a > b"); got != "" {
+		t.Errorf("a one-character segment was read as the identity %q", got)
+	}
+	if union := UniqueChecks([]string{"renders a > b", "spec > renders a > b"}); len(union) != 2 {
+		t.Errorf("a name with no readable identity was dropped from %#v", union)
+	}
+}

@@ -158,6 +158,13 @@ func normalizeTestName(raw string) string {
 // amount of reading source recovers them. So every qualification a runner adds
 // is stripped here, in this one function, and nowhere else.
 //
+// THIS IS THE READING OF A NAME A RUNNER PRINTED. A name read out of SOURCE
+// goes through declaredIdentity, which is this reading with the nesting chain
+// left alone, because a quoted description IS the leaf and the ` > ` inside
+// `it("renders a > b")` is two words of it. The two are one function under two
+// names, and the difference is the one thing a reader can know that this
+// function cannot: where the name came from.
+//
 // WHAT IS NOT DONE HERE, deliberately: a roster keeps the runner's own
 // qualified spelling. A name is two things — an identity and a LOCATION — and
 // SplitReplaced reads the location out of it to tell a check that was rewritten
@@ -165,12 +172,34 @@ func normalizeTestName(raw string) string {
 // that cost happy-dom's s13 run four repair rounds. Reducing every roster to
 // bare names would take that reading away. So the identity is derived where two
 // readers meet (UniqueChecks) rather than imposed on the readers themselves.
-func CheckIdentity(name string) string {
+func CheckIdentity(name string) string { return identity(name, true) }
+
+// declaredIdentity is that same reading of a name taken out of SOURCE.
+//
+// One difference, and it is the whole reason this name exists: the nesting
+// chain is not split off. A runner builds `spec > renders a > b` out of the
+// headings a check sits under; an author writes `renders a > b` and means every
+// word of it. Splitting a declaration on its own ` > ` named the check `b`, in
+// the roster the gate maps behaviours against and in the sentence that says a
+// check was deleted.
+//
+// THE AMBIGUITY THIS LEAVES, stated rather than hidden: a title that itself
+// contains ` > ` cannot be told from a chain once it has been printed, so the
+// runner's reading of that check is its last segment and the union in
+// UniqueChecks — which re-reads stored names and cannot know where they came
+// from — reads every name the printed way. That is the safe direction of the
+// ambiguity: the declaration and the banner reduce to the SAME last segment, so
+// one check read both ways still unions as one check.
+func declaredIdentity(name string) string { return identity(name, false) }
+
+// identity is the reading both of them are. printed says the name came out of a
+// runner's output, where a ` > ` chain is nesting rather than words.
+func identity(name string, printed bool) string {
 	clean := normalizeTestName(name)
 	if clean == "" {
 		return ""
 	}
-	return normalizeTestName(bareCheckName(clean))
+	return normalizeTestName(bareCheckName(clean, printed))
 }
 
 // UniqueChecks is a run of check names, read by whichever readers named them,
@@ -204,14 +233,18 @@ func UniqueChecks(names []string) []string {
 }
 
 // bareCheckName strips the qualification a runner prints around a check's own
-// name. It is the one step of CheckIdentity that is not cleaning, and it has no
-// other caller: A CHECK HAS ONE IDENTITY means one function decides it.
-func bareCheckName(name string) string {
+// name. It is the one step of an identity that is not cleaning, and its only
+// callers are the two spellings of that one reading: A CHECK HAS ONE IDENTITY
+// means one function decides it.
+func bareCheckName(name string, printed bool) string {
 	// A nesting chain — vitest's failure banner prints `file > describe > the
 	// check`, gradle prints `com.example.ApiTest > testHeaders` — names the
 	// check itself in its last segment. The segments in front of it are the
 	// file and the headings, and a heading is not a check.
-	if cut := strings.LastIndex(name, " > "); cut >= 0 {
+	//
+	// Only in something a runner PRINTED. In source, ` > ` is whatever the
+	// author typed between two words.
+	if cut := strings.LastIndex(name, " > "); printed && cut >= 0 {
 		name = strings.TrimSpace(name[cut+len(" > "):])
 	}
 	// A parenthesised tail on an unspaced name is the runner saying where the
@@ -241,13 +274,21 @@ func bareCheckName(name string) string {
 	if match := goCheckIdentity.FindStringSubmatch(name); match != nil {
 		return match[1]
 	}
+	// A SLASH MEANS A PATH, AND A PATH IS NOT QUALIFIED BY ITS DOTS. Whatever
+	// still holds one after the subtest above has been read off is a file or an
+	// import path — `tests/api_test.py`, `example.com/widget.test`,
+	// `example.com/circuit` — and its last dotted segment is an extension or a
+	// package's own name. Reducing those left one reading identified as `test`
+	// and another as `py`.
+	if strings.Contains(name, "/") {
+		return name
+	}
 	// A dotted qualifier — xunit's `Ns.ApiCase.Works`, surefire's
-	// `ApiTest.headers` — names the check in its last segment. Only the segment
-	// after the last slash is read for it, because a slash means a path and a
-	// path's dots belong to a file name rather than to a class.
-	tail := name[strings.LastIndex(name, "/")+1:]
-	if match := qualifiedTail.FindStringSubmatch(tail); match != nil &&
-		!sourceFileSuffix.MatchString(tail) {
+	// `ApiTest.headers` — names the check in its last segment. A file named
+	// without a directory in front of it is still a file, and is still not
+	// reduced.
+	if match := qualifiedTail.FindStringSubmatch(name); match != nil &&
+		!sourceFileSuffix.MatchString(name) {
 		return match[1]
 	}
 	return name

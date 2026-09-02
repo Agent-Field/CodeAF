@@ -128,12 +128,14 @@ var checkDeclarationPatterns = []*regexp.Regexp{
 // a change nobody has run — which is what makes a diff answer the coverage
 // question at all.
 //
-// Its names are CHECK IDENTITIES — spelled by CheckIdentity, which is the one
-// function that decides which check a name names. Source carries no import
-// path, no class and no node id to qualify a declaration with, so a declaration
-// is already bare; passing it through CheckIdentity is what makes that a stated
-// law rather than a coincidence, and it is what lets the caller that matters
-// deduplicate these names against a runner's roster and get one entry per check
+// Its names are CHECK IDENTITIES — read out of source by declaredIdentity,
+// which is CheckIdentity's own reading with the one difference source makes:
+// nothing here is a nesting chain, so `it("renders a > b")` declares `renders a
+// > b` and not `b`. Source carries no import path, no class and no node id to
+// qualify a declaration with, so a declaration is otherwise already bare;
+// passing it through that reading is what makes this a stated law rather than a
+// coincidence, and it is what lets the caller that matters deduplicate these
+// names against a runner's roster and get one entry per check
 // (internal/revision/acceptance.go, verify.UniqueChecks).
 //
 // The order is THE ORDER OF THE TEXT, and it is read off the offsets rather
@@ -163,7 +165,7 @@ func DeclaredChecks(source string) []string {
 				if start < 0 {
 					continue
 				}
-				if name := CheckIdentity(source[start:end]); name != "" {
+				if name := declaredIdentity(source[start:end]); name != "" {
 					found = append(found, declaration{at: start, name: name})
 				}
 			}
