@@ -3761,7 +3761,12 @@ func (a *app) paint() tea.Cmd {
 	// beside `stopping` has to be redrawn while it runs, and something has to be
 	// turning the clock that fires it. Past the bound it lets go of the turn
 	// whether the engine has or not (see the block below [app.windingDown]).
-	a.stopSweep()
+	//
+	// WHAT IT RETURNS IS THE SETTLE'S OWN TWO COMMANDS, and they are folded into
+	// this frame's batch rather than dropped: a turn let go of at the bound is a
+	// turn that settled, and it is owed the repository probe and the fade ticks
+	// every other settled turn is owed.
+	kick = tea.Batch(kick, a.stopSweep())
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
