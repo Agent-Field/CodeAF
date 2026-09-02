@@ -4,7 +4,7 @@
 
 | Where | Workflow | What runs | Roughly |
 | --- | --- | --- | --- |
-| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `check`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched | `check` a few minutes; `touched packages` as long as the slowest touched package |
+| pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `check`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched — pushes to `dev` (and manual dispatch) only, not pull requests | `check` a few minutes; `touched packages` as long as the slowest touched package |
 | pull request into `staging`, every push to `staging`, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
 | a `v*` tag | `.github/workflows/release-binaries.yml` | the release surface, then publish | — |
 
@@ -64,8 +64,10 @@ Seven things in `ci.yml`, job name `check`, and then one more job:
 
 **`touched packages`** is the second job: the full suite of every package the
 change touched, through `make test`, so it reads the same ledger and the same
-timeout as a laptop. It runs beside `check` rather than after it, so the light
-answer still arrives in its few minutes. It is neutral today: its test step may
+timeout as a laptop. It runs on pushes to `dev` and on manual dispatch, not on
+pull requests — it never blocked a merge, and its per-PR red signal was not
+being acted on, so the pull request keeps only the light answer, which still
+arrives in its few minutes. It is neutral today: its test step may
 fail without the job failing, and a failure is a warning on the run and a line in
 its summary, never silence. A red job on a merged pull request reads as a red
 `dev` to everyone after it, and the day this landed `internal/tui3` carried three
