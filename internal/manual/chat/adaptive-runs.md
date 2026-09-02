@@ -928,7 +928,7 @@ the run goes on to deliver, be reviewed, and land like any other — **with the 
 checklist it already read off your request**, so a job that fell back here is still held to
 the behaviours you stated rather than only to how its answer reads.
 
-## A plan that was drawn is kept, even when a later planning call failed
+## When the run says a brief could not be written — a plan already drawn is kept
 
 You only see that line when **no plan was drawn at all**. Planning is seven or eight model
 calls, some of them one per node, and a fault in a late one is not a reason to throw away
