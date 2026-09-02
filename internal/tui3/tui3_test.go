@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,9 +18,51 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
+
+// TestMain gives the whole package a state root of its own.
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, so a bare
+// [newTestApp] — which names no profile, exactly like an ordinary launch — reads
+// and writes aforge's state root, and on a developer's machine that is their own
+// ~/.aforge. Before #315 the surface's empty-profile guards hid that: the crew
+// was not read and the notices' ledger was not written, so the suite touched
+// nothing. Now that both resolve the way every other persisted setting always
+// has, a suite left alone with the machine's own root would answer to the
+// developer's crew and retire the developer's hints — which is a suite that
+// passes here and fails there, and a test run with a side effect on the person
+// running it.
+//
+// AFORGE_HOME is the one seam that moves every path (internal/home), and HOME
+// itself is deliberately left alone: this package draws `~` in front of paths
+// and those readings are about the real one.
+func TestMain(m *testing.M) { os.Exit(runTests(m)) }
+
+// runTests is TestMain's body as a function with a return value, so the
+// temporary root is still removed on the way out — os.Exit runs no deferred
+// call.
+func runTests(m *testing.M) int {
+	root, err := os.MkdirTemp("", "aforge-tui3-test-home-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)
+		return 1
+	}
+	defer os.RemoveAll(root)
+	if err := os.Setenv(home.EnvVar, root); err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: could not move %s: %v\n", home.EnvVar, err)
+		return 1
+	}
+	// And the narrow override that would move the profile back out from under
+	// it. Empty reads as unset everywhere in internal/config.
+	if err := os.Setenv(config.ProfileDirEnv, ""); err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: could not clear %s: %v\n", config.ProfileDirEnv, err)
+		return 1
+	}
+	return m.Run()
+}
 
 // fakeAgent is the scripted session every test here runs against: it answers
 // from a queue of event batches and records what it was asked to do. It is the
@@ -283,6 +326,24 @@ func newTestApp(agent Agent) *app {
 	// developer who turned it off in their own aforge would run a different
 	// suite. The quick behaviour has tests of its own that turn it on outright.
 	a.hopQuick = false
+	// AND IT PINS THE WORK SEAT'S QUESTION AS ALREADY ASKED, for the seventh
+	// time for the reason the six pins above exist. The one line about a crew
+	// older than the work seat is read from the PROFILE (crew.go's
+	// [app.workSeat]), and a bare app has no profile of its own — so a suite run
+	// on a machine whose own crew predates the worker row would grow a note in
+	// every test that starts a node, and one run on a machine whose crew does
+	// not would grow none. A test that means the line builds a profile and asks
+	// for it outright (crewseat_test.go's crewSeatLab).
+	a.workSeatSaid = true
+	// AND IT PINS THE NOTICES TO THIS SESSION, for the eighth time for the same
+	// reason. The ledger is a file in the state root now that an empty profile
+	// directory resolves there like every other persisted thing (#315), and this
+	// package's root is one temporary directory for the whole run (TestMain) —
+	// so a bare app that showed a hint would count a showing every other bare
+	// app's assertions then read, and the suite's answers would depend on the
+	// order the tests ran in. A test that means the ledger names a path of its
+	// own (notice_test.go's noticeApp).
+	a.notices.path = ""
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the

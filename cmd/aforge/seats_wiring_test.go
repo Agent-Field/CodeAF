@@ -300,3 +300,175 @@ func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
 		t.Fatalf("the receipt did not print the value as the sheet holds it:\n%s", stderr.String())
 	}
 }
+
+// THE WHOLE ROAD, ON A PROFILE OLDER THAN THE WORKER SEAT (#302).
+//
+// The unit test pins the rung; this pins what a person actually gets: a config
+// written before the worker row existed — the four keys and no fifth — must send
+// every client the errand builds to the crew's own models, never to the build's
+// default, and the run must SAY on its way past that the seat was inherited. The
+// second half is the part that makes the first half checkable from outside,
+// which is the property the defect took away.
+func TestAnErrandOnACrewOlderThanTheWorkerSeatNeverTouchesTheBuildsDefault(t *testing.T) {
+	script := newScriptedBrain(t)
+	defer script.close()
+	t.Setenv(config.ModelEnv, "")
+	t.Setenv(config.PlanModelEnv, "")
+
+	// The pre-#278 crew shape, written as a profile of that vintage holds it.
+	pinned := "vendor/pinned-small-work"
+	profile := map[string]string{
+		config.KeyTierReflexModel:     "vendor/pinned-reflex",
+		config.KeyTierLowModel:        pinned,
+		config.KeyTierHighModel:       "vendor/pinned-careful",
+		config.KeyTierMastermindModel: "vendor/pinned-thinking",
+	}
+	raw, err := json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(script.dir), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var built []string
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:    "write the release note and include the migration steps",
+		timeout: 60 * time.Second,
+		asJSON:  true,
+		stdout:  &stdout,
+		stderr:  &stderr,
+		newClient: func(settings config.Config, model string) (*liveClient, error) {
+			mu.Lock()
+			built = append(built, model)
+			mu.Unlock()
+			return script.client(settings, model)
+		},
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
+	}
+
+	mu.Lock()
+	models := append([]string(nil), built...)
+	mu.Unlock()
+	for _, model := range models {
+		if model == config.DefaultModel {
+			t.Fatalf("a client was built on the build's default %q; the run used %v",
+				config.DefaultModel, models)
+		}
+	}
+	worked := false
+	for _, model := range models {
+		worked = worked || model == pinned
+	}
+	if !worked {
+		t.Fatalf("nothing ran on the small-work model the crew pinned; the run used %v", models)
+	}
+
+	// The receipt: the work seat says the crew answered and that the row was
+	// inherited, and the one line saying why is printed ONCE.
+	seats := config.ResolveSeats(script.dir, "", "")
+	if !strings.Contains(stderr.String(), "work "+pinned+" (crew custom, inherited)") {
+		t.Fatalf("the opening line does not name the inherited seat:\n%s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "work "+config.DefaultModel) {
+		t.Fatalf("the opening line still seats the build's default:\n%s", stderr.String())
+	}
+	notice := seats.Notice()
+	if notice == "" {
+		t.Fatal("the seats resolved by inheritance and the run has nothing to say about it")
+	}
+	if got := strings.Count(stderr.String(), notice); got != 1 {
+		t.Fatalf("the run said the line %d times, want once:\n%s", got, stderr.String())
+	}
+
+	// And the object a script reads carries the same fact.
+	var outcome headlessOutcome
+	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
+		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
+	}
+	if outcome.Model != pinned || outcome.ModelSource != "crew custom, inherited" {
+		t.Fatalf("--json named model %q (%s), want the inherited crew row",
+			outcome.Model, outcome.ModelSource)
+	}
+}
+
+// AND THE CONVERSATION SEATS THE SAME ROW (#312).
+//
+// The chat resolves its five classes through [v3RolesSource], which is a
+// different road from [config.ResolveSeats] on purpose — a conversation has no
+// flag and no campaign variable for its crew, only a profile — but it must end
+// at the same model, or a person's crew means one thing in `aforge do` and
+// another in the window they actually work in. This is the ladder read the way
+// the door reads it: the key internal/roles asks for, on a profile older than
+// the worker seat.
+func TestTheChatRoleMapSeatsTheInheritedWorkerRow(t *testing.T) {
+	pinned := "vendor/pinned-small-work"
+	dir := writeVintageProfile(t, map[string]string{
+		config.KeyTierReflexModel:     "vendor/pinned-reflex",
+		config.KeyTierLowModel:        pinned,
+		config.KeyTierHighModel:       "vendor/pinned-careful",
+		config.KeyTierMastermindModel: "vendor/pinned-thinking",
+	})
+
+	read, err := v3RolesSource(t.TempDir(), dir)
+	if err != nil {
+		t.Fatalf("building the conversation's role map: %v", err)
+	}
+	worker, ok := read(roles.TierKey(roles.TierWorker))
+	if !ok || worker != pinned {
+		t.Fatalf("the conversation's worker class reads %q (held=%t), want the small-work model the crew pinned",
+			worker, ok)
+	}
+	if worker == config.DefaultWorkerModel {
+		t.Fatalf("the conversation's worker class fell to the build's default %q", config.DefaultWorkerModel)
+	}
+	// The rows the profile does hold are untouched by any of it.
+	if got, _ := read(roles.TierKey(roles.TierMastermind)); got != "vendor/pinned-thinking" {
+		t.Fatalf("the thinking class reads %q", got)
+	}
+
+	// A row written by hand wins over the lineage, and a row cleared on purpose
+	// still means "follow the conversation" — which on this surface is a class
+	// the role ladder does not hold at all.
+	own := writeVintageProfile(t, map[string]string{
+		config.KeyTierLowModel:    pinned,
+		config.KeyTierWorkerModel: "vendor/my-own-worker",
+	})
+	read, err = v3RolesSource(t.TempDir(), own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := read(roles.TierKey(roles.TierWorker)); got != "vendor/my-own-worker" {
+		t.Fatalf("a pinned worker row reads %q", got)
+	}
+	cleared := writeVintageProfile(t, map[string]string{
+		config.KeyTierLowModel:    pinned,
+		config.KeyTierWorkerModel: "",
+	})
+	read, err = v3RolesSource(t.TempDir(), cleared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, held := read(roles.TierKey(roles.TierWorker)); held {
+		t.Fatalf("a worker row cleared on purpose is held as %q instead of following the conversation", got)
+	}
+}
+
+// writeVintageProfile writes a profile holding exactly these rows: a value for a
+// row somebody wrote, the empty string for one they cleared, and no key at all
+// for a class of a vintage that never had one.
+func writeVintageProfile(t *testing.T, rows map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(dir), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}

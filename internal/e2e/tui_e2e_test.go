@@ -32,8 +32,11 @@ package e2e
 // something it correctly does not draw there.
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +79,58 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("alt_g_groups_the_list_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
+	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
+	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
+}
+
+// ── 13 ──────────────────────────────────────────────────────────────────────
+
+// testFreshInstallSetup is #322's acceptance, on the real screen: THE FRONT
+// DOOR, on a machine that has never run aforge.
+//
+// THE FAILURE THIS MEASURES MADE THE PRODUCT UNUSABLE ON A FRESH INSTALL.
+// [app.openSetup] returned early on an empty profile directory, which is what an
+// unset AFORGE_PROFILE_DIR looks like by the time it reaches the surface — so a
+// person who had just installed aforge and typed `aforge` was never shown the
+// screen that connects a provider. Every unit test of that screen named a
+// profile directory first, and every person who ever tested it already had a key
+// in their shell, so it was green everywhere and broken for exactly the one
+// audience it exists for.
+//
+// SO IT IS RUN AGAINST NOTHING. [emptyHome] creates a directory and not one thing
+// more, and [startFresh] takes every provider key and the profile override OUT of
+// the environment rather than passing them through it. A fixture that pre-created
+// a config file would hide the failure it is here to catch, because the failure
+// IS emptiness being read as absence.
+//
+// AND IT COSTS NOTHING. There is no key on this machine, so there is no wire
+// path: the setup screen makes no model call, the browser trip is never started
+// (nothing presses enter), and the run is over in seconds. What it measures is
+// the door and the door only.
+func testFreshInstallSetup(t *testing.T) {
+	home := emptyHome(t)
+	ws := newWorkspace(t, "freshws", false)
+	r := startFresh(t, "afe2e_fresh", home, ws, tuiPlain, 40)
+
+	// ONE FRAME, THE WHOLE DOOR: the title that says where in the flow this is,
+	// the heading of the step, and the sentence under it that says what pressing
+	// enter will and will not do.
+	screen := r.waitFor(20*time.Second,
+		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
+	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
+
+	// AND IT IS ASKING FOR ALL THREE. A machine with nothing on it has answered
+	// no part of the setup, so the count is the count of what is missing.
+	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 3") {
+		t.Errorf("the title does not count three missing answers on a machine with nothing on it:\n%s", screen)
+	}
+
+	// AND ITS EXIT IS REAL TOO. `esc` says not now, and the conversation under it
+	// then names the next direct road rather than leaving a person on an empty
+	// screen wondering what happened — which is the other half of a front door.
+	r.keys("Escape")
+	after := r.waitFor(20*time.Second, say(t, "setupNotConnectedNote"))
+	t.Logf("and esc leaves a conversation that says what is still missing:\n%s", after)
 }
 
 // ── 11 ──────────────────────────────────────────────────────────────────────
@@ -1238,4 +1293,162 @@ func moneyIn(t *testing.T, screen, needle string, after bool) string {
 		}
 	}
 	return ""
+}
+
+// ── 12 ──────────────────────────────────────────────────────────────────────
+
+// testInheritedWorkSeat is #312's acceptance on the real screen: a crew older
+// than the work seat, met where a person actually meets it.
+//
+// THE PROFILE IS THE DEFECT. A crew applied before the worker class existed
+// (#278) holds four `models.tiers.*` rows and no `worker` among them. Headless
+// doors learned to read that shape in #311; the conversation did not, so every
+// task started from a thread ran on the build's own worker model and nothing
+// anywhere said which model that was or why. This subtest builds exactly that
+// profile — four real rows, the fifth key deleted — starts one small task, and
+// reads back two things a unit test cannot: that the LINE is on the screen once,
+// and that the model the node actually called is the row the person pinned.
+//
+// THE MODEL IS READ OUT OF THE CALL LOG, which is always on and writes one line
+// per model call with the tag the caller set (internal/calllog, and session's
+// loop.go tags a node's calls `task`). That is the node's own journal, and it is
+// the only evidence in this suite that comes off the wire rather than off the
+// screen.
+//
+// IT IS DELIBERATELY THE CHEAPEST SHAPE THERE IS: `/task solo`, which runs one
+// worker and makes no sizing call before it, on a brief that is one file.
+func testInheritedWorkSeat(t *testing.T) {
+	// The row the work must land on. It is a DIFFERENT id from the model the
+	// conversation talks on (newHome pins that) and from this build's own worker
+	// default, because the whole question is which of the three answered.
+	const smallWork = "deepseek/deepseek-v4-flash-0731"
+	home := newHome(t, map[string]any{
+		"models.tiers.reflex":     "mistralai/mistral-nemo",
+		"models.tiers.low":        smallWork,
+		"models.tiers.high":       smallWork,
+		"models.tiers.mastermind": smallWork,
+	})
+	dropWorkerRow(t, home)
+	ws := newWorkspace(t, "seatws", false)
+	r := start(t, "afe2e_seat", home, ws, tuiPlain, 40)
+
+	// Whichever door the launch took — home on a machine with several
+	// conversations, and straight into a greeted conversation on a fresh one,
+	// which is what a state root built one minute ago always is.
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"))
+	r.keys("Escape")
+	r.lit("/task solo write a file called hello.txt containing the word hello")
+	r.keys("Enter")
+
+	// THE LINE, WHEN THE WORK STARTS. Both halves of it: the observation about
+	// the profile and the promise about what ends it.
+	screen := r.waitFor(4*time.Minute, say(t, "inheritedSeatObservation"), say(t, "inheritedSeatPromise"))
+	t.Logf("the conversation says which row filled its work seat:\n%s", screen)
+
+	// AND ONCE. A node divides into parts and each part starts; a line that
+	// arrived with each of them is the noise this mechanism refused headless.
+	if got := strings.Count(screen, say(t, "inheritedSeatObservation")); got != 1 {
+		t.Errorf("the line is on the screen %d times, want once:\n%s", got, screen)
+	}
+
+	// AND THE WORK IS ON THE ROW THE PERSON PINNED. The node's calls carry the
+	// `task` tag, and no call anywhere may have gone to the build's own worker.
+	// The log is POLLED rather than read once: the receipt is written when the
+	// node starts and the node's first call goes out a moment later, and this
+	// subtest deliberately stops as soon as there is something to read rather
+	// than paying for the whole piece of work.
+	models := waitForTaskCalls(t, home, 3*time.Minute)
+	if len(models) == 0 {
+		t.Fatalf("no call in the log was tagged as a task's; the log held %v", callModels(t, home))
+	}
+	t.Logf("the node called: %v", models)
+	for _, model := range models {
+		if model != smallWork {
+			t.Errorf("a task call went to %q, want the small-work row %q the crew pinned", model, smallWork)
+		}
+	}
+	for _, model := range callModels(t, home) {
+		if model == "z-ai/glm-5.3-flash" {
+			t.Errorf("a call went to this build's own worker model, which is the substitution the issue is about")
+		}
+	}
+	r.quit()
+}
+
+// dropWorkerRow deletes `models.tiers.worker` from a rig's config, so the
+// profile is the shape a crew set before that class existed actually has.
+//
+// It is a DELETE and not an empty string: the two are different answers
+// everywhere in this build — a row emptied on purpose means "follow the
+// conversation" — and it is the one this suite must write, because [newHome]
+// copies the person's own config and theirs may hold the key.
+func dropWorkerRow(t *testing.T, home string) {
+	t.Helper()
+	path := filepath.Join(home, "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	rows := map[string]any{}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	delete(rows, "models.tiers.worker")
+	out, err := json.MarshalIndent(rows, "", " ")
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatalf("config: %v", err)
+	}
+}
+
+// waitForTaskCalls polls the call log until a node's own call is in it, and
+// answers every model those calls asked for.
+func waitForTaskCalls(t *testing.T, home string, within time.Duration) []string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		if models := taskCallModels(t, home); len(models) > 0 {
+			return models
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(pollEvery)
+	}
+}
+
+// callModels is every model this run asked for, and taskCallModels is the
+// subset a task node asked for — read out of the always-on call log
+// (internal/calllog), which is one JSON object per line under the state root.
+func callModels(t *testing.T, home string) []string     { return callLogModels(t, home, "") }
+func taskCallModels(t *testing.T, home string) []string { return callLogModels(t, home, "task") }
+
+func callLogModels(t *testing.T, home, tag string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(home, "logs", "calls.jsonl"))
+	if err != nil {
+		// A log that is not there yet is a run that has made no call yet, which
+		// is a state the poll above is entitled to see once.
+		return nil
+	}
+	var models []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var record struct {
+			Tag   string `json:"tag"`
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			continue
+		}
+		if record.Model == "" || (tag != "" && record.Tag != tag) {
+			continue
+		}
+		models = append(models, record.Model)
+	}
+	return models
 }

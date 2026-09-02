@@ -34,10 +34,38 @@ const (
 	// of a heading is asking for that section by name.
 	titleWeight = 3
 
+	// topicWeight is how many times a page's own `# ` title counts in every
+	// section of that page. It exists because the title counted almost nowhere:
+	// split hands it to the preamble section, and a page whose `# ` line is
+	// followed straight by a `## ` line has no preamble — which is every page
+	// in chat/. A count found the chat corpus's page titles carried by 0 of its
+	// 1029 sections, so a person who named the topic ("the screen is blank",
+	// "who can see my files") could only be matched by whichever section
+	// happened to repeat the word, and a long page has more sections in which
+	// to repeat it by accident. One is enough: the title counts like a body
+	// word, which lifts a page that is on topic without letting a long one win
+	// a question it does not answer. Measured on plainquestions_test.go's
+	// twenty-five, the right page came first 11 times and was among the four
+	// sections 17 times before this and 14 and 20 after, with no probe in
+	// chat_test.go moved; on the held-out twenty-two, 6/15 before and 7/17
+	// after. It is the only part of this change that generalises — a heading
+	// written for one question only ever answers that question.
+	topicWeight = 1
+
 	// bm25K1 and bm25B are the ordinary Okapi parameters. The corpus is a few
 	// dozen short sections, so nothing here is tuned: these are the defaults,
 	// and the retrieval they give is already exact on the questions the pages
 	// were written to answer.
+	//
+	// Section LENGTH is the obvious suspect when a plain question misses, and
+	// it was measured and cleared. Sweeping bm25B over 0.75, 0.5, 0.3 and 0
+	// made the twenty-five worse at every step (11/17 → 10/17 → 7/17 → 7/15),
+	// and saturating an over-long section's length at 1.5×, 2×, 3× the corpus
+	// mean cost between three and seven of chat_test.go's probes while moving
+	// neither the twenty-five nor the held-out set upward; at 4× and above it
+	// changes nothing at all. A section far over the ~2000-character page law
+	// is a page that needs splitting at its own sub-topics, not a scorer that
+	// needs a thumb on it.
 	bm25K1 = 1.2
 	bm25B  = 0.75
 )
@@ -86,7 +114,9 @@ type Corpus struct {
 	cues map[string]bool
 	// pageText is each page whole, for a read that wants the topic entire.
 	pageText map[string]string
-	order    []string
+	// pageTitle is each page's own `# ` title, tokenized. See topicWeight.
+	pageTitle map[string][]string
+	order     []string
 }
 
 // newCorpus names a folder to index. Nothing is read until the corpus is asked
@@ -109,6 +139,7 @@ func (c *Corpus) build() {
 	c.documents = map[string]int{}
 	c.cues = map[string]bool{}
 	c.pageText = map[string]string{}
+	c.pageTitle = map[string][]string{}
 	for _, entry := range entries {
 		raw, err := c.files.ReadFile(entry)
 		if err != nil {
@@ -121,6 +152,7 @@ func (c *Corpus) build() {
 		for _, word := range tokenize(strings.ReplaceAll(name, "-", " ")) {
 			c.cues[word] = true
 		}
+		c.pageTitle[name] = pageTitle(text)
 		for _, section := range split(name, text) {
 			for _, word := range tokenize(section.Title) {
 				c.cues[word] = true
@@ -142,16 +174,64 @@ func (c *Corpus) build() {
 			counts[word]++
 			length++
 		}
+		// Document frequency is counted from the section's own words, before the
+		// page title joins them, and each page adds one below. Otherwise a page
+		// title would be in as many documents as the page has sections, so
+		// splitting one long section in two would move the IDF of that title's
+		// words for every question in the corpus — a page's shape is not
+		// evidence about its vocabulary.
 		for word := range counts {
 			c.documents[word]++
+		}
+		for _, word := range c.pageTitle[section.Page] {
+			counts[word] += topicWeight
+			length += topicWeight
 		}
 		c.terms = append(c.terms, counts)
 		c.lengths = append(c.lengths, float64(length))
 		c.average += float64(length)
 	}
+	for _, name := range c.order {
+		for _, word := range c.pageTitle[name] {
+			c.documents[word]++
+		}
+	}
 	if len(c.sections) > 0 {
 		c.average /= float64(len(c.sections))
 	}
+}
+
+// pageTitle is a page's own `# ` line: its one statement of what the whole page
+// is about, in the words somebody would name the topic with. Every section of
+// the page carries it, because a question that names the page is asking for the
+// page and should not also have to land on whichever section repeats the word.
+func pageTitle(text string) []string {
+	for len(text) > 0 {
+		line, rest, _ := strings.Cut(text, "\n")
+		if strings.HasPrefix(line, "# ") {
+			return unique(tokenize(line[2:]))
+		}
+		text = rest
+	}
+	return nil
+}
+
+// unique keeps the first of each word. A title that says a word twice is still
+// one statement about the page, and counting it twice in every section would
+// make a long title louder than a short one for no reason anybody wrote down.
+func unique(words []string) []string {
+	if len(words) < 2 {
+		return words
+	}
+	seen := make(map[string]bool, len(words))
+	kept := words[:0]
+	for _, word := range words {
+		if !seen[word] {
+			seen[word] = true
+			kept = append(kept, word)
+		}
+	}
+	return kept
 }
 
 // split cuts one page at its headings. A `# ` line names the page; every `## `
@@ -193,9 +273,20 @@ func split(name, text string) []Section {
 // shares no word with any page.
 func (c *Corpus) Search(query string, k int) []Section {
 	c.load()
-	if k <= 0 {
-		k = DefaultResults
+	scores := c.score(query)
+	if scores == nil {
+		return nil
 	}
+	return c.sectionsAt(bestOf(rankedBy(scores), scores, k))
+}
+
+// score is the BM25 reading itself: what every section of this corpus is worth
+// against one question, or nil when the question shares no word with any page.
+//
+// It is factored out of [Corpus.Search] because a lookup now asks TWO questions
+// of the same corpus — the model's and the person's (theirwords.go) — and two
+// copies of a scorer are two rankings that drift apart at the first tuning.
+func (c *Corpus) score(query string) []float64 {
 	words := tokenize(query)
 	if len(words) == 0 || len(c.sections) == 0 {
 		return nil
@@ -217,18 +308,41 @@ func (c *Corpus) Search(query string, k int) []Section {
 			scores[i] += idf * frequency * (bm25K1 + 1) / (frequency + bm25K1*norm)
 		}
 	}
+	return scores
+}
+
+// rankedBy is which sections a question touched at all. A section it did not
+// touch is not a weak answer but no answer, and carrying zeroes into the sort
+// would put whichever section happens to sit first in the folder in front of
+// whoever asked.
+func rankedBy(scores []float64) []int {
 	ranked := make([]int, 0, len(scores))
 	for i, score := range scores {
 		if score > 0 {
 			ranked = append(ranked, i)
 		}
 	}
-	sort.SliceStable(ranked, func(a, b int) bool { return scores[ranked[a]] > scores[ranked[b]] })
-	if len(ranked) > k {
-		ranked = ranked[:k]
+	return ranked
+}
+
+// bestOf orders sections best first and cuts them to k, which at or below zero
+// asks for the default. The sort is stable, so sections that score identically
+// stay in the order the corpus holds them and a lookup is the same lookup twice.
+func bestOf(candidates []int, scores []float64, k int) []int {
+	if k <= 0 {
+		k = DefaultResults
 	}
-	found := make([]Section, 0, len(ranked))
-	for _, i := range ranked {
+	sort.SliceStable(candidates, func(a, b int) bool { return scores[candidates[a]] > scores[candidates[b]] })
+	if len(candidates) > k {
+		candidates = candidates[:k]
+	}
+	return candidates
+}
+
+// sectionsAt is the sections themselves, in the order they were ranked.
+func (c *Corpus) sectionsAt(indexes []int) []Section {
+	found := make([]Section, 0, len(indexes))
+	for _, i := range indexes {
 		found = append(found, c.sections[i])
 	}
 	return found
@@ -237,7 +351,7 @@ func (c *Corpus) Search(query string, k int) []Section {
 // Page returns one whole page by name — "daily-rhythm", not "daily-rhythm.md".
 func (c *Corpus) Page(name string) (string, bool) {
 	c.load()
-	text, ok := c.pageText[strings.TrimSuffix(strings.TrimSpace(name), ".md")]
+	text, ok := c.pageText[pageName(name)]
 	return text, ok
 }
 

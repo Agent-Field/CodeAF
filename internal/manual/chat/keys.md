@@ -1,4 +1,4 @@
-# Keys, typing, and the mouse
+# Keys, typing, and the mouse — what all the keys do
 
 ## Which key sends, and which key opens a new line
 
@@ -397,7 +397,7 @@ disk when you switched away from them.
 - Closing the terminal window is not a quit aforge sees; the draft written 300ms after
   you stopped typing is what survives that.
 
-## Keys — the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
+## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
 This page is about **the keys you press**. Every key, chord and keyboard shortcut aforge
 listens for is on this page, in the tables below.
@@ -2000,6 +2000,15 @@ of the three this screen draws, a shade above the one under the pointer. It is t
 claim ("these rows are what a copy would take"), so it is the same paint; it used to be
 drawn at the pointer's own quieter step, which said a sweep in progress was a shadow
 rather than a selection.
+
+**The selection covers every cell it takes — a code span or a chip included.** An inline
+code span wears a background of its own (the raised plane that makes it read as code),
+and so does a chip, but under a sweep they are part of what is being claimed: the
+highlight paints over them, in the sweep's colour, their text keeping its own colour
+and weight. Every terminal's own selection replaces the background it sweeps over, and
+this one reads the same. The clipboard is unchanged — what is highlighted is still
+exactly what is copied — so a sweep across a row with `code spans` in it copies the
+row you saw lit, to the character.
 
 **The selection sticks to the text, not to the screen.** A task's page streams and
 follows its live edge, so rows can scroll while your button is down; the highlight

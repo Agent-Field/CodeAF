@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/search"
 )
 
 // PER-TOOL DERIVATION (docs/CHAT-V3.md D11).
@@ -213,6 +215,12 @@ func (a *app) toolStat(e *entry) (plain, painted string) {
 		// add back up ([fetchedBytes]). Nothing at all is drawn for a page that
 		// arrived empty, which is the emptiness law.
 		return a.dimStat(byteWord(fetchedBytes(e.detail.Output)))
+
+	case "web_search":
+		// The transcript footer is already the one complete receipt: count and
+		// answering plug. Reading that footer keeps the compact line and the
+		// model's result from growing separate spellings of the same search.
+		return a.dimStat(search.ResultSummary(e.detail.Output))
 	}
 	return "", ""
 }

@@ -639,8 +639,7 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 }
 
 func complete(ctx context.Context, c Completer, messages []ai.Message, budget int) (*ai.Response, error) {
-	return c.CompleteWithMessages(ctx, messages,
-		ai.WithMaxTokens(budget), ai.WithTemperature(0))
+	return c.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(budget))
 }
 
 // emptyAtCeiling is deliberately narrower than "blank". A refusal or a cut

@@ -1,6 +1,7 @@
 package lane
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
@@ -27,20 +29,27 @@ import (
 // is yesterday's evidence, correctly discounted.
 //
 // THE AGEING HAPPENS AT READ TIME AND NOT HERE. This file loads what was
-// written, with the moment it was written attached; nothing in it looks at a
-// clock. Whoever asks the ledger a question knows what time it is and ages the
-// answer with [Posterior.Predict] — which is the same arithmetic a belief that
-// has merely been sitting in memory for ten minutes needs, so there is exactly
-// one place that does it rather than one for each way a belief got old.
+// written, with the moment each belief was true attached, and reads a clock for
+// exactly one thing: stamping a compaction with the moment it happened, which
+// is a fact about the FILE and about no belief in it. Whoever asks the ledger a
+// question knows what time it is and ages the answer with [Posterior.Predict] —
+// the same arithmetic a belief that has merely been sitting in memory for ten
+// minutes needs, so there is one place that does it rather than one for each way
+// a belief got old.
 //
-// ── WHY THE WHOLE SET, EVERY TIME ───────────────────────────────────────────
+// ── STATE, AND THE OBSERVATIONS SINCE ───────────────────────────────────────
 //
-// A few hundred lanes of a few dozen models is tens of kilobytes. Writing all
-// of it on every update is one small atomic write, and it buys the property
-// that matters more than the bytes: there is no partial state, no append log to
-// compact, and no window in which the file describes a ledger that never
-// existed. When it stops being small — the day this build is talking to
-// thousands of lanes — the fix is a debounce, not a format.
+// This file is the COMPACTED half: the chains, the beliefs, the quality
+// evidence, and the moment it was written. The other half is the append-only
+// journal beside it (journal.go), which is where an observation goes the
+// instant it is made and which is replayed over this file on every load.
+//
+// The split exists because the hierarchy has SHARED components. Two processes
+// each hold μ, a[lane] and b[model] for the same subjects; "newer wins" would
+// discard one of them outright, and a belief set cannot be merged component-
+// wise without knowing which evidence went into it. Observations can: they
+// replay. So beliefs are written whole, on a beat, and observations are written
+// one line at a time, and a cold process reads both.
 
 // ── TWO PROCESSES, ONE FILE ─────────────────────────────────────────────────
 //
@@ -59,17 +68,26 @@ import (
 // at all. Nothing failed and nothing was logged: a whole mechanism was simply
 // not there, and the only symptom was five seconds of somebody waiting.
 //
-// SO A SAVE IS A READ-MERGE-WRITE UNDER A LOCK, and the merge is by lane id:
-// what one process has never heard of, it may not delete. The lock is advisory
+// SO NOTHING IS EVER WRITTEN AS A BARE REPLACE. A write of the whole set is a
+// READ-MERGE-WRITE UNDER A LOCK and the merge is by lane id: what one process
+// has never heard of, it may not delete ([mergeBeliefs]). The lock is advisory
 // and process-wide ([internal/filelock]), the read inside it is the file as it
-// stands, and the write out of it is the same atomic rename as before — so a
-// reader that takes no lock at all still never sees a half-written set.
+// stands, and the write out of it is an atomic rename — so a reader that takes
+// no lock at all still never sees a half-written set.
 //
-// AND THE MERGE IS THE LOAD. What comes back from a save is what the file now
-// holds, which the ledger folds into memory: one lock, one read, one write, and
-// both processes know what the other learned. Nothing here stats a file on the
-// send path — a save happens after an answer, and a load happens at open and on
-// the beat.
+// AND WHAT CROSSES BETWEEN THE TWO PROCESSES IS OBSERVATIONS, NOT BELIEFS. A
+// merge by lane id cannot reconcile the hierarchy, whose μ, a[lane] and b[model]
+// are held by both processes with different evidence folded into each. So the
+// two write one line per observation to the journal beside this file
+// (journal.go) and both replay it, which is a merge that needs no rule: the
+// same observations in the same order are the same belief.
+//
+// AND THE COMPACTION IS SOMEBODY ELSE'S GOROUTINE. An observation is one
+// O_APPEND write on the send path, under a lock that is asked for and never
+// waited on; the compaction that folds the journal into this file takes the
+// exclusive lock and therefore runs only on the writer ([ledger.Persist]).
+// Holding both that lock and the ledger's mutex is issue #264, and it cost a
+// person twenty-nine silent minutes.
 
 // ErrNoStore is what a store with nowhere to write answers with, so that
 // "nothing was kept" and "nothing can be kept" are never confused for each
@@ -90,6 +108,11 @@ func StorePath() string { return home.Join("v3", "lanes.json") }
 // it was born with would keep writing into the home it was pointed at first.
 type store struct {
 	mu sync.Mutex
+	// writing serialises this process's own whole-file writers, which the file
+	// lock cannot: flock is a property of an OPEN DESCRIPTION, so two
+	// goroutines here would each take the gate on a handle of their own and
+	// each believe itself alone with the file.
+	writing sync.Mutex
 	// path overrides the file, for a test that must not write into the state
 	// root of whoever is running it. Empty is [StorePath].
 	path string
@@ -107,7 +130,7 @@ func (s *store) at(path string) *store {
 	return s
 }
 
-// file is where this store writes.
+// file is where this store writes. It is called with the lock held.
 func (s *store) file() string {
 	if path := strings.TrimSpace(s.path); path != "" {
 		return path
@@ -115,15 +138,125 @@ func (s *store) file() string {
 	return StorePath()
 }
 
-// Load reads yesterday's beliefs.
+// where is [store.file] as everything outside this file's own accessors asks
+// it: the path alone, with the lock held for exactly as long as reading it
+// takes and never across the disk underneath.
+func (s *store) where() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.file()
+}
+
+// ── WHAT THE FILE HOLDS ─────────────────────────────────────────────────────
+
+// stateVersion is the shape this build writes. Version 1 was a bare JSON array
+// of beliefs and nothing else; version 2 is an object, so that the hierarchy
+// and the quality evidence above a pair have somewhere to sleep and so that the
+// next thing to be kept does not need a third file.
+const stateVersion = 2
+
+// storeState is the compacted half of the store.
+type storeState struct {
+	Version int       `json:"version"`
+	At      time.Time `json:"at,omitzero"`
+	Beliefs []Belief  `json:"beliefs"`
+	// Priors are the sheet's own spreads per lane: the noise a sighting is
+	// weighed against and the floor ageing stops at.
+	Priors []spread `json:"priors,omitempty"`
+	// Wait, Rate and Think are the three hierarchies: ln milliseconds to a
+	// first token, ln tokens a second, and ln seconds of a whole thinking
+	// phase. Judged is the quality evidence a provider and a model carry above
+	// any one pair.
+	Wait   chains  `json:"wait,omitzero"`
+	Rate   chains  `json:"rate,omitzero"`
+	Think  chains  `json:"think,omitzero"`
+	Judged tallies `json:"judged,omitzero"`
+}
+
+// decodeState reads either shape of the file.
+//
+// ── MIGRATION LOSES NOTHING AND CLAIMS NOTHING ──────────────────────────────
+//
+// A version 1 file is a flat array of beliefs: one pair, one first-token
+// filter, one rate filter, and no account at all of which part of that was the
+// provider and which the model. Read as version 2 it keeps every belief exactly
+// as it was written — the ledger still answers [Ledger.Belief] from it — and
+// the hierarchy starts empty, which is the honest state: yesterday's file says
+// nothing about μ, a[lane] or b[model] because nothing that wrote it was
+// keeping them. What the levels then learn, they learn from those beliefs being
+// replayed into the chain at the certainty they were recorded with, which is
+// the ledger's business and not this file's ([ledger.adopt]).
+func decodeState(data []byte) (storeState, error) {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		beliefs, err := decodeBeliefs(trimmed)
+		return storeState{Version: 1, Beliefs: beliefs}, err
+	}
+	var held storeState
+	if err := json.Unmarshal(data, &held); err != nil {
+		return storeState{}, err
+	}
+	held.Beliefs = attributed(held.Beliefs)
+	return held, nil
+}
+
+// readState is what the state file holds right now, and an empty state when it
+// holds nothing readable.
+//
+// A file that cannot be read is a file with nothing in it to preserve. Refusing
+// to write over it would strand the process holding the only good copy, which
+// is the opposite of what a store is for.
+func readState(path string) storeState {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return storeState{}
+	}
+	held, err := decodeState(data)
+	if err != nil {
+		return storeState{}
+	}
+	return held
+}
+
+// decodeBeliefs reads a version 1 file's bytes.
+func decodeBeliefs(data []byte) ([]Belief, error) {
+	var beliefs []Belief
+	if err := json.Unmarshal(data, &beliefs); err != nil {
+		return nil, err
+	}
+	return attributed(beliefs), nil
+}
+
+// attributed drops the rows that name no lane.
+//
+// A row that names no lane is a fact about a machine that was never involved,
+// whether it got into the file by hand or by a version of this code that no
+// longer exists.
+func attributed(beliefs []Belief) []Belief {
+	kept := beliefs[:0]
+	for _, belief := range beliefs {
+		if belief.ID.Zero() {
+			continue
+		}
+		kept = append(kept, belief)
+	}
+	return kept
+}
+
+// ── THE DOORS ───────────────────────────────────────────────────────────────
+
+// Load reads yesterday's beliefs from the compacted state.
+//
+// It answers the [Store] seam and therefore answers in beliefs, which is the
+// compacted half alone: the observations in the journal beside it are folded by
+// whoever owns the arithmetic ([ledger.readBack]), because turning an
+// observation into a belief is exactly what a store may not decide.
 //
 // A missing file is no beliefs and no error: it is the normal state of a
 // machine that has not routed anything yet, and a caller that had to tell that
 // apart from a real failure would end up treating both as neither.
 func (s *store) Load() ([]Belief, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := s.file()
+	path := s.where()
 	if path == "" {
 		return nil, ErrNoStore
 	}
@@ -134,11 +267,17 @@ func (s *store) Load() ([]Belief, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeBeliefs(data)
+	held, err := decodeState(data)
+	if err != nil {
+		return nil, err
+	}
+	return held.Beliefs, nil
 }
 
 // Save writes the whole set, atomically, over the merge of it with whatever
-// another process has written since this one last looked.
+// another process has written since this one last looked. The journal is left
+// alone: a caller handing over a set of beliefs is asserting what it believes,
+// not what anybody observed.
 func (s *store) Save(beliefs []Belief) error {
 	_, err := s.saveMerging(beliefs)
 	return err
@@ -148,31 +287,112 @@ func (s *store) Save(beliefs []Belief) error {
 // makes the save a load as well: the caller adopts what the file now holds and
 // learns, for free, everything the other process wrote.
 //
-// It is the whole of the multi-process contract and it is one critical section:
-// take the lock, read the file, fold this process's set over it, write, release.
+// It is one critical section: take the lock, read the file, fold this process's
+// set over it, write, release.
 func (s *store) saveMerging(beliefs []Belief) ([]Belief, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := s.file()
+	path := s.where()
 	if path == "" {
 		return nil, ErrNoStore
 	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 	var merged []Belief
 	err := s.locked(path, func() error {
-		merged = mergeBeliefs(onDisk(path), beliefs)
-		data, err := json.Marshal(merged)
-		if err != nil {
-			return err
-		}
-		return writeAtomic(path, data)
+		held := readState(path)
+		held.Beliefs = mergeBeliefs(held.Beliefs, beliefs)
+		merged = held.Beliefs
+		return writeState(path, held)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return merged, nil
+}
+
+// ── THE DEEP DOORS: STATE, JOURNAL, COMPACTION ──────────────────────────────
+
+// deepStore is a store that keeps a whole hierarchy and the observations since
+// it was written down. It is an interface rather than the concrete type so that
+// a bench or a test may answer the plain [Store] seam and get today's
+// write-everything behaviour instead, which is what the seam has always
+// promised.
+type deepStore interface {
+	Store
+	// state is the compacted state, the observations appended since, and how
+	// many journal lines would not parse.
+	state() (storeState, []record, int)
+	// log appends one observation. It is on the send path — an answer is
+	// folded in the moment it finishes — and it therefore waits on nothing.
+	log(entry record) error
+	// hold replays the journal under the exclusive lock and writes what fold
+	// returns; the journal is emptied only when fold says the state it folded
+	// into has been written.
+	hold(fold func(storeState, []record, int) (storeState, bool)) error
+}
+
+// state reads the compacted file and the journal beside it.
+func (s *store) state() (storeState, []record, int) {
+	path := s.where()
+	if path == "" {
+		return storeState{}, nil, 0
+	}
+	held := readState(path)
+	records, skipped := journal{path: journalPath(path)}.read()
+	return held, records, skipped
+}
+
+// log appends one observation to the journal.
+func (s *store) log(entry record) error {
+	path := s.where()
+	if path == "" {
+		return ErrNoStore
+	}
+	return journal{path: journalPath(path)}.add(entry)
+}
+
+// hold is the compaction: the exclusive lock on the state, the exclusive lock
+// on the journal, one replay, one atomic write, one truncation.
+//
+// THE TWO LOCKS ARE TAKEN IN ONE ORDER AND NEVER THE OTHER. An appender takes
+// the journal's shared lock and nothing else, so it can never be holding one of
+// these while waiting for the other.
+func (s *store) hold(fold func(storeState, []record, int) (storeState, bool)) error {
+	path := s.where()
+	if path == "" {
+		return ErrNoStore
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	s.writing.Lock()
+	defer s.writing.Unlock()
+	var failed error
+	return s.locked(path, func() error {
+		if err := (journal{path: journalPath(path)}).drain(func(records []record, skipped int) bool {
+			next, write := fold(readState(path), records, skipped)
+			if !write {
+				return false
+			}
+			failed = writeState(path, next)
+			return failed == nil
+		}); err != nil {
+			return err
+		}
+		return failed
+	})
+}
+
+// writeState stamps and writes one state atomically.
+func writeState(path string, held storeState) error {
+	held.Version, held.At = stateVersion, time.Now().UTC()
+	data, err := json.Marshal(held)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(path, data)
 }
 
 // lockSuffix names the file that serialises writers of the belief file.
@@ -184,61 +404,80 @@ func (s *store) saveMerging(beliefs []Belief) ([]Belief, error) {
 // which is the only thing a lock needs to be.
 const lockSuffix = ".lock"
 
-// locked runs fn with the exclusive right to read and replace path.
+// ── NOTHING HERE WAITS ON A LOCK (issue #264) ───────────────────────────────
+//
+// flock(2) IS UNINTERRUPTIBLE. It takes no deadline, it reads no context, and
+// Go's scheduler cannot break a goroutine out of it. So a lock taken blocking
+// is a lock held for exactly as long as whoever else has it — and on 2026-09-01
+// that was 29m49s, during which this process sent nothing at all, because the
+// wait was entered while the ledger's own mutex was held and every encode reads
+// that mutex.
+//
+// SO EVERY LOCK BELOW IS ASKED FOR AND NEVER WAITED ON. A few tries, a short
+// backoff, and then the write is DEFERRED and said so. Deferring is safe by
+// construction: an observation is in the journal before any of this is reached
+// (journal.go), so what a held lock costs is a compaction and a longer replay,
+// never a belief.
+
+// lockAttempts and lockBackoff bound the asking. Five tries at twenty
+// milliseconds doubling is about three hundred milliseconds in the worst case,
+// spent on the writer goroutine and never in front of a request.
+const (
+	lockAttempts = 5
+	lockBackoff  = 20 * time.Millisecond
+)
+
+// errLockBusy is a lock somebody else is holding.
+//
+// IT IS TOLD APART FROM A FILESYSTEM WITH NO ADVISORY LOCKING, and the
+// difference is what the two callers do about it: a busy lock defers the write,
+// and a filesystem that cannot lock at all writes anyway — which is what a lone
+// process has always done and what a person on a network home is entitled to.
+var errLockBusy = errors.New("lane: the belief file's lock is held elsewhere")
+
+// take asks for a lock a few times and never waits on it.
+//
+// It answers three ways: nil is the lock and the caller must release it,
+// [errLockBusy] is somebody else's and the caller defers, and anything else is
+// a filesystem with no flock and the caller carries on unlocked.
+func take(file *os.File, exclusive bool) error {
+	for attempt, backoff := 1, lockBackoff; ; attempt, backoff = attempt+1, backoff*2 {
+		err := filelock.Lock(file, exclusive, true)
+		if err == nil {
+			return nil
+		}
+		if !filelock.IsBusy(err) {
+			return err
+		}
+		if attempt >= lockAttempts {
+			return errLockBusy
+		}
+		time.Sleep(backoff)
+	}
+}
+
+// locked runs fn with the exclusive right to read and replace path, and answers
+// [errLockBusy] without running it when another process holds that right.
 //
 // A LOCK THAT CANNOT BE TAKEN IS NOT A REASON TO LOSE A BELIEF. A read-only
 // directory, a filesystem with no advisory locking, a home on a share that
 // refuses flock: on any of them fn still runs, unlocked, which is exactly the
-// behaviour this file had before the lock existed. The lock makes concurrent
-// saves safe where it works; it may not make a lone process refuse to write.
+// behaviour this file had before the lock existed. A lock that is merely BUSY
+// is the other case, and it is the one that is deferred: somebody else is
+// writing this file right now and waiting for them is the defect.
 func (s *store) locked(path string, fn func() error) error {
 	gate, err := os.OpenFile(path+lockSuffix, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fn()
 	}
 	defer gate.Close()
-	if err := filelock.Lock(gate, true, false); err != nil {
-		return fn()
+	switch err := take(gate, true); {
+	case err == nil:
+		defer filelock.Unlock(gate)
+	case errors.Is(err, errLockBusy):
+		return errLockBusy
 	}
-	defer filelock.Unlock(gate)
 	return fn()
-}
-
-// onDisk is what the belief file holds right now, and nothing when it holds
-// nothing readable. It is the body of [store.Load] without the store's own
-// mutex or an error to report: inside a read-merge-write a file that cannot be
-// read is a file with nothing in it to preserve, and refusing to write over it
-// would strand the process holding the only good copy.
-func onDisk(path string) []Belief {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	beliefs, err := decodeBeliefs(data)
-	if err != nil {
-		return nil
-	}
-	return beliefs
-}
-
-// decodeBeliefs reads the file's bytes and drops the rows that name no lane.
-//
-// A row that names no lane is a fact about a machine that was never involved,
-// whether it got into the file by hand or by a version of this code that no
-// longer exists.
-func decodeBeliefs(data []byte) ([]Belief, error) {
-	var beliefs []Belief
-	if err := json.Unmarshal(data, &beliefs); err != nil {
-		return nil, err
-	}
-	kept := beliefs[:0]
-	for _, belief := range beliefs {
-		if belief.ID.Zero() {
-			continue
-		}
-		kept = append(kept, belief)
-	}
-	return kept, nil
 }
 
 // ── RECONCILING TWO ACCOUNTS OF ONE LANE ────────────────────────────────────

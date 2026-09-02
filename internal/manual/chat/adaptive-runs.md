@@ -581,7 +581,7 @@ again, run the quickest check that would catch breakage, and fix only what that 
 Then it stops. Watching a headless run, that reads:
 
 ```
-  ⏳ runner.go edits          — it was still working when it ran out of its tokens — 9 turns in (cost: 199131 of 176834 tokens of billed work)
+  ⏳ runner.go edits          — it was still working when it ran out of its token budget — 9 turns in (cost: 199131 of 176834 tokens of billed work)
 ```
 
 **A worker that ran out is never marked done.** It was still working, so what it left is
@@ -595,8 +595,13 @@ pass. Let me verify the dry-run tests specifically:") is not an account of anyth
 ```
 
 The first is a continuation planned for what is left; the second is the same node claimed
-again, carrying on from the turns it had already banked. **A ⏳ followed by a ✓ with
-neither of those between them is a bug**, and it was one: a cut worker was ticked two
+again, carrying on from the turns it had already banked. Its record says why in the same
+words the ⏳ used — `it was still working when it ran out of its token budget (cost: 199131
+of 176834 tokens of billed work) — 9 turns of its work is recorded, and the next attempt
+carries on from there` — so the bound that fired and the work that survived are named
+together, and the next claim starts from those turns rather than from nothing.
+
+**A ⏳ followed by a ✓ with neither of those between them is a bug**, and it was one: a cut worker was ticked two
 seconds after its own ⏳ line, its siblings were briefed on truncated work, and the turn
 its exhaustion had bought away — actually running what it had written — was where the run's
 real defect was waiting.
@@ -611,8 +616,12 @@ exhaustion took away: *run what it wrote, read the result, and fix only what tha
 its landing calls were granted — so `cost: 199131 of 176834` counts the landing too.
 
 **It is bounded.** Continuations are capped like every other kind of growth, and a node
-that ran out on every attempt it was given is handed over saying so — `it ran out of room on
-every attempt and was never able to finish` — rather than passed round for ever or ticked.
+that ran out on every attempt it was given is handed over saying so — `it was still working
+when it ran out of its token budget on every attempt it was given, and was never able to
+finish` — rather than passed round for ever or ticked. A worker that ran out having recorded
+no turns at all is not offered again either, because there is nothing for a next attempt to
+carry on from, and it says that instead: `…with none of its work recorded, so there was
+nothing for another attempt to carry on from`.
 
 ## When the wall gets close — the work is checked before the clock stops
 
@@ -814,8 +823,9 @@ a check that did not exist before cannot have been passing before. It is still a
 has not finished, and the acceptance line is where you see that.
 
 **And the record always says what was read, whoever read it.** The two readings above
-are taken by the worker that does the work; when the work went to a worker that does not
-photograph, the check at the end of the job takes its own reading of the tree it is judging.
+are taken by the worker that does the work; when the worker took no reading — nothing to
+size one against, or no room left to afford one — the check at the end of the job takes its
+own reading of the tree it is judging.
 Either way there is a row in the run's record saying what ran, what it named — or, when
 there was no reading, which of the reasons it was: your project declares no way of checking
 itself, there was no time left to size a reading against, or there was nothing to read.

@@ -87,7 +87,6 @@ const (
 	// answer to most completions is `{}` — what the tokens are actually for is
 	// a reasoning model's thinking.
 	orchestratePlanTokens = 4000
-	orchestratePlanTemp   = 0.2
 
 	// A node's digest: what its dependents and the planner see instead of its
 	// work. Both bounds are here because BOTH are the point — the planner is
@@ -644,8 +643,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
 		ai.WithModel(p.call.model),
-		ai.WithMaxTokens(orchestratePlanTokens),
-		ai.WithTemperature(orchestratePlanTemp))
+		ai.WithMaxTokens(orchestratePlanTokens))
 	if err != nil {
 		return "", err
 	}

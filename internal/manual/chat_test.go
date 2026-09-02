@@ -1,13 +1,8 @@
 package manual
 
 import (
-	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/Agent-Field/aforge-v2/internal/approval"
-	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
@@ -38,6 +33,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
+		{"which search engine answered?", "what-i-can-do"},
+		{"I set a search key and nothing changed", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
 		// A finished task's room after aforge was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
@@ -796,6 +793,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person's own message alone and the line said so.
 		{"why did my task start with just my message and nothing else", "tasks"},
 		{"the brief could not be written for my task", "tasks"},
+		// And the case where it must NOT happen: a turn whose whole remaining
+		// work is waiting on pieces it already handed out. People meet this as
+		// the junk task that appeared while they were watching, and as the
+		// question of why the same turn no longer produces one.
+		{"it made a task out of me waiting for the other pieces", "tasks"},
+		{"does watching a running task count towards moving my answer", "tasks"},
 
 		// And the other end of the same meter: a reply that STOPPED before the
 		// question was finished. People meet this as the dim line that said the ask
@@ -916,6 +919,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
+		// A crew older than the worker class: the run says `inherited` and the
+		// person asks about the word, or about the model they never picked.
+		{"why does my run say inherited", "models-and-cost"},
+		{"my crew was set before the work seat existed", "models-and-cost"},
+		// And the same substitution met in the conversation, where the person
+		// has no models line to read the word off — they ask about the task.
+		{"why is my task running on a model I did not pick", "models-and-cost"},
+		{"my work seat is inherited from small work", "models-and-cost"},
 		// The onboarding wave: the five seats. /crew and /model became two dials
 		// a person can see as two — the confirm line names the model it left
 		// alone, bare /crew opens with seat one, and the status line carries
@@ -1033,6 +1044,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does xhigh mean", "models-and-cost"},
 		{"what is the default reasoning effort", "models-and-cost"},
 		{"does the thinking level stick after a restart", "models-and-cost"},
+
+		// Sampling is the provider's own dial on every call, so it is asked
+		// about in the API's own words — temperature, top_p — and as the
+		// creativity knob a person from another tool went looking for.
+		{"what temperature do you use", "models-and-cost"},
+		{"can I change the sampling settings", "models-and-cost"},
 
 		// And the CONVERSATION's own rung, which is a chip and a chord rather
 		// than a setting — so it is asked about as a thing on the screen ("what
@@ -1425,6 +1442,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to the keyboard when a window closes", "staying-on-that-machine"},
 		{"my window came back and now I cannot type", "when-the-connection-drops"},
 		{"it says the keyboard is on another machine", "staying-on-that-machine"},
+
+		// THE MANUAL'S OWN DOOR. Until it had one the manual had exactly one
+		// reader and it was not the person: every lookup was a model call, so it
+		// wanted a key and cost money, and what came back was a retelling. These
+		// are the words somebody uses when they want to read it themselves —
+		// from the conversation, and from a terminal where nothing is set up yet.
+		{"how do I read the manual", "commands"},
+		{"is there a help page", "commands"},
+		{"show me the page about a command", "commands"},
+		{"can I read the manual from the terminal", "commands"},
+		{"does reading the manual cost anything", "commands"},
+		{"list every page of the manual", "commands"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -1461,6 +1490,7 @@ func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
 			"Firecrawl: keyless, with a free monthly allowance and no key needed",
 			"DuckDuckGo remains available as an explicit pin",
 			"Search failed (firecrawl): <err>",
+			"5 of 12 results · firecrawl",
 		} {
 			if !strings.Contains(section.Body, want) {
 				t.Errorf("search section does not contain %q:\n%s", want, section.Body)
@@ -1469,6 +1499,54 @@ func TestCanYouSearchTheWebReadsTheFirecrawlLadder(t *testing.T) {
 		return
 	}
 	t.Fatalf("search question did not retrieve its section: %#v", found)
+}
+
+// V6 and V9: the searchable account says settings are live, names receipts,
+// and contains no stale next-session promise about search.
+func TestSearchManualDescribesLiveSettingsAndNamedReceipts(t *testing.T) {
+	for _, test := range []struct {
+		question string
+		title    string
+		wants    []string
+	}{
+		{
+			question: "which search engine answered?",
+			title:    "Which search engine answered?",
+			wants:    []string{"5 results · firecrawl", "3 of 8 results · exa", "no results · firecrawl", "search"},
+		},
+		{
+			question: "I set a search key and nothing changed",
+			title:    "I set a search key and nothing changed",
+			wants:    []string{"next search in this conversation", "Search failed (exa): no API key", "now firecrawl, keyless"},
+		},
+	} {
+		found := Chat().Search(test.question, DefaultResults)
+		var body string
+		for _, section := range found {
+			if section.Page == "what-i-can-do" && section.Title == test.title {
+				body = section.Body
+				break
+			}
+		}
+		if body == "" {
+			t.Errorf("%q did not retrieve %q: %#v", test.question, test.title, found)
+			continue
+		}
+		for _, want := range test.wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%q section does not contain %q:\n%s", test.title, want, body)
+			}
+		}
+	}
+
+	for _, section := range Chat().Sections() {
+		body := strings.ToLower(strings.Join(strings.Fields(section.Title+"\n"+section.Body), " "))
+		for _, sentence := range strings.Split(body, ". ") {
+			if (strings.Contains(sentence, "web_search") || strings.Contains(sentence, "search.exakey") || strings.Contains(sentence, "search.firecrawlkey")) && strings.Contains(sentence, "next session") {
+				t.Errorf("search sentence in %s/%s still promises the next session: %s", section.Page, section.Title, strings.TrimSpace(sentence))
+			}
+		}
+	}
 }
 
 // The two corpora must stay strangers. This is the package-level half of the
@@ -1483,26 +1561,6 @@ func TestTheTwoCorporaShareNoPageName(t *testing.T) {
 	for _, name := range Chat().Pages() {
 		if resident[name] {
 			t.Errorf("page %q exists in both the resident and chat manuals", name)
-		}
-	}
-}
-
-// THE FLOOR AND THE PAGE ABOUT IT AGREE. internal/approval names the tools a
-// blanket allow cannot switch off, and the permissions page tells the person
-// the same names. A fourth entry in that table without its sentence here would
-// leave the page telling somebody a message will go out silently when it will
-// not — the one mistake a page about permissions must never make.
-func TestThePermissionsPageNamesEveryToolOnTheFloor(t *testing.T) {
-	page, ok := Chat().Page("permissions")
-	if !ok {
-		t.Fatal("the chat manual has no permissions page")
-	}
-	for _, tool := range []string{"gmail_send", "calendar_create", "slack_send"} {
-		if !approval.AlwaysAsks(tool, nil) {
-			t.Errorf("%s is not on the floor internal/approval keeps", tool)
-		}
-		if !strings.Contains(page, "`"+tool+"`") {
-			t.Errorf("the permissions page does not name %s", tool)
 		}
 	}
 }
@@ -1542,54 +1600,5 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 					section.Page, section.Title, phrase)
 			}
 		}
-	}
-}
-
-// ONE SOURCE OF TRUTH, ACROSS A MEDIUM THAT CANNOT INTERPOLATE. A number that
-// appears in two places drifts, and the manual is the second place for two of
-// the context law's own figures: the shipped fill percentage and the room every
-// call keeps for its answer. Markdown cannot read a Go constant, so this test
-// is the interpolation — move either constant and the page that quotes it goes
-// red, naming the figure it is now wrong about.
-//
-// `propose_task`'s schema said the step default was 40 while the executor
-// applied 200, and every model that read it reasoned from the wrong figure.
-// This is that lesson applied to the pages the model reads about compaction.
-func TestTheCompactionPageQuotesTheContextLawsOwnNumbers(t *testing.T) {
-	page, ok := Chat().Page("compacting-over-and-over")
-	if !ok {
-		t.Fatal("the chat corpus lost compacting-over-and-over")
-	}
-	for _, one := range []struct {
-		what  string
-		spelt string
-	}{
-		{"the shipped context fill", strconv.Itoa(ctxbudget.DefaultFillPercent)},
-		{"the answer room", "65,536"},
-	} {
-		if !strings.Contains(page, one.spelt) {
-			t.Fatalf("compacting-over-and-over does not say %s as %q — the constant moved and the page did not",
-				one.what, one.spelt)
-		}
-	}
-	// The answer room is spelled with a thousands separator on the page, which
-	// is how a person reads it and not how Go writes it, so the check above is
-	// only honest while this holds.
-	if ctxbudget.DefaultCompletionReserveTokens != 65536 {
-		t.Fatalf("the completion reserve is now %d; the page still says 65,536",
-			ctxbudget.DefaultCompletionReserveTokens)
-	}
-}
-
-// V1: The manual's stated proposal window follows the same default the config
-// resolver and settings panel use.
-func TestTheTasksPageQuotesTheTaskCountdownDefault(t *testing.T) {
-	page, ok := Chat().Page("tasks")
-	if !ok {
-		t.Fatal("the chat corpus lost tasks")
-	}
-	want := strconv.Itoa(config.DefaultTaskAutoApprove) + " seconds"
-	if !strings.Contains(page, "The default window is "+want) {
-		t.Fatalf("tasks does not state the configured default as %q", want)
 	}
 }

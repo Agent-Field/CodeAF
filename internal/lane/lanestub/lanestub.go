@@ -79,6 +79,16 @@ type Profile struct {
 	// run, which is the whole reason the watch counts them apart from the
 	// answer ([internal/lane.Watch.Token]).
 	Reasoning int
+	// Fenced writes that run of thought on the CONTENT channel, wrapped in
+	// `<think>` … `</think>`, instead of on the reasoning field.
+	//
+	// IT IS A REAL SHAPE AND NOT A CURIOSITY. Several gateways hand back a
+	// model's working inside the answer channel rather than stripping it, which
+	// is why `internal/provider`'s answer.go carves it back out — and the
+	// carving has to reach the waiting policy too, or a model that fences its
+	// thoughts looks to the controller like a model writing an answer and its
+	// silence clock never runs.
+	Fenced bool
 	// StallAfter and StallFor stage a lane that goes quiet mid-answer:
 	// after StallAfter deltas — counting the reasoning run first — nothing is
 	// written for StallFor. A zero StallAfter stalls nothing.
@@ -223,6 +233,7 @@ type Ask struct {
 type Server struct {
 	mu       sync.Mutex
 	models   map[string][]Lane
+	aliases  map[string]string
 	requests map[string]int
 	cancels  map[string]int
 	sheets   map[string]int
@@ -238,6 +249,7 @@ type Server struct {
 func New(model string, lanes ...Lane) *Server {
 	server := &Server{
 		models:   map[string][]Lane{},
+		aliases:  map[string]string{},
 		requests: map[string]int{},
 		cancels:  map[string]int{},
 		sheets:   map[string]int{},
@@ -257,6 +269,27 @@ func (s *Server) Model(model string, lanes ...Lane) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.models[model] = lanes
+}
+
+// Alias makes the router ANSWER for a floating id without PUBLISHING one.
+//
+// That asymmetry is the whole point and it is the router's real behaviour: a
+// completion sent with `~deepseek/deepseek-v4-flash-latest` is resolved on
+// OpenRouter's side and served by the machines of whatever it currently points
+// at, while `/models/~deepseek/deepseek-v4-flash-latest/endpoints` is a 404 —
+// the endpoints page exists only under the concrete id. A build that keys its
+// beliefs on the spelling it sent therefore holds a ledger about a model no
+// sheet will ever describe, which is exactly what a test needs to be able to
+// stage.
+//
+// Both spellings are accepted, with the "~" and without, because the alias
+// marker is a prefix on a name rather than part of one.
+func (s *Server) Alias(alias, target string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.aliases[alias] = target
+	s.aliases[strings.TrimPrefix(alias, "~")] = target
+	s.aliases["~"+strings.TrimPrefix(alias, "~")] = target
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -498,7 +531,14 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.asks = append(s.asks, record)
-	lanes := s.models[ask.Model]
+	// A floating id is resolved here and nowhere else: the sheet handler does
+	// not consult the aliases, because the router publishes no endpoints page
+	// for one. See [Server.Alias].
+	served := ask.Model
+	if target, floating := s.aliases[served]; floating {
+		served = target
+	}
+	lanes := s.models[served]
 	clock := s.clock
 	s.mu.Unlock()
 
@@ -649,7 +689,21 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 			s.cancelled(lane.Name)
 			return
 		}
-		if !write("data: " + reasoningJSON(id, ask.Model, lane.Name, fmt.Sprintf("r%d ", thought)) + "\n\n") {
+		text := fmt.Sprintf("r%d ", thought)
+		frame := reasoningJSON(id, ask.Model, lane.Name, text)
+		if lane.Fenced {
+			// The whole run inside one pair of tags: opened on the first delta
+			// and closed on the last, which is how a gateway that does not strip
+			// its model's working delivers it.
+			if thought == 0 {
+				text = "<think>" + text
+			}
+			if thought == lane.Reasoning-1 {
+				text += "</think>"
+			}
+			frame = chunkJSON(id, ask.Model, lane.Name, text)
+		}
+		if !write("data: " + frame + "\n\n") {
 			s.cancelled(lane.Name)
 			return
 		}

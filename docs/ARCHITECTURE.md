@@ -442,6 +442,49 @@ names the serving lane on every chunk, ends with a usage frame carrying the
 exact cost, and counts the streams a client walked away from. On its fast clock
 a scenario scripted in minutes finishes in microseconds.
 
+### The waiting policy
+
+**Decision.** *When* to act on a silence is decided by ONE controller, for every
+token-generating call, in every phase. `internal/lane/control` holds it: pure
+functions over a moment and a belief, no clock, no connection, no surface. The
+design is `docs/design/waiting/DESIGN.md`; this is the shape of it.
+
+**Why one and not three.** A request is silent for one of three reasons —
+nothing has arrived, the endpoint is writing a run of thought nobody can read,
+or visible text was arriving and stopped — and until this wave those were three
+rule sets with three sets of constants. Three rule sets is three places to be
+wrong, and the reported defect was in the gap between two of them: a stream that
+stalled inside its thinking was governed by none, and the first thing that acted
+on three minutes of silence was a transport bound.
+
+They are one question. Given a distribution over the time to the next VISIBLE
+progress and a silence of `s`, the expected remaining wait `W(s) = E[T − s | T > s]`
+RISES for a heavy-tailed lane. Act when it exceeds what acting costs — the
+alternative's own wait, plus regenerating the visible text already delivered, plus
+the money through λ, plus a hysteresis margin. The phase only chooses which
+distribution `W` is taken over.
+
+**The laws.**
+
+- **Routing and waiting are two questions and never share one nil.**
+  `lane.Choice` answers which lane; `control.Plan` answers when to act. A call
+  the chooser had no opinion about still has a plan, a ceiling and a voice. This
+  is the root cause of the three-minute turn, stated so it cannot come back.
+- **Every role has a ceiling, and no role decides whether there is one.** Ten
+  seconds for a role a person is reading (`lane.VisiblePatience`), scaled by the
+  role's own `Patience`. It bounds time-to-action whatever the belief says.
+- **A wait with nowhere to go is REPORTED, never sat through in silence.** When
+  every reachable lane is believed slow the act is the HUD saying so.
+- **A pinned lane is asked, never overridden.** The offer rides the phase channel
+  as `PhaseAsking`; a visible token withdraws it; a headless run with no reader
+  borrows at the ceiling and says so in the log.
+- **A heartbeat proves the path and never the endpoint**, so it never resets the
+  silence clock. A thinking delta keeps the stream alive, moves the phase, and
+  is not progress.
+- **Beliefs are hierarchical.** `ln T = μ + a[lane] + b[model] + e[model, lane]`,
+  each level with its own half-life. A pair nobody has measured predicts from
+  the provider and the model, which is why cold start needs no special case.
+
 ### Every clock on a request
 
 One outbound request is watched by eighteen independent timers, owned by six
@@ -467,25 +510,50 @@ throws away work that was already paid for.
 
 | rank | clock | owner | trigger | what it does | the bound |
 | --- | --- | --- | --- | --- | --- |
-| 1 | the hedge deadline | `internal/lane/watch.go` | no first token by the moment the chooser solved for, or by the serving lane's own believed p90 first token | one more request to `Choice.Alt`; the loser is cancelled | the chooser's `Choice.Deadline`, else `derivedDeadline`, clamped to `deadlineFloor` **700ms** … `deadlineCeiling` **8s** |
-| 2 | the drift | `internal/lane/watch.go` | gaps between tokens accumulate surprise against the lane's believed rate | the same one hedge, and only if the commitment rule allows | `driftSlack` k = **0.5** nats, `driftAlarm` h = **3.0** nats; past `commitTokens` **64 VISIBLE tokens** an alarm also has to beat a fresh start elsewhere |
-| 3 | the single long gap | `internal/lane/watch.go` | one gap long enough to complain about whatever the lane's normal is | the same one hedge | `lumpGap` **15s** |
-| 4 | the dead path | `internal/lane/watch.go` | neither a heartbeat nor a byte | the same one hedge, flagged `PathFault` so no belief is charged for somebody's wifi | `2 × deadline`, never below `deadPathFloor` **3s** |
-| 5 | the hedge budget | `internal/lane/hedge.go` | asked at the instant a verdict fires | allows or refuses the second request; a refusal is FINAL for that request | `DefaultBudget` = **2 hedges in any 20 requests**, and at most **a tenth** of the last hour's spend (`requestWindow` 20, `spendWindow` 1h) |
-| 6 | the lane walk | `internal/provider/hedge.go` | the rescue we sent was itself refused or broke, and nobody has committed | one more request, to the next gate-passing lane in frontier order | `maxArms` **4** requests for one question, and every step past the first asks the same budget as row 5 |
+| 1 | the controller, before the first token | `internal/lane/control` | `W(s)` over the serving lane's first-token belief exceeds what acting costs | one more arm, or an offer on a pin, or a report when there is nowhere to go | derived per request; never under `ActionFloor` **700ms**, never over the role's ceiling |
+| 2 | the controller, inside a run of thought | `internal/lane/control` | the whole thinking phase has outrun this `(model, rung)`'s learned duration, OR the gap between two thinking deltas has outrun the lane's believed rate | the same acts. A legitimately long think is not hedged; a stalled think is | the same two bounds |
+| 3 | the controller, mid-stream | `internal/lane/control` | `W(s)` over the gap between two VISIBLE tokens exceeds acting, and leaving beats finishing | the same acts | the same two bounds. Commitment is the same inequality with the tokens already written on the other side |
+| 4 | the ceiling | `internal/lane/roles.go` | the silence reaches the role's own patience, whatever is believed | something is done: hedge, ask, or report | `VisiblePatience` **10s** × the role's `Patience` (×0.5 probe … ×6 standing, judge, design) |
+| 5 | the dead path | `internal/lane/watch.go`, `internal/provider/armwatch.go` | an act fired and NOTHING has reached this stream — no token, no comment | names the act `no heartbeat` and flags it, so no belief is charged for somebody's wifi | `lane.DeadPathFloor` **3s** of silence before the claim may be made at all: a handshake on a cold path can honestly outlast a fast lane's whole believed wait |
+| 6 | the purse | `internal/lane/hedge.go` | asked at the instant an act would send | allows or refuses the arm; a refusal turns the act into a report | at most **a tenth** of the last hour's spend, counted over `requestWindow` **20** requests; `maxArms` **4** for one question |
 | 7 | the pacing wait | `internal/provider/retry.go` | a 429 | waits and re-sends; the phase clock says `paced` with the router's own `Retry-After` as a real countdown | `baseBackoff` **700ms** doubled and jittered, one wait never over `maxProviderWait` **1 min**; the call ends at `rateLimitAttempts` **6** / `watchedPacingBudget` **2 min** watched, `patientAttempts` **60** / `patientPacingBudget` **10 min** unwatched |
 | 8 | the relax ladder | `internal/provider/endpoints.go` | a refusal about the request's SHAPE (400/404/unsupported parameter) | re-asks at once with one field dropped | **6 rungs**, then `maxFallbackModels` **2** other models — and **NO WAIT BETWEEN RUNGS**, because nothing here is backing off from a fault |
 | 9 | admission | `internal/provider/limiter.go` | more than `limiterCeiling` **64** requests in flight | queues, and hands the next freed slot to the waiter | **no timer at all.** `sharedLimiter.acquire` selects on the queue and the caller's context and nothing else; a request held here is held by the caller's own deadline |
-| 10 | the first-delta bound | `internal/provider/streamguard.go` | the model has written nothing — no answer token, no reasoning token, no tool-call fragment | cuts the request, `CutSilent` | `firstDeltaBound` **90s** |
-| 11 | the mid-stream gap | `internal/provider/streamguard.go` | an established stream goes quiet | cuts the request, `CutStalled` | `midStreamGapBound` **45s** — half the first bound, because a model that has started writing has finished deciding |
-| 12 | the buffered quiet | `internal/provider/streamguard.go` | quiet, but the endpoint is still sending keepalives | cuts the request | `bufferedQuietBound` **150s** of quiet in total; keepalives buy patience and the patience is bounded |
-| 13 | the wall | `internal/provider/streamguard.go` | a reply that keeps writing and never ends | cuts the request, `CutOverrun` | `streamWallFactor` **5 ×** the longest reply THIS LANE has completed, clamped to `streamWallFloor` **5 min** … `streamWallCeiling` **20 min** |
+| 10 | the first-delta bound | `internal/provider/streamguard.go` | the model has written nothing — no answer token, no reasoning token, no tool-call fragment | cuts the request, `CutSilent` | `firstDeltaBound` **90s** × the role's `Patience` |
+| 11 | the mid-stream gap | `internal/provider/streamguard.go` | an established stream goes quiet | cuts the request, `CutStalled` | `midStreamGapBound` **45s** × the role's `Patience` — half the first bound, because a model that has started writing has finished deciding — and `gapFor`'s own narrowing onto the lane's measured rate is clamped by the same floor |
+| 12 | the buffered quiet | `internal/provider/streamguard.go` | quiet, but the endpoint is still sending keepalives | cuts the request | `bufferedQuietBound` **150s** × the role's `Patience` of quiet in total; keepalives buy patience and the patience is bounded |
+| 13 | the wall | `internal/provider/streamguard.go` | a reply that keeps writing and never ends | cuts the request, `CutOverrun` | `streamWallFactor` **5 ×** the longest reply THIS LANE has completed, clamped to `streamWallFloor` **5 min** … `streamWallCeiling` **20 min**. It bounds a stream that is PRODUCING, so no role scales it: the controller has nothing to say about a reply that is arriving |
 | 14 | the cut budget | `internal/session/loop.go` | a cut came back | asks again, and when the budget is spent hops the model | `silentRetries` **2**, `babbleRetries` **1**, `blindRetries` **1** — then `FallbackModels`, and the hop is SAID |
 | 15 | the response header deadline | `internal/provider/transport.go` | the endpoint accepted the connection and never wrote a header | the transport fails the attempt | `responseHeaderTimeout` **2 min**, on the streaming transport only — a non-streamed completion writes no header until the whole answer exists |
 | 16 | the body idle watchdog | `internal/provider/transport.go` | no BYTE at all on the wire, keepalives included | cancels the request context, which is the only thing that unblocks a parked `Read` | `streamIdleTimeout` **2 min** |
 | 17 | the completion total deadline | `internal/provider/client.go` | a non-streamed call | `http.Client.Timeout` | `adaptiveCompletionTimeout`: floor **5 min** (or `Config.Timeout` when larger), **1s per 64 requested tokens**, ceiling **15 min** — and held under the lane's own measured wall once there is one. For a stream `client.Timeout` is **0** on purpose: a total deadline killed every healthy long stream at the budget |
 | 18 | the structuring wall | `internal/provider/pool/wall.go` | one structuring completion — the slot that talks, the slot that plans | `ErrCallWall`, wrapping `context.DeadlineExceeded` | `DefaultCallWall` **4 min**, per completion and never per command |
 | — | dial and TLS | Go's `http.DefaultTransport` | — | — | the standard library's own defaults. **They are named nowhere in this build** — no constant, no config row — and the header deadline above is what actually catches a host that accepts and never answers |
+
+**Rows 10–12 are scaled by the role, and every one of them clears that role's
+ceiling by `transportHeadroom` = 2.** The ordering above is a claim and it was
+false until this wave: a mid-stream bound derived at 15s pre-empted the 30s and
+60s ceilings of every unattended role, so the last resort was firing before the
+cheap act it exists to sit behind. Two ceilings of headroom rather than one
+because acting is not finishing — at the ceiling the controller puts a second
+request on the wire, and that request has its own handshake and first token to
+pay before it rescues anything. `internal/provider/streamguard_ceiling_test.go`
+walks every role in `lane.Roles()` at every rate `gapFor` can be handed and
+fails the build if any bound falls to or below a ceiling.
+
+**ROWS 1–6 WERE REWRITTEN BY THE WAITING POLICY** (`docs/design/waiting/DESIGN.md`).
+What they replace, and why each is retired:
+
+| retired | was | why it is gone |
+| --- | --- | --- |
+| `Choice.Deadline` / `Choice.Alt` | the clock rode inside the routing answer | a cold ledger returned neither, so the case that most needed a deadline got none |
+| `deadlineCeiling` **8s** | the top of a derived deadline | replaced by the role's ceiling, which exists whether or not a belief does |
+| `lumpGap` **15s** | one gap long enough to complain about | replaced by the gap distribution: the same complaint about a slow lane, a different one about a fast lane |
+| `commitTokens` **64 visible** | where an answer stopped being cheap to abandon | replaced by the same inequality with the tokens already written on the other side — right for a 400-token reply and wrong for a 4,000-token one |
+| `driftSlack` / `driftAlarm` | a CUSUM over inter-token gaps | the CUSUM moves up a level: it now watches the belief for a CHANGE POINT, and the gap is judged by `W(s)` like every other silence |
+| one hedge per request | `Watch.Hedged()` | a request may earn more than one arm; the purse bounds it, not a boolean |
+| `hedgeTime` / `hedgeFloor` / `hedgeCeiling` / `hedgeOverhead` | `choose.go`'s own log-normal crossing, clamped to a fixed band | the same arithmetic, said once, in `control.Survival.Remaining` — and asked of every call rather than of the calls the chooser happened to have an opinion about |
+| the wire's ceiling rewrite | `hedge.go` turned a report raised at the ceiling into a hedge | the controller decides and the wire obeys: a verdict rewritten downstream is a row that says "report" about a request it put on the wire |
 
 **THE WATCH DECIDES FIRST AND THE STALL GUARD IS A LAST RESORT.** The watch's
 answer costs one extra request and keeps the person's answer moving; the guard's
@@ -531,7 +599,7 @@ it, which is a different answer.
 
 | rung | what changes | who walks it | when | bound |
 | --- | --- | --- | --- | --- |
-| 1 | same model, the one lane we chose | **us** — `internal/lane`'s watch, `internal/provider/hedge.go` | the derived deadline, the CUSUM drift, the 15s gap, or a dead path | one hedge per request, to `Choice.Alt`, budgeted; the loser is cancelled and both arms are folded back into the ledger |
+| 1 | same model, the one lane we chose | **us** — `internal/lane/control`, `internal/provider/hedge.go` | the controller: the expected remaining wait exceeds what acting costs, or the role's ceiling is reached | arms to the frontier's next lane, bounded by the purse rather than by a count; losers are cancelled and every arm is folded back into the ledger. A pinned lane is ASKED instead |
 | 2 | same model, every other lane that passed the gate | **the router**, inside the request; **us** when a rescue itself fails | the router walks continuously on its own; we walk when an arm comes back refused or broken | on the wire as `provider.order` in frontier order with `allow_fallbacks` true; ours is `hedgeRace.walk`, capped at `maxArms` **4** and budgeted |
 | 3 | same model, a smaller question | **us** — `internal/provider/endpoints.go` | a refusal about the request's shape | `require_parameters` → `reasoning` → `max_tokens` → `response_format` → images → tools |
 | 4 | **another model** | **us** — `internal/provider/endpoints.go`, and `internal/session/loop.go` for a stall | every rung above is exhausted, or the cut budget is spent | the operator's `Fallbacks`, else `NearestModels`; `maxFallbackModels` **2** |

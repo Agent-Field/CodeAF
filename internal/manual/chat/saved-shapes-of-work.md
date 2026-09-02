@@ -1,4 +1,4 @@
-# Saved shapes of work
+# Saved shapes of work — saving a way of working and reusing it
 
 ## What a harness is
 
@@ -11,9 +11,8 @@ it lives on disk and shows up in a list.
 
 **A harness is a subharness.** One system, one name for it — *subharness* — and several
 doors onto it. `/harness` and `/harnesses` open the saved shapes of work this page is
-about. `/subharness` and `/sub` open the whole list: these, the ones built into aforge, and
-the ones written as bundles on disk, all in one list with nothing marking which is which
-except where it was found. See the *Subharnesses* page for that list and the card you
+about. `/subharness` and `/sub` open the whole list: these and the ones written as bundles
+on disk, all in one list with nothing marking which is which except where it was found. See the *Subharnesses* page for that list and the card you
 settle before one runs.
 
 **There are three ways to run one.** aforge offers one by itself when what you typed matches
@@ -812,8 +811,8 @@ because nobody is standing there for it.
 ## Where harnesses are stored
 
 A subharness can live in one of several places, and this is one of them: the pages a design
-writes. (The others are the ones built into aforge, `~/.aforge/subharnesses`, and the
-project's own `.aforge/subharnesses` — the *Subharnesses* page lists all four.) They are one
+writes. (The others are `~/.aforge/subharnesses` and the project's own
+`.aforge/subharnesses` — the *Subharnesses* page lists all three.) They are one
 list wherever they came from; where a program lives decides only the mark on its row, and a
 page written here is marked `yours`.
 

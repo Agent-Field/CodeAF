@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -109,6 +110,74 @@ func TestEveryNoticeEventIsFiredSomewhere(t *testing.T) {
 }
 
 // ── the ledger ──────────────────────────────────────────────────────────────
+
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW — and the notices' own memory is what that law cost
+// most (#315). [noticeLedgerPath] answered "" for an empty directory and the
+// board then held everything in RAM for the session, so on every launch that had
+// not exported AFORGE_PROFILE_DIR — which is very nearly all of them — a hint
+// meant to age out after three sessions was on its first session every time.
+//
+// The road here is the real one: three ordinary launches in a row, each firing
+// the seam a finished turn fires, and then a fourth that finds the hint taken as
+// read.
+func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	t.Setenv(config.ProfileDirEnv, "")
+
+	if got, want := noticeLedgerPath(""), filepath.Join(root, noticeLedgerName); got != want {
+		t.Fatalf("an ordinary launch keeps its notices at %q, want %q", got, want)
+	}
+
+	const hint = "menu-after-first-turn"
+	launch := func() *app {
+		a := noticeApp(t, "")
+		a.turn = 1
+		a.noticeEvent(eventTurnEnded)
+		return a
+	}
+	for session := 1; session <= noticeShownDefault; session++ {
+		a := launch()
+		if got := a.notices.current[hintSlotForTest]; got != hint {
+			t.Fatalf("launch %d holds %q in the hint slot, want %q", session, got, hint)
+		}
+		if got := loadNoticeLedger(noticeLedgerPath("")).shown(hint); got != session {
+			t.Fatalf("after launch %d the ledger on disk counts %d showings", session, got)
+		}
+	}
+	if got := loadNoticeLedger(noticeLedgerPath("")); !got.retired(hint) {
+		t.Fatalf("the hint is not retired after %d launches: %+v", noticeShownDefault, got)
+	}
+	if a := launch(); a.notices.current[hintSlotForTest] == hint {
+		t.Fatalf("a hint shown in %d launches came back in the next one", noticeShownDefault)
+	}
+}
+
+// hintSlotForTest names the slot these tests read, spelled once so the
+// assertions above read as sentences.
+const hintSlotForTest = slotHint
+
+// AND THE NEWS CHANNEL HAS AN OLDER BUILD TO COMPARE AGAINST. It opens on the
+// second build a profile meets, which on an ordinary launch it never did: the
+// first build was never written down, so every launch was a first launch and a
+// shipped feature had no way to announce itself.
+func TestTheNewsChannelRemembersTheBuildOnAnOrdinaryLaunch(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	t.Setenv(config.ProfileDirEnv, "")
+	path := noticeLedgerPath("")
+
+	if first := newNoticeBoard(path, "build-one", true); first.news {
+		t.Fatal("a first launch found news")
+	}
+	if got := loadNoticeLedger(path).Build; got != "build-one" {
+		t.Fatalf("the first ordinary launch recorded build %q", got)
+	}
+	if second := newNoticeBoard(path, "build-two", true); !second.news {
+		t.Fatal("a changed build found no news on an ordinary launch")
+	}
+}
 
 func TestTheNoticeLedgerRoundTrips(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "profile", noticeLedgerName)
@@ -599,15 +668,23 @@ func TestNewsIsSaidOnceAfterABuildChange(t *testing.T) {
 	}
 }
 
-// A surface built without a profile — every test's bare app — still has a
-// board that works for the session, and writes nothing anywhere.
-func TestABareSurfaceKeepsNoticesForTheSession(t *testing.T) {
+// A board handed no path at all still works for the session and writes nothing
+// anywhere — which is what this suite's bare app is pinned to (tui3_test.go),
+// and what an embedding that wires its own storage gets.
+//
+// It is NOT what a launch with no AFORGE_PROFILE_DIR gets: that is the ordinary
+// launch, and its notices live in the state root with everything else it
+// remembers ([TestAHintAgesOutAcrossOrdinaryLaunches]).
+func TestABoardWithNoPathKeepsNoticesForTheSession(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	if a.notices.path != "" {
-		t.Fatalf("a bare surface has a ledger at %q", a.notices.path)
+		t.Fatalf("the pinned board has a ledger at %q", a.notices.path)
 	}
 	startTask(t, a)
 	if got := a.notices.current[slotHint]; got != "task-page-after-first-task" {
-		t.Fatalf("a bare surface armed %q", got)
+		t.Fatalf("a session-only board armed %q", got)
+	}
+	if err := a.notices.ledger.write(""); err != nil {
+		t.Fatalf("a pathless ledger refused to be written away: %v", err)
 	}
 }

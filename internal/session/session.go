@@ -1294,10 +1294,10 @@ type Config struct {
 
 	// SearchProvider and SearchFetcher are the web-search pair the belt's
 	// web_search and web_fetch tools call through (tools_search.go). They are
-	// [search.Provider] and [search.Fetcher] rather than a resolved
-	// configuration because WHICH back end answers is not this package's
-	// question: internal/search owns the resolution law, the surface runs it
-	// against the person's settings, and what arrives here is the answer.
+	// [search.Provider] and [search.Fetcher] rather than a configuration because
+	// WHICH back end answers is not this package's question: internal/search
+	// owns the resolution law, and the surface hands over live wrappers that run
+	// it against the person's current settings for every operation.
 	//
 	// NIL IS THE DEFAULT AND MEANS THE TOOL IS NOT ON THE BELT — not that it
 	// is on the belt and fails. A model told about a tool it cannot reach is

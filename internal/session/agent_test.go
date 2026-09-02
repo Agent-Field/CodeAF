@@ -2177,13 +2177,19 @@ func TestACallIsAnnouncedOnlyOnce(t *testing.T) {
 // and answers what the test told it to.
 type scriptedSearch struct {
 	mu      sync.Mutex
+	name    string
 	queries []string
 	limits  []int
 	results []search.Result
 	err     error
 }
 
-func (*scriptedSearch) Name() string { return "scripted" }
+func (s *scriptedSearch) Name() string {
+	if s.name != "" {
+		return s.name
+	}
+	return "scripted"
+}
 
 func (s *scriptedSearch) Search(_ context.Context, query string, limit int) ([]search.Result, error) {
 	s.mu.Lock()
@@ -2308,7 +2314,7 @@ func TestWebSearchRunsThroughATurnAndItsResultsReachTheTranscript(t *testing.T) 
 	agent.mu.Lock()
 	result := messageText(agent.messages[3])
 	agent.mu.Unlock()
-	if !strings.Contains(result, "https://go.dev/doc/go1.24") || !strings.Contains(result, "2 results") {
+	if !strings.Contains(result, "https://go.dev/doc/go1.24") || !strings.HasSuffix(result, "2 results · scripted") {
 		t.Fatalf("the tool result is not the rendered list: %q", result)
 	}
 
@@ -2380,6 +2386,81 @@ func TestWebFetchReturnsThePageAndAFailureStaysInsideTheToolResult(t *testing.T)
 		if !strings.Contains(text, call.want) {
 			t.Fatalf("%s(%s) = %q, want it to carry %q", call.tool, call.args, text, call.want)
 		}
+	}
+
+	// V4: A missing key on an explicit pin keeps the person's choice and names
+	// the exact failure the settings row promises, without a duplicated prefix.
+	pinned, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SearchProvider = &scriptedSearch{name: "exa", err: search.ErrNoAPIKey}
+	})
+	text, isError, err := beltTool(t, pinned, "web_search").Execute(
+		context.Background(), json.RawMessage(`{"query":"anything"}`),
+	)
+	if err != nil || !isError || text != "Search failed (exa): no API key" {
+		t.Fatalf("pinned missing-key search = %q, error=%v, Go error=%v", text, isError, err)
+	}
+}
+
+// V1 and V4: a settings change while a real request is blocked cannot rename
+// that call's receipt; the next operation resolves the new pin and names its
+// failure instead.
+func TestAWebSearchReceiptNamesThePlugThatActuallyRan(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(started)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"success\":true,\"data\":{\"web\":[{\"url\":\"https://example.com\",\"title\":\"Example\",\"description\":\"A result.\"}]}}"}]}}`)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		local := request.Clone(request.Context())
+		local.URL.Scheme = "http"
+		local.URL.Host = strings.TrimPrefix(server.URL, "http://")
+		return http.DefaultTransport.RoundTrip(local)
+	})}
+	var optionsMu sync.RWMutex
+	options := search.Options{HTTPClient: client}
+	provider, _ := search.Live(func() search.Options {
+		optionsMu.RLock()
+		defer optionsMu.RUnlock()
+		return options
+	})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SearchProvider = provider })
+	tool := beltTool(t, agent, "web_search")
+
+	type outcome struct {
+		text    string
+		isError bool
+		err     error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		text, isError, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"q","count":1}`))
+		done <- outcome{text: text, isError: isError, err: err}
+	}()
+
+	select {
+	case <-started:
+	case result := <-done:
+		t.Fatalf("Firecrawl returned before the test released it: %+v", result)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Firecrawl never reached the blocking test server")
+	}
+	optionsMu.Lock()
+	options.Provider = "exa"
+	optionsMu.Unlock()
+	close(release)
+
+	first := <-done
+	if first.err != nil || first.isError || !strings.HasSuffix(first.text, "1 result · firecrawl") {
+		t.Fatalf("blocked Firecrawl receipt = %q, error=%v, Go error=%v", first.text, first.isError, first.err)
+	}
+	text, isError, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"q","count":1}`))
+	if err != nil || !isError || text != "Search failed (exa): no API key" {
+		t.Fatalf("next pinned search = %q, error=%v, Go error=%v", text, isError, err)
 	}
 }
 
@@ -2974,6 +3055,23 @@ func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
 	case <-sheet.called:
 		t.Fatalf("a non-router base still fetched a sheet for %v", sheet.models())
 	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+// The default this build ships is a floating alias, and the router publishes no
+// endpoints page under one. Two spellings of it are one model, one sheet and one
+// fetch — which is also the only reason a shipped default has any prior at all.
+func TestTheBeatAsksForTheModelTheRouterActuallyServes(t *testing.T) {
+	t.Cleanup(func() { lanes.UseServable(nil) })
+	lanes.UseServable(func(model string) string {
+		if strings.TrimPrefix(model, "~") == "talk/model-latest" {
+			return "talk/model-0731"
+		}
+		return model
+	})
+	got := laneBeatModels(Config{Model: "~talk/model-latest", TaskModel: "talk/model-latest:high"})
+	if len(got) != 1 || got[0] != "talk/model-0731" {
+		t.Fatalf("laneBeatModels gave %v, want one fetch for [talk/model-0731]", got)
 	}
 }
 

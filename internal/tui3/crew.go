@@ -8,9 +8,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// /crew — THE FOUR MODELS AFORGE WORKS WITH, ANSWERED IN ONE WORD.
+// /crew — THE FIVE MODELS AFORGE WORKS WITH, ANSWERED IN ONE WORD.
 //
-// The settings panel has the same four rows and a crew row above them, and this
+// The settings panel has the same five rows and a crew row above them, and this
 // command exists anyway for the reason /model exists beside the model slot: the
 // panel is where you go to READ a decision, and a command is where you go to
 // CHANGE one you have already made up your mind about. Somebody whose planner is
@@ -37,7 +37,7 @@ func (a *app) runCrew(arg string) {
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
 		a.closeLists()
-		a.crewPick.start(config.CrewAt(a.profileDir))
+		a.crewPick.start(config.CrewAt(a.profileDir), a.crewInheritedLine())
 		a.touch()
 		return
 	}
@@ -136,14 +136,16 @@ func (a *app) talkingTo() string {
 // the three class names ([config.CrewClasses]). It is what /status prints and
 // what [app.crewHint] shortens.
 //
-// THE EMPTINESS LAW: the crew is four rows of a PROFILE, so a door that opened
-// without one has no crew to read and this is the empty string — every caller
-// prints nothing rather than a word about a file nobody is writing.
+// THE EMPTINESS LAW: a window with no crew to read prints nothing rather than a
+// word about a file nobody is writing — and the window with no crew to read is
+// the HOSTED one ([app.crewReading]), never the ordinary launch this used to
+// silence.
 func (a *app) crewWord() string {
-	if strings.TrimSpace(a.profileDir) == "" {
+	crew, ok := a.crewReading()
+	if !ok {
 		return ""
 	}
-	return config.CrewAt(a.profileDir) + " · " + config.CrewClasses(a.profileDir)
+	return crew.word
 }
 
 // crewSegment is the crew in the fewest cells that still answer it — `crew max`,
@@ -157,14 +159,84 @@ func (a *app) crewWord() string {
 // stored word — so none of them can say `max` over a mastermind somebody pinned
 // out of it, and none of them can disagree with the others.
 //
-// THE EMPTINESS LAW: a door that opened without a profile has no four rows to
-// read and this is the empty string, and a segment with no text is a segment
-// the row never draws ([app.telemetry] skips it).
+// THE EMPTINESS LAW: a window with no four rows to read has no segment, and a
+// segment with no text is a segment the row never draws ([app.telemetry] skips
+// it). That window is the hosted one — see [app.crewReading] for why it is not
+// the empty profile directory this guard used to ask about.
 func (a *app) crewSegment() string {
-	if strings.TrimSpace(a.profileDir) == "" {
+	crew, ok := a.crewReading()
+	if !ok {
 		return ""
 	}
-	return "crew " + config.CrewAt(a.profileDir)
+	return crew.segment
+}
+
+// ── the one reading of the four rows ────────────────────────────────────────
+
+// crewReading is the profile's crew as this surface last read it: the preset
+// word [config.CrewAt] derives from the live rows, the three class names beside
+// it, and the settings generation the pair was read at.
+type crewReading struct {
+	// word and segment are the two readings BUILT AT THE READING and not at the
+	// draw. The status line asks for the segment on every frame, and a surface
+	// that joined `"crew " + preset` there would put an allocation on the frame
+	// clock for a sentence that cannot change between two settings writes
+	// (inputsmooth_test.go's allocation law).
+	word    string
+	segment string
+	preset  string
+	classes string
+	// dir is the profile the pair was read from, so a surface handed a
+	// different one answers from that one and not from a snapshot of the last.
+	dir string
+	// generation is [config.SettingsGeneration] as of the reading, and taken
+	// separates "read at generation zero" from "never read".
+	generation uint64
+	taken      bool
+}
+
+// crewReading is THE ONE READING every crew surface answers from — the status
+// line's segment, the model picker's hint, /status's crew line and the welcome
+// box's clause — and it reports false for a window that has no crew of its own.
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] is AFORGE_PROFILE_DIR, which
+// almost nobody exports, and every reader in internal/config resolves the empty
+// string to this process's own profile in the state root
+// ([config.ProfilePath]) — so the guard these surfaces used to carry was true on
+// very nearly every launch, and the crew segment the status line exists to show
+// was drawn only for the handful of people who had exported that variable
+// (#315). The real absence is a CONNECTION: over --host the crew lives on the
+// far machine and this window's profile is the laptop's, which is the refusal
+// [app.runCrew] already opens with and the fact [app.workSeat] guards on.
+//
+// AND IT IS READ AT THE DOOR AND NOT AT THE DRAW. Answering the status line
+// straight from the profile would put SEVEN config file reads on the frame
+// clock — four for the preset, three for the classes — for four rows that change
+// a few times a year, which is the cost [crewPicker.inherited] refuses for the
+// same reason. The snapshot is invalidated by the ONE counter every persisted
+// write bumps ([config.SettingsGeneration]), so /crew, the settings row and the
+// `change_setting` tool all move it and none of them needs to know this cache
+// exists; what the counter does not see — a config file edited by another
+// process — lands on the next launch, exactly as it does for the role source
+// the tasks resolve through (cmd/aforge's v3Crew).
+func (a *app) crewReading() (crewReading, bool) {
+	if a.hosted() {
+		return crewReading{}, false
+	}
+	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
+		preset, classes := config.CrewAt(a.profileDir), config.CrewClasses(a.profileDir)
+		a.crew = crewReading{
+			word:       preset + " · " + classes,
+			segment:    "crew " + preset,
+			preset:     preset,
+			classes:    classes,
+			dir:        a.profileDir,
+			generation: generation,
+			taken:      true,
+		}
+	}
+	return a.crew, true
 }
 
 // crewHint is [app.crewSegment] for the hint slot under the model picker
@@ -181,6 +253,69 @@ func (a *app) crewSegment() string {
 // crew for reads that the crew is a different thing with a name of its own.
 func (a *app) crewHint() string { return a.crewSegment() }
 
+// ── the work seat, and the one line about it ────────────────────────────────
+//
+// A CREW OLDER THAN THE WORK SEAT FILLS IT ANYWAY, AND THE CONVERSATION SAYS SO
+// ONCE.
+//
+// The worker row arrived after the other four (#278), so a crew chosen before it
+// exists on disk as four rows with no worker among them. Headless doors read
+// that shape through the ladder and print one line about it (#311); this surface
+// read the row, found nothing, and handed every task to the build's own worker
+// model without a word — on the surface where most tasks are started, and where
+// there is no `models:` line for a person to notice a word on (#312).
+//
+// So the seat is resolved through the SAME ladder (config.TierSeatAt) and the
+// line is the SAME string (config.Seat.Notice), and it is said in the two places
+// a person is already looking: in the thread, the moment work actually starts on
+// that seat, and on the /crew sheet, which is where somebody goes to check.
+
+// workSeat is this conversation's work seat, resolved the way the role map that
+// runs its tasks resolves it (cmd/aforge's v3Crew).
+//
+// AN EMPTY profileDir IS THE ORDINARY PROFILE AND NOT THE ABSENCE OF ONE.
+// [config.ProfileDir] is AFORGE_PROFILE_DIR, which almost nobody sets, and every
+// reader in internal/config takes the empty string to mean "this process's own
+// profile" — so a guard on the field would silence the line on precisely the
+// launch it was written for. The absence is a CONNECTION: over --host the crew
+// lives on the far machine and this window's profile is the laptop's, which is
+// the same refusal [app.runCrew] opens with.
+func (a *app) workSeat() config.Seat {
+	if a.hosted() {
+		return config.Seat{}
+	}
+	return config.TierSeatAt(a.profileDir, config.ModelTierWorker)
+}
+
+// sayWorkSeat puts the one line in the thread, ONCE PER SESSION, and is called
+// where work actually starts on the seat (task.go's [app.taskUpdate]).
+//
+// THE MOMENT IS THE FIRST RUNNING NODE, and not the launch. A person who never
+// hands anything off never meets this seat, and a line at boot about a model
+// nothing has used yet is a notice competing with the greeting for a fact that
+// may never become true. A person who hands off twenty things meets it once.
+//
+// THE QUESTION IS ASKED ONCE TOO. The flag is set whether or not there was
+// anything to say, because the answer cannot change under a session in a way
+// that owes a person a line: picking a crew ends the substitution, and clearing
+// the row is somebody saying "follow the conversation" on purpose. That also
+// keeps the profile off the path of every task update, which is where a file
+// read has no business being.
+//
+// IT IS NOT ONE OF THE HINTS (notice.go). Those age out after a few sessions and
+// go quiet when a person turns hints off, which is right for a tip about a key
+// and wrong for a receipt about which model is spending their money: this is
+// true until they answer it, and it is said every session until they do.
+func (a *app) sayWorkSeat() {
+	if a.workSeatSaid {
+		return
+	}
+	a.workSeatSaid = true
+	if notice := a.workSeat().Notice(); notice != "" {
+		a.note(notice)
+	}
+}
+
 // crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
 // zero value is closed, like [picker], and its cursor is an index into
 // [config.CrewPresets].
@@ -188,10 +323,16 @@ type crewPicker struct {
 	open    bool
 	cursor  int
 	current string
+	// inherited is the line naming the seat this profile has no row for, or
+	// empty when every row was written. IT IS READ AT THE DOOR AND NOT AT THE
+	// DRAW: the rows are built every frame and the answer is three lines of a
+	// file, so a picker that asked the profile per frame would put a disk read
+	// on the frame clock for a fact that cannot move while the list is up.
+	inherited string
 }
 
-func (p *crewPicker) start(current string) {
-	*p = crewPicker{open: true, current: current}
+func (p *crewPicker) start(current, inherited string) {
+	*p = crewPicker{open: true, current: current, inherited: inherited}
 	for i, preset := range config.CrewPresets {
 		if preset == current {
 			p.cursor = i
@@ -221,6 +362,19 @@ const (
 	// crewCustomLine is the fourth reading, said as a fact about where the person
 	// is rather than as a fourth row they could pick.
 	crewCustomLine = "yours is none of the three — picking one puts all five back"
+	// crewInheritedLead and crewInheritedTail wrap the row a profile older than
+	// a seat never wrote:
+	//
+	//	your work seat is inherited from small work — picking one writes it
+	//
+	// It is said as a fact about a ROW on this sheet, which is what this list is
+	// for, while the thread's line ([config.Seat.Notice], said once when work
+	// starts) is the receipt. `inherited` is the same word the headless models
+	// line prints beside the model, so a person who has seen one surface
+	// recognises the other.
+	crewInheritedLead = "your "
+	crewInheritedMid  = " seat is inherited from "
+	crewInheritedTail = " — picking one writes it"
 	// crewFrameRows is how many of the chooser's rows are not preset rows: the
 	// scope line, seat one, and the closing note.
 	crewFrameRows = 3
@@ -232,6 +386,9 @@ func (p *crewPicker) height() int {
 	}
 	height := crewFrameRows + len(config.CrewPresets)*2
 	if p.current == config.CrewCustom {
+		height++
+	}
+	if p.inherited != "" {
 		height++
 	}
 	return height
@@ -249,7 +406,7 @@ func (p *crewPicker) height() int {
 // and what they do not, then seat one on a line of its own — labelled, with no
 // lead and no ground, so it cannot be mistaken for a row enter would apply —
 // then the three presets exactly as before, and a closing note pointing at the
-// settings row where any one of the four can be pinned by itself. Per-seat
+// settings row where any one of the five can be pinned by itself. Per-seat
 // picking is NOT built in here: settings already owns it, and a chooser that
 // both applied presets and moved single seats would be two controls wearing one
 // set of keys.
@@ -326,11 +483,33 @@ func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string
 	if p.current == config.CrewCustom {
 		out = append(out, pal.dim(fit(crewCustomLine, width)))
 	}
+	// AND THE ROW NOBODY WROTE, said last among the readings and before the door
+	// out: it is the one fact on this list that is about the person's own five
+	// rows rather than about the three on offer, and the answer to it is the
+	// same enter every row above it takes.
+	if p.inherited != "" {
+		out = append(out, pal.dim(fit(p.inherited, width)))
+	}
 	out = append(out, pal.dim(fit(crewPinLine, width)))
 	if len(out) > n {
 		out = out[:n]
 	}
 	return out
+}
+
+// crewInheritedLine is the sheet's own sentence about a seat this profile has no
+// row for, and empty for every profile that wrote all five.
+//
+// ONE READING OF THE SEAT FEEDS BOTH SURFACES. The words differ because the
+// places do — the thread is told what is running right now, the sheet is told
+// which of its rows is not yours — and the FACT is one call to one ladder
+// ([app.workSeat]), so neither surface can name a row the other does not.
+func (a *app) crewInheritedLine() string {
+	seat := a.workSeat()
+	if seat.Source != config.SeatInherited {
+		return ""
+	}
+	return crewInheritedLead + string(seat.Role) + crewInheritedMid + seat.FromWords() + crewInheritedTail
 }
 
 func (a *app) crewPickerKey(msg tea.KeyPressMsg) {

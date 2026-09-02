@@ -201,7 +201,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the five-seat reading: the model you talk to, then the three crew presets |
+| `/crew` | — | — | opens the six-seat reading: the model you talk to, then the three crew presets |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
@@ -221,6 +221,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
+| `/manual` | — | — | every page of aforge's own manual, one per line |
+| `/manual` | — | `<page>` | prints that page as it is written |
+| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat
@@ -578,7 +581,7 @@ session holds right now.
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
 reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
+words — `search`, `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
 `approvals`, `state` — then `tasks`, `place`, `keys`, and last `file`. Labels are padded
 into two aligned columns.
 
@@ -592,8 +595,10 @@ crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 On the live status line the same fact is one short segment — `crew max`, or
 `crew custom` — at the head of the telemetry, beside the model on the left, and it is among
 the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading; there is no `crew` line at all when the session was opened
-without a profile directory.
+sheet is the full reading. Every ordinary launch has a crew — one is never unset, only
+`custom` — so the line and the segment are always there; the one session that shows
+neither is a **remote** one opened with `--host`, where the crew belongs to the other
+machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -1279,21 +1284,21 @@ in force wears a highlighted ground, `›` is where **enter** is aimed and it op
 line points at the settings row where one seat can be pinned by itself; the chooser does not
 pick seats one at a time.
 
-If you have pinned one of the four yourself, no preset wears the ground and the chooser says
-`yours is none of the three — picking one puts all four back` above the closing line.
+If you have pinned one of the five yourself, no preset wears the ground and the chooser says
+`yours is none of the three — picking one puts all five back` above the closing line.
 
 A word that is not one of the three changes nothing and prints the three:
 `/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
 
-What each of the four classes funds, and how to set one of them on its own, is on the models
+What each of the five classes funds, and how to set one of them on its own, is on the models
 page.
 
 ## /crew <preset> — the confirm line, and the model it leaves alone
 
-`/crew frugal`, `/crew balanced` or `/crew max` sets the four and confirms in one line:
+`/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
 
 ```
-crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 **The model ids are drawn brighter than the words around them.** `crew →`, the preset
@@ -1314,10 +1319,16 @@ relaunch, and no waiting for the next session. To read the crew back afterwards:
 status line says `crew max` beside the model, `/status` prints the `crew` line under
 `model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
-**That promise is local-session only.** Over `--host`, `/crew` reads and writes this
-machine's profile; the session resolves its crew from the other machine. There is no crew
-write across the connection and this build prints no host-specific warning, so `/crew max`
-does not change the four models the far session uses. Change that machine's profile there.
+**That promise is local-session only.** Over `--host` the session resolves its crew from
+the other machine, and there is no crew write across the connection — so `/crew` refuses
+rather than writing this laptop's profile behind your back:
+
+```
+devbox owns the crew · change it on that machine
+```
+
+For the same reason a remote window shows no `crew` segment on the status line and no
+`crew` line in `/status`. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
@@ -1439,7 +1450,7 @@ Session · Context · Workspace · Display · Spending · Safety · Tasks · Pro
 "fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
 "ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
-The four models aforge uses on your behalf are **not** here — they are on Providers, with
+The five models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
 errands on two screens. Neither is the conversation's own money limit here any more: it is
@@ -1447,6 +1458,13 @@ errands on two screens. Neither is the conversation's own money limit here any m
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "firecrawl key", "jina key".
+
+The selected **searching** row is a live explanation rather than a static
+description. On untouched `auto` it reads `now firecrawl, keyless — set
+search.exaKey or search.firecrawlKey to raise it`; a pinned Exa row with no key
+quotes the exact `Search failed (exa): no API key` answer; a configured pin
+reads `exa, with your key`. Provider and key changes land on the next search in
+the conversation already open.
 
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
@@ -1509,7 +1527,7 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The first three of the four classes are **select** rows and open the model picker. The
+The first four of the five classes are **select** rows and open the model picker. The
 **mastermind** row is a **text** box instead, because its value may carry a thinking level
 (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
 
@@ -1619,3 +1637,69 @@ was renamed degrades to a working one instead of failing at the provider. If not
 list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
+
+## /manual — how do I read the manual, is there a help page, show me the page about X
+
+`/manual` is aforge's own manual, printed into the conversation. It is the same writing
+the chat reads to answer questions about itself, and it arrives **as it is written** —
+nothing is retold, summarized or shortened on the way to you.
+
+Three forms, and which one you get is decided by what you type after the word:
+
+| Typed | What comes back |
+|---|---|
+| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
+| `/manual permissions` | that page, whole, exactly as written |
+| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+
+A single word is read as a page **name**. More than one word is read as a **question**, and
+the question is answered out of every page at once, so you do not have to know which page
+a thing is written on before you can ask about it. The label over each answer — like
+`[permissions · What runs without asking]` — is the page you can open next with
+`/manual <name>`.
+
+Nothing here costs anything. The pages are inside aforge; reading them makes no model
+call, so `/manual` spends nothing and works with no key set up and with no connection.
+
+## aforge manual — reading the manual from the terminal, without a key and without spending anything
+
+The same manual is a command line, for the questions people ask **before** they have set
+anything up:
+
+```
+aforge manual                          every page, one per line, with what each is about
+aforge manual permissions              that page, printed as it is written
+aforge manual "who can see my files"   the sections that answer it, labelled with page and heading
+```
+
+It needs no API key, makes no model call, opens nothing and spends nothing — so
+`what is this`, `what does it cost` and `who can see my files` are all answerable on a
+machine where you have not decided yet whether to set aforge up. Quote a question so your
+shell hands it over as one piece.
+
+**Nothing is cut.** A page printed here is the whole page, however long it is — the limits
+the chat reads under are about what a model can be handed at once, and a terminal has no
+such limit. If a page is longer than your screen, pipe it: `aforge manual keys | less`.
+
+`aforge --help` lists it beside the other commands.
+
+## What /manual refuses — a page name that does not exist, and a question with no answer
+
+A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
+never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
+says there is no page by that name and prints the list of pages there are, and changes
+nothing. From the terminal `aforge manual no-such-page` does the same and **exits
+non-zero**, so a script can tell a missing page from a page it just read.
+
+A **question** the manual has nothing on is a different thing, and it is an answer rather
+than a failure: you are told
+
+```
+the manual has nothing on that, which usually means aforge does not do it
+```
+
+followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
+aforge does not do that" is a fact about aforge, not a broken command.
+
+The manual describes **this** conversation surface. It has no pages about anything else,
+and it will not answer out of what the model remembers about other programs.

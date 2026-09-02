@@ -16,6 +16,12 @@ const (
 	defaultMaxBytes = 50 * 1024 // 50KB
 )
 
+// ResultByteCap is [defaultMaxBytes] for tools that live outside this package.
+// A tool result is a tool result whatever it read, so anything else on the belt
+// that has to bound one binds itself to the number the read tool's own
+// description quotes rather than to a second copy of it that can drift away.
+const ResultByteCap = defaultMaxBytes
+
 // formatSize mirrors pi's truncate.js:formatSize. The boundary tests pin the
 // exact rendered strings, which the read/bash footers interpolate.
 func formatSize(bytes int) string {

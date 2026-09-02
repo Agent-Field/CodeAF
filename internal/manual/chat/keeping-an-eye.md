@@ -1,4 +1,4 @@
-# Keeping an eye on things — reminders, watches, rules and overnight work
+# Keeping an eye on things — reminders, watches, rules, overnight work, and checking on it later
 
 Some things you say are not work for right now. "Remind me at 6 to leave", "tell
 me when CI on main goes red", "every Monday draft the weekly update", "keep main
@@ -206,7 +206,7 @@ both stamps out to the second.
 if nothing ever picks it up it stops being watched a day after its moment
 anyway.
 
-## Tell me when something happens
+## Tell me when something happens — watch for it, and tell me when the build breaks
 
 "Tell me when CI on main goes red." "Tell me when the docs site stops returning
 200." "Tell me when the cert on api.example.com has under 14 days."

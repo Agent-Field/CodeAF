@@ -444,6 +444,12 @@ func (a *app) deckItems() []deckItem {
 		add("task model", strings.TrimSpace(node.model), deckActNone)
 	}
 	add("served", strings.TrimPrefix(a.servedRider(), " · "), deckActNone)
+	if a.searchStatus != nil {
+		// The callback is asked only when the sheet or /status is built, never on
+		// the frame clock. That keeps this live fact honest without making a
+		// config-file read part of painting the terminal.
+		add("search", a.searchStatus(), deckActNone)
+	}
 
 	for _, part := range a.telemetry(hudWide) {
 		// The crew's segment is the word alone and this page already carries the

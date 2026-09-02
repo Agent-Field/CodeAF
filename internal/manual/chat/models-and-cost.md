@@ -411,7 +411,10 @@ answers wins:
 2. `AFORGE_MODEL` / `AFORGE_PLAN_MODEL` in the environment;
 3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
    the **worker** class, the same row a task handed off in conversation rides;
-4. what the build ships with.
+4. **your crew again, through an older class**, when your profile was set before a class
+   existed — the worker class inherits the small-work class it was split out of, and the
+   run says it did;
+5. what the build ships with.
 
 So `--model` is one voice of four rather than the only one. This was not always true: until
 recently a run outside the chat read only the flag and the environment, and a crew set here
@@ -427,6 +430,73 @@ Two details worth knowing. A crew answers only once you have actually set one �
 nobody has touched takes the build's default rather than reading its own shipped values back
 as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
 the run plans on that model at that level, the same as it does here.
+
+## Why does my run say inherited — my crew is older than the worker class
+
+The worker class arrived after the other four. A crew set before it exists on disk as four
+classes with no worker among them, so a run has no worker row of its own to read. It does
+**not** fall back to the shipped default: it takes the class the worker was split out of —
+**small work**, the row that used to do this job — and it tells you, in one line under the
+models line:
+
+```
+models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
+your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+```
+
+`inherited` beside the class means exactly that: **the model came from your crew, but from a
+row you did not write.** The line is said once, when the run opens, and never again — not on
+every call.
+
+The same thing happens in the conversation, where there is no models line to carry the word —
+see "Why is my task running on a model I did not pick".
+
+To end it, set the crew again with `/crew frugal`, `/crew balanced` or `/crew max`, which
+writes all five classes including the worker, or pin the worker row alone in `/settings` →
+Providers. Either one, and the next run reads `crew frugal` with no second line.
+
+A crew set with this build already pins every class, so this only ever appears on a profile
+older than the class. And it is only for a row you never wrote: a row you **emptied on
+purpose** means "follow the conversation", which a run outside the chat has no conversation
+for, so that falls to the build's default the way it always has.
+
+## Why is my task running on a model I did not pick — inherited work seat in the conversation
+
+Tasks you hand off in a conversation run on the **worker** class, not on the model you are
+talking to. If your crew was set before that class existed, you have no worker row — so the
+work takes the class the worker was split out of, **small work**, and the thread tells you
+once, the first time a task starts:
+
+```
+your crew was set before the work seat existed · it is running on your small work model until you pick a crew again
+```
+
+**It is said once per session**, when work actually starts, and never per task or per part.
+Twenty tasks in one sitting is one line. Start aforge again tomorrow with the same profile and
+you get it again — it is true until you answer it.
+
+`/crew` shows the same fact about the row itself, under the three presets:
+
+```
+your work seat is inherited from small work — picking one writes it
+```
+
+**To end it, pick any crew** — `/crew frugal`, `/crew balanced`, `/crew max`, or the chooser
+that bare `/crew` opens. Every preset writes all five classes including the worker, so the
+line stops on both surfaces at once. You can also pin the worker row on its own in
+`/settings` → Providers.
+
+Three things this is **not**:
+
+- It is not the model you talk to. That one is on the status line and only `/model` moves it.
+- It is not a row you emptied. A worker row you cleared on purpose means "follow the
+  conversation", and a task then rides the model you are talking to — that is an answer, and
+  nothing is said about it.
+- It is not a fresh install. A profile that has never named any model runs this build's own
+  choice for each class, silently, the way it always has.
+
+The word `inherited` is the same word `aforge do` prints beside the model on its `models:`
+line, so the two surfaces are telling you about one thing.
 
 ## What are the six models — the one you talk to and the five crew seats
 
@@ -466,7 +536,8 @@ status line shows the chat model on the left and `crew max` — or `crew balance
 `crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
 on the right. That segment is a setting, not a measurement, so it is among the first things
 a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
-width. A session opened without a profile has no crew and shows no `crew` segment at all.
+width. The one session with no `crew` segment at all is a **remote** one opened with
+`--host`: that crew lives on the other machine.
 
 ## Asking a class to think harder — a level on a class value
 
@@ -665,6 +736,18 @@ Two things it deliberately does not do:
 
 Standing items never take this posture, whatever the session that set them up was started
 with. They fire on their own clock long after your run ended, and the crew answers for them.
+
+## What temperature does aforge use — sampling settings like temperature, top-p and seed
+
+**None of its own.** No call aforge makes sets `temperature`, `top_p`, `top_k`, a seed
+or any other sampling knob — the request simply omits them, and the provider's own
+default answers. OpenRouter passes an absent sampling parameter through as absent rather
+than substituting a value of its own, so what you get is whatever the endpoint's model
+ships with.
+
+There is no setting and no flag to change this. If a reply reads as too predictable or
+too wild, the dials aforge does have are the model itself and how hard it thinks (the
+effort rungs below).
 
 ## Reasoning effort — making the model think harder or faster
 
@@ -1369,8 +1452,9 @@ crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
 the head of the telemetry beside the model, and among the first a narrow row gives up; the
-`crew` line here and on the phone's status sheet is the full reading. A session opened
-without a profile directory has no crew to read and gets no `crew` line or segment at all.
+`crew` line here and on the phone's status sheet is the full reading. A **remote** session
+opened with `--host` has no crew of its own to read — it is the other machine's — and gets
+no `crew` line or segment at all.
 
 Two things differ deliberately from the status line on screen:
 

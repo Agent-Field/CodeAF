@@ -15,22 +15,26 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
-// decide a request's economics without ever performing I/O on the hot path.
+// decide a request's economics without ever performing I/O on the hot path —
+// and minus Temperature: an absent sampling parameter is omitted upstream and
+// the provider's own default applies, so the field is absent rather than
+// carried and always sent (withoutSampling covers the SDK's own loop, which
+// injects one).
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
 type Config struct {
-	APIKey      string
-	BaseURL     string
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	Timeout     time.Duration
+	APIKey    string
+	BaseURL   string
+	Model     string
+	MaxTokens int
+	Timeout   time.Duration
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
@@ -215,14 +219,13 @@ func (c *Client) SetAPIKey(key string) error {
 	var base *ai.Client
 	if key != "" {
 		built, err := ai.NewClient(&ai.Config{
-			APIKey:      key,
-			BaseURL:     c.config.BaseURL,
-			Model:       c.config.Model,
-			Temperature: c.config.Temperature,
-			MaxTokens:   c.config.MaxTokens,
-			Timeout:     c.config.Timeout,
-			SiteURL:     AppURL,
-			SiteName:    AppName,
+			APIKey:    key,
+			BaseURL:   c.config.BaseURL,
+			Model:     c.config.Model,
+			MaxTokens: c.config.MaxTokens,
+			Timeout:   c.config.Timeout,
+			SiteURL:   AppURL,
+			SiteName:  AppName,
 		})
 		if err != nil {
 			return err
@@ -293,7 +296,21 @@ func (c *Client) ExecuteToolCallLoop(
 	if base == nil {
 		return nil, nil, ErrNoAPIKey
 	}
-	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
+	// The SDK builds every round's request with its configured temperature —
+	// its config supplies one even when nobody asked — so the option that
+	// undoes the injection goes on LAST, after anything a caller passed: a
+	// sampling decision this adapter has promised not to make.
+	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, append(options, withoutSampling)...)
+}
+
+// withoutSampling removes the one sampling parameter the SDK's request
+// builders always set. The SDK is read-only here and its temperature cannot
+// be configured AWAY — a zero would be sent as zero — so the answer is an
+// option that takes the field back off, leaving the provider's own default
+// to answer. Everything else the SDK injects stays.
+func withoutSampling(request *ai.Request) error {
+	request.Temperature = nil
+	return nil
 }
 
 // maxResponseBytes bounds what one completion may be believed to be. A
@@ -591,10 +608,10 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 		Messages: messages,
 		Model:    c.config.Model,
 	}
-	// Temperature is always sent: an operator who configured zero wants zero,
-	// not whatever the endpoint happens to default to.
-	temperature := c.config.Temperature
-	request.Temperature = &temperature
+	// NO SAMPLING PARAMETER IS SET, here or anywhere else: an absent
+	// temperature is omitted upstream and the provider applies its own
+	// default, which is the behavior every call through this adapter wants —
+	// nothing here chooses a temperature for somebody else's model.
 	if c.config.MaxTokens > 0 {
 		maxTokens := c.config.MaxTokens
 		request.MaxTokens = &maxTokens
@@ -998,12 +1015,22 @@ func (c *Client) completeWithMessagesStreaming(
 	if streamWatchFrom(ctx).speaking() {
 		phase.enter(PhaseConnecting, "")
 	}
-	// THE HEDGE, AND THE ONE PLACE IT IS DECIDED (hedge.go). A call the lane
-	// router is watching runs as a race of one or two arms, each of which is
-	// this same function on a child context; a call it is not watching — which
-	// is every call in a build where nothing is wired in — falls straight
-	// through to the loop below, byte for byte as it was.
-	if race, raced := c.raceFor(ctx, observer); raced {
+	// THE CONTROLLER, ON EVERY CALL, AND THE ONE PLACE IT IS BUILT (hedge.go).
+	//
+	// Every token-generating call that goes through this function is watched by
+	// one controller — with or without a routing choice, with or without an
+	// alternative, whatever the role. The race with one arm is still a race: it
+	// observes, it reports, and it can act; what a cold ledger costs is an act
+	// of [control.Report] rather than one of [control.Hedge], and never the
+	// absence of a clock. The old gate asked the router for an opinion first,
+	// so the case that most needed a deadline — a model nobody has measured —
+	// was the one case that got none, and a turn waited three minutes.
+	//
+	// A build with no controller installed falls straight through to the loop
+	// below, byte for byte as it was: that is the legal empty state
+	// `internal/lane`'s seam documents, and each arm of a race reaches this
+	// same line on a child context and passes it for the same reason.
+	if race, watched := c.raceFor(ctx, observer, lanes.Controller()); watched {
 		return race.run(ctx, messages, options...)
 	}
 	began := c.clock()
@@ -1080,8 +1107,14 @@ func (c *Client) completeWithMessagesStreaming(
 	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
 	// lineage's widest — no chunk has named a serving endpoint yet — and
 	// narrows to the lane's own the moment one does, below.
-	stall := newStallWatch(cutStream, c.streamWall(c.modelFor(request), ""))
+	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""))
 	defer stall.stop()
+	// THE MOMENT THE ENDPOINT OWES AN ANSWER is the moment this arm's wait
+	// really began, and it is taken from the reading above rather than from a
+	// clock read of this seam's own: the controller runs on the world's clock
+	// (hedge.go's waitNow) and a measurement seam a test has scripted must not
+	// be spent on bookkeeping.
+	watch.opened(waitNow())
 	// THE ENDPOINT HAS ACCEPTED THE REQUEST AND OWES AN ANSWER, which is a
 	// different wait from the handshake before it and the only one a hedge
 	// deadline belongs to. The consequence rides with it when there really is
@@ -1090,10 +1123,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// about the machinery (phase.go).
 	if watch.speaking() {
 		deadline, alt := watch.consequence()
-		if alt == "" || deadline <= 0 {
+		if alt == "" || deadline.IsZero() {
 			phase.firstWord(time.Time{}, "")
 		} else {
-			phase.firstWord(began.Add(deadline), strings.ToLower(alt))
+			phase.firstWord(deadline, strings.ToLower(alt))
 		}
 	}
 	// And the degeneration guard, unless this call has it switched off. It is
@@ -1137,6 +1170,19 @@ func (c *Client) completeWithMessagesStreaming(
 	var split answerSplit
 	finishReason := ""
 	thinking := false
+	// thoughtBegan is when this run of reasoning started, and it is held so that
+	// how long the whole phase lasted can be FOLDED BACK when the first word of
+	// answer ends it.
+	//
+	// A DURATION MODEL THAT IS NEVER MEASURED IS A PRIOR FOREVER. The controller
+	// judges a run of thought against how long this model's thinking usually
+	// lasts, and that belief is only worth having if the finished ones teach it:
+	// without this, a model that deliberates for a minute by design and one that
+	// has hung look alike for as long as the prior is wide.
+	var thoughtBegan time.Time
+	// The rung it was asked at, resolved once: how long a model deliberates is a
+	// property of the model AND of the effort it was told to spend.
+	effortRung := c.recordedEffort(c.modelFor(request), knobsFrom(ctx))
 	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
 	// accumulation is quadratic in the length of a single message, which costs
 	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
@@ -1158,7 +1204,13 @@ func (c *Client) completeWithMessagesStreaming(
 		// exactly the difference between a slow lane and a dead path.
 		decoder.alive = func() {
 			stall.alive()
-			watch.heartbeat()
+			// A BEAT IS PROOF ABOUT THE PATH AND ABOUT NOTHING ELSE. It never
+			// resets the silence clock: a clock it reset would be a clock a
+			// router could hold open forever by saying nothing in a well-formed
+			// way. It is reported AS a beat, in the same reading the words and
+			// the thoughts arrive in, so the controller can tell a dead path
+			// from a slow lane without a second door.
+			watch.note(control.Reading{At: waitNow(), Beat: true})
 		}
 	}
 	// lastWrite and widestGap watch the same deltas the stall guard does, for
@@ -1297,16 +1349,30 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 				lastWrite = now
 				stall.progress()
-				// AND THE SAME PROGRESS DRIVES THE LANE WATCH: the drift test
-				// is over the gaps between exactly these deltas, and an arm of
-				// a race commits on how many of them it has delivered.
+				// AND THE SAME PROGRESS IS ONE READING FOR THE CONTROLLER.
 				//
-				// IT IS TOLD WHICH OF THEM A PERSON CAN READ. A token of answer
-				// is text on the screen; a token of thought is billed, streamed
-				// work that shows nothing — and the watch's commitment rule is
-				// about what would be taken away from somebody, so it counts
-				// only the first (internal/lane's watch.go).
-				watch.token(answerText != "")
+				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
+				// text on the screen and is the only thing that resets the
+				// deadline; a token of thought — or a fragment of a call being
+				// assembled — is billed, streamed work that shows nothing, so
+				// it keeps the stream alive and moves the phase without
+				// counting as progress a person could watch disappear. A
+				// reasoning delta reported as a first token is what let a stall
+				// sixty seconds into a run of thought wait on a transport bound
+				// two and a half minutes away.
+				//
+				// AND WHAT COUNTS AS ANSWER IS THE SPLIT'S ANSWER, not the
+				// channel the bytes arrived on (answer.go). A model whose
+				// working comes fenced inside `content` is THINKING, so its
+				// deltas are HIDDEN to the controller: reading them as visible
+				// would reset the very clock that is supposed to be running
+				// through a run of thought. The split decides answer from
+				// working; this decides waiting.
+				visible, hidden := 0, 1
+				if answerText != "" {
+					visible, hidden = 1, 0
+				}
+				watch.note(control.Reading{At: waitNow(), Visible: visible, Hidden: hidden})
 				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
 				// only thing on the wire that can tell a person the difference
 				// between a model thinking and a model writing. Only the arm
@@ -1328,6 +1394,19 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 			}
 			if answerText != "" {
+				if thinking {
+					// THE FIRST WORD OF ANSWER IS WHAT ENDS A THOUGHT, and it is
+					// the only thing that does: a phase that ends with the stream
+					// is a phase that never finished, and a run of thought that
+					// was cut off is not evidence about how long thinking takes.
+					//
+					// IT IS THE SPLIT'S FIRST WORD OF ANSWER (answer.go), not the
+					// first byte on the content channel: a model that fences its
+					// working inside `content` is still thinking, and closing the
+					// phase on that byte would teach the duration clock that this
+					// model deliberates for no time at all.
+					lanes.NoteThought(c.modelFor(request), effortRung, c.clock().Sub(thoughtBegan), c.clock())
+				}
 				thinking = false
 				content.WriteString(answerText)
 				observer(StreamEvent{Kind: StreamDelta, Delta: answerText, Session: session})
@@ -1357,7 +1436,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// ride the event so the session can replay it as assistant metadata.
 			if choice.Delta.thinking() {
 				if !thinking {
-					thinking = true
+					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
 				}
 				events, count := choice.Delta.reasoningEvents()
@@ -1377,7 +1456,12 @@ func (c *Client) completeWithMessagesStreaming(
 			// would be handing the endpoint back a message it never sent.
 			if workingText != "" {
 				if !thinking {
-					thinking = true
+					// AND IT OPENS THE DURATION CLOCK'S PHASE exactly as a
+					// reasoning field does. How long a model deliberates is a
+					// property of the model, not of which channel its provider
+					// put the deliberation on, so a fenced thought is timed and
+					// folded back like any other (answer.go, and the close above).
+					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})

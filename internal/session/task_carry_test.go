@@ -16,13 +16,14 @@ package session
 
 import (
 	"context"
-	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 )
 
 // pieceOf admits one part under a node and hands back the row. It is the shape
@@ -209,5 +210,59 @@ func TestTheBackgroundAfterClockTravelsOntoARunsNode(t *testing.T) {
 	t.Cleanup(func() { _ = child.Close() })
 	if got := child.config.BashBackgroundAfterSeconds; got != 17 {
 		t.Fatalf("the run's node inherited a %d-second clock, want 17", got)
+	}
+}
+
+// V7: both production child constructors copy the live pair by value. The
+// copied interface must retain the options function, so a setting changed
+// after every child exists moves all of their next resolutions together.
+func TestTheLiveSearchPairTravelsOntoEveryKindOfChild(t *testing.T) {
+	opts := search.Options{}
+	searchProvider, searchFetcher := search.Live(func() search.Options { return opts })
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SearchProvider = searchProvider
+		config.SearchFetcher = searchFetcher
+	})
+
+	worker, node := workerFor(t, session, taskSpec{
+		title: "the whole job", brief: "b", acceptance: "a", depth: 1,
+	})
+	piece := pieceOf(t, session.graph(), node, worker, "one part of it")
+	part, err := worker.newTaskAgent(context.Background(), t.TempDir(), piece, "")
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a part's worker: %v", err)
+	}
+	t.Cleanup(func() { _ = part.Close() })
+
+	exec := &orchestrateExec{agent: session, id: "r1"}
+	runChild, err := exec.newChild(t.TempDir(), orchestrate.Node{ID: "n1", Goal: "g"})
+	if err != nil {
+		t.Fatalf("the production constructor refused to build a run's node: %v", err)
+	}
+	t.Cleanup(func() { _ = runChild.Close() })
+
+	opts.ExaKey = "exa-live"
+	for name, child := range map[string]*Agent{
+		"task worker": worker,
+		"task part":   part,
+		"run child":   runChild,
+	} {
+		if got := child.config.SearchProvider.Name(); got != "exa" {
+			t.Errorf("%s search stayed on %q after the parent setting changed", name, got)
+		}
+		if got := child.config.SearchFetcher.Name(); got != "exa-fetch" {
+			t.Errorf("%s fetch stayed on %q after the parent setting changed", name, got)
+		}
+	}
+
+	opts.Provider = "duckduckgo"
+	for name, child := range map[string]*Agent{
+		"task worker": worker,
+		"task part":   part,
+		"run child":   runChild,
+	} {
+		if got := child.config.SearchProvider.Name(); got != "duckduckgo" {
+			t.Errorf("%s did not follow the live pin: %q", name, got)
+		}
 	}
 }

@@ -54,6 +54,11 @@ func (j jinaSearch) Search(ctx context.Context, query string, limit int) ([]Resu
 	if query == "" {
 		return nil, fmt.Errorf("jina-search: empty query")
 	}
+	if !j.Available(j.opts) {
+		// An explicit pin wins even when its key is absent, so answer that
+		// choice directly instead of making an unauthenticated vendor call.
+		return nil, ErrNoAPIKey
+	}
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 

@@ -496,13 +496,13 @@ list, every search and every message from that instant.
 
 Two calls per message — plus one that is not per message at all: the background
 tidy, on the **small work** class, a few times a day at most while nobody is
-here. The two that ride every message are both on the cheapest of the four crew
+here. The two that ride every message are both on the cheapest of the five crew
 classes — the
 `reflex` class, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
 `mistralai/mistral-nemo`. Each goes out with a short
-prompt, a 200-token ceiling and temperature 0, and each is asked to answer in a
-few words of JSON.
+prompt and a 200-token ceiling, and each is asked to answer in a few words of
+JSON.
 
 **Neither is allowed to think**, and that is a request on the wire and not just
 an instruction in the prompt: the call carries the reasoning knob set to *off*,

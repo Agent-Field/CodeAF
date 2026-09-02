@@ -10,8 +10,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -400,51 +402,152 @@ func TestABundleThatFailsValidationIsAbsentFromTheListsAndLogged(t *testing.T) {
 	}
 }
 
-// Two mints racing produce two different versions or one version and one
-// refusal, and never two writers believing they own the same page. The exclusive
-// create is what makes that a kernel fact rather than a timing hope.
+// A crowd of mints racing from one version produces exactly one winner and a
+// refusal for everybody else, and never two writers believing they own the same
+// page — nor, which is the same fault wearing a different number, two versions
+// that both call v1 their parent. The gate one mint at a time holds is what
+// makes that a kernel fact rather than a timing hope.
+//
+// THE RACE IS RUN MANY TIMES, and it has to be. The hole this pins (#274) was a
+// window between two syscalls: [Store.write] links v2's record and then renames
+// v2's bundle into place, and for that instant v2 is a spent number to the count
+// and no version at all to the head. A writer the scheduler dropped in there
+// read "the head is still v1, the next number is 3" and minted a SECOND CHILD OF
+// v1. One round of eight writers walked into that window about twice in a
+// hundred, so the test that raced eight once went green all afternoon and named
+// the bug on somebody else's machine, under somebody else's full-tree run. The
+// crowd and the rounds together are what turn "sometimes, on a busy box" into
+// every run.
 func TestConcurrentMintsNeverShareAVersion(t *testing.T) {
+	const writers, rounds = 24, 100
+	for round := range rounds {
+		store := storeAt(t)
+		first, err := store.Mint(weekly(), "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var group sync.WaitGroup
+		var lock sync.Mutex
+		won, lost := 0, 0
+		for index := range writers {
+			group.Add(1)
+			go func() {
+				defer group.Done()
+				files := weekly()
+				files.Program = []byte("// writer " + string(rune('a'+index)) + "\n")
+				_, err := store.Mint(files, first.Hash, "one of a crowd at once")
+				lock.Lock()
+				defer lock.Unlock()
+				if err == nil {
+					won++
+					return
+				}
+				lost++
+				// A LOSER LOSES THE CLAIM, NEVER THE GATE. Twenty-four writers
+				// contending for one name drain in milliseconds, so nothing here
+				// comes close to mintGateBound — and if one of them were ever
+				// refused with ErrMintBusy the bound would be too mean for real
+				// contention, which is the thing this line is watching for.
+				if errors.Is(err, ErrMintBusy) {
+					t.Errorf("round %d: real contention was refused by the gate bound: %v", round, err)
+				}
+				if !errors.Is(err, ErrExists) && !strings.Contains(err.Error(), "moved on") {
+					t.Errorf("round %d: a losing writer was told something else: %v", round, err)
+				}
+			}()
+		}
+		group.Wait()
+		if won != 1 {
+			t.Fatalf("round %d: %d of %d writers minted a version (and %d were refused)", round, won, writers, lost)
+		}
+		versions, err := store.Versions("weekly-marketing")
+		if err != nil || len(versions) != 2 {
+			t.Fatalf("round %d: %d racing writers left %v: %v", round, writers, versions, err)
+		}
+		// The lineage is a line and not a tree. A writer that read a stale head
+		// while counting past a fresh claim leaves two versions naming one
+		// parent, which is the fault the count above can miss whenever the loser
+		// crashes into somebody else's number instead of its own.
+		lineage, err := store.Lineage("weekly-marketing")
+		if err != nil {
+			t.Fatalf("round %d: reading the lineage: %v", round, err)
+		}
+		children := make(map[int]int, len(lineage))
+		for _, record := range lineage {
+			children[record.ParentVersion]++
+			if children[record.ParentVersion] > 1 {
+				t.Fatalf("round %d: v%d is another version minted from v%d — the lineage forked",
+					round, record.Version, record.ParentVersion)
+			}
+		}
+		// Every version on disk is complete and loads. A loser that had renamed its
+		// staging directory into place would show up here.
+		for _, version := range versions {
+			if _, err := store.Load("weekly-marketing", version); err != nil {
+				t.Fatalf("round %d: v%d does not load: %v", round, version, err)
+			}
+		}
+	}
+}
+
+// A mint that cannot have the gate is REFUSED INSIDE THE BOUND, and it writes
+// nothing on the way out.
+//
+// The holder here is a second os.OpenFile of the same path. flock is per open
+// file description rather than per process, so this contends with Store.gated's
+// own handle exactly as another process would — which the test proves rather
+// than assumes: the mint below has to be refused, and it could only be refused
+// by a lock this test is holding.
+//
+// This is the scripted verification for the whole change: a blocking acquire
+// would sit here until the deferred unlock, and there is no unlock before the
+// assertion.
+func TestAMintRefusesRatherThanWaitForAGateSomebodyElseHolds(t *testing.T) {
 	store := storeAt(t)
 	first, err := store.Mint(weekly(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	const writers = 8
-	var group sync.WaitGroup
-	var lock sync.Mutex
-	won, lost := 0, 0
-	for index := range writers {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			files := weekly()
-			files.Program = []byte("// writer " + string(rune('a'+index)) + "\n")
-			_, err := store.Mint(files, first.Hash, "one of eight at once")
-			lock.Lock()
-			defer lock.Unlock()
-			if err == nil {
-				won++
-				return
-			}
-			lost++
-			if !errors.Is(err, ErrExists) && !strings.Contains(err.Error(), "moved on") {
-				t.Errorf("a losing writer was told something else: %v", err)
-			}
-		}()
+
+	gate, err := os.OpenFile(store.gatePath("weekly-marketing"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
 	}
-	group.Wait()
-	if won != 1 {
-		t.Fatalf("%d of %d writers minted a version (and %d were refused)", won, writers, lost)
+	defer gate.Close()
+	if err := filelock.Lock(gate, true, true); err != nil {
+		t.Skipf("this filesystem does not take an advisory lock, so there is no gate to hold: %v", err)
 	}
+	defer filelock.Unlock(gate)
+
+	files := weekly()
+	files.Program = []byte("// the one that finds the gate held\n")
+	started := time.Now()
+	_, err = store.Mint(files, first.Hash, "while somebody else holds the gate")
+	waited := time.Since(started)
+
+	if !errors.Is(err, ErrMintBusy) {
+		t.Fatalf("a mint against a held gate answered %v, want ErrMintBusy", err)
+	}
+	if waited >= mintGateBound+time.Second {
+		t.Fatalf("the refusal took %s, which is not inside the %s bound", waited, mintGateBound)
+	}
+	// A REFUSAL LEAVES NOTHING BEHIND. Not a second version, not a record whose
+	// bundle never landed, and not a staging directory: the gate is taken before
+	// anything is read, so a refused mint has not touched the store at all.
 	versions, err := store.Versions("weekly-marketing")
-	if err != nil || len(versions) != 2 {
-		t.Fatalf("eight racing writers left %v: %v", versions, err)
+	if err != nil || len(versions) != 1 || versions[0] != 1 {
+		t.Fatalf("the refused mint left %v: %v", versions, err)
 	}
-	// Every version on disk is complete and loads. A loser that had renamed its
-	// staging directory into place would show up here.
-	for _, version := range versions {
-		if _, err := store.Load("weekly-marketing", version); err != nil {
-			t.Fatalf("v%d does not load: %v", version, err)
+	entries, err := os.ReadDir(filepath.Join(store.Dir(), "weekly-marketing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), mintPrefix) {
+			t.Fatalf("the refused mint left %s behind", entry.Name())
+		}
+		if recorded, ok := recordVersion(entry.Name()); ok && recorded != 1 {
+			t.Fatalf("the refused mint claimed v%d", recorded)
 		}
 	}
 }
@@ -707,6 +810,31 @@ func TestMintRefusesABundleThatCouldNotRunAndLeavesNothingBehind(t *testing.T) {
 	entries, err := os.ReadDir(store.Dir())
 	if err == nil && len(entries) != 0 {
 		t.Fatalf("a refused mint left %d entries in the store", len(entries))
+	}
+}
+
+// A mint that names a parent for a subharness with no versions is refused after
+// it has taken that name's gate, and the gate is on no list.
+//
+// A DIRECTORY IS A SUBHARNESS WHEN IT HOLDS A VERSION, and that rule is what
+// lets [Store.gated] make a name's directory and its `.mint.lock` before it can
+// possibly know whether the mint will be allowed. The refusal spends no version
+// number either: the next mint is still v1.
+func TestARefusalAfterTheGateLeavesANameOnNoList(t *testing.T) {
+	store := storeAt(t)
+	_, err := store.Mint(weekly(), "sha256:nothing", "made from a version that is not there")
+	if err == nil || !strings.Contains(err.Error(), "no versions yet") {
+		t.Fatalf("a mint from a parent that was never written said %v", err)
+	}
+	if names, _ := store.Names(); len(names) != 0 {
+		t.Fatalf("the refused mint put %v on the list", names)
+	}
+	if versions, err := store.Versions("weekly-marketing"); err != nil || len(versions) != 0 {
+		t.Fatalf("the refused mint left %v: %v", versions, err)
+	}
+	minted, err := store.Mint(weekly(), "", "")
+	if err != nil || minted.Version != 1 {
+		t.Fatalf("the mint after the refusal is v%d: %v", minted.Version, err)
 	}
 }
 

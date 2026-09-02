@@ -1217,14 +1217,16 @@ type app struct {
 	// memory is the store the place reads and changes. It is optional because
 	// memory-off sessions must have no capability behind the place.
 	memory memoryStore
-	// searchStore is the conversation index the search place reads, and
-	// usageLedger is the file the spend place reads. Both are optional and both
-	// are absent rather than broken when they are: search says what it is for,
-	// and an empty ledger draws the spend place's own teaching.
-	searchStore SearchStore
-	usageLedger string
-	ledger      func(time.Time) ([]session.UsageLine, bool, bool)
-	archive     func(string, bool) error
+	// searchStore is the conversation index the search place reads, while
+	// searchStatus names the web plug the session's next call will use.
+	// usageLedger is the file the spend place reads. Each is optional and absent
+	// rather than broken when it is: search says what it is for, /status keeps no
+	// empty row, and an empty ledger draws the spend place's own teaching.
+	searchStore  SearchStore
+	searchStatus func() string
+	usageLedger  string
+	ledger       func(time.Time) ([]session.UsageLine, bool, bool)
+	archive      func(string, bool) error
 	// world is the walk of the machine THE SESSION RUNS ON, and farPlaces is the
 	// state root it was walked under. Nil and empty are this process's own disk,
 	// which is every local launch; over --host the door fills both and the places
@@ -1806,6 +1808,17 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
+	// crew is the profile's crew as this surface last read it, so the status
+	// line can name it without reading four settings rows off the disk on every
+	// frame (crew.go's [app.crewReading]).
+	crew crewReading
+	// workSeatSaid is whether this session has already asked whether its work
+	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
+	// SESSION and not about the profile: the line is a receipt for work that is
+	// starting now, said once where a person is already looking, and a surface
+	// that said it again per task — or per node of one task — would be the
+	// warning-on-every-call this whole mechanism refused headless (#311, #312).
+	workSeatSaid bool
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -2093,6 +2106,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		harn:                opts.Harnesses,
 		memory:              opts.Memory,
 		searchStore:         opts.Search,
+		searchStatus:        opts.SearchStatus,
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
@@ -5953,6 +5967,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// itself, and why it is typed rather than a card, is cachecmd.go.
 		return a.runCacheCommand(rest)
 
+	case "manual":
+		// Aforge's own manual, in the conversation, AS WRITTEN (manualcmd.go).
+		// It is an answer rather than a place for /status' reason — a person who
+		// asked a question about the product wants it where they can scroll back
+		// to it — and it is a lookup rather than a turn, so it makes no model
+		// call and spends nothing.
+		a.runManualCommand(rest)
+		return nil
+
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
@@ -7364,36 +7387,44 @@ func gitHead(dir string) (string, bool, bool) {
 	return branch, status != "", true
 }
 
-// readApproval is the gate's posture, or "" where there is no profile to ask.
+// approvalPosture is the gate's posture as the YOLO segment may state it: the
+// profile's own answer, read live, for a local session — and the engine's,
+// carried once on the welcome, for a remote one.
 //
-// The empty answer is deliberately not [config.DefaultToolApprovalMode]: a
-// surface booted without a profile (every test, and any embedding that wires
-// its own policy) has not been told the gate is open, and the YOLO segment's
-// whole law is that it appears only when somebody said so.
-func readApproval(profileDir string) string {
-	if strings.TrimSpace(profileDir) == "" {
-		return ""
-	}
-	return config.ToolApprovalModeAt(profileDir)
-}
-
-// approvalPosture is [readApproval] asked by this surface, live, for a local
-// session — and the engine's own answer, carried once on the welcome, for a
-// remote one.
+// THIS IS A SAFETY CLAIM AND IT MUST MATCH THE POSTURE IN FORCE. The segment is
+// drawn only when the gate is open (render.go's NEGATIVE-SPACE SAFETY), so its
+// ABSENCE is the claim that every tool call will be asked about — and the gate
+// it is claiming about is the one cmd/aforge built from
+// [config.ToolApprovalModeAt] on the very same profile directory (chatv3.go's
+// v3Policy). The two must be one reading, because a segment that is quiet over
+// an open gate is the surface telling somebody they will be asked before their
+// disk is written to, and then not asking.
 //
-// THIS MACHINE'S PROFILE IS NOT THE SESSION'S POSTURE over --host: the gate
-// that decides whether a tool runs without asking is the ENGINE's, read from
-// the profile on the engine's machine. A YOLO badge drawn from this laptop's
-// settings would be a safety claim about a machine nobody consulted, so a
-// remote session reads [app.hostApproval] instead of [readApproval] — the
-// same answer, asked of the right machine (internal/remote's wire.go
-// Welcome.ApprovalMode, set once at boot rather than re-read live, because
-// there is nothing on this side left to re-read).
+// IT WAS NOT ONE READING. This resolved through a helper that answered "" on an
+// empty [app.profileDir], on the reasoning that a surface booted without a
+// profile has not been told the gate is open. But AN EMPTY PROFILE DIRECTORY IS
+// THE NORMAL CASE, NOT THE ABSENT CASE: AFORGE_PROFILE_DIR is the rare export,
+// the empty string has always meant this process's own profile in the state
+// root ([config.ProfilePath]), and the policy the tools actually ran under read
+// that profile. So a person who had turned the asking off — the one posture
+// this segment exists to remind them of — was shown NOTHING on every ordinary
+// launch while their gate stood open (#322). The profile is read here the way
+// every other persisted row on this surface is read.
+//
+// THE HOSTED WINDOW IS STILL THE ONE ABSENCE. This machine's profile is not the
+// session's posture over --host: the gate that decides whether a tool runs
+// without asking is the ENGINE's, read from the profile on the engine's
+// machine. A YOLO badge drawn from this laptop's settings would be a safety
+// claim about a machine nobody consulted, so a remote session reads
+// [app.hostApproval] — the same answer, asked of the right machine
+// (internal/remote's wire.go Welcome.ApprovalMode, set once at boot rather than
+// re-read live, because there is nothing on this side left to re-read), and an
+// engine that carried none leaves the segment absent.
 func (a *app) approvalPosture() string {
 	if a.hosted() {
 		return a.hostApproval
 	}
-	return readApproval(a.profileDir)
+	return config.ToolApprovalModeAt(a.profileDir)
 }
 
 func errText(err error) string {

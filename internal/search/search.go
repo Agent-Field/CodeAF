@@ -24,8 +24,10 @@ package search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +126,10 @@ type Options struct {
 	// or a recording client in a test sets it here.
 	HTTPClient *http.Client
 }
+
+// ErrNoAPIKey is shared by keyed plugs so the tool, settings hint, and tests
+// all describe an unavailable pinned search with the same words.
+var ErrNoAPIKey = errors.New("no API key")
 
 // client is the client the plugs use: the caller's, or a shared default.
 //
@@ -292,6 +298,151 @@ func Resolve(opts Options) (Provider, Fetcher) {
 	return provider, fetcher
 }
 
+// Live returns a provider and fetcher that resolve again for every operation.
+// The first resolution decides whether each capability exists at all; built
+// binaries always have both, while an intentionally empty registry still
+// leaves the capability off the session's belt. The wrappers retain only the
+// options function, so a copy inherited by child work observes the same
+// settings as its parent.
+func Live(options func() Options) (Provider, Fetcher) {
+	if options == nil {
+		return nil, nil
+	}
+	provider, fetcher := Resolve(options())
+	if provider != nil {
+		provider = liveProvider{options: options}
+	}
+	if fetcher != nil {
+		fetcher = liveFetcher{options: options}
+	}
+	return provider, fetcher
+}
+
+type liveProvider struct {
+	options func() Options
+}
+
+func (p liveProvider) Name() string {
+	current, _ := Resolve(p.options())
+	if current == nil {
+		return ""
+	}
+	return current.Name()
+}
+
+func (p liveProvider) Search(ctx context.Context, query string, limit int) ([]Result, error) {
+	results, _, err := p.searchWithName(ctx, query, limit)
+	return results, err
+}
+
+func (p liveProvider) searchWithName(ctx context.Context, query string, limit int) ([]Result, string, error) {
+	current, _ := Resolve(p.options())
+	if current == nil {
+		return nil, "", errors.New("search is unavailable")
+	}
+	name := current.Name()
+	results, err := current.Search(ctx, query, limit)
+	return results, name, err
+}
+
+type liveFetcher struct {
+	options func() Options
+}
+
+func (f liveFetcher) Name() string {
+	_, current := Resolve(f.options())
+	if current == nil {
+		return ""
+	}
+	return current.Name()
+}
+
+func (f liveFetcher) Fetch(ctx context.Context, url string) (string, error) {
+	text, _, err := f.fetchWithName(ctx, url)
+	return text, err
+}
+
+func (f liveFetcher) fetchWithName(ctx context.Context, url string) (string, string, error) {
+	_, current := Resolve(f.options())
+	if current == nil {
+		return "", "", errors.New("page reading is unavailable")
+	}
+	name := current.Name()
+	text, err := current.Fetch(ctx, url)
+	return text, name, err
+}
+
+// SearchWithName runs one search and returns the plug chosen for that same
+// operation. Live providers implement the private method so resolving current
+// settings and naming the receipt share one snapshot; an ordinary Provider is
+// already one fixed plug and needs no extra machinery on its public interface.
+func SearchWithName(ctx context.Context, provider Provider, query string, limit int) ([]Result, string, error) {
+	if provider == nil {
+		return nil, "", errors.New("search is unavailable")
+	}
+	if live, ok := provider.(interface {
+		searchWithName(context.Context, string, int) ([]Result, string, error)
+	}); ok {
+		return live.searchWithName(ctx, query, limit)
+	}
+	name := provider.Name()
+	results, err := provider.Search(ctx, query, limit)
+	return results, name, err
+}
+
+// FetchWithName is SearchWithName for page reads. Its name is used only on a
+// failed receipt today, but it must still describe the fetcher that actually
+// ran when settings change while a request is in flight.
+func FetchWithName(ctx context.Context, fetcher Fetcher, url string) (string, string, error) {
+	if fetcher == nil {
+		return "", "", errors.New("page reading is unavailable")
+	}
+	if live, ok := fetcher.(interface {
+		fetchWithName(context.Context, string) (string, string, error)
+	}); ok {
+		return live.fetchWithName(ctx, url)
+	}
+	name := fetcher.Name()
+	text, err := fetcher.Fetch(ctx, url)
+	return text, name, err
+}
+
+// Status describes the search plug the same options would select now. It is
+// intentionally resolved from Options rather than from saved session state,
+// because both the status deck and the next call must move together.
+func Status(opts Options) string {
+	provider, _ := Resolve(opts)
+	if provider == nil {
+		return ""
+	}
+	name := provider.Name()
+	switch name {
+	case "exa":
+		if strings.TrimSpace(opts.ExaKey) == "" {
+			return name + " · key not set — searches fail"
+		}
+		return name + " · with your key"
+	case "jina-search":
+		if strings.TrimSpace(opts.JinaKey) == "" {
+			return name + " · key not set — searches fail"
+		}
+		return name + " · with your key"
+	case "firecrawl":
+		if strings.TrimSpace(opts.FirecrawlKey) != "" {
+			return name + " · with your key"
+		}
+		return name + " · keyless"
+	default:
+		return name + " · keyless"
+	}
+}
+
+// Failure spells a search failure once for the tool and for settings guidance
+// that quotes the exact answer a pinned, unconfigured plug will produce.
+func Failure(name string, err error) string {
+	return fmt.Sprintf("Search failed (%s): %v", name, err)
+}
+
 // autoSearch runs rungs 2 and 3 of the ladder: keyed-and-available first, the
 // zero-key default second.
 func autoSearch(providers []Provider, opts Options) Provider {
@@ -372,12 +523,14 @@ const (
 
 // RenderResults formats results for the agent: a compact numbered list of
 // "title — url" with the snippet indented under it, and a count footer so the
-// model can tell "these are all of them" from "these are the first few".
+// model can tell "these are all of them" from "these are the first few". The
+// footer also names the plug that answered so both the model transcript and
+// the compact tool receipt can report the same fact.
 //
 // limit is the caller's own cap, further clamped to [maxRendered].
-func RenderResults(results []Result, limit int) string {
+func RenderResults(results []Result, limit int, backend string) string {
 	if len(results) == 0 {
-		return "no results"
+		return namedSummary("no results", backend)
 	}
 	if limit <= 0 || limit > maxRendered {
 		limit = maxRendered
@@ -403,11 +556,53 @@ func RenderResults(results []Result, limit int) string {
 		}
 	}
 	if len(results) > len(shown) {
-		fmt.Fprintf(&b, "\n%d of %d results", len(shown), len(results))
+		fmt.Fprintf(&b, "\n%s", namedSummary(fmt.Sprintf("%d of %d results", len(shown), len(results)), backend))
 	} else {
-		fmt.Fprintf(&b, "\n%d result%s", len(shown), plural(len(shown)))
+		fmt.Fprintf(&b, "\n%s", namedSummary(fmt.Sprintf("%d result%s", len(shown), plural(len(shown))), backend))
 	}
 	return b.String()
+}
+
+func namedSummary(summary, backend string) string {
+	backend = strings.TrimSpace(backend)
+	if backend == "" {
+		return summary
+	}
+	return summary + " · " + backend
+}
+
+// ResultSummary returns the named count footer from rendered search output.
+// It accepts only the shapes RenderResults emits, which keeps an error or an
+// arbitrary final body line from becoming a misleading success receipt.
+func ResultSummary(rendered string) string {
+	lines := strings.Split(strings.TrimSpace(rendered), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	footer := strings.TrimSpace(lines[len(lines)-1])
+	parts := strings.Split(footer, " · ")
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" || !validResultCount(parts[0]) {
+		return ""
+	}
+	return footer
+}
+
+func validResultCount(summary string) bool {
+	if summary == "no results" {
+		return true
+	}
+	fields := strings.Fields(summary)
+	switch len(fields) {
+	case 2:
+		count, err := strconv.Atoi(fields[0])
+		return err == nil && count > 0 && (fields[1] == "result" || fields[1] == "results")
+	case 4:
+		shown, shownErr := strconv.Atoi(fields[0])
+		total, totalErr := strconv.Atoi(fields[2])
+		return shownErr == nil && totalErr == nil && shown > 0 && total >= shown && fields[1] == "of" && fields[3] == "results"
+	default:
+		return false
+	}
 }
 
 // RenderFetch formats fetched page text for the agent, capped, with the

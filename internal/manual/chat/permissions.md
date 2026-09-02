@@ -1,4 +1,4 @@
-# What runs without asking
+# What runs without asking, and who can see your files
 
 ## The question aforge asks before it runs a tool
 
@@ -282,7 +282,7 @@ setting must never be the one that opens the gate.
 tool gate that a stray export could widen to "allow everything" is a gate with a
 bypass.
 
-## Per-tool exceptions
+## Per-tool exceptions — how do I make it never touch a file, or never run a tool at all
 
 `tools.approval` overrides the blanket mode for named tools. It is the
 `/settings` row **"tool approvals"** — empty it reads `none`, filled it looks
@@ -320,7 +320,7 @@ are not separators, and neither are brace groups.
 A bash call whose command cannot be read degrades an allow to a **prompt**, with
 the rule `bash call with no readable command`. A deny or a prompt stands.
 
-## `--yolo`
+## `--yolo` — how do I let it run things without asking
 
 `aforge chat --yolo` and `aforge resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
@@ -416,7 +416,7 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## What is allowed without asking by default
+## What is allowed without asking by default — who can see my files, and what aforge can read without asking
 
 Some tools this build never had a reason to ask about are seeded as `allow`
 underneath whatever you wrote:
@@ -489,7 +489,8 @@ The whole list, by settings key:
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the
   secret beside it. These restrain nothing; they are refused because a key
   overwritten with something a model invented is a working account broken in a
-  way nothing on screen can show you.
+  way nothing on screen can show you. Search credentials written by you are read
+  again on the next search in the running conversation; no restart is needed.
 
 Everything else is fair game: which model does what, how the screen draws, how
 long the room stays quiet, where a search goes, which model draws your pictures.
@@ -505,10 +506,10 @@ conversation's own model (`model.talk`) is changed with `/model`, and the other
 role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — are
 bindings the running session holds rather than values in your profile, so
 neither `change_setting` nor the panel can write them. To send aforge's own
-auxiliary calls somewhere, set one of the four crew classes
-(`models.tiers.reflex`, `models.tiers.low`, `models.tiers.high`,
-`models.tiers.mastermind`), set all four at once with `models.crew`, or pin one
-role in `models.roles`.
+auxiliary calls somewhere, set one of the five crew classes
+(`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`,
+`models.tiers.high`, `models.tiers.mastermind`), set all five at once with
+`models.crew`, or pin one role in `models.roles`.
 
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.

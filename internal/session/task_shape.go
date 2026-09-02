@@ -87,11 +87,6 @@ const (
 	// essay, which the prompt spends a paragraph refusing.
 	taskShapeTokens = 1200
 
-	// taskShapeTemp is zero because A BRIEF IS A CONTRACT. The same request
-	// typed twice should shape the same way twice, and a person who re-ran a
-	// command to get a different brief would be gambling rather than working.
-	taskShapeTemp = 0
-
 	// The two bounds on what comes back. They are guards against a model that
 	// ignored the prompt's own limit, not a second attempt at stating it: the
 	// brief is generous because a long request legitimately earns a long brief,
@@ -194,7 +189,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 		// was never written.
 		response, callErr := a.client.CompleteWithMessages(
 			provider.WithRole(watchedShapeContext(ctx, watch), lane.RoleAuxiliary), messages,
-			ai.WithModel(call.Model), ai.WithTemperature(taskShapeTemp), ai.WithMaxTokens(taskShapeTokens))
+			ai.WithModel(call.Model), ai.WithMaxTokens(taskShapeTokens))
 		if callErr != nil || response == nil {
 			return unshaped(request)
 		}

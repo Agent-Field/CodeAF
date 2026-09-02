@@ -15,6 +15,7 @@
 //	~/.aforge/subharnesses/<name>/v2/
 //	~/.aforge/subharnesses/<name>/memory.md    the LIVE memory, written by remember()
 //	~/.aforge/subharnesses/<name>/last-run.json
+//	~/.aforge/subharnesses/<name>/.mint.lock   the gate one mint at a time holds
 //
 // THERE IS NO HEAD FILE. The head is the highest version present, which is the
 // rule internal/subharness/store.go states about its own pages and the reason it
@@ -25,9 +26,23 @@
 // the exclusive-create discipline this package inherited would have had nothing
 // to grip if the record lived under v2/. Written beside it, `v2.json` is exactly
 // the page the old store already minted this way: the first writer to link it
-// into place owns v2, a second writer racing it is told the name is taken and
-// mints v3, and the bundle directory is renamed into place only by the winner.
+// into place owns v2, a second writer racing it is told the name is taken —
+// refused, never shifted along to v3, for the reason [Store.write] gives — and
+// the bundle directory is renamed into place only by the winner.
 // See [Store.Mint].
+//
+// THE CLAIM IS NOT ON ITS OWN ENOUGH, and that is what `.mint.lock` is for. An
+// exclusive create refuses two writers who computed the SAME version number, and
+// two writers who read the store a moment apart do not: one of them counts past
+// a record whose bundle has not landed yet and mints a second child of the same
+// parent. [Store.gated] holds one writer at a time across the whole
+// read-check-claim so that cannot be read a moment apart, and the exclusive
+// create stays underneath it as the floor on a filesystem that will not lock.
+//
+// THE HOLD IS TAKEN UNDER A DEADLINE AND NEVER SIMPLY WAITED FOR. A mint that
+// finds the gate held for the whole of [mintGateBound] is refused with
+// [ErrMintBusy] rather than parked behind it, because a caller drawing to a
+// person can survive a refusal and cannot survive a wait — see [Store.gated].
 //
 // The store holds no cache. A bundle is small, read at launch and at dispatch,
 // and edited by hand often enough that a stale read would be the more expensive
@@ -77,12 +92,56 @@ const (
 	// name's directory never mistakes a half-written mint for a version, and it
 	// is removed by the minter whether the mint won its claim or lost it.
 	mintPrefix = ".mint-"
+
+	// gateFile is the file one mint at a time holds while it reads a name's
+	// versions and claims the next one — see [Store.gated]. It is dot-led like
+	// the staging directories beside it so that no scan of a name's directory
+	// mistakes it for a version, and it is CREATED ONCE AND NEVER REPLACED,
+	// because a lock over an inode somebody is about to rename away is two locks
+	// with one name.
+	gateFile = ".mint.lock"
+)
+
+const (
+	// mintGateBound is how long a mint tries for the gate before it refuses, and
+	// it is A BOUND RATHER THAN A WAIT for the reason [Store.gated] gives: a
+	// blocking file lock on a turn path is what silenced the wire for
+	// twenty-nine minutes in #264, and flock has no deadline to ask for.
+	//
+	// THE NUMBER COMES FROM THE STORE'S OWN TIMING, NOT FROM TASTE. One writer
+	// holds the gate for a read of a small directory and two file operations;
+	// TestConcurrentMintsNeverShareAVersion drains a whole queue of twenty-four
+	// writers contending for one name in single-digit milliseconds per round. Two
+	// seconds is some hundreds of times the worst contention this store has ever
+	// been measured under, so real contention is never refused here — the only
+	// thing that is, is a gate somebody is holding open, which is a fault and not
+	// a queue. That test asserts the distinction rather than trusting it.
+	mintGateBound = 2 * time.Second
+
+	// mintGateFirstPause and mintGateMaxPause are the poll between attempts. The
+	// acquire is non-blocking and retried because a blocking one cannot be given
+	// a deadline; it starts fast and backs off so that an ordinary handover costs
+	// almost no latency, while a gate held for the whole bound costs a couple of
+	// thousand cheap syscalls rather than tens of thousands. Polling is what the
+	// bound costs: it hands a lock over in about a millisecond where the kernel
+	// would have done it at once, which is a rounding error against a mint and
+	// nothing at all against a freeze.
+	mintGateFirstPause = 100 * time.Microsecond
+	mintGateMaxPause   = time.Millisecond
 )
 
 // ErrNotFound is what a read answers for a subharness or a version that was
 // never minted. Callers tell "no such subharness" from "the disk is broken", so
 // it is a sentinel rather than a formatted string.
 var ErrNotFound = errors.New("substore: not found")
+
+// ErrMintBusy is what [Store.Mint] answers when another mint held the gate for
+// the whole of [mintGateBound]. It is A REFUSAL AND NOT A FAILED WRITE: the
+// store was never read and nothing was staged, so a caller with time to spare
+// may simply mint again, and a caller on a turn path can say so and carry on.
+// It is a sentinel because telling that apart from a real write failure is the
+// entire reason the acquire is bounded.
+var ErrMintBusy = errors.New("substore: another mint is in flight")
 
 // ErrExists is what [Store.Mint] answers when the version it was told to write
 // is already on disk. It is the loud half of the exclusive create: a mint that
@@ -256,6 +315,10 @@ func (s *Store) VersionDir(name string, version int) string {
 
 func (s *Store) recordPath(name string, version int) string {
 	return filepath.Join(s.nameDir(name), versionPrefix+strconv.Itoa(version)+versionSuffix)
+}
+
+func (s *Store) gatePath(name string) string {
+	return filepath.Join(s.nameDir(name), gateFile)
 }
 
 func (s *Store) memoryPath(name string) string {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
@@ -183,18 +184,18 @@ const (
 	// It is the one row whose value may carry a LEVEL as well as a model
 	// (`moonshotai/kimi-k3:low`), because it is the one row where how hard the
 	// model thinks is the point. Every tier row accepts the notation —
-	// [ValidateTierValue] is the same gate on all four — but this is the one the
+	// [ValidateTierValue] is the same gate on all five — but this is the one the
 	// shipped crew writes it into.
 	KeyTierMastermindModel = "models.tiers.mastermind"
-	// KeyCrew is the four tiers answered as ONE DECISION. Nobody arrives wanting
-	// to name four model ids; they arrive wanting to spend pennies, or to spend
+	// KeyCrew is the five tiers answered as ONE DECISION. Nobody arrives wanting
+	// to name five model ids; they arrive wanting to spend pennies, or to spend
 	// what it takes. So the row takes one word — frugal, balanced, max — and
-	// writes all four tier rows from it.
+	// writes all five tier rows from it.
 	//
-	// IT IS NOT STORED. The row's reading is DERIVED from the four live tier
+	// IT IS NOT STORED. The row's reading is DERIVED from the five live tier
 	// values: they match a preset and it says so, or they do not and it says
-	// custom. A stored word would be a claim about four other rows that anybody
-	// could falsify by editing one of them, and a settings sheet that told you
+	// custom. A stored word would be a claim about five other rows that any one
+	// of them could falsify by being edited, and a settings sheet that told you
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
 	KeyCrew = "models.crew"
@@ -836,7 +837,7 @@ const (
 	ModelTierMastermind = "mastermind"
 )
 
-// ModelTiers lists the four tier words in the order a settings surface renders
+// ModelTiers lists the five tier words in the order a settings surface renders
 // them, cheapest first. It is [roles.Tiers] spelled as the words on disk, and
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
@@ -901,7 +902,7 @@ const SearchProviderAuto = "auto"
 // new plug needs a line here to be pinnable — which is the right cost, because
 // a plug nobody can name in the sheet is still reachable through auto.
 // jina-search is named here too so every registered search plug is pinnable.
-var SearchProviders = []string{SearchProviderAuto, "exa", "firecrawl", "jina-search", "duckduckgo"}
+var SearchProviders = []string{SearchProviderAuto, "firecrawl", "duckduckgo", "exa", "jina-search"}
 
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
@@ -1510,7 +1511,7 @@ func (s *Settings) build() []Setting {
 			Label: "searching", Choices: SearchProviders,
 			Hint: "where a web search goes. auto uses the best back end your keys reach and " +
 				"falls back to one that needs none, so search works with nothing set. " +
-				"A change lands on the next session.",
+				"A change lands on the next search.",
 			read:  func() string { return SearchProviderAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
 		},
@@ -1521,7 +1522,7 @@ func (s *Settings) build() []Setting {
 		// it as it always has (apikey.go's resolution order), and a write lands
 		// on the RUNNING session through the surface's Applied hook rather than
 		// waiting for the next launch — the row this was modelled on says "on the
-		// next session" because search is an accessory; this is the conversation.
+		// next search" because search reads live; this is the conversation.
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
@@ -1535,7 +1536,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyExaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "exa key", Env: "EXA_API_KEY", EmptyLabel: "not set",
 			Hint: "an exa.ai key, which buys better results and page fetches than the free " +
-				"back end. Optional — search works without it. A change lands on the next session.",
+				"back end. Optional — search works without it. A change lands on the next search.",
 			read:  func() string { return maskCredential(ExaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyExaKey, raw, ExaKeyAt(dir)) },
 		},
@@ -1543,7 +1544,7 @@ func (s *Settings) build() []Setting {
 			Key: KeyFirecrawlKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "firecrawl key", Env: "FIRECRAWL_API_KEY", EmptyLabel: "not set",
 			Hint: "a firecrawl.dev key, for when the free monthly allowance runs out. " +
-				"Optional — search works without it. A change lands on the next session.",
+				"Optional — search works without it. A change lands on the next search.",
 			read: func() string { return maskCredential(FirecrawlKeyAt(dir)) },
 			write: func(raw string) error {
 				return writeCredential(dir, KeyFirecrawlKey, raw, FirecrawlKeyAt(dir))
@@ -1554,7 +1555,7 @@ func (s *Settings) build() []Setting {
 			Label: "jina key", Env: "JINA_API_KEY", EmptyLabel: "not set",
 			Hint: "a jina.ai key. It buys nothing but headroom: page fetches already work " +
 				"unauthenticated and the key only raises the rate ceiling. " +
-				"A change lands on the next session.",
+				"A change lands on the next search.",
 			read:  func() string { return maskCredential(JinaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
 		},
@@ -2873,6 +2874,51 @@ func JinaKeyAt(profileDir string) string {
 	return credentialAt(profileDir, "JINA_API_KEY", KeyJinaKey)
 }
 
+// SearchOptionsAt is the one mapping from profile rows to the search layer's
+// input. Auto becomes an absent pin because the resolver treats absence as the
+// instruction to walk its ladder; credentials retain their environment-first
+// resolution from the rows above.
+func SearchOptionsAt(profileDir string) search.Options {
+	pin := SearchProviderAt(profileDir)
+	if pin == SearchProviderAuto {
+		pin = ""
+	}
+	return search.Options{
+		Provider:     pin,
+		ExaKey:       ExaKeyAt(profileDir),
+		FirecrawlKey: FirecrawlKeyAt(profileDir),
+		JinaKey:      JinaKeyAt(profileDir),
+	}
+}
+
+// SearchProviderHintAt explains what the searching row means right now. It is
+// recomputed when the sheet rebuilds after a write, so the row describes the
+// next search without turning every rendered frame into a config-file read.
+func SearchProviderHintAt(profileDir string) string {
+	opts := SearchOptionsAt(profileDir)
+	status := search.Status(opts)
+	spoken := strings.Replace(status, " · ", ", ", 1)
+	if opts.Provider == "" {
+		if strings.HasSuffix(status, " · keyless") {
+			return "now " + spoken + " — set search.exaKey or search.firecrawlKey to raise it"
+		}
+		return "now " + spoken
+	}
+	if strings.HasSuffix(status, " · key not set — searches fail") {
+		key := ""
+		switch opts.Provider {
+		case "exa":
+			key = KeyExaKey
+		case "jina-search":
+			key = KeyJinaKey
+		}
+		if key != "" {
+			return fmt.Sprintf("%s is pinned but %s is not set — every search answers %q. Choose auto, or set the key.", opts.Provider, key, search.Failure(opts.Provider, search.ErrNoAPIKey))
+		}
+	}
+	return spoken
+}
+
 // GoogleOAuthClientAt resolves the Google registration: the environment first,
 // then the sheet, then the registration this build ships with
 // (connect_defaults.go, which states why a desktop client's secret may be
@@ -3271,14 +3317,25 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // TierModelAt resolves the model one auxiliary tier runs on. Empty means the
 // tier follows the session's own model, which is internal/roles' floor.
 //
-// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all four tiers. A profile that has
+// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all five tiers. A profile that has
 // never held the key gets this build's own choice for that class of work
-// ([DefaultReflexModel] and its three neighbours), because a person who never
+// ([DefaultReflexModel] and its four neighbours), because a person who never
 // opened the sheet should not have the whole crew answering on the most
 // expensive model in the build — which is what following the conversation means
 // once there is a mastermind tier in it. A row somebody emptied ON PURPOSE reads
 // empty and follows the conversation, because refusing to let them turn it off
 // would make a default into a rule.
+//
+// AND UNSET HAS TWO READINGS OF ITS OWN, which is the rung this function learned
+// in #312. A key that was never held on a profile OLDER THAN ITS SEAT is not a
+// person declining to answer — it is a crew chosen before the row existed — so
+// the read climbs [TierSeatAt], where an unheld key asks the row it was split
+// out of first ([tierLineage]) and only a profile with nothing above it reaches
+// the build's choice. Every caller of this function therefore reads the model a
+// conversation ACTUALLY runs that class of work on: the role map cmd/aforge
+// builds, the settings sheet's five rows, and [CrewAt], which is why the crew
+// word and the work cannot disagree. A caller that also needs to say WHERE the
+// answer came from asks [TierSeatAt] for the seat instead of this for the model.
 //
 // The reflex tier was the first row written this way, for the reason its key
 // still states: a call made twice a turn is a bill nobody agreed to. The other
@@ -3289,13 +3346,7 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
 // settings surface wants the string the person wrote and a request wants the two
 // halves apart.
-func TierModelAt(profileDir, tier string) string {
-	key := tierKeyFor(tier)
-	if value, ok := persistedString(profileDir, key); ok {
-		return strings.TrimSpace(value)
-	}
-	return defaultTierModel(tier)
-}
+func TierModelAt(profileDir, tier string) string { return TierSeatAt(profileDir, tier).Model }
 
 // tierKeyFor is the settings key one tier word writes. It is total over
 // [ModelTiers] and degrades to the low row, which is what an unknown word has

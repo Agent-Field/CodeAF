@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -68,6 +69,24 @@ func execute() (code int) {
 	// opened is a process whose logs directory can be removed on Windows and in
 	// a test's temporary home.
 	defer calllog.Close()
+	// AND THE BELIEF WRITER RUNS FOR THE WHOLE PROCESS, beside the log above and
+	// stopped at the same one exit.
+	//
+	// It is here rather than in a session because every command in this binary
+	// measures lanes — `do` and a subharness never build a session at all — and
+	// because it is the goroutine that owns the belief file's EXCLUSIVE LOCK.
+	// Taking that lock anywhere a request can be waiting behind it is issue
+	// #264, which cost a person twenty-nine silent minutes; `internal/lane`
+	// runs no goroutine of its own by design, so somebody has to run this one
+	// and this is the process's own line. The flush is registered after the
+	// log's close and therefore runs before it, so a compaction that had to be
+	// deferred still has somewhere to say so.
+	beliefs, stopBeliefs := context.WithCancel(context.Background())
+	defer func() {
+		stopBeliefs()
+		lanes.Flush()
+	}()
+	go lanes.Persist(beliefs)
 	err := run()
 	var status exitStatus
 	switch {
@@ -168,6 +187,13 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	case "manual":
+		// Everything aforge knows about itself, read straight (manual.go). It
+		// is the same corpus the chat's manual tool reads, printed as it is
+		// written rather than retold — and it is here rather than only there
+		// because the questions people ask most are the ones they ask before
+		// there is a key to make a model call with.
+		return runManual(os.Args[2:])
 	// Three spellings for one question, because three different callers ask it
 	// and none of them should have to know which one this build prefers: the
 	// agentfield Python doctor runs `aforge version`, the Go doctor runs
@@ -244,6 +270,11 @@ var usageText = `aforge — build and revise task graphs
   aforge why <node-id> [--db path]  show what one leaf actually did: its turns, the
                                 tools it called with what arguments, what came back,
                                 and how it ended
+  aforge manual                 every page of aforge's own manual, one per line
+  aforge manual <page>          print that page as it is written
+  aforge manual "<question>"    the sections that answer it, each labelled with the
+                                page and heading it came from. No key, no model call,
+                                nothing spent — the same pages the chat reads, whole.
   aforge version                print the build this binary was cut from
                                 (--version and -v say the same thing)
 
@@ -362,7 +393,7 @@ func runPlan(args []string) error {
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)
-		fmt.Println(seats.Line())
+		fmt.Println(seats.Report())
 		if settings.PlanSplit() {
 			fmt.Printf("sized for: %s (the work model this ruler measures)\n", settings.Model)
 		}
@@ -480,7 +511,7 @@ func runRevise(args []string) error {
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nevent:  %s\n", graph.Goal, event)
-		fmt.Printf("%s\n\n", seats.Line())
+		fmt.Printf("%s\n\n", seats.Report())
 	}
 	start := time.Now()
 	operations, usage, err := plan.Revise(ctx, client, graph, event)

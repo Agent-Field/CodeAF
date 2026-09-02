@@ -3,6 +3,16 @@
 This page is the honest inventory: what aforge can reach, what it refuses, and
 what is simply not there in this build.
 
+## Is this only for programming — is aforge only for code, or for any kind of work?
+
+Not only programming. Nothing else on this page is about code in particular:
+files, shell commands, the web, pictures, audio and video, your connected
+accounts, your own settings. A folder of contracts, a pile of recordings to
+transcribe and a repository are the same material to aforge — whatever is in the
+folder it was pointed at. Where there is a repository a task hands its work back
+on a branch; where there is none it works in the folder itself and says so:
+`it worked directly in the workspace: there was no repository to branch`.
+
 ## Can you read, write, create, delete, rename or move files?
 
 Yes. Three tools do this, and a path with nothing in front of it is read against the folder
@@ -776,8 +786,8 @@ Yes, and **no key or configuration is required** for it to work.
 `web_search` takes a `query` (required) and a `count` — **5 by default, 8 at
 most**, silently clamped rather than refused. Results come back as
 `1. Title — URL` with the publication date and a snippet of up to 300
-characters under each, and a footer like `5 of 12 results`. Nothing found reads
-`no results`. A failed search names the back end it used:
+characters under each, and a footer like `5 of 12 results · firecrawl`. Nothing found reads
+`no results · firecrawl`. A failed search names the back end it used:
 `Search failed (firecrawl): <err>`.
 
 `web_fetch` takes one absolute `url` with a scheme and returns the page's text
@@ -796,6 +806,38 @@ answers or raise its ceiling, never *whether* the web is reachable.
 This matters more generally: aforge leaves a tool **off the list entirely** when
 there is nothing behind it, rather than offering it and then refusing. If a
 capability is missing, it is missing — you will not get a tool that pretends.
+
+## Which search engine answered?
+
+The last line of every successful `web_search` names it. A complete answer reads
+`5 results · firecrawl`, a shortened answer reads `3 of 8 results · exa`, and an
+empty one reads `no results · firecrawl`. The finished tool line carries that
+same footer, so the compact receipt and the result sent to the model cannot
+disagree.
+
+`/status` has a `search` line for the next call, such as `firecrawl · keyless`,
+`firecrawl · with your key`, or `exa · with your key`. If an explicit keyed pin
+has no key, it says `exa · key not set — searches fail`. A session with no
+`web_search` tool has no `search` line either; an empty status row would claim a
+capability that is not there.
+
+## I set a search key and nothing changed
+
+Search settings are live: a provider or key written in `/settings` applies to
+the **next search in this conversation**. You do not need `/new`, a restart, or
+a new session. Work handed out from this conversation follows the same live
+settings rather than keeping a launch-time copy.
+
+With `search.provider` on `auto`, an Exa key raises the next search to `exa`; a
+Firecrawl key keeps the provider named `firecrawl` and raises that provider's
+ceiling, so the visible change is `firecrawl · with your key`. The selected
+**searching** row in `/settings` → Context states the current answer. With no
+keys it says `now firecrawl, keyless — set search.exaKey or
+search.firecrawlKey to raise it`.
+
+An explicit pin still wins. Pinning Exa without `search.exaKey` makes every call
+answer `Search failed (exa): no API key`; the searching row says that before a
+call is spent. Choose `auto` to return to the ladder, or set the named key.
 
 ## Can you remember what we worked out earlier in this conversation — do you remember me between conversations?
 
@@ -901,15 +943,42 @@ Ask it anything about aforge — what a tool does, what a command does, why it j
 behaved a certain way — and it looks the answer up and tells you it looked it up.
 
 `manual` takes either a `query`, in your own words, which returns the most
-relevant sections, or a `page` name to read a whole page. A page name that does
-not exist gets an exact refusal listing the pages that do, never a search result
-that reads as though the page existed.
+relevant sections, or a `page` name to read a page — whole when it is short, and
+cut with a list of its headings when it is long (the next question). A page name
+that does not exist gets an exact refusal listing the pages that do, never a
+search result that reads as though the page existed.
+
+**A search reads your own last message too, not only the words the lookup was
+phrased in.** Both are searched, the sections they agree on come first, and you
+still get the same four — so a page your words reach is a page the answer
+reaches, even when the question was looked up in different words.
 
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means aforge does not do it.`
 
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
+
+## Can you read me a whole page, and what happens when the page is a long one?
+
+Short pages arrive whole. A long one arrives cut, and says so.
+
+A `page` lookup is bounded by the same limit a file read is bounded by, because
+a result is a result whatever it read, and the longest pages in this manual are
+several times that limit. When a page is over it, what comes back is the start of
+the page — ending at a whole line, and never inside an example — followed by a
+note in square brackets that begins `[Cut: … bytes of …. The rest of this page is
+in its sections — ask for the same page again with section set to one of:` and
+then lists every heading on that page, one to a line, before it closes.
+
+Those headings are the addresses of the rest. Ask for the same page with one of
+them in `section` and that part comes back whole, however far past the cut it
+sat. A heading that is not on the page is refused by name, and the refusal lists
+the headings that are — never a neighbouring section handed over as though it
+were the one asked for.
+
+So no part of the manual is out of reach, and no single lookup can fill the
+conversation with one page.
 
 ## Can you change my aforge settings for me — set my daily budget, change a preference, or tell me what one is set to?
 
