@@ -87,6 +87,13 @@ func (a *Agent) callRole(
 	// had no mark reader and no brief writer at all (#443). It is decided HERE,
 	// at the one seam every errand passes through, so the next crew-only caller
 	// is correct without knowing the flag exists.
+	//
+	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
+	// same live conversation model every other errand already passes as its own
+	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
+	// typed mid-turn lands at the next Submit either way ([Agent.SetModel]), so
+	// reading it here moves the crew-only rungs WITH the rest of the errands
+	// rather than one turn apart from them.
 	if a.config.OneModel {
 		sessionDefault = a.model
 	}

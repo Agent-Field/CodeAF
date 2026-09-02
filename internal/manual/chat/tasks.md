@@ -567,11 +567,13 @@ thinking tier, and both are deliberately crew-only — with no crew they are ski
 handed to the model that has just written the answer and would be editing itself. So if nothing
 is set for them, they have no model at all, and this is the sentence that says so.
 
-**What to do about it.** Set a thinking-tier model with `/crew`, or pin the two roles, and the
-brief gets written. Or run with `--one-model`, which settles them on the model you are talking
-to along with everything else. Either way the move still happens — a task that starts knowing
-only what you typed is better than an answer left grinding — and the session's own record keeps
-the exact reason, `roles: no model for role`, beside the rung that had nowhere to call.
+**What to do about it.** Set a thinking-tier model with `/crew`, or pin the two roles on the
+**pinned roles** row in `/settings` → Providers — they are called `markreader` and `handoff`,
+so the row reads `markreader:openai/gpt-5, handoff:openai/gpt-5`. Or run with `--one-model`,
+which settles them on the model you are talking to along with everything else. Either way the
+move still happens — a task that starts knowing only what you typed is better than an answer
+left grinding — and the session's own record keeps the exact reason, `roles: no model for
+role`, beside the rung that had nowhere to call.
 
 **It is one of four different facts, and they read differently on purpose.** `no second model
 is set` is nothing configured; **could not be reached** is the wire; **did not answer in time**

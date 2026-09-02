@@ -469,3 +469,44 @@ func (m *modelAsked) model() string {
 	defer m.mu.Unlock()
 	return m.seen
 }
+
+// AND THE FLAG REACHES A CHILD, because a session is not only the turns typed
+// into it.
+//
+// The promise is about every text call the SESSION makes, and the nodes a turn
+// hands out and the hands they lift are the session at one remove. A child that
+// copied the ladder but not the flag would leave exactly the crew-only rungs
+// behind — they are the only ones that need telling — so the first thing a task
+// did on its own ceiling would fail the way the conversation's used to (#443).
+func TestTheOneModelPromiseTravelsToATaskNodeAndItsCrewOnlyErrands(t *testing.T) {
+	asked := &modelAsked{}
+	agent, _ := newTestAgent(t, asked, func(config *Config) {
+		config.Model = "the-one/model"
+		config.RolesSource = nil
+		config.OneModel = true
+	})
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "t", brief: "b", acceptance: "a"})
+
+	child, err := agent.newTaskAgent(context.Background(), t.TempDir(), graph.node(id), "")
+	if err != nil {
+		t.Fatalf("newTaskAgent: %v", err)
+	}
+	defer child.Close()
+	if !child.config.OneModel {
+		t.Fatal("the node did not inherit the flag, so its crew-only rungs have no model")
+	}
+
+	// AND THE INHERITED BIT IS LOAD-BEARING AND NOT DECORATION: the same
+	// crew-only errand that had nowhere to call now resolves on the child.
+	_, model, err := child.callRole(context.Background(), roles.RoleHandoff, "",
+		[]ai.Message{textMessage("user", "write the brief")})
+	if err != nil {
+		t.Fatalf("a crew-only errand on the node had no model to call: %v", err)
+	}
+	if model != child.model {
+		t.Errorf("the node's errand ran on %q, want its own model %q", model, child.model)
+	}
+}
