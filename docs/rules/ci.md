@@ -39,8 +39,8 @@ Seven things in `ci.yml`, job name `check`, and then one more job:
   save rewrites, and that diff lands in somebody else's pull request.
 - **`go vet ./...`** — the class of bug agents produce most: a `printf` verb that
   does not match, a cancel that is never called, a result that is thrown away.
-- **The packed corpora build from their folders.** `go generate` on the three
-  packed packages, then compile and test the manual's packed release path. Its
+- **The packed corpora build from their folders.** `go generate` on the packed
+  package (`internal/manual`), then compile and test the manual's packed release path. Its
   archives are ignored build products, avoiding one binary merge hotspot; the
   other packed corpora remain tracked, so the tree must still come back clean.
 - **The change is written down.** A new file in `docs/changes/unreleased/`,
@@ -81,7 +81,7 @@ make test PKGS='./internal/whatever/you/touched'
 
 ## What the full gate checks
 
-`ci-full.yml`, four jobs:
+`ci-full.yml`, seven jobs (three test shards and their one name, the six-target cross build and its one name, `remote`, `size`, and the page):
 
 - **`full tests`** — every package, minus the ledger below, split round-robin
   across three runners. Not for speed first: the
@@ -130,20 +130,19 @@ test the tree still declares. The commit that deletes the file deletes that
 test with it; nothing else reads the ledger, and an absent ledger skips nothing.
 
 The list was seeded from `CLAUDE.md` and trued up against the first real Linux
-run on 2026-08-31, which named the four `cmd/harness-design` tests and exposed
-six untracked reds — five Linux-only, and one
-(`TestTheEnginesStandingStoreAnswersOverTheWire`) red on every platform. The
-file's own comments say which is which. `CLAUDE.md` no longer copies the list;
-the file is the one place it is written.
+run on 2026-08-31; #408 took the first five out. What it holds now, and which
+entries are Linux-only, is written in the file's own comments and nowhere else —
+`CLAUDE.md` no longer copies it, and neither does this page.
 
 ## What blocks a merge
 
 Required today: **`check`** on `dev`, **`cross build`** on `staging`. Those are
 the two whose green is trustworthy right now.
 
-`full tests` and `remote` run and report, and are deliberately not required yet —
-neither has been seen green in this repository's CI even once, and a required
-check that has never passed blocks all work on its first day. **Promote them by
+`full tests`, `remote` and the light gate's `touched packages` run and report,
+and are deliberately not required yet — none has been seen green in this
+repository's CI twice in a row, and a required check that has never passed
+blocks all work on its first day. **Promote them by
 adding their job names to `required_status_checks` in
 `.github/rulesets/promotion-pointers.json` as soon as each has been green twice
 in a row.** That is the next piece of work here, not a someday.

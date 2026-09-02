@@ -140,7 +140,9 @@ test-laws:
 # gofmt is not a preference here. A file gofmt would rewrite is a file the next
 # editor's save rewrites, and that diff lands in somebody else's pull request.
 fmt-check:
-	@files="$$(gofmt -l $$(go list -f '{{.Dir}}' ./...))"; \
+	@dirs="$$(go list -f '{{.Dir}}' ./...)" || exit 1; \
+	test -n "$$dirs" || { echo 'go list found no packages'; exit 1; }; \
+	files="$$(gofmt -l $$dirs)"; \
 	if test -n "$$files"; then \
 		printf '%s\n' 'gofmt would rewrite:' "$$files"; \
 		exit 1; \

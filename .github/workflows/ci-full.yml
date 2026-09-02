@@ -52,10 +52,16 @@ jobs:
   # The split is round-robin over `go list` order, computed at run time. Not a
   # hand-kept list of packages per shard: a list would go stale with the next
   # package added, and stale here means silently untested.
+  # THE JOB'S CEILING SITS ABOVE THE GO ONE. Each package gets `make test`'s
+  # fifteen minutes so that a hang panics with the package's name; a job
+  # GitHub kills first names nothing. A shard is about thirty packages run
+  # one at a time, most in seconds, and the whole of it has come in under
+  # ten minutes; sixty leaves a hung package its full fifteen and the rest
+  # of the shard theirs.
   full-tests-shard:
     name: full tests ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -187,7 +193,9 @@ jobs:
   page:
     name: page on a red nightly
     needs: [full-tests, cross-build, remote]
-    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    # A cancelled job — the runner shutdown this file describes above — is
+    # not a failure to GitHub, and it is exactly the night to be told about.
+    if: always() && github.event_name == 'schedule' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
     permissions:
       issues: write

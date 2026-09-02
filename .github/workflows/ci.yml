@@ -34,8 +34,13 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels its older run; a push to `dev` never
+# cancels another, because the group is the commit. Keyed on the ref, the
+# second merge inside twenty-five minutes cancelled the first merge's
+# `touched packages` run, and a cancelled run leaves no red — on exactly the
+# push the trigger above exists for.
 concurrency:
-  group: pr-gate-${{ github.ref }}
+  group: pr-gate-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -46,6 +51,10 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # A short TMPDIR, as the other jobs have: a test that binds a unix
+      # socket under t.TempDir() overflows sun_path on the runner's default.
+      TMPDIR: /tmp/aforge-ci
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,7 +70,9 @@ jobs:
       # the build for everyone. This is the cheapest way to find that out, and
       # the one failure that blocks every other kind of work.
       - name: Build
-        run: go build ./...
+        run: |
+          mkdir -p "$TMPDIR"
+          go build ./...
 
       - name: Vet
         run: go vet ./...
@@ -167,10 +178,14 @@ jobs:
   # than blocks today, for the reason docs/rules/ci.md gives for `full tests`:
   # a required check that has never been seen green blocks all work on its
   # first day. Promote it the same way, once it has been green twice in a row.
+  # THE JOB'S OWN CEILING SITS ABOVE THE GO ONE. `make test` gives each
+  # package fifteen minutes so a hang panics with the package's name; a job
+  # killed by GitHub first names nothing. A wide change can touch the three
+  # heaviest packages at once, so this is three of those with room.
   touched:
     name: touched packages
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -201,4 +216,7 @@ jobs:
             exit 0
           fi
           echo "touched:$pkgs"
-          make test PKGS="$pkgs"
+          # -p 1 for the reason ci-full.yml gives: this runner has been shut
+          # down under the link load of the heavy binaries twice, and a change
+          # touching tui3, session and cmd/aforge links all three at once.
+          make test TEST_FLAGS='-p 1' PKGS="$pkgs"

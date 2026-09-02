@@ -10,7 +10,7 @@
 # a second full run on the same box refuses to start and says who holds it,
 # rather than joining the pile and reporting a red nobody caused.
 #
-# THE LOCK IS A PID WITH ITS COMMAND LINE CHECKED, not a file's existence. A
+# THE LOCK IS A PID WITH ITS COMMAND LINE CHECKED, not a path's existence. A
 # session that died mid-run must not leave the box locked, and a pid that was
 # reused by something else must not either; the lock is stale unless the pid
 # is alive AND is still running this script, and a stale lock is simply taken.
@@ -23,6 +23,9 @@
 # exactly what sessions do not share.
 set -euo pipefail
 
+# The lock is a directory, because mkdir is atomic where a check-then-write
+# of a file is not: two starters in the same instant would both see no holder
+# and both write, and the first to finish would remove the other's lock.
 lock="/tmp/aforge-suite-$(id -u).lock"
 
 holder_alive() {
@@ -40,22 +43,35 @@ holder_alive() {
 	return 1
 }
 
-if [ -f "$lock" ]; then
-	holder="$(head -n1 "$lock" 2>/dev/null || true)"
+# Take the lock, or refuse naming the holder. A stale lock — a holder that is
+# dead, or a pid reused by something else — is removed and the take is tried
+# once more; a second failure after that is a live holder that arrived in
+# between, and the refusal stands.
+take() {
+	mkdir "$lock" 2>/dev/null
+}
+if ! take; then
+	holder="$(cat "$lock/pid" 2>/dev/null || true)"
 	if holder_alive "$holder"; then
-		printf '%s\n' "another full suite is already running on this box (pid ${holder}, started $(sed -n 2p "$lock"))." \
+		printf '%s\n' "another full suite is already running on this box (pid ${holder}, started $(cat "$lock/since" 2>/dev/null || echo '?'))." \
 			'Wait for it, or run the packages you touched: make test PKGS=./internal/whatever' >&2
 		exit 1
 	fi
+	rm -rf "$lock"
+	if ! take; then
+		echo 'another full suite took the lock this instant; try again.' >&2
+		exit 1
+	fi
 fi
-printf '%s\n%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$lock"
+printf '%s\n' "$$" >"$lock/pid"
+date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 
 # THE SCRIPT STAYS ALIVE AS THE HOLDER. An exec would make the holder's command
 # line the suite's own, and the check above would read its lock as stale; so
 # the suite runs as a child, a stop reaches it, and the lock goes when it ends.
 "$@" &
 child=$!
-trap 'rm -f "$lock"' EXIT
+trap 'rm -rf "$lock"' EXIT
 trap 'kill -INT "$child" 2>/dev/null || true' INT
 trap 'kill -TERM "$child" 2>/dev/null || true' TERM
 status=0

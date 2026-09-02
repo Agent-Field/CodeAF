@@ -48,15 +48,8 @@ func TestTheKnownRedLedgerOnlyShrinksAndNamesRealTests(t *testing.T) {
 		}
 		return
 	}
-	switch {
-	case len(entries) > knownRedEntries:
-		t.Errorf("%s names %d tests and the ratchet is at %d. There is no road to a new entry: "+
-			"the ledger only shrinks (ruled 2026-09-02). Fix the test, or delete it with a written "+
-			"ruling, and remove the line.", knownRedPath, len(entries), knownRedEntries)
-	case len(entries) < knownRedEntries:
-		t.Errorf("%s is down to %d tests and knownRedEntries still says %d — lower it to %d in "+
-			"this change. A ratchet left slack would let the next change put an entry back with the "+
-			"gate green throughout.", knownRedPath, len(entries), knownRedEntries, len(entries))
+	if complaint := ratchetComplaint(len(entries), knownRedEntries); complaint != "" {
+		t.Error(complaint)
 	}
 	// AND EVERY NAME IS A TEST THAT EXISTS. A renamed or deleted test that stays
 	// listed is a skip nobody can account for, and the day it is fixed nobody
@@ -156,15 +149,16 @@ func repositoryRoot(t *testing.T) string {
 
 // TestTheRatchetRefusesBothDirections is the rule put to numbers rather than to
 // the real ledger, so that a change to the ledger cannot also be the change
-// that silences the test about it.
+// that silences the test about it. It exercises the same comparison the test
+// above enforces with — there is one, not a copy.
 func TestTheRatchetRefusesBothDirections(t *testing.T) {
 	for _, tc := range []struct {
 		entries, ratchet int
 		wantComplaint    bool
 	}{
-		{18, 18, false},
-		{19, 18, true},
-		{17, 18, true},
+		{12, 12, false},
+		{13, 12, true},
+		{11, 12, true},
 		{0, 0, false},
 	} {
 		got := ratchetComplaint(tc.entries, tc.ratchet) != ""
@@ -174,14 +168,19 @@ func TestTheRatchetRefusesBothDirections(t *testing.T) {
 	}
 }
 
-// ratchetComplaint is the comparison alone, one sentence per direction, so the
-// test above and the table can share it.
+// ratchetComplaint is the whole rule, one sentence per direction and "" when
+// the ledger and the ratchet agree. The enforcing test and the table above
+// both call it, so the comparison exists once.
 func ratchetComplaint(entries, ratchet int) string {
 	switch {
 	case entries > ratchet:
-		return "gained " + strconv.Itoa(entries-ratchet)
+		return knownRedPath + " names " + strconv.Itoa(entries) + " tests and the ratchet is at " +
+			strconv.Itoa(ratchet) + ". There is no road to a new entry: the ledger only shrinks " +
+			"(ruled 2026-09-02). Fix the test, or delete it with a written ruling, and remove the line."
 	case entries < ratchet:
-		return "down " + strconv.Itoa(ratchet-entries)
+		return knownRedPath + " is down to " + strconv.Itoa(entries) + " tests and knownRedEntries still says " +
+			strconv.Itoa(ratchet) + " — lower it to " + strconv.Itoa(entries) + " in this change. A ratchet " +
+			"left slack would let the next change put an entry back with the gate green throughout."
 	}
 	return ""
 }

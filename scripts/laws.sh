@@ -26,7 +26,11 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-files="$(git grep -l -e '"go/ast"' -e '"go/parser"' -- '*_test.go')"
+# Plain grep and not git grep, so a law written a minute ago and not yet
+# staged is already on the target: the laptop is where the doc sends people
+# to run this, and a green that silently ran nothing new is the miss #372 was.
+files="$(grep -rl --include='*_test.go' --exclude-dir=.git --exclude-dir=third_party --exclude-dir=bin \
+	-e '"go/ast"' -e '"go/parser"' . | sed 's|^\./||' | sort)"
 pkgs="$(printf '%s\n' "$files" | xargs -n1 dirname | sort -u | sed 's|^|./|')"
 names="$(printf '%s\n' "$files" | xargs grep -hoE '^func Test[A-Za-z0-9_]+' | sed 's/^func //' | sort -u | paste -sd'|' -)"
 
