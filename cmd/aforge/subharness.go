@@ -350,6 +350,11 @@ func installMeasuredRulers(settings config.Config, model string) *profile.Profil
 	// about machines has to be filed under the id those machines actually serve.
 	// See [catalog.Catalog.Servable].
 	lanes.UseServable(shared.Servable)
+	// AND THE LANE-SHEET BEAT, for the same one-funnel reason and immediately
+	// after the fold it files under: three doors of this binary build no session
+	// and so fetched no endpoints page at all, which left every headless install
+	// choosing between the one machine its last run was served by (lanebeat.go).
+	startLaneBeat(settings, model)
 	measured, _ := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
 	plan.UseAnchors(measured.Anchors)
 	return measured

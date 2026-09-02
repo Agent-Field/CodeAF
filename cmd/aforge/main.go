@@ -86,6 +86,11 @@ func execute() (code int) {
 		stopBeliefs()
 		lanes.Flush()
 	}()
+	// AND THE LANE-SHEET BEAT RIDES THE SAME LIFETIME. It is started later, at
+	// the one seam every surface measures through (lanebeat.go), and it is a
+	// goroutine of exactly this shape: process-wide, nobody's request, stopped
+	// at the same exit.
+	laneBeatCtx = beliefs
 	go lanes.Persist(beliefs)
 	err := run()
 	var status exitStatus
