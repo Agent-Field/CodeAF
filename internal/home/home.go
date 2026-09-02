@@ -37,8 +37,15 @@ func Dir() string {
 	if err != nil || strings.TrimSpace(base) == "" {
 		return ".aforge"
 	}
-	return filepath.Join(base, ".aforge")
+	return DefaultUnder(base)
 }
+
+// DefaultUnder is the state root a login whose home directory is base gets
+// when AFORGE_HOME says nothing. It is exported for the one caller that has to
+// name it for a login it is not resolving from the environment — a background
+// timer written before its definition carried a home ticked exactly this — so
+// the directory's name stays spelled in one place.
+func DefaultUnder(base string) string { return filepath.Join(base, ".aforge") }
 
 // Join names a file inside the state root.
 func Join(elements ...string) string {

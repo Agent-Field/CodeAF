@@ -542,10 +542,40 @@ time you open it, and it folds into the next conversation you open in that
 project under one "while you were away". Nothing reaches your phone, your email,
 or a notification — there is no outward lane at all.
 
-If the program itself moves — you rebuild it somewhere else, or install a new
-one — the timer would be pointing at a program that is gone. Every launch checks
-for exactly that and quietly puts the timer back on the program you are actually
-running. You are not asked and nothing is said on screen.
+If the program itself moves — you rebuild it somewhere else and delete the old
+one, or an upgrade leaves the old path empty — the timer would be pointing at a
+program that is gone. Every launch checks for exactly that and quietly puts the
+timer back on the program you are actually running. You are not asked and nothing
+is said on screen; one line goes to `v3/standing.log` under your aforge home.
+
+## I have two copies of aforge and my reminders fired twice, or stopped firing — which build runs the background checks, and does AFORGE_HOME move the timer
+
+There is one timer per login and it runs one build, so nothing ever fires twice
+from two copies — if a reminder arrived twice, it was not two timers. And if your
+reminders stopped firing after you installed a second aforge and removed the
+first, the timer was naming a program that is gone; the next launch of any build
+under that home puts it back.
+
+There is **one timer per login**, and it is a pair: the home it checks and the
+program it runs. Its definition carries both — `AFORGE_HOME` and the path to the
+program — and a launch speaks only for its own pair.
+
+- **Two builds on one machine** (a release beside one you built, two versions side
+  by side): the timer keeps running whichever build installed it, for as long as
+  that program is still there. A launch of the other build leaves it alone and says
+  nothing. It steps in only when the program the timer names is **gone**, or the
+  definition is not one this build would have written. So the timer never flips
+  between builds on every launch, and `/settings` says `on` while it is running the
+  other build — something is checking, and that is what the row reads.
+- **To move the timer to the aforge you are running**, turn **background checks**
+  off and on again under `/settings`. That is the one deliberate hand that moves
+  it; a launch never does.
+- **`AFORGE_HOME`**: the timer checks the home that turned it on, and `aforge tick`
+  runs with that `AFORGE_HOME` set. If you export it permanently, your background
+  checks run against that home and not against `~/.aforge`. A launch under some
+  other `AFORGE_HOME` — a test, a throwaway home — reads the timer as somebody
+  else's: it neither claims it nor rewrites it, and its `/status` says nothing is
+  checking that home.
 
 ## Do reminders work over --host — yes, on the far machine
 
