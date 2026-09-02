@@ -379,14 +379,22 @@ func (hold *leafHold) busy(now time.Time, window time.Duration) bool {
 // context is cancelled once; a repeat is the sweep coming round again while the
 // worker unwinds, and it must not restart the clock the backstop measures.
 func (hold *leafHold) reap(reason string) bool {
+	first := hold.noteAsked(reason)
+	if first && hold.cancel != nil {
+		hold.cancel()
+	}
+	return first
+}
+
+// noteAsked records the ask and reports whether it is the first. It is its own
+// method so the mutex is held from a defer while the cancel, which wakes the
+// worker, fires outside it.
+func (hold *leafHold) noteAsked(reason string) bool {
 	hold.mu.Lock()
+	defer hold.mu.Unlock()
 	first := hold.reason == ""
 	if first {
 		hold.reason, hold.askedAt = reason, time.Now()
-	}
-	hold.mu.Unlock()
-	if first && hold.cancel != nil {
-		hold.cancel()
 	}
 	return first
 }

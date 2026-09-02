@@ -577,14 +577,23 @@ func (w *Workspace) RecordChanges(leaf string) {
 	if w == nil || strings.TrimSpace(leaf) == "" {
 		return
 	}
-	w.mutex.Lock()
-	baseline, watched := w.baseline[leaf]
-	w.mutex.Unlock()
+	baseline, watched := w.watchedBaseline(leaf)
 	if !watched {
 		return
 	}
 	changes := diffTrees(baseline, w.Snapshot())
 	w.noteObserved(leaf, changes, boundedPaths(changes))
+}
+
+// watchedBaseline is the sighting [Workspace.WatchTree] took for the leaf, and
+// whether one was taken. It is its own method so the mutex is held from a
+// defer while the tree walk and the record, which take their own locks, happen
+// outside it.
+func (w *Workspace) watchedBaseline(leaf string) (*TreeSnapshot, bool) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	baseline, watched := w.baseline[leaf]
+	return baseline, watched
 }
 
 // diffTrees is THE comparison of two sightings of the workspace, and every

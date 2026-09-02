@@ -257,6 +257,22 @@ func (p *v3Process) apiKey() string {
 	return p.Settings.APIKey
 }
 
+// takeForClose marks the process closed and hands over what is left to close,
+// or answers false when a previous call already took it. It is its own method
+// so the mutex is held from a defer while the closes, which are slow and
+// re-enter the process, happen outside it.
+func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Store, first bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, nil, false
+	}
+	p.closed = true
+	agents, recall = p.agents, p.recall
+	p.agents, p.recall = nil, nil
+	return agents, recall, true
+}
+
 // closeAll closes every conversation this process opened and then the stores
 // they shared. It is IDEMPOTENT and it is the door's defer.
 //
@@ -275,15 +291,10 @@ func (p *v3Process) apiKey() string {
 // with the ten-second busy wait behind it (internal/store's writelock.go:40-50),
 // so closing it under a live writer is not a fast error but a long one.
 func (p *v3Process) closeAll() {
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
+	agents, recall, first := p.takeForClose()
+	if !first {
 		return
 	}
-	p.closed = true
-	agents, recall := p.agents, p.recall
-	p.agents, p.recall = nil, nil
-	p.mu.Unlock()
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {
