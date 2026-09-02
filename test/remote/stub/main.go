@@ -237,6 +237,18 @@ const (
 	markerPwd  = "PROBE-PWD"
 	markerRead = "PROBE-READ"
 	markerSlow = "PROBE-SLOW"
+	// markerJob starts the command after it in the BACKGROUND, which is the one
+	// thing the other four markers cannot reach: every one of them is a turn that
+	// finishes, and a background job is by definition the work that outlives the
+	// turn that asked for it.
+	//
+	// IT EXISTS SO THE JOB SURFACES CAN BE DRIVEN WITHOUT A KEY. The column's
+	// jobs section and a job's own page are drawn from a real registry watching a
+	// real process, and nothing about either depends on the model's judgment —
+	// only on the model having asked. So the cheapest honest way to see them work
+	// is a scripted ask and a real command, which is exactly what this file is
+	// for.
+	markerJob = "PROBE-JOB"
 )
 
 // The prefixes the harness asserts on. They are constants here and constants in
@@ -247,6 +259,7 @@ const (
 	sayRead = "ENGINE-READ: "
 	slowTop = "SLOW-BEGIN"
 	slowEnd = "SLOW-END"
+	sayJob  = "ENGINE-JOB: "
 )
 
 // compose is the script itself.
@@ -266,6 +279,16 @@ func compose(ask, answered string) reply {
 			return reply{tool: "read", args: `{"path":"` + jsonEscape(pathAfter(ask, markerRead)) + `"}`}
 		}
 		return reply{chunks: []string{sayRead + strings.TrimSpace(answered)}}
+
+	case strings.Contains(ask, markerJob):
+		if answered == "" {
+			// `background:true` is the whole point: the tool answers the instant
+			// the process forks, the turn ends, and the work carries on where the
+			// job surfaces can be asked about it.
+			return reply{tool: "bash", args: `{"command":"` +
+				jsonEscape(restAfter(ask, markerJob)) + `","background":true}`}
+		}
+		return reply{chunks: []string{sayJob + strings.TrimSpace(answered)}}
 
 	case strings.Contains(ask, markerSlow):
 		// Three seconds of silence between the first word and the last is the
@@ -301,6 +324,18 @@ func pathAfter(ask, marker string) string {
 		return ""
 	}
 	return strings.Fields(rest)[0]
+}
+
+// restAfter is EVERYTHING following a marker, which is what a shell command
+// needs and what [pathAfter] deliberately does not give: a path is one word and
+// a command is a whole line, spaces, quotes, semicolons and all. Cutting one at
+// the first space would run its first word and silently drop the rest.
+func restAfter(ask, marker string) string {
+	at := strings.Index(ask, marker)
+	if at < 0 {
+		return ""
+	}
+	return strings.TrimSpace(ask[at+len(marker):])
 }
 
 func jsonEscape(text string) string {
