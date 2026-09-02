@@ -1,6 +1,7 @@
 package calllog
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,17 +35,31 @@ import (
 // path is resolved, and a gate on it holds for tests nobody has written yet.
 var underTest = testing.Testing()
 
+// profileDirEnv moves the profile — the key, the measured behaviour, and this
+// log with them — out from under the state root, and it is the second root a
+// test binary can inherit without asking for it. The name is spelled here
+// rather than taken from internal/config, which owns it as
+// config.ProfileDirEnv: config opens this log, so the import would be a cycle.
+// `aforge logs` and `aforge doctor` spell it out for the same reason.
+const profileDirEnv = "AFORGE_PROFILE_DIR"
+
 // chosenPath is the path its caller may write to, and "" for one that would
-// land in the state root of whoever started a test binary. Outside a test it is
-// the identity: the product's log resolves exactly as it always has.
+// land in a root whoever started a test binary named. Outside a test it is the
+// identity: the product's log resolves exactly as it always has.
 func chosenPath(path string) string {
 	if !underTest || path == "" {
 		return path
 	}
-	if !inside(home.Dir(), path) {
-		return path
+	// Both roots, because either can be the person's: the profile moves out
+	// from under the state root when AFORGE_PROFILE_DIR is exported, and a log
+	// refused at one of them while landing in the other would be the same
+	// defect with a rarer environment.
+	for _, root := range []string{home.Dir(), os.Getenv(profileDirEnv)} {
+		if inside(root, path) {
+			return ""
+		}
 	}
-	return ""
+	return path
 }
 
 // inside reports whether path is the directory root or something under it. It

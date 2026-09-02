@@ -28,12 +28,17 @@ const theCanaryIsRunning = "AFORGE_CALL_LOG_CANARY"
 // `test/model` — into a real person's ledger in #286, and running them proves
 // the gate on the exact code that broke the law rather than on a fixture.
 var packagesThatReachAModel = []string{
-	"internal/subharness",
+	cheapestPackageThatReachesAModel,
 	"internal/session",
 	"internal/exec",
 	"internal/lane",
 	"internal/head",
 }
+
+// cheapestPackageThatReachesAModel is the one the canary runs a second time to
+// prove there is traffic to refuse at all: it streams scripted answers through
+// a client and finishes in under a second.
+const cheapestPackageThatReachesAModel = "internal/subharness"
 
 // TestNoTestInTheTreeWritesIntoTheLedgerOfWhoeverRanIt is the run-side law of
 // #286: a person runs the suite — by hand, or through a leaf whose workspace is
@@ -55,25 +60,72 @@ func TestNoTestInTheTreeWritesIntoTheLedgerOfWhoeverRanIt(t *testing.T) {
 		t.Skip("no go toolchain here to run the packages with")
 	}
 
-	canary, root := t.TempDir(), moduleRoot(t)
-	arguments := append([]string{"test", "-count=1", "-timeout", "10m"}, relativeTo(packagesThatReachAModel)...)
-	run := exec.Command(goTool, arguments...)
-	run.Dir = root
-	run.Env = append(withoutTheLogPin(os.Environ()),
-		home.EnvVar+"="+canary,
-		theCanaryIsRunning+"=1",
-	)
+	root := moduleRoot(t)
+	// TWO canaries, because a person has two roots and either can be theirs:
+	// the state root, and the profile root AFORGE_PROFILE_DIR moves out from
+	// under it. A run that watched only the first would pass while writing into
+	// the second.
+	homeRoot, profileRoot := t.TempDir(), t.TempDir()
 	began := time.Now()
-	output, runErr := run.CombinedOutput()
+	output, runErr := runUnderTheCanaries(t, goTool, root, homeRoot, profileRoot, packagesThatReachAModel)
 	t.Logf("the canary ran %d packages in %s", len(packagesThatReachAModel), time.Since(began).Round(time.Second))
 
-	// The ledger first, because that is the law. A red package underneath is a
+	// The ledgers first, because that is the law. A red package underneath is a
 	// separate report and its own suite will say so; a package that never built
 	// is not, because a canary that passed on nothing proves nothing.
-	assertTheLedgerIsUntouched(t, filepath.Join(canary, DirName, FileName))
-	assertEveryPackageActuallyRan(t, string(output))
+	assertTheLedgerIsUntouched(t, filepath.Join(homeRoot, DirName, FileName))
+	assertTheLedgerIsUntouched(t, filepath.Join(profileRoot, DirName, FileName))
+	assertEveryPackageActuallyRan(t, output)
 	if runErr != nil {
-		t.Logf("the packages under the canary were not all green (%v); the ledger above is what this test is about", runErr)
+		t.Logf("the packages under the canary were not all green (%v); the ledgers above are what this test is about", runErr)
+	}
+
+	// And the silence has to MEAN something. A package that stopped making
+	// model calls would leave both ledgers empty for the wrong reason, so one
+	// of them is run again with the log pinned somewhere the gate does not
+	// refuse: the rows that appear there are the traffic that was not written
+	// into anybody's ledger a moment ago.
+	assertTheTrafficIsRealAndAPinStillTakesIt(t, goTool, root)
+}
+
+// runUnderTheCanaries runs the packages in a child process that believes both
+// of a person's roots are the canaries, with the log pin taken away so it
+// resolves its own path exactly as a person's own run would.
+func runUnderTheCanaries(t *testing.T, goTool, root, homeRoot, profileRoot string, packages []string) (string, error) {
+	t.Helper()
+	run := exec.Command(goTool, append([]string{"test", "-count=1", "-timeout", "10m"}, relativeTo(packages)...)...)
+	run.Dir = root
+	run.Env = append(withoutTheLogPin(os.Environ()),
+		home.EnvVar+"="+homeRoot,
+		profileDirEnv+"="+profileRoot,
+		theCanaryIsRunning+"=1",
+	)
+	output, err := run.CombinedOutput()
+	return string(output), err
+}
+
+// assertTheTrafficIsRealAndAPinStillTakesIt is the other half of the evidence,
+// and it is cheap: internal/subharness is the fastest of the packages above and
+// on its own it writes about forty rows. If they arrive at a pinned path, the
+// scripted traffic still exists and a test that WANTS a log still gets one; if
+// they do not, the clean ledgers above proved nothing and this says so.
+func assertTheTrafficIsRealAndAPinStillTakesIt(t *testing.T, goTool, root string) {
+	t.Helper()
+	pinned := filepath.Join(t.TempDir(), FileName)
+	run := exec.Command(goTool, "test", "-count=1", "./"+cheapestPackageThatReachesAModel+"/")
+	run.Dir = root
+	run.Env = append(withoutTheLogPin(os.Environ()),
+		home.EnvVar+"="+t.TempDir(),
+		EnvVar+"="+pinned,
+		theCanaryIsRunning+"=1",
+	)
+	if output, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("%s could not be run for the traffic it makes: %v\n%s", cheapestPackageThatReachesAModel, err, output)
+	}
+	raw, err := os.ReadFile(pinned)
+	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
+		t.Fatalf("%s wrote no rows even at a pinned path (%v), so the empty ledgers above say nothing about the gate",
+			cheapestPackageThatReachesAModel, err)
 	}
 }
 

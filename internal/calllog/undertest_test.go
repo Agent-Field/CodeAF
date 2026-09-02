@@ -38,6 +38,29 @@ func TestATestBinaryNeverWritesIntoTheHomeItInherited(t *testing.T) {
 	}
 }
 
+// TestTheProfileRootIsInheritedToo is the second root a test binary is handed
+// without asking: AFORGE_PROFILE_DIR moves the profile — the key, the measured
+// behaviour and this log with them — out from under the state root, so a gate
+// that watched only the state root would refuse the common case and write into
+// the person's ledger in the rarer one.
+func TestTheProfileRootIsInheritedToo(t *testing.T) {
+	elsewhere := t.TempDir()
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("AFORGE_PROFILE_DIR", elsewhere)
+	t.Setenv(EnvVar, "")
+
+	if got := PathFor(elsewhere); got != "" {
+		t.Errorf("the inherited profile root should resolve to no log; got %q", got)
+	}
+	if got := PathFor(filepath.Join(elsewhere, "deeper")); got != "" {
+		t.Errorf("a directory inside the inherited profile root should resolve to no log; got %q", got)
+	}
+	own := t.TempDir()
+	if got, want := PathFor(own), filepath.Join(own, DirName, FileName); got != want {
+		t.Errorf("a directory the test chose is not either inherited root: got %q, want %q", got, want)
+	}
+}
+
 // TestATestThatSaysWhereItsLogGoesStillGetsOne is the other half, and it is why
 // the gate can be this blunt: the refusal is of an INHERITED path, never of a
 // path a test chose. A temporary directory of its own and the AFORGE_CALL_LOG
@@ -48,6 +71,7 @@ func TestATestThatSaysWhereItsLogGoesStillGetsOne(t *testing.T) {
 	t.Setenv(home.EnvVar, inherited)
 	t.Setenv(EnvVar, "")
 
+	t.Setenv("AFORGE_PROFILE_DIR", "")
 	own := t.TempDir()
 	fresh(t, "")
 	Open(own)
