@@ -894,6 +894,19 @@ const (
 	// sentence-length cycle and short enough that the whole window is about the
 	// same thought.
 	babbleWindow = 4 << 10
+	// babbleShortWindow is the second, shorter length the same tail is read at.
+	// The long window is what catches a paragraph repeated — a cycle that
+	// needs several turns of itself before a compressor sees it — and it is
+	// also what made the guard useless against the commonest degeneration of
+	// all, ONE TOKEN over and over: four kilobytes of `</think>` is five
+	// hundred repetitions, ten to fifteen seconds at the rates these endpoints
+	// write at, and on 2026-09-01 a person watched the whole of it and stopped
+	// the turn by hand before the guard was allowed to speak. A kilobyte of a
+	// token loop compresses just as far below the floor as four (measured:
+	// 0.02 against 0.035), and legitimate text compresses WORSE in a shorter
+	// window, not better — the fixed cost of the compressor is a larger share
+	// of it — so the shorter read cannot be the one that cuts an innocent.
+	babbleShortWindow = 1 << 10
 	// babbleFloor is the compressed-to-raw ratio below which the window is a
 	// loop of SOME cycle length — one letter, one line, one paragraph; the test
 	// does not care which, which is the whole reason it is a compressor and not
@@ -926,6 +939,16 @@ const (
 	// cleanCap bounds the tail this keeps. It is twice the compression window so
 	// that the window is always full of real text after a fenced block passes.
 	cleanCap = 2 * babbleWindow
+	// fenceCap is how long a fence may stay open before the guard reads inside
+	// it anyway. Text inside a fence is not judged because a code block is
+	// allowed to be a matrix of zeros or a log of identical lines — but a fence
+	// that opens and never closes is not a code block anybody asked for, it is
+	// a model that opened one and then came apart, and until this bound
+	// existed that was a permanent blindfold: measured, 240 kilobytes of one
+	// repeated token after a bare "```go" line never tripped anything. Sixty-
+	// four kilobytes is far past every fenced innocent in the corpus and every
+	// code block a reply has ever carried.
+	fenceCap = 64 << 10
 )
 
 // babbleWatch reads the assistant's TEXT as it streams and says when it has
@@ -949,6 +972,9 @@ type babbleWatch struct {
 	// pending is the line being written, which is not yet known to be a fence.
 	pending []byte
 	inFence bool
+	// fenced counts bytes written inside the open fence, so that a fence which
+	// never closes stops hiding the text behind it at [fenceCap].
+	fenced int
 	// since counts bytes of clean text added since the last test.
 	since int
 	// squeeze is the compressor [babbleWatch.loopedTail] runs the window
@@ -996,9 +1022,20 @@ func (b *babbleWatch) write(delta string) bool {
 // so a ten-megabyte code block costs one test rather than twenty thousand.
 func (b *babbleWatch) grow(piece string) {
 	b.pending = append(b.pending, piece...)
-	if !b.inFence {
+	if b.inFence {
+		b.fenced += len(piece)
+	}
+	if !b.hidden() {
 		b.since += len(piece)
 	}
+}
+
+// hidden reports that the text being written is inside a fence the guard is
+// still honouring: open, and not yet past [fenceCap]. A fence past the cap is
+// still a fence — its closer still closes it — but what is written inside it
+// is read like everything else.
+func (b *babbleWatch) hidden() bool {
+	return b.inFence && b.fenced <= fenceCap
 }
 
 // endLine settles the pending line: it either toggles the fence, or joins the
@@ -1009,14 +1046,14 @@ func (b *babbleWatch) endLine() {
 	if kind, ok := fenceLine(line); ok {
 		switch {
 		case b.inFence && kind != fenceOpen:
-			b.inFence = false
+			b.inFence, b.fenced = false, 0
 			return
 		case !b.inFence && kind != fenceClose:
-			b.inFence = true
+			b.inFence, b.fenced = true, 0
 			return
 		}
 	}
-	if b.inFence {
+	if b.hidden() {
 		return
 	}
 	b.clean = append(b.clean, line...)
@@ -1028,7 +1065,7 @@ func (b *babbleWatch) endLine() {
 // window is the text the two tests read: the clean tail plus whatever line is
 // still being written, when that line is not inside a fence.
 func (b *babbleWatch) window() []byte {
-	if b.inFence || len(b.pending) == 0 {
+	if b.hidden() || len(b.pending) == 0 {
 		return b.clean
 	}
 	return append(append(make([]byte, 0, len(b.clean)+len(b.pending)), b.clean...), b.pending...)
@@ -1080,14 +1117,25 @@ func fenceLine(line []byte) (fenceKind, bool) {
 // babbleFloor is a repetition of some cycle, and the cycle's length does not
 // matter to the answer.
 //
-// The window must be FULL before this may say anything. A short reply that
-// happens to be one repeated line is somebody answering "no, no, no" and is not
-// a model that has come off the rails.
+// THE TAIL IS READ AT TWO LENGTHS. The short one is what catches a token or a
+// line repeated — the shape a person is watching arrive and can see for
+// themselves within a second — and the long one is what catches a paragraph
+// repeated, which needs more of itself in front of the compressor before it
+// collapses. Both must be FULL before they may say anything: a short reply that
+// happens to be one repeated line is somebody answering "no, no, no" and is
+// not a model that has come off the rails.
 func (b *babbleWatch) loopedTail(window []byte) bool {
-	if len(window) < babbleWindow {
+	return b.collapses(window, babbleShortWindow) || b.collapses(window, babbleWindow)
+}
+
+// collapses runs one length of the tail through the compressor. The writer is
+// reused across both lengths and every reading (see the struct), so a reading
+// at two lengths still costs the allocations of one.
+func (b *babbleWatch) collapses(window []byte, size int) bool {
+	if len(window) < size {
 		return false
 	}
-	tail := window[len(window)-babbleWindow:]
+	tail := window[len(window)-size:]
 	b.counter.n = 0
 	if b.squeeze == nil {
 		b.squeeze = zlib.NewWriter(&b.counter)
@@ -1101,6 +1149,18 @@ func (b *babbleWatch) loopedTail(window []byte) bool {
 		return false
 	}
 	return float64(b.counter.n)/float64(len(tail)) < babbleFloor
+}
+
+// LostItsThread judges text that has ALREADY streamed — a reply a person
+// stopped by hand — by the same tests the live guard runs, read once over its
+// tail. It exists for the one road junk still had into the transcript: the
+// guard cuts a stream it wins the race against, and a person who stopped the
+// stream first was handed the soup as their own kept reply, replayed on every
+// request after (internal/session's keepPartial). Nothing here is a second
+// opinion — it is the same window, the same floor, the same compressor.
+func LostItsThread(text string) bool {
+	watch := &babbleWatch{}
+	return watch.write(text) || watch.tripped()
 }
 
 // countingWriter is how many bytes the compressor produced. The compressed
