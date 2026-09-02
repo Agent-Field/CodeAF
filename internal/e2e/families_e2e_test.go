@@ -587,9 +587,28 @@ no part owns it, so it belongs in the briefs and in no done-condition.`
 		t.Errorf("the family tree has no baseline commit; its history is:\n%s", log)
 	}
 
+	theWorkerSaidWhatItOwns(t, run)
 	eachPartWorkedApart(t, run, root)
 	brought := whatCameBack(t, run, mirror)
 	theLedgerShips(t, run, brought)
+}
+
+// theWorkerSaidWhatItOwns writes the division down as the worker actually asked
+// for it, and asserts NOTHING.
+//
+// IT IS THE AUTOPSY LINE FOR #281. Ownership is read off a part's done-condition
+// now, so a division admitted on a ground everybody reads proves the refusal is
+// gone — but not that the floor underneath it is still real out here, which
+// needs the worker to have put its deliverable in the done-condition rather than
+// only in the brief. That is a fact about a model on a day and not a law, so it
+// is logged for whoever reads the run and left out of the assertions.
+func theWorkerSaidWhatItOwns(t *testing.T, run *familyRun) {
+	t.Helper()
+	for _, line := range strings.Split(run.journals(), "\n") {
+		if strings.Contains(line, "divide_work") && strings.Contains(line, "acceptance") {
+			t.Logf("  the parts as the worker wrote them: %s", shorten(line, 2400))
+		}
+	}
 }
 
 // twoPartsOnARepository is the repository half, and #232's with it: the parent

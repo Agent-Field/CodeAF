@@ -48,6 +48,12 @@ import (
 // every part reads. The schema and prompts/divide.md teach exactly that, so a
 // worker naming a shared input in its brief is doing what it was asked to.
 //
+// THE OTHER ROAD IS COVERED BY CONSTRUCTION. A part the harness drew out of a
+// sketch has no done-condition of its own, so task_divide_sketch.go's
+// [divisionStandInDone] writes one out of that part's scope — which means the
+// scope a drawing gave a part is still read here, and a sketch that put two
+// parts on one file is refused exactly as it was.
+//
 // [pathTokens] does the reading and [groundHolds] does the judging, exactly as
 // the ground ladder does it (taskstands.go): a word only counts when it really
 // lands under the family tree, which is what keeps ordinary prose — a sentence
@@ -55,13 +61,14 @@ import (
 // reading as somebody's claim.
 //
 // THE PATHS ARE NORMALISED BEFORE THEY ARE COMPARED, because `report.md` and
-// `/…/tree/report.md` in two done-conditions are one file and a comparison on the words
-// would say they were two. [resolvePath] is the same reading a shell standing in
+// `/…/tree/report.md` in two done-conditions are one file and a comparison on
+// the words would say they were two. [resolvePath] is the same reading a shell standing in
 // that directory would make.
 //
 // It is one pass over the parts with a set, not a comparison of every part
 // against every other: a division may carry a dozen parts and each
-// done-condition a dozen paths, and the honest shape of "who else claimed this" is a lookup.
+// done-condition a dozen paths, and the honest shape of "who else claimed this"
+// is a lookup.
 func scopeCollisions(parts []dividePart, tree string) []string {
 	if strings.TrimSpace(tree) == "" || len(parts) < 2 {
 		return nil
