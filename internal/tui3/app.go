@@ -386,12 +386,6 @@ type entry struct {
 	// block have already been promoted to markdown.
 	settled bool
 	mdCut   int
-	// shown is how far the LIVE EDGE has been drawn (reveal.go). Zero means
-	// the block is not pacing — settled history, a short burst already shown
-	// whole, anything the clock has not been asked to walk. A still-streaming
-	// lump holds the received bytes in [entry.text] and this cursor is what
-	// the frame paints.
-	shown int
 
 	// mdHead is the PROMOTED HALF of a still-streaming block, already rendered,
 	// kept beside the cut and the width it was rendered at (render.go's
@@ -886,15 +880,6 @@ type app struct {
 	// agent (see [app.switchModel]), so the surface is the one that knows.
 	ctxWindow int
 	ctxTokens int
-	// shownCost, shownTokens and shownCtx are the figures the status line
-	// paints while a turn is running (reveal.go). The books stay on cost /
-	// tokens / ctxTokens; these chase them on the paint clock so a reading
-	// that jumped by a thousand tokens writes the new figure rather than
-	// popping it. meterChasing is whether this turn has asked them to.
-	shownCost    float64
-	shownTokens  int
-	shownCtx     int
-	meterChasing bool
 	// inputTokens is the session's prompt-token total, and cacheRead/cacheWrite
 	// its prompt-cache totals. The first two together are the status line's warm
 	// share — the fraction of everything this session has sent that came off a
@@ -3712,10 +3697,6 @@ func (a *app) paint() tea.Cmd {
 	// stops itself (welcome.go), which is what makes it one-shot rather than a
 	// loop with a condition somebody has to remember to write.
 	a.welcome.tick(a.frameStride())
-	// AND THE LIVE EDGE WALKS HERE, on the same clock: a lumped stream and a
-	// jumped meter become a few frames of writing rather than a paragraph
-	// that pops (reveal.go).
-	a.tickReveal()
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
@@ -3820,12 +3801,7 @@ func (a *app) paint() tea.Cmd {
 		// forming stream already wakes the surface up to ten times a second; a
 		// second visibility fact would only let the clock disagree with the card
 		// about whether its live row still exists (task.go).
-		a.formingCardLive() ||
-		// AND AN UNREAD EDGE IS THE SIXTEENTH: the stream may have gone quiet
-		// with a lump still walking onto the page, and without this the last
-		// paragraph would freeze mid-word until something unrelated asked
-		// for a frame (reveal.go).
-		a.liveRevealing() {
+		a.formingCardLive() {
 		return tea.Batch(kick, a.frameTick())
 	}
 	a.painting = false
@@ -3856,7 +3832,7 @@ func promoteBlock(e *entry, at *time.Time) {
 		return
 	}
 	*at = time.Now()
-	cut := strings.LastIndexByte(e.revealed(), '\n') + 1
+	cut := strings.LastIndexByte(e.text, '\n') + 1
 	if cut <= e.mdCut {
 		return
 	}
@@ -4737,7 +4713,6 @@ func (a *app) usageBack(msg usageMsg) {
 // session's total both come through here and only the session's total is
 // monotonic — a per-turn event must never shrink a running total.
 func (a *app) take(u session.Usage) {
-	prevCost, prevTok := a.cost, a.tokens
 	if u.CostUSD > a.cost {
 		a.cost = u.CostUSD
 	}
@@ -4756,24 +4731,6 @@ func (a *app) take(u session.Usage) {
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
-	// A JUMP WHILE THE TURN IS RUNNING IS WALKED, not popped. The first
-	// reading of a working turn pins the drawn figures where they were so
-	// the clock has somewhere to ease from; a restore or a switch lands
-	// on the exact bill, because nobody is watching those numbers grow
-	// (reveal.go).
-	if a.state == stateWorking && !a.linear {
-		if !a.meterChasing && (a.cost != prevCost || a.tokens != prevTok) {
-			a.shownCost = prevCost
-			a.shownTokens = prevTok
-			a.shownCtx = a.ctxTokens
-			a.meterChasing = true
-		}
-		return
-	}
-	a.shownCost = a.spendShown()
-	a.shownTokens = a.tokens
-	a.shownCtx = a.ctxTokens
-	a.meterChasing = false
 }
 
 // appendText grows the live assistant block, opening one if the last thing on
@@ -4808,7 +4765,6 @@ func (a *app) appendText(text string) {
 	}
 	e := &a.entries[a.live]
 	e.text += text
-	e.catchReveal(len(text), a.linear)
 	e.stale = true
 	a.follow()
 }
@@ -7004,8 +6960,6 @@ func (a *app) resetMeters() {
 	// keeping it buys. That stall would land on precisely the frame this reset
 	// exists to make right.
 	a.ctxTokens = 0
-	a.shownCost, a.shownTokens, a.shownCtx = 0, 0, 0
-	a.meterChasing = false
 	// The HUD's own state is a fact about one conversation too: a sparkline
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.

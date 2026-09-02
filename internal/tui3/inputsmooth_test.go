@@ -556,12 +556,10 @@ func TestAFoldedRunDrawsWhatTheDeltasWouldHave(t *testing.T) {
 	for _, part := range parts {
 		apart.apply(text(session.EventTextDelta, part))
 	}
-	catchUpReveal(apart)
 	apart.frame()
 
 	folded := newTestApp(&fakeAgent{model: "m"})
 	folded.apply(text(session.EventTextDelta, strings.Join(parts, "")))
-	catchUpReveal(folded)
 	folded.frame()
 
 	if got, want := strings.Join(plainRows(folded), "\n"), strings.Join(plainRows(apart), "\n"); got != want {

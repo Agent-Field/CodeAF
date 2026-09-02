@@ -87,7 +87,6 @@ func (a *app) appendThought(text string) {
 	}
 	e := &a.entries[a.think]
 	e.text += text
-	e.catchReveal(len(text), a.linear)
 	e.ended = time.Now()
 	e.stale = true
 	a.follow()
@@ -197,7 +196,7 @@ func thoughtCount(e *entry) string {
 // brightening — the gradient says "this is where you are", not "this is how
 // much there is".
 func (a *app) thoughtLiveRows(e *entry, width int) []string {
-	body := trimBlanks(wrap(strings.TrimSpace(e.revealed()), width-2))
+	body := trimBlanks(wrap(strings.TrimSpace(e.text), width-2))
 	if len(body) == 0 {
 		return nil
 	}
