@@ -80,6 +80,20 @@ func TestManualAnswersAQuestionWithLabelledSections(t *testing.T) {
 	}
 }
 
+// AND THE ANSWER IS ASSERTED AGAINST A PAGE, NOT AGAINST ANOTHER SEARCH. The
+// test above proves the printer prints what it was handed; this one proves the
+// door reaches an answer, by asking the manual the question a person asks about
+// the manual itself and demanding the page that now documents it.
+func TestManualAnswersTheQuestionAboutItsOwnDoor(t *testing.T) {
+	var out bytes.Buffer
+	if err := runManualWith([]string{"how", "do", "I", "read", "the", "manual"}, &out); err != nil {
+		t.Fatalf("aforge manual \"how do I read the manual\": %v", err)
+	}
+	if !strings.Contains(out.String(), "[commands · ") {
+		t.Errorf("the question about reading the manual reached no section of the commands page:\n%s", out.String())
+	}
+}
+
 // A NAME THAT IS NOT A PAGE IS A FAILURE, not a search that quietly answers
 // something else — and the refusal has to leave the person able to act, so it
 // names every page there is.

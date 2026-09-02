@@ -61,10 +61,21 @@ func (c *Corpus) Listing() string {
 // person reading their own manual is paying for none of that, and a page cut
 // short on the surface where the whole of it is free would be a limit wearing a
 // reason it does not have.
-func RenderWhole(sections []Section) string {
+func RenderWhole(sections []Section) string { return renderSections(sections, 0) }
+
+// renderSections is the arrangement itself, and there is one of it because the
+// two readers differ only in whether a body is cut. Two builders would be two
+// places for the label to change in, and a person who quoted a section to
+// somebody reading the model's copy would be quoting a different shape. A cap at
+// or below zero cuts nothing.
+func renderSections(sections []Section, cap int) string {
 	blocks := make([]string, 0, len(sections))
 	for _, section := range sections {
-		blocks = append(blocks, fmt.Sprintf("[%s · %s]\n%s", section.Page, section.Title, section.Body))
+		body := section.Body
+		if cap > 0 && len(body) > cap {
+			body = body[:cap] + "…"
+		}
+		blocks = append(blocks, fmt.Sprintf("[%s · %s]\n%s", section.Page, section.Title, body))
 	}
 	return strings.Join(blocks, "\n\n")
 }
