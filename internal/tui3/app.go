@@ -7379,36 +7379,44 @@ func gitHead(dir string) (string, bool, bool) {
 	return branch, status != "", true
 }
 
-// readApproval is the gate's posture, or "" where there is no profile to ask.
+// approvalPosture is the gate's posture as the YOLO segment may state it: the
+// profile's own answer, read live, for a local session — and the engine's,
+// carried once on the welcome, for a remote one.
 //
-// The empty answer is deliberately not [config.DefaultToolApprovalMode]: a
-// surface booted without a profile (every test, and any embedding that wires
-// its own policy) has not been told the gate is open, and the YOLO segment's
-// whole law is that it appears only when somebody said so.
-func readApproval(profileDir string) string {
-	if strings.TrimSpace(profileDir) == "" {
-		return ""
-	}
-	return config.ToolApprovalModeAt(profileDir)
-}
-
-// approvalPosture is [readApproval] asked by this surface, live, for a local
-// session — and the engine's own answer, carried once on the welcome, for a
-// remote one.
+// THIS IS A SAFETY CLAIM AND IT MUST MATCH THE POSTURE IN FORCE. The segment is
+// drawn only when the gate is open (render.go's NEGATIVE-SPACE SAFETY), so its
+// ABSENCE is the claim that every tool call will be asked about — and the gate
+// it is claiming about is the one cmd/aforge built from
+// [config.ToolApprovalModeAt] on the very same profile directory (chatv3.go's
+// v3Policy). The two must be one reading, because a segment that is quiet over
+// an open gate is the surface telling somebody they will be asked before their
+// disk is written to, and then not asking.
 //
-// THIS MACHINE'S PROFILE IS NOT THE SESSION'S POSTURE over --host: the gate
-// that decides whether a tool runs without asking is the ENGINE's, read from
-// the profile on the engine's machine. A YOLO badge drawn from this laptop's
-// settings would be a safety claim about a machine nobody consulted, so a
-// remote session reads [app.hostApproval] instead of [readApproval] — the
-// same answer, asked of the right machine (internal/remote's wire.go
-// Welcome.ApprovalMode, set once at boot rather than re-read live, because
-// there is nothing on this side left to re-read).
+// IT WAS NOT ONE READING. This resolved through a helper that answered "" on an
+// empty [app.profileDir], on the reasoning that a surface booted without a
+// profile has not been told the gate is open. But AN EMPTY PROFILE DIRECTORY IS
+// THE NORMAL CASE, NOT THE ABSENT CASE: AFORGE_PROFILE_DIR is the rare export,
+// the empty string has always meant this process's own profile in the state
+// root ([config.ProfilePath]), and the policy the tools actually ran under read
+// that profile. So a person who had turned the asking off — the one posture
+// this segment exists to remind them of — was shown NOTHING on every ordinary
+// launch while their gate stood open (#322). The profile is read here the way
+// every other persisted row on this surface is read.
+//
+// THE HOSTED WINDOW IS STILL THE ONE ABSENCE. This machine's profile is not the
+// session's posture over --host: the gate that decides whether a tool runs
+// without asking is the ENGINE's, read from the profile on the engine's
+// machine. A YOLO badge drawn from this laptop's settings would be a safety
+// claim about a machine nobody consulted, so a remote session reads
+// [app.hostApproval] — the same answer, asked of the right machine
+// (internal/remote's wire.go Welcome.ApprovalMode, set once at boot rather than
+// re-read live, because there is nothing on this side left to re-read), and an
+// engine that carried none leaves the segment absent.
 func (a *app) approvalPosture() string {
 	if a.hosted() {
 		return a.hostApproval
 	}
-	return readApproval(a.profileDir)
+	return config.ToolApprovalModeAt(a.profileDir)
 }
 
 func errText(err error) string {

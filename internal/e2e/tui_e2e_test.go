@@ -80,6 +80,57 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
 	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
+	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
+}
+
+// ── 13 ──────────────────────────────────────────────────────────────────────
+
+// testFreshInstallSetup is #322's acceptance, on the real screen: THE FRONT
+// DOOR, on a machine that has never run aforge.
+//
+// THE FAILURE THIS MEASURES MADE THE PRODUCT UNUSABLE ON A FRESH INSTALL.
+// [app.openSetup] returned early on an empty profile directory, which is what an
+// unset AFORGE_PROFILE_DIR looks like by the time it reaches the surface — so a
+// person who had just installed aforge and typed `aforge` was never shown the
+// screen that connects a provider. Every unit test of that screen named a
+// profile directory first, and every person who ever tested it already had a key
+// in their shell, so it was green everywhere and broken for exactly the one
+// audience it exists for.
+//
+// SO IT IS RUN AGAINST NOTHING. [emptyHome] creates a directory and not one thing
+// more, and [startFresh] takes every provider key and the profile override OUT of
+// the environment rather than passing them through it. A fixture that pre-created
+// a config file would hide the failure it is here to catch, because the failure
+// IS emptiness being read as absence.
+//
+// AND IT COSTS NOTHING. There is no key on this machine, so there is no wire
+// path: the setup screen makes no model call, the browser trip is never started
+// (nothing presses enter), and the run is over in seconds. What it measures is
+// the door and the door only.
+func testFreshInstallSetup(t *testing.T) {
+	home := emptyHome(t)
+	ws := newWorkspace(t, "freshws", false)
+	r := startFresh(t, "afe2e_fresh", home, ws, tuiPlain, 40)
+
+	// ONE FRAME, THE WHOLE DOOR: the title that says where in the flow this is,
+	// the heading of the step, and the sentence under it that says what pressing
+	// enter will and will not do.
+	screen := r.waitFor(20*time.Second,
+		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
+	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
+
+	// AND IT IS ASKING FOR ALL THREE. A machine with nothing on it has answered
+	// no part of the setup, so the count is the count of what is missing.
+	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 3") {
+		t.Errorf("the title does not count three missing answers on a machine with nothing on it:\n%s", screen)
+	}
+
+	// AND ITS EXIT IS REAL TOO. `esc` says not now, and the conversation under it
+	// then names the next direct road rather than leaving a person on an empty
+	// screen wondering what happened — which is the other half of a front door.
+	r.keys("Escape")
+	after := r.waitFor(20*time.Second, say(t, "setupNotConnectedNote"))
+	t.Logf("and esc leaves a conversation that says what is still missing:\n%s", after)
 }
 
 // ── 11 ──────────────────────────────────────────────────────────────────────
