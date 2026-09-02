@@ -85,6 +85,98 @@ way into it from here. For a shape of work that recurs, the thing to reach for i
 **sub-harness** — built once, saved, offered again (*Saved shapes of work*) — and for one
 job that leaves the conversation, a **task**.
 
+## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
+
+```
+aforge do "<task>"
+```
+
+One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
+on the way in, and where this conversation would stop and ask, a run with nobody at the
+keyboard decides for itself and says on the record that it decided.
+
+| flag | what it does |
+| --- | --- |
+| `--db <path>` | work in this durable store instead of a private one |
+| `--keep` | keep the private store instead of deleting it on the way out |
+| `-w <dir>` | the directory to work in, edited in place — the current directory by default |
+| `--timeout` | a hard wall on the whole run |
+| `--json` | print one machine-readable object instead of the deliverable |
+| `--yes-spend` | approve a plan whose price crosses the consent threshold |
+| `--model <slug>` | the work model for this run |
+| `--plan-model <slug>` | the model that plans, when it should differ from the work model |
+| `--context-fill <percent>` | how full a model's context window may get before it is compacted |
+| `--completion-reserve <tokens>` | tokens every call keeps free for its answer and its reasoning |
+
+Flags may come after the task text, and the task itself may be piped in.
+
+**Standard output is the answer and nothing else**: the deliverable, then `files:` with one
+absolute path under it per file, then `learned:` — what one worker told the others
+mid-flight — and last one footer line:
+
+```
+4m12s · 6 nodes · $0.0731
+```
+
+**Everything else goes to the error stream**: the `models:` line it opens with, a row per
+piece of work as it starts and as it lands, and, when half a minute passes with nothing to
+report, a line like `still waiting: 1 task pending, 1 running · last call <model> 40s ago —
+4m30s`.
+
+**The exit code is what a script reads.** `0` — the whole of it stands. `1` — nothing
+usable: it failed, the price was refused, or it stopped on a question. `2` — partial: the
+wall came first, the review rejected what was delivered, or parts of it did not land.
+
+A run stopped by a question leaves with `1`, writes nothing to standard output, and says on
+the error stream:
+
+```
+it stopped to ask:
+  <the question, word for word>
+headless mode cannot answer that — `aforge do` runs with nobody at the keyboard, so nothing was done.
+```
+
+Put the answer inside the ask and run it again, or bring it here where it can be answered.
+
+## Running one worker with no plan behind it — what aforge exec is for
+
+```
+aforge exec "<prompt>"
+```
+
+One worker, straight through. No plan, no cutting the job into pieces, no review of what
+comes back, nothing that repairs itself mid-flight — it is the same worker a single piece
+of a job runs on, handed to you on its own. Reach for it when you have already decided what
+the work is and want the cheapest, most predictable path to an answer; reach for `aforge
+do` when you want aforge to work out how the job divides and to judge what it produced.
+Nothing checks the answer here.
+
+With no prompt written out, it reads the prompt from whatever is piped in.
+
+| flag | what it does |
+| --- | --- |
+| `-w <dir>` | the directory it works in |
+| `--system <text>` | the working method for the worker |
+| `--turns <n>` | a runaway backstop on how many times it goes round its loop |
+| `--budget <n>` | the token budget for the whole run |
+| `--timeout <seconds>` | a hard wall in seconds; unset, it is scaled from the token budget |
+| `--json` | print a machine-readable result instead of the plain text |
+| `-o <file>` | write that same result to a file as well |
+| `--model <slug>` | the work model |
+| `--plan-model <slug>` | taken and ignored |
+
+Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
+when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
+and the machine-readable result says which — it carries the worker's text, the reason it
+stopped, what it used, and the files it made.
+
+`--plan-model` is accepted only so that every command you can run without the screen takes
+the same flags. `exec` plans nothing, so naming it changes nothing.
+
+Without `--json`, standard output is the worker's own text and nothing else. It opens on the
+error stream with one seat rather than two — `models: work <model> (crew frugal)` — because
+only one of them runs anything.
+
 ## What one costs and what happens when the money runs out
 
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
