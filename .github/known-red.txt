@@ -19,7 +19,6 @@
 # CLAUDE.md could not spell, and found six more nobody was tracking.
 
 # Fail on a clean tree.
-TestSettingsSheetIsOneCalmColumnAtEveryWidth
 TestEveryGoroutineInTheGuardedTreeIsGuarded
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
 TestEveryMessageWriteUsesThreadPost
