@@ -23,3 +23,8 @@ Measured on a headless `aforge do` on deepseek-v4-pro: a 39.6 s `compile` the
 controller hedged at its ceiling now leaves an end row carrying status 200, 2,718
 completion tokens, `stop` and $0.0099. Before this it left a start row and
 nothing else, and the manual's own words for that state are "still in flight".
+
+The call-log page says so too, because a person meets the sentence before they
+meet the code: a line may leave a number out and name it in its `note`, so a row
+short of `cost_s` beside such a sentence is an honest line rather than a broken
+one.
