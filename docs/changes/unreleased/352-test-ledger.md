@@ -4,7 +4,7 @@ title: a test binary never writes into the model-call ledger of whoever ran it
 pr: 352
 surface: [engine, build]
 invalidates:
-  - "`calllog.PathFor` resolved a path for every caller: the profile directory when there was one and the state root otherwise. Under `go test` it now answers \"\" for any path that would land inside the state root the environment named — the unopened fallback, `Open(\"\")`, and `Open(dir)` on a profile directory derived from that root alike — so a test binary cannot write into the ledger of the person who started it. Outside a test binary it resolves exactly as it always has."
+  - "`calllog.PathFor` resolved a path for every caller: the profile directory when there was one and the state root otherwise. Under `go test` it now answers \"\" for any path that would land inside either root the environment named — the state root `AFORGE_HOME`, and the profile root `AFORGE_PROFILE_DIR` when that moves the profile out from under it — covering the unopened fallback, `Open(\"\")`, and `Open(dir)` on a profile directory derived from either root alike, so a test binary cannot write into the ledger of the person who started it. Outside a test binary it resolves exactly as it always has."
   - "A test that wants a model-call log to assert against can no longer let the log find its own way there: it says where the log goes, with `Open` on a directory of its own or with the `AFORGE_CALL_LOG` pin. Both still work under test; only an inherited path is refused."
   - "`internal/provider` and `cmd/aforge` each pin the log off in their own `TestMain`. Those pins are now belt and braces rather than the protection — the gate in `internal/calllog` covers every package, including ones that never mention the call log."
 ---
