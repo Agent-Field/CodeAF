@@ -148,6 +148,15 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value: shortlist, others: notShortlist,
 		quotes: []quotedIn{{"tasks", "matching more than %s ids is refused"}},
 	}, {
+		// The shipped default is a FLOATING ALIAS and the lanes page explains
+		// what that costs a reader — so the page spells the id out, and a
+		// default that moved would leave it explaining a name nobody is on.
+		// There is no wrong spelling of a model id to hunt for, only a missing
+		// one, so this row carries no others (see [quotedFact.others]).
+		fact: "the shipped default model", owner: "config.DefaultModel",
+		value:  config.DefaultModel,
+		quotes: []quotedIn{{"lanes", "The model aforge ships with is spelled `%s`"}},
+	}, {
 		fact: "the shipped context fill", owner: "ctxbudget.DefaultFillPercent",
 		value:  strconv.Itoa(ctxbudget.DefaultFillPercent),
 		quotes: []quotedIn{{"compacting-over-and-over", "`%s%% of 1M (pinned)`"}},

@@ -1511,6 +1511,37 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// wanted a key and cost money, and what came back was a retelling. These
 		// are the words somebody uses when they want to read it themselves —
 		// from the conversation, and from a terminal where nothing is set up yet.
+		// LANES — the machine behind the model id. The page had no probe of its
+		// own until now, which meant every question about the endpoint that
+		// answered was reaching whichever page happened to repeat the word.
+		// One per heading, in the words somebody says in front of it.
+		//
+		// The floating alias, asked the three ways it is met: the word on the
+		// end of the shipped model's name, the record naming a build the person
+		// never picked, and the character in front of it that looks like a path.
+		{"what does latest mean in the model name", "lanes"},
+		{"why does via say 0731 when I picked latest", "lanes"},
+		{"the model name has a tilde in it", "lanes"},
+		// AUTO, asked from a terminal rather than from a conversation. The
+		// first two are somebody deciding whether the headless doors get any of
+		// this at all, and the third is the one people ask on day one, before
+		// aforge has timed anything of theirs.
+		{"does aforge do pick the fastest endpoint too", "lanes"},
+		{"does a headless run choose between lanes", "lanes"},
+		{"why did it pick that provider on my very first message", "lanes"},
+		// Naming the machine yourself — asked as the worry underneath it, which
+		// is whether a pin is honoured — and reading the line that says which
+		// machine actually answered.
+		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		{"what does via cloudflare mean on the status line", "lanes"},
+		// The offer, from the side the page owns: what the answer NO would be.
+		// The key itself is the keys page's, because that is where somebody
+		// looking for a keystroke looks.
+		{"how do I say no to switch to auto", "lanes"},
+		{"what key answers switch to auto", "keys"},
+		// The wait nothing can end, and the row that turns it off.
+		{"what does all lanes slow still waiting mean", "lanes"},
+		{"how do I turn off endpoint routing", "lanes"},
 		{"how do I read the manual", "commands"},
 		{"is there a help page", "commands"},
 		{"show me the page about a command", "commands"},

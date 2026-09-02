@@ -1119,6 +1119,12 @@ while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
 redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
 box; only `enter` interprets the typed answer.
 
+**A slow lane's offer**, raised on the status line when a machine you pinned has gone
+quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
+box only**, fetches this answer from somewhere else. There is no key to decline — the
+question takes itself down when an answer starts arriving — and with anything typed in the
+box a `y` is a `y`.
+
 **A connect offer:** `enter` or `y` yes · `esc` or `n` no. While its key box is open,
 every key goes into that box except `enter`, which submits, and `esc`, which
 declines.
