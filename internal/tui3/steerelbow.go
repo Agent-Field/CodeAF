@@ -157,6 +157,35 @@ import (
 // law: if the turn is over and the words were never consumed, they were never
 // part of it.
 //
+// ── AND THE SAME MARK SERVES THE OTHER PAGE ────────────────────────────────
+//
+// A task's page is one question — the instruction the work was given — and
+// everything the person says on it after that is, by the nature of the page, a
+// correction to work already moving. So it is drawn with this mark too: the
+// elbow where it was said, no turn opened, and on replay a correction that reads
+// as a correction rather than as a second brief (docs/design/lens/DESIGN.md,
+// Decision 2 and the owner's ruling 2).
+//
+// ONE THING IS TRUE THERE THAT IS NOT TRUE HERE, and it earns the one field this
+// file added for it ([steerElbow.receipt]). A correction typed into this
+// conversation is answered by the answer: the words are read by the model the
+// person is already talking to, and the page keeps moving under them. A
+// correction typed into a TASK crosses to ANOTHER AGENT, and there is a moment —
+// sometimes a long one, when the node had parked on the pieces it handed out —
+// in which nothing at all happens on the page. That silence is
+// indistinguishable from the words having gone nowhere, and it is why the owner
+// ruled (2026-09-01) that every task steer confirms delivery:
+//
+//	└ use the staging bucket, not production · delivered
+//
+// The sentence is the ENGINE'S, exactly as the landing clause above is
+// (internal/session's [session.SteerMark.Landing] — `delivered`, or `it was
+// waiting on its pieces — your line wakes it` when the line is what woke a
+// parked node), because a surface that spelled its own word for a crossing it
+// cannot see would be describing a machine. And it is NEWS AND GOES WHEN THE
+// NEWS DOES, on this file's own ramp: the clause fades out and the elbow stays,
+// so a page read back tomorrow carries the correction and not a receipt for it.
+//
 // ── AND A FOLD MAY NOT HIDE THEM ───────────────────────────────────────────
 //
 // The `worked` chip collapses the machinery between a question and its answer,
@@ -209,6 +238,23 @@ type steerElbow struct {
 	// tool is being allowed to finish. It is the clause the row wears while it
 	// waits, and it is empty on a note that carried none.
 	landing string
+	// receipt is the DELIVERY CLAUSE a correction wears when it crossed to
+	// ANOTHER AGENT — the engine's own sentence about what the sending did
+	// ([session.SteerMark.Landing]), drawn while it is news and gone when the
+	// news is. See the header for the ruling it encodes.
+	//
+	// It is a field of its own rather than a second reading of [landing] because
+	// the two answer different questions at opposite ends of the same row: the
+	// landing clause says where words that have NOT yet arrived are going, and
+	// this says that words that HAVE arrived did. A conversation's elbow never
+	// sets it, which is what keeps the conversation's own rows exactly as they
+	// were.
+	//
+	// A REPLAYED ELBOW CARRIES NONE. A receipt is an answer to "what is happening
+	// to my words right now", and there is no right now about a correction made
+	// yesterday — the block's position is what says where it went, which is the
+	// whole of this file's design.
+	receipt string
 	// consumed is the fact itself. It is a field beside the instant rather than
 	// `!landed.IsZero()` because a REPLAYED elbow knows it landed and does not
 	// know when the surface would have said so — the journal keeps the SEND's
@@ -359,6 +405,27 @@ func entryWithdrawn(e *entry) bool {
 	return e.kind == entrySteer && e.steer == nil
 }
 
+// roomFading tells a task page's row cache to build again while any correction
+// on it is still moving.
+//
+// IT EXISTS BECAUSE THE TWO PAGES CACHE AT DIFFERENT GRAINS. The conversation
+// caches one block at a time and [app.entryRows] already refuses to cache a
+// moving elbow; a room caches its WHOLE list until something marks it dirty
+// ([app.roomRows]), and a fade is not something arriving — it is time passing.
+// So the two catch-up wakeups the fade schedules ([fadeTicks]) say so here, and
+// a page with nothing moving on it is left alone.
+func (a *app) roomFading() {
+	if a.room == nil {
+		return
+	}
+	for i := range a.room.entries {
+		if e := &a.room.entries[i]; e.kind == entrySteer && a.elbowMoving(e.steer) {
+			a.roomTouched()
+			return
+		}
+	}
+}
+
 // elbowOf finds one correction's block by the engine's id. It walks backwards
 // because the newest turn is the one being steered on every frame this is asked
 // on, and answers -1 for an id this page is not holding.
@@ -436,26 +503,60 @@ func (a *app) elbowRows(elbow steerElbow, width int) []string {
 		}
 		out = append(out, lead+ink(line))
 	}
-	if len(out) == 0 || elbow.consumed {
+	if len(out) == 0 {
 		return out
 	}
-	// THE WORKING CLAUSE, on the row the sentence ended on when there is room —
-	// the spacing ladder's clause step, exactly as the turn's context mark takes
-	// it (turncontext.go) — and on a row of its own when there is not. Its words
-	// are the engine's account of where this correction is landing, and
-	// [steerPendingWord] only when it sent none.
+	if elbow.consumed {
+		// THE DELIVERY RECEIPT, while it is still news. It is the only clause a
+		// settled elbow ever wears, and only a correction that crossed to another
+		// agent has one.
+		if word := a.elbowReceipt(elbow); word != "" {
+			return a.elbowClause(out, lead, word, a.pal.dim(word), width)
+		}
+		return out
+	}
+	// THE WORKING CLAUSE. Its words are the engine's account of where this
+	// correction is landing, and [steerPendingWord] only when it sent none.
 	word := elbow.landing
 	if word == "" {
 		word = steerPendingWord
 	}
-	spin, tail := a.pal.muted(a.steerSpin()), a.pal.dim(" "+word)
-	room := ansi.StringWidth(steerClauseSep) + 1 + ansi.StringWidth(" "+word)
+	spin := a.steerSpin()
+	return a.elbowClause(out, lead, spin+" "+word,
+		a.pal.muted(spin)+a.pal.dim(" "+word), width)
+}
+
+// elbowClause hangs one clause off the correction: on the row the sentence
+// ended on when there is room — the spacing ladder's clause step, exactly as the
+// turn's context mark takes it (turncontext.go) — and on a row of its own when
+// there is not.
+//
+// It is measured on the clause's PLAIN text and appended already PAINTED,
+// because a painted run carries its own reset and cannot be measured.
+func (a *app) elbowClause(out []string, lead, plain, painted string, width int) []string {
+	room := ansi.StringWidth(steerClauseSep + plain)
 	if ansi.StringWidth(out[len(out)-1])+room <= width {
-		out[len(out)-1] += a.pal.dim(steerClauseSep) + spin + tail
+		out[len(out)-1] += a.pal.dim(steerClauseSep) + painted
 		return out
 	}
-	out = append(out, lead+spin+tail)
-	return out
+	return append(out, lead+painted)
+}
+
+// elbowReceipt is the delivery clause this frame draws, or "" once it has
+// stopped being news.
+//
+// THE WINDOW IS THE FADE'S OWN ([hudWarm]), so the clause leaves at the moment
+// the words under it finish settling into their reading tier — one piece of
+// news arriving and departing once, rather than two things moving on one row at
+// two different speeds.
+func (a *app) elbowReceipt(elbow steerElbow) string {
+	if elbow.receipt == "" || elbow.landed.IsZero() {
+		return ""
+	}
+	if a.now().Sub(elbow.landed) >= hudWarm {
+		return ""
+	}
+	return elbow.receipt
 }
 
 // steerClauseSep joins the working clause to the sentence in front of it: the

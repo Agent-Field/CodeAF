@@ -4060,8 +4060,8 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 }
 
 // THE INPUT TALKS TO THE NODE. Enter steers, the words arrive at the engine as
-// the person wrote them, and they land in the room in the PERSON's hue — the
-// same law the conversation's own messages follow.
+// the person wrote them, and they land on the page as the ELBOW a correction is
+// drawn as everywhere on this surface (steerelbow.go).
 func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	clickRail(t, a, 0)
@@ -4093,15 +4093,31 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	if !strings.Contains(roomText(a), "the config lives under etc/") {
 		t.Fatalf("the steered line is not in the room:\n%s", roomText(a))
 	}
-	// The person's own voice, in the person's own hue.
+	// IT IS AN ELBOW AND NOT A QUESTION: the dim `└ ` mark, the words one reading
+	// step under a question's own, and no `›` anywhere on the page — a task page
+	// is one question with corrections hanging off it (#252, ruling 2).
 	var said string
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.Contains(plain(r.text), "the config lives under etc/") {
+		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
 			said = r.text
 		}
 	}
-	if !strings.Contains(said, sgr256(hueAccent)) {
-		t.Fatalf("the steered line is not painted in the person's hue:\n%q", said)
+	if said == "" {
+		t.Fatalf("the steered line is not drawn as an elbow:\n%s", roomText(a))
+	}
+	if !strings.HasPrefix(said, sgrOf(a.pal.dim)) {
+		t.Fatalf("the elbow glyph is not dim furniture: %q", said)
+	}
+	if !strings.Contains(said, sgrOf(a.pal.narr)+"the config lives under etc/") {
+		t.Fatalf("the correction's words are not one step under a question's: %q", said)
+	}
+	if strings.Contains(roomText(a), "› the config lives under etc/") {
+		t.Fatalf("the correction was drawn as a question of its own:\n%s", roomText(a))
+	}
+	// AND IT OPENS NO TURN. The page's whole life is the one turn its instruction
+	// opened; a correction bends that question rather than asking another.
+	if a.room.turn != 0 {
+		t.Fatalf("steering opened turn %d on a page with no instruction in it", a.room.turn)
 	}
 	// It went to the NODE and not to the model, and the box is empty for the
 	// next thing to say.
@@ -4158,11 +4174,15 @@ func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
 	}
 }
 
-// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS SO WHEN IT TAKES
-// THE LINE. Such a node has handed its work out and parked on the reports
+// AND A ROOM ON A NODE THAT IS WAITING ON ITS OWN PIECES SAYS THE TRUER FACT.
+// Such a node has handed its work out and parked on the reports
 // (internal/session's task_room.go): it is not in a step, so the line is what
 // wakes it, and a page that drew the person's words and went quiet is the page
 // they would see if the words had gone nowhere at all.
+//
+// THE SENTENCE IS THE ENGINE'S AND THE PAGE DRAWS IT VERBATIM
+// ([session.SteerDelivered]), because the live clause and the one the record
+// keeps for tomorrow have to be one sentence with one author.
 func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	agent.steerWaiting = true
@@ -4178,27 +4198,62 @@ func TestSteeringANodeWaitingOnItsPiecesSaysWhatTheLineJustDid(t *testing.T) {
 	if !strings.Contains(body, "the config lives under etc/") {
 		t.Fatalf("the steered line is not in the room:\n%s", body)
 	}
-	if !strings.Contains(plain(body), steerWokeWord) {
+	if !strings.Contains(body, session.SteerDelivered(true)) {
 		t.Fatalf("the room took a line into a parked node and said nothing about it:\n%s", body)
 	}
-	// AND IT IS THE ROOM'S OWN DIM LINE, not a second thing the node said.
+	// AND IT IS A CLAUSE ON THE CORRECTION'S OWN ROW, not a second line of the
+	// page's own: what happened to those words is a fact about those words.
+	if !strings.Contains(elbowRowIn(a, "the config lives under etc/"), session.SteerDelivered(true)) {
+		t.Fatalf("the clause is not on the correction's row:\n%s", body)
+	}
 	if countKind(a, entryNote) != 0 {
 		t.Fatal("the note went into the conversation instead of the room")
 	}
 }
 
-// A NODE THAT IS TAKING STEPS IS NOT ANNOUNCED, because there is nothing to say:
-// the line lands at its next step, which is what a room that keeps moving shows
-// on its own.
-func TestSteeringAWorkingNodeSaysNothingExtra(t *testing.T) {
+// EVERY TASK STEER CONFIRMS DELIVERY (the owner's ruling 4, 2026-09-01). A
+// correction typed into this conversation is answered by the answer; one typed
+// into a task crosses to ANOTHER AGENT and the page can stay silent afterwards
+// for as long as the node's current step runs. That silence is what the person
+// would also see if the words had gone nowhere, so the elbow says they arrived —
+// briefly, on the same fade the conversation's own landing clause takes.
+func TestEveryTaskSteerConfirmsDelivery(t *testing.T) {
 	a, _, _ := roomApp(t)
 	clickRail(t, a, 0)
 
 	a.input.setText("the config lives under etc/")
 	drive(t, a, key("enter"))
-	if strings.Contains(plain(roomText(a)), steerWokeWord) {
+
+	row := elbowRowIn(a, "the config lives under etc/")
+	if !strings.Contains(row, steerClauseSep+session.SteerDelivered(false)) {
+		t.Fatalf("a delivered correction carries no receipt: %q\n%s", row, roomText(a))
+	}
+	// AND IT DOES NOT CLAIM THE OTHER FACT. A node taking steps was not parked.
+	if strings.Contains(roomText(a), session.SteerDelivered(true)) {
 		t.Fatalf("a working node's room claims the line woke it:\n%s", roomText(a))
 	}
+	// THE CLAUSE IS NEWS AND GOES WHEN THE NEWS DOES, and the elbow stays: the
+	// block's position is what says where the words went, and a receipt that
+	// stayed for ever would be furniture rather than an answer.
+	a.clock = func() time.Time { return time.Now().Add(hudWarm + time.Second) }
+	a.roomTouched()
+	settled := elbowRowIn(a, "the config lives under etc/")
+	if settled == "" {
+		t.Fatalf("the correction left the page with its clause:\n%s", roomText(a))
+	}
+	if strings.Contains(settled, session.SteerDelivered(false)) {
+		t.Fatalf("the delivery receipt never stopped being news: %q", settled)
+	}
+}
+
+// elbowRowIn is the drawn row a task page's correction is on, plain, or "".
+func elbowRowIn(a *app, words string) string {
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if line := plain(r.text); strings.HasPrefix(line, glyphSteer+words) {
+			return line
+		}
+	}
+	return ""
 }
 
 // A ROOM ON A NODE THAT HAS LANDED says so at its foot and ASKS about what is

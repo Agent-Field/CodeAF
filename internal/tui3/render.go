@@ -933,7 +933,14 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// the tool rows it interrupted — and it is drawn from here, like every
 		// other kind, so that the row cache, the indent law and the fold all meet
 		// it as an ordinary entry.
-		return a.steerBlockRows(e, width)
+		//
+		// AND IT SAYS WHAT IT WAS PART OF, on the person's own block's terms
+		// (turncontext.go): a correction typed into a NAMED working context is a
+		// thing said into that context exactly as the question was, and it would be
+		// the only sentence of theirs on the page that did not name where it went.
+		// An ordinary correction — every one typed in this conversation — carries
+		// no context and adds nothing at all.
+		return a.turnContextRows(a.steerBlockRows(e, width), e.context, width)
 
 	case entryAssistant:
 		return a.linkPaths(a.assistantRows(i, e, width))
