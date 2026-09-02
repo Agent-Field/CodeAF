@@ -15,7 +15,7 @@ schema, and a person needs to know which command actually thinks.
 ## 1. `aforge do` — one errand, the whole living brain
 
 ```
-aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout D]
+aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout N]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--context-fill N] [--completion-reserve N]
 ```
@@ -38,7 +38,7 @@ done.
 | `-w dir` | the current directory | The directory it works in, **edited in place**. Not an output folder — it opens what is there and leaves nothing behind that you did not ask for. |
 | `-db path` | a private temp store, deleted on exit | Work in this durable store instead. This is how state survives across runs. |
 | `-keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
-| `-timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `-timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
+| `-timeout N` | `900` | Hard wall in seconds. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
 | `--yes-spend` | off | Approve a plan whose price crosses the consent threshold. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
 | `--model slug` | the ladder below | The work model for this run. |
