@@ -61,8 +61,9 @@ type WorkNode struct {
 // AN ID IS SOMETHING A SURFACE CAN ACT ON. The spellings are cancel.go's, the
 // one place in this package where both kinds of work already share a
 // vocabulary: `task:4` for a node of the task graph, `run:2` for an adaptive
-// run, and `run:2/node-a` for one planned node inside one. A reader can hand
-// the first two straight to [Agent.Cancel]; nothing else in this package mints
+// run, `run:2/node-a` for one planned node inside one, and `job:3` for a
+// background job. A reader can hand any of them except the planned node
+// straight to [Agent.Cancel]; nothing else in this package mints
 // an id that means two different things depending on which kind of work you
 // thought you were looking at.
 //

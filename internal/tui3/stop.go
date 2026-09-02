@@ -79,13 +79,13 @@ func (a *app) stopDoors() (stopAgent, bool) {
 // stopTarget is one piece of work this surface can offer to stop: the id the
 // session's own door takes, and the words the card says about it.
 //
-// The id is already PREFIXED (session's CancelTask, CancelRun): the surface
+// The id is already PREFIXED (session's CancelTask, CancelRun, CancelJob): the surface
 // knows which kind of thing it is pointing at and the session must not have to
 // guess from a bare number.
 type stopTarget struct {
 	id string
-	// noun is what this work is called in the card's question — "run" or
-	// "task" — and detail is the promise under it. They travel together because
+	// noun is what this work is called in the card's question — "run", "task"
+	// or "job" — and detail is the promise under it. They travel together because
 	// a question and the promise that answers it must not be able to disagree
 	// about what is being ended.
 	noun, detail string
@@ -104,6 +104,7 @@ func (t stopTarget) question() string {
 const (
 	stopRunNoun  = "run"
 	stopTaskNoun = "task"
+	stopJobNoun  = "job"
 	// stopRunDetail is internal/orchestrate's own law said to a person: the
 	// contexts of the nodes in flight are cut and the digests of the nodes that
 	// landed are kept.
@@ -117,6 +118,10 @@ const (
 	// so the reassurance above would be pointing at work that does not exist, and
 	// this is the honest promise in its place.
 	stopDesignDetail = "The page it is writing is dropped; nothing was saved."
+	// stopJobDetail is what the same card says over a background job. It has no
+	// branch and wrote no files a merge would keep — what remains after a stop
+	// is the log, which is the whole record of what the process did.
+	stopJobDetail = "The process is ended; its log is kept."
 )
 
 // stopCard is one raised confirmation: what it is about, and which answer the
@@ -233,13 +238,16 @@ func (a *app) stopSay(line string) {
 // stopHere is the work `x` and the header's ✕ are aimed at, or the empty target
 // when there is nothing here to stop.
 //
-// THE ROOM OUTRANKS THE ROSTER, because a room is where you ARE and the roster
-// is a list you can see from anywhere. A person standing inside a node's page
-// who presses `x` means that node, whatever row the roster's cursor happens to
-// be resting on behind them.
+// THE PAGE YOU ARE STANDING ON OUTRANKS THE LIST YOU CAN SEE. A job's own page
+// and a node's room are where you ARE; the roster is a list behind them. A
+// person standing inside one who presses `x` means that work, whatever row the
+// roster's cursor happens to be resting on.
 func (a *app) stopHere() stopTarget {
 	if run := a.orchOf(); run != nil {
 		return stopRunTarget(run.id, run.snap, run.known)
+	}
+	if job := a.jobPageJob(); job != nil {
+		return stopJobTarget(job)
 	}
 	if a.room != nil {
 		return a.stopTaskTarget(a.tasks[a.room.id])
@@ -284,15 +292,6 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	if node == nil {
 		return stopTarget{}
 	}
-	// A BACKGROUND JOB IS NOT STOPPABLE FROM HERE, AND SO NO ✕ IS DRAWN ON IT.
-	// The id on a job's row is the roster's own and names nothing [session.Agent.Cancel]
-	// can find (session's TaskKindJob says so out loud), so a key wired to it
-	// would raise a card whose only possible answer was the engine refusing. A
-	// capability that cannot work is absent, not broken: the row draws no ✕, `x`
-	// aims past it, and the way to end a job is the `jobs` tool's own kill.
-	if node.kind == session.TaskKindJob {
-		return stopTarget{}
-	}
 	switch node.state {
 	case session.TaskQueued, session.TaskRunning:
 		return stopTarget{
@@ -307,6 +306,20 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 		}
 	}
 	return stopTarget{}
+}
+
+// stopJobTarget is one background job as a card can offer it. Only a job that
+// is still running is offered: a settled job has nothing to stop, and a key
+// that would refuse is a key the page does not draw (jobpage.go).
+func stopJobTarget(job *session.JobNotice) stopTarget {
+	if job == nil || job.Over() {
+		return stopTarget{}
+	}
+	return stopTarget{
+		id:     session.CancelJob + ":" + itoa(job.ID),
+		noun:   stopJobNoun,
+		detail: stopJobDetail,
+	}
 }
 
 // stopDetailFor is the second line of the confirmation, chosen by what the node

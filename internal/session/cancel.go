@@ -2,20 +2,21 @@ package session
 
 // STOPPING WORK, WHATEVER KIND IT IS.
 //
-// This session drives three kinds of thing that outlive the sentence that asked
-// for them: a task node in the graph, an adaptive run, and a sub-harness run.
-// Every one of them already had SOME way to end — a context, a goroutine, a
-// channel — and not one of them had a way a person could reach. `jobs kill` is
-// the model's tool and takes the registry's own numbers, and the fuel gate's
-// "stop" only exists once a run has spent its tank. So the answer to "how do I
-// stop this" was, everywhere on this surface, "say so in words and hope the
-// model does it".
+// This session drives four kinds of thing that outlive the sentence that asked
+// for them: a task node in the graph, an adaptive run, a sub-harness run, and
+// a background job. Every one of them already had SOME way to end — a context,
+// a goroutine, a channel, a signal — and not one of them had a way a person
+// could reach. `jobs kill` is the model's tool and takes the registry's own
+// numbers; this file is how a person reaches the same id as `job:3`. The fuel
+// gate's "stop" only exists once a run has spent its tank. So the answer to
+// "how do I stop this" was, everywhere on this surface, "say so in words and
+// hope the model does it".
 //
 // [Agent.Cancel] is the one door. It takes an id, works out which kind of work
-// that id names, and ends it — and the three endings differ only in what they
+// that id names, and ends it — and the four endings differ only in what they
 // have to cut.
 //
-// A HARNESS BEING DESIGNED IS NOT A FOURTH KIND. It used to be, and it is a
+// A HARNESS BEING DESIGNED IS NOT A FIFTH KIND. It used to be, and it is a
 // task now (harness_task.go): `task:4` stops it, its own row carries the ✕, and
 // the design settles saying nothing was saved.
 //
@@ -30,9 +31,9 @@ package session
 //
 // WHAT IS NEVER THROWN AWAY IS THE TRACE. A stopped task keeps its branch and
 // its transcript, a stopped run keeps the nodes that finished, their digests
-// and its notes, and both keep what they spent — because a person who stops
-// work is deciding not to spend MORE on it, not asking for the last twenty
-// minutes to be deleted.
+// and its notes, a stopped job keeps its log, and they all keep what they
+// spent — because a person who stops work is deciding not to spend MORE on it,
+// not asking for the last twenty minutes to be deleted.
 //
 // IT IS IDEMPOTENT. Two presses, or a press on work that has already landed,
 // is a sentence saying so and nothing else. A confirmation a surface draws and
@@ -47,20 +48,21 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
-// The three kinds of work an id can name, spelled as [Agent.Cancel] takes them:
-// `task:7`, `run:2`, `harness:4`.
+// The four kinds of work an id can name, spelled as [Agent.Cancel] takes them:
+// `task:7`, `run:2`, `harness:4`, `job:3`.
 //
 // THE PREFIX IS NOT DECORATION. The counters that mint these ids are separate
-// counters — the graph's, the run register's, the harness lane's — so "7" is a
-// task AND a run AND a harness run, and a surface handing over a bare number
-// would be asking this file to guess which piece of somebody's work to end. A
-// bare number is read as a TASK and only as a task, because that is the id
-// space every surface on this program already had before any of the others
-// existed.
+// counters — the graph's, the run register's, the harness lane's, the job
+// registry's — so "7" is a task AND a run AND a harness run AND a job, and a
+// surface handing over a bare number would be asking this file to guess which
+// piece of somebody's work to end. A bare number is read as a TASK and only as
+// a task, because that is the id space every surface on this program already
+// had before any of the others existed.
 const (
 	CancelTask    = "task"
 	CancelRun     = "run"
 	CancelHarness = "harness"
+	CancelJob     = "job"
 )
 
 // Cancel stops one piece of work and answers with the line to show for it.
@@ -91,6 +93,12 @@ func (a *Agent) Cancel(id string) (string, error) {
 			return "", err
 		}
 		return a.cancelHarnessRun(number)
+	case CancelJob:
+		number, err := cancelNumber(CancelJob, rest)
+		if err != nil {
+			return "", err
+		}
+		return a.cancelJob(number)
 	}
 	return "", fmt.Errorf("%q names no kind of work this session can stop", id)
 }

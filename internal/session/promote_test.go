@@ -150,6 +150,10 @@ func TestTheBackgroundAfterClockKeepsTheCommandAndTheConversationMovesOn(t *test
 			return textResponse("The late command finished."), nil
 		},
 	}}
+	// A promoted command becomes a job, and a job is named on a goroutine of its
+	// own (jobname.go). The namer is answered by shape so it cannot take one of
+	// the three steps this test scripted. See [answerTheNamerOffTheQueue].
+	answerTheNamerOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.BashBackgroundAfterSeconds = 2
 	})
@@ -157,7 +161,7 @@ func TestTheBackgroundAfterClockKeepsTheCommandAndTheConversationMovesOn(t *test
 
 	started := time.Now()
 	turn := mustSubmit(t, agent, "run the slow command and continue")
-	row := awaitJobRow(t, lane, TaskRunning)
+	job := awaitJob(t, lane, JobRunning)
 	collect(t, turn)
 	elapsed := time.Since(started)
 	if elapsed < 1500*time.Millisecond || elapsed > 4*time.Second {
@@ -172,8 +176,15 @@ func TestTheBackgroundAfterClockKeepsTheCommandAndTheConversationMovesOn(t *test
 	}
 	firstLine := strings.SplitN(result, "\n", 2)[0]
 	logPath := strings.TrimPrefix(firstLine, resultLead)
-	if row.Report != jobRowLead(1, logPath) {
-		t.Fatalf("the running roster row is %q, want %q", row.Report, jobRowLead(1, logPath))
+	// THE PUBLISHED JOB AND THE SENTENCE THE MODEL WAS GIVEN NAME THE SAME FILE.
+	// They are written by different halves — the tool's answer and the job's own
+	// notice — and a person reading the page while the model reads the result
+	// must not be looking at two different logs.
+	if job.LogPath != logPath {
+		t.Fatalf("the published job's log is %q and the model was told %q", job.LogPath, logPath)
+	}
+	if job.ID != 1 {
+		t.Fatalf("the published job is %d and the model was told job 1", job.ID)
 	}
 	waitFor(t, "the promoted call to leave the in-flight set", func() bool {
 		return agent.inFlightBash.find("clock-call") == nil

@@ -1702,23 +1702,27 @@ seam does the same thing with the pointer.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's
-own detail line — the merge word and price, a job's log path — which a finished row keeps
-folded so that the column's height goes to work that is still moving. `→` on anything else
-does nothing.
+own detail line — the merge word and price — which a finished row keeps folded so that the
+column's height goes to work that is still moving. A job's log path is not on that fold:
+it is on the job's page. `→` on anything else does nothing.
 
-**The walk stops at this conversation's last task.** The roster holds this conversation's
-work and nothing else, so `↓` clamps at the bottom of it rather than carrying on into the
-project's record. Old tasks from earlier sessions are on the tasks place, reached from the
-column's own `ctrl+. earlier` line, from `ctrl+.` or from `/history`; `enter` on an
-`earlier` row there goes inside that task's card. In a directory whose earlier sessions ran
-tasks but where **this** conversation has run none, `ctrl+t` falls through — there is
-nothing on the column to put a cursor on.
+**The walk stops at this conversation's last job, after its last task.** The roster holds
+this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
+the bottom rather than carrying on into the project's record. Old tasks from earlier
+sessions are on the tasks place, reached from the column's own `ctrl+. earlier` line, from
+`ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
+card. In a directory whose earlier sessions ran tasks but where **this** conversation has
+run none and started no jobs, `ctrl+t` falls through — there is nothing on the column to
+put a cursor on. A session that has only started a server still has the jobs section, so
+`ctrl+t` takes it.
 
 **The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
-that close each section (`+ /task`, `+ /standing`), are the pointer's — the walk skips
-them. Their keyboard equivalents are the commands themselves: `/standing` opens the
-standing orders page, and typing `/task ` is exactly what pressing `+ /task` puts in the
-box. **No new key is added to the column by either of them.**
+that close each of those sections (`+ /task`, `+ /standing`), are the pointer's — the walk
+skips them. The `jobs` section does take the cursor: the label, then every job row the
+column actually drew. Their keyboard equivalents for standing are the commands themselves:
+`/standing` opens the standing orders page, and typing `/task ` is exactly what pressing
+`+ /task` puts in the box. **No new key is added to the column by either of them.** `enter`
+on the `jobs` label toggles the section; `enter` on a job row opens that job's page.
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend
@@ -2307,7 +2311,7 @@ away, and waiting.
 
 Afterwards it is an ordinary job: ask aforge to list them, tail one, or kill one,
 and it is killed with everything else when the session closes. The command's log
-file is named in the call's own result, which you can read by opening the row.
+file is named in the call's own result, and on the job's page — not on the row.
 
 **The key is absent whenever it cannot work**, and absent means it does nothing
 as a background gesture rather than telling you it cannot. The same absence rule

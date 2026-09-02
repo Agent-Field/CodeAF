@@ -437,6 +437,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stray lines painted over the conversation", "tasks"},
 		{"what is the row for my dev server on the right", "tasks"},
 		{"can I stop a background job from the sidebar", "tasks"},
+		// The jobs-own-section wave: a job is a third section, named, paged, and
+		// stoppable from that page. These have to land on the page that owns the
+		// column, in the words somebody actually types.
+		{"how do I stop a background job", "tasks"},
+		{"kill a server I started", "tasks"},
+		{"what is running in the background", "tasks"},
+		{"the jobs list on the right", "tasks"},
+		{"why is my job called that", "tasks"},
+		{"where is a job's log path", "tasks"},
+		{"stop a job from its page", "tasks"},
 		{"do you ask before running rm", "permissions"},
 		{"what is yolo mode", "permissions"},
 		{"how do I make it stop asking every time", "permissions"},

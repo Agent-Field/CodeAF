@@ -2594,7 +2594,15 @@ type workingNowAgent interface {
 // on [session.TaskIndexEntry.ID]) — and those rows are the task page's now.
 type railSpot struct {
 	id uint64
+	// jobs is the jobs section's label, and job is a row of that section. They
+	// live here rather than in a second cursor because this column has one
+	// walk and one enter, and a second map would be a second idea of where
+	// the keyboard is.
+	jobs bool
+	job  int
 }
+
+func (s railSpot) onJobs() bool { return s.jobs || s.job != 0 }
 
 func railSpotOf(e railEntry) railSpot {
 	if e.node == nil {
@@ -2961,7 +2969,11 @@ func (a *app) railQuiet() bool {
 // the strength of it would hand six keys to a list with no rows in it. What a
 // directory with a history behind it has is the footer's door, and that is a
 // press and a chord of its own ([taskSheetPastHint]).
-func (a *app) railAvail() bool { return len(a.taskOrder) > 0 }
+//
+// A JOB COUNTS. It is this conversation's work as much as a task is, and a
+// session that has only started a server still has a row the keyboard can
+// stand on (jobsection.go).
+func (a *app) railAvail() bool { return len(a.taskOrder) > 0 || len(a.jobs) > 0 }
 
 // railFull reports whether the roster is drawn OVER the body rather than beside
 // it — the narrow frame's answer to the same key.
@@ -3170,6 +3182,15 @@ type railLine struct {
 	// because a standing item's id is one ([standing.Item.ID]), and "" is an
 	// honest "this line is not an order" where a zero id could one day exist.
 	stand string
+	// jobs says this line is the jobs section's LABEL, which toggles the
+	// section open and shut. It is a flag rather than a door-word because a
+	// door TYPES into the draft and this line does not (jobsection.go).
+	jobs bool
+	// job is the id of the background job this line draws, or 0 for every
+	// other line. It is an int because a job's id is one ([session.JobNotice.ID]),
+	// and 0 is an honest "this line is not a job" — no job is published with
+	// id 0 (jobstate.go's [app.showJobPage] refuses one).
+	job int
 	// fade is how deep in a CUT-OFF window this line sits, as one past the stop
 	// of the fade ladder it takes: zero is full ink and the ordinary case, and
 	// one, two or three are the last three lines of a column with more work
@@ -3247,7 +3268,7 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// ── THE COLUMN IS A BUDGET AND NOT A STACK ────────────────────────────────
 	//
 	// Four things share thirty columns of somebody's screen — the label, the
-	// roster, the two sections under it (margin.go), and the footer — and they
+	// roster, the sections under it (margin.go), and the footer — and they
 	// used to be simply concatenated into one scrolling list. Which meant the
 	// roster, the one part with no upper bound, could take all of it: thirteen
 	// landed jobs pushed `standing` to the last row of the window, cut off, and
@@ -3258,9 +3279,10 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// SO EVERY SECTION BUT THE ROSTER IS RESERVED FIRST, AND THE ROSTER TAKES WHAT
 	// IS LEFT. The label is pinned above the window because a heading that scrolls
 	// away is a heading nobody has when they need it; the footer is already
-	// measured out of the body above; and the two sections under the roster are
+	// measured out of the body above; and the sections under the roster are
 	// asked for a block that fits the rows they are allowed
-	// ([app.marginRows] and [marginStandFit] state what they give up first).
+	// ([app.marginRows], [marginStandFit] and [marginJobsFit] state what they
+	// give up first).
 	// Only then is the roster's window measured, and it is still the same
 	// [listTop] scrolling the same offset — a budget is not a second scroller.
 	//
@@ -3447,7 +3469,14 @@ func (a *app) railRows(height int) []string {
 	out := make([]string, len(view))
 	for i, line := range view {
 		lead := seam
-		if focus >= 0 && line.head && line.entry == focus {
+		// A JOB ROW takes the accent mark the way a task row does. The jobs
+		// SECTION LABEL does not — replacing the seam there with ▌ left a notch
+		// in the continuous │, which read as a glitch on a line that is a fold
+		// toggle rather than a piece of work. The cursor band still lands on
+		// the label (jobHere below), so the keyboard's place is not silent.
+		jobHere := (a.railWhere.jobs && line.jobs) || (a.railWhere.job != 0 && line.job == a.railWhere.job)
+		jobRowHere := a.railWhere.job != 0 && line.job == a.railWhere.job
+		if (focus >= 0 && line.head && line.entry == focus) || jobRowHere {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text
@@ -3483,7 +3512,7 @@ func (a *app) railRows(height int) []string {
 			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
-		case focus >= 0 && line.entry == focus:
+		case jobHere || (focus >= 0 && line.entry == focus):
 			// AND THE KEYBOARD'S OWN ROW TAKES THE CURSOR STEP, on the same terms
 			// the pointer's does. This column used to say the keyboard's position
 			// with the marker in the lead and nothing else, on the argument that a
@@ -3516,7 +3545,7 @@ func (a *app) railRows(height int) []string {
 			text = a.hoverRow(text, room)
 		case line.stand != "" && a.hoveringMarginStand(line.stand):
 			text = a.hoverRow(text, room)
-		case line.fade > 0 && !(focus >= 0 && line.entry == focus):
+		case line.fade > 0 && !(focus >= 0 && line.entry == focus) && !jobHere:
 			// THE TAIL FADES AND THE CURSOR NEVER DOES (depthfade.go). It is the
 			// last arm of this switch for the reason the first one is first: a row
 			// wearing a background has already been told how loud to be, and the
@@ -3598,7 +3627,7 @@ func railFocusAt(entries []railEntry, spot railSpot) int {
 // its rows went is its nearest drawn ancestor, which is exactly the row standing
 // for it, so that is where the cursor stands.
 func (a *app) railFocusIndex(entries []railEntry) int {
-	if !a.railHold || len(entries) == 0 {
+	if !a.railHold || a.railWhere.onJobs() || len(entries) == 0 {
 		return -1
 	}
 	if at := railFocusAt(entries, a.railWhere); at >= 0 {
@@ -3641,10 +3670,11 @@ func (a *app) railTake(hold bool) {
 	if hold {
 		// WHERE THE CURSOR LANDS IS THE FIRST ROW THERE IS. The key is refused
 		// outright on a column with no rows of this session's ([app.railAvail]), so
-		// there is always one to land on.
-		entries := a.railEntries()
-		if railFocusAt(entries, a.railWhere) < 0 && len(entries) > 0 {
-			a.railWhere = railSpotOf(entries[0])
+		// there is always one to land on — a task, or the jobs section when
+		// that is the work this conversation has.
+		spots := a.railSpots()
+		if railSpotAt(spots, a.railWhere) < 0 && len(spots) > 0 {
+			a.railWhere = spots[0]
 		}
 	}
 	a.touch()
@@ -3791,6 +3821,9 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.cycleTaskEffort()
 		return nil, true
 	case "enter":
+		if cmd, ok := a.jobEnter(); ok {
+			return cmd, true
+		}
 		return a.railEnter(), true
 	case "tab":
 		// EATEN AND NOTHING DONE. tab over an empty box switches conversations
@@ -3823,13 +3856,40 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // the task page's now, and the foot of the column is a door onto it rather than a
 // continuation of this list (taskview.go).
 func (a *app) railMove(delta int) {
-	entries := a.railEntries()
-	at := a.railFocusIndex(entries)
+	spots := a.railSpots()
+	at := railSpotAt(spots, a.railWhere)
 	if at < 0 {
 		return
 	}
-	a.railCursorTo(entries, moveCursor(at, delta, len(entries)))
+	a.railWhere = spots[moveCursor(at, delta, len(spots))]
 	a.touch()
+}
+
+// railSpots is every row the keyboard walks: this conversation's work, then
+// the jobs section under it. One walk, so enter on the jobs label is the
+// same key that opens a task, and a person who held ↓ off the last family
+// lands on the section that is actually next.
+func (a *app) railSpots() []railSpot {
+	entries := a.railEntries()
+	out := make([]railSpot, 0, len(entries)+len(a.jobs)+1)
+	for _, e := range entries {
+		out = append(out, railSpotOf(e))
+	}
+	return append(out, a.jobSpots()...)
+}
+
+func railSpotAt(spots []railSpot, want railSpot) int {
+	for i, s := range spots {
+		switch {
+		case s.jobs && want.jobs:
+			return i
+		case s.job != 0 && s.job == want.job:
+			return i
+		case !s.onJobs() && !want.onJobs() && s.id != 0 && s.id == want.id:
+			return i
+		}
+	}
+	return -1
 }
 
 // railWheelAt reports whether a wheel turned at these coordinates belongs to the
@@ -4423,8 +4483,8 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 // AND NOTHING IS THROWN AWAY — it is TUCKED. A landed flat row that had something
 // to say folds it behind the same disclosure a family root wears, opened with →
 // or a press on the glyph cell and remembered in the same map ([app.railOpen]).
-// So the branch a stopped run kept and the log a job wrote are one gesture away
-// rather than gone; see [app.railTucks].
+// So the branch a stopped run kept is one gesture away rather than gone; see
+// [app.railTucks].
 func (a *app) railSaysMore(e railEntry) bool {
 	if e.folded {
 		return false
@@ -4766,9 +4826,6 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		if len(rows) == 0 {
 			rows = a.railWorking(node, width)
 		}
-		if len(rows) == 0 {
-			rows = a.railJobLog(node, width)
-		}
 		if len(rows) < railUnderRows {
 			if tele := a.railTelemetry(node, width); tele != "" {
 				rows = append(rows, paint(tele))
@@ -4800,13 +4857,6 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// waiting for is a person, and that is what the row says.
 		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
-		// A BACKGROUND JOB HAS NO BRANCH AND NEVER COULD, so the row that would
-		// say how its work came home says where its output is instead — the same
-		// one row it wore while it ran ([app.railJobLog]), because what a person
-		// wants off a settled job is exactly what they wanted off a live one.
-		if node.kind == session.TaskKindJob {
-			return a.railJobLog(node, width)
-		}
 		switch node.merge {
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
@@ -4940,52 +4990,6 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
-}
-
-// railJobLog is the under-line of a running BACKGROUND JOB, or nil for anything
-// else on this column.
-//
-//	job 3 · log /Users/…/.aforge-v3/jobs/3.log
-//
-// IT IS THE ROW A JOB HAS INSTEAD OF A CALL. Every other running row down here
-// says what the work is doing this second, because there is an agent inside it
-// making calls and a pilot lane reporting them ([app.railWorking]). A job is a
-// process: nothing narrates it, and the only true thing there is to say about it
-// while it runs is where its output is going. So the row is the handle back to
-// the work — the number `jobs output` takes, and the file the read tool takes —
-// which is exactly what the two loud settled rows on this column are
-// ([app.railUnder] states the law about handles).
-//
-// It is a job's ONLY door: a job has no room to open and no card to land, so a
-// path this row did not draw would be a path nowhere on this surface.
-//
-// IT CUTS RATHER THAN WRAPPING, which is the one place this column's handles
-// rule bends and the reason is that the handle here is the NUMBER. A branch name
-// wraps because half of one is worth nothing; a log path's first half is a
-// directory a person already knows, and its full form is on the row's own record
-// for a surface with the width for it. What the cut can never lose is `job 3`,
-// which is what `jobs output` and `jobs kill` take — so one quiet row says
-// everything a person can act on, and a settled job does not spend two.
-func (a *app) railJobLog(node *taskNode, width int) []string {
-	if node.kind != session.TaskKindJob || strings.TrimSpace(node.report) == "" {
-		return nil
-	}
-	return []string{a.pal.dim(fit(a.hostedJobLog(node.report), width))}
-}
-
-// hostedJobLog marks the path as belonging to the engine machine. The report's
-// `job N` handle stays unchanged; only the path after the stable log label is a
-// place, and prefixing the whole sentence would turn the machine into a job id.
-func (a *app) hostedJobLog(report string) string {
-	const logSep = jobReportLogSep
-	if !a.hosted() {
-		return report
-	}
-	before, path, ok := strings.Cut(report, logSep)
-	if !ok || strings.TrimSpace(path) == "" {
-		return report
-	}
-	return before + logSep + a.hostedPath(path)
 }
 
 // railDoing is the row a node wears while it is in a phase of its own kind's
@@ -5368,6 +5372,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice == nil {
 		return nil
 	}
+	// A BACKGROUND JOB IS NOT A TASK AND IS NOT FILED AS ONE. Jobs arrive on
+	// their own notice now (jobstate.go) and draw in their own section
+	// (jobsection.go). Taking one here would put it back on the roster, which
+	// is the defect this wave exists to close.
+	if notice.Kind == session.TaskKindJob {
+		return nil
+	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
 		// THE DE-DUP HAS EXCEPTIONS, and every one of them is news that arrives
 		// without a state change. The pair above catches the same update arriving
@@ -5580,32 +5591,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// (session's task_contract.go).
 		node.elapsed = notice.Elapsed
 		a.landPilot(notice.ID)
-		// AND A BACKGROUND JOB'S OPEN PAGE LANDS WITH ITS ROW. A job has no lane
-		// to close (session's jobrow.go), so the [roomClosedMsg] that ends every
-		// other room never comes for one, and the row settling is the only word
-		// there is that the process is over — without this, a page opened on a job
-		// whose report named no log would say `this log grows as the job works` for
-		// as long as it stayed open. An ordinary node is deliberately NOT ended
-		// here: its page is ended by its lane, which may still have its last events
-		// in flight when the state moves.
-		if a.room != nil && a.room.id == notice.ID && node.kind == session.TaskKindJob {
-			a.room.done = true
-			a.roomTouched()
-		}
 		// A CHILD LANDS ON THE ROSTER AND NOT IN THE CONVERSATION. The card is how
 		// work a person HANDED OVER reports back, one card per decision they made;
 		// an adaptive run's nodes are cut by its planner, there are a dozen of them,
 		// and a card each would bury the conversation under the internals of one
 		// answer. The run itself is a root and still writes its card, which is the
 		// decision that was actually made.
-		//
-		// AND A BACKGROUND JOB LANDS ON THE ROSTER AND NOWHERE ELSE. A card is how
-		// work a person handed over reports back — it carries a brief, an
-		// acceptance, a branch, a price and a report somebody wrote — and a job has
-		// not one of those (session's TaskKindJob). What it has is a log and an
-		// exit, and the model is already told both on the steering lane, so a card
-		// built from the empty half of a notice would push a block of nothing into
-		// the conversation every time a `sleep 5` came home.
 		//
 		// EXCEPT THAT A DECISION IS NEVER MUTE, WHATEVER ITS DEPTH. A node that
 		// landed needing somebody's look is a QUESTION, and the card is the only
@@ -5616,8 +5607,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// law). So the roster-only rule holds for work that came home DECIDED, and
 		// a decision is written wherever it is. It may fold under its family; it
 		// may not be absent.
-		if node.kind != session.TaskKindJob &&
-			(node.parent == "" || node.state == session.TaskUnverified) {
+		if node.parent == "" || node.state == session.TaskUnverified {
 			a.landedCard(node)
 		}
 	}
@@ -5654,6 +5644,9 @@ func (a *app) cardFor(id uint64) *taskCard {
 // minutes with no stream open, and the rail would otherwise freeze at whatever
 // the last event drew.
 func (a *app) tasksAnimating() bool {
+	if a.jobsAnimating() {
+		return true
+	}
 	if a.awaitingTask() && !a.task.deadline.IsZero() {
 		return true
 	}
@@ -5694,6 +5687,10 @@ func (a *app) dropTasks() {
 	a.taskOrder = nil
 	a.taskSeen = nil
 	a.taskLane = nil
+	// AND THIS CONVERSATION'S BACKGROUND JOBS GO WITH ITS NODES, for the reason
+	// they are said to go in jobstate.go: a job belongs to the conversation that
+	// started it, down to the folder its log is written in.
+	a.dropJobs()
 	// THE ROSTER GOES WITH ITS NODES, the keyboard included. A column that kept
 	// its folds and its cursor into the next conversation would be a map of work
 	// that no longer exists, holding keys the draft is waiting for.

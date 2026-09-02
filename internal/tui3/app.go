@@ -1448,6 +1448,28 @@ type app struct {
 	tasks       map[uint64]*taskNode
 	taskOrder   []uint64
 	taskSeen    map[uint64]session.TaskState
+	// THE JOB SIDE (jobstate.go). jobs is every background job this conversation
+	// has started, oldest first, and jobsOpen is whether the column's own jobs
+	// section is unfolded. Both are deliberately NOT part of the task side above:
+	// a job is not a node, has no room, no branch and no price, and the whole
+	// reason it has its own state here is that it used to borrow that one.
+	//
+	// IT IS A SLICE AND NOT A MAP because it is drawn far more often than it is
+	// written and the drawing wants an order. A conversation has jobs in tens at
+	// the very most, so the upsert's scan costs nothing and buys one source of
+	// truth instead of a map and a slice kept in step with each other.
+	jobs     []session.JobNotice
+	jobsOpen bool
+	// jobPage is the id of the job whose page is open, and 0 is every frame that
+	// is not on one. It is a JOB'S OWN NUMBER and not a roster id, which is the
+	// point of the whole change: one thing, one number, the same one `jobs kill`
+	// takes.
+	jobPage int
+	// jobDraw is that page's own reading — the log tail it is showing, the beat
+	// it is on and where it is scrolled to (jobpage.go). It is nil whenever no
+	// page is open, and it is replaced rather than reused when the page moves to
+	// another job.
+	jobDraw *jobDraw
 	taskLane    <-chan session.Event
 	taskGen     int
 	// railStamp counts the times this window's own row-space MOVED — a node
@@ -2903,6 +2925,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// And a background job's page at the same rung and for the same
+			// reason: it is the whole screen, so a press that fell through would
+			// open a tool call in a conversation that is not even on the frame
+			// (jobpage.go). Its edges are the way back and its body is read.
+			if a.jobPageOpen() {
+				a.jobPagePress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
 			// And the rewind timeline at the same rung and for the same reason: a
 			// press that fell through to the conversation underneath would open a
 			// tool call nobody can see, in a conversation somebody is about to cut
@@ -3334,11 +3364,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
-	case roomJobLogMsg:
+	case jobLogMsg:
 		// A BACKGROUND JOB'S LOG, ONE READING LATER (roomjoblog.go). The reader
 		// itself decides whether another beat is owed, because the row it watches
 		// is what says the work is over.
-		return a, tea.Batch(a.roomJobRead(msg), a.wake())
+		return a, tea.Batch(a.jobPageRead(msg), a.wake())
 
 	case homeNewsMsg:
 		a.tookHomeNews(msg)
@@ -4177,6 +4207,15 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// a surface that armed the pilot only on the standing lane would leave
 		// every in-turn node unwatched.
 		after = a.taskUpdate(ev)
+
+	case session.EventJobUpdate:
+		// A BACKGROUND JOB'S OWN LANE (jobstate.go). It touches nothing the task
+		// side owns: no proposal to settle, no pilot to arm, no fold to collapse
+		// and no card to land. A job starts, is given a name, and ends — and the
+		// only thing this window does about any of those is file it and repaint.
+		if ev.Job != nil && a.jobUpdate(*ev.Job) {
+			a.touch()
+		}
 
 	case session.EventTaskPhase:
 		// WHICH OF ITS THREE LIVES A RUNNING NODE IS IN (taskphase.go). It rides

@@ -71,8 +71,15 @@ func jobRowLead(id int, logPath string) string {
 	if logPath == "" {
 		return "job " + strconv.Itoa(id)
 	}
-	return fmt.Sprintf("job %d · log %s", id, logPath)
+	return fmt.Sprintf("job %d%s%s", id, jobRowLogSep, logPath)
 }
+
+// jobRowLogSep joins the handle to the path in the sentence above. It is a
+// constant because the sentence is now a STORAGE FORMAT as much as a row —
+// [jobNoticeFromRow] reads it back out of a checkpoint written by an older
+// aforge — and a separator spelled in two places is a separator that drifts
+// until one of them stops being able to read the other.
+const jobRowLogSep = " · log "
 
 // jobRowTitle is the short name a job's row is drawn under.
 //
@@ -172,8 +179,48 @@ func (a *Agent) announceJobRow(info jobInfo) {
 	// [jobRegistry.adopt]), so a "done" can never overtake the "running" that has
 	// to precede it, and two different jobs are two different families with
 	// nothing between them to order.
-	a.emitTaskUpdate(notice)
+	// THE ROW IS KEPT AND IT IS NOT PUBLISHED. Those were one act while a job
+	// reached a surface as a task row, and they are two things: keeping is what
+	// makes a conversation reopened tomorrow able to draw what it ran, and
+	// publishing is what a surface draws NOW. A job is published as a job
+	// (jobnotice.go), so the roster's lane is left to the work that belongs on
+	// it — anything else would be one piece of work counted twice, once in a
+	// section and once among the task families.
+	//
+	// WHAT THE STORE KEEPS IS STILL A TASK ROW because the store is a FILE, and
+	// files already written are read by the aforge that opens them next. The
+	// checkpoint's own dialect is projected back at the edge on the way out
+	// ([jobNoticeFromRow], replayed by [Agent.replayTaskRoster]).
 	a.graph().keepRunRows(row, []TaskNotice{notice})
+	a.emitJobUpdate(noticeOf(info))
+	if minted {
+		// THE JOB NEVER WAITS TO BE NAMED. The process is already running —
+		// start announced after the fork — and this is an errand on its own
+		// goroutine, reached through the same announce seam the registry
+		// already uses to find the agent (agent.go's jobs.announce).
+		a.nameJob(info)
+	}
+}
+
+// emitJobUpdate fans one job's notice out to whoever is listening: the turn's
+// hub, if a turn is in flight, and every standing watcher. It is
+// [Agent.emitTaskUpdate] for a job, on the same two lanes, because a job
+// outlives the turn that started it for the same reason a node does and the
+// subscribers who already hold that lane are who will draw it.
+func (a *Agent) emitJobUpdate(notice JobNotice) {
+	event := Event{Kind: EventJobUpdate, Job: &notice}
+	a.mu.Lock()
+	hub := a.hub
+	watchers := make([]*eventStream, len(a.taskWatchers))
+	copy(watchers, a.taskWatchers)
+	a.mu.Unlock()
+
+	if hub != nil {
+		hub.send(event)
+	}
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }
 
 // jobRowID is the roster id for one job, minted from the task graph's sequence

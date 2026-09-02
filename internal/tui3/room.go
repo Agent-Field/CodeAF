@@ -264,19 +264,11 @@ type taskRoom struct {
 	// a refusal for anything typed after it.
 	//
 	// IT FOLLOWS THE ROW AND NEVER A DOOR'S REFUSAL ([roomRowDone] states the law
-	// and [app.openRoom] says what broke without it): a background job's id is
-	// refused by every room door on a perfectly healthy session, and reading that
-	// refusal as a landing put `task finished — esc to return` under a header
-	// whose clock was still counting up.
+	// and [app.openRoom] says what broke without it): an id the graph has never
+	// admitted is refused by every room door on a perfectly healthy session, and
+	// reading that refusal as a landing put `task finished — esc to return` under
+	// a header whose clock was still counting up.
 	done bool
-
-	// jobLogPath is the file a BACKGROUND JOB's page is a reading of, and "" for
-	// every other page. jobLog is the last reading's tail, and jobLogLast says the
-	// one reading owed after the row landed has been taken — the whole of the
-	// reader's state, and roomjoblog.go is the whole of its law.
-	jobLogPath string
-	jobLog     []string
-	jobLogLast bool
 
 	// orch is set when this page is an ADAPTIVE RUN rather than a node
 	// (roomorch.go): the same room, the same doors, the same geometry, drawing a
@@ -364,14 +356,6 @@ const (
 	// actually gone — a session folder somebody deleted — and it says so as a
 	// fact rather than leaving a foot under a blank.
 	roomGoneWord = "this task's transcript is not here any more"
-	// roomJobLogWord stands in that line's place for a BACKGROUND JOB, which never
-	// had a transcript to lose. A job is a roster row and not a node in the graph
-	// (session's jobrow.go), so nothing was ever journaled for it and the whole
-	// record of what it did is the log its report names — drawn on the row above
-	// this line, the same string the roster draws ([app.railJobLog]). Saying the
-	// transcript was gone would be the wrong half of the truth: there is no file
-	// missing, there is a different kind of work.
-	roomJobLogWord = "a background job keeps a log, not a transcript"
 	// roomYetWord stands in that line's place for a node that HAS NOT LANDED, and
 	// it is the honest half of the same sentence: nothing has arrived on this page
 	// is not the same fact as nothing is left of it. A node that is queued has
@@ -528,10 +512,7 @@ func (a *app) openRoom(id uint64, title string) {
 		// caller that an id is not in its graph — which is machinery vocabulary
 		// about a row the person is looking at RIGHT NOW, and it reads as the
 		// surface having lost the work rather than as an answer to anything they
-		// did. The roster's row-space is deliberately wider than the graph's: a
-		// background job is published as a row and never admitted as a node
-		// (session's jobrow.go, "it registers and it does not admit"), so a person
-		// walking into one reaches this branch on a perfectly healthy session.
+		// did.
 		//
 		// AND IT IS NOT APPENDED AS A BLOCK, which is the second half of the bug it
 		// caused. The "there is nothing here" line below is drawn only for a room
@@ -542,17 +523,14 @@ func (a *app) openRoom(id uint64, title string) {
 		//
 		// AND THE ROOM DOES NOT TAKE THE REFUSAL FOR A LANDING, which is the third
 		// half of the same bug. This branch used to set `done` outright, so every
-		// reader of it spoke the landed vocabulary over a job that was thirty
-		// seconds into running: the foot said `task finished — esc to return` and
-		// the box's placeholder said it again. What is true about whether the work
-		// is over is on the ROSTER'S ROW, which the engine publishes on every
-		// notice, so that is what is asked ([roomRowDone]).
+		// reader of it spoke the landed vocabulary over work that was still going:
+		// the foot said `task finished — esc to return` and the box's placeholder
+		// said it again. What is true about whether the work is over is on the
+		// ROSTER'S ROW, which the engine publishes on every notice, so that is
+		// what is asked ([roomRowDone]).
 		room.done = roomRowDone(a.tasks[id])
 		a.roomResolveUnfinished()
-		// AND A JOB'S PAGE IS A LIVE READING OF ITS LOG (roomjoblog.go). The row
-		// carries the path, the file is the entire record of what the work did, and
-		// until this the page was three static lines under a moving clock.
-		a.roomPump = tea.Batch(a.roomJobOpen(), prefetch, a.wake())
+		a.roomPump = tea.Batch(prefetch, a.wake())
 		return
 	}
 	room.lane, room.stop = lane, stop
@@ -603,9 +581,6 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	a.roomTouched()
 	prefetch := a.prefetchRoomPictures()
 	node := a.tasks[a.room.id]
-	if node != nil && node.kind == session.TaskKindJob {
-		return prefetch
-	}
 	if roomRowDone(node) {
 		a.room.done = true
 		return prefetch
@@ -623,16 +598,15 @@ func farRoomTick(gen int) tea.Cmd {
 }
 
 func (a *app) farRoomPoll(gen int) tea.Cmd {
+	// A JOB'S PAGE ANSWERS THIS BEAT FIRST, and it is the same beat on purpose:
+	// one clock discipline for every bounded reading this surface takes
+	// (joblog.go). It is asked ABOVE the room so a tick armed for the page is
+	// not dropped on a room that happens to share a generation.
+	if a.jobPageOpen() {
+		return a.jobPagePoll(gen)
+	}
 	if a.room == nil || a.room.gen != gen {
 		return nil
-	}
-	// A BACKGROUND JOB'S PAGE ANSWERS THIS BEAT FIRST, and it is the same beat on
-	// purpose: one clock discipline for every bounded reading a room takes
-	// (roomjoblog.go). It is asked ABOVE the `done` guard because a job's reader
-	// owns its own ending — one last reading follows the landing, so the page
-	// carries the process's final lines rather than stopping short of them.
-	if cmd := a.roomJobPoll(gen); cmd != nil {
-		return cmd
 	}
 	if a.room.done || a.farRoomRecord == nil {
 		return nil
@@ -1602,14 +1576,7 @@ func (a *app) steer() tea.Cmd {
 	if room.orch != nil {
 		return a.orchSteer()
 	}
-	// A JOB IS ASKED THE SAME QUESTION AS A FINISHED NODE, running or not: there
-	// is no worker inside a background job to read a line, and the engine's own
-	// answer for one is `no task 4 in this session` — machinery about a row the
-	// person is looking at right now, which is the one sentence this surface has
-	// promised never to repeat ([app.openRoom]). So the words go to the guard,
-	// which offers the head model instead, and nothing is sent to a door that
-	// could only refuse it.
-	if room.done || a.roomIsJob() {
+	if room.done {
 		a.raiseGuard(line, "")
 		return nil
 	}
@@ -1921,6 +1888,13 @@ func (a *app) guardRows(width int) []string {
 // does not take falls through untouched, which is what keeps the box a box: a
 // person types into it in here the same way they type into it out there.
 func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// A JOB'S PAGE IS A CARD, not a room, but it sits at this rung because the
+	// update loop already asks here for the full-frame overlay a person is
+	// standing in (app.go). The page has no box, so every key is a verb or a
+	// scroll, and ctrl+c stays the door.
+	if cmd, taken := a.jobPageKeyPress(msg); taken {
+		return cmd, true
+	}
 	if a.room == nil {
 		return nil, false
 	}
@@ -2384,8 +2358,8 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// the entries below for the reason the footer's lines are — they belong to no
 	// node, and a question about which node is under the pointer would answer
 	// about the space beside them.
-	if a.marginPress(line) {
-		return nil, true
+	if cmd, took := a.marginPress(line); took {
+		return cmd, true
 	}
 	e, ok := a.railEntryAt(y)
 	if !ok || e.node == nil {
@@ -3100,11 +3074,7 @@ func (a *app) roomRows(width int) []row {
 		// is already looking when they wonder why nothing is. It takes the blank a
 		// closed block above it asks for, which is what [app.deckRows] reports —
 		// the same rule the conversation's ellipsis is drawn under.
-		// A PAGE CARRYING SOMEBODY ELSE'S OUTPUT BUYS THE SAME BLANK, whatever the
-		// deck said: a job's page is a reading of a log (roomjoblog.go), and this
-		// surface's own sentence pressed against the last line a process wrote
-		// reads as one more line the process wrote.
-		if (closed || len(room.jobLog) > 0) && len(out) > 0 {
+		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
 		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
@@ -3120,16 +3090,6 @@ func (a *app) roomRows(width int) []row {
 			// words in the box can go was on neither.
 			out = append(out, row{text: a.pal.dim(a.roomFinishedRefusal().fit(width)), entry: -1})
 		}
-	} else if a.roomIsJob() {
-		// AND A JOB THAT IS STILL WRITING GETS THE SAME FOOT WITH THE TRUE WORD IN
-		// IT (roomjoblog.go). Every other running page has a lane feeding it and
-		// needs no foot at all — the next line IS what happens next — while a job's
-		// page is a reading of a file, and a person watching one is owed the fact
-		// that the reading repeats.
-		if len(out) > 0 {
-			out = append(out, row{entry: -1})
-		}
-		out = append(out, row{text: a.pal.dim(roomJobRefusal.fit(width)), entry: -1})
 	}
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
@@ -3156,16 +3116,7 @@ func (a *app) roomRows(width int) []row {
 // published by the engine on a [session.TaskNotice] and is as true as the header
 // drawn from it.
 //
-// A BACKGROUND JOB IS THE ORDINARY CASE HERE AND NOT AN EDGE. A job is a row and
-// never a node (session's jobrow.go), so it has no room in the engine's sense at
-// all — but the roster is a flat list and its enter key opens whatever is under
-// it ([app.railEnter]), so people walk in. What a job has is a LOG, its report
-// carries the path ([app.railJobLog] draws the same string on the row), and that
-// path is the entire record of what the work did. Saying the transcript is "not
-// here any more" about one would be a lie in the other direction — a job never
-// wrote a transcript to lose.
-//
-// AND A NODE THAT HAS NOT LANDED IS THE THIRD CASE, reached by opening a task
+// AND A NODE THAT HAS NOT LANDED IS THE OTHER CASE, reached by opening a task
 // that is queued or that has only just started: the file it will fill in exists
 // and is empty, so there is nothing to replay and nothing has been lost either.
 // It takes [roomYetWord], which is the same shape of answer said about a page
@@ -3175,15 +3126,8 @@ func (a *app) roomRecordRows(out []row, width int) []row {
 		return append(out, row{text: a.pal.dim(fit(roomLoadingWord, width)), entry: -1})
 	}
 	node := a.roomNode()
-	// WHY THERE IS NOTHING UNDER THE HEADER, in the vocabulary that is true of
-	// this kind of work in this state. The job's answer outranks the unlanded one
-	// because it is the more specific fact: a job never journals a transcript, so
-	// "not yet" would promise a page that is never coming.
 	word := roomGoneWord
-	switch {
-	case node != nil && node.kind == session.TaskKindJob:
-		word = roomJobLogWord
-	case a.room != nil && !a.room.done:
+	if a.room != nil && !a.room.done {
 		word = roomYetWord
 	}
 	if node == nil {
@@ -3192,42 +3136,14 @@ func (a *app) roomRecordRows(out []row, width int) []row {
 		return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
 	}
 	// WHAT THE ROW SAYS THE WORK CAME TO, first, because it is the only thing here
-	// a person came for. It CUTS rather than wrapping for a job, exactly as the
-	// roster's own row does and for that row's reason — the handle is the number
-	// and the leading directory is one the person already knows — and it wraps for
-	// anything else, where the report is prose somebody wrote.
+	// a person came for. The report is prose somebody wrote, so it wraps.
 	if report := strings.TrimSpace(node.report); report != "" {
-		if node.kind == session.TaskKindJob {
-			out = append(out, row{text: a.pal.dim(fit(a.hostedJobLog(report), width)), entry: -1})
-		} else {
-			for _, line := range wrap(report, width) {
-				out = append(out, row{text: a.pal.dim(line), entry: -1})
-			}
+		for _, line := range wrap(report, width) {
+			out = append(out, row{text: a.pal.dim(line), entry: -1})
 		}
-	}
-	// AND FOR A JOB, THE LOG ITSELF, when there is any of it (roomjoblog.go). It
-	// goes under the path because the path is the handle and the tail is the work,
-	// and it takes the place of the line below rather than sitting over it: that
-	// line answers exactly one question — why is there nothing here — and a page
-	// with the process's own output on it is not asking it. That is [roomYetWord]'s
-	// own rule, said about a file instead of about a journal.
-	if tail := a.roomJobLogRows(nil, width); len(tail) > 0 {
-		if len(out) > 0 {
-			out = append(out, row{entry: -1})
-		}
-		return append(out, tail...)
 	}
 	// THEN WHY THERE IS NO TRANSCRIPT UNDER IT, chosen above.
 	return append(out, row{text: a.pal.dim(fit(word, width)), entry: -1})
-}
-
-// roomIsJob reports whether the open page belongs to a BACKGROUND JOB — a roster
-// row the engine registered and never admitted as a node (session's jobrow.go).
-// It is asked wherever the page's vocabulary differs, because "a job" is a fact
-// about the kind of work and not about the state it is in.
-func (a *app) roomIsJob() bool {
-	node := a.roomNode()
-	return node != nil && node.kind == session.TaskKindJob
 }
 
 // roomRowDone answers the one question every foot, legend and refusal on a room
@@ -3420,12 +3336,6 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	}
 	if a.room.done {
 		lane = a.roomFinishedRefusal().fit(room)
-	} else if a.roomIsJob() {
-		// A JOB HAS NOBODY IN IT TO STEER (roomjoblog.go). The box is the same box,
-		// so it says what the page is instead of offering a worker that does not
-		// exist — the same string the foot carries, because a person reading either
-		// of them is asking the same question.
-		lane = roomJobRefusal.fit(room)
 	}
 	out := append([]string(nil), rows...)
 	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
