@@ -1121,6 +1121,20 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					})
 				}
 			}
+			// THE WIRE'S WORD IS NOT THE TREE'S. A leaf whose last call never
+			// landed failed at SAYING it had finished; whether it finished is a
+			// question about the repository, and the repository is still there.
+			// So work that is on the tree behind a transport failure is put to
+			// the gate a delivered leaf faces, and a request met as stated ends
+			// the run delivered — with the profile evidence above already
+			// preserved, because the attempt really did end on the wire. See
+			// settledOnTheTree for what this refuses to widen into.
+			if delivery, settled := settledOnTheTree(ctx, settings, planClient, graph, node,
+				task, outcome, opts.produced, absolute, jobDir, workerModel); settled {
+				result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, false)
+				result.Summary = delivery
+				return result, nil
+			}
 			// A failed leaf usually leaves something behind. The files are on
 			// disk in the job's workspace and, until now, no surface in the
 			// product knew they existed: the error path threw the outcome away,
@@ -1399,52 +1413,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				notes = append(notes, revision.GateFaultHandover(gate.Fault))
 			}
 			if gate.Checked {
-				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
-					Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
-					// The acceptance mapping as the gate settled it. It is the
-					// evidence behind the verdict rather than the verdict, and a
-					// pass with every point exercised has to be tellable apart
-					// from a pass over an empty checklist.
-					Exercises: gate.Exercises, Unmeasured: gate.Unmeasured,
-					// And what the gate actually held between its fence
-					// markers. An autopsy asking whether a refusal read the
-					// world or a sentence has nothing else to go on.
-					Subject: gate.Subject,
-					// And which behaviour of the request it was allowed to
-					// convict on — or that the request stated none, which is
-					// the same event without this field.
-					HeldPoint: gate.HeldPoint,
-					// And its conclusion. The mapping is the evidence; this is
-					// the finding, and it is recorded as a list of its own so
-					// the stream can say it and an autopsy can find it without
-					// reading a paragraph out of the middle of the gap.
-					Unexercised: gate.Unexercised, Unreadable: gate.Unreadable,
-					// And the half of it the assertion door found: behaviours a
-					// check names and no assertion weighs, each carrying the
-					// observables nothing asserted.
-					Unasserted: gate.Unasserted,
-					// And the definitions this run reshaped that the rest of
-					// the project still uses the old way — the finding no
-					// suite and no name comparison can make, because the name
-					// is still there and nobody wrote a check for it.
-					Consumers: gate.Consumers,
-					// And the names it READS that nothing in the tree binds —
-					// the finding igel s14 could only spell as "the checks this
-					// work wrote fail", never as the one name they failed on.
-					Unbound: gate.Unbound,
-					// And the checks the run wrote and did not get passing,
-					// which is a different state from a broken repository and
-					// was spelled the same way until it had a field.
-					OwnFailing: gate.OwnFailing,
-					// And which measurement raised it, so a reader comparing
-					// this round against the last one compares a kind and a
-					// list of names rather than two sentences.
-					// And the rules the person set that this work broke, which
-					// is the one finding on this record that no round may be
-					// bought against and no acquittal may cover. See
-					// store.DeliveryGate.Whole.
-					Constraint: gate.Constraint,
-					Finding:    gate.Finding}
+				// One row, built one way. See deliveryGateOf: the other reader of
+				// this record is the settlement that runs when a leaf's last call
+				// never came back, and a row assembled twice is a row whose two
+				// halves drift until one of them stops answering Whole honestly.
+				evidence := deliveryGateOf(gate)
 				if gate.Pass {
 					outcome.Verdict = revision.GateVerdict(gate)
 					// Quorum: two cheap validators independently verify the pass.
@@ -2779,6 +2752,194 @@ func requestSettled(ctx context.Context, settings config.Config, client *pool.Cl
 	gate.Pass, gate.Gaps, gate.Receipt = true, "", words
 	evidence.Pass, evidence.Gap, evidence.Receipt = true, "", words
 	recordOnNode(graph, node.ID, revision.RequestMetNotice(words), store.RoleSystem)
+}
+
+// deliveryGateOf is one judgement written down as one journal row.
+//
+// It is a function because two paths record this event and they may not
+// disagree about what it holds. The delivered path assembled it inline for as
+// long as it was the only path; the settlement below has to record the same row
+// for a leaf whose last call never came back, and a row assembled a second time
+// is a row that quietly loses a field. store.DeliveryGate.Whole spends
+// Unreadable, Unexercised, Unasserted and Constraint, so a copy that forgot one
+// of them would answer "whole" over a delivery the gate had just found short —
+// which is the exact shape of every settlement defect this record exists to
+// close. ONE ROW, BUILT ONE WAY.
+func deliveryGateOf(gate revision.Judgment) store.DeliveryGate {
+	return store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps,
+		Quote: gate.Quote, Quotes: gate.Citations, Mechanical: gate.Mechanical,
+		// The acceptance mapping as the gate settled it. It is the evidence
+		// behind the verdict rather than the verdict, and a pass with every
+		// point exercised has to be tellable apart from a pass over an empty
+		// checklist.
+		Exercises: gate.Exercises, Unmeasured: gate.Unmeasured,
+		// And what the gate actually held between its fence markers. An autopsy
+		// asking whether a refusal read the world or a sentence has nothing else
+		// to go on.
+		Subject: gate.Subject,
+		// And which behaviour of the request it was allowed to convict on — or
+		// that the request stated none, which is the same event without this
+		// field.
+		HeldPoint: gate.HeldPoint,
+		// And its conclusion. The mapping is the evidence; this is the finding,
+		// and it is recorded as a list of its own so the stream can say it and
+		// an autopsy can find it without reading a paragraph out of the middle
+		// of the gap.
+		Unexercised: gate.Unexercised, Unreadable: gate.Unreadable,
+		// And the half of it the assertion door found: behaviours a check names
+		// and no assertion weighs, each carrying the observables nothing
+		// asserted.
+		Unasserted: gate.Unasserted,
+		// And the definitions this run reshaped that the rest of the project
+		// still uses the old way — the finding no suite and no name comparison
+		// can make, because the name is still there and nobody wrote a check
+		// for it.
+		Consumers: gate.Consumers,
+		// And the names it READS that nothing in the tree binds — the finding
+		// igel s14 could only spell as "the checks this work wrote fail", never
+		// as the one name they failed on.
+		Unbound: gate.Unbound,
+		// And the checks the run wrote and did not get passing, which is a
+		// different state from a broken repository and was spelled the same way
+		// until it had a field.
+		OwnFailing: gate.OwnFailing,
+		// And which measurement raised it, so a reader comparing this round
+		// against the last one compares a kind and a list of names rather than
+		// two sentences.
+		// And the rules the person set that this work broke, which is the one
+		// finding on this record that no round may be bought against and no
+		// acquittal may cover. See store.DeliveryGate.Whole.
+		Constraint: gate.Constraint,
+		Finding:    gate.Finding}
+}
+
+// failedOnTheWire answers the one question the settlement below turns on: did
+// this leaf's last attempt end because the WORK could not be done, or because
+// the CALL could not be made?
+//
+// It is read off the ending the executor already writes down. exec.StopError is
+// spelled "the provider failed in a way we could not absorb" where it is
+// declared, and it is set at exactly one place — the turn whose model call came
+// back an error — so nothing a tool returned, nothing the work itself produced,
+// and no refusal the worker reasoned its way to can reach it. That is the whole
+// distinction the law needs, already typed, and typed is what a fact has to be
+// to survive a seam.
+//
+// THE LAW NAMES NO VENDOR AND NO STATUS CODE. A rule that had to recognise a
+// provider's sentence, or its number, stops working on the day either one
+// changes — and the run this was written for died on a sentence about ignored
+// providers that no reader of this file will ever have seen.
+//
+// A clock that ran out is deliberately not this. exec.StopDeadline is the run's
+// own wall arriving, which is a fact about how much time the work was given
+// rather than about a call that never landed, and the ending it earns is the
+// partial the wall already produces.
+func failedOnTheWire(outcome *exec.Outcome) bool {
+	return outcome != nil && outcome.Stop == exec.StopError
+}
+
+// treeStandsWords is what a person reads when a run ends delivered after its
+// worker's last call never came back.
+//
+// It says the two things that happened, in the order they happened, and it
+// names no machinery: the work is on the tree and something looked at it, and
+// the sentence the worker would have finished with never arrived. A reader who
+// sees a run settle after a failure has exactly one question, and this is it
+// answered before it is asked.
+const treeStandsWords = "the work landed and was checked on the tree; " +
+	"the last message from the model never arrived"
+
+// treeShortWords is the same moment with the other answer, and it carries BOTH
+// FACTS because both are true and either alone misleads.
+//
+// The wire failing is why there is no closing message; the tree falling short is
+// why the run is not done. A person told only the first would go looking for a
+// provider outage behind unfinished work, and one told only the second would
+// never learn that the run was cut off mid-sentence.
+func treeShortWords(short string) string {
+	said := "the last message from the model never arrived, and what is on the tree " +
+		"does not do what was asked"
+	if short = strings.TrimSpace(firstLine(short)); short != "" {
+		said += " — " + short
+	}
+	return said + "."
+}
+
+// settledOnTheTree decides a run whose leaf failed ON THE WIRE over work that is
+// already ON THE TREE, and answers with the delivery the run may end on.
+//
+// A LEAF MARKED FAILED BY THE WIRE AFTER ITS WORK LANDED IS JUDGED ON THE TREE.
+// The transport failing is a fact about a call, not about a repository: a worker
+// that wrote the change, ran the project's own checks, and was then cut off
+// before it could say so has done the work and failed only at reporting it. The
+// run this law was written for did exactly that — the fix was on disk, the
+// project's checks were green on the finished tree, and the door settled failed
+// at seventy-four seconds having judged nothing at all.
+//
+// So the delivery on the tree is put to the same gate a delivered leaf faces —
+// the photograph of the tree, which is the first thing revision.JudgeDeliverable
+// takes, and then the question of whether the request was met as stated — and a
+// yes ends the run delivered with the receipt that says why. The measured doors
+// inside that gate are what keep this from becoming a way to talk past a broken
+// repository: a check this work turned red, a name the tree no longer binds, a
+// rule the person set and the work broke, each of them settles the answer to no
+// without a model being asked anything.
+//
+// IT WIDENS NOTHING. A leaf that failed on the wire having written nothing has
+// no delivery to judge and fails exactly as it did. A leaf whose own work
+// errored was judged by the work and fails exactly as it did. And a gate that
+// could not be reached leaves the failure standing, because the failure is
+// already there and only a positive answer may overturn it — which is the
+// opposite of the gate's own fail-open direction, and deliberately so.
+func settledOnTheTree(ctx context.Context, settings config.Config, client *pool.Client,
+	graph *store.Store, node store.Node, task exec.Task, outcome *exec.Outcome,
+	record artifactRecord, artifacts []string, jobDir, workerModel string,
+) (string, bool) {
+	if !failedOnTheWire(outcome) || len(artifacts) == 0 {
+		return "", false
+	}
+	// The delivery is what the person would have been handed, built exactly as
+	// the delivered path builds it: whatever the worker had said by the time it
+	// was cut off, and the files it left. A worker cut off mid-turn has often
+	// said nothing at all, and then the files ARE the delivery — the same shape
+	// a leaf that answers with a file and no prose already produces.
+	delivery := outcome.Text + summaryFileList + strings.Join(artifacts, "\n")
+	records := gateEvidence(node, task.Spec, outcome, jobArtifacts(record, artifacts),
+		true, jobDir)
+	gateCtx := withRepairJournal(ctx, graph, node.ID)
+	gate := revision.JudgeDeliverable(gateCtx, settings, client, graph, node, delivery,
+		task.Contract, records, workerModel)
+	if !gate.Checked {
+		return "", false
+	}
+	evidence := deliveryGateOf(gate)
+	// AND THE RUN ENDS ON THE REQUEST QUESTION AND ON NOTHING ELSE.
+	//
+	// A delivered leaf gets the benefit of a passing judge because nothing about
+	// it went wrong; this one is overturning a failure that is already recorded,
+	// and the only answer strong enough to do that is the one the person's own
+	// words settle. The question refuses itself over anything a measurement
+	// raised — a check this work turned red, a name the tree no longer binds, a
+	// rule the person set and the work broke — so the photograph taken above
+	// decides before the question is ever put.
+	requestSettled(gateCtx, settings, client, graph, node, delivery, records, &gate, &evidence)
+	if err := graph.RecordDeliveryGate(node.ID, evidence); err != nil {
+		log.Printf("note: could not journal what the tree said about %s: %v", node.ID, err)
+	}
+	if strings.TrimSpace(evidence.Receipt) == "" {
+		recordOnNode(graph, node.ID,
+			treeShortWords(firstNonEmptyString(evidence.Missing, evidence.Gap)), store.RoleSystem)
+		return "", false
+	}
+	// And the plain words, on the one channel that carries a fact out of the
+	// record and into the stream a person is watching. The receipt requestSettled
+	// wrote says the request was met; this says why the run looked like it had
+	// failed a moment earlier.
+	_, _ = thread.Record(graph, store.Message{
+		Role: store.RoleSystem, NodeID: node.ID, Body: treeStandsWords,
+		Progress: &store.MessageProgress{Phase: "checked on the tree", Latest: treeStandsWords},
+	})
+	return delivery, true
 }
 
 // jobArtifacts is what the run left behind, as one list, for a gate that is

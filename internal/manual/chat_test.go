@@ -770,6 +770,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it keep going after it had the answer", "adaptive-runs"},
 		{"it said partial but the tests were green", "adaptive-runs"},
 		{"the request was met as stated", "adaptive-runs"},
+		// And the same ending arriving the other way round: the work is done,
+		// the checks are green, and the run reports a failure because the
+		// worker's last call to the model never came back. Both are asked in
+		// the words a person has in front of them — the exit code and the
+		// provider's own sentence.
+		{"it failed but the tests were green", "adaptive-runs"},
+		{"the model dropped out after finishing", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
 		// person watching a run that has not drawn anything yet. Both are asked
 		// with the screen in front of them, in the words the screen gave them.

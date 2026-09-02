@@ -1344,6 +1344,38 @@ be read at all but the work's own checks ran and every one of them settled, the 
 carries `checked by tests, coverage not measured` — so a run whose tests are green is never
 called partial, and never quietly passed either. The receipt says which of the two it was.
 
+## "It failed but the tests were green" — the model dropped out after finishing
+
+A worker can write the change, run your project's own checks, find them green, and then have
+its very next call to the model never come back — the provider refuses it, or the connection
+dies. That used to end the run: exit 1, the provider's own sentence printed as the
+deliverable, and nothing anywhere had looked at the work sitting on disk.
+
+**A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
+a CALL failed rather than because the WORK failed, and the worker left files behind, what is
+on disk is put to the same review a delivered worker faces: the reading of your project's own
+checks first, then the one question — *is this request, as stated, satisfied by what is in
+hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+
+```
+  ✓ fix the pager tempfile mode — the request was met as stated
+```
+
+and in plain words on the run's own record:
+
+```
+the work landed and was checked on the tree; the last message from the model never arrived
+```
+
+**A no leaves the failure exactly where it was**, with both facts written down: `the last
+message from the model never arrived, and what is on the tree does not do what was asked
+— …`. Anything measured decides it before the question is even asked — a check this work
+turned red, a name nothing in the tree binds, a rule you stated and the work broke.
+
+**It widens nothing else.** A worker cut off having written no file still fails as it did;
+so does one whose own work errored, and one whose clock ran out; and where the review itself
+could not be reached, the failure stands rather than being passed.
+
 ## When a check names what you asked for and asserts nothing about it
 
 A check can run a behaviour and weigh nothing about it. One run was asked that
