@@ -49,6 +49,11 @@ import (
 // the frame that draws the note.
 const stopBoundPatience = 25 * time.Second
 
+// stopGraceE2E is the bound itself, written here rather than imported: this file
+// is a black-box run of the shipped binary, and a test that read the constant out
+// of internal/tui3 could not tell a bound that moved from a bound that broke.
+const stopGraceE2E = 10 * time.Second
+
 // ── the scripted endpoint ───────────────────────────────────────────────────
 
 // parkKind is what the stub does with a turn: which of the two uncancellable
@@ -242,15 +247,25 @@ func TestBoundedStopE2E(t *testing.T) {
 	// A PROVIDER STREAM THAT NEVER ENDS. The connection is healthy, bytes keep
 	// arriving, and nothing in the client has any reason to give up on it — which
 	// is exactly the turn a person has to be able to end from the keyboard.
+	//
+	// IT ENDS AT ONCE AND WRITES NO `abandoned` LINE, and that is the RIGHT
+	// answer rather than a weaker one. Every provider request is built on the
+	// turn's context, so cancelling it aborts the socket and the loop is out
+	// within milliseconds: the turn was let go of properly, and a line claiming
+	// it had been abandoned would be a record of something that did not happen.
+	// So this scenario asserts the bound is MET without being reached, which is
+	// also the only way to show the deadline does not fire on turns that end
+	// tidily.
 	t.Run("a stream that never ends", func(t *testing.T) {
 		stub := &stopStub{kind: parkOnStream}
-		runBoundedStop(t, stub, "stopstream", "stream on for ever please")
+		runStoppedInTime(t, stub, "stopstream", "stream on for ever please")
 	})
 
 	// AND A WAIT NO CANCELLATION REACHES, which is the generalisation #264's
 	// flock test was a single instance of. `read` is os.ReadFile; a named pipe
 	// with no writer never returns from it; no context exists anywhere on that
-	// path and none could help if it did.
+	// path and none could help if it did. This is where the bound actually
+	// fires, and where the whole law is read at once.
 	t.Run("a wait that cannot be cancelled", func(t *testing.T) {
 		if _, err := exec.LookPath("mkfifo"); err != nil {
 			t.Skip("no mkfifo: this scenario needs a named pipe to park on")
@@ -260,8 +275,42 @@ func TestBoundedStopE2E(t *testing.T) {
 	})
 }
 
+// runStoppedInTime is the scenario where the engine DOES let go: the surface's
+// wait ends inside the bound, nothing is detached, and the box is usable again.
+func runStoppedInTime(t *testing.T, stub *stopStub, name, ask string) {
+	t.Helper()
+	rig, home := openBoundedStopRig(t, stub, name)
+	rig.lit(ask)
+	rig.keys("Enter")
+	waitUntilParked(t, rig, stub)
+
+	pressed := time.Now()
+	rig.keys("Escape")
+
+	// THE SURFACE'S WAIT ENDS INSIDE THE BOUND. `interrupted` is the word the
+	// status line takes once the turn is genuinely over (internal/tui3's
+	// render.go), so waiting for it is waiting for the stream to have closed.
+	settled := rig.waitFor(stopBoundPatience, say(t, "interruptedWord"))
+	took := time.Since(pressed)
+	t.Logf("=== pane %s after esc: the never-ending stream is over ===\n%s", took.Round(time.Second), settled)
+	if took > stopGraceE2E {
+		t.Fatalf("the stream took %s to end, which is past the bound", took)
+	}
+
+	// AND NOTHING WAS ABANDONED, because nothing had to be. A line here would be
+	// the file recording a detach that never happened.
+	if lines := abandonedLines(t, home); len(lines) != 0 {
+		t.Fatalf("a turn the engine let go of was journaled as abandoned: %+v", lines)
+	}
+
+	stub.stop()
+	rig.lit("say hello")
+	rig.keys("Enter")
+	rig.waitFor(60*time.Second, stopStubDone)
+}
+
 // runBoundedStop drives one scenario end to end and asserts the whole law.
-func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
+func openBoundedStopRig(t *testing.T, stub *stopStub, name string) (*rig, string) {
 	t.Helper()
 	workspace := newWorkspace(t, name, false)
 	if stub.kind == parkOnPipe {
@@ -279,9 +328,16 @@ func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
 		// this run is not about and which would eat the sentence it types.
 		config.KeySetupSeen: time.Now().UTC().Format(time.RFC3339Nano),
 	})
-	rig := startWithEnv(t,
+	return startWithEnv(t,
 		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + base, "AFORGE_PROFILE_DIR="},
-		name, home, workspace, 120, 40)
+		name, home, workspace, 120, 40), home
+}
+
+// runBoundedStop drives the scenario where the bound actually FIRES, and reads
+// the whole law off it.
+func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
+	t.Helper()
+	rig, home := openBoundedStopRig(t, stub, name)
 
 	rig.lit(ask)
 	rig.keys("Enter")
@@ -362,6 +418,16 @@ type abandonedLine struct {
 // mean a deadline that fired twice on one turn.
 func onlyAbandonedLine(t *testing.T, home string) abandonedLine {
 	t.Helper()
+	found := abandonedLines(t, home)
+	if len(found) != 1 {
+		t.Fatalf("want exactly one abandoned line in %s, found %d: %+v", home, len(found), found)
+	}
+	return found[0]
+}
+
+// abandonedLines is every `abandoned` record in every journal under one home.
+func abandonedLines(t *testing.T, home string) []abandonedLine {
+	t.Helper()
 	var found []abandonedLine
 	for _, transcript := range sessionTranscripts(t, home) {
 		for _, raw := range strings.Split(transcript, "\n") {
@@ -380,10 +446,7 @@ func onlyAbandonedLine(t *testing.T, home string) abandonedLine {
 			}
 		}
 	}
-	if len(found) != 1 {
-		t.Fatalf("want exactly one abandoned line in %s, found %d: %+v", home, len(found), found)
-	}
-	return found[0]
+	return found
 }
 
 // The two sentences the scripted endpoint itself writes. They are the stub's own

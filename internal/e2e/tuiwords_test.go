@@ -84,6 +84,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "detaching in ",
 		why:    "the bound on the stopping window, stated on the status line BEFORE it fires (issue #265)",
 	},
+	"interruptedWord": {
+		screen: "interrupted",
+		why:    "the status word once a stopped turn is genuinely over — what the bound is measured against",
+	},
 	"stopDetachedWord": {
 		screen: "detached — the turn was let go of and nothing is waiting for it",
 		why:    "the note a turn let go of at the bound leaves in the conversation",
