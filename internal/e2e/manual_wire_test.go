@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/manual/asked"
 )
 
@@ -43,22 +44,44 @@ const (
 
 // ── the floors ──────────────────────────────────────────────────────────────
 //
-// THESE ARE MEASURED NUMBERS, ROUNDED DOWN, AND NOTHING ELSE. They are set from
-// a real run of this file after #307 landed, and they are lower than that run:
-// a live model composes a different query every time it is asked, so a floor at
-// the measured number would go red on the model's own variance rather than on a
-// regression. Read the run's log lines, not these constants, for what the wire
-// actually does today.
+// THESE ARE MEASURED NUMBERS AND NOTHING ELSE, and they are set UNDER the
+// measurement rather than at it. Four passes of this file were run on
+// deepseek-v4-flash while #307 landed — two with the fix and two without — and
+// what they measured was:
+//
+//	                     opened   first   within four
+//	the 25, without        19/25   11/25    18/25
+//	the 25, without        17/25   14/25    16/25
+//	the 25, with           19/25   14/25    18/25
+//	the 25, with           20/25   12/25    20/25
+//	held out, without      18/22    5/22    12/22
+//	held out, without      17/22    5/22    16/22
+//	held out, with         17/22    6/22    13/22
+//	held out, with         13/22    5/22    11/22
+//
+// The spread inside one column is bigger than the difference between the two
+// halves of the table, and the reason is in the first column: WHETHER THE MODEL
+// REACHES FOR THE TOOL AT ALL moves by seven questions between runs, and a turn
+// that never opened the manual cannot reach a page. Read against the turns that
+// did look something up, the page reached the model 38 times of 39 with the fix
+// and 34 of 36 without, and came FIRST 11 times of 30 against 10 of 35 on the
+// cold set. The claim this file can make honestly is that the page stays
+// reachable through a model, not that it moved a number by three.
+//
+// So the floors below sit under the LOWEST of the four passes. A floor at a
+// measured number would go red on the model's own appetite rather than on a
+// regression, and a red that means "the model was in a mood" is a red nobody
+// reads. Read the run's own log lines for what the wire does today.
 //
 // They are deliberately SEPARATE from plainquestions_test.go's floors. Those
-// measure the corpus and are exact and free; these measure the corpus THROUGH a
-// model and cost money, and folding the two together would let a model's mood
-// look like a page becoming unreachable.
+// measure the corpus, exactly and for free; these measure the corpus THROUGH a
+// model and cost money, and folding the two together would let a mood look like
+// a page becoming unreachable.
 const (
-	wirePlainFirstFloor  = 0
-	wirePlainWithinFloor = 0
-	wireHeldFirstFloor   = 0
-	wireHeldWithinFloor  = 0
+	wirePlainFirstFloor  = 10
+	wirePlainWithinFloor = 15
+	wireHeldFirstFloor   = 3
+	wireHeldWithinFloor  = 9
 )
 
 // TestManualOnTheWire is the lane itself.
@@ -255,10 +278,6 @@ func searchedFor(calls []manualCall) string {
 // pagesReturnedTo is the pages the manual put in front of the model this turn,
 // in the order it ranked them and each named once — read off the journal, never
 // off [session.Event]'s four-thousand-byte display copy ([manualCall] says why).
-//
-// A PAGE ASKED FOR BY NAME COUNTS AS THAT PAGE ARRIVING. It carries no `[page ·
-// heading]` labels, because a page read is the page's own text; a reading that
-// only understood labels would score the most direct route to a page as a miss.
 func pagesReturnedTo(calls []manualCall) []string {
 	seen := map[string]bool{}
 	pages := make([]string, 0, 4)
@@ -269,12 +288,45 @@ func pagesReturnedTo(calls []manualCall) []string {
 		}
 	}
 	for _, one := range calls {
-		if name := pageName(one.Page); name != "" {
-			keep(name)
-		}
+		keep(pageThatArrived(one))
 		for _, section := range renderedSections(one.Output) {
 			keep(section.Page)
 		}
 	}
 	return pages
+}
+
+// pageThatArrived is the page a call asked for BY NAME, when that page is what
+// came back.
+//
+// Both halves are load-bearing. A page read carries no `[page · heading]`
+// labels, because what it returns is the page's own text, so a reading that
+// only understood labels would score the most direct route to a page as a miss.
+// And a reading that trusted the ARGUMENT would score a REFUSAL as a hit — the
+// model invents a page name often enough, and what it is handed then is a
+// sentence saying the page does not exist and a list of the ones that do. So the
+// name counts only when the result carries what the corpus holds under it.
+func pageThatArrived(one manualCall) string {
+	name := pageName(one.Page)
+	if name == "" {
+		return ""
+	}
+	want, found := manual.Chat().Page(name)
+	if !found {
+		return ""
+	}
+	if heading := strings.TrimSpace(one.Section); heading != "" {
+		section, found := manual.Chat().Section(name, heading)
+		if !found {
+			return ""
+		}
+		want = section.Body
+	}
+	// The opening line is enough and is all a CUT result is guaranteed to keep:
+	// a bounded page ends early, so nothing further in is safe to look for.
+	opening, _, _ := strings.Cut(strings.TrimSpace(want), "\n")
+	if opening == "" || !strings.Contains(one.Output, opening) {
+		return ""
+	}
+	return name
 }
