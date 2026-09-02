@@ -1133,15 +1133,22 @@ func (a *app) standDownFullscreen() { a.showPage(pageNone) }
 // on the way into one. It is called by [app.showPage] rather than the other way
 // round, which is what keeps the two out of a loop.
 //
-// THE REWIND TIMELINE IS THE WHOLE OF IT, and it is not a place on purpose: it
+// THE REWIND TIMELINE IS ONE OF THEM, and it is not a place on purpose: it
 // is a thing you do to THIS conversation rather than a room in the machine, and
 // putting it in the tab bar would put a knife in the cutlery drawer (pages.go).
 // It goes RESTORING the draft it is holding, because the sentence it stashed on
 // the way in belongs to the person and not to the page that took it.
+//
+// A BACKGROUND JOB'S PAGE IS THE OTHER, and it is not a place for the same
+// reason: it is one job this conversation started, reached from that
+// conversation's own column, and a job that ends with the conversation would be
+// a tab standing over nothing (jobpage.go). It holds no draft, so it simply
+// closes.
 func (a *app) standDownRest() {
 	if a.rewSheet.open {
 		a.closeRewindSheet(true)
 	}
+	a.closeJobPage()
 }
 
 func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) != "" }

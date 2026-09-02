@@ -487,8 +487,8 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
-than a tally, read the task column on the right: every job has a row there while it runs and
-settles when it ends — the tasks page has it under *Background jobs on the column*.
+than a tally, read the `jobs` section on the column — collapsed it is one line of counts,
+expanded it is the rows. The tasks page has it under *Background jobs on the column*.
 
 The `open` count is read from the conversations themselves and not from the files other
 terminals leave behind, so it never lags: a conversation that stops on a question while you
@@ -2086,11 +2086,11 @@ cell:
   the conversation does.
 
 What comes back is that task's own last word: `merged · $0.42` for work that came home
-clean, and `job 3 · log /tmp/aforge/jobs/3.log` for a background job, which is the handle
-`jobs output` and the `read` tool take. A row with nothing to say — a task that ended with
-no merge word and no price — offers no `▸` at all, because a mark that answered a press
-with silence would be a lie. The full record of any task is on the task page (`ctrl+.`,
-`/history`) whether the row is folded or not.
+clean. A background job is not a finished task row: it lives in the `jobs` section, and
+its log path is on the job's page, not folded under a roster line. A row with nothing to
+say — a task that ended with no merge word and no price — offers no `▸` at all, because a
+mark that answered a press with silence would be a lie. The full record of any task is on
+the task page (`ctrl+.`, `/history`) whether the row is folded or not.
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
 
@@ -2119,9 +2119,10 @@ There is **one scrollbar-less window and no second one**: the wheel, the arrow k
 landing task all move the same offset. What the window cannot show is said at the foot of
 the column — the totals, and `ctrl+. earlier` onto the full task page.
 
-## What is that column on the right — tasks, standing and an empty rail
+## What is that column on the right — tasks, standing, jobs and an empty rail
 
-The column beside the conversation carries the two things that govern a conversation.
+The column beside the conversation carries the two things that govern a conversation, and
+a third for the background work that conversation started.
 A section with rows earns a dim lowercase label; an empty section keeps only its dim `+`
 door. (An untouched empty conversation has no column at all until the first keystroke,
 a task, or a standing order — *The empty screen* page says why.) Once it stands:
@@ -2135,6 +2136,8 @@ standing
 ◦ keep the tests green
 ◦ never touch the public API                                    everywhere
 + /standing
+
+▸ jobs · 1 running · 4m12s
 
 Σ $1.42 · 312k tok
 ctrl+. earlier
@@ -2153,25 +2156,35 @@ ctrl+. earlier
   only, and nothing at all for an order governing this project. A row's mark becomes the
   spinner while that order is being checked or fired right now. Clicking one opens
   `/standing` with the cursor already on it.
-- **The `standing` section keeps its rows however long the roster gets.** The two sections
+- **`jobs`** is this conversation's background work — a server, a build, a watch, a render —
+  as a third section under the other two, collapsed by default to one line (`jobs · 2
+  running`, `jobs · 1 running · 4m12s` when exactly one is live, `jobs · 6 ran` when
+  nothing is). Enter or a click toggles it. Expanded, every running job draws, then
+  finished ones fill whatever room is left, newest first, with `▸ N earlier` counting the
+  rest. Zero jobs draws nothing at all — no label, no empty row, no `0 jobs`. A click on a
+  job opens its page, not a chat. The tasks page has the whole of it under *Background
+  jobs on the column*.
+- **The `standing` section keeps its rows however long the roster gets.** The sections
   do not compete for the column: the roster is given what is left over after the label,
-  the doors and the standing rows have been reserved, and it is the roster that scrolls.
-  A session with forty tasks in it still shows the orders standing over it, at the foot of
-  the column, without scrolling.
+  the doors, the standing rows and the jobs section have been reserved, and it is the
+  roster that scrolls. A session with forty tasks in it still shows the orders standing
+  over it, and the jobs that are running, without scrolling.
 - **At most three orders are drawn, and the label counts the rest** — `standing · 7 more`,
   in the same shape as `tasks · 4 working`. Past a handful the rows stop being read one at
   a time; `+ /standing` (or `/standing`) opens the page that lists them all. A section
   showing every order it has says nothing extra: the label is simply `standing`.
 - On a **short terminal** the standing rows give way one at a time so that the roster
-  keeps at least six rows, and under that the whole section stands down rather than
-  drawing a label over nothing.
-- **An empty section has no label and no absence sentence.** When both are empty, only
-  `+ /task` and `+ /standing` remain as the discoverable doors.
+  keeps at least six rows, and under that the whole standing section stands down rather
+  than drawing a label over nothing. Live jobs are reserved before standing spends: a
+  running job is not a thing this column hides to make room for furniture.
+- **An empty section has no label and no absence sentence.** When tasks and standing are
+  both empty, only `+ /task` and `+ /standing` remain as the discoverable doors. Jobs add
+  no `+` door — a job is started by a tool, not typed.
 - **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
   command and a space at the head of your message box and hands the keyboard back — plain
   text you can edit or delete, no mode, no form.
 
-Under both sections come the column's dim totals and its door lines. The separation between
+Under the sections come the column's dim totals and its door lines. The separation between
 the sections is one blank line: this surface separates with whitespace and never with a
 rule. On a build with no ambient side the `standing` section is absent entirely.
 

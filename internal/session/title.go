@@ -311,7 +311,7 @@ func namesTheInstruction(name string) bool {
 	for _, word := range said {
 		spoken[word] = true
 	}
-	for _, prompt := range []string{titlePrompt, taskNamePrompt} {
+	for _, prompt := range []string{titlePrompt, taskNamePrompt, jobNamePrompt} {
 		asked := 0
 		shared := 0
 		for _, word := range uniqueWords(normalizedWords(prompt)) {

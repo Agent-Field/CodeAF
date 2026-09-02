@@ -73,12 +73,11 @@ Three things that look like the same picture and are not:
   `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
-  render — sits on the same column, and its page has no chat in it because a job has no
-  agent and writes no transcript. What it shows instead is the job's log: the
-  `job 4 · log /path/…` line at the top, and under it the end of that file, re-read four
-  times a second while the job runs. A job that has not written its first line yet says
-  `a background job keeps a log, not a transcript` and nothing else. Its row is the one
-  whose dim under-line starts with `job` and a number.
+  render — sits in the `jobs` section under `tasks` and `standing`, not among the families,
+  and its page is a card, not a chat, because a job has no agent and writes no transcript.
+  What it shows is the name, the handle `job 4`, the command, the clock or ending, and the
+  end of its log. A job that has not written its first line yet draws no tail and no error.
+  Its row is the one under the `jobs` label.
 
 No task page ever draws an empty body under its header. Whatever is true of the task,
 the page says it in one dim line:
@@ -87,9 +86,11 @@ the page says it in one dim line:
   `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
   `nothing on this page yet — it fills in as the task works`
-- a background job whose log is empty or unreadable says
-  `a background job keeps a log, not a transcript` — never an error, because a job that has
-  written nothing yet is a job that started a second ago
+
+A background job whose log is empty or unreadable draws no tail and no error — a job that
+has written nothing yet is a job that started a second ago — and never the old sentence
+`a background job keeps a log, not a transcript`, which is gone with the composer that
+used to sit under the page.
 
 The line comes off the moment there is anything to draw, because it answers one question
 — why is there nothing here — and a page with something on it is not asking it.
@@ -99,37 +100,38 @@ If the page is long but the frame is short, scroll: the wheel over the page, `pg
 conversation to its latest line, and inside a task scrolling down to the bottom does the
 same for the task's page.
 
-## Watch a background job's log — the page tails it live
+## Watch a background job's log — the page tails it live, where is the log
 
-Press `enter` on the job's row, or click it. A background job's page **is** its log:
+Press `enter` on the job's row in the `jobs` section, or click it. Opening a job opens a
+**page**, not a chat: a full-frame card with the name (or `job 4` until one arrives), the
+handle and clock or ending, the command, the log tail, and a foot. The title is the name
+or the handle — never the raw command, which the body draws once. There is no composer on
+it at all.
 
-```
-job 4 · log /Users/you/.aforge/v3/jobs/4.log
+The log is the last **200** lines of the file, oldest at the top and newest at the bottom,
+dim, re-read four times a second for as long as the job is running. Colour codes and
+control characters in the output are stripped before anything is drawn. The **absolute log
+path is on this page**, in the foot — not on the row. `c` copies it; the confirmation
+begins `copied `.
 
-  [1/3] fetching sources
-  [2/3] building
-  frame 640 · 22 fps
-this log grows as the job works — say it to main
-```
+The page follows the newest line as it grows; `↑`/`↓` scroll, and scrolling to the bottom
+re-joins the live end. When the job ends, the page takes **one more reading** — a process
+writes its last lines and then exits, so the reading taken at the moment it exited would
+be short of the ending.
 
-The top line is the path — the same string the roster draws under the row, and the handle
-`jobs output 4` and `jobs kill 4` take. Under it is the **end** of that file: the last 200
-lines, oldest at the top and newest at the bottom, dim, re-read four times a second for as
-long as the job is running. Colour codes and control characters in the output are stripped
-before anything is drawn.
+The keys, quoted:
 
-The page follows the newest line as it grows; scroll up with the wheel, `pgup` or `↑` over
-an empty box to read back, and scrolling to the bottom re-joins the live end.
+- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
+- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
 
-When the job ends, the page takes **one more reading** — a process writes its last lines
-and then exits, so the reading taken at the moment it exited would be short of the ending —
-and the foot becomes `this task has finished — say it to main`.
+`x` stops a running job (the tasks page has the confirmation). `m` drops the name, the
+handle, the ending, and the last few log lines into your message box underneath, then
+closes the page. Over `--host` the body says `its log is on ` plus the host name, because
+the file is on the engine's machine; `jobs output 4` is how you read it there.
 
-Two limits worth knowing. `enter` inside a job's page does not steer anything: there is no
-agent in a job to read a line, so the words raise the same question a finished task raises
-and offer to send them to the main conversation instead. And over `--host` the page draws
-no log at all — the path belongs to the other machine, so the page shows the far path and
-`a background job keeps a log, not a transcript`; `jobs output 4` is how you read it there.
+A job that has written nothing yet draws no tail and no error. The old feet
+`this log grows as the job works — say it to main` and
+`a background job keeps a log, not a transcript` are gone: there is no composer to refuse.
 
 ## Task page says finished but the work is still running
 
@@ -138,25 +140,28 @@ page drew `task finished — esc to return` (that was the old wording) under a h
 clock was still counting up
 — `video · working · 32s` over a foot claiming the work was over.
 
-The cause was that a background job is a row and never a task in aforge's own graph, so
-every attempt to open a page for one is refused — which is the **ordinary** answer for a
-job, on a perfectly healthy conversation — and that refusal was read as "the work has
-landed". Now the page asks the row instead, which is the same record the header above it is
-drawn from, and the two cannot disagree.
+The cause was that a background job is not a task in aforge's own graph, so every attempt
+to open a **room** for one was refused — which is the **ordinary** answer for a job, on a
+perfectly healthy conversation — and that refusal was read as "the work has landed". A
+job's page is a card now, not a room, and it draws the job's own clock or ending, so the
+two cannot disagree.
 
 What each foot means now:
 
-- `this log grows as the job works — say it to main` — a background job that is still
-  running. The lines above it are its log and they are still arriving.
-- `this task has finished — say it to main` — the work is over, whatever kind it was.
-  Nothing more is coming; scroll up to read what it did. Where the task has a parent the
-  line offers that door too: `…, or open its parent, Ship the port`.
+- `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message` — a
+  background job that is still running. The lines above it are its log and they are still
+  arriving. `x` stops it.
+- `esc back · ↑↓ scroll · c copy path · m puts it in your message` — a background job that
+  has ended. Nothing more is coming; scroll up to read what it wrote.
+- `this task has finished — say it to main` — a **task** that is over, whatever kind it
+  was. Nothing more is coming; scroll up to read what it did. Where the task has a parent
+  the line offers that door too: `…, or open its parent, Ship the port`.
 
-**Every one of those feet names a door, and none of them names `esc`.** A refusal on this
-surface says what is true and then says where the thing can still go — the conversation, and
-the parent task when there is one. `esc` is already on the legend under the transcript
-(`room · esc/←← main`) and on the pinned header above it, so the foot spends its cells on
-the half nothing else on the screen is saying.
+**A job's page has no composer, so none of those job feet name a door for typed words.**
+`m` is how a job's ending reaches the conversation. A task's foot still names a door,
+because the box is still there and the worker is not. `esc` is already on the legend under
+the transcript (`room · esc/←← main`) and on the pinned header above a task's room, so a
+task's foot spends its cells on the half nothing else on the screen is saying.
 - **no foot at all** — an ordinary task still working. There is nothing to say at the bottom
   of the page, because the next thing to arrive is what happens next.
 

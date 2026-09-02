@@ -247,19 +247,16 @@ func TestAHostedRunningRoomFillsOnItsOwnBoundedBeat(t *testing.T) {
 	}
 }
 
-func TestAHostedJobNamesTheMachineOnItsFarLog(t *testing.T) {
-	a := hostedPlaceLab(t)
-	node := &taskNode{kind: session.TaskKindJob, report: "job 3 · log /srv/.aforge/jobs/3.log"}
-	if got := plain(a.railJobLog(node, 100)[0]); !strings.Contains(got, "log box:/srv/.aforge/jobs/3.log") {
-		t.Fatalf("hosted job log = %q", got)
-	}
-}
-
-// AND IT NEVER OPENS A FILE ON THIS DISK. The path on the row is the engine's; a
-// read of it here is either nothing or a stranger's file, and it is the read that
-// produced the wrong sentence in the first place. The pin is a REAL journal at
-// the far path, made on this machine — if anything in this lane ever falls back
-// to the local disk, this is what it would find.
+// A HOSTED CARD NEVER OPENS A FILE ON THIS DISK. The path on the record is the
+// engine's; a read of it here is either nothing or a stranger's file, and it is
+// the read that produced the wrong sentence in the first place. The pin is a
+// REAL journal at the far path, made on this machine — if anything in this lane
+// ever falls back to the local disk, this is what it would find.
+//
+// A HOSTED JOB'S LOG IS THE SAME LAW ON THE OTHER SURFACE, and it is pinned
+// where that surface lives now: jobpage_test.go's
+// [TestAHostedJobPageNeverReadsThisDisk]. It was pinned here, against a job's
+// row on the roster, for as long as a job HAD a row on the roster.
 func TestAHostedTaskCardNeverReadsThisDisk(t *testing.T) {
 	root := t.TempDir()
 	journal := filepath.Join(root, "transcript.jsonl")

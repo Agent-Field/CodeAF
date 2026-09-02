@@ -23,7 +23,7 @@ import "github.com/charmbracelet/x/ansi"
 //
 // ── WHAT IS NOT A REFUSAL, AND WHY IT IS NOT IN THE TABLE ──
 //
-// [roomGoneWord], [roomYetWord] and [roomJobLogWord] are PAGE-STATE lines: they
+// [roomGoneWord] and [roomYetWord] are PAGE-STATE lines: they
 // answer "why is there nothing under this header" about a page that refused
 // nothing and lost nothing (room.go's [app.roomRecordRows] states each one's
 // case). Giving them a door would be inventing an action nobody attempted, and
@@ -102,15 +102,6 @@ var (
 		shortWhat: "finished",
 		door:      refusalMainDoor,
 	}
-	// roomJobRefusal is the same sentence about a BACKGROUND JOB, which has
-	// nobody inside it to read a line whether it is running or not (roomjoblog.go
-	// says why a job is a row and never a node). Its fact is about the log
-	// because that is what the page IS.
-	roomJobRefusal = refusal{
-		what:      "this log grows as the job works",
-		shortWhat: "a job's log",
-		door:      refusalMainDoor,
-	}
 	// roomUnavailableRefusal is the degraded case: an agent under this surface
 	// with no room doors on it at all. It used to open with `room unavailable`,
 	// which is the program describing its own wiring to somebody who typed a
@@ -130,7 +121,6 @@ var (
 // which is this law's own best case rather than an exception to it.
 var taskRefusals = []refusal{
 	roomFinishedRefusal,
-	roomJobRefusal,
 	roomUnavailableRefusal,
 }
 

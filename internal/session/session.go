@@ -497,6 +497,18 @@ const (
 	// surface that hears it lets go — detaches and closes the conversation the
 	// way /new does — and the window that asked resumes it from the checkpoint.
 	EventTakeover
+	// EventJobUpdate reports one BACKGROUND JOB's life (jobnotice.go): Job
+	// carries the job's own id, the short name it has been given, the command,
+	// the state, the log path and — once it is over — the exit code. It fires
+	// when a job starts, when its name arrives, and when it settles.
+	//
+	// IT IS ITS OWN KIND BECAUSE A JOB IS ITS OWN THING. A job used to ride
+	// EventTaskUpdate as a [TaskNotice], which left every surface downstream
+	// carrying a clause saying a job is not really a task — no room, no branch,
+	// no price, no stop, no card and no index row. What a job has is an id, a
+	// log and an exit code, and none of those is what a task row is drawn from,
+	// so it is published as what it is and the clauses go away.
+	EventJobUpdate
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -656,6 +668,12 @@ type Event struct {
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
 	// is the token a surface hands back to [Agent.ResolveTask].
 	Task *TaskNotice
+
+	// Job carries one EventJobUpdate's payload (jobnotice.go). It is nil on every
+	// other kind, and the Id inside it is the job's OWN number — the one
+	// `jobs output 3` and `jobs kill 3` already take — rather than a second id
+	// minted somewhere else to keep it from colliding with a task's.
+	Job *JobNotice
 
 	// TaskPhase carries one EventTaskPhase's payload (task_contract.go): which
 	// running node moved into which of its three lives. It is nil on every

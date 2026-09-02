@@ -602,32 +602,36 @@ func runRowNotice(record runRecord) TaskNotice {
 	}
 	if !notice.State.settled() {
 		notice.State, notice.Stopped = TaskFailed, true
-		notice.Report = endedReportFor(record.Kind)
+		// A JOB'S ROW KEEPS ITS OWN SENTENCE, because for a job that sentence is
+		// not prose — it is where the log IS ([jobRowLead] mints
+		// `job 3 · log /…/3.log`, and [jobNoticeFromRow] reads the path back out
+		// of it on the way to a surface).
+		//
+		// OVERWRITING IT LOST THE ONE THING THE WORK LEFT BEHIND, and it lost it
+		// in the commonest case there is: a job still running when aforge closed
+		// is exactly the job somebody reopens the conversation to look at, and it
+		// came back with no path at all. The sentence that replaced it was written
+		// when this row was DRAWN — it read well under a row on the task column —
+		// and nothing draws it now.
+		//
+		// WHAT IT SAID IS STILL SAID, by the state rather than by prose: the job
+		// comes back stopped, which is what the column and the page both show, and
+		// "it ended when aforge closed" is what stopped MEANS for a process that
+		// cannot outlive the program that forked it.
+		if record.Kind != TaskKindJob {
+			notice.Report = orchestrateEndedReport
+		}
 	}
 	return notice
 }
 
-// endedReportFor is the sentence a row still moving as aforge closed says for
-// itself, chosen by what the row IS.
+// A JOB'S OWN VERSION OF THIS SENTENCE IS GONE, AND SO IS THE CHOICE BETWEEN
+// THEM. `it ended when aforge closed; its log is kept` was written for a job's
+// row on the task column, where it read beside the work it was about. A job has
+// no row there any more, and the field the sentence was written into is the one
+// carrying the log's path — so the sentence had stopped being read and had
+// started deleting the path instead ([runRowNotice] says the rest).
 //
-// ONE SENTENCE, ONE NOUN CHANGED. The register is the same on purpose — the
-// clause a person reads first is identical, because what happened to the two is
-// identical — and what differs is the only thing that differs about the work:
-// a run leaves a journal of what it got through, and a background job leaves the
-// log it was writing (jobrow.go). Naming a job's journal would send somebody
-// looking for a file that was never written.
-func endedReportFor(kind TaskKind) string {
-	if kind == TaskKindJob {
-		return jobEndedReport
-	}
-	return orchestrateEndedReport
-}
-
-// jobEndedReport is [orchestrateEndedReport] for a background job's row, and it
-// is the whole of what such a row can say for itself afterwards: the process it
-// was is gone, and the file it was writing is not.
-const jobEndedReport = "it ended when aforge closed; its log is kept"
-
 // orchestrateEndedReport is what a row of an adaptive run says for itself when
 // it was still moving as aforge closed.
 //

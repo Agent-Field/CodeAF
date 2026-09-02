@@ -1085,12 +1085,14 @@ land between chips a few cells apart, so the phone tier trades the tab row for o
 ## The roster: the column of all the work
 
 The roster is the **top section of the column on the right**, under a dim lowercase label
-reading `tasks`. (Under it the same column carries a second section labelled `standing` —
-the orders standing over this conversation. The standing orders page has that half.)
+reading `tasks`. Under it the same column carries a second section labelled `standing` —
+the orders standing over this conversation — and, when this conversation has started any,
+a third labelled `jobs`. The standing orders page has that half; *Background jobs on the
+column* below has the jobs section.
 
-The roster holds every task **this conversation** has admitted, not just the live ones —
-and, beside them, every **background job** this conversation started, because work shows on
-the right whatever door started it (see *Background jobs on the column* below). Tasks
+The roster holds every task **this conversation** has admitted, not just the live ones.
+Background jobs are **not** rows among the families: they have their own section under
+`standing`. Tasks
 *other* sessions ran are not on it; the
 page `/history` opens is the one that has them, and one dim line at the foot of the column,
 `ctrl+. earlier`, is the door onto it. Work finishing never puts the column away, and
@@ -1191,27 +1193,165 @@ line are dim, and the room you are standing in is the one row in the accent. Not
 hidden by this — the column is a record and keeps everything — but a glance at it lands on
 what is moving.
 
-## Background jobs on the column — why a long command shows on the right, the row for a server, build or watch
+## Background jobs on the column — the jobs list on the right, what is running in the background, why a long command shows on the right, the row for a server, build or watch
 
-**A background job gets a row on the roster, the same column your tasks are on.** It is
-there from the moment the job starts until the moment it ends. This covers everything the
-`jobs` tool can list except a task's own worker, which already has a row of its own:
+**A background job is not a row among the tasks.** It used to sit in the roster with the
+families. It is now a **third section** on the same column, under `tasks` and `standing`,
+labelled `jobs`. This covers everything the `jobs` tool can list except a task's own
+worker, which already has a roster row of its own:
 
 - a command run with `bash background:true` — a server, a long build, a sweep
 - a foreground command the `background after` clock kept running as a job
   (`still running as job 3`), or one that reached its own timeout sooner,
   including one you sent there yourself with `ctrl+g`
 - a `watch`, whose row reads `watch <name>`
-- a video render, which is a job while it renders
+- a video or music render, which is a job while it renders
 
-The row's name is the command itself — `npm run dev` — or the watch's or render's own
-label where it has one, cut to three words like every other name on this column. **While
-it runs**, one dim line sits under it:
-`job 3 · log ~/.aforge/v3/projects/-you-work/<session>/logs/jobs/3.log`, cut to the
-column's width. That line is the whole handle back to the work: the number is what
-`jobs output 3` and `jobs kill 3` take, and the path is a file you can open yourself. A
-session with no folder of its own keeps its logs where they always were, in the
-workspace's own dot directory.
+**Collapsed is the default, and collapsed it is one line.** A fold mark leads it — `▸`
+closed, `▾` open; on a terminal that cannot draw those, `>` and `v`. Enter or a click on
+the label toggles it. The shapes:
+
+```
+jobs · 2 running
+jobs · 1 running · 4m12s
+jobs · 2 running · 6 ran
+jobs · 6 ran
+```
+
+The clock appears **only when exactly one job is running**, because then there is one
+duration to name. Past that the count is the news.
+
+**Expanded**, every running job draws (oldest first), then finished ones fill whatever
+room is left, newest first, and the remainder is counted on a `▸ N earlier` line rather
+than dropped. That remainder line is a count, not a door: it opens nothing.
+
+**Zero jobs draws nothing at all** — no label, no empty row, no `0 jobs`. A conversation
+that has started none looks as it did before jobs had a section.
+
+**`/new` and switching conversations drop the section.** A job belongs to the conversation
+that started it. Coming back, or reopening it, redraws the jobs it ran, settled: a job
+still going when aforge closed comes back `stopped`. Nothing is restarted. The log stays
+under this conversation's folder, in `logs/jobs/` — never in your project.
+
+The `jobs` tool, `jobs output N`, `jobs kill N`, `ctrl+g` promotion and the
+`still running as job 3` sentence are all unchanged. To kill a server you started,
+open its row's page and press `x`.
+
+## Why is my job called that — a job is named in three or four words, not the command cut to three words
+
+**The name is three or four words from a cheap model**, not the command cut to three
+words. Until the name arrives the row wears the command itself — `npm run dev` — and then
+**renames in place**. The name is a display name; `job 3` is still the handle
+`jobs output 3` and `jobs kill 3` take.
+
+The namer is a small, cheap call (the low tier, the same kind of errand that names a
+session or a task). It never blocks the work: the process is already running. A name that
+never arrives costs a good name and nothing else — the command stays on the row.
+
+**No call is made** when the job already has a label of its own, or when the command is
+already short and readable:
+
+- a watch, a render or a hand is named the moment it starts (`watch app`, the render's
+  title, the hand's part) — a second call would disagree with `jobs list`
+- a command with no shell metacharacters and no more than four words is left alone —
+  `npm run dev` is what a person would call that job
+
+A command that is a script — a pipe, a quote, a dollar, or more than four words — is the
+one the namer is asked about. Four words is a cap, not a target: a two-word name is left
+at two.
+
+## What a job's row shows — exited 1, stopped, done, how a job ended, the clock while it runs
+
+**A job's row shows its name on the left and, on the right, its number and either
+the clock or how it ended.** The number is the handle — the same `3` in `job 3`,
+`jobs kill 3` and `job:3`. The shapes:
+
+```
+3 · 4m12s
+3 · done
+3 · exited 1
+3 · stopped
+```
+
+A running job's figure is the clock (`4m12s`). A clean finish reads `done` — how
+long it ran is on the page, not restated here, because a frozen clock and a
+ticking one are the same shape at a glance. A non-zero exit reads `exited 1`. A
+job somebody ended reads `stopped`. Under a second there is no clock on a
+running row — `0s` on a row that has just begun would be a figure that has to be
+read to learn nothing — and the number still stands alone.
+
+A running name is drawn in the column's working ink; a settled one is muted. That
+is the same brightness the roster already uses for live work versus history.
+
+**The absolute log path is off the row.** It used to sit under the name as
+`job 3 · log /…/3.log`. It is on the job's page now. Open the row (enter or a click) to
+see it.
+
+**A running job still counts as working** in the live-work tree, so when more than one
+worker is running the `tasks` label can read `tasks · N working` with jobs included. The
+jobs section's own label is the count of *jobs*: `jobs · 2 running`.
+
+**What a job's row does not have**, because a job has none of them:
+
+- no branch, no changed-files list and no price — a job runs in the workspace itself, and
+  nothing measures what it costs, because it costs nothing but time
+- no agent inside it and no transcript — enter opens a **page**, not a chat
+- no `✕` on the row itself — stop it from the **page** (`x`), or ask aforge to run
+  `jobs kill`
+
+**No card is written into the conversation** when a job ends, because a job has no report
+anybody wrote — what it left is its log. Aforge itself is still told, on its own side, at
+the next step boundary (`job 3 exited 1: make: *** [build] Error 1`).
+
+## How do I stop a background job — stop a job from its page, can I stop a background job from the sidebar
+
+**Yes. Open the job's page and press `x`.** Kill a server you started the same
+way. A job used to have no stop on the surface, and the only way was to ask
+aforge to run `jobs kill`. The row itself still has no `✕` — walk into the jobs
+section, enter on the job, then `x`. That is how you stop it from the sidebar:
+the section is the door onto the page, and the page is the door onto the stop.
+
+`x` raises the same confirmation every other stop on this surface raises, with the cursor
+on the safe answer:
+
+```
+? Stop this job? The process is ended; its log is kept.
+  [stop it]   [keep going]
+```
+
+`enter` on `stop it` ends the process. The engine's door is `job:3` — the same number the
+handle shows. The line it answers with is `stopped job 3 (the name) — its log is kept`.
+The model is told `job 3 was stopped` so it does not keep reasoning about work that is no
+longer running. Pressing `x` on a job that has already ended does nothing: the settled
+page does not offer the key.
+
+**You can still ask aforge to run `jobs kill N`.** That is the model's tool and it still
+works. Every running job is also killed when the conversation closes. `esc` in the
+conversation interrupts the turn and does **not** stop background jobs.
+
+## Opening a job's page — where is a job's log path, a job is not a chat, copy the log path
+
+**Opening a job opens a page, not a chat.** It is a full-frame card: the name (or
+`job 3` until the name arrives), the handle and clock or ending on the next line, the
+command in full, the log tail, and a foot. There is no composer on the page at all, so
+there is nothing to refuse. The title is never the raw command — that lives once, in the
+body — so the number is always visible in the head. The old feet
+`this log grows as the job works — say it to main` and
+`a background job keeps a log, not a transcript` are gone.
+
+The keys, quoted:
+
+- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
+- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+
+`c` copies the log path; the confirmation begins `copied `. `m` drops the name, the
+handle, the ending, and the last few log lines into your message box underneath, then
+closes the page. Over `--host` the body says `its log is on ` plus the host name, because
+the file is on the engine's machine; `jobs output N` is how you read it there.
+
+The log tail is the last **200** lines, re-read four times a second while the job runs,
+and one last reading after it ends. Colour codes and control characters are stripped. A
+job that has written nothing yet draws no tail and no error.
 
 ## Stray lines painted over the conversation, the screen glitching while a job runs — a job cannot draw on your chat
 
@@ -1221,59 +1361,6 @@ that is itself a full-screen program, a prompt that insists on the keyboard — 
 by the system rather than painting its output across your conversation. Everything a job
 says goes to its log and nowhere else; if the chat's own frame ever glitches or shows
 stray lines, it is not a job doing it.
-
-**Once the job has ended the row is one line**, like every other finished row on the
-column, and the log line is folded under it rather than dropped: walk to the row and press
-`→`, or hover it and click the `▸` its glyph turns into, and the same
-`job 3 · log …` comes back. *What the task column looks like* on the screen page has the
-whole of that fold.
-
-**It settles where it stands.** A job that exits cleanly reads as finished and drops into
-the column's done fold; a job that exits non-zero, and a job that was killed, read as
-incomplete and lead that fold. Nothing else happens: **no card is written into the
-conversation** when a job ends, because a job has no report anybody wrote — what it left is
-its log. Aforge itself is still told, on its own side, at the next step boundary
-(`job 3 exited 1: make: *** [build] Error 1`).
-
-**A running job counts as working.** It is in the `tasks · 4 working` tail on the section
-label, and in the `3 running` line in the footer, exactly as a task worker is.
-
-Three things a job's row deliberately does **not** have, because a job has none of them:
-
-- **no room in the sense a task has one.** There is no agent inside a job and no
-  transcript to read, so `enter` on the row opens a page that carries what a job actually
-  leaves behind: the same `job 3 · log /path/…` line, and under it the **end of that log**
-  — the last 200 lines, newest at the bottom, re-read four times a second while the job
-  runs, with a foot reading `this log grows as the job works — say it to main`. When the job
-  ends the page takes one last reading, so the process's final lines are on it, and the foot
-  becomes `this task has finished — say it to main`. A job that has written nothing yet says
-  `a background job keeps a log, not a transcript` instead, and never an error. What that
-  page never shows is a chat — there was never one to show, and `enter` inside it steers
-  nothing, because there is nobody in a job to read a line. (On a job that has ended, `→` on
-  the row itself does one thing only: it unfolds that log line back under the row.)
-- **no `✕` and no stop key.** `x` does not aim at a job row. Ask, and aforge kills it with
-  `jobs kill`; every running job is also killed when the conversation closes.
-- **no branch, no changed-files list and no price.** A job runs in the workspace itself,
-  and nothing measures what it costs, because it costs nothing but time.
-
-**Zero jobs draws nothing at all** — no label, no empty row, no "0 jobs". A conversation
-that has started none looks exactly as it did before jobs had rows.
-
-**The rows come back; the jobs do not.** Switching away to home or another conversation and
-coming back redraws every job this conversation started, live ones in the state they are in
-right now. Reopening the conversation tomorrow redraws them as **history**: a job that
-exited comes back as it ended, and one still going when aforge closed comes back stopped,
-reading
-
-```
-it ended when aforge closed; its log is kept
-```
-
-A job is a child of the aforge process and dies with it, so **nothing is restarted** — no
-restored row is running, none of them is counted on the status line, and none can be
-stopped, because there is nothing left to stop. The log file it was writing is still under
-this conversation's own folder, in `logs/jobs/` — never in your project, whether the job
-was started here or by a task's worker in its own checkout.
 
 ## A task started from the composer carries a cap — how much a task may spend before it asks, how do I set a spend limit on a task before I send it
 
@@ -1402,11 +1489,12 @@ only place that work can be read from, and `/history` is the page that reads it.
 
 ## The column comes back after a restart — tasks reappear on resume or a switch back
 
-**Reopening a conversation re-draws its own tasks.** `/resume`, `aforge resume`, and
-switching back behind home all rebuild the column from the record: every task admitted
-here comes back as a row in its family — finished work included, and work that was
-interrupted comes back saying so on its card. Tasks are not lost when the terminal
-closes; the column is rebuilt, not carried.
+**Reopening a conversation re-draws its own tasks, and the jobs it ran.** `/resume`,
+`aforge resume`, and switching back behind home all rebuild the column from the record:
+every task admitted here comes back as a row in its family — finished work included, and
+work that was interrupted comes back saying so on its card — and the `jobs` section
+redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
+terminal closes; the column is rebuilt, not carried.
 
 **Only this window's own work comes back.** Everything else stays behind the
 `ctrl+. earlier` door, exactly as the section above says, and a task is never drawn
@@ -1496,7 +1584,7 @@ rest state, so a person who starts typing is typing, not navigating.
 | `↑` `↓` | walk the visible tree |
 | `→` | open a folded family, or step to the first child |
 | `←` | fold an open family, or jump to the parent row |
-| `enter` | open the task's room |
+| `enter` | open the task's room, or a job's page; on the `jobs` label, toggle the section |
 | `alt+w` | toggle the wider 46-column tree (bare `w` only on the full-frame roster) |
 | `esc` or `ctrl+t` | give the keyboard back |
 | `ctrl+g` | keep a foreground command when one can be kept; otherwise close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
@@ -1509,16 +1597,19 @@ only when no foreground command owns the chord.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
-tasks of **this conversation's** on the column, `ctrl+t` falls through rather than being
-swallowed — including in a directory whose earlier sessions ran plenty. There are no rows
-down there to put a cursor on; the door `ctrl+. earlier` at the foot of the column is how
-that work is reached.
+tasks **and no jobs** of this conversation's on the column, `ctrl+t` falls through rather
+than being swallowed — including in a directory whose earlier sessions ran plenty. There
+are no rows down there to put a cursor on; the door `ctrl+. earlier` at the foot of the
+column is how that work is reached. A session that has only started a server still has
+the jobs section to put a cursor on, so `ctrl+t` takes it.
 
-**The walk stops at this conversation's last task.** `↓` clamps there rather than carrying
-on into the project's record, and `enter` on any row of this column opens that task's
-**room**. It used to walk into six dulled `earlier` rows below, which meant holding `↓` took
-you out of this conversation's work and into another one's; old work is walked on the task
-page now (`ctrl+.`), where `enter` goes inside its card.
+**The walk stops at this conversation's last job, after its last task.** `↓` walks the
+families and then the jobs section under them, and clamps there rather than carrying on
+into the project's record. `enter` on a task row opens that task's **room**; `enter` on a
+job row opens that job's **page**; `enter` on the `jobs` label toggles the section. It
+used to walk into six dulled `earlier` rows below, which meant holding `↓` took you out of
+this conversation's work and into another one's; old work is walked on the task page now
+(`ctrl+.`), where `enter` goes inside its card.
 
 The cursor follows the task, not the row, when families reorder or fold around it.
 
@@ -2093,12 +2184,12 @@ messages use the ordinary room renderer. `enter` steers the far worker; `x` rais
 ordinary confirmation and stopping uses the far engine's own sentence. Changing the
 task's model remains absent over this connection. Leaving with `esc` or `←` works normally.
 
-A background job still has no transcript, and over this connection its room draws no log
+A background job still has no transcript, and over this connection its page draws no log
 either: the path belongs to the other machine, and reading it here would open a file on
-yours. Its room says `a background job keeps a log, not a transcript`, and both its row and
-room prefix the far log path with that machine's name; they never offer the same spelling
-as a local path. `jobs output 3` is how you read a far job's output. On a local
-conversation the same page tails that log live.
+yours. The body says `its log is on ` plus that machine's name; the foot prefixes the far
+log path with the same name and never offers the same spelling as a local path. `c`
+still copies that far spelling; `jobs output 3` is how you read a far job's output. On a
+local conversation the same page tails that log live.
 
 ## What is different inside a room
 

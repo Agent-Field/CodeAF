@@ -820,6 +820,11 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 			return textResponse("the background build finished too"), nil
 		},
 	}}
+	// The adopted bash becomes a job, and a job is named — an errand on its own
+	// goroutine (jobname.go). This test indexes into the requests it scripted, so
+	// the namer must be answered off the queue or every index after the adoption
+	// is one out. See [answerTheNamerOffTheQueue].
+	answerTheNamerOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "build and inspect")
 	waitFor(t, "foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })

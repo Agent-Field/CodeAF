@@ -2898,6 +2898,17 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	// yesterday.
 	for _, notice := range graph.runRowsLocked() {
 		row := notice
+		// A BACKGROUND JOB GOES OUT ON ITS OWN LANE, restored or not. The rows are
+		// kept together because they share a row-space and a checkpoint
+		// (jobrow.go), and they are SENT apart because a job is not a task and the
+		// surfaces that draw the two have nothing in common (jobnotice.go). A job
+		// replayed onto the task lane would reach a surface that correctly ignores
+		// it, and a conversation reopened tomorrow would draw none of the work it
+		// ran yesterday.
+		if job, isJob := jobNoticeFromRow(row); isJob {
+			stream.send(Event{Kind: EventJobUpdate, Job: &job})
+			continue
+		}
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }

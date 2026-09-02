@@ -543,6 +543,13 @@ func TestExitingJobWakesAnIdleSession(t *testing.T) {
 			return textResponse("the build failed on the linker step"), nil
 		},
 	}}
+	// THE JOB'S NAMER IS AN ERRAND AND NOT THIS TEST'S ONE STEP. Starting a
+	// background command now also asks the cheap model what to call it
+	// (jobname.go), on a goroutine nothing orders against the turn — so without
+	// this the namer takes the single scripted step and the woken turn runs off
+	// the end of the script. Answering it by SHAPE is agent_test.go's remedy for
+	// exactly this race.
+	answerTheNamerOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, nil)
 
 	id := startJob(t, agent, "echo undefined symbol; exit 3")

@@ -28,14 +28,30 @@ import (
 //   - THE WHEEL MOVES THE LIST UNDER THE POINTER, which is the oldest thing a
 //     pointer does.
 
-// railJobDone is one background job that has come home: the row every session
-// ends the day with a dozen of.
-func railJobDone(id uint64, title string) session.Event {
+// railLandedTask is one piece of work that has come home with something to say:
+// the row every session ends the day with a dozen of.
+//
+// THE SCREENSHOT WAS FULL OF BACKGROUND JOBS AND THESE ARE TASKS, and the law is
+// the same law. Jobs left this column entirely — they have a section of their
+// own now, where history is a count rather than rows (jobsview.go) — so the
+// roster's own crowding is pinned with the rows the roster still holds. What was
+// being proved was never about jobs; it was about a list that grows all day
+// above two sections that cannot give way.
+func railLandedTask(id uint64, title string) session.Event {
 	return update(id, title, session.TaskDone, session.TaskNotice{
-		Kind:   session.TaskKindJob,
-		Report: "job " + itoa(int(id)) + " · log /tmp/aforge/jobs/" + itoa(int(id)) + ".log",
+		Merge:   mergeWordMerged,
+		CostUSD: railCostOf(int(id)),
 	})
 }
+
+// railCostOf and railReportOf are what one landed row is holding behind its
+// fold: the merge word and what the work cost. The prices start above a dime so
+// that every one of them is two decimals and no row's block is a prefix of
+// another's — `$0.1` inside `$0.11` would be a case that passed on a row it
+// never drew, which is [railBuild]'s own rule about names.
+func railCostOf(i int) float64 { return float64(10+i) / 100 }
+
+func railReportOf(i int) string { return mergeWordMerged + " · " + dollars(railCostOf(i)) }
 
 // railBuild is one landed job's name, wide enough to read on a thirty-cell
 // column and numbered so that no name is a prefix of another — `build-1` inside
@@ -51,7 +67,7 @@ func railBuild(i int) string {
 // drowning in.
 func railLanded(a *app, n int) {
 	for i := 1; i <= n; i++ {
-		a.taskUpdate(railJobDone(uint64(i), railBuild(i)))
+		a.taskUpdate(railLandedTask(uint64(i), railBuild(i)))
 	}
 }
 
@@ -73,25 +89,32 @@ func TestALandedRowSpendsOneLineOnTheColumn(t *testing.T) {
 	// AND THE HISTORY UNDER THEM IS NOT DRAWN. The log path is what a settled job
 	// used to spend its second row on; it is behind the fold now (see below), and
 	// a column that still drew it would not have fitted the thirteen rows above.
-	if strings.Contains(text, "log /tmp/aforge") {
+	if strings.Contains(text, railReportOf(1)) {
 		t.Fatalf("a landed row still spends a line on its own history:\n%s", text)
 	}
 }
 
 // WORK THAT IS STILL GOING IS UNTOUCHED, which is what says the rule above is
-// about what is OVER and not about the column having gone quiet. A running job
-// still says where its output is going, because that is the only true thing
-// there is to say about it while it runs.
+// about what is OVER and not about the column having gone quiet. The fold is
+// offered on a row that has landed and on no other: a person cannot tuck away
+// the one thing they opened the column to watch.
+//
+// It used to be said about a running background JOB, whose second line was the
+// path its output was going to. That line is gone from this column with the jobs
+// themselves — a job's log is on the job's own page now (jobpage.go) — so what
+// is left to pin is the rule the job row was only ever an example of.
 func TestARunningRowKeepsWhatItIsDoing(t *testing.T) {
 	a, _, _ := taskApp(t)
-	a.taskUpdate(update(4, "npm run dev", session.TaskRunning, session.TaskNotice{
-		Kind:   session.TaskKindJob,
-		Report: "job 4 · log /tmp/aforge/jobs/4.log",
+	a.taskUpdate(update(4, "Collect the sources", session.TaskRunning, session.TaskNotice{
+		Report: railReportOf(4),
 	}))
 
-	text := strings.Join(railText(a, 20), "\n")
-	if !strings.Contains(text, "job 4") {
-		t.Fatalf("a running job stopped saying where its output goes:\n%s", text)
+	entries := a.railEntries()
+	if len(entries) != 1 {
+		t.Fatalf("the column drew %d rows for one running node", len(entries))
+	}
+	if a.railTucks(entries[0]) {
+		t.Fatal("a row that is still going offers the fold that is meant for work that is over")
 	}
 }
 
@@ -119,17 +142,17 @@ func TestALandedRowGivesItsBlockBackWhenItIsOpened(t *testing.T) {
 
 	a.railOut()
 	text := strings.Join(railText(a, 20), "\n")
-	if !strings.Contains(text, "job 2") {
+	if !strings.Contains(text, railReportOf(2)) {
 		t.Fatalf("→ on a landed row disclosed nothing:\n%s", text)
 	}
 	// AND ONLY THAT ROW'S. The gesture is per row, exactly as a family's fold is
 	// per family.
-	if strings.Contains(text, "job 1") || strings.Contains(text, "job 3") {
+	if strings.Contains(text, railReportOf(1)) || strings.Contains(text, railReportOf(3)) {
 		t.Fatalf("opening one row opened its neighbours:\n%s", text)
 	}
 
 	a.railIn()
-	if text := strings.Join(railText(a, 20), "\n"); strings.Contains(text, "job 2") {
+	if text := strings.Join(railText(a, 20), "\n"); strings.Contains(text, railReportOf(2)) {
 		t.Fatalf("← did not tuck the block back away:\n%s", text)
 	}
 }
@@ -160,7 +183,7 @@ func TestALandedRowOffersItsDisclosureUnderThePointer(t *testing.T) {
 	// AND THE PRESS ON THAT CELL IS THE FOLD, which is hover.go's own law: the
 	// set that lights is the set that acts.
 	drive(t, a, tea.MouseClickMsg{X: a.railLeft() + ansi.StringWidth(railSeam), Y: y, Button: tea.MouseLeft})
-	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, "job 2") {
+	if text := strings.Join(railText(a, 20), "\n"); !strings.Contains(text, railReportOf(2)) {
 		t.Fatalf("a press on the disclosure opened nothing:\n%s", text)
 	}
 }
