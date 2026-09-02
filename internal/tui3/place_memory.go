@@ -905,4 +905,3 @@ func (placeMemory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	return a.memoryKey(msg), true
 }
-
