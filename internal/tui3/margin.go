@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// THE MARGIN: ONE COLUMN, TWO SECTIONS, AND A DOOR AT THE FOOT OF EACH.
+// THE MARGIN: ONE COLUMN, THREE SECTIONS, AND A DOOR AT THE FOOT OF THE TWO THAT HAVE ONE.
 //
 // The column on the right has been this conversation's WORK and nothing else
 // (task.go's rail). Everything else standing over the conversation — the orders
@@ -69,6 +69,10 @@ const (
 	// things — the roster is tasks, and what stands is standing.
 	marginTasksWord = "tasks"
 	marginStandWord = "standing"
+	// marginJobsWord is the jobs section's label: the same noun the rest of
+	// the product calls background work, dim and lowercase like the two
+	// above. It has no `+` door — a job is started by a tool, not typed.
+	marginJobsWord = "jobs"
 	// marginTaskType and marginStandType are what a `+` row TYPES, trailing space
 	// and all. They are the commands themselves rather than a spelling of them,
 	// because the row is teaching the command: what lands in the box is what a
@@ -102,6 +106,12 @@ const marginStandCost = 4
 // The rest are counted on the label rather than dropped in silence
 // ([app.marginStandHead]).
 const marginStandMax = 3
+
+// marginJobsCost is what the jobs section spends before its first job row:
+// the blank that separates it from what is above, and the label. Collapsed
+// that is the whole section; expanded, running work draws on top of it and
+// history fills whatever is left ([marginJobsFit]).
+const marginJobsCost = 2
 
 // marginTitleFloor is how little room a standing row's title may be left with
 // before the scope tail gives way. It is [railTitleFloor] and not a second
@@ -190,9 +200,9 @@ func (a *app) marginHead(width int, hasTasks bool) []railLine {
 }
 
 // marginRows is everything the column draws UNDER this conversation's work: the
-// tasks section's own door, then the standing section whole.
+// tasks section's own door, then the standing section, then the jobs section.
 //
-// The blank line between the two is the separation this surface always uses —
+// The blank line between sections is the separation this surface always uses —
 // whitespace, never a rule, which is the design law a border would break — and
 // it is counted like every other line, because a row the layout drew and did not
 // count is a row the conversation pays for twice (task.go's [app.railView]).
@@ -200,8 +210,11 @@ func (a *app) marginHead(width int, hasTasks bool) []railLine {
 // THIS BLOCK IS RESERVED AND NEVER SCROLLED (task.go's [app.railView] takes its
 // height out of the column before the roster's window is measured), so it is
 // asked how many rows it may have and it answers with a block that fits. What it
-// gives up under pressure is stated by [marginStandFit]: the orders go first, one
-// at a time, and the label says how many are not being shown.
+// gives up under pressure is stated by [marginStandFit] and [marginJobsFit]:
+// standing orders go first, one at a time, and jobs keep every running one and
+// count the history they could not fit. Live work is reserved before standing
+// spends ([app.jobSectionMin]), which is the same trade the roster's own live
+// head makes.
 func (a *app) marginRows(width, room int) []railLine {
 	if room < 1 {
 		return nil
@@ -211,40 +224,33 @@ func (a *app) marginRows(width, room int) []railLine {
 		entry: -1,
 		door:  marginTaskType,
 	}}
-	if !a.marginStandingShows() {
-		return out
+	jobsMin := a.jobSectionMin()
+	standRoom := room - jobsMin
+	if a.marginStandingShows() {
+		stand := a.marginStanding()
+		shown := marginStandFit(len(stand), standRoom)
+		skip := (len(stand) == 0 && standRoom < marginStandCost-1) ||
+			(len(stand) > 0 && shown < 1)
+		if !skip {
+			out = append(out, railLine{entry: -1})
+			if len(stand) > 0 {
+				out = append(out, railLine{text: a.marginStandHead(width, len(stand)-shown), entry: -1})
+			}
+			for _, view := range stand[:shown] {
+				out = append(out, railLine{
+					text:  a.marginStandRow(view, width),
+					entry: -1,
+					stand: view.Item.ID,
+				})
+			}
+			out = append(out, railLine{
+				text:  a.marginDoorLine(marginStandType, width),
+				entry: -1,
+				door:  marginStandType,
+			})
+		}
 	}
-	stand := a.marginStanding()
-	shown := marginStandFit(len(stand), room)
-	if len(stand) == 0 && room < marginStandCost-1 {
-		// The empty section is its blank and its door and nothing else — the label
-		// it does not earn is the one row of [marginStandCost] it does not spend —
-		// and even those two are rows this column may not have.
-		return out
-	}
-	if len(stand) > 0 && shown < 1 {
-		// A SECTION WITH NO ROOM FOR A ROW IS ABSENT, NOT EMPTY. A label and a door
-		// standing over none of the orders they are about would be four rows of
-		// chrome taken off a column that has just said it has none to spare, and the
-		// count they would carry is on the status row either way (standdoor.go).
-		return out
-	}
-	out = append(out, railLine{entry: -1})
-	if len(stand) > 0 {
-		out = append(out, railLine{text: a.marginStandHead(width, len(stand)-shown), entry: -1})
-	}
-	for _, view := range stand[:shown] {
-		out = append(out, railLine{
-			text:  a.marginStandRow(view, width),
-			entry: -1,
-			stand: view.Item.ID,
-		})
-	}
-	return append(out, railLine{
-		text:  a.marginDoorLine(marginStandType, width),
-		entry: -1,
-		door:  marginStandType,
-	})
+	return append(out, a.jobSection(width, room-len(out))...)
 }
 
 // railWorkFloor is the rows the ROSTER keeps before anything else on this column
@@ -259,7 +265,7 @@ func (a *app) marginRows(width, room int) []railLine {
 // furniture around it.
 const railWorkFloor = 6
 
-// marginRoomFor is how many rows the two sections under the roster may reserve,
+// marginRoomFor is how many rows the sections under the roster may reserve,
 // given the rows the column has left once the footer has taken its own and the
 // lines the roster has to draw.
 //
@@ -267,7 +273,7 @@ const railWorkFloor = 6
 // with nothing in it lends the whole column, which is why a fresh session still
 // draws both doors and every order over it; a roster with two hundred lines in it
 // lends whatever is over [railWorkFloor], and the block spends that in the order
-// [marginStandFit] states.
+// [marginStandFit] and [marginJobsFit] state.
 func marginRoomFor(avail, work int) int { return max(0, avail-min(work, railWorkFloor)) }
 
 // marginStandFit is how many orders the standing section draws in the rows it has
@@ -284,6 +290,26 @@ func marginRoomFor(avail, work int) int { return max(0, avail-min(work, railWork
 // counted on the label rather than dropped in silence.
 func marginStandFit(orders, room int) int {
 	return min(orders, min(marginStandMax, room-marginStandCost))
+}
+
+// marginJobsFit is how many finished jobs the jobs section draws in the rows
+// it has been given, and it is [marginStandFit]'s law applied to a second
+// section rather than a second budget algebra.
+//
+// [marginJobsCost] IS WHAT THE SECTION SPENDS BEFORE ITS FIRST JOB ROW, and
+// every running job then draws, always — live work is not a thing this
+// column gives up. What is left over is what history gets. When history
+// cannot all fit, one of those leftover rows is the `▸ N earlier` count
+// rather than a silently dropped job (jobsview.go).
+func marginJobsFit(settled, room, live int) int {
+	left := max(0, room-marginJobsCost-live)
+	if settled <= left {
+		return settled
+	}
+	if left < 1 {
+		return 0
+	}
+	return left - 1
 }
 
 // marginStandHead is the standing section's label, with the count of the orders
@@ -415,10 +441,20 @@ func (a *app) marginPlainGlyph(view StandingItemView) string {
 
 // marginPress answers a press on one of the margin's own lines, and reports
 // whether it took it. The rows this column has always had are answered above it
-// (room.go's [app.railPress]); what is left here is a standing order and the two
-// doors.
+// (room.go's [app.railPress]); what is left here is a standing order, a job, the
+// jobs label, and the two doors.
 func (a *app) marginPress(line railLine) bool {
 	switch {
+	case line.jobs:
+		a.railWhere = railSpot{jobs: true}
+		a.toggleJobs()
+		return true
+	case line.job != 0:
+		a.railWhere = railSpot{job: line.job}
+		if a.showJobPage(line.job) {
+			a.touch()
+		}
+		return true
 	case line.door != "":
 		a.marginType(line.door)
 		return true

@@ -94,6 +94,30 @@ func (a *app) jobsRunning() int {
 
 func (a *app) jobsOver() int { return len(a.jobs) - a.jobsRunning() }
 
+// dropJobs forgets this conversation's background jobs, which is what /new and a
+// switch to another conversation owe the column.
+//
+// THE ROWS GO BECAUSE THE JOBS WERE NEVER THIS WINDOW'S TO KEEP. A job belongs
+// to the conversation that started it — its log lives under that session's own
+// folder, its number is that session's registry's — so a section carried into
+// the next conversation would be a list of work that conversation never ran,
+// counted in its label and openable onto a page reading somebody else's log.
+// That is the same reason the roster drops its nodes here (task.go's
+// [app.dropTasks]), said about the other kind of work.
+//
+// THE PAGE GOES WITH THEM for the roster's own reason: a page is one job's
+// record, and a job that left with its conversation is a page that can be
+// neither read nor stopped.
+//
+// THE FOLD GOES TOO. Whether the section was open is a fact about a list that
+// no longer exists, and the next conversation opens its own — collapsed, which
+// is where every conversation's section starts.
+func (a *app) dropJobs() {
+	a.jobs = nil
+	a.jobsOpen = false
+	a.jobPage = 0
+}
+
 // ── THE SEAM BETWEEN THE COLUMN AND THE PAGE ────────────────────────────────
 //
 // The column's section (jobsection.go) is where a person presses enter, and a
