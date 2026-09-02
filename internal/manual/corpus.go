@@ -34,10 +34,38 @@ const (
 	// of a heading is asking for that section by name.
 	titleWeight = 3
 
+	// topicWeight is how many times a page's own `# ` title counts in every
+	// section of that page. It exists because the title counted almost nowhere:
+	// split hands it to the preamble section, and a page whose `# ` line is
+	// followed straight by a `## ` line has no preamble — which is every page
+	// in chat/. A count found the chat corpus's page titles carried by 0 of its
+	// 1029 sections, so a person who named the topic ("the screen is blank",
+	// "who can see my files") could only be matched by whichever section
+	// happened to repeat the word, and a long page has more sections in which
+	// to repeat it by accident. One is enough: the title counts like a body
+	// word, which lifts a page that is on topic without letting a long one win
+	// a question it does not answer. Measured on plainquestions_test.go's
+	// twenty-five, the right page came first 11 times and was among the four
+	// sections 17 times before this and 14 and 20 after, with no probe in
+	// chat_test.go moved; on the held-out twenty-two, 6/15 before and 7/17
+	// after. It is the only part of this change that generalises — a heading
+	// written for one question only ever answers that question.
+	topicWeight = 1
+
 	// bm25K1 and bm25B are the ordinary Okapi parameters. The corpus is a few
 	// dozen short sections, so nothing here is tuned: these are the defaults,
 	// and the retrieval they give is already exact on the questions the pages
 	// were written to answer.
+	//
+	// Section LENGTH is the obvious suspect when a plain question misses, and
+	// it was measured and cleared. Sweeping bm25B over 0.75, 0.5, 0.3 and 0
+	// made the twenty-five worse at every step (11/17 → 10/17 → 7/17 → 7/15),
+	// and saturating an over-long section's length at 1.5×, 2×, 3× the corpus
+	// mean cost between three and seven of chat_test.go's probes while moving
+	// neither the twenty-five nor the held-out set upward; at 4× and above it
+	// changes nothing at all. A section far over the ~2000-character page law
+	// is a page that needs splitting at its own sub-topics, not a scorer that
+	// needs a thumb on it.
 	bm25K1 = 1.2
 	bm25B  = 0.75
 )
@@ -86,7 +114,9 @@ type Corpus struct {
 	cues map[string]bool
 	// pageText is each page whole, for a read that wants the topic entire.
 	pageText map[string]string
-	order    []string
+	// pageTitle is each page's own `# ` title, tokenized. See topicWeight.
+	pageTitle map[string][]string
+	order     []string
 }
 
 // newCorpus names a folder to index. Nothing is read until the corpus is asked
@@ -109,6 +139,7 @@ func (c *Corpus) build() {
 	c.documents = map[string]int{}
 	c.cues = map[string]bool{}
 	c.pageText = map[string]string{}
+	c.pageTitle = map[string][]string{}
 	for _, entry := range entries {
 		raw, err := c.files.ReadFile(entry)
 		if err != nil {
@@ -121,6 +152,7 @@ func (c *Corpus) build() {
 		for _, word := range tokenize(strings.ReplaceAll(name, "-", " ")) {
 			c.cues[word] = true
 		}
+		c.pageTitle[name] = pageTitle(text)
 		for _, section := range split(name, text) {
 			for _, word := range tokenize(section.Title) {
 				c.cues[word] = true
@@ -142,6 +174,10 @@ func (c *Corpus) build() {
 			counts[word]++
 			length++
 		}
+		for _, word := range c.pageTitle[section.Page] {
+			counts[word] += topicWeight
+			length += topicWeight
+		}
 		for word := range counts {
 			c.documents[word]++
 		}
@@ -152,6 +188,19 @@ func (c *Corpus) build() {
 	if len(c.sections) > 0 {
 		c.average /= float64(len(c.sections))
 	}
+}
+
+// pageTitle is a page's own `# ` line: its one statement of what the whole page
+// is about, in the words somebody would name the topic with. Every section of
+// the page carries it, because a question that names the page is asking for the
+// page and should not also have to land on whichever section repeats the word.
+func pageTitle(text string) []string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "## ") {
+			return tokenize(strings.TrimPrefix(line, "# "))
+		}
+	}
+	return nil
 }
 
 // split cuts one page at its headings. A `# ` line names the page; every `## `

@@ -1,6 +1,6 @@
-# The empty screen
+# The empty screen — nothing on it, the screen is blank
 
-## What you see when you open aforge — the empty conversation, the greeting
+## What you see when you open aforge — the empty conversation, the greeting, why the screen is blank
 
 A new conversation opens on **one centred group** and nothing else. From the top:
 

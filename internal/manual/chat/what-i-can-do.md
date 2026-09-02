@@ -3,6 +3,15 @@
 This page is the honest inventory: what aforge can reach, what it refuses, and
 what is simply not there in this build.
 
+## Is this only for programming — is aforge only for code, or for any kind of work?
+
+Not only programming. Nothing else on this page is about code in particular:
+files, shell commands, the web, pictures, audio and video, your connected
+accounts, your own settings. A folder of contracts, a pile of recordings to
+transcribe and a repository are the same material to aforge — whatever is in the
+folder it was pointed at. The two code-shaped parts say so where they appear: a
+workspace copy is a git clone, and a task hands finished work back on a branch.
+
 ## Can you read, write, create, delete, rename or move files?
 
 Yes. Three tools do this, and a path with nothing in front of it is read against the folder
