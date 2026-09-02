@@ -22,6 +22,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/router"
@@ -91,7 +92,7 @@ func execute() (code int) {
 	// goroutine of exactly this shape: process-wide, nobody's request, stopped
 	// at the same exit.
 	laneBeatCtx = beliefs
-	go lanes.Persist(beliefs)
+	guard.Go("lanes/persist", func() { lanes.Persist(beliefs) })
 	err := run()
 	var status exitStatus
 	switch {
