@@ -242,13 +242,17 @@ func TestAReattachedLaneIsHandedTheJobsAlreadyRunning(t *testing.T) {
 
 // ── and tomorrow ────────────────────────────────────────────────────────────
 
-// A ROW STILL MOVING WHEN THE FILE WAS WRITTEN COMES BACK IN THE RUN ROWS' OWN
-// REGISTER, with the one noun that differs changed: a job leaves the log it was
-// writing where a run leaves its journal. It is asserted here rather than
-// through a resume because which of the two endings a job gets at Close is a
-// race with the process teardown — the reaper usually settles the row first, and
-// this is the sentence for the times it does not.
-func TestAJobRowStillMovingComesBackInTheJobsOwnWords(t *testing.T) {
+// A JOB STILL MOVING WHEN THE FILE WAS WRITTEN COMES BACK STOPPED AND KEEPS ITS
+// LOG. This is the commonest job in anybody's history — a server or a build that
+// was still going when aforge closed is exactly the one somebody reopens the
+// conversation to look at — and it used to come back with no path at all.
+//
+// THE SENTENCE THAT REPLACED IT WAS WRITTEN FOR A ROW THAT NO LONGER EXISTS.
+// `it ended when aforge closed; its log is kept` read well beside a job's row on
+// the task column; with the row gone, nothing drew it, and the field it was
+// written into is the one carrying the path (task_store.go's [runRowNotice]). So
+// a sentence nobody read was deleting the only thing a finished job leaves.
+func TestAJobStillMovingComesBackStoppedAndKeepsItsLog(t *testing.T) {
 	t.Parallel()
 	restored := runRowNotice(runRecord{
 		ID: 4, Title: "npm run dev", Kind: TaskKindJob, State: TaskRunning,
@@ -257,11 +261,18 @@ func TestAJobRowStillMovingComesBackInTheJobsOwnWords(t *testing.T) {
 	if !restored.Stopped || restored.State != TaskFailed {
 		t.Fatalf("a job row that was moving came back as %s (stopped %v)", restored.State, restored.Stopped)
 	}
-	if restored.Report != jobEndedReport {
-		t.Fatalf("the restored row says %q, want %q", restored.Report, jobEndedReport)
+	job, isJob := jobNoticeFromRow(restored)
+	if !isJob {
+		t.Fatal("a restored job row was not read back as a job")
 	}
-	// AND A RUN'S ROW IS UNTOUCHED BY IT: one register, two nouns, and neither
-	// sentence may be said over the other's work.
+	if job.LogPath != "/tmp/jobs/3.log" {
+		t.Fatalf("the restored job's log is %q — the one thing it left behind", job.LogPath)
+	}
+	if job.State != JobStopped {
+		t.Fatalf("a job that was cut short came back as %q", job.State)
+	}
+	// AND A RUN'S ROW STILL SAYS ITS OWN SENTENCE. A run has a journal to name
+	// and a row that still draws it, so nothing about the above is true of one.
 	if run := runRowNotice(runRecord{ID: 5, State: TaskRunning}); run.Report != orchestrateEndedReport {
 		t.Fatalf("a run's row now says %q", run.Report)
 	}
