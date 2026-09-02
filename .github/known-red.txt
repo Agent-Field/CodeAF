@@ -26,7 +26,3 @@ TestEveryLockInTheGuardedTreeUnlocksFromADefer
 # should reproduce on Linux first.
 TestTickWalksTheItemsAndWritesAWakeLine
 TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch
-
-# From the second Linux run (2026-08-31, the first in which internal/tui3 ever
-# survived to report): red on the Linux runner, passes on a clean macOS tree.
-TestAPathInsideACorrectionIsADoor

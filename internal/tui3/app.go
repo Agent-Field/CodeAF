@@ -2083,6 +2083,13 @@ type app struct {
 const landingKeysWord = "esc interrupts · ctrl+c twice quits"
 
 func newApp(ctx context.Context, opts Options) *app {
+	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
+	// facts below that come from the shell all come from the same table when a
+	// test hands one in ([Options.Env] says why a test must).
+	env := opts.Env
+	if env == nil {
+		env = os.Getenv
+	}
 	host := strings.TrimSpace(opts.Host)
 	place := strings.TrimSpace(opts.Workspace)
 	if place == "" && host == "" {
@@ -2157,14 +2164,14 @@ func newApp(ctx context.Context, opts Options) *app {
 		height:              24,
 		pal:                 detectPalette(),
 		linear:              opts.Linear,
-		tmux:                tmuxTerm(os.Getenv),
-		remote:              remoteLink(os.Getenv),
+		tmux:                tmuxTerm(env),
+		remote:              remoteLink(env),
 		wsl:                 bootWSLPaths,
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
 		// whether the modifier is called `alt+` or `⌥`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the
 		// setting instead of waving at "your terminal".
-		chords: detectChords(runtime.GOOS, os.Getenv),
+		chords: detectChords(runtime.GOOS, env),
 		// A terminal that has said nothing is assumed to HAVE the keyboard, which
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
@@ -2211,7 +2218,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// batches off the render path, and the anchor points at a loopback file door
 	// rather than at `file://` (pathlink.go's far-side section). A hosted session
 	// with no way to ask is still off, which is where this line started.
-	a.pathLinks = terminalTakesLinks(os.Getenv) && (!a.hosted() || a.rfiles != nil)
+	a.pathLinks = terminalTakesLinks(env) && (!a.hosted() || a.rfiles != nil)
 	a.pathSeen = make(map[string]string, 256)
 	// The gate's posture is read at boot and re-read at every turn end
 	// ([app.settle]): a person who opens the settings panel and turns the asking

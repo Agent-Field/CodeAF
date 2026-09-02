@@ -290,22 +290,21 @@ func newTestApp(agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
 		BashBackgroundAfterSeconds: config.DefaultBashBackgroundAfter,
+		// AND IT PINS THE TERMINAL, which is the second and third pin in one
+		// table, for exactly the reason the palette is pinned below: [newApp]
+		// reads the environment to decide whether a clipboard write needs the
+		// multiplexer's passthrough wrapper (copymode.go), how often the frame
+		// clock turns over a link (link.go), and whether a path may be written
+		// as an OSC 8 link at all (pathlink.go) — so a suite run inside tmux got
+		// the wrapped yank, a suite run over ssh stepped every animation three
+		// slots at a time, and a suite run on a CI runner with no TERM wrote no
+		// links and failed every assertion that looked for one. Each of those
+		// decisions has a table test of its own that states both answers; this
+		// table is one ordinary terminal, at the machine, outside a multiplexer.
+		Env: envOf(map[string]string{"TERM": "xterm-256color"}),
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
-	// AND IT PINS THE MULTIPLEXER, for exactly the same reason. [newApp] reads
-	// TERM to decide whether a clipboard write needs the passthrough wrapper
-	// (copymode.go), so a suite run inside tmux got the wrapped form and a suite
-	// run outside it got the bare one — which made the yank assertion a test of
-	// the terminal the developer happened to be sitting in. The wrapper has a
-	// test of its own that states both forms outright.
-	a.tmux = false
-	// AND IT PINS THE LINK, for the third time for the same reason: [newApp]
-	// reads the environment to decide how often the frame clock turns (link.go),
-	// so a suite run over ssh would step every animation three slots at a time
-	// and a suite run at the machine would step one. The cadence has tests of its
-	// own that state both.
-	a.remote = false
 	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
 	// [newApp] reads the profile to decide whether the column stands (task.go's
 	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
