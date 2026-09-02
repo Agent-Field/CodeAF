@@ -1099,7 +1099,7 @@ Both pickers are modal: while one is up, every chord except `ctrl+c` belongs to 
 `ctrl+c` does not close the picker — it arms the door, and a second press within 1.5
 seconds quits aforge with the picker still up.
 
-## Keys when aforge asks you a question
+## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
 
 **An approval question:** `y` allow once · `a` or `t` always — refused when it would
 do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
