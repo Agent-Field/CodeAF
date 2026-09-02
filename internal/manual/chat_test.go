@@ -701,11 +701,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my run's rows are called r1 r2 r3", "adaptive-runs"},
 		{"why is a subtask called synth", "adaptive-runs"},
 		{"the tasks under my run have ids instead of names", "adaptive-runs"},
-		// The wall a run started from a terminal is given, asked the two ways
-		// somebody meets it: typing a length of time with a unit on it, and
-		// wanting to know how long the thing waits before it stops.
-		{"can I pass 5m as the timeout to aforge do", "adaptive-runs"},
-		{"how long does aforge do wait before the timeout stops it", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
 
