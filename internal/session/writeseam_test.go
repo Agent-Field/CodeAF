@@ -180,6 +180,11 @@ func TestTheSeamCountsTheWritesAPersonWouldCallWrites(t *testing.T) {
 // would leave it doing nothing.
 func writeSeamAgent(t *testing.T, completer Completer) (*Agent, string) {
 	t.Helper()
+	// AND IT ANSWERS THE NAMER OFF THE QUEUE for the same reason checkpointAgent
+	// does: the seam moves work to a task, the road asks for its name on a
+	// goroutine of its own, and a namer taking one of this script's twelve rounds
+	// is a test failing on the scheduler ([answerTheNamerOffTheQueue], #392).
+	answerTheNamerOffTheQueue(completer)
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.Divide = true
