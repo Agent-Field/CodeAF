@@ -8,6 +8,8 @@ invalidates:
   - "`lanestub.Profile` staged a mid-answer stall with `StallFor` alone. It now also takes `StallUntil <-chan struct{}`, which holds the arm until the channel closes or the request is cancelled and overrides `StallFor` when set."
   - "Four lane tests bounded an outcome with a wall clock — `took < 300ms`, `took < 500ms` twice, and a two-second ceiling on a hundredfold-scaled first-token reading. None of them are there now; each says the ordering or the relationship it was really about, which holds at any speed."
   - "`TestARefusedRescueWalksToTheNextLaneRatherThanRelaxingTheRequest` timed its stalled first rung with a 900 ms timer. It is held on a signal now, so the walk reaching C is the rung order and not the arithmetic."
+  - "That same test was repeat-unsafe — it passed only as the first run of its model in a process, and #391 said so and left it. It is fixed here: it passes at `-count=3`."
+  - "`internal/provider`'s hedge rig restored the ledger registry, the controller factory, the rig's lane names and the hedge budget, and left the package's learners carrying what the last test taught them. It now calls `resetSharedLearners()` in the same cleanup, and that helper — not one rig at a time — is the single place every package-level learner in `internal/provider` is named."
 ---
 
 `TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole` and
@@ -32,9 +34,22 @@ hundred against a fixed two-second ceiling, where a fifteen-millisecond
 late wake was a failure; it keeps its floors and asserts the relationship
 it is for — a quick first token timed apart from a slow one.
 
-Found on the way and NOT fixed here, because it is a different fault:
+Found on the way, and now fixed here too (#432).
 `TestARefusedRescueWalksToTheNextLaneRatherThanRelaxingTheRequest` only
-passes as the first run of its model in a process. `internal/provider`'s
-package-level `sharedVelocity` carries what it learned about the refusing
-lane across runs, so at `-count=2` the walk skips B and goes straight to
-C. It is repeat-unsafe at `dev` too, and it wants its own issue.
+passed as the first run of its model in a process: `internal/provider`'s
+package-level `sharedVelocity` carried what it learned about the refusing
+lane across runs, so at `-count=2` the walk skipped B and went straight to
+C. It was repeat-unsafe at `dev` too, which is why it got its own issue.
+
+The law it is fixed under is that A PACKAGE-LEVEL LEARNER IS RESET BY THE
+RIG BETWEEN TESTS, so a test's result never depends on which test ran
+before it — and the rig resets every learner it can enumerate, not one
+more name each time one bites. `resetSharedLearners` in
+`internal/provider/learners_test.go` is that enumeration: `sharedVelocity`,
+`sharedPins` and `sharedLimiter`, with the two deliberate absences written
+down beside them so nobody has to rediscover why. `quirks` is a learner
+and is not reset by reassignment — it carries a `loaded` flag over a file
+on disk and a save in flight, so it wants a real reset seam in non-test
+code, which is its own change. `offers` is questions in flight rather than
+anything learned. The helper also carries the marked line where
+`lane.ForgetRefusals()` goes when #368 lands.

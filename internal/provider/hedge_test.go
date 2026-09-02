@@ -147,6 +147,10 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 		lanes.SetController(shipped)
 		rigLanes.Delete(model)
 		SetHedgeBudget(nil)
+		// The package's learners go back too, beside the registry and the
+		// controller: see resetSharedLearners for why they are a restoration
+		// and not an extra.
+		resetSharedLearners()
 	})
 	return rig
 }
