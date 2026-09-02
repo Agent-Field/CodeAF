@@ -2,6 +2,7 @@ package trace
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -170,7 +171,33 @@ func (r *Recorder) Call(ctx context.Context, body CallBody) {
 		// run's own nth anonymous call as well as its time.
 		name = r.anonymousName()
 	}
-	r.writeFile(filepath.Join(CallsDirName, name+".json"), line)
+	r.writeFile(filepath.Join(CallsDirName, safeName(name)+".json"), line)
+}
+
+// safeName is what a call id may be spelled as ON DISK: letters, digits, the
+// underscore and the dash, and nothing else.
+//
+// AN ID IS NOT A PATH, AND SOME OF THEM COME FROM THE MODEL. A tool call
+// carries the id the model wrote, and `../../outside` joined into the run's
+// folder is a file written wherever that resolves to — outside the record,
+// outside the state root, over something a person owns. Anything outside the
+// alphabet is written under its hex form instead, which is lossless (a reader
+// can decode it), collision-free, and cannot contain a separator or a dot.
+func safeName(id string) string {
+	for _, char := range []byte(id) {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9', char == '_', char == '-':
+		default:
+			return hex.EncodeToString([]byte(id))
+		}
+	}
+	if id == "" {
+		// Nothing to name a file after at all. The caller has already put a
+		// name here in every path that reaches disk; this is the last guard.
+		return "call"
+	}
+	return id
 }
 
 // Tool appends one tool call.
@@ -291,7 +318,7 @@ func (r *Recorder) append(line []byte) {
 		r.silence(err)
 		return
 	}
-	if r.bytes+int64(len(line))+1 > r.max {
+	if r.bytes+int64(len(line))+1+capReserve > r.max {
 		r.cap()
 		return
 	}
@@ -324,7 +351,7 @@ func (r *Recorder) writeFile(name string, document []byte) {
 		r.silence(err)
 		return
 	}
-	if r.bytes+int64(len(document)) > r.max {
+	if r.bytes+int64(len(document))+capReserve > r.max {
 		r.cap()
 		return
 	}
@@ -332,14 +359,34 @@ func (r *Recorder) writeFile(name string, document []byte) {
 		r.silence(err)
 		return
 	}
+	// AND THE MODE IS SET ON A FILE THAT ALREADY EXISTED. os.WriteFile applies
+	// its permission bits only when it CREATES the file, so a record written
+	// over a path something else left behind at 0644 would keep 0644 — and the
+	// record holds the person's prompts, their files and the model's whole
+	// reply. The chmod is the cheap way to make the promise true whatever was
+	// there first; a failure is not worth stopping the record for, because the
+	// only reader on this machine who could be refused it is the owner.
+	os.Chmod(path, 0o600)
 	r.bytes += int64(len(document))
 	r.wrote = true
 }
 
-// cap ends the run's record with one line saying why, and stops. The line is
-// written past the ceiling on purpose: a record that stopped without saying so
-// is indistinguishable from a run that ended early, which is the one reading a
-// person must not be left with.
+// capReserve is the room every write leaves for the capped receipt, so that the
+// line saying the ceiling was reached FITS UNDER THE CEILING. The receipt is
+// about a hundred and twenty bytes — a kind, a run, a time and two numbers — and
+// this is generous enough that it cannot be wrong. Reserving it is what makes
+// [MaxRunBytes] a real ceiling on the folder rather than a ceiling plus one more
+// line, which is the sort of nearly-true number a person plans a disk around.
+const capReserve = 512
+
+// cap ends the run's record with one line saying why, and stops. Every write
+// above has already left [capReserve] free for it, so the folder does not
+// exceed the ceiling — and the receipt is counted like anything else, because a
+// byte on a person's disk does not care which record put it there. (A ceiling
+// set smaller than the receipt itself is the one case where the line still goes
+// past it: a record that stopped WITHOUT SAYING SO is indistinguishable from a
+// run that ended early, which is the one reading a person must not be left
+// with, and the smallest ceiling the pin can express is a megabyte.)
 func (r *Recorder) cap() {
 	r.capped = true
 	line, err := json.Marshal(map[string]any{
@@ -357,12 +404,23 @@ func (r *Recorder) cap() {
 	// events file, and returning here left the folder empty and the person with
 	// no way to tell a capped run from a run that recorded nothing at all —
 	// which is the one reading the cap exists to prevent.
-	if r.events == nil && r.open() != nil {
+	if r.events == nil {
+		if err := r.open(); err != nil {
+			r.silence(err)
+			return
+		}
+	}
+	written, err := r.events.Write(append(line, '\n'))
+	r.bytes += int64(written)
+	if err != nil {
+		// A RECEIPT THAT DID NOT REACH THE DISK IS A WRITE FAILURE LIKE ANY
+		// OTHER, and it takes the same road: one line on the error stream
+		// naming the path, and the record off for this run. Swallowing it left
+		// the person believing a capped run had said so.
+		r.silence(err)
 		return
 	}
-	if _, err := r.events.Write(append(line, '\n')); err == nil {
-		r.wrote = true
-	}
+	r.wrote = true
 }
 
 // folder creates the run's folder on first use, and prunes the folders of older
@@ -375,6 +433,11 @@ func (r *Recorder) folder() error {
 	if err := os.MkdirAll(r.dir, 0o700); err != nil {
 		return err
 	}
+	// A FOLDER THAT ALREADY EXISTED KEEPS ITS OWN MODE, and MkdirAll says
+	// nothing about it. The record is a person's own data and this folder is
+	// theirs alone, so a directory something else created at 0755 is repaired
+	// rather than trusted.
+	os.Chmod(r.dir, 0o700)
 	r.opened = true
 	prune(filepath.Dir(r.dir), r.keep)
 	return nil
@@ -390,10 +453,14 @@ func (r *Recorder) open() error {
 	if err := r.folder(); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(filepath.Join(r.dir, EventsFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	path := filepath.Join(r.dir, EventsFileName)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
+	// The same repair the folder gets, for the same reason: O_CREATE's mode
+	// applies only to a file this call created.
+	file.Chmod(0o600)
 	r.events = file
 	if info, err := file.Stat(); err == nil {
 		r.bytes += info.Size()

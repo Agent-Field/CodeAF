@@ -280,24 +280,60 @@ func NodeFrom(ctx context.Context) string {
 	return node
 }
 
-// processRun is the run this invocation belongs to, set by [Begin].
+// processRun is the fallback run: the one a record written from a context that
+// carries no run of its own belongs to.
 //
 // IT IS THE FALLBACK AND NOT THE SOURCE. The run id belongs on the context and
 // every feeder reads it from there; this exists because a door mints the id at
 // the top of a process whose deeper layers still start from
-// context.Background(), and a record written under a different id — or under no
-// id at all — is a record nothing can be joined to. One process is one run for
-// every door aforge has, so the fallback cannot be wrong.
-var processRun atomic.Value
+// context.Background() — `aforge do` threads no context into its errand at all
+// — and a record written under no id is a record nothing can be joined to.
+//
+// THE FALLBACK NAMES THE FIRST RUN THIS PROCESS BEGAN, AND ONLY WHILE IT IS THE
+// ONLY ONE. That is the whole law, and the second half of it is the important
+// half. A process with one run — `aforge chat --once`, `do`, `exec` — has
+// exactly one honest answer to "whose record is this?", and the fallback gives
+// it. A process holding SEVERAL runs has none: a contextless record could have
+// come from either conversation, and guessing puts one person's prompts and
+// replies in the other's folder, which is the one thing this record may never
+// do. So the moment a second run begins, the fallback is cleared and a
+// contextless record gets no recorder at all — a record lost is recoverable by
+// threading the context (#349's follow-up); a record misfiled is not.
+var processRun struct {
+	mutex sync.Mutex
+	// id is the first run begun, held only while begun is 1.
+	id string
+	// begun counts the runs this process has opened, and it never goes down:
+	// the second conversation of a host does not stop being a second one when
+	// the first is closed, because a record arriving after that still cannot be
+	// attributed.
+	begun int
+}
 
-// Begin mints this invocation's run id at the door, remembers it as the
-// process's own, and returns the context carrying it. Every door calls it once,
-// switch on or off: minting an id costs four bytes of entropy, and a door that
-// only minted one when the switch was already on could not answer /debug.
+// Begin mints this invocation's run id at the door and returns the context
+// carrying it. Every door calls it once, switch on or off: minting an id costs
+// eight bytes of entropy, and a door that only minted one when the switch was
+// already on could not answer /debug.
 func Begin(ctx context.Context) context.Context {
 	id := NewRunID()
-	processRun.Store(id)
+	processRun.mutex.Lock()
+	processRun.begun++
+	if processRun.begun == 1 {
+		processRun.id = id
+	} else {
+		// A SECOND RUN ENDS THE GUESS. See the law above.
+		processRun.id = ""
+	}
+	processRun.mutex.Unlock()
 	return WithRun(ctx, id)
+}
+
+// fallbackRun is the run a contextless record belongs to, or the empty string
+// where this process can no longer say.
+func fallbackRun() string {
+	processRun.mutex.Lock()
+	defer processRun.mutex.Unlock()
+	return processRun.id
 }
 
 // RunFrom is the run a record belongs to: the id the caller carried, and this
@@ -306,8 +342,7 @@ func RunFrom(ctx context.Context) string {
 	if id := runOnContext(ctx); id != "" {
 		return id
 	}
-	id, _ := processRun.Load().(string)
-	return id
+	return fallbackRun()
 }
 
 // runOnContext is the run the caller actually carried, with NO fallback. It is
@@ -344,14 +379,14 @@ var runs struct {
 // runToRecord answers the only question [For] has: which run, if any, do this
 // context's records belong to?
 //
-// A CONTEXT WITH NO RUN OF ITS OWN IS RECORDED ONLY BY THE PROCESS-WIDE SWITCH.
-// The fallback to the process's run (see [processRun]) is what lets the deeper
-// layers of a headless errand — which still start from context.Background() —
-// write into the run their door opened, and under the pin or the flag that is
-// exactly right, because those turned every run of this process on. Letting it
-// stand for a /debug instead would take a switch somebody threw inside ONE
-// conversation and apply it to work that belongs to another, which is the leak
-// the run id exists to close.
+// A CONTEXT WITH NO RUN OF ITS OWN IS RECORDED ONLY BY THE PROCESS-WIDE SWITCH,
+// AND ONLY WHILE THE PROCESS HAS ONE RUN. The fallback (see [processRun]) is
+// what lets the deeper layers of a headless errand — which still start from
+// context.Background() — write into the run their door opened, and under the
+// pin or the flag that is exactly right, because those turned every run of this
+// process on. It stops answering the moment a second run begins, because then
+// it would be a guess between two people; and it never stands for a /debug,
+// which is a switch thrown inside ONE conversation.
 func runToRecord(ctx context.Context) string {
 	if run := runOnContext(ctx); run != "" {
 		if on.Load() || runIsEnabled(run) {
@@ -362,8 +397,7 @@ func runToRecord(ctx context.Context) string {
 	if !on.Load() {
 		return ""
 	}
-	run, _ := processRun.Load().(string)
-	return run
+	return fallbackRun()
 }
 
 // For is the recorder every feeder site calls. It returns nil when nobody asked
@@ -431,7 +465,23 @@ var stderr io.Writer = os.Stderr
 // one directory listing on the first record of a run, and the alternative — a
 // sweep on a timer, or none at all — is either a goroutine nobody asked for or a
 // folder that grows without bound.
+//
+// IT NEVER DELETES A RUN THAT IS STILL GOING. A process can hold several
+// recorders at once, and retention counts FOLDERS, so a low keep and two live
+// conversations had the older one's folder pruned out from under it — the
+// person whose run was deleted mid-flight is left with a partial record of the
+// exact turn they switched the record on for, and the run goes on writing into
+// a directory that is no longer there. Every run this process has a recorder
+// for is therefore skipped, whatever the count says, and the whole sweep is
+// done holding [runs] so that a recorder opened while it runs cannot be missed.
+// Retention is a rule about runs that are OVER.
 func prune(root string, keep int) {
+	runs.mutex.Lock()
+	defer runs.mutex.Unlock()
+	live := make(map[string]bool, len(runs.by))
+	for id := range runs.by {
+		live[id] = true
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return
@@ -441,8 +491,16 @@ func prune(root string, keep int) {
 		age  int64
 	}
 	var folders []folder
+	going := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		if live[entry.Name()] {
+			// A run still going COUNTS against the ceiling — its folder is on
+			// the disk like any other — but it can never be the one removed to
+			// meet it.
+			going++
 			continue
 		}
 		info, err := entry.Info()
@@ -450,6 +508,12 @@ func prune(root string, keep int) {
 			continue
 		}
 		folders = append(folders, folder{path: filepath.Join(root, entry.Name()), age: info.ModTime().UnixNano()})
+	}
+	// The runs that are going can already be over the ceiling on their own, and
+	// none of them may be removed — so the room left for finished runs is none,
+	// never a negative number to count down past the end of the list.
+	if keep -= going; keep < 0 {
+		keep = 0
 	}
 	for len(folders) > keep {
 		oldest := 0

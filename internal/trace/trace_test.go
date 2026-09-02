@@ -3,6 +3,7 @@ package trace
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,12 +13,24 @@ import (
 	"time"
 )
 
+// forgetProcessRun puts the fallback back to how a process starts: no run begun,
+// nothing to fall back to. Every helper below calls it, because the fallback's
+// law is about how many runs a PROCESS has begun and a test binary is one
+// process running hundreds of them.
+func forgetProcessRun(t *testing.T) {
+	t.Helper()
+	processRun.mutex.Lock()
+	processRun.id, processRun.begun = "", 0
+	processRun.mutex.Unlock()
+}
+
 // fresh points the state root at a temporary directory, turns the switch on,
 // and forgets every recorder this process has opened, so one test cannot see
 // another's folder. It returns the run's context.
 func fresh(t *testing.T) context.Context {
 	t.Helper()
 	t.Setenv("AFORGE_HOME", t.TempDir())
+	forgetProcessRun(t)
 	runs.mutex.Lock()
 	runs.by = nil
 	runs.mutex.Unlock()
@@ -57,7 +70,7 @@ func TestForIsNilWithNoRunToBelongTo(t *testing.T) {
 	on.Store(true)
 	// A context with no run, in a process where no door has begun one: there is
 	// nothing to join a record to, so there is no recorder.
-	processRun.Store("")
+	forgetProcessRun(t)
 	if got := For(context.Background()); got != nil {
 		t.Fatalf("For returned %v with no run; want nil", got)
 	}
@@ -214,8 +227,11 @@ func TestARunThatReachesTheCapSaysSoAndStops(t *testing.T) {
 	ctx := fresh(t)
 	recorder := For(ctx)
 	// A ceiling in bytes rather than the megabytes the pin takes, so the test
-	// reaches it in three records instead of thousands.
-	recorder.max = 300
+	// reaches it in three records instead of thousands. It is stated as the
+	// reserve plus the room for those records, because every write leaves
+	// [capReserve] free for the receipt: a ceiling below the reserve is one no
+	// record at all fits under.
+	recorder.max = capReserve + 300
 	for i := 0; i < 40; i++ {
 		recorder.Decision(ctx, Decision{Kind: "lane", Choice: "fireworks", Reason: "the pinned lane answered first"})
 	}
@@ -231,6 +247,12 @@ func TestARunThatReachesTheCapSaysSoAndStops(t *testing.T) {
 		if event["kind"] != "decision" {
 			t.Fatalf("a record before the cap line was not kept: %v", event)
 		}
+	}
+	// AND THE FOLDER IS UNDER THE CEILING, receipt included — the reserve is
+	// what makes the ceiling a real number rather than the ceiling plus one
+	// more line.
+	if size := folderBytes(t, recorder.Folder()); size > recorder.max {
+		t.Fatalf("the capped run holds %d bytes, over its own ceiling of %d", size, recorder.max)
 	}
 	// And it STAYS stopped: the run keeps what it had rather than growing.
 	before := len(events)
@@ -511,6 +533,7 @@ func TestADoorWithTheSwitchOffCreatesNoFolder(t *testing.T) {
 func quiet(t *testing.T) {
 	t.Helper()
 	t.Setenv("AFORGE_HOME", t.TempDir())
+	forgetProcessRun(t)
 	runs.mutex.Lock()
 	runs.by = nil
 	runs.mutex.Unlock()
@@ -697,7 +720,7 @@ func TestAFirstOversizedCallBodySaysTheRunWasCapped(t *testing.T) {
 	ctx := fresh(t)
 	t.Setenv(MaxMBEnvVar, "")
 	recorder := For(ctx)
-	recorder.max = 64
+	recorder.max = capReserve + 1024
 	recorder.Call(ctx, CallBody{CallID: "c0ffee01", Model: "m", Request: []byte(`{"prompt":"` + strings.Repeat("x", 4096) + `"}`)})
 	if !recorder.Wrote() {
 		t.Fatalf("a capped run wrote nothing at all")
@@ -708,6 +731,9 @@ func TestAFirstOversizedCallBodySaysTheRunWasCapped(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(recorder.Folder(), CallsDirName, "c0ffee01.json")); !os.IsNotExist(err) {
 		t.Fatalf("the body that did not fit was written anyway: %v", err)
+	}
+	if size := folderBytes(t, recorder.Folder()); size > recorder.max {
+		t.Fatalf("the capped run holds %d bytes, over its own ceiling of %d", size, recorder.max)
 	}
 }
 
@@ -740,4 +766,213 @@ func readCall(t *testing.T, folder, call string) map[string]any {
 		t.Fatal(err)
 	}
 	return document
+}
+
+// folderBytes is what one run's record occupies, which is the number the
+// ceiling is about.
+func folderBytes(t *testing.T, folder string) int64 {
+	t.Helper()
+	var total int64
+	if err := filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return total
+}
+
+// A CALL ID IS NOT A PATH, and a tool call carries the id the model wrote.
+// `../../outside` joined into the run's folder is a file written over something
+// a person owns, outside the record and outside the state root.
+func TestACallIdThatIsAPathCannotEscapeTheRunsFolder(t *testing.T) {
+	ctx := fresh(t)
+	root := filepath.Dir(For(ctx).Folder())
+	recorder := For(ctx)
+	recorder.Call(ctx, CallBody{CallID: "../../outside", Model: "m", Request: []byte(`{"a":1}`)})
+
+	// Nothing was written anywhere but inside this run's own calls folder.
+	var strays []string
+	filepath.Walk(filepath.Dir(root), func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasPrefix(path, filepath.Join(recorder.Folder(), CallsDirName)+string(filepath.Separator)) {
+			strays = append(strays, path)
+		}
+		return nil
+	})
+	if len(strays) != 0 {
+		t.Fatalf("a call id spelled as a path wrote outside the run's folder: %v", strays)
+	}
+	entries, err := os.ReadDir(filepath.Join(recorder.Folder(), CallsDirName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("the body was not kept under one file: %v", entries)
+	}
+	// It is kept under the id's hex form, which no reader can mistake for a
+	// path and every reader can decode.
+	want := hex.EncodeToString([]byte("../../outside")) + ".json"
+	if got := entries[0].Name(); got != want {
+		t.Fatalf("the body is at %q, want %q", got, want)
+	}
+	// And the record inside it still says the id the model actually wrote.
+	document := readCall(t, recorder.Folder(), hex.EncodeToString([]byte("../../outside")))
+	if document["call"] != "../../outside" {
+		t.Fatalf("the record lost the call id it was written for: %v", document)
+	}
+}
+
+func TestSafeNameKeepsOrdinaryIdsAndEncodesEverythingElse(t *testing.T) {
+	for _, test := range []struct{ id, want string }{
+		{"c0ffee01", "c0ffee01"},
+		{"call-150405.000-1", hex.EncodeToString([]byte("call-150405.000-1"))},
+		{"tool_call_A-9", "tool_call_A-9"},
+		{"../../outside", hex.EncodeToString([]byte("../../outside"))},
+		{"a/b", hex.EncodeToString([]byte("a/b"))},
+		{"", "call"},
+	} {
+		if got := safeName(test.id); got != test.want {
+			t.Fatalf("safeName(%q) = %q, want %q", test.id, got, test.want)
+		}
+	}
+}
+
+// THE FALLBACK NAMES THE FIRST RUN ONLY WHILE IT IS THE ONLY ONE. Both halves,
+// because both are the point: a single-run process must keep recording from the
+// contexts it never threads, and a process holding two must never guess.
+func TestTheFallbackAnswersForOneRunAndGoesQuietForTwo(t *testing.T) {
+	quiet(t)
+	on.Store(true)
+
+	// One run: a record written from a context that carries nothing — which is
+	// every deeper layer of `aforge do` — lands in that run's folder.
+	first := Begin(context.Background())
+	recorder := For(context.Background())
+	if recorder == nil {
+		t.Fatalf("the only run this process began got no recorder from a contextless record")
+	}
+	if got, want := recorder.Folder(), Dir(RunFrom(first)); got != want {
+		t.Fatalf("the fallback recorded into %q, want %q", got, want)
+	}
+
+	// A second run begins — a host opening another conversation — and the guess
+	// is over: a contextless record could belong to either, so it belongs to
+	// neither.
+	second := Begin(context.Background())
+	if got := For(context.Background()); got != nil {
+		t.Fatalf("a contextless record was filed under %s once two runs had begun", got.Folder())
+	}
+	if got := RunFrom(context.Background()); got != "" {
+		t.Fatalf("the fallback still names %q with two runs begun", got)
+	}
+	// Both runs still record perfectly well from their own contexts.
+	for _, ctx := range []context.Context{first, second} {
+		if For(ctx) == nil {
+			t.Fatalf("a run with its id on the context got no recorder")
+		}
+	}
+}
+
+// RETENTION IS A RULE ABOUT RUNS THAT ARE OVER. Two conversations open at once
+// with room for one folder had the older one's record deleted out from under
+// it — the person is left with half the turn they switched the record on for.
+func TestPruningNeverDeletesARunThatIsStillGoing(t *testing.T) {
+	quiet(t)
+	on.Store(true)
+	t.Setenv(KeepEnvVar, "1")
+
+	first := WithRun(context.Background(), "aaaa1111aaaa1111")
+	OpenRun(first, RunHeader{Command: "chat", Started: time.Now()})
+	second := WithRun(context.Background(), "bbbb2222bbbb2222")
+	OpenRun(second, RunHeader{Command: "chat", Started: time.Now()})
+
+	for _, ctx := range []context.Context{first, second} {
+		folder := Dir(RunFrom(ctx))
+		if _, err := os.Stat(filepath.Join(folder, RunFileName)); err != nil {
+			t.Fatalf("a live run's record was pruned: %s: %v", folder, err)
+		}
+	}
+	// And a run that is OVER — a folder with no recorder of its own — is still
+	// pruned, because retention has to mean something.
+	dead := filepath.Join(filepath.Dir(Dir("aaaa1111aaaa1111")), "cccc3333cccc3333")
+	if err := os.MkdirAll(dead, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	third := WithRun(context.Background(), "dddd4444dddd4444")
+	OpenRun(third, RunHeader{Command: "chat", Started: time.Now()})
+	if _, err := os.Stat(dead); !os.IsNotExist(err) {
+		t.Fatalf("a run that was over survived the prune: %v", err)
+	}
+}
+
+// A PATH THAT ALREADY EXISTED KEEPS ITS OWN MODE unless something repairs it,
+// and the record holds a person's prompts, their files and the model's whole
+// reply.
+func TestTheRecordRepairsTheModesOfPathsItDidNotCreate(t *testing.T) {
+	ctx := fresh(t)
+	folder := Dir(RunFrom(ctx))
+	if err := os.MkdirAll(filepath.Join(folder, CallsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{EventsFileName, RunFileName} {
+		if err := os.WriteFile(filepath.Join(folder, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recorder := For(ctx)
+	recorder.Header(ctx, RunHeader{Command: "chat", Started: time.Now()})
+	recorder.Decision(ctx, Decision{Kind: "lane", Choice: "frugal"})
+
+	for path, want := range map[string]os.FileMode{
+		folder:                                0o700,
+		filepath.Join(folder, RunFileName):    0o600,
+		filepath.Join(folder, EventsFileName): 0o600,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s is %o after a record was written, want %o", path, got, want)
+		}
+	}
+}
+
+// A RECEIPT THAT DID NOT REACH THE DISK IS A WRITE FAILURE LIKE ANY OTHER: one
+// line on the error stream naming the path, and the record off for this run.
+func TestACappedLineThatCannotBeWrittenSilencesTheRun(t *testing.T) {
+	ctx := fresh(t)
+	var complaint bytes.Buffer
+	was := stderr
+	stderr = &complaint
+	t.Cleanup(func() { stderr = was })
+
+	recorder := For(ctx)
+	recorder.Decision(ctx, Decision{Kind: "lane", Choice: "frugal"})
+	// The file goes out from under the record, which is what a full disk or a
+	// revoked mount looks like from here.
+	recorder.mutex.Lock()
+	recorder.events.Close()
+	recorder.max = capReserve + 1
+	recorder.mutex.Unlock()
+	recorder.Decision(ctx, Decision{Kind: "lane", Choice: "together"})
+
+	if !strings.Contains(complaint.String(), recorder.Folder()) {
+		t.Fatalf("a failed capped line said %q, which does not name the record", complaint.String())
+	}
+	recorder.mutex.Lock()
+	silenced := recorder.silenced
+	recorder.mutex.Unlock()
+	if !silenced {
+		t.Fatalf("a failed capped line left the record on")
+	}
 }

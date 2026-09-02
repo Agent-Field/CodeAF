@@ -134,7 +134,10 @@ Two ceilings, and both are about never losing the run you are looking at.
   usually is.
 - **20 runs kept.** When a new run opens its folder and there are more than twenty, the
   oldest whole folders are removed until twenty remain. A run is kept complete or not at
-  all; nothing is ever deleted from inside a run that is still going.
+  all; nothing is ever deleted from inside a run that is still going. **A run that is
+  still going is never removed either**, however low you set the count — retention is a
+  rule about runs that are over, so a second conversation opening cannot delete the record
+  of the one you are debugging.
 
 Both move for one shell when you need them to:
 

@@ -45,9 +45,18 @@ var secrets struct {
 	list  []string
 }
 
-// Secret registers a value that must never appear in the record. A door calls
-// it with the configured key; anything shorter than a credential is ignored, so
-// an empty or placeholder key cannot turn every record into redactions.
+// Secret registers a value that must never appear in the record. Every door
+// calls it with each credential this profile is configured with
+// (config.Credentials), because a shape only ever catches the shapes somebody
+// thought of and the exact value catches the rest.
+//
+// EIGHT CHARACTERS IS THE FLOOR, AND THE REASON IS NOT TIDINESS. Registered
+// values are replaced by literal match anywhere in a body, so a short one would
+// redact ORDINARY TEXT: a placeholder like "none" or "test", a truncated paste,
+// an empty row read as "" — each would turn every occurrence of those letters
+// in a person's own prompts and the model's replies into `[redacted]`, and a
+// record full of holes is a record nobody can debug from. No real credential is
+// shorter than eight characters, so the floor costs nothing true.
 func Secret(value string) {
 	value = strings.TrimSpace(value)
 	if len(value) < 8 {

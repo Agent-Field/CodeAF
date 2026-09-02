@@ -12,6 +12,13 @@ invalidates:
   - "A credential was only ever caught by its shape — an authorization field, a Bearer scheme, an sk-… token — which is the shapes somebody thought of. Every door now registers the credentials this profile is actually configured with (config.Credentials walks the settings rows marked Secret), so a key with no recognisable shape at all — a Google AIza…, a Groq gsk_…, a self-hosted endpoint's plain token — is redacted from the record too, wherever a provider echoes it back."
 ---
 
+Retention only ever removes a run that is OVER: a folder whose run still has a
+recorder open is skipped however low `AFORGE_TRACE_KEEP` is set, so a second
+conversation opening cannot delete the record of the one being debugged. A call
+id is written to disk only as letters, digits, `_` and `-` — a tool call carries
+the id the model wrote, and an id spelled as a path is stored under its hex form
+instead of escaping the run's folder.
+
 The record has a size law that is deliberately not a rotation: 256 MB per run
 (`AFORGE_TRACE_MAX_MB`), and at the cap the run writes one last line saying so and
 keeps what it had, rather than making room by dropping the start of the run —
