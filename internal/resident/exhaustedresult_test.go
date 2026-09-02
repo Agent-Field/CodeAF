@@ -2,7 +2,6 @@ package resident
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -139,27 +138,4 @@ func TestAnExhaustedResultWithNothingRecordedFails(t *testing.T) {
 	if !contains(final.Error, "budget") {
 		t.Fatalf("the failure %q does not name the exhaustion", final.Error)
 	}
-}
-
-// carriedTurns is what the journal says a release handed on, read from the
-// release event's payload.
-func carriedTurns(t *testing.T, graph *store.Store, nodeID string) int {
-	t.Helper()
-	events, err := graph.Events(0, 500)
-	if err != nil {
-		t.Fatalf("events: %v", err)
-	}
-	turns := -1
-	for _, event := range events {
-		if event.NodeID != nodeID || event.Kind != store.EventNodeReleased {
-			continue
-		}
-		var carried struct {
-			Turns int `json:"turns"`
-		}
-		if json.Unmarshal(event.Payload, &carried) == nil {
-			turns = carried.Turns
-		}
-	}
-	return turns
 }
