@@ -7,10 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // THE PAGES QUOTE FIGURES THE CODE OWNS, AND MARKDOWN CANNOT INTERPOLATE.
@@ -109,6 +111,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 	// which it shows and deliberately cannot move.
 	chooser, notChooser := counted(len(config.ModelTiers) + 1)
 	shortlist, notShortlist := counted(sourceNumber(t, "../session/taskmodel.go", "taskModelShortlist"))
+	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
 
 	facts := []quotedFact{{
 		fact: "how many models the crew is", owner: "config.ModelTiers", value: seats, others: notSeats,
@@ -184,6 +187,38 @@ func quotedFacts(t *testing.T) []quotedFact {
 		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --budget default",
 		value:  grouped(flagNumber(t, "../../cmd/aforge/exec.go", "budget")),
 		quotes: []quotedIn{{"adaptive-runs", "when the run has spent %s tokens"}},
+	}, {
+		// THE SPENDING TABLE IS SIX ROWS OF SHIPPED FIGURES, and four of them
+		// are dollars the code owns. A page telling somebody what they are
+		// allowed to spend is the last place a stale number is harmless: it is
+		// read by a person deciding whether to raise a limit, and the figure
+		// they are deciding about is the one on the page. The dollar sign lives
+		// in the pattern rather than in the value, because it belongs to the
+		// sentence and not to the constant.
+		fact: "the day's shipped limit", owner: "config.DefaultDailyBudgetUSD",
+		value: dollarsOwed(config.DefaultDailyBudgetUSD),
+		quotes: []quotedIn{
+			{"models-and-cost", "| **per day** | `$%s` |"},
+			{"models-and-cost", "`$3.42 of $%s · resets at midnight`"},
+		},
+	}, {
+		fact: "the figure a plan asks above", owner: "config.DefaultPlanConsentUSD",
+		value:  dollarsOwed(config.DefaultPlanConsentUSD),
+		quotes: []quotedIn{{"models-and-cost", "| **per plan** | `asks first above $%s` |"}},
+	}, {
+		fact: "what one firing may spend", owner: "standing.DefaultPerRunUSD",
+		value:  dollarsOwed(standing.DefaultPerRunUSD),
+		quotes: []quotedIn{{"models-and-cost", "| **per standing run** | `$%s a firing` |"}},
+	}, {
+		fact: "what practice may take of the day", owner: "config.DefaultPracticeBudgetUSD",
+		value:  dollarsOwed(config.DefaultPracticeBudgetUSD),
+		quotes: []quotedIn{{"models-and-cost", "| **practice** | `$%s of the day` |"}},
+	}, {
+		// The pass, which the page states in words because a person asking how
+		// often their watch checks is not asking for a duration.
+		fact: "how often everything standing is checked", owner: "standing.Interval",
+		value: minutesWord, others: notMinutesWord,
+		quotes: []quotedIn{{"keeping-an-eye", "Everything standing is checked every %s minutes."}},
 	}}
 	return append(facts, crewFacts(t)...)
 }
@@ -235,7 +270,18 @@ func crewFacts(t *testing.T) []quotedFact {
 	return append(facts, quotedFact{
 		fact: "the line /crew max confirms with", owner: "config.CrewSummary after config.ApplyCrew",
 		value:  crewConfirmLine(t, config.CrewMax),
-		quotes: []quotedIn{{"commands", "%s"}},
+		quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
+	}, quotedFact{
+		// THE SAME THREE SEATS WITHOUT THE CONFIRM LINE'S OWN PREFIX, which is
+		// how /status prints them and how both pages print /status back at the
+		// reader. It is a second row rather than a second pattern on the one
+		// above because the prefix differs — `crew → ` where the command
+		// confirms, a padded label where the reading is listed — and the four
+		// copies of this line drifted onto a worker the max crew has not used
+		// since the presets moved, with nothing red for it.
+		fact: "max's three classes as /status lists them", owner: "config.CrewClasses under the max crew",
+		value:  strings.TrimPrefix(crewConfirmLine(t, config.CrewMax), "crew → "),
+		quotes: []quotedIn{{"commands", "crew %s"}, {"models-and-cost", "crew %s"}},
 	})
 }
 
@@ -541,6 +587,15 @@ func counted(n int) (string, []string) {
 		}
 	}
 	return countWords[n], others
+}
+
+// dollarsOwed is a shipped limit as a page writes it: the digits alone, with the
+// dollar sign left to the sentence around it. Every one of these is a whole
+// number of dollars and a page that printed `$500.00` at somebody would be a
+// page inventing a precision the setting does not have, so the trailing zeroes
+// go rather than being formatted back in.
+func dollarsOwed(usd float64) string {
+	return strconv.FormatFloat(usd, 'f', -1, 64)
 }
 
 // grouped writes a number in threes, the way a page does: 65,536.

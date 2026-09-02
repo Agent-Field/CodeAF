@@ -527,7 +527,7 @@ No. `/crew max` moves the five crew seats and leaves the model you talk to exact
 was. The confirmation names it:
 
 ```
-crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
@@ -1159,6 +1159,36 @@ section above have no switch — a request that produced nothing at all has fail
 reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
 at all, and with it stops any of this being recorded.
 
+## I stopped a reply and the text is gone — where the reply went after I hit esc, and why pressing escape on a broken reply deletes it
+
+Press `esc` on a reply that has come apart — one line or one letter repeating, words with
+two alphabets inside them — and the text you were watching **is not kept**. It stays on the
+screen where you saw it, and nothing more happens to it: it is not in the conversation, not
+in the session file, and it is never sent back to the model. A dim line says so:
+
+```
+the reply you stopped had lost its thread — that text was not kept
+```
+
+The next thing you ask is answered as though those words had never been written. That is
+the point of dropping them. A reply that has lost the thread goes back into the
+conversation as the model's own last words, and the model reads its own nonsense before
+writing anything else — one bad minute from a provider becoming a bad afternoon for the
+conversation. Stopping it by hand used to hand you the mess as your own kept reply.
+
+**A reply you stopped that was still language is kept**, up to the word it stopped on,
+exactly as it always was. The judgement is the same one aforge makes on its own while a
+reply arrives (*The model was printing garbage* above), so only the text that had actually
+stopped being language is dropped — and the line above is the only time you are told, which
+is how you can tell the two apart.
+
+**It does not happen at all with the guard off.** `reply guard` on the **Providers** tab of
+`/settings` is `on` by default; set it to `off` and you see, and keep, whatever arrives —
+including whatever you stop.
+
+Nothing here is recoverable. If the half-written reply was worth having, copy it off the
+screen before you ask the next thing.
+
 ## Strange tags instead of an answer — the reply was tool markup, odd tokens like `<|...|>` on the screen
 
 Some providers serve a model without translating its private tool-calling syntax, and the
@@ -1195,10 +1225,10 @@ word in a sentence. And a conversation with no tools available cannot trigger it
 turns this off together with the repetition guard above; off means you see whatever
 arrives.
 
-## Why does the same conversation suddenly cost more — what this conversation has cost with /cost
+## What has this conversation cost me — /cost, how much this chat has cost, and why the same conversation suddenly costs more
 
 `/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
-what, into the conversation. Up to six aligned lines:
+what, into the conversation. Up to eight aligned lines:
 
 | Line | What it is |
 |---|---|
@@ -1248,7 +1278,7 @@ Two things follow that are worth knowing:
 
 To see the halves, ask `/cost`. To see one task's own bill, open its card.
 
-## Why does the row show the wrong cost after I switch conversations — it should not, and no longer does
+## Why does the row show the wrong cost after I switch conversations — the money jumped when I switched chats, the figure came from the chat I left
 
 **Switching hands the row over completely.** `/resume`, a row of the welcome list, taking
 over a conversation another window was holding — every one of those doors zeroes the
@@ -1468,7 +1498,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes after it:
 
 ```
-crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
+crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3
 ```
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at

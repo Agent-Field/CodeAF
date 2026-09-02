@@ -395,6 +395,33 @@ The result is waiting for you — in the chat that asked for it if it is open, a
 otherwise wherever the delivery rules put it (see "Where a reminder arrives").
 Close the lid.
 
+## When will it run next, and how often does it check — every hour, every five minutes
+
+Two different clocks, and mixing them up is why an item can look late when it is not.
+
+**Everything standing is checked every five minutes.** That is the pass: whichever of an
+open aforge window or this machine's own timer gets there first walks everything you have
+standing and asks which of them the world has something to say about. The two run exactly
+the same work, so it does not matter which one is awake — and with no window open at all,
+the machine's timer still does it (*Does it keep working when I close the terminal or shut
+the laptop?* below).
+
+**An item fires on the cadence you gave it, not on that pass.** "Every hour", "every
+Monday at 9", "at 6 tonight", "whenever these files change" — the pass is only how often
+aforge looks; your own words are what decides whether looking finds anything. So an hourly
+item is checked twelve times an hour and fires once, and a rule with no cadence at all is
+never woken by the clock — something has to happen first.
+
+**Which means a firing can be up to five minutes late.** A window's first check is five
+minutes after it opened, so a reminder set for one minute from now arrives on the check
+after it comes due, not on the second. A late check says it was late; it does not pretend
+it happened on time. Nothing fires while the machine is asleep, and nothing fires when you
+are not logged in.
+
+The card you said yes to states the cadence back to you in words — "Mondays at 9am" — and
+an item's own row says when it last ran. Those two together are the honest answer to "when
+will it run next".
+
 ## How far does it reach — just this chat, this project, or everywhere
 
 Everything you set up has one **reach**, and the card names it before you answer:
@@ -614,7 +641,7 @@ guessing:
   firing at this instant, so nothing claims it — the same silence a local window
   keeps.
 
-## How do I stop one?
+## How do I stop one? — stop the thing that runs every hour, stop a routine, turn off a recurring check
 
 Say so: "stop the CI one", "stop reminding me about the plants". You can name it
 by its id or by any part of your own sentence — nobody remembers an id.
