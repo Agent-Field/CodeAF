@@ -51,10 +51,6 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # A short TMPDIR, as the other jobs have: a test that binds a unix
-      # socket under t.TempDir() overflows sun_path on the runner's default.
-      TMPDIR: /tmp/aforge-ci
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,9 +66,7 @@ jobs:
       # the build for everyone. This is the cheapest way to find that out, and
       # the one failure that blocks every other kind of work.
       - name: Build
-        run: |
-          mkdir -p "$TMPDIR"
-          go build ./...
+        run: go build ./...
 
       - name: Vet
         run: go vet ./...
@@ -163,8 +157,19 @@ jobs:
       # e2e suite waits for — found by what it does (scripts/laws.sh) and run as
       # one target, about twenty seconds after the link. This is the step that
       # would have stopped #279 at the door.
+      #
+      # TMPDIR IS SET ON THIS STEP AND NOT ON THE JOB. A test that binds a unix
+      # socket under t.TempDir() overflows sun_path on the runner's default
+      # path, so the tests get a short one; but set on the job it reaches
+      # setup-go's own `go env`, which runs before any step has created the
+      # directory, and the go command fails making its work dir. Two runs of
+      # this very pull request died that way.
       - name: The laws hold
-        run: make test-laws
+        env:
+          TMPDIR: /tmp/aforge-ci
+        run: |
+          mkdir -p "$TMPDIR"
+          make test-laws
 
   # THE PACKAGES THIS CHANGE TOUCHED, IN FULL. The laws catch a shape; this
   # catches a behaviour, in the one place a change can have broken it. It is a
