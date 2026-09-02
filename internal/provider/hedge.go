@@ -229,6 +229,25 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 	seen := map[int]armResult{}
 	for {
 		select {
+		case <-ctx.Done():
+			// A CANCELLED TURN LEAVES THIS LOOP. Escape, a closed session and a
+			// caller's own deadline all arrive here, and until this case existed
+			// none of them could: the loop waited only on arms, so a stop had to
+			// travel through every one of them before anybody could quit
+			// (issue #264, where a stopped turn sat in `stopping` for minutes).
+			// The arms are cut by the deferred stopAll above.
+			//
+			// AND IT DELIBERATELY DOES NOT SETTLE. The losing arms were never
+			// allowed to finish, so folding their waits into the belief would
+			// teach the ledger that a lane it cut off is slow. The money is the
+			// other way round — a cancelled request was still made — so the two
+			// denominators are noted here exactly as [hedgeRace.settle] notes
+			// them.
+			r.withdraw()
+			now := waitNow()
+			r.budget.NoteRequest(now)
+			r.budget.NoteSpend(r.spent(seen), now)
+			return nil, false, ctx.Err()
 		case <-decided:
 			decided = nil
 			if result, ok := seen[r.won()]; ok {
