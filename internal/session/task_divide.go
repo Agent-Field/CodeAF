@@ -937,7 +937,6 @@ const (
 	// full. A cap that truncated the last part's brief would hand a worker half
 	// a world.
 	divideReviewTokens = 4000
-	divideReviewTemp   = 0
 	// divideReviewPatience bounds the wait. The tier's own bound is ten minutes
 	// (roles.Patience) and that is the right figure for a planner nobody is
 	// waiting on; here a worker is mid-turn with its own steps ticking and its
@@ -1120,8 +1119,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 			textMessage("system", divideReviewBrief),
 			textMessage("user", divideReviewQuestion(parent, parsed, thin)),
 		},
-		ai.WithMaxTokens(divideReviewTokens),
-		ai.WithTemperature(divideReviewTemp))
+		ai.WithMaxTokens(divideReviewTokens))
 	if err != nil || response == nil {
 		why := "unreached"
 		if err != nil {

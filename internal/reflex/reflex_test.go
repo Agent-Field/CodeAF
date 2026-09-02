@@ -249,9 +249,9 @@ func TestAnEmptyIndexReadsAsWordsRatherThanABlank(t *testing.T) {
 	}
 }
 
-// EVERY REFLEX CALL IS SHAPED THE SAME: a small ceiling and no temperature, so
-// the answer is the shape the examples showed and the bill is small.
-func TestEveryCallIsSmallAndCold(t *testing.T) {
+// EVERY REFLEX CALL IS SHAPED THE SAME: a small ceiling and NO SAMPLING
+// PARAMETER — the provider's own default answers, here as on every call.
+func TestEveryCallIsSmallAndUnsampled(t *testing.T) {
 	client := &fake{replies: []string{`{"inject":[],"cmd":null}`}}
 	if _, err := Route(context.Background(), client, "hello", index); err != nil {
 		t.Fatalf("Route: %v", err)
@@ -260,8 +260,8 @@ func TestEveryCallIsSmallAndCold(t *testing.T) {
 	if request.MaxTokens == nil || *request.MaxTokens != answerTokens {
 		t.Fatalf("the request's max tokens = %v, want %d", request.MaxTokens, answerTokens)
 	}
-	if request.Temperature == nil || *request.Temperature != 0 {
-		t.Fatalf("the request's temperature = %v, want 0", request.Temperature)
+	if request.Temperature != nil {
+		t.Fatalf("the request carried temperature %v, want none on the wire", *request.Temperature)
 	}
 	if request.Model != "" {
 		t.Fatalf("an unbound call named model %q; the client's own model answers", request.Model)

@@ -259,11 +259,10 @@ func (a attempt) cost() string {
 // retry: the model is shown its own output and the parser's exact complaint, and
 // asked for the corrected JSON alone — no guide, no goal, no re-derivation. Only
 // when that fails does the caller spend a real attempt.
-func jsonReply(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (subharness.Salvaged, attempt, error) {
+func jsonReply(ctx context.Context, chat *chatClient, history []message, maxTokens int) (subharness.Salvaged, attempt, error) {
 	out, err := chat.complete(ctx, chatRequest{
-		Messages:    history,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
+		Messages:  history,
+		MaxTokens: maxTokens,
 	})
 	if err != nil {
 		return subharness.Salvaged{}, attempt{}, err
@@ -291,9 +290,8 @@ func jsonReply(ctx context.Context, chat *chatClient, history []message, maxToke
 	// The same budget: the repair is a whole reply, not a fragment, and a repair
 	// turn that runs out of room has failed for the reason it was called.
 	second, err := chat.complete(ctx, chatRequest{
-		Messages:    repair,
-		MaxTokens:   maxTokens,
-		Temperature: 0,
+		Messages:  repair,
+		MaxTokens: maxTokens,
 	})
 	at.spent += second.Cost
 	at.tokens += second.Tokens
@@ -311,8 +309,8 @@ func jsonReply(ctx context.Context, chat *chatClient, history []message, maxToke
 
 // designOnce asks for one design and returns it decoded, or the error the model is
 // going to be shown.
-func designOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (design, subharness.Harness, attempt, error) {
-	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens, temperature)
+func designOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int) (design, subharness.Harness, attempt, error) {
+	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens)
 	if err != nil {
 		return design{}, subharness.Harness{}, at, err
 	}
@@ -330,8 +328,8 @@ func designOnce(ctx context.Context, chat *chatClient, history []message, maxTok
 // The op results come back beside the harness because a skipped op is a finding
 // about the review itself, and this rig prints it rather than quietly landing
 // eleven of twelve edits.
-func reviewOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64, draft design, draftHarness subharness.Harness) (revision, subharness.Harness, []subharness.OpResult, attempt, error) {
-	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens, temperature)
+func reviewOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, draft design, draftHarness subharness.Harness) (revision, subharness.Harness, []subharness.OpResult, attempt, error) {
+	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens)
 	if err != nil {
 		return revision{}, subharness.Harness{}, nil, at, err
 	}

@@ -86,11 +86,6 @@ const (
 	// the prompt spends its last paragraph refusing.
 	spellOutTokens = 400
 
-	// spellOutTemp is low rather than zero. The same draft spelled twice should
-	// say the same things, and the small warmth is what keeps a clause from
-	// reading like a form letter on the tenth draft of a session.
-	spellOutTemp = 0.2
-
 	// spellOutClauses is the most clauses the block may carry, and it is the
 	// prompt's own limit enforced rather than restated ([cleanSpellOut] holds a
 	// model that ignored it to the same number). Past six the block stops being
@@ -189,7 +184,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 			// person has configured, and they answer whatever they read last.
 			textMessage("user", clip(draft, spellOutDraftClip)+"\n\n"+spellOutPrompt),
 		},
-		ai.WithModel(call.Model), ai.WithTemperature(spellOutTemp), ai.WithMaxTokens(spellOutTokens))
+		ai.WithModel(call.Model), ai.WithMaxTokens(spellOutTokens))
 	if callErr != nil || response == nil {
 		return ""
 	}

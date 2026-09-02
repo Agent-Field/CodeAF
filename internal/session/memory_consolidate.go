@@ -366,8 +366,7 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 			textMessage("user", consolidateListing(batch)),
 		},
 		ai.WithModel(model),
-		ai.WithMaxTokens(consolidateTokens),
-		ai.WithTemperature(0))
+		ai.WithMaxTokens(consolidateTokens))
 	if err != nil {
 		return consolidatePlan{}, 0, err
 	}

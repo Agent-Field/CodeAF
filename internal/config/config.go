@@ -56,8 +56,6 @@ const (
 	// OCR ladder. The other accepted values pin one rung and never fall through.
 	DefaultDocumentEngine = "auto"
 
-	DefaultTemperature = 0.2
-
 	// DefaultMaxTokens has to cover reasoning tokens, not just the visible
 	// answer. This model routinely spends more of its budget thinking than
 	// writing, and a cap that only fits the answer produces an empty reply
@@ -224,7 +222,6 @@ type Config struct {
 	VideoModel        string
 	VisionModel       string
 	DocumentEngine    string
-	Temperature       float64
 	MaxTokens         int
 	Timeout           time.Duration
 	Reasoning         provider.Effort
@@ -335,7 +332,6 @@ func load(requireKey bool) (Config, error) {
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
 		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
-		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
@@ -788,12 +784,11 @@ func (c Config) providerConfig(model string) provider.Config {
 	// as it has taken a level.
 	model, _ = roles.SplitEffort(model)
 	return provider.Config{
-		APIKey:      c.APIKey,
-		BaseURL:     c.BaseURL,
-		Model:       model,
-		Temperature: c.Temperature,
-		MaxTokens:   c.MaxTokens,
-		Timeout:     c.Timeout,
+		APIKey:    c.APIKey,
+		BaseURL:   c.BaseURL,
+		Model:     model,
+		MaxTokens: c.MaxTokens,
+		Timeout:   c.Timeout,
 		// The published answer to "does this model take this field", from rows
 		// already in memory. A nil catalog and a catalog still warming both say
 		// "unknown", which the adapter treats as "send nothing on your own

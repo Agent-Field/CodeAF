@@ -666,6 +666,18 @@ Two things it deliberately does not do:
 Standing items never take this posture, whatever the session that set them up was started
 with. They fire on their own clock long after your run ended, and the crew answers for them.
 
+## What temperature does aforge use — sampling settings like temperature, top-p and seed
+
+**None of its own.** No call aforge makes sets `temperature`, `top_p`, `top_k`, a seed
+or any other sampling knob — the request simply omits them, and the provider's own
+default answers. OpenRouter passes an absent sampling parameter through as absent rather
+than substituting a value of its own, so what you get is whatever the endpoint's model
+ships with.
+
+There is no setting and no flag to change this. If a reply reads as too predictable or
+too wild, the dials aforge does have are the model itself and how hard it thinks (the
+effort rungs below).
+
 ## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.

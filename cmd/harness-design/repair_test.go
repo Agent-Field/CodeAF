@@ -63,7 +63,7 @@ func TestAMangledButSalvageableReplyCostsNoTurn(t *testing.T) {
 	}}
 	chat := model.serve(t)
 
-	salvaged, at, err := jsonReply(context.Background(), chat, []message{{Role: "user", Content: "design it"}}, 100, 0.3)
+	salvaged, at, err := jsonReply(context.Background(), chat, []message{{Role: "user", Content: "design it"}}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestAnUnsalvageableReplyBuysExactlyOneRepairTurn(t *testing.T) {
 		{Role: "user", Content: "THE GOAL: design it"},
 	}
 
-	envelope, _, at, err := designOnce(context.Background(), chat, guide, 100, 0.3)
+	envelope, _, at, err := designOnce(context.Background(), chat, guide, 100)
 	// The page is a stub, so the design is refused by the law — but it was
 	// DECODED, which is what this test is about.
 	if err == nil {
@@ -141,7 +141,7 @@ func TestARepairThatFailsCostsTheAttempt(t *testing.T) {
 	model := &scripted{replies: []string{"I'm sorry, I can't.", "I still can't."}}
 	chat := model.serve(t)
 
-	_, at, err := jsonReply(context.Background(), chat, []message{{Role: "user", Content: "design it"}}, 100, 0.3)
+	_, at, err := jsonReply(context.Background(), chat, []message{{Role: "user", Content: "design it"}}, 100)
 	if err == nil {
 		t.Fatal("prose became JSON")
 	}
@@ -178,7 +178,7 @@ func TestTheReviewTurnSalvagesAndPatches(t *testing.T) {
 	chat := model.serve(t)
 
 	revised, harness, applied, at, err := reviewOnce(context.Background(), chat,
-		[]message{{Role: "user", Content: "review it"}}, 100, 0.3, draft, draftHarness)
+		[]message{{Role: "user", Content: "review it"}}, 100, draft, draftHarness)
 	if err != nil {
 		t.Fatal(err)
 	}

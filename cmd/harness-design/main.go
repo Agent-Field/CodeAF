@@ -130,7 +130,6 @@ type rig struct {
 	maxTurns     int
 	designTokens int
 	reviewTokens int
-	temperature  float64
 }
 
 func main() {
@@ -158,7 +157,6 @@ func main() {
 		// review that cannot afford its own answer is the most expensive kind of
 		// nothing — the design turn is already paid for by then.
 		reviewTokens = flag.Int("review-tokens", 10000, "the review turn's budget: the critic's thinking, its findings and the ops patch — never the whole page")
-		temp         = flag.Float64("temp", 0.3, "the design turn's temperature")
 
 		// The ADAPTIVE RUN is a different rig behind the same binary: no design,
 		// no page, no store — a planner amending a live frontier. Its flags are
@@ -197,7 +195,6 @@ func main() {
 			nodeTokens:  *nodeTokens,
 			maxParallel: *maxParallel,
 			gate:        *fuelGate,
-			temperature: *temp,
 		}))
 	}
 
@@ -234,7 +231,7 @@ func main() {
 	// store, the review or the run.
 	if *repro > 0 {
 		fmt.Printf("harness-design · repro · model %s · belt %s · %d trials\n", *model, *belt, *repro)
-		os.Exit(reproMode(ctx, newChatClient(key, *model), designer, chosen, *repro, *designTokens, *temp, *retries))
+		os.Exit(reproMode(ctx, newChatClient(key, *model), designer, chosen, *repro, *designTokens, *retries))
 	}
 
 	r := &rig{
@@ -249,7 +246,6 @@ func main() {
 		maxTurns:     *maxTurns,
 		designTokens: *designTokens,
 		reviewTokens: *reviewTokens,
-		temperature:  *temp,
 	}
 
 	fmt.Printf("harness-design · model %s · store %s\n", *model, r.store.Dir())
@@ -298,7 +294,7 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 	for tries := 0; tries <= r.retries; tries++ {
 		began := time.Now()
 		var at attempt
-		envelope, harness, at, err = designOnce(ctx, r.chat, history, r.designTokens, r.temperature)
+		envelope, harness, at, err = designOnce(ctx, r.chat, history, r.designTokens)
 		if err == nil {
 			fmt.Printf("stage 1  design accepted on attempt %d/%d · %s%s · %d nodes · %s/%s · at most %d model calls\n",
 				tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(),
@@ -472,7 +468,7 @@ func (r *rig) reviewStage(ctx context.Context, goal string, draft design, draftH
 	for tries := 0; tries <= r.retries; tries++ {
 		began := time.Now()
 		var at attempt
-		envelope, harness, applied, at, err = reviewOnce(ctx, r.chat, history, r.reviewTokens, r.temperature, draft, draftHarness)
+		envelope, harness, applied, at, err = reviewOnce(ctx, r.chat, history, r.reviewTokens, draft, draftHarness)
 		if err == nil {
 			fmt.Printf("stage 1.5 review accepted on attempt %d/%d · %s%s · %d findings · %d ops (%d applied) · %d nodes · %s/%s\n",
 				tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(),

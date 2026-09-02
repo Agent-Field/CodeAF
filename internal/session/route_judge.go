@@ -163,7 +163,6 @@ const (
 	// ([routeGoalBytes], taskShapeAcceptanceLimit) with the object around them,
 	// and it is still a fraction of what the task it decides costs.
 	routeJudgeTokens = 900
-	routeJudgeTemp   = 0
 	// routeShapeLines is how much of the assistant's answer the judge is shown.
 	// TWO LINES IS THE SHAPE AND NOT THE ANSWER: what the judge is deciding is
 	// whether the person's request needed work, and a judge handed the whole reply
@@ -535,8 +534,7 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, br
 			textMessage("system", brief),
 			textMessage("user", question),
 		},
-		ai.WithMaxTokens(routeJudgeTokens),
-		ai.WithTemperature(routeJudgeTemp))
+		ai.WithMaxTokens(routeJudgeTokens))
 	if err != nil || response == nil {
 		return routeVerdict{}, false
 	}

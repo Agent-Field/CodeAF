@@ -130,11 +130,6 @@ const (
 	// which [cleanTitle] strips.
 	taskNameTokens = 32
 
-	// taskNameTemp is zero because the same work should be called the same thing
-	// twice. A name that changed between a resume and the row above it would be
-	// two pieces of work as far as anybody reading the column is concerned.
-	taskNameTemp = 0
-
 	// taskNameWindow is how long the call is given. Nobody is waiting for it —
 	// the node is already running — so this is not a person's patience but a
 	// bound on a goroutine holding a provider slot for work that has stopped
@@ -234,7 +229,7 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
 		},
-		ai.WithTemperature(taskNameTemp), ai.WithMaxTokens(taskNameTokens))
+		ai.WithMaxTokens(taskNameTokens))
 	if callErr != nil || response == nil {
 		return ""
 	}

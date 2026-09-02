@@ -64,12 +64,11 @@ type toolDef struct {
 }
 
 type chatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	Tools       []toolDef `json:"tools,omitempty"`
-	ToolChoice  string    `json:"tool_choice,omitempty"`
+	Model      string    `json:"model"`
+	Messages   []message `json:"messages"`
+	MaxTokens  int       `json:"max_tokens,omitempty"`
+	Tools      []toolDef `json:"tools,omitempty"`
+	ToolChoice string    `json:"tool_choice,omitempty"`
 	// Usage asks the endpoint to price the call it just served. It is not
 	// optional here: the adaptive run meters a fuel tank in DOLLARS, and a tank
 	// fed zeroes is a tank that never empties.
@@ -245,14 +244,13 @@ func (c *chatClient) once(ctx context.Context, body []byte) (reply, bool, error)
 }
 
 // ask is the one-shot form: a system prompt, a user prompt, an answer.
-func (c *chatClient) ask(ctx context.Context, system, user string, maxTokens int, temperature float64) (string, error) {
+func (c *chatClient) ask(ctx context.Context, system, user string, maxTokens int) (string, error) {
 	out, err := c.complete(ctx, chatRequest{
 		Messages: []message{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
+		MaxTokens: maxTokens,
 	})
 	if err != nil {
 		return "", err
