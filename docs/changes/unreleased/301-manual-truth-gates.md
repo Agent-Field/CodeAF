@@ -4,6 +4,7 @@ title: the manual quotes the code's own figures, and a moved figure names the pa
 pr: 301
 surface: [chat, docs]
 invalidates:
+  - "A turn spent watching work it already handed out does not move that answer to a task: a batch that only reads the task rail or a background job is not a round of work, and a sketch whose every part is a wait or a bare accept/review answers `(waiting)` and starts nothing (#304)."
   - "The crew is FIVE seats — reflex, low, worker, high, mastermind (config.ModelTiers). Pages said four and two of them wrote the settings rows out without models.tiers.worker; every page now says five and lists all five keys."
   - "No saved program ships inside the binary and no row on the subharness list can wear the `built-in` mark. registerSubharnessRunners registers one runner, the generalist, and both list surfaces skip it; programs come from three places, not four."
   - "A task's parts do NOT work in the same copy the task does (that was the pre-#239 world). Each part gets a copy of its own cut from the task's working copy."
@@ -24,3 +25,8 @@ from that owner at test time, the pages that quote it, and the sentence with a h
 the figure goes. Moving a constant turns every page still carrying the old figure red, by
 name, with the owner and the new figure in the message. The two hand-written gates that
 came before it — the tool floor and the compaction numbers — are folded into the family.
+
+It also pays the manual debt #304 left open: the waiting half of the sketch contract and
+the rule that rounds spent watching work already handed out do not climb the ladder, both
+in a section of their own so the questions people bring to them reach it. The tokens the
+sketch ask teaches are read out of that ask, so a fourth one cannot arrive undocumented.

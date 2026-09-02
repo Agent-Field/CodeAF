@@ -788,6 +788,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person's own message alone and the line said so.
 		{"why did my task start with just my message and nothing else", "tasks"},
 		{"the brief could not be written for my task", "tasks"},
+		// And the case where it must NOT happen: a turn whose whole remaining
+		// work is waiting on pieces it already handed out. People meet this as
+		// the junk task that appeared while they were watching, and as the
+		// question of why the same turn no longer produces one.
+		{"it made a task out of me waiting for the other pieces", "tasks"},
+		{"does watching a running task count towards moving my answer", "tasks"},
 
 		// And the other end of the same meter: a reply that STOPPED before the
 		// question was finished. People meet this as the dim line that said the ask

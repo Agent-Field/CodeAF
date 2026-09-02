@@ -366,6 +366,30 @@ func TestThePermissionsPageNamesEveryToolTheFloorHolds(t *testing.T) {
 	}
 }
 
+// EVERY WORD THE SKETCH IS TAUGHT IS A WORD THE PAGE EXPLAINS.
+//
+// The long-answer road turns on one line a second model writes, and the ask that
+// asks for it names the tokens it will accept — `(done)` for nothing left,
+// `(waiting)` for nothing left but waiting on work already handed out. A token
+// the ask teaches and the page does not is a person reading a word on a card
+// that the manual has no account of, and a token that is renamed leaves the page
+// explaining a word nothing says any more. So the list is read out of the ask
+// itself rather than written here: a fourth token cannot arrive undocumented.
+func TestEverySketchTokenTheAskTeachesIsOnTheTasksPage(t *testing.T) {
+	ask := sourceString(t, "../session/checkpoint.go", "checkpointSketchAsk")
+	tokens := regexp.MustCompile(`'(\([a-z]+\))'`).FindAllStringSubmatch(ask, -1)
+	if len(tokens) == 0 {
+		t.Fatal("the checkpoint's sketch ask names no token at all")
+	}
+	page := flatChatPages(t)["tasks"]
+	for _, token := range tokens {
+		if !strings.Contains(page, "`"+token[1]+"`") {
+			t.Errorf("the tasks page does not explain %s, which session.checkpointSketchAsk teaches the reader to answer",
+				token[1])
+		}
+	}
+}
+
 // ONE LOOKUP IS ONE SIZE, WHEREVER IT IS ASKED FOR.
 //
 // [DefaultResults] and [SectionBodyCap] are this package's own account of how

@@ -394,7 +394,9 @@ section above.)
 — a different one, asked for one line: a sketch of what is left, as parts and arrows.
 `A | B | C` means three pieces that do not wait on each other. `A > B > C` means one job in
 three steps. Then one sentence saying what the letters are. If nothing is left, that line is
-`(done)`. **The model answering you is never asked and never sees the question**, which is
+`(done)`, and if the only thing left is waiting on work already handed out that line is
+`(waiting)` — *Watching the pieces you handed out does not move your answer*, below.
+**The model answering you is never asked and never sees the question**, which is
 the whole point: a model in the middle of tool calls answers a question like that with
 another tool call about half the time, so it is asked of somebody who is not busy.
 
@@ -537,6 +539,19 @@ hours. A line aforge writes to itself that nobody owes an answer for is still le
 
 **There is no setting that turns this off, and no number you can raise.** What bounds it is
 the list above.
+
+## Watching the pieces you handed out does not move your answer — I was only waiting on the other tasks and it made a task out of that, does watching a running task count
+
+**Rounds spent looking at work you already have out do not count.** A step that only reads
+the task rail or a background job's output is not a step of work, so a turn spent watching
+four running pieces never reaches a look at all, and the points stand exactly as far ahead
+as they did before it.
+
+**And the sketch has a word for it.** If the only thing left is waiting on work you already
+handed out — waiting for it, reading what comes back, accepting it — that line is
+`(waiting)`, and nothing is moved: a piece already running cannot be handed out a second
+time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
+way even when it is not written as that word.
 
 ## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
 
