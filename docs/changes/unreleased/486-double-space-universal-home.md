@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: two spaces go home from every place, and the memory card editor keeps its keyboard
-pr: 457
+pr: 486
 issue: 457
 surface: [chat]
 invalidates:
