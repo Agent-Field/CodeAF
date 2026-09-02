@@ -295,14 +295,56 @@ type decayer struct {
 	// filled up or a directory that has gone away between the two can no longer
 	// turn a live target into a pathless tombstone with pointers aimed at it.
 	preserved map[string]string
+	// consumedFrom is how far into the transcript this leaf has demonstrably
+	// acted. Everything below the mark was already in front of the model at the
+	// moment it last changed the workspace, so its value has been extracted;
+	// everything at or above it is material the model has read and not yet used.
+	// An index is identity enough because the transcript is append-only — the
+	// same property the "#index" fallback key below already relies on.
+	consumedFrom int
+	// consumedKeys is the same fact for the results an index cannot speak for:
+	// a result whose bytes were quoted again later, where the second copy is a
+	// pointer naming a durable path that outlives the stub. See observations.
+	consumedKeys map[string]bool
 	// inflow is what this leaf actually adds per turn, which is what decides
 	// how deep a firing pass has to reach. See decayHeadroomTurns.
 	inflow inflowMeter
 }
 
 func newDecayer(labels map[string]string, spill spillFunc) *decayer {
-	return &decayer{labels: labels, spill: spill,
-		spilled: map[string]string{}, preserved: map[string]string{}}
+	return &decayer{labels: labels, spill: spill, spilled: map[string]string{},
+		preserved: map[string]string{}, consumedKeys: map[string]bool{}}
+}
+
+// actedPast records that everything the transcript held below index was in
+// front of the model when it last changed the workspace. The loop calls it with
+// the artifact-count signal the no-progress guard already reads, which is the
+// only mutation detector in the leaf and stays the only one.
+func (d *decayer) actedPast(index int) {
+	if index > d.consumedFrom {
+		d.consumedFrom = index
+	}
+}
+
+// used records that one result's bytes have been asked for a second time and
+// answered from somewhere durable, which spends the copy in the transcript.
+func (d *decayer) used(key string) { d.consumedKeys[key] = true }
+
+// retired reports whether a result has already been shortened to a stub — so
+// its bytes are no longer quoted where the model can read them — and the
+// address they went to, which is "" when no file could be written.
+func (d *decayer) retired(key string) (string, bool) {
+	path, stubbed := d.spilled[key]
+	return path, stubbed
+}
+
+// inherit hands a durable address that already exists to a second key holding
+// exactly those bytes, so the retire pass reuses the file rather than writing a
+// second copy of material that is already on disk.
+func (d *decayer) inherit(key, path string) {
+	if key != "" && path != "" {
+		d.preserved[key] = path
+	}
 }
 
 // preserve writes a result's bytes to the workspace ahead of any decay, and
@@ -407,86 +449,143 @@ func liveObservationBytes(messages []ai.Message) int {
 	return total
 }
 
-// retire walks the transcript newest-first and stubs whatever raw tool output
-// no longer fits, oldest results going first. Selection is unchanged from the
-// trim-to-budget pass it replaces — keep while it fits, stub when it does not —
-// only the level it fills to is lower.
+// retireOrder is the order retire considers results for KEEPING in, and it is
+// the law written down as three passes over one transcript.
+type retireOrder int
+
+const (
+	// retireFresh is the newest assistant turn's own results: raw material the
+	// model has not read yet, measured against the full budget.
+	retireFresh retireOrder = iota
+	// retireNeeded is history the leaf has not been shown to have acted on.
+	retireNeeded
+	// retireSpent is history whose value has already been extracted.
+	retireSpent
+)
+
+// retire stubs whatever raw tool output no longer fits, and chooses what goes
+// by how long ago each result was last needed.
 //
-// The most recent turn's results are the exception, and they are measured
-// against the full budget rather than the low-water mark. Decay runs *before* a
-// turn, so those bytes are the raw material the model has not read yet; the
-// low-water mark governs how deep into history the batch reaches, never whether
-// the current turn gets to see its own output. Everything from the last
-// assistant message backwards is history and fades to the mark.
+// THE LAW: AN OBSERVATION IS RETIRED IN ORDER OF HOW LONG AGO IT WAS LAST
+// NEEDED, NOT HOW LONG AGO IT ARRIVED. A leaf that must read more material than
+// the window holds before it can act on any of it was losing the earliest reads
+// first — the ones it had not used yet — and spent the rest of its budget
+// getting the same material back. Age is the wrong question: what a result has
+// cost is the same whenever it arrived, and what it is still worth is whether
+// the model has acted past it.
+//
+// So the walk runs three times, newest-first each time, filling the same
+// accumulator: the live turn's own results, then history nothing has acted
+// past, then history that has been acted past. Whatever the mark leaves no room
+// for is stubbed, which means spent results go first and the oldest of them
+// goes first among those, and unconsumed material is reached for only when
+// retiring every spent result did not bring the window under the mark. The
+// window is a hard bound on request size, so "never" is not available; "last"
+// is. Selection inside a pass is unchanged — keep while it fits, stub when it
+// does not.
+//
+// The most recent turn's results are measured against the full budget rather
+// than the low-water mark. Decay runs *before* a turn, so those bytes are the
+// raw material the model has not read yet; the low-water mark governs how deep
+// into history the batch reaches, never whether the current turn gets to see
+// its own output. Everything from the last assistant message backwards is
+// history and fades to the mark.
 func (d *decayer) retire(messages []ai.Message, budget, lowWater int) int {
 	spent, decayed := 0, 0
-	// fresh is true while the walk is still inside the results of the newest
-	// assistant turn; the transcript is append-only, so crossing an assistant
-	// message is exactly the boundary between this turn and history.
-	fresh := true
+	// The newest assistant message is exactly the boundary between this turn
+	// and history, because the transcript is append-only.
+	live := -1
 	for index := len(messages) - 1; index >= 0; index-- {
 		if messages[index].Role == "assistant" {
-			fresh = false
-			continue
+			live = index
+			break
 		}
-		if messages[index].Role != "tool" {
-			continue
-		}
-		limit := lowWater
-		if fresh {
-			limit = budget
-		}
-		body := contentOf(messages[index])
-		id := messages[index].ToolCallID
-		// The transcript is append-only, so a message's index is a stable
-		// identity even for the rare tool message without a call id.
-		key := id
-		if key == "" {
-			key = fmt.Sprintf("#%d", index)
-		}
-		if _, done := d.spilled[key]; done {
-			// Already a stub from an earlier turn; it stays exactly as it is.
-			spent += len(body)
-			continue
-		}
-		if spent+len(body) <= limit {
-			spent += len(body)
-			continue
-		}
-		label := labelFor(d.labels, id)
-		stub := fmt.Sprintf("[%s — %d bytes, superseded]", label, len(body))
-		if len(stub) >= len(body) {
-			// Already smaller than the note describing it; leave it alone.
-			// Checked before spilling so no file is written for a result that
-			// is kept.
-			spent += len(body)
-			continue
-		}
-		// Preserve the bytes before shortening the message: decay must defer
-		// detail, never destroy it.
-		//
-		// A result the pointer mechanism already preserved is not written
-		// again, and its recorded path is used verbatim. That is not an
-		// optimisation: pointers elsewhere in the transcript already name that
-		// path and are never rewritten, so the stub replacing their target has
-		// to agree with them, and a fresh write here could fail and leave the
-		// target pathless with pointers still aimed at it.
-		d.spilled[key] = ""
-		path, kept := d.preserved[key]
-		if !kept && d.spill != nil {
-			path, kept = d.spill(key, body)
-		}
-		if kept {
-			withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
-			if len(withPath) < len(body) {
-				stub = withPath
-				d.spilled[key] = path
+	}
+	for _, pass := range [...]retireOrder{retireFresh, retireNeeded, retireSpent} {
+		for index := len(messages) - 1; index >= 0; index-- {
+			if messages[index].Role != "tool" {
+				continue
 			}
+			key := observationKey(messages[index], index)
+			if d.orderOf(key, index, live) != pass {
+				continue
+			}
+			limit := lowWater
+			if pass == retireFresh {
+				limit = budget
+			}
+			body := contentOf(messages[index])
+			// Three reasons to leave a result exactly as it is, and each costs
+			// what it costs: it is already a stub from an earlier turn, there
+			// is still room for it, or it is shorter than the note that would
+			// replace it.
+			if _, done := d.retired(key); done || spent+len(body) <= limit ||
+				!d.supersede(&messages[index], key, body) {
+				spent += len(body)
+				continue
+			}
+			decayed++
 		}
-		messages[index].Content = text(stub)
-		decayed++
 	}
 	return decayed
+}
+
+// orderOf places one result in the retirement order. live is the index of the
+// newest assistant message, so anything after it belongs to the turn about to
+// be read.
+func (d *decayer) orderOf(key string, index, live int) retireOrder {
+	switch {
+	case index > live:
+		return retireFresh
+	case index < d.consumedFrom || d.consumedKeys[key]:
+		return retireSpent
+	default:
+		return retireNeeded
+	}
+}
+
+// observationKey is how a result is named for the life of the leaf. The
+// transcript is append-only, so a message's index is a stable identity even for
+// the rare tool message without a call id.
+func observationKey(message ai.Message, index int) string {
+	if message.ToolCallID != "" {
+		return message.ToolCallID
+	}
+	return fmt.Sprintf("#%d", index)
+}
+
+// supersede shortens one result in place to a line naming what it was and where
+// its bytes went, and reports whether it did. It answers false for a result
+// already smaller than that note — checked before anything is written, so no
+// file is produced for a result that is kept.
+//
+// The bytes are preserved before the message is shortened: decay must defer
+// detail, never destroy it. A result the pointer mechanism already preserved is
+// not written again, and its recorded path is used verbatim. That is not an
+// optimisation: pointers elsewhere in the transcript already name that path and
+// are never rewritten, so the stub replacing their target has to agree with
+// them, and a fresh write here could fail and leave the target pathless with
+// pointers still aimed at it.
+func (d *decayer) supersede(message *ai.Message, key, body string) bool {
+	label := labelFor(d.labels, message.ToolCallID)
+	stub := fmt.Sprintf("[%s — %d bytes, superseded]", label, len(body))
+	if len(stub) >= len(body) {
+		return false
+	}
+	d.spilled[key] = ""
+	path, kept := d.preserved[key]
+	if !kept && d.spill != nil {
+		path, kept = d.spill(key, body)
+	}
+	if kept {
+		withPath := fmt.Sprintf("[%s — %d bytes, spilled to %s]", label, len(body), path)
+		if len(withPath) < len(body) {
+			stub = withPath
+			d.spilled[key] = path
+		}
+	}
+	message.Content = text(stub)
+	return true
 }
 
 // liveTranscriptBytes is what the whole re-sent body of the transcript costs as
@@ -727,6 +826,19 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 	sum := sha256.Sum256([]byte(body))
 	hash := hex.EncodeToString(sum[:])
 	if earlier, repeated := o.first[hash]; repeated {
+		// A RE-READ OF RETIRED BYTES IS ANSWERED WITH THE BYTES. Once decay has
+		// stubbed the earlier copy, a pointer at it would answer the model's
+		// re-read with a description of the material it just asked for again,
+		// and the only way left to it is reading the spill file in slices —
+		// each slice new bytes, each pushing the window over once more. So the
+		// body is carried whole and THIS copy becomes the canonical one, taking
+		// over the address the stub already names: nothing is written twice,
+		// and later duplicates point at a copy that is quoted.
+		if path, stubbed := o.fade.retired(earlier.key); stubbed {
+			o.fade.inherit(call.ID, path)
+			o.first[hash] = observationCopy{turn: turn, key: call.ID, label: callLabel(call), path: path}
+			return body
+		}
 		// The bytes in hand are the canonical copy's bytes — that is what the
 		// hash match means — so the durable copy can be written from here, now,
 		// without going back to whatever produced it.
@@ -740,6 +852,11 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 		// nothing and cost the model a hop; the same discipline the decay
 		// stub applies to itself.
 		if pointer, reachable := o.pointerTo(earlier); reachable && len(pointer) < len(body) {
+			// The earlier copy has now been read twice and is answerable from a
+			// durable address either way, so it is spent: the decay pass may
+			// retire it ahead of material the model has only read once. See
+			// decayer.retire.
+			o.fade.used(earlier.key)
 			return pointer
 		}
 	}
@@ -750,22 +867,19 @@ func (o *observations) admit(turn int, call ai.ToolCall, result Result) string {
 // pointerTo names where the earlier copy of some bytes can be read, or reports
 // that no pointer may be emitted at it.
 //
-// Every pointer names the durable path, whether or not the earlier copy is
-// still quoted in the transcript, and that redundancy is the point: the "above"
-// half of the sentence is true when it is written and may stop being true when
-// decay stubs the target, while the path half was made true before the pointer
-// existed and stays true for the rest of the run.
+// Its target is always a copy still quoted in the transcript — admit carries
+// the bytes whole rather than pointing at a stub — so the sentence can say
+// "above" and mean it. It names the durable path as well, and that redundancy
+// is the point: the "above" half is true when it is written and may stop being
+// true when decay stubs the target three turns later, while the path half was
+// made true before the pointer existed and stays true for the rest of the run.
 func (o *observations) pointerTo(earlier observationCopy) (string, bool) {
 	if earlier.path == "" {
 		// Nothing durable behind those bytes, so nothing may point at them and
 		// this copy is carried in full instead.
 		return "", false
 	}
-	if _, stubbed := o.fade.spilled[earlier.key]; !stubbed {
-		return fmt.Sprintf("[identical to the result of %s at turn %d — read it above, or from %s]",
-			earlier.label, earlier.turn, earlier.path), true
-	}
-	return fmt.Sprintf("[identical to the result of %s at turn %d, whose bytes are in %s — read the part you need with sh]",
+	return fmt.Sprintf("[identical to the result of %s at turn %d — read it above, or from %s]",
 		earlier.label, earlier.turn, earlier.path), true
 }
 
