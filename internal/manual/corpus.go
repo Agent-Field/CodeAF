@@ -273,9 +273,20 @@ func split(name, text string) []Section {
 // shares no word with any page.
 func (c *Corpus) Search(query string, k int) []Section {
 	c.load()
-	if k <= 0 {
-		k = DefaultResults
+	scores := c.score(query)
+	if scores == nil {
+		return nil
 	}
+	return c.sectionsAt(bestOf(rankedBy(scores), scores, k))
+}
+
+// score is the BM25 reading itself: what every section of this corpus is worth
+// against one question, or nil when the question shares no word with any page.
+//
+// It is factored out of [Corpus.Search] because a lookup now asks TWO questions
+// of the same corpus — the model's and the person's (theirwords.go) — and two
+// copies of a scorer are two rankings that drift apart at the first tuning.
+func (c *Corpus) score(query string) []float64 {
 	words := tokenize(query)
 	if len(words) == 0 || len(c.sections) == 0 {
 		return nil
@@ -297,18 +308,41 @@ func (c *Corpus) Search(query string, k int) []Section {
 			scores[i] += idf * frequency * (bm25K1 + 1) / (frequency + bm25K1*norm)
 		}
 	}
+	return scores
+}
+
+// rankedBy is which sections a question touched at all. A section it did not
+// touch is not a weak answer but no answer, and carrying zeroes into the sort
+// would put whichever section happens to sit first in the folder in front of
+// whoever asked.
+func rankedBy(scores []float64) []int {
 	ranked := make([]int, 0, len(scores))
 	for i, score := range scores {
 		if score > 0 {
 			ranked = append(ranked, i)
 		}
 	}
-	sort.SliceStable(ranked, func(a, b int) bool { return scores[ranked[a]] > scores[ranked[b]] })
-	if len(ranked) > k {
-		ranked = ranked[:k]
+	return ranked
+}
+
+// bestOf orders sections best first and cuts them to k, which at or below zero
+// asks for the default. The sort is stable, so sections that score identically
+// stay in the order the corpus holds them and a lookup is the same lookup twice.
+func bestOf(candidates []int, scores []float64, k int) []int {
+	if k <= 0 {
+		k = DefaultResults
 	}
-	found := make([]Section, 0, len(ranked))
-	for _, i := range ranked {
+	sort.SliceStable(candidates, func(a, b int) bool { return scores[candidates[a]] > scores[candidates[b]] })
+	if len(candidates) > k {
+		candidates = candidates[:k]
+	}
+	return candidates
+}
+
+// sectionsAt is the sections themselves, in the order they were ranked.
+func (c *Corpus) sectionsAt(indexes []int) []Section {
+	found := make([]Section, 0, len(indexes))
+	for _, i := range indexes {
 		found = append(found, c.sections[i])
 	}
 	return found

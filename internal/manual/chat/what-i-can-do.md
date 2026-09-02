@@ -948,6 +948,11 @@ cut with a list of its headings when it is long (the next question). A page name
 that does not exist gets an exact refusal listing the pages that do, never a
 search result that reads as though the page existed.
 
+**A search reads your own last message too, not only the words the lookup was
+phrased in.** Both are searched, the sections they agree on come first, and you
+still get the same four — so a page your words reach is a page the answer
+reaches, even when the question was looked up in different words.
+
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means aforge does not do it.`
 

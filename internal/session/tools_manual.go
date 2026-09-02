@@ -103,7 +103,24 @@ func (a *Agent) manualTool() bare.Tool {
 			if query == "" {
 				return "Give either a query or a page. The pages are:" + manualPageList(), true, nil
 			}
-			sections := manual.Chat().Search(query, manualSections)
+			// AND THE PERSON'S OWN WORDS, taken here rather than asked of
+			// the model. The model composes a query of its own and this
+			// corpus is fragile to the difference — two words nobody said
+			// move the ranking off the page (#307, and internal/manual's
+			// theirwords.go has the measurements) — while the sentence that
+			// caused this call is already in the harness's hand. Reading
+			// both makes the exact-words retrieval the free tests measure
+			// the floor the live surface stands on. Nothing is asked of the
+			// model for it: a field it had to remember to fill is a field it
+			// would one day fill with its own words (task_brief.go).
+			//
+			// INSIDE A TASK IT IS THE NODE'S FROZEN REQUEST, which is what
+			// [Agent.taskRequest] answers there and is deliberate: nobody is
+			// sitting in a worktree, the sentence that started the family IS
+			// the person's own words for every node of it, and a steer into a
+			// running node is a course correction rather than a question
+			// about aforge.
+			sections := manual.Chat().SearchBoth(query, a.taskRequest(), manualSections)
 			if len(sections) == 0 {
 				// NOT AN ERROR, and the difference matters: the manual having
 				// nothing on a topic is a fact about aforge worth reporting to
