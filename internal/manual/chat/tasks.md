@@ -2694,22 +2694,14 @@ task says so in one line.
 because a second model read it and drew its parts, that drawing is put to this same road
 before the new task's worker is asked anything — so the task starts already divided rather
 than being asked to find parts somebody has already named. Everything below applies to it
-without exception: the same two tests, the same reading by the mastermind, the same refusals.
+without exception: the same tests, the same reading by the mastermind, the same refusals.
 The receipt reads the same too, and the worker is told the parts are already running so it
 does not do them again. *An answer that runs long is read and moved* is where that happens.
 
-## Why it refused to split the work — it would not break the job into pieces, and the two tests a division has to pass
+## Why it refused to split the work — it would not break the job into pieces, and the tests a division has to pass
 
-**Two things have to be true, and neither is the worker's confidence.**
+**One test always decides, and it is not the worker's confidence.**
 
-- **There must be enough separate items.** Below six, one worker doing them in order beats
-  paying for a working copy, a check and a wait for each part. This was measured,
-  not guessed: twelve image files won, four modules and three bugs lost. This count reads
-  what the worker says it saw, and it counts a number standing beside a pile of things —
-  "11 adapter files", "nine sections", "34 people" — whatever the domain calls its things.
-  What never counts is a number that measures or budgets one thing: "250 words",
-  "90 seconds", "3 retries" and "status 500" are parameters, not piles, and evidence that
-  names no pile at all counts zero.
 - **There has to be a lane free for the parts.** This is your own `task.parallel` cap and
   nothing else — the worker asking does not count, because it hands its lane back the
   moment it starts waiting on its parts. With every lane busy the parts would be done one
@@ -2718,18 +2710,60 @@ does not do them again. *An answer that runs long is read and moved* is where th
   set to exactly **1** there is no second pair of hands at all, and the worker is told
   plainly that asking again will not change it.
 
-If either says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
-the worker carries straight on as one worker. That is why this costs nothing on ordinary
-work: a task that is not wide is never split, and finding that out is free.
+**The other test — enough separate items — is off unless you turn it on.** Until September
+2026 a division also had to name at least six separate things, on a measurement that below
+six, one worker doing them in order beats paying for a working copy, a check and a wait for
+each part. Then the question was measured properly, four ways of planning against four
+readings of that floor over 273 plans drawn and judged, and the floor lost: it folded real
+divisions more often than it saved you a pointless one. Three lanes written out by hand over
+one file name no pile of things at all, so the count read them as nothing and refused them.
+It no longer decides anything unless you ask for it — *Can I make it always split the work*
+is how you ask, and what the count reads when you do.
 
-**With one exception, and it is about the count only.** If the work was started because a
-model read your request and judged it broad — the wide line before a `/task`, a proposal I
-marked wide, a message the harness moved to a task — and the count then says the evidence
-names too few items, those are two readings of the same work disagreeing. So the count is
-not the last word there: the division goes to the mastermind below, which decides it on the
-parts themselves. That is the whole of the exception. A count that says no on work nobody
-read for width is final and free, exactly as it always was, and the free-lane test is never
-waived by anything.
+If a test says no, **nothing happens** — nothing is cancelled, nothing extra is spent, and
+the worker carries straight on as one worker. Finding out that a split will not happen is
+free, and always was.
+
+**And what did not change is which work is offered the split at all.** A worker is only
+handed the verb when something already read the work as wide: I marked it wide, the sizing
+call at `/task` said so, or its own brief names six or more separate things. That last
+reading is the same counting described below and it is always on. So turning the floor off
+did not make everything divide — it stopped a second reading of the same evidence refusing
+what the first reading had already invited.
+
+## Can I make it always split the work — turning the width floor back on, why did it split my task into parts, AFORGE_SPLITGATE
+
+**Why did it split my task into parts?** Because the work was read as wide, a worker asked
+to hand its parts out, a lane was free, and — by default — nothing else stood in the way.
+The parts are listed in the task column under their parent and each one says what it owns.
+
+**The width floor is off by default. `AFORGE_SPLITGATE` in the environment turns it back
+on**, and it is the only way to; there is no setting for it, because it picks how the
+machine decides rather than anything you have a preference about.
+
+- **unset** — off. Every division that is asked for is kept. This is what you have.
+- **`AFORGE_SPLITGATE=1`** — the floor as it worked before September 2026: the work has to
+  name at least six separate things or the split is refused, free, on the spot.
+- **`AFORGE_SPLITGATE=judgment`** — asks the plan instead of your words. If every part is
+  already the size of one sitting and none of them waits on another, the parts stand
+  whatever your brief counted; where the plan has no opinion, the six-item count decides.
+- **`AFORGE_SPLITGATE=0`** — off, spelled out. The same as leaving it alone.
+- **anything else** — off, because off is what you get by default and a typo must not put a
+  floor back under your work without your knowing.
+
+**What the count reads, when you have turned it on.** It reads what the worker says it saw,
+and counts a number standing beside a pile of things — "11 adapter files", "nine sections",
+"34 people" — whatever the domain calls its things. What never counts is a number that
+measures or budgets one thing: "250 words", "90 seconds", "3 retries" and "status 500" are
+parameters, not piles, and evidence that names no pile at all counts zero.
+
+**With the count on there is one exception to it.** If the work was started because a model
+read your request and judged it broad — the wide line before a `/task`, a proposal I marked
+wide, a message the harness moved to a task — and the count then says the evidence names too
+few items, those are two readings of the same work disagreeing. The count is not the last
+word there: the division goes to the mastermind, which decides it on the parts themselves.
+That is the whole of the exception, it exists only while the count is on, and the free-lane
+test is never waived by anything.
 
 ## What each part is told — the brief a part opens on, and how it knows what its siblings own
 
@@ -2744,16 +2778,16 @@ worker split out and a part a second model drew — so a part never depends on t
 doing the splitting remembering to restate the job once per part. Your own sentence still
 appears exactly once, at the top, where it appears on every task.
 
-**And then the plan itself is read once, by your `mastermind` model.** Both tests above are
+**And then the plan itself is read once, by your `mastermind` model.** The tests above are
 about whether a split is worth it; neither of them reads the parts. But what a part owns is
 everything that worker will act on — it is not handed your conversation and cannot
 ask anybody anything, though the brief names the journal path and line of your original
 words so it can read them if the restatement was cut — and the scopes were written by whatever model the task itself runs on.
-So once the two tests have passed, the whole division goes to the mastermind at once: the
+So once those have passed, the whole division goes to the mastermind at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
 scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
-worker carries on, exactly as a no from either test above. So the parts you see may be fewer
+worker carries on, exactly as a no from a test above. So the parts you see may be fewer
 than the worker asked for, and what they own may not be word for word what it wrote.
 
 **And it has one more answer, which is not about the split at all.** The mastermind may
@@ -2806,8 +2840,8 @@ is one part owning a folder while another owns a file inside it.
 
 **This reading can only ever improve a split; it cannot lose you one.** If the mastermind
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
-worker wrote it**. It had already passed the two tests that were measured, and a second opinion that
-cannot be had is not a reason to throw work away.
+worker wrote it**. It had already passed everything that was going to refuse it, and a second
+opinion that cannot be had is not a reason to throw work away.
 
 **Except on the one division it is deciding rather than sharpening** — the exception above,
 where the count said too few items and a model's reading of your request said broad. There
@@ -2845,7 +2879,7 @@ so, and no extra model call is made to grade it. A part the worker itself graded
 is never moved back down, and an install with no class rows set never moves anything,
 because there is nowhere dearer to move it to.
 
-**A busy machine is not one of the two tests.** `task.max_load` and `task.min_free_mb` never
+**A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
 and the parts simply **wait** — the same wait any queued task does, drawn as
 `waiting · machine busy` — and they start themselves as soon as the machine clears. The
@@ -2854,7 +2888,7 @@ worker is told so in its receipt and has nothing to come back for.
 **You may have been warned it could happen.** A `/task <brief>` whose sizing call found more
 than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
-what this section is about. It promises nothing: the two tests below still have to pass.
+what this section is about. It promises nothing: the tests below still have to pass.
 
 **And this is what I do with wide work too.** When I hand work off myself rather than you
 typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
@@ -2871,7 +2905,7 @@ already names.
 **And so can work that runs while you are asleep.** A standing order that fires and starts
 work is on this road too, armed the same last way — off the items its own brief names,
 with no sizing call, because a firing runs on a rhythm you set once and a model call every
-night to re-read the same sentence is a bill nobody agreed to. The two tests still decide and
+night to re-read the same sentence is a bill nobody agreed to. The tests still decide and
 the plan is still read once before the parts exist, and the machine is still respected: a
 division at 3am on a loaded box is admitted and the parts wait for it. The firing stays open until its parts are home and their spend is on its
 own cost row. The standing orders page has the rest of what an unattended run is.
@@ -2886,25 +2920,10 @@ in; walk into a part and its header says `part of: <the parent's title>`.
 **Stopping.** Stop the parent and its unfinished parts stop with it, their branches kept.
 
 It is on by default and there is no setting for it. `AFORGE_SWARM=0` in the environment
-turns the whole road off, and `AFORGE_SPLITGATE=0` takes the width test away and lets a
-worker's request to split be taken at its word — both are for somebody rolling something
-back, not preferences, which is why neither is in the settings panel.
-
-**The width test is under measurement right now, and `AFORGE_SPLITGATE` picks which reading
-you get.** Unset, or `1`, is the one described above: the work has to name at least six
-separate things. `lanes` reads the shapes a person actually writes a division down in as
-well — a numbered or bulleted list, a number spelled out in words, a list of files — so
-"thirty chapters" counts as thirty where today it counts as nothing. And where you have
-**named the parts yourself** — `L1 … L3`, `lane 1 / lane 2`, `part A / part B` — it takes
-that at its word and the six does not apply at all, because you have already done the
-dividing. A plain numbered list does not count as naming them: that is how people write
-down items, and three or four items is exactly the size that measured out slower divided
-than done in order.
-`judgment` stops reading your words for a number at all and asks the plan instead: if every
-part is already the size of one sitting and none of them waits on another, the parts stand,
-whatever the brief counted. Anything else you type reads as the first one. All of this is a
-measurement in progress — one of these will become the only behaviour and the others will
-stop being words you can type.
+turns the whole road off — no task splits at all — and `AFORGE_SPLITGATE` decides whether a
+width floor stands under the splits that do happen, which is off unless you set it
+(*Can I make it always split the work*). Both are environment pins rather than preferences,
+which is why neither is in the settings panel.
 
 ## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
 

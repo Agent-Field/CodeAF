@@ -42,16 +42,20 @@ func splitAsAsked(ctx context.Context, graph *store.Store, plans *jobPlans, sett
 	if graph == nil || plans == nil || !outcome.SplitRequest.Valid() {
 		return 0, nil
 	}
-	// Split gate: refuse divisions that won't pay for their overhead. A
-	// leaf's own division earns its keep under the same rule as the
-	// planner's: the work it found enumerates many independent items.
+	// Split gate: refuse divisions that won't pay for their overhead — WHERE
+	// SOMEBODY HAS ASKED FOR THAT. Unpinned the gate has no say and a leaf's
+	// division stands as it asked for it (splitgate's modes.go: the experiment
+	// that moved the default is in docs/design/plan-gate-doe/REPORT.md). Under
+	// `AFORGE_SPLITGATE=1` a leaf's own division earns its keep under the same
+	// rule as the planner's: the work it found enumerates many independent
+	// items.
 	//
 	// NO LEAVES ARE HANDED OVER BECAUSE THERE ARE NONE TO HAND. A running leaf
 	// asking to divide has written down evidence and nothing else — the parts
-	// it wants do not exist yet, so nothing has sized them — and every mode
-	// that reads the plan's own sizing (splitgate.ModeJudgment) is left with
-	// the count here, honestly, rather than being fed an empty graph to read a
-	// yes out of.
+	// it wants do not exist yet, so nothing has sized them — and the mode that
+	// reads the plan's own sizing (splitgate.ModeJudgment) is left with the
+	// count here, honestly, rather than being fed an empty graph to read a yes
+	// out of.
 	if decision := splitgate.Judge(outcome.SplitRequest.Evidence, nil); !decision.Keep {
 		log.Printf("split gate: refused division for %s (evidence enumerates %d items, floor %d)",
 			node.ID, decision.Items, divisionFloor)
@@ -180,13 +184,15 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 	if len(leaves) < 2 {
 		return 0
 	}
-	// ONE SPELLING OF THE ESCAPE HATCH, AND NOW ONE SPELLING OF THE WHOLE
-	// ANSWER. The two halves of the gate read the same switch and used to spell
-	// the reading two different ways, one of them the negation of the other;
-	// [splitgate.Judge] is now the only reader of both the switch and the
-	// question behind it. The leaves go with the goal because a mode may prefer
-	// the plan's own sizing to anything the brief said (splitgate's modes.go),
-	// and this is the one caller that has a plan to offer.
+	// ONE SPELLING OF THE WHOLE ANSWER, AND IT IS QUIET BY DEFAULT. The two
+	// halves of the gate read the same switch and used to spell the reading two
+	// different ways, one of them the negation of the other; [splitgate.Judge]
+	// is now the only reader of both the pin and the question behind it — and
+	// with nothing pinned it keeps every division, which is what the plan-gate
+	// experiment measured as the best front (splitgate's modes.go). The leaves
+	// go with the goal because `AFORGE_SPLITGATE=judgment` prefers the plan's
+	// own sizing to anything the brief said, and this is the one caller that
+	// has a plan to offer.
 	if splitgate.Judge(goal, gateLeaves(graph, leaves)).Keep {
 		return 0
 	}
@@ -204,10 +210,10 @@ func gatePlanDivision(graph *plan.Graph, goal string) int {
 		Summary: summary,
 		Brief:   graph.Goal,
 		Undivided: fmt.Sprintf("split gate: goal enumerates %d items, under the %d-item floor — one sitting",
-			splitgate.Count(goal), divisionFloor),
+			splitgate.Items(goal), divisionFloor),
 	})
 	log.Printf("split gate: collapsed %d leaves to one (goal names %d items, floor %d)",
-		folded, splitgate.Count(goal), divisionFloor)
+		folded, splitgate.Items(goal), divisionFloor)
 	return folded
 }
 

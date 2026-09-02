@@ -1,45 +1,36 @@
 ---
 kind: changed
-title: the split gate's reading is a pin now, so the experiment can ask each one
+title: the split gate is off by default, and the count and the plan's sizing stay as pins
 pr: 435
 surface: [engine]
 invalidates:
-  - "AFORGE_SPLITGATE is a switch with two positions, on and 0 — no longer true: it names which reading of the gate the binary runs. Unset and `1` are the shipped counting; `0` is the same rollback it always was; `lanes` counts the shapes a division is written down in as well, and takes a division written out as labelled lanes at its word with no floor applied; `judgment` asks the plan's own sizing instead of the brief. Anything unrecognised reads as the shipped counting."
-  - "the six-item floor is the last word on every reading the gate makes — no longer true under `AFORGE_SPLITGATE=lanes`: a brief that names its parts as parts is kept whatever it counts, because the floor was measured on counts of items and not on divisions somebody wrote out. Every other reading, in every mode, is still weighed against it."
-  - "the split gate's answer is internal/splitgate.WorthIt over the text — no longer the whole of it: both doors now ask splitgate.Judge, and the plan door hands it the planned leaves (their size and what they wait on) because a mode may prefer the plan's sizing to anything the brief said. A caller with no plan passes nil and gets the count."
-  - "internal/splitgate.Items is what a refusal says back — no longer true: the session's `not split` sentence and the folded node's own line both read splitgate.Count, which is the current mode's counting. Under the unset pin it is Items, byte for byte."
+  - "the split gate is armed unless somebody wrote `AFORGE_SPLITGATE=0`, and a division has to name six separate items to stand — no longer true: the gate is OFF unless somebody pins it ON. With nothing set, every division the planner drew and every division a worker asks for is kept. `AFORGE_SPLITGATE=1` puts the six-item count back, `judgment` asks the plan's own sizing and falls back to that count, `0` is off spelled out, and anything unrecognised is off — the reverse of the old rule, because off is now the default and a typo must not put a floor back under somebody's divisions."
+  - "`AFORGE_SPLITGATE=lanes` counts the shapes a division is written down in and takes a written-out division at its word — gone. It was one arm of the experiment, it helped one planner and hurt another, and internal/splitgate/lanes.go, `Lanes`, `ExplicitDivision` and `Count` were deleted with it. The word now reads as off like any other unrecognised value."
+  - "the six-item floor is what refuses a narrow division in the v3 engine — only where a run pinned the gate on. `divide_work`'s own description no longer promises the floor on an unpinned binary, because a model reasons from that sentence and would talk itself out of a division nobody was going to refuse. The floor still arms the verb: work whose text names fewer than six items is not handed `divide_work` at all, which did not change."
+  - "internal/splitgate.Count is the current mode's counting — gone with the mode that needed it. There is one counting again, `Items`, and callers read it directly; what a pin changes is who decides, not what is counted."
 ---
 
-The gate folds a real division because its reading of the brief is a count of
-digits standing beside plurals, so a brief that names three lanes over one file
-counts zero and runs as one over-large sitting (#418, found by the autopsy on
-#252). Two repairs were proposed and neither was argued to a conclusion — count
-better, or stop counting and ask the plan's own sizing — and the owner ruled
-that the choice is made by a designed experiment, planner arm against gate mode,
-rather than by whichever repair somebody wrote down first.
+The gate shipped armed, with a six-item floor under every division, and #418
+said the floor folds real divisions: a brief that names three lanes over one
+file counts zero items and is refused. Two repairs were proposed and neither was
+argued to a conclusion, so PR #435 made every reading reachable from one binary
+and the choice was handed to a designed experiment — four planner arms against
+four readings of this gate, 273 judged draws on the plan door.
 
-So both live here at once, behind the pin the gate has always used as its
-rollback switch, and one binary runs any of them. `lanes` reads a numbered or bulleted
-list, a spelled-out number beside a plural, and a list of distinct file paths as
-counts against the same six-item floor — and carries one law on top of the
-count: a division somebody wrote out is not a pile to be counted. Where the
-brief names its parts as parts (`L1 … L3`, `lane 1 / lane 2`, `part A / part B`)
-the division stands with no floor applied, because the floor was calibrated on
-counts of items and a person naming lanes has already answered the question it
-exists to ask. A plain list marker is not a label — the bench corpus numbers its
-three bugs and its four modules down the page, and those two are the measurement
-that three and four do not pay. `judgment` keeps a division
-whose work leaves are each sized a sitting and owe each other nothing, whatever
-the brief counted, and falls back to the count everywhere else — an unsized
-leaf, a leaf still oversized, or any edge between two leaves — so it can only
-ever add keeps to what the shipped gate would have done. That one-directionality
-is what makes it readable as a factor rather than as a different gate.
+**The experiment picked the gate off.** The front it drew is the stages planner
+with the gate having no say: the same quality as the best armed cell, a third of
+its unrecoverable draws, and the lowest cost of the three cells that tie at the
+top. Every armed reading paid for the narrow divisions it refused by folding
+wide ones. `docs/design/plan-gate-doe/REPORT.md` is the report and the decision.
 
-The selector lives in the package and not in either caller, because the law that
-put the counting there in the first place is that one decision may not have two
-implementations. Nothing moves with the pin unset: the same count, the same
-floor, the same yes, and the same sentence written into a folded node.
+So the default moved, and it moved on measurement rather than on argument. The
+count is not wrong everywhere and is kept as `AFORGE_SPLITGATE=1`; the plan's
+own sizing is kept as `judgment`, which can only add keeps to that count. The
+counting arm the experiment ran against them lost and its code is deleted rather
+than left as a fourth thing a person could type.
 
-This is scaffolding with a known end. When the experiment names a winner, that
-mode becomes the gate, the selector is deleted, and `AFORGE_SPLITGATE` goes back
-to meaning nothing but `0`.
+What did not change: the counting itself, the sentence a folded node carries
+verbatim (#418 quotes it), the free-lane test, the mastermind's reading of every
+division, and which work is offered the split at all — a worker is still only
+handed `divide_work` where something read the work as wide, and the brief's own
+count is still one of the three readings that does that.

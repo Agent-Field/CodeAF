@@ -6,15 +6,24 @@ import (
 	"testing"
 )
 
-// THE UNPINNED BINARY IS THE SHIPPED BINARY. Everything else in this file
-// describes an experiment; this describes the thing the experiment must not
-// disturb. Every mode is reachable only by somebody typing the pin, and with
-// nobody having typed anything the answers here are the ones the gate gave
-// before the modes existed — the same count, the same floor, the same yes.
-func TestTheUnpinnedBinaryDecidesExactlyAsItShipped(t *testing.T) {
+// THE UNPINNED BINARY KEEPS EVERY DIVISION IT IS SHOWN.
+//
+// THIS PIN MOVED, AND IT MOVED ON A MEASUREMENT. Until 2026-09-02 this file
+// held the opposite test: an unpinned binary was the gate as shipped, counting
+// items against [Floor], and every other reading was something a person had to
+// type. Then a designed experiment ran four planner arms against four readings
+// of this gate over 273 judged plan draws, and the front it drew is the stages
+// planner with the gate having NO SAY — same quality as the best armed cell,
+// a third of its unrecoverable draws, the lowest cost of the front
+// (docs/design/plan-gate-doe/REPORT.md). So the default is off, and the count
+// is what somebody opts into.
+func TestTheUnpinnedBinaryKeepsEveryDivisionThePlannerDrew(t *testing.T) {
 	t.Setenv("AFORGE_SPLITGATE", "")
-	if got := Mode(); got != ModeCount {
-		t.Fatalf("the unpinned mode is %q, want %q", got, ModeCount)
+	if got := Mode(); got != ModeOff {
+		t.Fatalf("the unpinned mode is %q, want %q", got, ModeOff)
+	}
+	if Armed() {
+		t.Error("the gate has the last word with nobody having pinned it on")
 	}
 	for _, probe := range []string{
 		"twelve image files need captions",
@@ -22,42 +31,57 @@ func TestTheUnpinnedBinaryDecidesExactlyAsItShipped(t *testing.T) {
 		"L1: rewrite the headings. L2: link the cross-references. L3: add contents.",
 		"HANDBOOK.md is one file of thirty chapters",
 		"keep each section under 250 words",
+		"fix the one bug",
 		"",
 	} {
-		if got, want := Count(probe), Items(probe); got != want {
-			t.Errorf("Count(%q) = %d, want the shipped Items reading %d", probe, got, want)
-		}
-		if got, want := Judge(probe, nil).Keep, WorthIt(probe); got != want {
-			t.Errorf("Judge(%q).Keep = %v, want the shipped WorthIt answer %v", probe, got, want)
+		if !Judge(probe, nil).Keep {
+			t.Errorf("the unpinned gate folded %q; off means every division stands as drawn", probe)
 		}
 	}
-	// And the sizing a judgment run would read is not read at all here: three
-	// independent atomic leaves cannot rescue a brief that counts zero.
-	if Judge("rewrite the handbook in three lanes", threeIndependentAtomicLeaves()).Keep {
-		t.Error("an unpinned binary kept a division on the plan's sizing; only AFORGE_SPLITGATE=judgment does that")
+	// THE COUNT IS STILL REPORTED, and it is still the shipped reading. Arming
+	// reads it (internal/session's enumeratesWidth), a run's log shows what a
+	// floor would have made of a division, and `1` puts it back in charge — so
+	// what the experiment moved is who decides, not what the counter counts.
+	for _, probe := range []struct {
+		text  string
+		items int
+	}{
+		{"twelve image files need captions", 12},
+		{"there are 12 image files", 12},
+		{"keep each section under 250 words", 0},
+		{"HANDBOOK.md is one file of thirty chapters", 0},
+	} {
+		if got := Judge(probe.text, nil).Items; got != probe.items {
+			t.Errorf("Judge(%q).Items = %d, want the shipped reading %d", probe.text, got, probe.items)
+		}
 	}
 }
 
-// THE PIN IS THE SELECTOR, AND AN UNREADABLE PIN IS NOT AN ARM. A typo must
-// leave a run on the shipped gate rather than quietly moving it onto an
-// experimental one, which is the same rule the escape hatch has always had in
-// the other direction: `0` and nothing else turns the gate off.
-func TestThePinSelectsTheModeAndAnythingUnknownIsTheShippedOne(t *testing.T) {
+// THE PIN IS THE SELECTOR, AND AN UNREADABLE PIN IS OFF.
+//
+// The rule reversed with the default. While the gate was armed by default an
+// unknown word had to leave a run on the shipped gate, because the danger was a
+// typo moving somebody onto an experimental arm. The danger now runs the other
+// way: off is what was measured, and a typo must not put a floor back under
+// somebody's divisions. `lanes` is in the table because it was a real arm of
+// the experiment and people have typed it — it lost, its code is gone, and the
+// word now reads as off like any other.
+func TestThePinSelectsTheModeAndAnythingUnknownIsOff(t *testing.T) {
 	for _, probe := range []struct {
 		pin  string
 		want GateMode
 	}{
-		{"", ModeCount},
-		{"1", ModeCount},
+		{"", ModeOff},
 		{"0", ModeOff},
-		{"lanes", ModeLanes},
+		{"1", ModeCount},
+		{" 1 ", ModeCount},
 		{"judgment", ModeJudgment},
 		{" JUDGMENT ", ModeJudgment},
-		{"Lanes", ModeLanes},
-		{"off", ModeCount},
-		{"false", ModeCount},
-		{"judgement", ModeCount},
-		{"2", ModeCount},
+		{"lanes", ModeOff},
+		{"on", ModeOff},
+		{"true", ModeOff},
+		{"judgement", ModeOff},
+		{"2", ModeOff},
 	} {
 		t.Setenv("AFORGE_SPLITGATE", probe.pin)
 		if got := Mode(); got != probe.want {
@@ -69,9 +93,10 @@ func TestThePinSelectsTheModeAndAnythingUnknownIsTheShippedOne(t *testing.T) {
 	}
 }
 
-// OFF IS OFF IN EVERY SHAPE. The rollback switch is the one thing here that
-// predates the experiment and it has to keep meaning what it meant: the gate
-// has no say, whatever the brief counts and whatever the plan drew.
+// OFF IS OFF IN EVERY SHAPE. `0` predates the experiment as this gate's
+// rollback switch and it has to keep meaning what it meant, even now that it
+// selects what an unset pin selects anyway: the gate has no say, whatever the
+// brief counts and whatever the plan drew.
 func TestOffKeepsEveryDivisionWhateverTheBriefOrThePlanSays(t *testing.T) {
 	t.Setenv("AFORGE_SPLITGATE", "0")
 	for _, probe := range []struct {
@@ -89,113 +114,38 @@ func TestOffKeepsEveryDivisionWhateverTheBriefOrThePlanSays(t *testing.T) {
 	}
 }
 
-// LANES READS THE SHAPES A DIVISION IS WRITTEN DOWN IN. Each row is a phrasing
-// #418 measured reading as nothing, or one of the parameter shapes that must go
-// on reading as nothing however the counting widens.
-func TestLanesCountsNamedPartsAndStillRefusesParameters(t *testing.T) {
-	for _, probe := range []struct {
-		text  string
-		items int
-		lanes int
-	}{
-		// #418's held-out briefs, every one of them counted as zero today.
-		{"HANDBOOK.md is one file of thirty chapters. Deliver three lanes that share no lines.", 0, 30},
-		{"L1: rewrite the headings. L2: link the cross-references. L3: insert a contents section.", 0, 3},
-		{"four lanes over a log of about 4,000 lines", 0, 4},
-		{"rewrite server.py, client.py, parser.py, cache.py and index.py", 0, 5},
-		{"1. rewrite the header\n2. link the index\n3. add a summary\n", 0, 3},
-		{"- the parser\n- the cache\n- the units\n- the loader\n", 0, 4},
-		// the shapes the narrower counter already reads, unchanged
-		{"twelve image files need captions", 12, 12},
-		{"there are 12 image files", 12, 12},
-		{"9 endpoints, 4 tables", 9, 9},
-		// measures, budgets and parameters stay refused in the wider reading
-		{"keep each section under 250 words", 0, 0},
-		{"the run took 90 seconds", 0, 0},
-		{"give it 3 retries and 200 steps", 0, 0},
-		{"port 8080 is taken", 0, 0},
-		{"see e.g. the note above, i.e. the one at the top", 0, 0},
-		{"write REPORT.md and nothing else", 0, 0},
-		{"do not modify any file under tests/ or under app/", 0, 0},
+// AND `1` IS THE GATE EXACTLY AS IT SHIPPED. The mode did not change when the
+// default did: a run that pins the count gets the same floor over the same
+// reading it always got, down to folding #418's three-lane brief — which is
+// the fault that started the experiment and the reason this is a pin now rather
+// than what everybody gets.
+func TestTheCountPinIsTheGateExactlyAsItShipped(t *testing.T) {
+	t.Setenv("AFORGE_SPLITGATE", "1")
+	for _, probe := range []string{
+		"twelve image files need captions",
+		"there are 12 image files",
+		"L1: rewrite the headings. L2: link the cross-references. L3: add contents.",
+		"HANDBOOK.md is one file of thirty chapters",
+		"keep each section under 250 words",
+		"",
 	} {
-		if got := Items(probe.text); got != probe.items {
-			t.Errorf("Items(%q) = %d, want %d", probe.text, got, probe.items)
-		}
-		if got := Lanes(probe.text); got != probe.lanes {
-			t.Errorf("Lanes(%q) = %d, want %d", probe.text, got, probe.lanes)
-		}
-		if Lanes(probe.text) < Items(probe.text) {
-			t.Errorf("Lanes(%q) read fewer items than Items did; the wider reading may only widen", probe.text)
+		if got, want := Judge(probe, nil).Keep, WorthIt(probe); got != want {
+			t.Errorf("Judge(%q).Keep = %v, want the shipped WorthIt answer %v", probe, got, want)
 		}
 	}
-	t.Setenv("AFORGE_SPLITGATE", "lanes")
-	if !Judge("HANDBOOK.md is one file of thirty chapters. Deliver three lanes.", nil).Keep {
-		t.Error("lanes folded a brief naming thirty chapters; that is the reading the shipped counter got wrong")
+	if !Armed() {
+		t.Error("AFORGE_SPLITGATE=1 did not arm the gate")
+	}
+	// And the sizing a judgment run would read is not read here: three
+	// independent atomic leaves cannot rescue a brief that counts zero.
+	if Judge("rewrite the handbook in three lanes", threeIndependentAtomicLeaves()).Keep {
+		t.Error("the count pin kept a division on the plan's sizing; only AFORGE_SPLITGATE=judgment does that")
 	}
 }
 
-// A DIVISION SOMEBODY WROTE OUT IS NOT A PILE TO BE COUNTED — the mode's one
-// law, and the only reading in the package that skips the floor. Each keep row
-// is a brief in which the person named the workers rather than the material;
-// each fold row is material, counted against the floor exactly as before.
-func TestLanesTakesAWrittenOutDivisionAtItsWordAndStillCountsEverythingElse(t *testing.T) {
-	for _, probe := range []struct {
-		text     string
-		explicit bool
-		why      string
-	}{
-		// #418's replication, and the case the mode exists to answer.
-		{"HANDBOOK.md is one file of thirty chapters. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section.", true,
-			"three labelled lanes over one file are three people's work, however few the lanes"},
-		{"lane 1 takes the parser, lane 2 takes the cache", true, "a lane word and a designator, twice"},
-		{"part A is the schema and part B is the migration", true, "letter designators count the same as numbers"},
-		{"split it into p1, p2 and p3", true, "the label family is what makes it a division"},
-		// Material, not labour: still a count, still against the floor.
-		{"Create four separate, independent Python utility modules", false,
-			"four modules is the bench measurement that four does not pay"},
-		{"1. rewrite the header\n2. link the index\n3. add a summary\n", false,
-			"a numbered list is how people write down items; the corpus numbers its three bugs that way"},
-		{"- the parser\n- the cache\n- the units\n", false, "a bulleted list is the same shape as a numbered one"},
-		{"there are 12 image files", false, "a count is a count however large"},
-		{"rewrite server.py, client.py and parser.py", false, "naming the files says how much there is, not who does what"},
-		// One label is a version, a port or an identifier — never a lane.
-		{"upgrade to v2 before shipping", false, "one label is not a family"},
-		{"part of the report needs a rewrite", false, "`part of` names no part"},
-		{"the run took 90 seconds and used 3 retries", false, "parameters stay parameters"},
-	} {
-		if got := ExplicitDivision(probe.text); got != probe.explicit {
-			t.Errorf("ExplicitDivision(%q) = %v, want %v — %s", probe.text, got, probe.explicit, probe.why)
-		}
-	}
-
-	// AND THE LAW IS WHAT SEPARATES THIS ARM FROM THE SHIPPED ONE. The brief
-	// #418 opens with is folded by the gate as it ships and kept here, which is
-	// the whole of what the experiment is asking about.
-	const threeLanes = "HANDBOOK.md is one file. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section."
-	t.Setenv("AFORGE_SPLITGATE", "")
-	if Judge(threeLanes, nil).Keep {
-		t.Error("the shipped gate kept the three-lane brief; #418 reports that it folds it")
-	}
-	t.Setenv("AFORGE_SPLITGATE", "lanes")
-	if !Judge(threeLanes, nil).Keep {
-		t.Error("lanes folded a brief that names its three lanes; a division somebody wrote out is not a pile to be counted")
-	}
-	// Four modules is the bench corpus's own measurement and it may not move.
-	if Judge("Create four separate, independent Python utility modules, one file each", nil).Keep {
-		t.Error("lanes kept four modules; four modules is the measurement that four does not pay")
-	}
-	// The bypass is the lanes mode's alone. It is not a second counter and it
-	// is not something the judgment arm inherits, or the experiment could not
-	// say which repair moved a result.
-	t.Setenv("AFORGE_SPLITGATE", "judgment")
-	if Judge(threeLanes, nil).Keep {
-		t.Error("judgment took a written-out division at its word; its one repair is the plan's sizing")
-	}
-}
-
-// JUDGMENT ASKS THE PLAN AND NOT THE TEXT. The three rows are the whole
-// design: sizing says yes and the count is overruled; sizing says nothing
-// useful and the count decides; and an oversized leaf is never the yes.
+// JUDGMENT ASKS THE PLAN AND NOT THE TEXT. The rows are the whole design:
+// sizing says yes and the count is overruled; sizing says nothing useful and
+// the count decides; and an oversized leaf is never the yes.
 func TestJudgmentReadsThePlansSizingAndFallsBackToTheCount(t *testing.T) {
 	t.Setenv("AFORGE_SPLITGATE", "judgment")
 	// A brief with no digit in it at all, and three atomic leaves that owe each
@@ -210,8 +160,8 @@ func TestJudgmentReadsThePlansSizingAndFallsBackToTheCount(t *testing.T) {
 	// A STRICT CHAIN FALLS BACK TO THE COUNT, and on this brief the count is
 	// zero, so it folds. It falls back rather than refusing outright because
 	// that is what keeps this mode one-directional: it may only add keeps to
-	// what the shipped gate would have done. A chain over a brief that DOES
-	// enumerate its pile is kept, by the count, exactly as it is today.
+	// what the count would have done. A chain over a brief that DOES enumerate
+	// its pile is kept, by the count.
 	if Judge(narrow, strictChainOfAtomicLeaves()).Keep {
 		t.Error("judgment kept a strict chain over a brief naming nothing; three sittings in a row are one sitting")
 	}
@@ -233,42 +183,39 @@ func TestJudgmentReadsThePlansSizingAndFallsBackToTheCount(t *testing.T) {
 	if Judge(narrow, threeIndependentAtomicLeaves()[:1]).Keep {
 		t.Error("judgment kept a one-leaf graph as a division")
 	}
-	// THE COUNT IT FALLS BACK TO IS THE SHIPPED ONE. Judgment's repair is the
-	// sizing; giving it the wider counting as well would leave the experiment
-	// unable to say which of the two moved a result.
+	// THE COUNT IT FALLS BACK TO IS THE SHIPPED ONE, and it is the only
+	// counting left in the package: the wider reading the experiment ran
+	// against it lost and was deleted with it.
 	spelled := "HANDBOOK.md is one file of thirty chapters"
 	if Judge(spelled, nil).Keep {
-		t.Error("judgment read the wider lane counting; its one repair is the plan's sizing")
+		t.Error("judgment read a wider counting than the shipped one; its one repair is the plan's sizing")
 	}
 }
 
 // THE CORPUS DECISIONS HOLD IN EVERY MODE THAT COUNTS. The eight bench tasks
 // are the measurement this gate was built on — twelve image files and eight
-// endpoints divided, four modules and three bugs did not — and a widened
-// counting that quietly re-decided one of them would have thrown the
-// measurement away to fix a phrasing.
+// endpoints divided, four modules and three bugs did not — and a counting that
+// quietly re-decided one of them would have thrown the measurement away.
 //
-// ModeJudgment is not in the table because it reads the same count on the same
-// text; what it adds needs a plan, and the corpus is eight text files.
+// ModeOff is not in the table because it decides nothing: off keeps all eight.
+// ModeJudgment is, because on text alone — which is all the corpus is, eight
+// files with no plan behind them — it falls back to exactly this count.
 func TestEveryCountingModeStillDecidesTheCorpusTheWayItWasMeasured(t *testing.T) {
-	// The DECISION column is the measurement and may not drift. The lanes
-	// column is the wider counter's own reading, recorded so that a change to
-	// it is visible here rather than discovered as a re-decided task: the two
-	// closest to the floor are the five markdown notes and the five separate
-	// files of the API refactor, both of which must stay under six.
+	// The DECISION column is the measurement and may not drift; the ITEMS
+	// column is what the counter read, recorded so that a drift toward the
+	// floor is visible here rather than discovered as a re-decided task.
 	decided := map[string]struct {
 		items  int
-		lanes  int
 		divide bool
 	}{
-		"api refactor.txt":       {8, 8, true},
-		"bugfix repo.txt":        {3, 3, false},
-		"codegen modules.txt":    {1, 4, false},
-		"doc coverage.txt":       {0, 0, false},
-		"image captions.txt":     {12, 12, true},
-		"prose report.txt":       {0, 4, false},
-		"research synthesis.txt": {4, 5, false},
-		"review diff.txt":        {0, 0, false},
+		"api refactor.txt":       {8, true},
+		"bugfix repo.txt":        {3, false},
+		"codegen modules.txt":    {1, false},
+		"doc coverage.txt":       {0, false},
+		"image captions.txt":     {12, true},
+		"prose report.txt":       {0, false},
+		"research synthesis.txt": {4, false},
+		"review diff.txt":        {0, false},
 	}
 	paths, err := filepath.Glob(filepath.Join("..", "..", "bench", "swarm", "tasks", "*.txt"))
 	if err != nil {
@@ -288,10 +235,10 @@ func TestEveryCountingModeStillDecidesTheCorpusTheWayItWasMeasured(t *testing.T)
 		if err != nil {
 			t.Fatalf("reading %s: %v", name, err)
 		}
-		if got := Lanes(string(text)); got != want.lanes {
-			t.Errorf("%s: the wider counting reads %d lanes, want %d", name, got, want.lanes)
+		if got := Items(string(text)); got != want.items {
+			t.Errorf("%s: the counting reads %d items, want %d", name, got, want.items)
 		}
-		for _, mode := range []GateMode{ModeCount, ModeLanes, ModeJudgment} {
+		for _, mode := range []GateMode{ModeCount, ModeJudgment} {
 			t.Setenv("AFORGE_SPLITGATE", string(mode))
 			if got := Judge(string(text), nil).Keep; got != want.divide {
 				t.Errorf("%s under AFORGE_SPLITGATE=%s divides=%v, want the measured %v", name, mode, got, want.divide)

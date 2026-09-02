@@ -1010,22 +1010,24 @@ var OperatorEnvPins = []string{
 	"AFORGE_SWARM",
 	// AFORGE_SPLITGATE names which reading of the split gate the binary runs
 	// (internal/splitgate, read by cmd/aforge/cooperative.go and by
-	// internal/session's task_divide.go). It is four values, not two: unset or
-	// `1` is the gate as shipped, weighing a division against the items its
-	// evidence enumerates; `0` is the rollback it has always been, taking a
-	// request to divide at its word; `lanes` counts the shapes a division is
-	// written down in as well, and takes a division somebody wrote out as
-	// labelled lanes at its word with no floor applied; `judgment` asks the
-	// plan's own sizing instead of the text. Anything else reads as the shipped
-	// gate, so a typo cannot quietly move a run onto an experimental arm.
-	// The three beyond `0` are a measurement in progress (#418): one of them
-	// becomes the gate and the others stop being words anybody can type.
-	// It matters more now that swarm is the default, because the gate is what
-	// makes that default free: it is the thing that refuses narrow work. It is
-	// plumbing for the reason AFORGE_SWARM is — a wave's escape hatch while the
-	// gate proves itself against real runs, not a preference — and it has the
-	// same lifetime: it disappears when the gate has earned the last word,
-	// which is exactly the lifetime a persisted setting must not have.
+	// internal/session's task_divide.go). UNSET IS OFF: every division the
+	// planner or a worker drew is kept, and nothing here counts anything. `1`
+	// arms the gate as it shipped until 2026-09-02, weighing a division against
+	// the items its evidence enumerates against a six-item floor; `judgment`
+	// asks the plan's own sizing instead of the text, and falls back to that
+	// count where the plan has no opinion. `0` is the rollback spelling this
+	// switch has always carried and now selects what an unset pin does anyway.
+	// Anything unrecognised reads as OFF, because off is the default and a typo
+	// must not quietly put a floor back under somebody's divisions.
+	// THE DEFAULT MOVED ON MEASUREMENT, not on argument: a designed experiment
+	// ran four planner arms against four readings of this gate over 273 judged
+	// plan draws, and the front it drew is the planner with the gate off —
+	// docs/design/plan-gate-doe/REPORT.md, issues #418 and #384. It is plumbing
+	// for the reason AFORGE_SWARM is — it picks which decomposition doctrine the
+	// binary runs, not something the product has an opinion about — and it has
+	// the same lifetime: it disappears when nobody has a reason to reach for a
+	// floor any more, which is exactly the lifetime a persisted setting must not
+	// have.
 	"AFORGE_SPLITGATE",
 	// AFORGE_MECHANISM names which coordination mechanism the binary arms —
 	// today its one recognized word is `quorum`, which sets Config.Quorum the

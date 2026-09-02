@@ -21,6 +21,13 @@ func TestGateDecisions(t *testing.T) {
 // to be readable. These rows walk one graph — three sittings that owe each
 // other nothing, under a brief with no digit anywhere in it, which is #418's
 // replication — through every value the pin takes.
+//
+// THE UNPINNED ROW MOVED, AND IT MOVED ON A MEASUREMENT. It used to fold, and
+// the fold was the fault #418 reports. A designed experiment then ran four
+// planner arms against four readings of this gate over 273 judged plan draws
+// and put the arm with the gate off on the front
+// (docs/design/plan-gate-doe/REPORT.md), so an unpinned door now keeps what the
+// planner drew and the count is something a run asks for.
 func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 	const narrow = "HANDBOOK.md is one file. Deliver lanes that share no lines: rewrite the headings, link the cross-references, insert a contents section."
 	for _, probe := range []struct {
@@ -28,10 +35,10 @@ func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 		folded int
 		why    string
 	}{
-		{"", 3, "the shipped gate reads no digit beside a plural and folds, which is the bug #418 reports"},
-		{"1", 3, "the same gate, named"},
+		{"", 0, "the gate is off unless somebody pinned it on, so the division stands as drawn"},
 		{"0", 0, "the rollback switch has always taken the gate away entirely"},
-		{"lanes", 3, "this brief names no lanes, so the wider counting is still a count and three is under the six-item floor"},
+		{"lanes", 0, "the experiment's counting arm lost and its word now reads as off like any other"},
+		{"1", 3, "the shipped gate reads no digit beside a plural and folds, which is the bug #418 reports"},
 		{"judgment", 0, "three sittings that owe each other nothing are a real division whatever the brief counted"},
 	} {
 		t.Run(probe.pin, func(t *testing.T) {
@@ -51,20 +58,20 @@ func TestThePlanDoorFoldsOrKeepsAccordingToTheModePinned(t *testing.T) {
 	}
 }
 
-// AND A BRIEF THAT NAMES ITS LANES PARTS THE TWO COUNTING MODES. It is the
-// brief #418 opens with: the gate as it ships folds it, and the wider reading
-// takes the person's own division at its word and leaves it standing.
-func TestThePlanDoorKeepsAWrittenOutDivisionOnlyUnderLanes(t *testing.T) {
+// AND THE BRIEF #418 OPENS WITH IS KEPT UNLESS THE COUNT IS PINNED ON. Three
+// labelled lanes over one file are three people's work and the count reads them
+// as nothing; that disagreement is the whole of the issue, and the door now
+// only reaches it where a run asked for a floor.
+func TestThePlanDoorKeepsTheThreeLaneBriefUnlessTheCountIsPinnedOn(t *testing.T) {
 	const labelled = "HANDBOOK.md is one file. Deliver three lanes that share no lines. L1: rewrite every heading. L2: link every cross-reference. L3: insert a contents section."
 	for _, probe := range []struct {
 		pin    string
 		folded int
 	}{
-		{"", 3},
-		{"1", 3},
-		{"lanes", 0},
-		{"judgment", 0},
+		{"", 0},
 		{"0", 0},
+		{"judgment", 0},
+		{"1", 3},
 	} {
 		t.Run(probe.pin, func(t *testing.T) {
 			t.Setenv("AFORGE_SPLITGATE", probe.pin)
@@ -78,14 +85,15 @@ func TestThePlanDoorKeepsAWrittenOutDivisionOnlyUnderLanes(t *testing.T) {
 
 // AND THE SENTENCE A FOLDED NODE CARRIES DOES NOT MOVE. It is what a person
 // reads afterwards to learn why their plan is one node, and #418 quotes it
-// verbatim; an experiment that changed the wording would make every report of
-// this fault, before and after, unsearchable against each other.
+// verbatim; a change to the wording would make every report of this fault,
+// before and after, unsearchable against each other. The pin is on here
+// because a fold is now something a run asks for — the sentence is not.
 func TestTheFoldedNodeStillSaysWhatItAlwaysSaid(t *testing.T) {
-	t.Setenv("AFORGE_SPLITGATE", "")
+	t.Setenv("AFORGE_SPLITGATE", "1")
 	const narrow = "rewrite the handbook in lanes that share no lines"
 	graph := threeIndependentSittings(narrow)
 	if folded := gatePlanDivision(graph, narrow); folded != 3 {
-		t.Fatalf("the unpinned gate folded %d leaves, want 3", folded)
+		t.Fatalf("the pinned gate folded %d leaves, want 3", folded)
 	}
 	const want = "split gate: goal enumerates 0 items, under the 6-item floor — one sitting"
 	if got := graph.Nodes[0].Undivided; got != want {
