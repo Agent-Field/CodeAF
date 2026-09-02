@@ -264,7 +264,7 @@ var usageText = `aforge — build and revise task graphs
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
   aforge logs [--tail 40] [--follow] [--path] [--json]
-              [--run id] [--id id] [--tag t] [--model m] [--node n] [--body id]
+              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
                                 every model call aforge made — what was asked, which lane
                                 answered, what came back, and which ones are still in
                                 flight. The filters are exact and combine; --json prints

@@ -2329,21 +2329,34 @@ The filters are exact matches and they combine, so each one you add narrows furt
 aforge logs --tag turn            only the chat's own turns
 aforge logs --model z-ai/glm-5.3  only calls that asked for that model
 aforge logs --node build          only calls belonging to that piece of work
-aforge logs --id 4f2a91c7         one call — both its rows, out and back
+aforge logs --call 4f2a91c7       one call — both its rows, out and back
 aforge logs --run r-7f3a          one run's calls
 aforge logs --tail 200 --follow --tag leaf    they work with everything else
 ```
 
-`--id` takes the eight-character call id and is the one filter that shows you **both** rows
+`--call` takes the eight-character call id and is the one filter that shows you **both** rows
 of an attempt: the row written when the request went out — marked `sent` — and the row
 written when it came back. Everywhere else the reader shows the answer only, because a
 start whose end has arrived says nothing the end does not say better, and it is only a
 call with no answer yet that reads `⋯ in flight`.
 
+**When a filter finds nothing, the reader says which kind of nothing it is.** A search that
+came back empty and a question the log cannot answer yet are different answers, and being
+given the first when the truth is the second costs an afternoon:
+
+```
+no row in this log carries a run id yet     nothing on this machine is stamped with a run
+no calls for run r-7f3a                     rows do carry runs, and none of them is that one
+no call 4f2a91c7 in this log                that call id is not in the file
+```
+
 **`--run` is honest about today.** The run id is not written onto the rows yet — that is
-the debug-record foundation, still being built — so `--run` matches nothing at all right
-now, rather than pretending every call belongs to the run you named. It starts working the
-day the writer starts writing it, with no change to the command.
+the debug-record foundation, still being built — so on every machine right now `--run`
+prints `no row in this log carries a run id yet` rather than pretending every call belongs
+to the run you named. It starts working the day the writer starts writing it, with no
+change to the command. A tag, a model or a node that matched nothing gets no sentence: an
+empty listing already says a search came back empty, and only an id you pasted is
+something you believed was there.
 
 ## Show me the raw rows, and open one call's body
 

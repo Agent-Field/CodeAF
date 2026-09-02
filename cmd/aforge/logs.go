@@ -79,13 +79,13 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	flags.StringVar(&filter.tag, "tag", "", "only calls with this tag")
 	flags.StringVar(&filter.model, "model", "", "only calls asking for this model")
 	flags.StringVar(&filter.node, "node", "", "only calls belonging to this node")
-	flags.StringVar(&filter.id, "id", "", "only this call id, both of its rows")
+	flags.StringVar(&filter.call, "call", "", "only this call id, both of its rows")
 	if err := flags.Parse(reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("usage: aforge logs [--tail N] [--follow] [--path] [--json] " +
-			"[--run id] [--id id] [--tag t] [--model m] [--node n] [--body id]")
+			"[--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]")
 	}
 	// --body is answered before the ledger's own switch is consulted, because
 	// the two are different records: a person who turned the line-per-call log
@@ -116,8 +116,22 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	if err != nil {
 		return err
 	}
-	if err := writeCallLog(output, filter.keep(calls), *tail, *asJSON, filter, now()); err != nil {
+	kept := filter.keep(calls)
+	if err := writeCallLog(output, kept, *tail, *asJSON, filter, now()); err != nil {
 		return err
+	}
+	// A filter that kept nothing says so in words. Silence would be the reader
+	// telling a person the same thing for two different states — the log has no
+	// such call, and the log cannot answer that question yet — and it is the
+	// second one somebody would spend an afternoon on. --json is exempt: it is a
+	// passthrough, and a sentence in the person's voice on the end of a stream
+	// another program is parsing would be a bug in that program.
+	if !*asJSON && len(kept) == 0 {
+		if line := filter.nothingKept(calls); line != "" {
+			if _, err := fmt.Fprintln(output, line); err != nil {
+				return err
+			}
+		}
 	}
 	if !*follow {
 		return nil
@@ -139,7 +153,7 @@ type loggedCall struct {
 	run string
 }
 
-// logFilter is every --run, --id, --tag, --model and --node in one predicate,
+// logFilter is every --run, --call, --tag, --model and --node in one predicate,
 // built once and asked once per row. Each is an exact match and they combine by
 // AND: a person narrowing a log is adding conditions, never widening.
 type logFilter struct {
@@ -147,23 +161,23 @@ type logFilter struct {
 	tag   string
 	model string
 	node  string
-	id    string
+	call  string
 }
 
 // matches answers whether one row survives every condition that was named. A
 // condition nobody gave is not a condition, so an empty filter keeps the log
 // exactly as it reads today.
-func (f logFilter) matches(call loggedCall) bool {
+func (f logFilter) matches(row loggedCall) bool {
 	switch {
-	case f.tag != "" && call.record.Tag != f.tag:
+	case f.tag != "" && row.record.Tag != f.tag:
 		return false
-	case f.model != "" && call.record.Model != f.model:
+	case f.model != "" && row.record.Model != f.model:
 		return false
-	case f.node != "" && call.record.Node != f.node:
+	case f.node != "" && row.record.Node != f.node:
 		return false
-	case f.id != "" && call.record.ID != f.id:
+	case f.call != "" && row.record.ID != f.call:
 		return false
-	case f.run != "" && call.run != f.run:
+	case f.run != "" && row.run != f.run:
 		return false
 	}
 	return true
@@ -184,11 +198,50 @@ func (f logFilter) keep(calls []loggedCall) []loggedCall {
 
 // bothRows reports whether the start row of a finished attempt should be kept.
 //
-// It is asked for by --id and by nothing else. Naming one call is asking for
+// It is asked for by --call and by nothing else. Naming one call is asking for
 // that call's whole story, and the story is two rows: what went out, and what
 // came back. Every other reading of the log wants the answer only, because a
 // screen of paired rows is twice the log to read for nothing.
-func (f logFilter) bothRows() bool { return f.id != "" }
+func (f logFilter) bothRows() bool { return f.call != "" }
+
+// nothingKept is the one sentence a person gets when what they asked for is not
+// in the log, and it is deliberately three sentences and not one.
+//
+// NOTHING MATCHED BECAUSE NOTHING IS STAMPED IS A DIFFERENT ANSWER FROM NOTHING
+// MATCHED. The run id is not written onto a row by anything yet, so a bare "no
+// calls for that run" would send somebody looking for a run that was never
+// recorded rather than telling them the log cannot answer the question at all.
+// The two are told apart by the corpus and not by the filter: rows that carry a
+// run mean the question is answerable and this run is simply not in it.
+//
+// Only --run and --call get a sentence. A tag, a model or a node that matched
+// nothing is a search that came back empty, which the blank listing already
+// says; an id somebody pasted is a thing they believe exists, and being told it
+// does not is the answer.
+func (f logFilter) nothingKept(calls []loggedCall) string {
+	if f.run != "" {
+		if !anyRunStamped(calls) {
+			return "no row in this log carries a run id yet"
+		}
+		return fmt.Sprintf("no calls for run %s", f.run)
+	}
+	if f.call != "" {
+		return fmt.Sprintf("no call %s in this log", f.call)
+	}
+	return ""
+}
+
+// anyRunStamped reports whether anything in this log belongs to a run at all —
+// asked of the whole log and not of what survived the filter, because that is
+// the question about the writer rather than about the search.
+func anyRunStamped(calls []loggedCall) bool {
+	for _, row := range calls {
+		if row.run != "" {
+			return true
+		}
+	}
+	return false
+}
 
 // readCallLog reads every record in the file. A file that does not exist yet is
 // no records and no error — nothing has called a model on this machine, which
@@ -302,7 +355,7 @@ func renderCallLog(calls []loggedCall, tail int, bothRows bool, now time.Time) [
 // measurement nobody made.
 //
 // answered says whether this row's other half has already arrived. It only ever
-// matters on a start row, and only under --id, which is the one reading that
+// matters on a start row, and only under --call, which is the one reading that
 // shows both halves: a request whose reply is on the next line was SENT, and
 // calling it still in flight would be the line telling a person the opposite of
 // what the line under it says.

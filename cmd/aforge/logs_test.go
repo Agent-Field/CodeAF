@@ -219,7 +219,7 @@ func TestLogsFiltersByTagModelAndNode(t *testing.T) {
 // whole story, and the story is what went out as well as what came back.
 func TestLogsByCallIDShowsBothRowsOfThatAttempt(t *testing.T) {
 	var out strings.Builder
-	if err := runLogsWith([]string{"--id", "aaaaaaaa"}, &out, fixtureLog(t), stoppedClock(t)); err != nil {
+	if err := runLogsWith([]string{"--call", "aaaaaaaa"}, &out, fixtureLog(t), stoppedClock(t)); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
@@ -257,8 +257,105 @@ func TestLogsFiltersByRunAndSaysNothingForARowThatHasNoRun(t *testing.T) {
 	if err := runLogsWith([]string{"--run", "r-none"}, &missing, path, stoppedClock(t)); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(missing.String()); got != path {
-		t.Errorf("a run nothing belongs to prints the path and no calls: %q", got)
+	if got := strings.TrimSpace(missing.String()); got != path+"\nno calls for run r-none" {
+		t.Errorf("a run nothing belongs to says so: %q", got)
+	}
+}
+
+// unstampedLog is the log every machine actually has today: not one row on it
+// carries a run id, because nothing writes one yet.
+func unstampedLog(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "calls.jsonl")
+	rows := make([]string, 0, len(fixtureRows()))
+	for _, row := range fixtureRows() {
+		rows = append(rows, strings.ReplaceAll(row, `"run":"r-7f3a",`, ""))
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(rows, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestLogsTellsAnEmptySearchApartFromAQuestionItCannotAnswer is the whole point
+// of these three sentences. A log with no run ids on it cannot say whether a
+// run had calls, and answering "no calls for that run" would send a person
+// looking for a run that was never recorded.
+func TestLogsTellsAnEmptySearchApartFromAQuestionItCannotAnswer(t *testing.T) {
+	for _, probe := range []struct {
+		name  string
+		path  string
+		flags []string
+		want  string
+	}{
+		{
+			"nothing on this log is stamped with a run at all",
+			unstampedLog(t),
+			[]string{"--run", "r-7f3a"},
+			"no row in this log carries a run id yet",
+		},
+		{
+			"rows do carry runs, and this is not one of them",
+			fixtureLog(t),
+			[]string{"--run", "r-nosuch"},
+			"no calls for run r-nosuch",
+		},
+		{
+			"a call id a person pasted that is not in the file",
+			fixtureLog(t),
+			[]string{"--call", "deadbeef"},
+			"no call deadbeef in this log",
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			var out strings.Builder
+			if err := runLogsWith(probe.flags, &out, probe.path, stoppedClock(t)); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			if len(lines) != 2 || lines[1] != probe.want {
+				t.Fatalf("%v printed:\n%s\nwant the path and %q", probe.flags, out.String(), probe.want)
+			}
+		})
+	}
+}
+
+// TestLogsSaysNothingAtAllWhenJSONMatchedNothing: --json is a passthrough, and
+// a program parsing the rows must not be handed an English sentence on the end
+// of them.
+func TestLogsSaysNothingAtAllWhenJSONMatchedNothing(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--json", "--run", "r-nosuch"},
+		{"--json", "--call", "deadbeef"},
+		{"--json", "--tag", "nosuchtag"},
+	} {
+		var out strings.Builder
+		if err := runLogsWith(flags, &out, fixtureLog(t), stoppedClock(t)); err != nil {
+			t.Fatal(err)
+		}
+		if out.String() != "" {
+			t.Errorf("%v should have printed nothing at all, got %q", flags, out.String())
+		}
+	}
+}
+
+// TestLogsLeavesAnEmptySearchBlankWhereTheBlankIsTheAnswer: a tag or a model
+// that matched nothing is a search that came back empty, and the listing
+// already says so. Only an id somebody pasted earns a sentence.
+func TestLogsLeavesAnEmptySearchBlankWhereTheBlankIsTheAnswer(t *testing.T) {
+	path := fixtureLog(t)
+	for _, flags := range [][]string{
+		{"--tag", "nosuchtag"},
+		{"--model", "nosuch/model"},
+		{"--node", "nosuchnode"},
+	} {
+		var out strings.Builder
+		if err := runLogsWith(flags, &out, path, stoppedClock(t)); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(out.String()); got != path {
+			t.Errorf("%v should print the path and nothing else, got %q", flags, got)
+		}
 	}
 }
 
