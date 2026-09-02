@@ -37,6 +37,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meet it: reading the figure, and finding it beside the call log.
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
+		// And the reader itself: a person with a log in front of them wants one
+		// call out of it, or wants the rows a program can read.
+		{"find one call in the log", "models-and-cost"},
+		{"show me the raw rows", "models-and-cost"},
+		{"filter aforge logs by model", "models-and-cost"},
+		{"open a call's body", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.

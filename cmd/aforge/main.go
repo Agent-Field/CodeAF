@@ -263,10 +263,14 @@ var usageText = `aforge — build and revise task graphs
   aforge services stop <name> [--db path]
   aforge wake [--db path] [--max-seconds N]  run one full resident pass and exit
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
-  aforge logs [--tail 40] [--follow] [--path]
-                                every model call aforge made — what was asked, what came
-                                back, and which ones are still in flight. Prompts are not
-                                in it. AFORGE_CALL_LOG=off turns it off, or names a file.
+  aforge logs [--tail 40] [--follow] [--path] [--json]
+              [--run id] [--id id] [--tag t] [--model m] [--node n] [--body id]
+                                every model call aforge made — what was asked, which lane
+                                answered, what came back, and which ones are still in
+                                flight. The filters are exact and combine; --json prints
+                                the rows as they are on disk; --body prints one call's
+                                recorded request and reply. Prompts are not in the line.
+                                AFORGE_CALL_LOG=off turns it off, or names a file.
   aforge cache                  what the shared build cache holds, and how big it is
   aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
                                 path, then asks you to type "clean" — --yes skips the
