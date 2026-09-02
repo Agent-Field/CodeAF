@@ -65,9 +65,13 @@ Seven things in `ci.yml`, job name `check`, and then one more job:
 **`touched packages`** is the second job: the full suite of every package the
 change touched, through `make test`, so it reads the same ledger and the same
 timeout as a laptop. It runs beside `check` rather than after it, so the light
-answer still arrives in its few minutes. It reports rather than blocks today, for
-the reason given under "What blocks a merge" — promote it once it has been green
-twice in a row.
+answer still arrives in its few minutes. It is neutral today: its test step may
+fail without the job failing, and a failure is a warning on the run and a line in
+its summary, never silence. A red job on a merged pull request reads as a red
+`dev` to everyone after it, and the day this landed `internal/tui3` carried three
+runner-only reds (#417) no change caused. Once it has been green twice in a row,
+delete `continue-on-error` and the warning step in `ci.yml`, and it blocks like
+`check`.
 
 Run the same thing before you push:
 

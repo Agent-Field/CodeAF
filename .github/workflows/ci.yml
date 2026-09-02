@@ -174,10 +174,14 @@ jobs:
   # than one after the other.
   #
   # It reads the same ledger and the same timeout as `make test`, through
-  # `make test`, so a red here is a red on a clean laptop too. It reports rather
-  # than blocks today, for the reason docs/rules/ci.md gives for `full tests`:
-  # a required check that has never been seen green blocks all work on its
-  # first day. Promote it the same way, once it has been green twice in a row.
+  # `make test`, so a red here is a red on a clean laptop too. IT IS NEUTRAL
+  # TODAY: the test step may fail without the job failing, and a failure is
+  # written as a warning on the run and in its summary. That is because a red
+  # job on a merged pull request reads as a red dev to everyone who merges
+  # after it, and on the day this landed internal/tui3 carried three runner-
+  # only reds (#417, the TERM seam) that no change here caused. Once it has
+  # been green twice in a row, delete `continue-on-error` and the warning
+  # step, and it blocks like `check`.
   # THE JOB'S OWN CEILING SITS ABOVE THE GO ONE. `make test` gives each
   # package fifteen minutes so a hang panics with the package's name; a job
   # killed by GitHub first names nothing. A wide change can touch the three
@@ -195,6 +199,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test the packages this change touched
+        id: touched
+        continue-on-error: true
         env:
           # A pull request diffs against its base; a push against what the
           # branch was before it. A first push has no before, and diffs one
@@ -220,3 +226,12 @@ jobs:
           # down under the link load of the heavy binaries twice, and a change
           # touching tui3, session and cmd/aforge links all three at once.
           make test TEST_FLAGS='-p 1' PKGS="$pkgs"
+
+      # THE RED IS SAID, NOT SWALLOWED. Neutral does not mean silent: a warning
+      # on the run and a line in its summary name the job and the log.
+      - name: Say so when it was red
+        if: steps.touched.outcome == 'failure'
+        run: |
+          echo "::warning title=touched packages red::a package this change touched fails its suite on the runner; read the job log. The job is neutral until it has been green twice in a row (ci.yml)."
+          echo '### touched packages: red' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A package this change touched fails its suite on the runner. The job is neutral until it has been green twice in a row; read the log above.' >> "$GITHUB_STEP_SUMMARY"
