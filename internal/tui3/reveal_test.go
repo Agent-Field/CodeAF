@@ -292,3 +292,103 @@ func TestMeterEaseIsFastThenFine(t *testing.T) {
 		t.Fatalf("the first step was not the largest: %v", steps)
 	}
 }
+
+// ── THE FIGURES COUNT UP ────────────────────────────────────────────────────
+
+// THE STATUS LINE'S FIGURES WALK, AND THIS IS WHERE THAT IS PROVEN.
+//
+// #437 shipped the claim and not the behaviour: the eased token total was read
+// by no renderer at all, and the context weight was pinned to the reading it was
+// supposed to be easing towards, so two of the three figures could not have
+// moved. Nothing on a real screen counted up. The three readers are asserted
+// here together, under a pinned clock, because the defect was invisible exactly
+// where the machinery looked right.
+func TestTheStatusLineFiguresCountUp(t *testing.T) {
+	agent := &fakeAgent{model: "m", weight: 4000}
+	a := newTestApp(agent)
+	base := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	now := base
+	a.clock = func() time.Time { return now }
+	a.ctxWindow = 1_000_000
+	a.state = stateWorking
+	a.revealMoved = now
+	a.measureContext()
+
+	// A turn's first reading, and a weight the pass under it has just changed.
+	a.take(session.Usage{CostUSD: 0.0010, Input: 300, Output: 100})
+	agent.weight = 40_000
+	a.measureContext()
+	if a.spendDrawn() != 0 || a.tokensDrawn() != 0 || a.ctxDrawn() != 4000 {
+		t.Fatalf("the figures jumped on the event: $%v %d tok %d ctx",
+			a.spendDrawn(), a.tokensDrawn(), a.ctxDrawn())
+	}
+
+	// A SECOND READING MID-WALK RAISES THE TARGET, it does not restart the walk.
+	var costs []float64
+	var toks, ctxs []int
+	for i := 0; a.meterChasing; i++ {
+		if i > 40 {
+			t.Fatalf("the figures were still walking after %d slots: %v", i, costs)
+		}
+		now = now.Add(frameInterval)
+		a.tickReveal(now)
+		costs = append(costs, a.spendDrawn())
+		toks = append(toks, a.tokensDrawn())
+		ctxs = append(ctxs, a.ctxDrawn())
+		if i == 3 {
+			a.take(session.Usage{CostUSD: 0.0026, Input: 3000, Output: 1000})
+		}
+	}
+
+	// Each figure passed through readings that are neither where it started nor
+	// where it landed — which is the whole of "counts up" — and rose the whole
+	// way, because a meter that went backwards would be a figure disagreeing
+	// with the books it is chasing.
+	for _, m := range []struct {
+		name  string
+		steps []float64
+		want  float64
+	}{
+		{"the bill", costs, 0.0026},
+		{"the token total", asFloats(toks), 4000},
+		{"the context weight", asFloats(ctxs), 40000},
+	} {
+		between := 0
+		for i, at := range m.steps {
+			if i > 0 && at < m.steps[i-1] {
+				t.Fatalf("%s went backwards at step %d: %v", m.name, i, m.steps)
+			}
+			if at > 0 && at < m.want {
+				between++
+			}
+		}
+		if between < 2 {
+			t.Fatalf("%s jumped — %d readings between nothing and %v: %v",
+				m.name, between, m.want, m.steps)
+		}
+		if got := m.steps[len(m.steps)-1]; got != m.want {
+			t.Fatalf("%s landed on %v, want the books' %v", m.name, got, m.want)
+		}
+	}
+
+	// AND THE SNAP RULE HOLDS. The moment the turn is no longer running the
+	// exact books are drawn, with no frame needed to make it so.
+	a.state = stateWorking
+	a.take(session.Usage{CostUSD: 0.0100, Input: 9000, Output: 1000})
+	if a.spendDrawn() == 0.0100 {
+		t.Fatal("a fresh reading did not start a walk")
+	}
+	a.state = stateInterrupted
+	if a.spendDrawn() != 0.0100 || a.tokensDrawn() != 10000 {
+		t.Fatalf("a stopped turn still drew a figure in motion: $%v %d tok",
+			a.spendDrawn(), a.tokensDrawn())
+	}
+}
+
+func asFloats(in []int) []float64 {
+	out := make([]float64, len(in))
+	for i, n := range in {
+		out[i] = float64(n)
+	}
+	return out
+}

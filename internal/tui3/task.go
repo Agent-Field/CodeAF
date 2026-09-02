@@ -4206,11 +4206,16 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 		return nil, -1, -1, -1
 	}
 	var segs []string
+	// THE BOOKS DECIDE WHETHER A FIGURE IS DRAWN AND THE CLOCK DECIDES WHAT IT
+	// SAYS. The guards ask the exact totals, because the emptiness law is about
+	// whether there is anything to report; the figures themselves come off the
+	// eased readings, so this foot counts up with the status line rather than
+	// jumping beside it (reveal.go).
 	if a.cost > 0 {
-		segs = append(segs, dollars(a.cost))
+		segs = append(segs, dollars(a.spendDrawn()))
 	}
 	if a.tokens > 0 {
-		segs = append(segs, tokenWord(a.tokens)+" tok")
+		segs = append(segs, tokenWord(a.tokensDrawn())+" tok")
 	}
 	members := a.railMembers()
 	for _, g := range railFootOrder {

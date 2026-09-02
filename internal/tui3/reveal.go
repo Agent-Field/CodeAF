@@ -434,6 +434,32 @@ func (a *app) tickReveal(now time.Time) {
 	a.tickMeters(slots, snap)
 }
 
+// armMeters starts the figures chasing, FROM the readings a person is looking at
+// rather than from the ones that have just landed. Every caller therefore hands
+// in what was on the screen a moment ago; nothing here reads the books, because
+// by the time this is called the books have already moved.
+//
+// IT DECLINES OUTSIDE A RUNNING TURN, which is the snap rule said once instead
+// of at every call site: a restore, a switch, a settle and the screen-reader
+// tier all want the exact figure, because nobody is watching those numbers grow.
+// It also declines while a chase is already running — that chase is already
+// walking toward whatever the books now say, and re-arming it would drag the
+// figure backwards to where it started.
+func (a *app) armMeters(cost float64, tokens, ctx int) {
+	if a.linear || a.meterChasing || a.state != stateWorking {
+		return
+	}
+	a.shownCost, a.shownTokens, a.shownCtx = cost, tokens, ctx
+	a.meterChasing = true
+}
+
+// snapMeters puts the drawn figures on the books and stops the chase. It is the
+// other half of the rule and the only way a chase ever ends.
+func (a *app) snapMeters() {
+	a.shownCost, a.shownTokens, a.shownCtx = a.spendShown(), a.tokens, a.ctxTokens
+	a.meterChasing = false
+}
+
 // tickMeters walks the drawn cost, token total and context weight toward
 // the books. It chases only while a turn is running and something has asked
 // it to ([app.take] sets the flag); every other reading — a restore, a
@@ -442,10 +468,7 @@ func (a *app) tickReveal(now time.Time) {
 // bill that conversation already had.
 func (a *app) tickMeters(slots int, snap bool) {
 	if !a.meterChasing || snap || a.state != stateWorking {
-		a.shownCost = a.spendShown()
-		a.shownTokens = a.tokens
-		a.shownCtx = a.ctxTokens
-		a.meterChasing = false
+		a.snapMeters()
 		return
 	}
 	cost := a.spendShown()
@@ -468,6 +491,17 @@ func (a *app) spendDrawn() float64 {
 		return a.spendShown()
 	}
 	return a.shownCost
+}
+
+// tokensDrawn is the session's token total in motion — the figure the task
+// column's foot paints beside the bill (task.go's [app.railFootRows]), which is
+// the one place on this surface a running total of tokens is drawn while it is
+// still growing. /status prints the exact books instead, as it does for money.
+func (a *app) tokensDrawn() int {
+	if !a.chasingMeters() {
+		return a.tokens
+	}
+	return a.shownTokens
 }
 
 // ctxDrawn is the conversation weight the meter paints, on the same terms.

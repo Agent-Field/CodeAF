@@ -4767,19 +4767,17 @@ func (a *app) take(u session.Usage) {
 	// the clock has somewhere to ease from; a restore or a switch lands
 	// on the exact bill, because nobody is watching those numbers grow
 	// (reveal.go).
-	if a.state == stateWorking && !a.linear {
-		if !a.meterChasing && (a.cost != prevCost || a.tokens != prevTok) {
-			a.shownCost = prevCost
-			a.shownTokens = prevTok
-			a.shownCtx = a.ctxTokens
-			a.meterChasing = true
-		}
-		return
+	if a.cost != prevCost || a.tokens != prevTok {
+		// The figures ease FROM where they were, which is why the previous
+		// readings are carried in rather than read back off the fields the lines
+		// above have already moved (reveal.go's [app.armMeters]). The context
+		// weight is not one of them: [app.take] never touches it, so the field
+		// still holds the reading the person is looking at.
+		a.armMeters(prevCost, prevTok, a.ctxTokens)
 	}
-	a.shownCost = a.spendShown()
-	a.shownTokens = a.tokens
-	a.shownCtx = a.ctxTokens
-	a.meterChasing = false
+	if a.state != stateWorking || a.linear {
+		a.snapMeters()
+	}
 }
 
 // shapingPreviewField names the argument the BRIEF BEING SHAPED is previewed
@@ -7112,7 +7110,20 @@ func (a *app) measureContext() {
 	if a.agent == nil {
 		return
 	}
+	// AND A WEIGHT THAT MOVED WHILE THE TURN RUNS IS WALKED, from the reading
+	// that is on the screen right now. This is the only place the weight ever
+	// changes, so it is the only place that can arm the walk for it — and
+	// [app.take]'s arming cannot do it, because a turn's usage lands long before
+	// the pass that changes what the conversation weighs. The compaction call
+	// site is the one this is really for: it changes the meter by an order of
+	// magnitude in the middle of a turn (see [app.compacted]). At the settle the
+	// turn is no longer running, so [app.armMeters] declines and the exact figure
+	// is drawn — which is the snap rule, not an exception to it.
+	was := a.ctxTokens
 	a.ctxTokens = a.agent.ContextTokens()
+	if a.ctxTokens != was {
+		a.armMeters(a.spendShown(), a.tokens, was)
+	}
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog
 		// resolves in the background AFTER this surface is already up, and it
