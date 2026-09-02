@@ -269,12 +269,96 @@ func askLog(asks []lanestub.Ask) string {
 // the model's endpoints page, which is the moment its frontier stops being
 // empty.
 func waitForSheet(server *lanestub.Server, within time.Duration) bool {
+	// The page is fetched, decoded and primed on the beat's own goroutine, so
+	// [waitForSheetOf] waits a moment past the fetch: it is the difference
+	// between a frontier that exists and one that is halfway through being
+	// written.
+	return waitForSheetOf(server, refusalModel, within)
+}
+
+// ── THE FRAME: A TURN THAT STOPPED ON A REFUSAL ─────────────────────────────
+//
+// TestTUIRefusedLane above proves what the routing DOES about a refusal, off
+// the router's own request log. It cannot prove what the row SAYS, and the
+// reason is a precedence rule in the surface rather than anything about
+// refusals: while a request is in flight the phase clock owns that cell
+// (render.go's servedRider), and once a turn lands the answer's own news
+// replaces whatever the rescue put there. So the sentence is on the screen
+// exactly when a turn STOPS on the refusal and nothing follows it.
+//
+// WHICH IS THE REPORTED RUN EXACTLY. Twenty-six minutes with nothing on the
+// wire and `· slow · trying nextbit…` left standing on the row until a
+// ten-minute window aged it out. This subtest stages that ending — a router
+// that publishes five machines and serves none of them — and reads the row.
+const voidModel = "openrouter/refusal-void"
+
+func TestTUIRefusedLaneRowAfterTheTurnStops(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("no tmux on PATH: this test drives the real binary in a real terminal")
+	}
+	binary(t)
+	published := lanestub.Profile{
+		Tools: true, Quant: "fp8", Context: 128000, MaxOut: 8000, Uptime: 100,
+		PriceIn: lanePrice, PriceOut: 2 * lanePrice,
+		TTFTms: [4]float64{20, 30, 40, 60}, Rates: [4]float64{900, 1000, 1100, 1200},
+	}
+	// Five machines on the endpoints page and not one of them in the serving
+	// set. Every request this run makes is refused, the walk spends itself
+	// moving between them, and the turn ends with the refusal as the last thing
+	// anybody was told.
+	server := lanestub.New(voidModel,
+		lanestub.Lane{Name: "Ghost", SheetOnly: true, Profile: published},
+		lanestub.Lane{Name: "Phantom", SheetOnly: true, Profile: published},
+		lanestub.Lane{Name: "Spectre", SheetOnly: true, Profile: published},
+		lanestub.Lane{Name: "Wraith", SheetOnly: true, Profile: published},
+		lanestub.Lane{Name: "Shade", SheetOnly: true, Profile: published},
+	)
+	t.Cleanup(server.Close)
+
+	home := newHome(t, map[string]any{
+		"model.talk":    voidModel,
+		"setup_seen_at": time.Now().UTC().Format(time.RFC3339Nano),
+		"lane.talk":     "auto",
+	})
+	ws := newWorkspace(t, "voidws", false)
+	r := startWithEnv(t,
+		[]string{"OPENROUTER_API_KEY=stub-key", "AFORGE_BASE_URL=" + server.RouterURL()},
+		"afe2e_refused_row", home, ws, tuiWide, 40)
+
+	if !waitForSheetOf(server, voidModel, 30*time.Second) {
+		t.Fatalf("the endpoints page was never fetched, so nothing could rank the lanes")
+	}
+	r.lit("say hello")
+	r.keys("Enter")
+
+	// THE ROW, ONCE THE TURN HAS STOPPED. `refused` is the word, and `slow` is
+	// the word this row used to say about exactly this 404.
+	screen := r.waitFor(60*time.Second, say(t, "laneRefusedTail"))
+	if strings.Contains(screen, say(t, "laneSlowTrying")) {
+		t.Errorf("the status row called a refusal slow:\n%s", screen)
+	}
+	// AND THE PROMISE IS GONE. A row still saying `trying …` after every arm
+	// has died is the retraction failing, which is the half of #266 a person
+	// stared at for ten minutes.
+	if strings.Contains(screen, say(t, "laneRefusedTrying")) {
+		t.Errorf("the row is still promising a rescue that has already failed:\n%s", screen)
+	}
+	t.Logf("the row after a turn that stopped on a refusal:\n%s", screen)
+
+	// Every machine it demanded, it demanded once.
+	for _, ghost := range []string{"Ghost", "Phantom", "Spectre", "Wraith", "Shade"} {
+		if asked := server.Requests(ghost); asked > 1 {
+			t.Errorf("%s was asked %d times, want at most one", ghost, asked)
+		}
+	}
+	t.Logf("the router's own log, %d requests:\n%s", len(server.Asks()), askLog(server.Asks()))
+}
+
+// waitForSheetOf is [waitForSheet] for a named model.
+func waitForSheetOf(server *lanestub.Server, model string, within time.Duration) bool {
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
-		if server.Sheets(refusalModel) > 0 {
-			// The page is fetched, decoded and primed on the beat's own
-			// goroutine; a moment here is the difference between a frontier
-			// that exists and one that is halfway through being written.
+		if server.Sheets(model) > 0 {
 			time.Sleep(2 * time.Second)
 			return true
 		}
