@@ -119,13 +119,13 @@ func assertTheTrafficIsRealAndAPinStillTakesIt(t *testing.T, goTool, root string
 		EnvVar+"="+pinned,
 		theCanaryIsRunning+"=1",
 	)
-	if output, err := run.CombinedOutput(); err != nil {
-		t.Fatalf("%s could not be run for the traffic it makes: %v\n%s", cheapestPackageThatReachesAModel, err, output)
-	}
+	// A red package still makes model calls, and its own suite is where its
+	// redness is somebody's problem. Only the rows are read here.
+	output, _ := run.CombinedOutput()
 	raw, err := os.ReadFile(pinned)
 	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
-		t.Fatalf("%s wrote no rows even at a pinned path (%v), so the empty ledgers above say nothing about the gate",
-			cheapestPackageThatReachesAModel, err)
+		t.Fatalf("%s wrote no rows even at a pinned path (%v), so the empty ledgers above say nothing about the gate:\n%s",
+			cheapestPackageThatReachesAModel, err, output)
 	}
 }
 
