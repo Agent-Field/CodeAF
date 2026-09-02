@@ -160,6 +160,32 @@ the half nothing else on the screen is saying.
 - **no foot at all** — an ordinary task still working. There is nothing to say at the bottom
   of the page, because the next thing to arrive is what happens next.
 
-The header is the other half of the answer and it has always been true: `queued`,
-`working`, `checking what it left`, `closing gaps · round 1 of 2`, `finishing`, `waiting`,
-`stopping`, `done`. If the header says the work is running, it is running.
+The header is the other half of the answer, and it has always been true: if it says the work
+is running, it is running. The next section lists every word it draws.
+
+## What the word at the top of a task's page means — the task page header says sizing the work, queued, checking what it left, the header word on a task's page
+
+The pinned header of a task's page carries one word for what the work is doing right now.
+Every word it draws:
+
+- `queued` — admitted and not started; nothing is in its way but a free slot. Where it is
+  held behind named work instead, it reads `waits: <the work it waits on>`.
+- `sizing the work` — the reading that decides whether this job is handed out in parts and
+  how. It is the first thing a brand new task does, before its worker has said a word, and
+  it is why a page can sit there for a few seconds with nothing on it.
+- `working` — its worker is getting on with it. This is the ordinary one.
+- `checking what it left` — the worker has stopped and what it produced is being read.
+- `closing gaps · round 1 of 2` — the check found something and a round is closing it.
+- `finishing` — a gap is being tied off on work that is otherwise done.
+- `waiting` — still running, but its calls to the model are being paced.
+- `stopping` — you ended it and it is still letting go; `stopped` once it has.
+- `needs your look` — it finished and nobody could say whether the work holds.
+- `merged`, `inplace`, `conflicted`, `stopped`, `done`, `failed` — it is over, and the word
+  says how it ended: its branch came home, it worked in your own folder, the merge clashed,
+  it was ended early, it landed with no branch to bring home, or it did not come off.
+- A sub-harness being designed says what it is doing in its own words — `designing`, and
+  `awaiting your look` while its page sits waiting on you.
+
+**`briefing a worker` is not one of them.** That one is on the status line under the message
+box in the conversation while your turn is being handed to a task — before the task, and its
+page, exist at all.

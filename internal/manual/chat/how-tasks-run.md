@@ -1644,25 +1644,31 @@ move them on its own until you decide what to do with the task in front of them.
 Dependencies can only point backwards — ids ascend — and that is enforced when a session's
 work is reloaded from disk.
 
-## A task's own sub-tasks are its problem — only the top of a family asks you
+## A task's own sub-tasks are its problem — can I accept a sub-task before its parent finishes, does a sub-task ask me for a look while the parent is running, nested tasks that need a look
 
 A task that hands part of its work out is the one that reads those pieces back. A sub-task's
 landing report goes to **its parent task's own worker**, not to this conversation — that
 worker has the `tasks` tool, the diff and the brief, and it is the only reader that can fold
-the piece into the whole. So while a parent is still working, a sub-task of it that needs a
-look is **not** put in front of you: the roster does not file that family under `needs you`,
-and a folded family row does not wear the `?` its own head is already holding.
+the piece into the whole.
 
-That flips the moment the parent lands. A sub-task still waiting on a decision when its
+**That is about who is asked first, never about whether you may answer.** A sub-task that
+lands needing a look is filed under `needs you` on the roster from the moment it lands,
+whatever its depth — and its landing card, its roster row and its own room all offer the
+answers there and then. You can accept it, send it back for another look, or call it not
+right while the task above it is still working. What the parent's running changes is how
+LOUD the demand is: while its head is alive the sub-task **folds** under that family, and the
+folded row wears its head's own news rather than the `?` the head is already holding.
+
+That fold ends the moment the parent lands. A sub-task still waiting on a decision when its
 parent settles has nobody left reading its news, so it is handed up one level — to the
 grandparent's worker if there is one, and to this conversation if there is not — with the
 line `task 4 has finished, and a piece of work it handed out is still waiting on somebody to
-decide:` and then the sub-task's own landing under it. Its row then rises to `needs you` on
-the roster like any other work that will not move without you.
+decide:` and then the sub-task's own landing under it. Nothing about its row moves: it was
+already `needs you`, and now the question is plainly yours.
 
-What this means in practice: **the demand you see is the top of the family, once.** You are
-never asked about six pieces of one job while the job is still running, and nothing quietly
-rots underneath a task that went home.
+What this means in practice: **the fold is a volume, not a mute.** One job with six pieces
+in it does not read as six demands while it is running, and nothing quietly rots underneath
+a task that went home.
 
 ## Choosing which model a task runs on
 
@@ -2034,7 +2040,7 @@ The first cause wins: a check that refuses a run which had already given up is w
 you to pick it up. A task from before these words existed reads `stopped — branch kept`
 whatever ended it.
 
-## What happens when a task fails
+## What happens when a task fails — my task's world could not be sealed, no working copy could be made
 
 Endings are checked in a fixed order, and the first match wins:
 
@@ -2053,6 +2059,15 @@ Endings are checked in a fixed order, and the first match wins:
 | 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
+
+**Row 1 is the FOLDER, not the brief — `this task's world could not be sealed`.** Making a
+working copy starts by freezing the folder the task is cut from, and when that will not go
+the `<err>` reads `this task's world could not be sealed:` and then git's own words for
+why — no repository behind the folder, a locked index, a disk it could not write. Nothing
+was wrong with the brief and nothing of the work was attempted: this is the first thing
+that happens to a task, before one model call, so **nothing was started and nothing was
+spent**. (A brief that describes a world the folder does not have is a different landing —
+`its world did not match` — and it has its own section on this page.)
 
 Row 3 is checked before it is written down: a task that hit a limit is judged against its
 acceptance one more time, and if the work holds it lands **done** at row 10 instead, merged,

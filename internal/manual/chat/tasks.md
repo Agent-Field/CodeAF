@@ -768,8 +768,11 @@ appended, and the card settles as `approved · the clock`. This is the opposite 
 permission card's countdown, which runs toward denying. A task proposal is not a permission
 gate — it is your window to redirect the work or wave it off before it starts.
 
-The default window is 15 seconds. It is the setting `task.autoapprove_seconds`, in the
-"Safety" category of the settings panel (`ctrl+,` or `/settings`).
+The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
+is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
+open that with `ctrl+,` or `/settings` — where it is the row labelled `task countdown`. It
+is not on the `Spending` tab; it sits with the consent rows because it answers their
+question in the other currency.
 
 **This is one of the rows aforge will not change for you.** It decides how long you get
 before work starts on its own, so `change_setting` refuses it and points you back at
@@ -3132,7 +3135,7 @@ and what the task made is committed onto that branch before it lands — so the 
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
 
-## Why is the task waiting for me — finished but needs your look
+## Why is the task waiting for me — finished but needs your look, a sub-task needs my look, a nested task waiting on me
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds —
 or it finished and held, and one of the files it wrote was changed by other work while it
