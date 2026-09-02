@@ -110,7 +110,7 @@ func TestAStalledLaneIsActedOnInsideTheCeiling(t *testing.T) {
 		t.Fatalf("no scenario called %q", proofScenario)
 	}
 	const requests = 8
-	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold, mixStress)
+	got := runProofSeed(sheetFixture(t), scen, proofCases[1], 7, requests, 100, false, paceShipped, storeCold, mixStress, policyWaiting)
 	if len(got) != requests {
 		t.Fatalf("got %d trials, want %d", len(got), requests)
 	}
@@ -289,6 +289,58 @@ func TestTheNaturalMixStagesTheRateItNames(t *testing.T) {
 		}
 		if first == 0 {
 			t.Errorf("%s: the first request of the run is a staged fault", mix)
+		}
+	}
+}
+
+// TestAvoidableIsWhatAControllerCouldHaveNotSpent is the arithmetic of the one
+// cost figure a gate now reads. An arm on a healthy request bought nothing
+// whether it won or lost; an arm that rescued a stall and ANSWERED it bought
+// the answer and is not avoidable; an arm that went out on a stall and then
+// lost to the lane it was rescuing is money gone.
+func TestAvoidableIsWhatAControllerCouldHaveNotSpent(t *testing.T) {
+	got := summariseProof(proofCases[1], []trial{
+		// healthy, armed, and the arm won: still avoidable, nothing was wrong
+		{usd: 0.10, waste: 0.01, armed: true, armPrice: 0.05, armWon: true, answered: true},
+		// healthy, armed, and the arm lost: avoidable
+		{usd: 0.10, waste: 0.05, armed: true, armPrice: 0.05, answered: true},
+		// a rescue that answered: NOT avoidable, it bought the answer
+		{sick: true, usd: 0.10, waste: 0.05, armed: true, armPrice: 0.05, armWon: true,
+			acted: true, kind: control.Hedge, reason: "drift", action: 3, answered: true},
+		// a rescue that lost to the lane it was rescuing: avoidable
+		{sick: true, usd: 0.10, waste: 0.05, armed: true, armPrice: 0.05,
+			acted: true, kind: control.Hedge, reason: "drift", action: 3, answered: true},
+		// and a baseline retry, thrown away whole by the transport's guard
+		{sick: true, usd: 0.20, waste: 0.10, avoidableRetry: 0.10, answered: true},
+	})
+	if want := 0.05 + 0.05 + 0.05 + 0.10; math.Abs(got.Avoidable-want) > 1e-9 {
+		t.Errorf("avoidable = %g, want %g (two healthy arms, one lost rescue, one cut retry)",
+			got.Avoidable, want)
+	}
+	if got.ArmsLost != 1 {
+		t.Errorf("arms on a fault that lost = %d, want 1", got.ArmsLost)
+	}
+	// And it is strictly less than the loser spend, which is the whole reason
+	// the two are different numbers.
+	if got.Avoidable >= got.Waste+1e-9 {
+		t.Errorf("avoidable %g is not under the loser spend %g", got.Avoidable, got.Waste)
+	}
+}
+
+// TestTheTransportBoundClearsTheControllersCeiling is the one property the
+// baseline arm depends on: the guard it waits for is the LAST resort, always
+// well past the moment a controller would have acted. If it were not, the
+// baseline would be a controller with a worse constant rather than a floor.
+func TestTheTransportBoundClearsTheControllersCeiling(t *testing.T) {
+	for _, wrote := range []bool{false, true} {
+		bound := transportBound(proofRole, wrote)
+		if bound <= proofRole.Ceiling() {
+			t.Errorf("wrote=%v: the transport bound %v does not clear the %v ceiling",
+				wrote, bound, proofRole.Ceiling())
+		}
+		if bound < 2*proofRole.Ceiling() {
+			t.Errorf("wrote=%v: the transport bound %v is under twice the ceiling, which is the "+
+				"headroom internal/provider floors it at", wrote, bound)
 		}
 	}
 }

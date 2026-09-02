@@ -116,6 +116,33 @@ const (
 	// reach their first visible word with no arm behind them. It is the failure
 	// mode this design most risks introducing.
 	gateLongThinkPct = 95.0
+	// gateAvoidablePct is what a controller may spend on arms that bought
+	// nothing, as a share of the arm's own bill.
+	//
+	// ── WHERE THIS NUMBER COMES FROM, AND WHY IT IS NOT THREE ───────────────
+	//
+	// §K's spend clause was a flat 3% of the bill and it is withdrawn on the
+	// natural mix as infeasible by arithmetic: a rescue is a whole second
+	// request, so rescue overhead is about the fault rate whatever the policy
+	// is, and at one fault in twenty no controller that rescues stalls — not
+	// even one that armed the broken requests and only those — can come in
+	// under three per cent. The baseline arm measures that floor rather than
+	// arguing it.
+	//
+	// What a controller CAN be held to is the avoidable half: arms on healthy
+	// requests, and arms on faults that then lost to the lane they were
+	// rescuing. That was measured at 0.85% and 0.64% on the two seed sets, a
+	// spread of about two tenths of a point, so a ceiling of 3% would tolerate
+	// a three-and-a-half-fold regression before it said anything — which is a
+	// gate that cannot fail and therefore is not a gate.
+	//
+	// THE CEILING IS THE MEASUREMENT TIMES A HALF AGAIN: max(0.85, 0.64) × 1.5
+	// = 1.28%, rounded to 1.3%. Half again is roughly six times the observed
+	// seed-to-seed spread, so an honest seed cannot fail it; anything larger is
+	// a real regression and this gate is meant to catch one. It is a figure
+	// about THIS bench's world and it moves when the measurement does — which
+	// is the point of writing the derivation down beside it.
+	gateAvoidablePct = 1.3
 )
 
 // ── THE STAGING ─────────────────────────────────────────────────────────────
@@ -223,6 +250,73 @@ const (
 	// percentile about. It is a DIAGNOSTIC and never a gated arm.
 	storeSeen = "seen"
 )
+
+// ── THE BASELINE: A BUILD WITH NO WAITING POLICY AT ALL ─────────────────────
+//
+// Every figure above compares this design against its own thresholds. None of
+// them answers the question a person actually has, which is whether the
+// mechanism is worth its money AT ALL — and that question has a floor, not a
+// threshold: what does the same workload cost, and how long does it take, with
+// no controller, no deadline and no arms?
+//
+// So there is a second policy. It routes exactly as the other one does — the
+// chooser is the same, because routing and waiting are two questions and only
+// one of them is under test — and then it WAITS. If the wire goes quiet longer
+// than the transport's own guard allows, the attempt is thrown away whole and
+// re-sent to the next lane, serially, up to [serialAttempts]. That is what this
+// build did before this design and it is what any build without one does.
+//
+// IT IS NOT AN ARM THAT LOSES. A hedge pays for two streams and keeps whichever
+// speaks first; a retry pays for the first stream, throws it away, and then pays
+// for the second. The two cost the same money and buy very different waits, and
+// which of them is the better trade is exactly what this pair of arms measures.
+const (
+	// policyWaiting is this design: one controller on every call.
+	policyWaiting = "waiting"
+	// policyBaseline is the floor: no controller, and the transport's guard is
+	// the only thing that ever acts.
+	policyBaseline = "baseline"
+)
+
+// serialAttempts is how many lanes a build with no waiting policy will try
+// before it gives up. It is the retry model the rest of this lab already
+// assumes — "a refused answer costs exactly one retry on the next lane, at most
+// three attempts" — said once here for the arm that actually retries.
+const serialAttempts = 3
+
+// The transport's own silence bounds, as `internal/provider/streamguard.go`
+// derives them for a role: 90 s to a first delta, 45 s mid-stream, both scaled
+// by the role's patience (its ceiling over [lane.VisiblePatience]) and floored
+// at twice its ceiling.
+//
+// THEY ARE RESTATED HERE AND THAT IS A KNOWN WEAKNESS OF THIS BENCH. `gosim`
+// does not import `internal/provider` — it never has, and a bench that grew an
+// import into a package it is judging would be a bench that changed its own
+// subject — so these three figures are a copy, and a change to them that this
+// file did not follow would make the baseline arm quietly wrong. REPORT.md says
+// so under "where this model is wrong". The law that they clear the
+// controller's ceiling lives in `internal/provider`, where it belongs.
+const (
+	transportFirstBound = 90 * time.Second
+	transportGapBound   = 45 * time.Second
+	transportHeadroom   = 2
+)
+
+// transportBound is how long the wire may be silent before the guard throws the
+// whole attempt away: the first-delta bound while nothing has arrived, the
+// mid-stream one after something has.
+func transportBound(role lane.Role, wrote bool) time.Duration {
+	patience := float64(role.Ceiling()) / float64(lane.VisiblePatience)
+	gap := time.Duration(float64(transportGapBound) * patience)
+	floor := time.Duration(transportHeadroom) * role.Ceiling()
+	if floor > gap {
+		floor = gap
+	}
+	if wrote {
+		return max(gap, floor)
+	}
+	return max(time.Duration(float64(transportFirstBound)*patience), floor)
+}
 
 // ── THE TWO MIXES A ROW CAN BE RUN AT ───────────────────────────────────────
 //
@@ -423,6 +517,21 @@ type trial struct {
 	armed bool
 	usd   float64
 	waste float64
+	// armPrice is what the second request cost and armWon whether it was the
+	// one that answered. THE TWO TOGETHER ARE WHAT MAKES AN OVERHEAD AVOIDABLE
+	// OR NOT: an arm on a healthy request bought nothing whether it won or lost,
+	// and an arm that RESCUED a stall bought the answer — what is avoidable
+	// there is only an arm that then lost the race to the lane it was rescuing.
+	armPrice float64
+	armWon   bool
+	// avoidableRetry is what [policyBaseline] threw away: a stream the transport
+	// cut, billed in full and answering nothing. It is the baseline's own
+	// avoidable overhead, and it is the figure the waiting arm's has to be read
+	// against.
+	avoidableRetry float64
+	// took is how long the whole request took, in the world's seconds, so that a
+	// bill can be read beside the wait it bought.
+	took float64
 	// thought says a run of thought really BEGAN on this trial with nothing
 	// staged wrong in it. A phase that never started is not a phase, and
 	// counting one would answer §K's fourth criterion with requests that were
@@ -484,10 +593,42 @@ type proofRow struct {
 	// which is the mechanism doing its job. The two are one subtraction apart
 	// and reporting only their sum makes them impossible to tell apart, which is
 	// how a correct rescue came to look like a defect.
-	WasteWell   float64 `json:"usd_waste_on_healthy"`
-	WasteSick   float64 `json:"usd_waste_on_faults"`
-	WastePct    float64 `json:"waste_overhead_pct"`
-	RescuePct   float64 `json:"rescue_overhead_pct"`
+	WasteWell float64 `json:"usd_waste_on_healthy"`
+	WasteSick float64 `json:"usd_waste_on_faults"`
+	WastePct  float64 `json:"waste_overhead_pct"`
+	RescuePct float64 `json:"rescue_overhead_pct"`
+
+	// ── AVOIDABLE, WHICH IS THE ONLY HALF A CONTROLLER CAN BE GRADED ON ─────
+	//
+	// Of the money a second request costs, some of it could not have been
+	// spent differently by ANY policy and some of it could. An arm on a request
+	// that was never in trouble bought nothing, won or lost. An arm that
+	// rescued a genuine stall bought the answer — the first attempt was
+	// unavoidable, because nothing knew it would stall, and the second was
+	// necessary, because it is what answered. What is left over is an arm that
+	// went out on a fault and then LOST to the lane it was rescuing: the stall
+	// ended on its own and the money is gone.
+	//
+	// So Avoidable is every healthy arm plus every rescue arm that lost, and it
+	// is the figure a gate can hold a controller to. The rest is the arithmetic
+	// floor under any build that rescues stalls at all, which the baseline arm
+	// measures rather than argues.
+	Avoidable    float64 `json:"usd_avoidable"`
+	AvoidablePct float64 `json:"avoidable_overhead_pct"`
+	ArmsLost     int     `json:"arms_on_a_fault_that_lost"`
+
+	// Bill is what one request cost on average and TookP50/TookP90 how long one
+	// took, in the world's seconds. They are what a baseline is compared on:
+	// a policy is worth having if it answers sooner without paying more.
+	Bill    float64 `json:"usd_per_request"`
+	TookP50 float64 `json:"took_p50_s"`
+	TookP90 float64 `json:"took_p90_s"`
+	// AND THE WAIT ON THE REQUESTS THAT WENT WRONG, which is the only place two
+	// waiting policies differ at all. At one fault in twenty a whole-arm p90 is
+	// a healthy request by construction, so a comparison read off it would be a
+	// comparison of two identical halves.
+	TookSickP50 float64 `json:"took_on_a_fault_p50_s"`
+	TookSickP90 float64 `json:"took_on_a_fault_p90_s"`
 	RescueArm   int     `json:"arms_on_a_staged_fault"`
 	StallThinks int     `json:"stalled_thinking_phases"`
 	// StallP50 and StallP90 are time-to-action for the one case a person
@@ -523,7 +664,7 @@ var kindWords = map[control.Kind]string{
 func summariseProof(c proofCase, got []trial) proofRow {
 	out := proofRow{Case: c.name, Why: c.why, N: len(got),
 		CeilingS: proofRole.Ceiling().Seconds(), Kinds: map[string]int{}, Whys: map[string]int{}}
-	var action, silence, late, stalled []float64
+	var action, silence, late, stalled, took, tookSick []float64
 	for _, one := range got {
 		out.USD += one.usd
 		out.Waste += one.waste
@@ -540,6 +681,17 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		out.Arms += boolCount(one.armed)
 		out.FalseArm += boolCount(one.armed && !one.sick)
 		out.RescueArm += boolCount(one.armed && one.sick)
+		out.ArmsLost += boolCount(one.armed && one.sick && !one.armWon)
+		if one.armed && (!one.sick || !one.armWon) {
+			out.Avoidable += one.armPrice
+		}
+		out.Avoidable += one.avoidableRetry
+		if one.took > 0 {
+			took = append(took, one.took)
+			if one.sick {
+				tookSick = append(tookSick, one.took)
+			}
+		}
 		// THE ONE CASE A PERSON COMPLAINED ABOUT, counted on its own: a run of
 		// thought that really began and then stopped. `thought` is only set when
 		// the model reached its reasoning at all, so a fault that struck before
@@ -566,9 +718,28 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		out.OverCeil += boolCount(one.action > out.CeilingS)
 		out.OverSil += boolCount(one.silence > out.CeilingS)
 	}
-	out.ActionP50, out.ActionP90, out.ActionMax = pct(action, 0.50), pct(action, 0.90), pct(action, 1.0)
-	out.SilenceP50, out.SilenceP90, out.SilenceMax = pct(silence, 0.50), pct(silence, 0.90), pct(silence, 1.0)
-	out.LateMedian, out.LateMax = pct(late, 0.50), pct(late, 1.0)
+	// A PERCENTILE OF NOTHING IS NOT A NUMBER, and [pct] says so with a NaN. An
+	// arm with no controller raises no acts at all, so these three samples are
+	// empty by construction there — and a NaN in a struct is a file that will
+	// not marshal, which is how the last run printed its tables and wrote no
+	// artifact. They are left at zero, which is unambiguous beside the act count
+	// standing next to them in the same row, and the table prints a dash rather
+	// than a figure when there was nothing to take a percentile of.
+	if len(action) > 0 {
+		out.ActionP50, out.ActionP90, out.ActionMax = pct(action, 0.50), pct(action, 0.90), pct(action, 1.0)
+	}
+	if len(silence) > 0 {
+		out.SilenceP50, out.SilenceP90, out.SilenceMax = pct(silence, 0.50), pct(silence, 0.90), pct(silence, 1.0)
+	}
+	if len(late) > 0 {
+		out.LateMedian, out.LateMax = pct(late, 0.50), pct(late, 1.0)
+	}
+	if len(took) > 0 {
+		out.TookP50, out.TookP90 = pct(took, 0.50), pct(took, 0.90)
+	}
+	if len(tookSick) > 0 {
+		out.TookSickP50, out.TookSickP90 = pct(tookSick, 0.50), pct(tookSick, 0.90)
+	}
 	if len(stalled) > 0 {
 		fifty, ninety := pct(stalled, 0.50), pct(stalled, 0.90)
 		out.StallP50, out.StallP90 = &fifty, &ninety
@@ -580,6 +751,10 @@ func summariseProof(c proofCase, got []trial) proofRow {
 		out.SpendPct = 100 * out.Waste / out.USD
 		out.WastePct = 100 * out.WasteWell / out.USD
 		out.RescuePct = 100 * out.WasteSick / out.USD
+		out.AvoidablePct = 100 * out.Avoidable / out.USD
+	}
+	if out.N > 0 {
+		out.Bill = out.USD / float64(out.N)
 	}
 	return out
 }
@@ -624,18 +799,34 @@ func proveIt(w *world, seeds []int, n, speedup int, trace bool, paces, stores, m
 				continue
 			}
 			for _, pace := range paces {
-				rows := runProof(w, seeds, n, speedup, trace, pace, store, mix)
+				rows := runProof(w, seeds, n, speedup, trace, pace, store, mix, policyWaiting)
 				arms = append(arms, proofArm{Pace: pace, Store: store, Mix: mix,
-					FaultPct: 100 * rateOfMix(mix), Rows: rows,
-					Criteria: proofGates(rows, store, mix)})
+					Policy: policyWaiting, FaultPct: 100 * rateOfMix(mix), Rows: rows,
+					Criteria: proofGates(rows, store, mix, policyWaiting)})
+			}
+			// AND THE FLOOR, ON THE ARM THE DECISION RESTS ON. The baseline is
+			// run where the policy arm is graded — a warmed store at the natural
+			// rate — because that is the only place the two are answering the
+			// same question. Running it beside every arm would quadruple the
+			// wall for three tables nothing reads.
+			if store == storeWarmed && mix == mixNatural {
+				rows := runProof(w, seeds, n, speedup, trace, paceShipped, store, mix, policyBaseline)
+				arms = append(arms, proofArm{Pace: paceShipped, Store: store, Mix: mix,
+					Policy: policyBaseline, FaultPct: 100 * rateOfMix(mix), Rows: rows,
+					Criteria: proofGates(rows, store, mix, policyBaseline)})
 			}
 		}
 	}
 	rows, gates := arms[0].Rows, arms[0].Criteria
 	for _, arm := range arms {
-		fmt.Printf("── a %s store at a %s mix, and the plan waits against the %s belief ─────────\n\n",
-			arm.Store, arm.Mix, arm.Pace)
-		printProof(arm.Rows, arm.Criteria, seeds, n, speedup, arm.Store, arm.Mix)
+		if arm.Policy == policyBaseline {
+			fmt.Printf("── a %s store at a %s mix, with NO WAITING POLICY AT ALL ───────────────────\n\n",
+				arm.Store, arm.Mix)
+		} else {
+			fmt.Printf("── a %s store at a %s mix, and the plan waits against the %s belief ─────────\n\n",
+				arm.Store, arm.Mix, arm.Pace)
+		}
+		printProof(arm.Rows, arm.Criteria, seeds, n, speedup, arm.Store, arm.Mix, arm.Policy)
 	}
 	wall := time.Since(began)
 	fmt.Printf("   wall %s\n", wall.Round(time.Second))
@@ -717,13 +908,46 @@ type proofArm struct {
 	Pace     string      `json:"pace"`
 	Store    string      `json:"store"`
 	Mix      string      `json:"mix"`
+	Policy   string      `json:"policy"`
 	FaultPct float64     `json:"staged_fault_pct"`
 	Rows     []proofRow  `json:"rows"`
 	Criteria []proofGate `json:"criteria"`
 }
 
+// bill is what one request cost on average across a whole arm, and waited is
+// how long one took at the median and the ninetieth. They are what the baseline
+// is read against and they are computed here so that the comparison is one
+// function rather than a line in a report nobody can re-derive.
+func (a proofArm) bill() float64 {
+	usd, n := 0.0, 0
+	for _, r := range a.Rows {
+		usd += r.USD
+		n += r.N
+	}
+	if n == 0 {
+		return 0
+	}
+	return usd / float64(n)
+}
+
+func (a proofArm) waited() (p50, p90 float64) {
+	var all []float64
+	for _, r := range a.Rows {
+		all = append(all, r.TookP50, r.TookP90)
+	}
+	if len(all) == 0 {
+		return 0, 0
+	}
+	fifty, ninety := make([]float64, 0, len(a.Rows)), make([]float64, 0, len(a.Rows))
+	for _, r := range a.Rows {
+		fifty = append(fifty, r.TookP50)
+		ninety = append(ninety, r.TookP90)
+	}
+	return pct(fifty, 0.50), pct(ninety, 0.90)
+}
+
 // runProof is the whole of §K: every case, every seed, pooled.
-func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix string) []proofRow {
+func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mix, policy string) []proofRow {
 	scen, ok := scenarioNamed(proofScenario)
 	if !ok {
 		log.Fatalf("gosim: no scenario called %q to run the proof rows in", proofScenario)
@@ -732,7 +956,7 @@ func runProof(w *world, seeds []int, n, speedup int, trace bool, pace, store, mi
 	for _, c := range proofCases {
 		var all []trial
 		for _, seed := range seeds {
-			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store, mix)...)
+			all = append(all, runProofSeed(w, scen, c, seed, n, speedup, trace, pace, store, mix, policy)...)
 		}
 		rows = append(rows, summariseProof(c, all))
 	}
@@ -756,7 +980,7 @@ func scenarioNamed(name string) (scenario, bool) {
 // did not move the state root would fold this program's lanes into the belief
 // file of whoever ran it — and the cold-store row would not be cold on its
 // second seed.
-func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store, mix string) []trial {
+func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace bool, pace, store, mix, policy string) []trial {
 	dir, err := os.MkdirTemp("", "gosim-proof-")
 	if err != nil {
 		log.Fatal(err)
@@ -787,10 +1011,15 @@ func runProofSeed(w *world, s scenario, c proofCase, seed, n, speedup int, trace
 		world: w, scen: s, kase: c, seed: seed, stub: stub, ledger: ledger,
 		budget: lane.DefaultBudget(), client: &http.Client{},
 		speedup: speedup, total: n, at: theMoment, trace: trace, pace: pace, mix: mix,
+		policy: policy,
 	}
 	out := make([]trial, 0, n)
 	for index := 0; index < n; index++ {
-		got, err := p.prove(index)
+		one := p.prove
+		if policy == policyBaseline {
+			one = p.serial
+		}
+		got, err := one(index)
 		if err != nil {
 			log.Fatalf("proof %s seed %d request %d: %v", c.name, seed, index, err)
 		}
@@ -928,6 +1157,9 @@ type prover struct {
 	pace string
 	// mix is how often a request is a staged fault: [mixStress] or [mixNatural].
 	mix string
+	// policy is whether this request is watched at all: [policyWaiting] or
+	// [policyBaseline].
+	policy string
 
 	// at is the moment in the WORLD this request went out and wire the moment on
 	// the socket it went out at; every world moment handed to the watch is the
@@ -983,8 +1215,101 @@ func (p *prover) prove(index int) (trial, error) {
 		p.drain(primary, &out)
 	}
 	out.survived = out.thought && out.answered && !out.armed
+	out.took = p.worldly(time.Since(p.wire)).Seconds()
 	p.close(index, served, out)
 	return out, nil
+}
+
+// serial is one request under [policyBaseline]: no controller, no deadline, no
+// arms — the transport's own guard, and a re-send when it fires.
+//
+// THE FAULT BELONGS TO THE LANE THAT WAS CHOSEN, not to the attempt. A retry
+// goes somewhere else and that somewhere else is healthy, which is the whole
+// reason a retry is ever worth making; staging the fault again on every attempt
+// would be measuring a bad afternoon rather than a bad lane.
+func (p *prover) serial(index int) (trial, error) {
+	sick := sickAt(p.mix, index, p.total)
+	req := p.scen.request(p.world.model, p.at, p.total-index)
+	choice := p.choose(req)
+	victim := p.headFor(choice)
+	out := trial{sick: sick}
+	p.wire = time.Now()
+	served, tried := victim, map[string]bool{}
+	for attempt := 0; attempt < serialAttempts; attempt++ {
+		tried[served] = true
+		p.stub.Model(p.world.model, p.stage(
+			p.world.shots(p.seed, "proof|"+p.kase.name, index, attempt), victim, sick)...)
+		out.usd += p.priceOf(served)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		one := p.open(ctx, choice.Order, p.only(choice, served, attempt))
+		cut := p.readOut(one, &out)
+		one.cancel()
+		cancel()
+		if !cut {
+			break
+		}
+		// A CUT STREAM IS THROWN AWAY WHOLE. The prompt was read and billed and
+		// none of it became an answer, which is the difference between a retry
+		// and a hedge: a hedge keeps whichever stream speaks first.
+		out.waste += p.priceOf(served)
+		out.avoidableRetry += p.priceOf(served)
+		next := p.nextLane(tried)
+		if next == "" {
+			break
+		}
+		served = next
+	}
+	out.took = p.worldly(time.Since(p.wire)).Seconds()
+	p.close(index, served, out)
+	return out, nil
+}
+
+// only is what a serial attempt demands. The first goes out exactly as the
+// waiting arm's does — the router's own order, so the two arms route
+// identically — and a retry names the one lane it has moved to.
+func (p *prover) only(choice lane.Choice, served string, attempt int) []string {
+	if attempt == 0 {
+		return choice.Only
+	}
+	return []string{served}
+}
+
+// nextLane is where a retry goes: the next lane past this scenario's gate that
+// has not been tried.
+func (p *prover) nextLane(tried map[string]bool) string {
+	for _, index := range p.world.gated(p.scen) {
+		if name := p.world.lanes[index].name; !tried[name] {
+			return name
+		}
+	}
+	return ""
+}
+
+// readOut reads one stream to its end under the TRANSPORT's guard alone, and
+// says whether the guard cut it. It is the whole of [policyBaseline]'s waiting:
+// there is no controller, no deadline and nothing to act on before the bound.
+func (p *prover) readOut(one *armed, out *trial) bool {
+	last, wrote := time.Now(), false
+	for {
+		left := p.scaled(transportBound(proofRole, wrote)) - time.Since(last)
+		if left <= 0 {
+			return true
+		}
+		guard := time.NewTimer(left)
+		select {
+		case seen := <-one.sights:
+			guard.Stop()
+			p.sawToken(out, seen)
+			if seen.reading.Visible > 0 || seen.reading.Hidden > 0 {
+				last, wrote = time.Now(), true
+			}
+		case <-one.done:
+			guard.Stop()
+			return false
+		case <-guard.C:
+			return true
+		}
+	}
 }
 
 // choose is the routing answer this row asks for.
@@ -1186,7 +1511,7 @@ func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, se
 		return false
 	}
 	p.budget.NoteHedge(price, p.at)
-	out.armed = true
+	out.armed, out.armPrice = true, price
 	out.usd += price
 	arm := p.open(ctx, nil, []string{act.Lane})
 	defer arm.cancel()
@@ -1198,6 +1523,7 @@ func (p *prover) answer(ctx context.Context, act control.Act, primary *armed, se
 		// The ARM's first word is not the served lane's, so it answers the
 		// request and teaches the ledger nothing about the lane it rescued.
 		out.answered = out.answered || seen.reading.Visible > 0
+		out.armWon = true
 		out.waste += p.priceOf(served)
 	case seen := <-primary.sights:
 		p.sawToken(out, seen)
@@ -1527,10 +1853,10 @@ type proofGate struct {
 // and the two §K cost figures are printed beside it without a verdict. The
 // ceiling and the long think are unchanged: neither is a cost and neither gets
 // an allowance for being cold.
-func proofGates(rows []proofRow, store, mix string) []proofGate {
+func proofGates(rows []proofRow, store, mix, policy string) []proofGate {
 	var cold proofRow
 	arms, well, thinks, kept := 0, 0, 0, 0
-	usd, waste, onWell, onSick := 0.0, 0.0, 0.0, 0.0
+	usd, waste, onWell, onSick, avoid := 0.0, 0.0, 0.0, 0.0, 0.0
 	for _, r := range rows {
 		if r.Case == proofCases[0].name {
 			cold = r
@@ -1543,13 +1869,15 @@ func proofGates(rows []proofRow, store, mix string) []proofGate {
 		waste += r.Waste
 		onWell += r.WasteWell
 		onSick += r.WasteSick
+		avoid += r.Avoidable
 	}
 	falsePct, thinkPct := share(arms, well), share(kept, thinks)
-	spendPct, wastePct, rescuePct := 0.0, 0.0, 0.0
+	spendPct, wastePct, rescuePct, avoidPct := 0.0, 0.0, 0.0, 0.0
 	if usd > 0 {
 		spendPct = 100 * waste / usd
 		wastePct = 100 * onWell / usd
 		rescuePct = 100 * onSick / usd
+		avoidPct = 100 * avoid / usd
 	}
 	inside := share(cold.SickActs-cold.OverCeil, cold.SickActs)
 	steady, natural := store != storeCold, mix == mixNatural
@@ -1572,11 +1900,20 @@ func proofGates(rows []proofRow, store, mix string) []proofGate {
 		// the rescue half is reported under the purse. On the natural mix the
 		// question is the one the clause was written to ask — what does this
 		// mechanism add to a real bill — so the TOTAL is gated.
+		// AVOIDABLE IS THE ONLY HALF A CONTROLLER IS GRADED ON, and it is gated
+		// on the mix where a bill means something. §K's flat clause on the TOTAL
+		// is withdrawn on the natural mix as infeasible by arithmetic — see
+		// [gateAvoidablePct] and the baseline arm — and reported everywhere.
+		{Criterion: "spend overhead, avoidable",
+			Threshold: fmt.Sprintf("<= %.1f%% of the arm's own bill", gateAvoidablePct),
+			Measured:  fmt.Sprintf("%.2f%% of $%.4f", avoidPct, usd),
+			Where:     "healthy arms, and rescues that lost",
+			Value:     avoidPct, Gated: steady && natural, Pass: avoidPct <= gateAvoidablePct},
 		{Criterion: "spend overhead, total",
-			Threshold: "<= 3% of the arm's own bill",
+			Threshold: "reported; a rescue is a whole second request",
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", spendPct, usd),
 			Where:     "every case",
-			Value:     spendPct, Gated: steady && natural, Pass: spendPct <= gateSpendOverheadPct},
+			Value:     spendPct, Gated: false},
 		{Criterion: "spend overhead, waste on a healthy lane",
 			Threshold: "<= 3% of the arm's own bill",
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", wastePct, usd),
@@ -1587,6 +1924,15 @@ func proofGates(rows []proofRow, store, mix string) []proofGate {
 			Measured:  fmt.Sprintf("%.2f%% of $%.4f", rescuePct, usd),
 			Where:     "every case, fault window",
 			Value:     rescuePct, Gated: false},
+	}
+	// A BASELINE IS NOT GRADED. It has no controller, so every criterion above
+	// is about a mechanism it does not have; what it is for is the two numbers
+	// at the foot of its table, which is where the comparison lives.
+	if policy == policyBaseline {
+		for at := range out {
+			out[at].Gated = false
+		}
+		return out
 	}
 	if !steady || !natural {
 		// THE PURSE IS WHAT BOUNDS SPENDING NOTHING ELSE BOUNDS, and it is what
@@ -1614,7 +1960,7 @@ func proofGates(rows []proofRow, store, mix string) []proofGate {
 
 // printProof writes §K's pass table with the measured value beside every
 // threshold, and then the two figures §K asks for and does not gate.
-func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int, store, mix string) {
+func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int, store, mix, policy string) {
 	fmt.Println("── §K, the four scenarios ──────────────────────────────────────────────────────")
 	fmt.Printf("   role %s, ceiling %s   seeds %v   requests per case per seed %d   pooled %d   wire %d× the world\n",
 		proofRole, proofRole.Ceiling(), seeds, n, n*len(seeds), speedup)
@@ -1632,18 +1978,25 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 		"over", "false%", "$over%", "$waste%", "$resc%")
 	fmt.Printf("   %s\n", strings.Repeat("-", 136))
 	for _, r := range rows {
-		fmt.Printf("   %-24s%6d%6d%6d%6d%7d%7d%9.2fs%9.2fs%9.2fs%7d%8.2f%8.2f%9.2f%9.2f\n",
-			r.Case, r.N, r.Sick, r.SickActs, r.Arms, r.FalseArm, r.RescueArm,
-			r.ActionP50, r.ActionP90, r.ActionMax,
+		act := fmt.Sprintf("%9.2fs%9.2fs%9.2fs", r.ActionP50, r.ActionP90, r.ActionMax)
+		if r.SickActs == 0 {
+			act = fmt.Sprintf("%10s%10s%10s", "—", "—", "—")
+		}
+		fmt.Printf("   %-24s%6d%6d%6d%6d%7d%7d%s%7d%8.2f%8.2f%9.2f%9.2f\n",
+			r.Case, r.N, r.Sick, r.SickActs, r.Arms, r.FalseArm, r.RescueArm, act,
 			r.OverCeil, r.FalseHedgePct, r.SpendPct, r.WastePct, r.RescuePct)
 	}
 	fmt.Println()
 	for _, r := range rows {
 		fmt.Printf("     %-24s %s\n", r.Case, r.Why)
 		fmt.Printf("     %-24s acts: %s   clocks: %s\n", "", kindTally(r.Kinds), whyTally(r.Whys))
-		fmt.Printf("     %-24s over the ceiling: %d since sent, %d of silence   "+
-			"alarm late %.0f/%.0f ms median/max   a word arrived on %d/%d\n",
-			"", r.OverCeil, r.OverSil, r.LateMedian, r.LateMax, r.Answered, r.N)
+		alarm := fmt.Sprintf("alarm late %.0f/%.0f ms median/max", r.LateMedian, r.LateMax)
+		if r.SickActs == 0 {
+			alarm = "no alarm was ever armed"
+		}
+		fmt.Printf("     %-24s over the ceiling: %d since sent, %d of silence   %s"+
+			"   a word arrived on %d/%d\n",
+			"", r.OverCeil, r.OverSil, alarm, r.Answered, r.N)
 	}
 	fmt.Println()
 	fmt.Println("── §K, the criteria ────────────────────────────────────────────────────────────")
@@ -1668,6 +2021,10 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 	fmt.Printf("   %-24s%14s%14s%14s%12s\n", "case", "s p50", "s p90", "s max", "report%")
 	fmt.Printf("   %s\n", strings.Repeat("-", 78))
 	for _, r := range rows {
+		if r.SickActs == 0 {
+			fmt.Printf("   %-24s%14s%14s%14s%12s\n", r.Case, "—", "—", "—", "—")
+			continue
+		}
 		fmt.Printf("   %-24s%13.2fs%13.2fs%13.2fs%12.1f\n",
 			r.Case, r.SilenceP50, r.SilenceP90, r.SilenceMax, r.ReportPct)
 	}
@@ -1677,6 +2034,27 @@ func printProof(rows []proofRow, gates []proofGate, seeds []int, n, speedup int,
 	// that was acted on before the model had said anything, and the two are not
 	// the same wait. How often it happens at this mix is on the line with it,
 	// because a time-to-action nobody can weigh is a number nobody can rule on.
+	// THE BILL AND THE WAIT, ON EVERY TABLE, so that a policy arm and the
+	// baseline can be read against each other without a spreadsheet.
+	usd, n := 0.0, 0
+	fifty, ninety := make([]float64, 0, len(rows)), make([]float64, 0, len(rows))
+	for _, r := range rows {
+		usd += r.USD
+		n += r.N
+		fifty = append(fifty, r.TookP50)
+		ninety = append(ninety, r.TookP90)
+	}
+	sick50, sick90 := make([]float64, 0, len(rows)), make([]float64, 0, len(rows))
+	for _, r := range rows {
+		sick50 = append(sick50, r.TookSickP50)
+		sick90 = append(sick90, r.TookSickP90)
+	}
+	if n > 0 {
+		fmt.Printf("   the bill: $%.6f a request over %d requests   every request: %.2fs p50 / "+
+			"%.2fs p90   ON A FAULT: %.2fs p50 / %.2fs p90   [%s]\n",
+			usd/float64(n), n, pct(fifty, 0.50), pct(ninety, 0.90),
+			pct(sick50, 0.50), pct(sick90, 0.90), policy)
+	}
 	for _, r := range rows {
 		if r.StallThinks == 0 || r.StallP50 == nil {
 			continue
