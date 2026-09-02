@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -60,7 +61,10 @@ func startLaneBeat(settings config.Config, model string) {
 	if len(models) == 0 {
 		return
 	}
-	go lanes.Beat(laneBeatCtx, lanes.Default().Sheet(), models, 0)
+	// Under the guard, like every fire-and-forget goroutine in this binary: a
+	// fault in a background fetch may not take the surface down with it.
+	ctx, sheet := laneBeatCtx, lanes.Default().Sheet()
+	guard.Go("lanes/beat", func() { lanes.Beat(ctx, sheet, models, 0) })
 }
 
 // laneBeatModels is the models this process actually sends to, deduplicated and
