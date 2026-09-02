@@ -734,9 +734,12 @@ redirecting this task says: …"*), decline (a plain tool RESULT, never an
 error, which the model reads as grooming feedback), or **the clock, which
 approves**. Silence is a yes because the countdown is a window to redirect
 work the model has already groomed, not a gate the work waits behind: a
-surface that draws no answer box still works, and every task starts after five
-seconds. The countdown is `task.autoapprove_seconds` (default 5, 0 = wait for
-an answer). **A headless run never waits**: with nobody subscribed, the
+surface that draws no answer box still works, and an unpersisted watched task
+starts after the default fifteen seconds. The countdown is
+`task.autoapprove_seconds` (default 15, 0 = wait for an answer); persisted values,
+including 0, win. Typing the first rune holds the engine's clock and broadcasts
+the zero deadline to every watching surface; deleting the draft does not restart
+it. **A headless run never waits**: with nobody subscribed, the
 deadline approves whatever the setting says, 0 included — consent.go's law for
 a question with no reader.
 

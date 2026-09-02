@@ -16,10 +16,10 @@ package tui3
 // It was already the house rule and it was already written down four times, by
 // hand, in four files — the stop card's `x` (stop.go), the settle answers
 // (tasksettle.go), the design card's `e` (harnesscard.go) and the proposal's
-// `y`/`r`/`n` (task.go). Four copies of a rule is four chances for the fifth
-// binding to be written without it, which is exactly what happened to `w`. So
-// the rule is a function now and the four copies call it; a new bare letter that
-// does not is a binding that will eat somebody's prose.
+// former answer letters (task.go). Four copies of a rule is four chances for the
+// fifth binding to be written without it, which is exactly what happened to
+// `w`. So the rule is a function now and the remaining copies call it; a new
+// bare letter that does not is a binding that will eat somebody's prose.
 //
 // ── WHAT MAY BE A BARE LETTER AT ALL ──
 //

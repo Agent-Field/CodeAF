@@ -503,30 +503,30 @@ sidecar carries is how much of it was left, so that attaching gives the person b
 the same reading time they had, and not a countdown that ran out in the dark. See
 "The sidecar, exactly".
 
-**The other three prompts count down inside the engine, and the surface cannot
-pause an engine-owned timer.** Verified, and unchanged from Revision 2:
+**Consent pauses at the surface; the engine clocks have prompt-specific rules.**
+The task proposal now has its own one-way engine hold. Connect remains unchanged:
 
-| prompt | where its clock is | what expiry does |
-| --- | --- | --- |
-| consent | `tickAsk`, `internal/tui3/consent.go:204` — the frame clock, gated on focus | denies the call (`consent.go:210`) |
-| task proposal | `time.NewTimer(countdown)`, `internal/session/task.go:511` | **auto-approves**: `return TaskAnswer{Approved: true}` (`task.go:522`) |
-| connect offer | `time.NewTimer(connectAskTimeout)`, `internal/session/connect.go:367`; `connectAskTimeout = 5 * time.Minute` (`:60`) | resolves negative (`connect.go:377`) |
-| sub-harness offer | none — `askHarness` waits on `answers` or the turn's context (`internal/session/harness.go:447-476`) | nothing; it waits |
-| design approval | none — `ResolveHarness` (`internal/session/harness.go:58`), reached from `resolveHarnessCard` (`internal/tui3/harnesscard.go:323`) | nothing; it waits |
+| prompt | where its clock is | what can hold it | what expiry does |
+| --- | --- | --- | --- |
+| consent | `tickAsk`, `internal/tui3/consent.go` — the frame clock, gated on focus | losing focus or any key | denies the call |
+| task proposal | `taskClockTimer(countdown)`, `internal/session/task.go` | the first typed or pasted answer calls `Agent.HoldTask`, which stops the timer and broadcasts the same proposal with a zero deadline | **auto-approves** unless held |
+| connect offer | `time.NewTimer(connectAskTimeout)`, `internal/session/connect.go`; `connectAskTimeout = 5 * time.Minute` | nothing | resolves negative |
+| sub-harness offer | none — `askHarness` waits on `answers` or the turn's context | not applicable | nothing; it waits |
+| design approval | none — `ResolveHarness`, reached from `resolveHarnessCard` | not applicable | nothing; it waits |
 
-The TUI's own task countdown is presentation only — it draws the `Deadline` the
-engine put on the `TaskNotice` (`task.go:497`).
+The TUI draws the task `Deadline` the engine put on `TaskNotice`. On the first
+composer edit it clears that deadline immediately, then `Agent.HoldTask` stops the
+real timer and sends the zero-deadline proposal to every local or hosted watcher.
 
-**The decision: limit the promise to consent, and tell the person about the other
-two.** Not an engine pause/resume API, and the reasons are unchanged: a pause API
-would have to be honest about a clock that starts at `time.Now().Add(countdown)`
-before the event is even emitted (`task.go:483`); the two expiries are not
-symmetrical (a lapsed connect offer decides nothing, an expired task proposal
-**starts work and spends money**); and the person is told either way, because both
-put the session into `PresenceWaiting` (`taskpresence.go:501`) — which means
-`waiting on you` on home, the accent rung, the `N waiting` clause and the desktop
-banner. If a pause API is ever built it is built for `propose_task` alone and it
-is its own lane.
+**The decision: switching away still promises a hold only for consent, while
+reaching for a visible task proposal holds that proposal alone.** This is not a
+generic pause/resume API: the hold is one-way, deleting the draft cannot restart
+the clock, and connect offers still lapse after five minutes. The two engine
+expiries are not symmetrical (a lapsed connect offer decides nothing, an expired
+task proposal **starts work and spends money**), so they do not share a clock
+door. Both put the session into `PresenceWaiting` while they are asking, which
+means `waiting on you` on home, the accent rung, the `N waiting` clause and the
+desktop banner.
 
 So the manual sentence, exactly, on `permissions.md` and `how-tasks-run.md`:
 **"A conversation you have switched away from holds its approval question for as
@@ -1574,9 +1574,9 @@ By lane, so that none of it is discovered late:
 - **The count segment**: absent at one conversation, present at two, `· N waiting`
   absent when nothing is waiting. (K3)
 - **The engine countdowns, asserted as designed rather than as hoped**: a task
-  proposal in a conversation behind still auto-approves at its deadline
-  (`internal/session/task.go:522`); a connect offer behind still lapses; both say
-  `waiting on you` until they do. (K1/K3)
+  proposal in a conversation behind still auto-approves at its deadline unless
+  a visible surface already held it; a connect offer behind still lapses; both
+  say `waiting on you` until they do. (K1/K3)
 - **The draft adoption matrix** across pid × ordinal × liveness, plus: the second
   conversation on a workspace does not adopt. (K3)
 

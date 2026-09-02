@@ -194,7 +194,11 @@ import (
 // a deadline no process on the far machine was following. The number moves
 // because an older same-version engine would otherwise be accepted and answer
 // the new field with zero, which is itself a real and different posture.
-const Version = 9
+//
+// VERSION 10 CARRIES [MethodTaskHold]. A version-9 engine would reject the
+// first rune's hold while its surface already showed "waiting on you", then
+// admit the task on the deadline the person believed had stopped.
+const Version = 10
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
