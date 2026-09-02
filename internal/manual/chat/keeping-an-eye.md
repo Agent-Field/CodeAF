@@ -540,10 +540,11 @@ at all.
 ## Do the background checks run before I set an API key — the walk happens, the judgment does not
 
 **Yes, the pass still walks.** On a machine that has never been given a key, the
-5-minute pass takes the lock and goes through every reminder, watch and routine you
-have, exactly as it would with one. It does not stop at the door and it does not
-demand a key to find out there was nothing to do — most passes decline the lock to a
-window that already has it, or find everything asleep, and those cost nothing.
+5-minute pass behaves exactly as it would with one: whichever window or timer takes the
+lock first goes through every reminder, watch and routine you have, and any other that
+wakes at the same moment finds the lock held and leaves without doing anything. What
+changed is that leaving quietly, and walking at all, no longer need a key first — a pass
+that will do nothing costs nothing and needs nothing.
 
 **A reminder at a time still fires.** "Remind me at 6 to leave" is a question about the
 clock and not about the world, so nothing has to be judged: at 6 the line is delivered

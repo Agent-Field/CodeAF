@@ -22,14 +22,25 @@ func TestTickIsAbsentFromTheUsageText(t *testing.T) {
 	}
 }
 
-// keyless is a machine that has never been given an API key, whatever the
-// shell running the tests exports. Empty reads as unset everywhere the profile
-// is resolved (internal/config's APIKeyAt), and the state root is already a
-// temporary directory, so there is no persisted key either.
+// keyless is a machine that has never been given an API key, whatever the shell
+// running the tests exports.
+//
+// THERE ARE EXACTLY THREE PLACES A KEY CAN COME FROM and all three are shut
+// here, because the alternative is a test that quietly buys a real judgment on
+// somebody's account. [config.LoadKeyless] resolves the key through
+// [config.APIKeyAt], which reads OPENROUTER_API_KEY, then OPENAI_API_KEY, then
+// the `api_key` field of `config.json` in the profile — and nothing else: there
+// is no keychain seam and no second file. Empty reads as unset for the two
+// variables. The profile is the one that hides: it is [config.ProfileDirEnv],
+// taken straight from the environment rather than from the state root this test
+// already moved, so a developer with AFORGE_PROFILE_DIR exported would have
+// reached their own persisted key past every temporary directory here. It is
+// pointed at an empty one, which has no config.json and therefore no key.
 func keyless(t *testing.T) {
 	t.Helper()
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
 }
 
 // The whole door, on a machine that has never been given a key: `aforge tick`
