@@ -58,7 +58,7 @@ package session
 // work the model has already groomed rather than a gate the work waits behind:
 // a person who is reading, or away, or on another screen must not be the reason
 // nothing happened. A surface that draws no answer box for this event is a
-// surface where every task starts after five seconds, which is the right
+// surface where every task starts after fifteen seconds, which is the right
 // behavior for a surface that has not been taught the question yet.
 //
 // ── WHY A HEADLESS RUN NEVER WAITS ──
@@ -76,6 +76,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
@@ -721,6 +722,16 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 
 // ── the proposal's admission ────────────────────────────────────────────────
 
+// taskQuestion owns both ways a pending proposal can change while askTask is
+// blocked. Holding closes hold exactly once but keeps answer alive, because
+// typing removes the clock rather than answering the question.
+type taskQuestion struct {
+	answer chan TaskAnswer
+	hold   chan struct{}
+	held   bool
+	notice TaskNotice
+}
+
 // ResolveTask answers one EventTaskProposal. A surface hands back the id the
 // event carried and what the person said about it.
 //
@@ -730,7 +741,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 // and the surface has already seen the node start or the turn end.
 func (a *Agent) ResolveTask(id uint64, answer TaskAnswer) {
 	a.mu.Lock()
-	answers, waiting := a.taskAnswers[id]
+	question, waiting := a.taskAnswers[id]
 	if waiting {
 		delete(a.taskAnswers, id)
 	}
@@ -740,11 +751,36 @@ func (a *Agent) ResolveTask(id uint64, answer TaskAnswer) {
 	}
 	// Buffered to one and read at most once, so this never blocks and never
 	// needs the lock held across it.
-	answers <- answer
+	question.answer <- answer
+}
+
+// HoldTask removes the admission clock from one pending proposal without
+// answering it. The updated proposal is broadcast through the turn's ordinary
+// event lane so every watching surface clears the same deadline.
+func (a *Agent) HoldTask(id uint64) {
+	a.mu.Lock()
+	question, waiting := a.taskAnswers[id]
+	if !waiting || question.held {
+		a.mu.Unlock()
+		return
+	}
+	question.held = true
+	question.notice.Deadline = time.Time{}
+	notice := question.notice
+	hub := a.hub
+	close(question.hold)
+	a.mu.Unlock()
+
+	if hub != nil {
+		hub.send(Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice})
+	}
 }
 
 // askTask emits one proposal and waits for the person, the clock, or the end of
-// the turn.
+// the turn. It is three phases, and each is its own function below: the
+// admission, under the lock — the clock's law, the card, and the wait
+// registered where [Agent.ResolveTask] and [Agent.HoldTask] will find it; the
+// announcement, to the other windows and to this one; and the wait itself.
 //
 // THE CLOCK IS THE DIFFERENCE from consent's ask, and where it applies is the
 // whole law:
@@ -765,26 +801,20 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 		a.mu.Unlock()
 		return TaskAnswer{}, errAgentClosed
 	}
-	answers := make(chan TaskAnswer, 1)
-	if a.taskAnswers == nil {
-		a.taskAnswers = make(map[uint64]chan TaskAnswer, 1)
-	}
-	a.taskAnswers[id] = answers
 	// The turn's hub, read under the same lock that registers the wait: a tool
 	// runs inside a turn, and the turn's fan-out is where its question is seen.
 	hub := a.hub
-	watched := a.config.AskConsent && hub != nil
-	countdown := time.Duration(a.config.TaskAutoApproveSeconds) * time.Second
-	if countdown < 0 {
-		countdown = 0
-	}
-	a.mu.Unlock()
-
-	clock := watched && countdown > 0 || !watched
+	clock, countdown := a.taskClock(hub)
 	var deadline time.Time
 	if clock {
-		deadline = time.Now().Add(countdown)
+		deadline = a.taskClockNow().Add(countdown)
 	}
+	question := newTaskQuestion(id, spec, elsewhere, deadline, a.config)
+	if a.taskAnswers == nil {
+		a.taskAnswers = make(map[uint64]*taskQuestion, 1)
+	}
+	a.taskAnswers[id] = question
+	a.mu.Unlock()
 
 	// AND ANOTHER WINDOW LEARNS WHAT THIS ONE IS STOPPED ON (taskpresence.go).
 	// The line is the title, because the title is what the person on the card is
@@ -797,64 +827,150 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 	// slowly in the card's own window.
 	defer a.presenceAsking(QuestionTask, id, "wants to start a task: "+strings.TrimSpace(spec.title))()
 
-	if hub != nil {
-		// AND THE WARM LINE, WHERE THE HANDOFF CAME OUT OF THE WORK ITSELF. It
-		// goes ABOVE the card because it is the reason the card is there, and it
-		// is [EventNotice] — the dim one-liner a surface already draws for
-		// something it did not stop to ask about — rather than a kind of its own.
-		// THE CARD IS NOT REPLACED BY IT: this work was groomed by the model, and
-		// the countdown is the consent for exactly that (route_judge.go's
-		// [Agent.launchRouteTask] states the other half of the same law, for work
-		// nobody groomed). Silence still starts it, so the person is told and the
-		// work opens; what the card adds is a window to redirect, which is more
-		// than an auto-start could give them and not less.
-		if a.alreadyWorking() {
-			hub.send(Event{Kind: EventNotice, Text: taskEscalationNote})
-		}
-		hub.send(Event{
-			Kind: EventTaskProposal,
-			Tool: "propose_task",
-			Task: &TaskNotice{
-				ID:         id,
-				Title:      spec.title,
-				Summary:    spec.summary,
-				Brief:      spec.brief,
-				Acceptance: spec.acceptance,
-				Where:      taskWhereNotice(a.config.Place, a.config.Workspace, id, spec.where),
-				Ground:     spec.ground,
-				Mode:       spec.mode,
-				DependsOn:  spec.dependsOn,
-				Deadline:   deadline,
-				// What it will run on, and — when one word fit more than one model
-				// — what it could run on instead. A surface draws the first as a
-				// fact and offers the second as a choice; both are settled by the
-				// answer this select is waiting for.
-				Model:        firstTaskModel(spec.modelOptions, spec.model),
-				ModelOptions: append([]string(nil), spec.modelOptions...),
-				Elsewhere:    elsewhere,
-			},
-		})
-	}
+	a.announceTask(hub, question)
+	return a.awaitTaskAnswer(ctx, id, question, clock, countdown)
+}
 
+// taskClock is the clock's law from [Agent.askTask]'s comment, decided once
+// per proposal: whether this one has a deadline at all, and how long it runs.
+// Called with a.mu held, because whether anybody is watching is read off the
+// turn's hub under the same lock that registers the wait.
+func (a *Agent) taskClock(hub *eventHub) (clock bool, countdown time.Duration) {
+	watched := a.config.AskConsent && hub != nil
+	countdown = time.Duration(a.config.TaskAutoApproveSeconds) * time.Second
+	if countdown < 0 {
+		countdown = 0
+	}
+	return watched && countdown > 0 || !watched, countdown
+}
+
+// newTaskQuestion is the proposal as every surface will see it, and the two
+// channels the person's answer and the person's typing come back on. The
+// notice is built whole here, once, because [Agent.HoldTask] rebroadcasts it
+// with only the deadline changed and must not have to rebuild it.
+func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.Time, config Config) *taskQuestion {
+	return &taskQuestion{
+		answer: make(chan TaskAnswer, 1),
+		hold:   make(chan struct{}),
+		notice: TaskNotice{
+			ID:         id,
+			Title:      spec.title,
+			Summary:    spec.summary,
+			Brief:      spec.brief,
+			Acceptance: spec.acceptance,
+			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where),
+			Ground:     spec.ground,
+			Mode:       spec.mode,
+			DependsOn:  spec.dependsOn,
+			Deadline:   deadline,
+			// What it will run on, and — when one word fit more than one model
+			// — what it could run on instead. A surface draws the first as a
+			// fact and offers the second as a choice; both are settled by the
+			// answer the wait is waiting for.
+			Model:        firstTaskModel(spec.modelOptions, spec.model),
+			ModelOptions: append([]string(nil), spec.modelOptions...),
+			Elsewhere:    elsewhere,
+		},
+	}
+}
+
+// announceTask puts the card in front of the person, when there is a turn to
+// put it in. A nil hub is a headless run, and a headless run has nobody to
+// show a card to; the clock admits the work on its own.
+func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
+	if hub == nil {
+		return
+	}
+	// AND THE WARM LINE, WHERE THE HANDOFF CAME OUT OF THE WORK ITSELF. It
+	// goes ABOVE the card because it is the reason the card is there, and it
+	// is [EventNotice] — the dim one-liner a surface already draws for
+	// something it did not stop to ask about — rather than a kind of its own.
+	// THE CARD IS NOT REPLACED BY IT: this work was groomed by the model, and
+	// the countdown is the consent for exactly that (route_judge.go's
+	// [Agent.launchRouteTask] states the other half of the same law, for work
+	// nobody groomed). Silence still starts it, so the person is told and the
+	// work opens; what the card adds is a window to redirect, which is more
+	// than an auto-start could give them and not less.
+	if a.alreadyWorking() {
+		hub.send(Event{Kind: EventNotice, Text: taskEscalationNote})
+	}
+	notice := question.notice
+	hub.send(Event{
+		Kind: EventTaskProposal,
+		Tool: "propose_task",
+		Task: &notice,
+	})
+}
+
+// awaitTaskAnswer is the wait: the person's answer, the person's first typed
+// rune, the clock, or the end of the turn, whichever comes first. The clock
+// runs only when [Agent.taskClock] said it does, and it is stopped exactly
+// once however the wait ends.
+func (a *Agent) awaitTaskAnswer(ctx context.Context, id uint64, question *taskQuestion, clock bool, countdown time.Duration) (TaskAnswer, error) {
 	var expiry <-chan time.Time
+	rawStopTimer := func() {}
 	if clock {
-		timer := time.NewTimer(countdown)
-		defer timer.Stop()
-		expiry = timer.C
+		expiry, rawStopTimer = a.taskClockTimer(countdown)
 	}
+	var stopOnce sync.Once
+	stopTimer := func() { stopOnce.Do(rawStopTimer) }
+	defer stopTimer()
+	hold := (<-chan struct{})(question.hold)
 
-	select {
-	case answer := <-answers:
-		return answer, nil
-	case <-expiry:
-		a.forgetTask(id)
-		// Silence is a yes, and it is a yes with no redirect: the person said
-		// nothing, so nothing is appended to the brief.
-		return TaskAnswer{Approved: true}, nil
-	case <-ctx.Done():
-		a.forgetTask(id)
-		return TaskAnswer{}, ctx.Err()
+	for {
+		select {
+		case answer := <-question.answer:
+			return answer, nil
+		case <-hold:
+			// A nil select case is disabled. Once a first rune holds the clock,
+			// expiry cannot admit the work and a deleted draft cannot restore it.
+			stopTimer()
+			expiry = nil
+			hold = nil
+		case <-expiry:
+			if !a.taskSilenceAdmits(id, question) {
+				stopTimer()
+				expiry = nil
+				continue
+			}
+			// Silence is a yes, and it is a yes with no redirect: the person said
+			// nothing, so nothing is appended to the brief.
+			return TaskAnswer{Approved: true}, nil
+		case <-ctx.Done():
+			a.forgetTask(id)
+			return TaskAnswer{}, ctx.Err()
+		}
 	}
+}
+
+// taskSilenceAdmits is what an expired clock has to ask before it may approve
+// anything: a timer that fired in the same instant as a hold consults the held
+// state under the lock, and a held proposal keeps its wait registered. One
+// that was not held is forgotten here, under the same lock, so a late answer
+// finds nothing to answer.
+func (a *Agent) taskSilenceAdmits(id uint64, question *taskQuestion) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if question.held {
+		return false
+	}
+	delete(a.taskAnswers, id)
+	return true
+}
+
+func (a *Agent) taskClockNow() time.Time {
+	if a.taskNow != nil {
+		return a.taskNow()
+	}
+	return time.Now()
+}
+
+func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
+	if a.taskTimer != nil {
+		return a.taskTimer(after)
+	}
+	timer := time.NewTimer(after)
+	return timer.C, func() { timer.Stop() }
 }
 
 func taskWhereNotice(place Place, workspace string, id uint64, where string) string {

@@ -764,6 +764,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the task named the first few words of what I typed", "tasks"},
 		{"the name on the task changed by itself a few seconds later", "tasks"},
 		{"can I give a task a short name", "tasks"},
+		// V6: The proposal hold and bare-no wording are retrievable in the exact
+		// words a person uses after an unwanted auto-start.
+		{"the task started before I could say no", "tasks"},
+		{"I typed no and it started anyway", "tasks"},
+		{"how do I stop a proposed task from starting", "tasks"},
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
