@@ -1,0 +1,447 @@
+{
+  "criteria": {
+    "language": "python",
+    "labels": [
+      "bug",
+      "good first issue",
+      "help wanted",
+      "regression"
+    ],
+    "search_qualifiers": "linked:pr",
+    "issue_state": "closed",
+    "pr_state": "merged",
+    "max_source_files": 2,
+    "max_source_lines": 150,
+    "min_test_files": 1,
+    "min_stars": 30,
+    "min_body_chars": 150,
+    "max_body_chars": 4000,
+    "interface_filter": true,
+    "install_ladder": [
+      ".[dev]",
+      ".[test]",
+      ".[tests]",
+      "--group dev",
+      "--group test",
+      ".",
+      "requirements*.txt",
+      "pytest"
+    ],
+    "install_cap_seconds": 240,
+    "suite_cap_seconds": 600
+  },
+  "seed": 0,
+  "anchors": [
+    {
+      "id": "Human-Agent-Society-reef-145",
+      "repo": "Human-Agent-Society/reef",
+      "issue": 145,
+      "pr": 150,
+      "title": "[Bug] Parse the Bearer authentication scheme case-insensitively",
+      "base": "a9158b7a8a4fedee87e6a3fa21daf33b958ad405",
+      "merge": "c13708693e81c9fc329bf4c5075e5a2240a439e7",
+      "test_files": [
+        "tests/reef_service/test_auth.py"
+      ],
+      "src_files": [
+        "reef/service/auth.py"
+      ],
+      "src_lines": 9,
+      "stars": 117,
+      "prompt": "Implement issue #145: [Bug] Parse the Bearer authentication scheme case-insensitively\n\n### Reef version\n\nLatest `main`.\n\n### Commit\n\n`e9de3c2b472234cf311be83f541f9886a47e9c21`\n\n### Primary area\n\nService, API, or CLI\n\n### Environment\n\nReproduced from a clean source checkout with Python 3.10 and an aiohttp test client. No accelerator or external provider is required.\n\n### Minimal reproduction\n\nConfigure the Reef service with token `secret`, then send otherwise identical requests:\n\n```http\nAuthorization: Bearer secret\nAuthorization: bearer secret\nAuthorization: BEARER secret\n```\n\nThe first request authenticates. The lowercase and uppercase scheme variants return HTTP 401.\n\n### Expected behavior\n\nThe HTTP authentication scheme is matched case-insensitively, so all three spellings authenticate the same exact token. The credential itself remains case-sensitive.\n\nHTTP authentication defines the auth-scheme as a case-insensitive token: https://www.rfc-editor.org/rfc/rfc9110.html#section-11.1\n\n### Actual behavior\n\n`reef/service/auth.py::_authorized` uses the case-sensitive check `authorization.startswith(\"Bearer \")` and removes the same exact prefix. A standards-compliant client that emits another casing is therefore rejected before token comparison.\n\n### Proposed implementation\n\nKeep Reef authentication lightweight and dependency-free. Split the header once, compare only the scheme case-insensitively, and preserve the credential as the opaque value passed to the existing digest comparison:\n\n```python\nscheme, separator, presented = authorization.partition(\" \")\nif not separator or scheme.lower() != \"bearer\" or not presented:\n    return False\npresented_digest = _digest(presented)\n```\n\nThis follows the approach used by two close precedents:\n\n- vLLM: `partition(\" \")`, `scheme.lower()`, SHA-256, and constant-time digest comparison: https://github.com/vllm-project/vllm/blob/1c26e57d3c7b480bae4e67898784b6b976a4a515/vllm/entrypoints/serve/middleware/authenticate.py#L30-L45\n- FastAPI HTTPBearer: a small `partition(\" \")` helper followed by `scheme.lower()`: https://github.com/fastapi/fastapi/blob/50113da16fec53b66b80d75e80a89296de4fa5a5/fastapi/security/http.py#L303-L316\n\nThe change should retain the existing loop over every configured token so comparison work does not reveal which rotation token matched.\n\n### Acceptance criteria\n\n- [ ] `Bearer`, `bearer`, and mixed-case scheme spellings authenticate the same valid token.\n- [ ] Token values remain case-sensitive and continue to use SHA-256 plus `secrets.compare_digest`.\n- [ ] The comparison loop still checks every configured token rather than returning on the first match.\n- [ ] Missing headers, missing separators, empty credentials, wrong schemes, and wrong tokens remain HTTP 401.\n- [ ] Multiple accepted tokens and token rotation retain their current behavior.\n- [ ] `/healthz` remains reachable without credentials.\n- [ ] Focused tests cover canonical, lowercase, uppercase, and mixed-case schemes.\n\n### Non-goals\n\n- Adding JWT decoding, OAuth introspection, scopes, or a new authentication dependency.\n- Accepting bearer tokens from query parameters, cookies, or request bodies.\n- Changing whitespace rules or normalizing the credential value.\n- Changing the current 401 response body or adding a `WWW-Authenticate` policy; that can be considered independently.\n\n### Submission checks\n\n- [x] I searched open and closed issues and pull requests and did not find the same bug.\n- [x] I reduced the report to a minimal reproduction.\n- [x] This report contains no credentials, tokens, private data, or sensitive prompts.\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "install": ".[dev]",
+      "python": "3.12",
+      "original_tests": {
+        "note": "every test file is new in the pull request; check skipped"
+      },
+      "f2p_at_base": {
+        "passed": 4,
+        "failed": 2,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 6,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 0,
+        "failed": 0,
+        "errors": 6
+      },
+      "picked_at": "2026-09-02T15:00:11Z"
+    },
+    {
+      "id": "python-attrs-attrs-1416",
+      "repo": "python-attrs/attrs",
+      "issue": 1416,
+      "pr": 1417,
+      "title": "Creating a Subclassed instance now errors with `got an unexpected keyword argument`",
+      "base": "19943b775d40c018e844f2cb1728442f58112a3b",
+      "merge": "3b0378dd66d33ebddb52be85b8c4aac6a914b1a2",
+      "test_files": [
+        "tests/test_hooks.py"
+      ],
+      "src_files": [
+        "src/attr/_make.py"
+      ],
+      "src_lines": 2,
+      "stars": 5833,
+      "prompt": "Implement issue #1416: Creating a Subclassed instance now errors with `got an unexpected keyword argument`\n\nWe just noticed this in Airflow CI on upgrading to 25.2.0.\n\nThe error is\n\n```\nERROR    airflow.models.dagbag.DagBag:dagbag.py:394 Failed to import: /opt/airflow/airflow/example_dags/example_dynamic_task_mapping.py\nTraceback (most recent call last):\n  File \"/opt/airflow/airflow/models/dagbag.py\", line 384, in parse\n    loader.exec_module(new_module)\n  File \"<frozen importlib._bootstrap_external>\", line 999, in exec_module\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/opt/airflow/airflow/example_dags/example_dynamic_task_mapping.py\", line 27, in <module>\n    with DAG(dag_id=\"example_dynamic_task_mapping\", schedule=None, start_date=datetime(2022, 3, 4)) as dag:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: DAG.__init__() got an unexpected keyword argument 'dag_id'\n```\n\n(Yes, I know your view on subclassing. I don't disagree either)\n\nMinimal repro case:\n\n```python\nimport attrs\n\ndef _all_after_dag_id_to_kw_only(cls, fields: list[attrs.Attribute]):\n    i = iter(fields)\n    f = next(i)\n    if f.name != \"dag_id\":\n        raise RuntimeError(\"dag_id was not the first field\")\n    yield f\n\n    for f in i:\n        yield f.evolve(kw_only=True)\n\n\n@attrs.define(field_transformer=_all_after_dag_id_to_kw_only)\nclass Base:\n    dag_id: str\n    has_default: str = \"default\"\n\n\n@attrs.define()\nclass Subclass(Base):\n    other: bool\n\n\nx = Subclass(dag_id=\"foo\", other=False)\n\nprint(repr(x))\nprint(attrs.__version__)\n```\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": ".[dev]",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 13,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 13,
+        "failed": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 14,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 1338,
+        "failed": 85,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:48:28Z"
+    },
+    {
+      "id": "pypa-packaging-1318",
+      "repo": "pypa/packaging",
+      "issue": 1318,
+      "pr": 1319,
+      "title": "TypeError: 'NoneType' object is not iterable on `if _SIMPLE_VERSION_INDICATORS.issuperset(version):`",
+      "base": "9a11fba3d53215dc2ff08d8e9d0d5780c08fbe8f",
+      "merge": "d3e7f5d96da0c27103324cb9fb349b54e753a877",
+      "test_files": [
+        "tests/test_specifiers.py",
+        "tests/test_version.py"
+      ],
+      "src_files": [
+        "src/packaging/version.py"
+      ],
+      "src_lines": 14,
+      "stars": 748,
+      "prompt": "Implement issue #1318: TypeError: 'NoneType' object is not iterable on `if _SIMPLE_VERSION_INDICATORS.issuperset(version):`\n\nHi. I'm not sure/don't think this is actually a problem in this package, but I don't know where to turn. I was updating my dev environment yesterday (python managed by MacPorts) and I began seeing this message while trying to build/install several different packages.\n\nI've seen it at least on `hatchling`, `setuptools-rust`, `shelligham` and `hatch-vcs`, using python 3.13.\n\nAny idea what might be causing it, or where might I begin to troubleshoot?\n\nI already tried uninstalling all my python3.13 packages and starting from scratch, but it didn't really help.\n\nE.T.A. versions of some possibly relevant packages:\n\n```\nThe following ports are currently installed:\n  py313-build @1.4.4_0 (active) requested_variants='' platform='darwin any' archs='noarch' date='2026-07-06T07:43:26-0400'\n  py313-installer @1.0.1_0 (active) requested_variants='' platform='darwin any' archs='noarch' date='2026-07-06T07:43:23-0400'\n  py313-packaging @26.2_0 (active) requested_variants='' platform='darwin any' archs='noarch' date='2026-07-06T07:43:25-0400'\n  py313-setuptools @80.10.2_0 (active) requested_variants='' platform='darwin any' archs='noarch' date='2026-07-06T07:43:33-0400'\n  py313-wheel @0.47.0_0 (active) requested_variants='' platform='darwin any' archs='noarch' date='2026-07-06T07:43:38-0400'\n  python313 @3.13.14_0+lto+optimizations (active) requested_variants='-universal' platform='darwin 22' archs='x86_64' date='2026-07-05T13:34:52-0400'\n```\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": "--group dev",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 53414,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 53414,
+        "failed": 6,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 53420,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 62032,
+        "failed": 0,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:48:58Z"
+    },
+    {
+      "id": "pallets-click-3740",
+      "repo": "pallets/click",
+      "issue": 3740,
+      "pr": 3739,
+      "title": "[Bug] On Windows, get_pager_file returns a typing.BinaryIO object NOT typing.TextIO",
+      "base": "9c4dfdaebe0e6b2aabc566eb81f6f10eb5cd6ea1",
+      "merge": "8b44edfff7d9a6c895fa804148c16b3a0bc9efb5",
+      "test_files": [
+        "tests/test_termui.py"
+      ],
+      "src_files": [
+        "src/click/_termui_impl.py"
+      ],
+      "src_lines": 2,
+      "stars": 17651,
+      "prompt": "Implement issue #3740: [Bug] On Windows, get_pager_file returns a typing.BinaryIO object NOT typing.TextIO\n\nInside `src/click/_termui_impl.py`, the function `get_pager_file` delegates the creation of a tempfile to `_tempfilepager`, which returns a `BinaryIO` object of the opened file:\n\n```python\nf = tempfile.NamedTemporaryFile(mode=\"wb\", delete=False)\ntry:\n    yield t.cast(t.BinaryIO, f), encoding, color\n...\n```\nWhich is called by _pager_contextmanager in\n```python\n...\nif pager_cmd_parts:\n        if WIN:\n            return _tempfilepager(pager_cmd_parts, color)\n        return _pipepager(pager_cmd_parts, color)\n...\n    if WIN or sys.platform.startswith(\"os2\"):\n        return _tempfilepager([\"more\"], color)\n    return _pipepager([\"less\"], color)\n```\nIn the end `get_pager_file`\n```python\ndef get_pager_file(color: bool | None = None) -> t.Generator[t.TextIO, None, None]:\n    ...\n    with _pager_contextmanager(color=color) as (stream, encoding, color):\n    # Split streams by capabilities rather than the abstract TextIO /\n    # BinaryIO annotations: buffered text streams can be unwrapped to bytes,\n    # while other streams are yielded as-is.\n    wrapper: MaybeStripAnsi | None = None\n        if _has_binary_buffer(stream):\n            # Text stream backed by a binary buffer.\n            wrapper = MaybeStripAnsi(stream.buffer, color=color, encoding=encoding)\n            stream = wrapper\n        try:\n            # Narrow the BinaryIO | TextIO union that _pager_contextmanager\n            # yields; the caller writes text to the pager.\n            yield t.cast(t.TextIO, stream)\n        ...\n```\nIn the above `yield t.cast(t.TextIO, stream)` stream object will be `BinaryIO`, contradicting the `TextIO` annotation of the return value, all because it was created with the mode `\"wb\"` earlier.\n\nThen if a caller tries: `stream.write(\"some text\")` it will raise an exception:\n`TypeError: a bytes-like object is required, not 'str'`\n\nFIX:\nIn `_tempfilepager`, create the temp file with `mode='w'`\n```python\nf = tempfile.NamedTemporaryFile(mode=\"w\", delete=False)\n```\nI went ahead and created a pull request:\nhttps://github.com/pallets/click/pull/3739\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": "--group dev",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 221,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 23
+      },
+      "f2p_at_base": {
+        "passed": 220,
+        "failed": 5,
+        "errors": 0,
+        "skipped": 23
+      },
+      "gold": {
+        "passed": 225,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 23
+      },
+      "base_suite": {
+        "passed": 1953,
+        "failed": 0,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:47:49Z"
+    },
+    {
+      "id": "tox-dev-tox-4031",
+      "repo": "tox-dev/tox",
+      "issue": 4031,
+      "pr": 4035,
+      "title": "Unreadable configuration files leak an OSError traceback",
+      "base": "c3927c6437add6d0dd527e14008fe7b174aa3150",
+      "merge": "cc9350957060ebcd96c4ba05811f185e778c3643",
+      "test_files": [
+        "tests/config/source/test_discover.py"
+      ],
+      "src_files": [
+        "src/tox/config/source/discover.py"
+      ],
+      "src_lines": 6,
+      "stars": 3929,
+      "prompt": "Implement issue #4031: Unreadable configuration files leak an OSError traceback\n\n## Issue\n\nWhen the selected tox configuration file exists but cannot be read, configuration discovery lets `OSError` subclasses escape. The CLI prints a full traceback instead of the handled one-line configuration error used for malformed files.\n\nThis reproduces on current `main` (`4115dd3c`, tox `4.60.1.dev2+g4115dd3cf`) on Linux:\n\n```console\n$ chmod 000 tox.ini\n$ tox -c tox.ini list\nTraceback (most recent call last):\n  ...\nPermissionError: [Errno 13] Permission denied: tox.ini\n```\n\nThe same behavior affects automatic discovery and `-c <directory>`.\n\n## Environment\n\n- OS: Linux\n- Python: CPython 3.13.13\n- tox: `4.60.1.dev2+g4115dd3cf`\n\n## Minimal example\n\n```ini\n[tox]\nenv_list = py\n\n[testenv]\ncommands = python -c \"print(42)\"\n```\n\nSave this as `tox.ini`, remove its read permission, and run `tox list` or `tox -c tox.ini list`.\n\n## Root cause\n\nThe three source-loading paths in `tox.config.source.discover` translate `ValueError` into `HandledError`, but file reads can also raise `OSError` subclasses such as `PermissionError`. This is adjacent to #4027, which made malformed INI parse errors follow the handled-error path.\n\n## Expected behavior\n\nReport that the configuration source failed to load, without a Python traceback. I can submit a focused fix with tests covering automatic, directory, and exact-file discovery.\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": "--group dev",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 8,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 8,
+        "failed": 2,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 10,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 0,
+        "failed": 0,
+        "errors": 1
+      },
+      "picked_at": "2026-09-02T19:47:59Z"
+    },
+    {
+      "id": "pypa-virtualenv-3072",
+      "repo": "pypa/virtualenv",
+      "issue": 3072,
+      "pr": 3073,
+      "title": "pythonw3.exe is missing",
+      "base": "1d4a33811f99c43e5b78a872997c75baec19a176",
+      "merge": "b1ca37fbd7d4f37f79f32f429ba148659c13e471",
+      "test_files": [
+        "tests/unit/create/via_global_ref/builtin/cpython/test_cpython3_win.py"
+      ],
+      "src_files": [
+        "src/virtualenv/create/via_global_ref/builtin/cpython/common.py"
+      ],
+      "src_lines": 2,
+      "stars": 5042,
+      "prompt": "Implement issue #3072: pythonw3.exe is missing\n\n**Issue**\n\nOccasionally, users may install a Python package that includes GUI scripts. If they use \n\n```\npython3 -m pip install \"git+https://github.com/ISISNeutronMuon/MDANSE@protos#egg=MDANSE_GUI&subdirectory=MDANSE_GUI\"\n```\n\nfor example, to install a package, the GUI script will look for `pythonw3.exe` since they used `python3`. If they do this with virtualenv, then there will be an error because, for some reason, `pythonw3.exe` is not created by virtualenv.\n\nThe current workaround we have found is to use \n\n```\npython -m pip install \"git+https://github.com/ISISNeutronMuon/MDANSE@protos#egg=MDANSE_GUI&subdirectory=MDANSE_GUI\"\n```\n\nso that the GUI script is created, which will look for `pythonw.exe`, which is created by virtualenv. See https://github.com/ISISNeutronMuon/MDANSE/issues/1180 for more details.\n\n\n\nProvide at least:\n\n- OS: Windows 11\n- Shell: powershell\n- Python version and path:  Python 3.14.3  'C:\\\\Users\\\\username\\\\AppData\\\\Local\\\\Python\\\\pythoncore-3.14-64'\n- `pip list` of the host python where `virtualenv` is installed:\n\n```\nPackage      Version\n------------ -------\ndistlib      0.4.0\nfilelock     3.24.3\npip          26.0.1\nplatformdirs 4.9.2\nvirtualenv   20.38.0\n```\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": "--group dev",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 10,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 9,
+        "failed": 2,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 11,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 452,
+        "failed": 9,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:50:21Z"
+    },
+    {
+      "id": "pypa-build-860",
+      "repo": "pypa/build",
+      "issue": 860,
+      "pr": 1027,
+      "title": "`build.check_dependency` ignores URL reqs with names that match an installed distribution",
+      "base": "d407530dffe9e7c6141ec533f3271ced2aef9220",
+      "merge": "7642efe3f3c5163aa5839d23dda606f3a07eaf21",
+      "test_files": [
+        "tests/test_projectbuilder.py"
+      ],
+      "src_files": [
+        "src/build/_util.py"
+      ],
+      "src_lines": 23,
+      "stars": 854,
+      "prompt": "Implement issue #860: `build.check_dependency` ignores URL reqs with names that match an installed distribution\n\nWhen `build.check_dependency` sees a URL req with a name that matches an installed distribution, it considers the URL req met. For example:\n\n```python\nimport importlib.metadata\n\nimport build\n\n\ndef get_version(distribution_name: str) -> str | None:\n    try:\n        return importlib.metadata.version(distribution_name)\n    except ModuleNotFoundError:\n        return None\n\n\n# Some version of packaging is installed:\npackaging_ver = importlib.metadata.version(\"packaging\")\nassert packaging_ver is not None and packaging_ver != \"24.1\"\nprint(\n    f\"{tuple(build.check_dependency(\"packaging @ git+https://github.com/pypa/packaging.git@24.1\")) = !r}\"\n)\n\n# No version of sniffio is installed:\nsniffio_ver = get_version(\"sniffio\")\nassert sniffio_ver is None\nprint(\n    f\"{tuple(build.check_dependency(\"sniffio @ git+https://github.com/python-trio/sniffio.git@v1.3.1\")) = !r}\"\n)\n```\n\nOutput (in a venv with `packaging==24.2` and without `sniffio`):\n\n```console\ntuple(build.check_dependency(\"packaging @ git+https://github.com/pypa/packaging.git@24.1\")) = ()\ntuple(build.check_dependency(\"sniffio @ git+https://github.com/python-trio/sniffio.git@v1.3.1\")) = (('sniffio@ git+https://github.com/python-trio/sniffio.git@v1.3.1',),)\n\n```\n\nThe `packaging` URL req is reported as met but it is not. The sniffio URL req is correctly reported as unmet.\n\nWith `check_dependency`'s current documentation, this seems like a bug; it should be able to verify that URL reqs are met.\n\nIs it possible via PEP 610?\n\n```diff\n     try:\n         dist = importlib.metadata.distribution(req.name)\n     except importlib.metadata.PackageNotFoundError:\n         # dependency is not installed in the environment.\n         yield (*ancestral_req_strings, normalised_req_string)\n     else:\n         if req.specifier and not req.specifier.contains(dist.version, prereleases=True):\n             # the installed version is incompatible.\n             yield (*ancestral_req_strings, normalised_req_string)\n+        elif req.url and pseudocode(dist.origin != req.url):\n+            yield (*ancestral_req_strings, normalised_req_string)\n         elif dist.requires:\n             for other_req_string in dist.requires:\n                 # yields transitive dependencies that are not satisfied.\n                 yield from check_dependency(other_req_string, (*ancestral_req_strings, normalised_req_string), req.extras)\n```\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "fresh",
+      "tier": "small",
+      "install": "--group dev",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 61,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 65,
+        "failed": 4,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 69,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 196,
+        "failed": 0,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:48:46Z"
+    },
+    {
+      "id": "pylint-dev-astroid-2305",
+      "repo": "pylint-dev/astroid",
+      "issue": 2305,
+      "pr": 2307,
+      "title": "Regression in Astroid version 2.15.7 in handling subscriptable type parameters",
+      "base": "2380f6f161387fc089a86cc0ae9ad121c346b6c3",
+      "merge": "1f0f2f8f780c3b639307a5f326b3963fdd6fa160",
+      "test_files": [
+        "tests/brain/test_typing.py"
+      ],
+      "src_files": [
+        "astroid/brain/brain_typing.py"
+      ],
+      "src_lines": 13,
+      "stars": 582,
+      "prompt": "Implement issue #2305: Regression in Astroid version 2.15.7 in handling subscriptable type parameters\n\nAstroid version 2.15.7 fails to correctly handle a subscriptable type parameter  most likely due to the change in this [PR](https://github.com/pylint-dev/astroid/pull/2239). \r\n\r\n### Steps to reproduce\r\n\r\n```python\r\nfrom collections.abc import Mapping\r\nfrom typing import Generic, TypeVar, TypedDict\r\nfrom dataclasses import dataclass\r\n\r\nclass Identity(TypedDict):\r\n    \"\"\"It's the identity.\"\"\"\r\n\r\n    name: str\r\n\r\nT = TypeVar(\"T\", bound=Mapping)\r\n\r\n@dataclass\r\nclass Animal(Generic[T]):\r\n    \"\"\"It's an animal.\"\"\"\r\n\r\n    identity: T\r\n\r\nclass Dog(Animal[Identity]):\r\n    \"\"\"It's a Dog.\"\"\"\r\n\r\ndog = Dog(identity=Identity(name=\"Dog\"))\r\nprint(dog.identity[\"name\"])\r\n```\r\n\r\n### Current behavior\r\nPylint (running Astroid 2.15.7) gives the following error for the example above:\r\n```\r\nE1136: Value 'dog.identity' is unsubscriptable (unsubscriptable-object)\r\n```\r\n### Expected behavior\r\nAstroid should correctly handle a subscriptable type parameter.\r\n\r\n\r\n### `python -c \"from astroid import __pkginfo__; print(__pkginfo__.version)\"` output\r\n2.15.7\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "swe-bench-dev",
+      "tier": "small",
+      "install": ".",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 1,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 0,
+        "failed": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 1,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 1578,
+        "failed": 2,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:48:12Z"
+    },
+    {
+      "id": "sphinx-doc-sphinx-11437",
+      "repo": "sphinx-doc/sphinx",
+      "issue": 11437,
+      "pr": 11445,
+      "title": "Using rst_prolog removes top level headings containing a domain directive",
+      "base": "c583e0f9b0412fadd957b05f675315a78d9ab490",
+      "merge": "12e7cff0b695dbc6974fc3a438439a2a86f2a258",
+      "test_files": [
+        "tests/test_util_rst.py"
+      ],
+      "src_files": [
+        "sphinx/util/rst.py"
+      ],
+      "src_lines": 14,
+      "stars": 7999,
+      "prompt": "Implement issue #11437: Using rst_prolog removes top level headings containing a domain directive\n\n### Describe the bug\r\n\r\nIf `rst_prolog` is set, then any documents that contain a domain directive as the first heading (eg `:mod:`) do not render the heading correctly or include the heading in the toctree.\r\n\r\nIn the example below, if the heading of `docs/mypackage.rst` were `mypackage2` instead of `:mod:mypackage2` then the heading displays correctly.\r\nSimilarly, if you do not set `rst_prolog` then the heading will display correctly.\r\n\r\nThis appears to have been broken for some time because I can reproduce it in v4.0.0 of Sphinx\r\n\r\n### How to Reproduce\r\n\r\n```bash\r\n$ sphinx-quickstart --no-sep --project mypackage --author me -v 0.1.0 --release 0.1.0 --language en docs\r\n$ echo -e 'Welcome\\n=======\\n\\n.. toctree::\\n\\n   mypackage\\n' > docs/index.rst\r\n$ echo -e ':mod:`mypackage2`\\n=================\\n\\nContent\\n\\nSubheading\\n----------\\n' > docs/mypackage.rst\r\n$ echo -e 'rst_prolog = \"\"\"\\n.. |psf| replace:: Python Software Foundation\\n\"\"\"\\n' >> docs/conf.py\r\n$ sphinx-build -b html . _build\r\n$ grep 'mypackage2' docs/_build/index.html\r\n```\r\n\r\n`docs/index.rst`:\r\n\r\n```rst\r\nWelcome\r\n=======\r\n\r\n.. toctree::\r\n\r\n   mypackage\r\n```\r\n\r\n`docs/mypackage.rst`:\r\n\r\n```rst\r\n:mod:`mypackage2`\r\n=================\r\n\r\nContent\r\n\r\nSubheading\r\n----------\r\n```\r\n\r\n### Environment Information\r\n\r\n```text\r\nPlatform:              linux; (Linux-6.3.2-arch1-1-x86_64-with-glibc2.37)\r\nPython version:        3.11.3 (main, Apr  5 2023, 15:52:25) [GCC 12.2.1 20230201])\r\nPython implementation: CPython\r\nSphinx version:        7.1.0+/d3c91f951\r\nDocutils version:      0.20.1\r\nJinja2 version:        3.1.2\r\nPygments version:      2.15.1\r\n```\r\n\r\n\r\n### Sphinx extensions\r\n\r\n```python\r\n[]\r\n```\r\n\r\n\r\n### Additional context\r\n\r\n_No response_\n\nWork in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass.",
+      "source": "swe-bench-verified",
+      "tier": "small",
+      "install": ".[test]",
+      "python": "3.12",
+      "original_tests": {
+        "passed": 7,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "f2p_at_base": {
+        "passed": 8,
+        "failed": 2,
+        "errors": 0,
+        "skipped": 0
+      },
+      "gold": {
+        "passed": 10,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "base_suite": {
+        "passed": 1842,
+        "failed": 18,
+        "errors": 0
+      },
+      "picked_at": "2026-09-02T19:49:36Z"
+    }
+  ],
+  "frozen_note": "Anchors are frozen: pick.py refuses to overwrite them. reef-145 admitted 2026-09-02T15:00Z by search; the other eight admitted 2026-09-02 ~20:30Z by --only feeds after the pytest -q summary parsing fix (each carries source and tier)."
+}
