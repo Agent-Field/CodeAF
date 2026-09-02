@@ -1193,7 +1193,6 @@ func (a *app) roomSay(text string) {
 	}
 	e := &room.entries[room.live]
 	e.text += text
-	e.catchReveal(len(text), a.linear)
 	e.stale = true
 	a.roomTouched()
 }
@@ -1218,7 +1217,6 @@ func (a *app) roomThink(text string) {
 	}
 	e := &room.entries[room.think]
 	e.text += text
-	e.catchReveal(len(text), a.linear)
 	e.ended = a.now()
 	e.stale = true
 	a.roomTouched()

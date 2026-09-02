@@ -100,9 +100,6 @@ func TestAHomeAnswerIsRawWhileItFormsAndStyledOnceItSettles(t *testing.T) {
 	// A follow-up, streamed by hand so the reply can be looked at half-arrived.
 	ex.startTurn(a.now())
 	a.errandEvent(ex, text(session.EventTextDelta, askMarkdown))
-	// The lump is paced; the assertion is about SOURCE vs markdown, not
-	// about how far the edge has walked. Catch up, then look.
-	catchUpReveal(a)
 	if forming := paneProse(a, ex); !strings.Contains(forming, "**two**") {
 		t.Fatalf("a reply still arriving was formatted; the growing edge is plain in the transcript too:\n%s",
 			forming)
