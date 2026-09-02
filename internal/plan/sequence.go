@@ -239,6 +239,17 @@ func chainInto(sub *Graph, stages []Stage) {
 // a node already within reach would pay a briefing per stage and a reassembly at
 // the end for a sequence it was going to run anyway. That is the null hypothesis
 // holding, and it is the same boundary JudgeSplit draws.
+//
+// The second clause is the same one JudgeSplit grew, and it is here for the
+// same reason: a node whose own words name two or more pieces is not one
+// sitting until this question says so. Where the ruler called such a node
+// atomic and the fan-out then restated it, the old boundary sent it back with
+// "the division gave back one piece" — the answer that ends a node's chances of
+// ever being divided, given on the strength of a size the node's own summary
+// contradicts. THE TWO PREDICATES MUST STAY THE SAME BOUNDARY: a node
+// JudgeSplit admits on its words and this one turns away would be expanded and
+// then refused for the one reason its expansion was never asked about.
 func dividesInTime(node *Node) bool {
-	return node.Size == SizeOversized || node.Size == SizeBorderline
+	return node.Size == SizeOversized || node.Size == SizeBorderline ||
+		namesSeveralPieces(node.Title, node.Summary)
 }

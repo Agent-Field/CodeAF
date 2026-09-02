@@ -351,13 +351,34 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// the stage question, which costs one call and no fan-out. Everything else
 	// keeps the pre-check: atomic-and-run is still the null hypothesis, and a
 	// node within one worker's reach is never staged.
-	if len(node.Parts) < 2 && node.Size != SizeOversized {
+	//
+	// AND A NODE WHOSE OWN WORDS NAME TWO OR MORE PIECES IS NOT ONE SITTING
+	// UNTIL THE STAGE QUESTION SAYS SO. The pre-check reads what the ruler
+	// named; this reads what the node itself says, which is the evidence that
+	// was on the node all along and that nothing was looking at. A stage the
+	// spine wrote as "North: …; South: …; East: …" and the ruler then called
+	// atomic with no parts was refused here as unnamed and run whole — three
+	// disjoint lanes over one 144 KB file, in one sitting, on two draws of
+	// three. Reading the enumeration is free (enumerated.go, no call), and it
+	// decides nothing: it only stops the refusal, and the division is then
+	// asked for and either drawn or refused as it always was.
+	enumerated := namesSeveralPieces(node.Title, node.Summary)
+	if len(node.Parts) < 2 && node.Size != SizeOversized && !enumerated {
 		return SplitVerdict{Reason: RefusalUnnamed}
 	}
 	switch node.Size {
 	case SizeOversized, SizeBorderline:
 		return SplitVerdict{Divide: true}
 	case SizeAtomic:
+		// The atomic verdict is the ruler's reading of a title and a summary,
+		// and where those same words enumerate their own pieces the two
+		// readings disagree. The disagreement is not settled here — this
+		// admits the node to the question, and the question (sequence.go) is
+		// free to answer with one piece, which is the refusal that gets
+		// journaled.
+		if enumerated {
+			return SplitVerdict{Divide: true}
+		}
 		if options.CapacitySamples >= capacityEvidenceFloor &&
 			options.CapacityOverrunRate > capacityOverrunThreshold {
 			return SplitVerdict{Divide: true}

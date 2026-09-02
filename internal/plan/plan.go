@@ -559,17 +559,34 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			Summary: strings.TrimSpace(stage.Summary),
 			Brief:   goal,
 		}
+		// AND THE PROBE IS NOT ASKED WHERE THE STAGE'S OWN WORDS HAVE ALREADY
+		// ANSWERED. The one call this shortcut spends is asked of a node whose
+		// title reads "North, South, East" and whose summary spells the three
+		// lanes out one by one; the ruler answered atomic, named no parts, and
+		// the whole goal went to one fresh worker on the strength of it. The
+		// words are read first instead (enumerated.go, free), and a one-stage
+		// spine that enumerates its pieces falls through to the pipeline, where
+		// the fan-out and then the stage question get to answer. Nothing else
+		// about the shortcut moves: a stage naming one subject is probed and
+		// taken exactly as it was.
+		enumerated := namesSeveralPieces(single.Title, single.Summary)
 		var withinReach bool
-		var reachUsage Usage
-		withinReach, reachUsage, reachErr = withinOneWorker(ctx, client, graph, single)
-		graph.Usage.merge(reachUsage)
+		if !enumerated {
+			var reachUsage Usage
+			withinReach, reachUsage, reachErr = withinOneWorker(ctx, client, graph, single)
+			graph.Usage.merge(reachUsage)
+		}
 		if withinReach {
 			graph.Add(single)
 			emitProgress(progress, "steps", "1", "")
 			report("undivided", time.Since(start), "one worker — the spine found nothing gated")
 			return graph, errors.Join(groundErr, reachErr)
 		}
-		report("undivided", time.Since(start), "past one worker's reach — planned in full")
+		detail := "past one worker's reach — planned in full"
+		if enumerated {
+			detail = "its own words name several pieces — planned in full"
+		}
+		report("undivided", time.Since(start), detail)
 	}
 
 	// --- ensemble hook (ensemble.go) ---------------------------------------
