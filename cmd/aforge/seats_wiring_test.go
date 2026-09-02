@@ -394,3 +394,81 @@ func TestAnErrandOnACrewOlderThanTheWorkerSeatNeverTouchesTheBuildsDefault(t *te
 			outcome.Model, outcome.ModelSource)
 	}
 }
+
+// AND THE CONVERSATION SEATS THE SAME ROW (#312).
+//
+// The chat resolves its five classes through [v3RolesSource], which is a
+// different road from [config.ResolveSeats] on purpose — a conversation has no
+// flag and no campaign variable for its crew, only a profile — but it must end
+// at the same model, or a person's crew means one thing in `aforge do` and
+// another in the window they actually work in. This is the ladder read the way
+// the door reads it: the key internal/roles asks for, on a profile older than
+// the worker seat.
+func TestTheChatRoleMapSeatsTheInheritedWorkerRow(t *testing.T) {
+	pinned := "vendor/pinned-small-work"
+	dir := writeVintageProfile(t, map[string]string{
+		config.KeyTierReflexModel:     "vendor/pinned-reflex",
+		config.KeyTierLowModel:        pinned,
+		config.KeyTierHighModel:       "vendor/pinned-careful",
+		config.KeyTierMastermindModel: "vendor/pinned-thinking",
+	})
+
+	read, err := v3RolesSource(t.TempDir(), dir)
+	if err != nil {
+		t.Fatalf("building the conversation's role map: %v", err)
+	}
+	worker, ok := read(roles.TierKey(roles.TierWorker))
+	if !ok || worker != pinned {
+		t.Fatalf("the conversation's worker class reads %q (held=%t), want the small-work model the crew pinned",
+			worker, ok)
+	}
+	if worker == config.DefaultWorkerModel {
+		t.Fatalf("the conversation's worker class fell to the build's default %q", config.DefaultWorkerModel)
+	}
+	// The rows the profile does hold are untouched by any of it.
+	if got, _ := read(roles.TierKey(roles.TierMastermind)); got != "vendor/pinned-thinking" {
+		t.Fatalf("the thinking class reads %q", got)
+	}
+
+	// A row written by hand wins over the lineage, and a row cleared on purpose
+	// still means "follow the conversation" — which on this surface is a class
+	// the role ladder does not hold at all.
+	own := writeVintageProfile(t, map[string]string{
+		config.KeyTierLowModel:    pinned,
+		config.KeyTierWorkerModel: "vendor/my-own-worker",
+	})
+	read, err = v3RolesSource(t.TempDir(), own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := read(roles.TierKey(roles.TierWorker)); got != "vendor/my-own-worker" {
+		t.Fatalf("a pinned worker row reads %q", got)
+	}
+	cleared := writeVintageProfile(t, map[string]string{
+		config.KeyTierLowModel:    pinned,
+		config.KeyTierWorkerModel: "",
+	})
+	read, err = v3RolesSource(t.TempDir(), cleared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, held := read(roles.TierKey(roles.TierWorker)); held {
+		t.Fatalf("a worker row cleared on purpose is held as %q instead of following the conversation", got)
+	}
+}
+
+// writeVintageProfile writes a profile holding exactly these rows: a value for a
+// row somebody wrote, the empty string for one they cleared, and no key at all
+// for a class of a vintage that never had one.
+func writeVintageProfile(t *testing.T, rows map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.BudgetConfigPath(dir), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}

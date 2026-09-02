@@ -1808,6 +1808,13 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
+	// workSeatSaid is whether this session has already asked whether its work
+	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
+	// SESSION and not about the profile: the line is a receipt for work that is
+	// starting now, said once where a person is already looking, and a surface
+	// that said it again per task — or per node of one task — would be the
+	// warning-on-every-call this whole mechanism refused headless (#311, #312).
+	workSeatSaid bool
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard

@@ -285,6 +285,31 @@ var tuiWords = map[string]tuiWord{
 		screen: "you took this as done",
 		why:    "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed",
 	},
+	"starterTaskWord": {
+		screen: "/task <brief> starts work",
+		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
+	},
+
+	// ── the seat a crew older than it never wrote ────────────────────────────
+	//
+	// The two halves of one line, and it is the ENGINE'S sentence: the surface
+	// says it in the thread and every headless door prints it under the models
+	// line, out of one composer (internal/config's Seat.Notice), so the gate
+	// looks for it where it is spelled rather than in the surface that relays it.
+	"inheritedSeatObservation": {
+		screen: "your crew was set before the work seat existed",
+		source: "your crew was set before the ",
+		pkg:    "internal/config",
+		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
+	},
+	"inheritedSeatPromise": {
+		screen: "it is running on your small work model",
+		source: "it is running on your ",
+		pkg:    "internal/config",
+		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +
+			"than at `until you pick a crew again` because a transcript line is cut to make room for " +
+			"the task rail, and the sentence is longer than an ordinary window minus that column",
+	},
 	"taskLookWord": {
 		screen: "needs your look",
 		why:    "the person's own words for a landing nobody could check, on the card's own head line",
