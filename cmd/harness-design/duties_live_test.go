@@ -109,7 +109,7 @@ func TestLiveReviewAnswersBothDutiesOnTheCollapsedDraft(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	revised, harness, applied, _, err := reviewOnce(ctx, newChatClient(key, model), history, 10000, 0.3, draft, draftHarness)
+	revised, harness, applied, _, err := reviewOnce(ctx, newChatClient(key, model), history, 10000, draft, draftHarness)
 	if err != nil {
 		t.Fatalf("the review produced nothing usable: %v", err)
 	}

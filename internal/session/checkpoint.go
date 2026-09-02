@@ -270,12 +270,6 @@ const (
 	// between.
 	checkpointSketchTokens = 300
 
-	// checkpointSketchTemp is zero for the reason the route judge's is: this is a
-	// reading of evidence that the harness then parses deterministically, and
-	// sampling variety in it would be the same transcript answering SPLIT on one
-	// run and CONTINUE on the next.
-	checkpointSketchTemp = 0
-
 	// checkpointSketchWindow is how long the mark's read gets, and unlike the
 	// race's two windows (route_judge.go) SOMEBODY IS WAITING ON THIS ONE. It
 	// stands at a step boundary of a turn that is running: the next round of tools
@@ -1383,8 +1377,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	a.tellPhase(provider.PhaseTakingStock, "", began)
 	defer a.endPhase()
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens),
-		ai.WithTemperature(checkpointSketchTemp))
+		ai.WithMaxTokens(checkpointSketchTokens))
 	read := checkpointRead{asked: true, model: reader, took: time.Since(began)}
 	if err != nil || response == nil {
 		read.failed = true
@@ -2639,8 +2632,7 @@ func (a *Agent) readRemains(ctx context.Context) string {
 	defer done()
 	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointRemainsAsk)}
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens),
-		ai.WithTemperature(checkpointSketchTemp))
+		ai.WithMaxTokens(checkpointSketchTokens))
 	if err != nil || response == nil {
 		return ""
 	}
@@ -3224,8 +3216,7 @@ func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (
 		// NO BELT, for [Agent.checkpointBrief]'s reason: a writer with no hand to
 		// reach for can only answer with the document.
 		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages,
-			ai.WithMaxTokens(checkpointBriefTokens),
-			ai.WithTemperature(checkpointSketchTemp))
+			ai.WithMaxTokens(checkpointBriefTokens))
 		if err != nil || response == nil {
 			// THE PROVIDER'S OWN WORDS COME OUT WITH THE FAILURE. On the measured run
 			// this rung died on [checkpointHandoffWindow] — ninety seconds, to the

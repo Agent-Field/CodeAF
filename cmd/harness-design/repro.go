@@ -140,7 +140,7 @@ type trial struct {
 // reproMode runs the design stage over and over and prints the tally. It never
 // reviews, never saves and never runs: the question is whether a page can be
 // GOT AT ALL, and every stage past that one is a different question.
-func reproMode(ctx context.Context, chat *chatClient, designer string, goals []struct{ key, note, text string }, trials, tokens int, temperature float64, retries int) int {
+func reproMode(ctx context.Context, chat *chatClient, designer string, goals []struct{ key, note, text string }, trials, tokens, retries int) int {
 	failed := 0
 	for _, goal := range goals {
 		head(fmt.Sprintf("repro · %s · %d trials", goal.key, trials), goal.text)
@@ -149,7 +149,7 @@ func reproMode(ctx context.Context, chat *chatClient, designer string, goals []s
 			if ctx.Err() != nil {
 				break
 			}
-			one := oneTrial(ctx, chat, designer, goal.text, tokens, temperature, retries)
+			one := oneTrial(ctx, chat, designer, goal.text, tokens, retries)
 			results = append(results, one)
 			switch {
 			case one.err != nil:
@@ -177,7 +177,7 @@ func reproMode(ctx context.Context, chat *chatClient, designer string, goals []s
 // refusals kept. The history is threaded exactly as it is there and in
 // internal/session, because a repro of a retry ladder that repairs differently
 // is a repro of something else.
-func oneTrial(ctx context.Context, chat *chatClient, designer, goal string, tokens int, temperature float64, retries int) trial {
+func oneTrial(ctx context.Context, chat *chatClient, designer, goal string, tokens, retries int) trial {
 	history := []message{
 		{Role: "system", Content: designer},
 		{Role: "user", Content: "THE GOAL:\n\n" + goal + "\n\nDesign the sub-harness for it."},
@@ -186,7 +186,7 @@ func oneTrial(ctx context.Context, chat *chatClient, designer, goal string, toke
 	out := trial{}
 	for tries := 0; tries <= retries; tries++ {
 		out.attempts = tries + 1
-		_, harness, at, err := designOnce(ctx, chat, history, tokens, temperature)
+		_, harness, at, err := designOnce(ctx, chat, history, tokens)
 		if err == nil {
 			out.took = time.Since(began)
 			out.nodes = len(harness.Program.Nodes)

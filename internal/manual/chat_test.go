@@ -1030,6 +1030,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the default reasoning effort", "models-and-cost"},
 		{"does the thinking level stick after a restart", "models-and-cost"},
 
+		// Sampling is the provider's own dial on every call, so it is asked
+		// about in the API's own words — temperature, top_p — and as the
+		// creativity knob a person from another tool went looking for.
+		{"what temperature do you use", "models-and-cost"},
+		{"can I change the sampling settings", "models-and-cost"},
+
 		// And the CONVERSATION's own rung, which is a chip and a chord rather
 		// than a setting — so it is asked about as a thing on the screen ("what
 		// is that symbol above the box") and as a key somebody pressed by
