@@ -8,7 +8,6 @@ invalidates:
   - "The manual said you are never asked about several pieces of one job while the job is still running. You can accept, look again at, or reject a sub-task before its parent finishes."
   - "The failure table's `could not prepare a working copy` row named no error text. When the folder a task is cut from could not be frozen the error reads `this task's world could not be sealed:` followed by git's own words, it is the folder and not the brief that is wrong, and nothing was started and nothing was spent."
   - "The list of words a task page's header draws was missing `sizing the work`, and it is now written out complete, including `waits: <the work it waits on>` and the merge words. `briefing a worker` is not one of them: that word is on the status line under the message box."
-  - "The manual placed the setting `task.autoapprove_seconds` in the spending category of the settings panel. It is on the `Safety` tab, as the row labelled `task countdown`."
 ---
 
 Four of these are sentences somebody could have read, believed, and been wrong
