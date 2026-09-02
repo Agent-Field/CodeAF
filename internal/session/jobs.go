@@ -389,6 +389,17 @@ type jobRegistry struct {
 	// limit check and the append in which two concurrent starts both pass, and
 	// tool calls in one batch run concurrently.
 	watches int
+	// closed says this session has quit and the registry is shut: [jobRegistry.shutdown]
+	// sets it, and [jobRegistry.newJob] refuses afterwards.
+	//
+	// A REGISTRY WITH NO SUCH FLAG WAS HOW WORK OUTLIVED A SESSION. The round
+	// that ends every job walks the slice below, so anything that had not put
+	// itself in it yet was invisible to the quit — and then registered into a
+	// session that had left, opening its log in a folder nothing would ever read
+	// again (issue #381). The graph's own bounded stop is what catches the case
+	// this closes behind ([TaskGraph.stopAll]); this is the door itself learning
+	// to say no.
+	closed bool
 	// hands is how many forked hands are OUT — started and not yet reported.
 	//
 	// IT IS COUNTED RATHER THAN READ OFF THE SLICE, and the reason is a race
@@ -415,6 +426,18 @@ func newJobRegistry(workspace string, place Place, notify func(string), watch ..
 // newJob makes the shell every job shares — an id, a log file on disk, a sink
 // over it — without deciding what will run in the middle.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
+	// NOTHING STARTS IN A SESSION THAT HAS LEFT. The refusal is here, ahead of
+	// the directory, because the first thing this function does is CREATE one:
+	// a job claimed during a quit put the jobs folder back the moment after it
+	// was taken away. Every caller of this already answers an error by carrying
+	// on without a log, which is the honest shape for work that is ending.
+	r.mu.Lock()
+	closed := r.closed
+	r.mu.Unlock()
+	if closed {
+		return nil, fmt.Errorf("this session has closed; nothing new starts in it")
+	}
+
 	directory := droppingsDir(r.place, r.workspace, droppingJobs)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
@@ -861,6 +884,12 @@ func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 // kill is requested — so no note can land on a queue whose journal is about to
 // close.
 func (r *jobRegistry) shutdown(grace time.Duration) {
+	// THE DOOR CLOSES BEFORE THE ROUND WALKS THE ROOM, so that nothing can join
+	// the list behind the walk (see the `closed` field).
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
+
 	var claimed []*job
 	for _, candidate := range r.all() {
 		if candidate.requestKill() {
