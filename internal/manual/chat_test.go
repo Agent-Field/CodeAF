@@ -271,6 +271,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long does sizing the work take", "how-tasks-run"},
 		{"what does briefing a worker mean", "how-tasks-run"},
 		{"it said briefing a worker and nothing appeared", "how-tasks-run"},
+		// The failure that happens BEFORE any of that: the folder itself would
+		// not freeze. It is asked with the sentence on screen, and the sentence
+		// belongs to the failure table rather than to the brief that did not
+		// match its world, which is the other landing with "world" in it.
+		{"my task's world could not be sealed", "how-tasks-run"},
 		// WHERE a task may write, which is a different question from WHOSE work
 		// it may take — and the one a person asks after reading a refusal that
 		// named a directory they recognise.
@@ -396,6 +401,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the task page says finished but it is still running", "reading-a-task-page"},
 		{"can I watch a background job's log", "reading-a-task-page"},
 		{"the task page looks stuck", "reading-a-task-page"},
+		// And the word at the top of that page, asked by somebody reading one
+		// they have never seen before. The header has a stage the page did not
+		// list until the sizing reading was drawn on it.
+		{"the task page header says sizing the work", "reading-a-task-page"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the
@@ -448,6 +457,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I see the whole command of a tool call", "screen"},
 		{"why is the colour from go test output missing", "screen"},
 		{"how do I copy text out", "keys"},
+		// The pointer gestures themselves: the one everybody already owns, and
+		// the complaint they arrive with when the sweep took more than they
+		// meant it to.
+		{"select a word with the mouse", "keys"},
+		{"why did copying take the whole line instead of the words I dragged over", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
 		{"do I see my own screenshot in the conversation", "keys"},
@@ -825,6 +839,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I accept a task", "tasks"},
 		{"can the chat decide on its own", "tasks"},
 		{"stop asking me about tasks", "tasks"},
+		// The other end of the same impatience: not "decide for me" but "give me
+		// longer to speak up", which is a row in the settings panel and a page
+		// that has to name the right tab of it.
+		{"where is the setting for how long a proposal waits", "tasks"},
 		// And the same state met from inside the task's room, where the owner sat
 		// with `look it over` on the roster and nothing to press on the page.
 		{"how do I approve a task", "tasks"},
@@ -832,6 +850,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"accept a finished task", "tasks"},
 		{"can I accept the task from inside the room", "tasks"},
 		{"why am I not being asked about the sub tasks", "how-tasks-run"},
+		// And the same family, asked by somebody who now CAN see the demand and
+		// wants to know whether they are allowed to answer it yet. The fold used
+		// to be a mute, and both of these were answered "no" by a page that was
+		// describing a build nobody runs any more.
+		{"can I accept a sub task before its parent finishes", "how-tasks-run"},
+		{"does a sub task ask me for a look while the parent is running", "how-tasks-run"},
 
 		// The twelfth wave, from the key that stopped doing what the habit
 		// expects: ctrl+c no longer leaves on one press. Every one of these is
@@ -864,6 +888,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// design: the split did not happen because two of the parts wanted the
 		// same file. The words are the ones they read there.
 		{"why was the split refused because two parts wanted the same file", "tasks"},
+		// And the three ways somebody asks WHICH of a part's files were even
+		// weighed. A brief names everything a part reads; only the
+		// done-condition says what it owns, and a person who has just had a
+		// split refused reads the two as the same list until the page says
+		// otherwise.
+		{"what makes a part own a file, its brief or its done-condition", "tasks"},
+		{"two parts both mention the same file in their briefs, is that an overlap", "tasks"},
+		{"can two parts read the same shared file", "tasks"},
 		// Hands: the third weight, and the one a person meets as a line they did
 		// not ask for in the middle of their own answer. They ask in the words on
 		// the screen — "three hands on it" — or in the words for what they saw,
