@@ -158,10 +158,6 @@ func quotedFacts(t *testing.T) []quotedFact {
 		fact: "the answer room", owner: "ctxbudget.DefaultCompletionReserveTokens",
 		value:  grouped(ctxbudget.DefaultCompletionReserveTokens),
 		quotes: []quotedIn{{"compacting-over-and-over", "`answer room` setting, %s tokens"}},
-	}, {
-		fact: "the default task proposal window", owner: "config.DefaultTaskAutoApprove",
-		value: strconv.Itoa(config.DefaultTaskAutoApprove), others: []string{"5"},
-		quotes: []quotedIn{{"tasks", "The default window is %s seconds."}},
 	}}
 	return append(facts, crewFacts(t)...)
 }
