@@ -184,6 +184,11 @@ type crewReading struct {
 	// (inputsmooth_test.go's allocation law).
 	word    string
 	segment string
+	// clause is the welcome line's tail — `balanced crew` — built here for word
+	// and segment's reason and not at the draw: the welcome box is on the frame
+	// clock too, and under `--one-model` the preset word is not what belongs in
+	// it anyway (welcome.go's [app.welcomeModelLine]).
+	clause  string
 	preset  string
 	classes string
 	// dir is the profile the pair was read from, so a surface handed a
@@ -224,11 +229,41 @@ func (a *app) crewReading() (crewReading, bool) {
 	if a.hosted() {
 		return crewReading{}, false
 	}
+	// THE STATUS LINE NAMES WHAT SEATS THE CALL. Under `--one-model` the door
+	// hands the session no roles source and no task model, so every text call
+	// this run makes rides the conversation's own model and the four rows on
+	// disk seat nothing (cmd/aforge's applyV3Governance). Reading the profile
+	// here drew `crew custom` — a true statement about the file and a false one
+	// about the run — over a crew that was not in force (#444). So the flag is
+	// answered before the rows are, and the reading names the flag.
+	//
+	// ONE ANSWER HERE IS FIVE SURFACES THAT CANNOT DISAGREE, which is the reason
+	// this function exists at all: the status line's segment (render.go's
+	// [app.telemetry]), the model picker's hint ([app.crewHint]), /status's crew
+	// line (statusdeck.go), the settings note (statusnote.go) and the welcome
+	// box's clause (welcome.go's [app.welcomeModelLine]) all read through it.
+	//
+	// AND IT IS FIXED, so the settings generation is not asked. Nothing this
+	// session can do moves it: /crew still writes the four rows and the four
+	// rows still do not seat this run, and the strings are constants no frame
+	// has to build. The model itself is not spelled into the word because every
+	// surface that prints the word prints the model on the row directly above
+	// it, and a second copy here is a second place to drift.
+	if a.oneModel {
+		return crewReading{
+			word:    crewOneModelWord,
+			segment: crewOneModelSegment,
+			clause:  crewOneModelSegment,
+			dir:     a.profileDir,
+			taken:   true,
+		}, true
+	}
 	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
 		preset, classes := config.CrewAt(a.profileDir), config.CrewClasses(a.profileDir)
 		a.crew = crewReading{
 			word:       preset + " · " + classes,
 			segment:    "crew " + preset,
+			clause:     preset + " crew",
 			preset:     preset,
 			classes:    classes,
 			dir:        a.profileDir,
@@ -238,6 +273,21 @@ func (a *app) crewReading() (crewReading, bool) {
 	}
 	return a.crew, true
 }
+
+// The crew as `--one-model` leaves it, spelled once so the segment, the page and
+// the welcome box cannot say it three ways.
+//
+// The segment is `one model` and NOT `crew one model`, because the word `crew`
+// is precisely what is not in force: the status line reads
+// `… · deepseek-v4-flash   one model · …`, two facts and one gap, and neither of
+// them is a preset. The page's word says the whole of it in the register /status
+// already uses — lowercase, a middle dot, no full stop — and answers the
+// question somebody opening /status under the flag is actually asking, which is
+// which model is spending their money.
+const (
+	crewOneModelSegment = "one model"
+	crewOneModelWord    = "one model · every call rides the model you are talking to"
+)
 
 // crewHint is [app.crewSegment] for the hint slot under the model picker
 // (render.go's [app.hintWord]).
@@ -280,8 +330,19 @@ func (a *app) crewHint() string { return a.crewSegment() }
 // launch it was written for. The absence is a CONNECTION: over --host the crew
 // lives on the far machine and this window's profile is the laptop's, which is
 // the same refusal [app.runCrew] opens with.
+// AND `--one-model` HAS ALREADY ANSWERED THE QUESTION THE SEAT ASKS, so it is
+// empty under the flag for the same shape of reason the connection is. The
+// receipt below exists to report a SUBSTITUTION — a crew written before the
+// worker row existed, so the build's own model spends the person's money without
+// a word — and under the flag there is no substitution: the flag seats every
+// call on the conversation's model, which is the person's own answer to it.
+// Said anyway, "until you pick a crew again" promises that picking one would
+// change what runs, and under the flag it would not (#444). One empty seat takes
+// both surfaces quiet at once — the thread's receipt ([app.sayWorkSeat]) and the
+// /crew sheet's inherited row ([app.crewInheritedLine], which every caller of
+// [crewPicker.start] passes).
 func (a *app) workSeat() config.Seat {
-	if a.hosted() {
+	if a.hosted() || a.oneModel {
 		return config.Seat{}
 	}
 	return config.TierSeatAt(a.profileDir, config.ModelTierWorker)

@@ -737,9 +737,12 @@ func (a *app) welcomeModelLine() string {
 	if model == "" {
 		model = "no model"
 	}
+	// The clause is taken whole from the reading rather than joined here: under
+	// `--one-model` the preset word is not what stands behind the model — the
+	// flag is — and the reading is the one place that knows which (#444).
 	crew := ""
 	if reading, ok := a.crewReading(); ok {
-		crew = reading.preset + " crew"
+		crew = reading.clause
 	}
 	return dotted(model, crew)
 }
