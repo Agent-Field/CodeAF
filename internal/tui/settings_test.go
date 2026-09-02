@@ -106,23 +106,39 @@ func TestSlashSettingsAndHeaderGearOpenTheSameSheet(t *testing.T) {
 
 // The sheet has to be a page a person can read: every category present, the
 // focused row's hint and only the focused row's hint, and no line wider than
-// the frame at any width.
+// the frame at any width. Completeness and calm are measured in different
+// places because the sheet scrolls by design. View() is a window of at most
+// min(height-2, chatHeight) lines onto a column that has been taller than any
+// test frame since the registry outgrew it, so every group, the environment
+// footer, and the width of every row are asserted against the whole laid-out
+// sheet (settingsContentLines), while nothing-past-the-frame and one-hint-only
+// stay asserted against View(), which is what reaches the screen. Asking the
+// window for every group would only assert that the frame happened to be tall
+// enough to dodge scrolling, and would break again the next time a row lands.
 func TestSettingsSheetIsOneCalmColumnAtEveryWidth(t *testing.T) {
 	for _, width := range []int{40, 60, 100, 140} {
 		model, _, _ := newSettingsModel(t)
 		_, _ = model.Update(tea.WindowSizeMsg{Width: width, Height: 60})
 		_ = model.openSettings()
-		view := model.View()
-		plain := ansi.Strip(view)
+
+		contentWidth := model.settingsContentWidth()
+		content, _ := model.settingsContentLines(contentWidth)
+		sheet := ansi.Strip(strings.Join(content, "\n"))
 		for _, category := range config.SettingCategories {
-			if !strings.Contains(plain, category) {
-				t.Fatalf("width %d is missing the %q group:\n%s", width, category, plain)
+			if !strings.Contains(sheet, category) {
+				t.Fatalf("width %d is missing the %q group:\n%s", width, category, sheet)
 			}
 		}
-		if !strings.Contains(plain, "environment") {
-			t.Fatalf("width %d dropped the environment footer:\n%s", width, plain)
+		if !strings.Contains(sheet, "environment") {
+			t.Fatalf("width %d dropped the environment footer:\n%s", width, sheet)
 		}
-		for _, line := range strings.Split(view, "\n") {
+		for _, line := range content {
+			if got := lipgloss.Width(line); got > contentWidth {
+				t.Fatalf("width %d laid a %d-cell line into a %d-cell column: %q", width, got, contentWidth, ansi.Strip(line))
+			}
+		}
+
+		for _, line := range strings.Split(model.View(), "\n") {
 			if got := lipgloss.Width(line); got > width {
 				t.Fatalf("width %d produced a %d-cell line: %q", width, got, ansi.Strip(line))
 			}
