@@ -64,7 +64,9 @@ const roleFallThroughs = 1
 // would put a charge on a row nobody's request ever reached.
 //
 // `sessionDefault` is the ladder's floor, exactly as [roles.ResolveCall] takes
-// it. Options are the caller's own — temperature, output cap, a response format
+// it — except under [Config.OneModel], where the floor is the conversation's own
+// model whatever the caller passed, for the reason spelled at that seam below.
+// Options are the caller's own — temperature, output cap, a response format
 // — and the model is added here so no caller can name one that disagrees with
 // the rung it is on.
 func (a *Agent) callRole(
@@ -76,6 +78,18 @@ func (a *Agent) callRole(
 ) (*ai.Response, string, error) {
 	a.mu.Lock()
 	source, client := a.config.RolesSource, a.client
+	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
+	// floor deliberately — it is a quality judgement about a profile that HAS a
+	// crew, and it refuses to let the running model mark its own work — but the
+	// person who passed `--one-model` has already said the conversation's model
+	// is the crew. Left alone, those callers had no pin, no tier and no floor
+	// under the flag, so [roles.Ladder] answered ErrNoModel and a measured run
+	// had no mark reader and no brief writer at all (#443). It is decided HERE,
+	// at the one seam every errand passes through, so the next crew-only caller
+	// is correct without knowing the flag exists.
+	if a.config.OneModel {
+		sessionDefault = a.model
+	}
 	a.mu.Unlock()
 	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
 	if err != nil {

@@ -854,6 +854,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// person's own message alone and the line said so.
 		{"why did my task start with just my message and nothing else", "tasks"},
 		{"the brief could not be written for my task", "tasks"},
+		// And the reading of that line that is not a wire failure at all: no model
+		// is configured for the reader or the writer, which is a row nobody wrote
+		// rather than a provider that went quiet (#443).
+		{"what does no second model is set mean", "tasks"},
 		// And the case where it must NOT happen: a turn whose whole remaining
 		// work is waiting on pieces it already handed out. People meet this as
 		// the junk task that appeared while they were watching, and as the
