@@ -371,13 +371,13 @@ that explains what it was for and goes when you delete the conversation. Only a
 conversation with no folder at all still keeps them at
 `<workspace>/.aforge-v3/jobs/`.
 
-**You can see a job without asking.** Every job this conversation starts is also a row on
-the task column on the right, from the moment it starts until it ends — the command as its
-name, and `job 3 · log <path>` under it while it runs, folded under the row once it has
-ended (`→` on the row brings it back). A running job counts in the column's `N working`
-tail. It has no room to walk into and no `✕`: the log is where a job is read, and `jobs
-kill` is how one is ended. The tasks page has the whole of it under *Background jobs on the
-column*.
+**You can see a job without asking.** Every job this conversation starts is a row in the
+`jobs` section on the column — a third section under `tasks` and `standing`, collapsed by
+default to one line of counts, not a row among the task families. The name is three or
+four words from a cheap model (the command until that name arrives); the handle is still
+`job 3`. The log path is on the job's page, not under the row. Opening the row opens that
+page, not a chat; `x` on the page stops a running job. `jobs kill` still works too. The
+tasks page has the whole of it under *Background jobs on the column*.
 
 **A job is the wrong door for work whose result is a deliverable.** What a background job
 can leave you is a log file and an exit code — there is nobody inside it writing anything,
