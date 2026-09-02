@@ -29,9 +29,10 @@ func reportFault(stderr io.Writer, detail string, stack []byte) int {
 }
 
 // chatLogPath is the ONE name of the file this binary parks the standard logger
-// in: the v3 surface does it for its whole lifetime so a log line cannot tear
-// through the frame (chatv3.go), and a fault appends its stack to the same file
-// so that "what happened" has one answer.
+// in: EVERY door that opens the v3 surface does it for the surface's whole
+// lifetime so a log line cannot tear through the frame (chatv3_surface.go's
+// [withSurfaceLogger]), and a fault appends its stack to the same file so that
+// "what happened" has one answer.
 //
 // AN EMPTY PROFILE IS THE STATE ROOT AND NEVER THE WORKING DIRECTORY. Most
 // launches set no AFORGE_PROFILE_DIR at all, and joining "chat.log" onto an

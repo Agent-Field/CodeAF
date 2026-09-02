@@ -50,7 +50,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/pair"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
 // ── the surface: aforge chat --at <name> ────────────────────────────────────
@@ -183,10 +182,7 @@ func openChatV3At(launch atLaunch) error {
 	// one is resolved here; the only thing that differs between the two doors is
 	// the pipe, so anything that differed in the surface would be a bug.
 	options := hostOptions(client, agent, name, welcome, launch.pick)
-	meter, closeMeter := v3Wire()
-	defer closeMeter()
-	options.Output = meter
-	return tui3.Run(context.Background(), options)
+	return runSurface(context.Background(), options)
 }
 
 // askPairingCode is the one question this door asks, on a plain terminal.
