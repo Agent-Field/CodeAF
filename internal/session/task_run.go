@@ -2878,6 +2878,13 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	for i, node := range nodes {
 		costs[i] = node.spend()
 	}
+	// LIVE JOBS ARE SNAPSHOTTED BEFORE THE GRAPH LOCK, so the registry lock
+	// and the graph lock never meet. announceJobRow releases the registry
+	// before it writes the graph (jobrow.go); taking the other order here
+	// would be the deadlock that comment exists to prevent. A snapshot a
+	// moment old is the same snapshot a live watcher already drew; a job
+	// that moves after this returns will announce onto the lane itself.
+	liveJobs := a.liveJobNotices()
 	graph.mu.Lock()
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
@@ -2906,6 +2913,16 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 		// it, and a conversation reopened tomorrow would draw none of the work it
 		// ran yesterday.
 		if job, isJob := jobNoticeFromRow(row); isJob {
+			// A LIVE JOB IS THE REGISTRY'S, NOT THE CHECKPOINT'S. The row is
+			// what tomorrow will read; it never held Started, Command, Kind
+			// or the name that arrived after the first announce. A lane
+			// attaching while the process is still going would otherwise
+			// draw a blank clock and a page with no command until the job
+			// ended — announceJobRow will not fill those in, because a
+			// running job that already has a row is a start announced once.
+			if fresh, ok := liveJobs[job.ID]; ok {
+				job = fresh
+			}
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}

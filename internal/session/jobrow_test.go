@@ -238,6 +238,20 @@ func TestAReattachedLaneIsHandedTheJobsAlreadyRunning(t *testing.T) {
 		t.Fatalf("the replayed job's log is %q and the live one's %q",
 			replayed.LogPath, started.LogPath)
 	}
+	// AND THE LIVE FACTS SURVIVE THE HANDOFF. The checkpoint row never held
+	// them — only id, title, state, elapsed and the packed log sentence —
+	// so a replay that trusted the row alone drew a blank clock and a page
+	// with no command until the process ended.
+	if replayed.Command != started.Command {
+		t.Fatalf("the replayed job's command is %q and the live one's %q",
+			replayed.Command, started.Command)
+	}
+	if replayed.Started.IsZero() {
+		t.Fatal("the replayed job has no start time — the column clock would stay blank")
+	}
+	if replayed.Kind != started.Kind {
+		t.Fatalf("the replayed job is kind %q and the live one is %q", replayed.Kind, started.Kind)
+	}
 }
 
 // ── and tomorrow ────────────────────────────────────────────────────────────
