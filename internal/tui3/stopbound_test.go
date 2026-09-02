@@ -264,11 +264,20 @@ func TestADetachedTurnIsOwedTheSameSettleAsAnyOtherFinishedTurn(t *testing.T) {
 // AND A DEADLINE THAT LANDS ON A TURN THE ENGINE HAS ALREADY LET GO OF DETACHES
 // NOTHING AND SAYS NOTHING.
 //
-// The two acts race by a frame: the door reports false because there was no turn
-// left to abandon, and at that point the stream's own close is already on its way
-// and settles the turn as an ordinary stop. Saying "detached" there would be the
-// surface claiming an act it did not perform, and dropping the stream would throw
-// away the turn's last events for nothing.
+// The two acts race by a frame IN THE PRODUCT: the door reports false because
+// there was no turn left to abandon, and at that point the stream's own close is
+// already on its way and settles the turn as an ordinary stop. Saying "detached"
+// there would be the surface claiming an act it did not perform, and dropping the
+// stream would throw away the turn's last events for nothing.
+//
+// NOTHING IS RACED IN THIS TEST, and nothing may be. The losing side is FORCED —
+// the fake door is told to answer false, the clock is a closure this test
+// advances by assignment, and the frame is driven by hand — so the assertion is
+// about which BRANCH was taken and never about which goroutine won today. A
+// rewrite of this that reached for a sleep or the wall clock would be the
+// flakiest test in the repository, on a machine that routinely runs five of these
+// binaries at once, and it would be flaky for reasons that have nothing to do
+// with the code it is guarding.
 func TestADeadlineOnATurnThatAlreadyEndedDetachesNothing(t *testing.T) {
 	a, agent, advance := boundedStopApp(t)
 	agent.letGo = false
