@@ -564,6 +564,86 @@ func TestResolveBindsTheOptions(t *testing.T) {
 	}
 }
 
+type liveSearchStub struct{ name string }
+
+func (s liveSearchStub) Name() string { return s.name }
+func (s liveSearchStub) Search(context.Context, string, int) ([]Result, error) {
+	return []Result{{Title: s.name, URL: "https://example.com/" + s.name}}, nil
+}
+
+type liveFetchStub struct{ name string }
+
+func (f liveFetchStub) Name() string { return f.name }
+func (f liveFetchStub) Fetch(context.Context, string) (string, error) {
+	return f.name, nil
+}
+
+// V1 and V7: every operation resolves again, and copying the interfaces into
+// child work keeps the options function rather than freezing its first answer.
+func TestLivePairResolvesEveryOperationAndSurvivesACopy(t *testing.T) {
+	restore(t)
+	registryMu.Lock()
+	searchReg = []Provider{liveSearchStub{name: "first"}, liveSearchStub{name: "second"}}
+	fetchReg = []Fetcher{liveFetchStub{name: "first"}, liveFetchStub{name: "second"}}
+	registryMu.Unlock()
+
+	opts := Options{Provider: "first"}
+	provider, fetcher := Live(func() Options { return opts })
+	childProvider, childFetcher := provider, fetcher
+	if provider == nil || fetcher == nil {
+		t.Fatal("Live returned a nil half over populated registries")
+	}
+	if provider.Name() != "first" || fetcher.Name() != "first" {
+		t.Fatalf("the initial pair = %q/%q, want first/first", provider.Name(), fetcher.Name())
+	}
+
+	opts.Provider = "second"
+	results, searchName, err := SearchWithName(context.Background(), childProvider, "q", 1)
+	if err != nil {
+		t.Fatalf("copied provider Search error = %v", err)
+	}
+	page, fetchName, err := FetchWithName(context.Background(), childFetcher, "https://example.com")
+	if err != nil {
+		t.Fatalf("copied fetcher Fetch error = %v", err)
+	}
+	if childProvider.Name() != "second" || searchName != "second" || len(results) != 1 || results[0].Title != "second" {
+		t.Fatalf("copied provider stayed frozen: current=%q receipt=%q results=%+v", childProvider.Name(), searchName, results)
+	}
+	if childFetcher.Name() != "second" || fetchName != "second" || page != "second" {
+		t.Fatalf("copied fetcher stayed frozen: current=%q receipt=%q page=%q", childFetcher.Name(), fetchName, page)
+	}
+}
+
+// V8: an empty registry remains an absent pair rather than two wrappers whose
+// only possible answer is a failure.
+func TestLiveKeepsAnEmptyRegistryAbsent(t *testing.T) {
+	restore(t)
+	registryMu.Lock()
+	searchReg, fetchReg = nil, nil
+	registryMu.Unlock()
+	provider, fetcher := Live(func() Options { return Options{} })
+	if provider != nil || fetcher != nil {
+		t.Fatalf("Live on empty registries = %v/%v, want nil/nil", provider, fetcher)
+	}
+}
+
+// V2: the status wording names both the next plug and an explicit missing key.
+func TestStatusNamesTheNextSearchAndItsKeyState(t *testing.T) {
+	for _, test := range []struct {
+		opts Options
+		want string
+	}{
+		{opts: Options{}, want: "firecrawl · keyless"},
+		{opts: Options{FirecrawlKey: "fc"}, want: "firecrawl · with your key"},
+		{opts: Options{ExaKey: "exa"}, want: "exa · with your key"},
+		{opts: Options{Provider: "exa"}, want: "exa · key not set — searches fail"},
+	} {
+		if got := Status(test.opts); got != test.want {
+			t.Errorf("Status(%+v) = %q, want %q", test.opts, got, test.want)
+		}
+	}
+}
+
 // stub is a plug for the registry tests: it declares its own availability, so
 // one type covers both a keyed and a zero-key newcomer.
 type stub struct {
@@ -675,13 +755,13 @@ func TestRenderResults(t *testing.T) {
 	got := RenderResults([]Result{
 		{Title: "Go 1.25 Release Notes", URL: "https://go.dev/doc/go1.25", Snippet: "A rewritten\n garbage collector.", Published: "2025-08-12"},
 		{Title: "  ", URL: "https://example.com/x", Snippet: ""},
-	}, 5)
+	}, 5, "firecrawl")
 
 	want := "1. Go 1.25 Release Notes — https://go.dev/doc/go1.25\n" +
 		"  2025-08-12\n" +
 		"  A rewritten garbage collector.\n" +
 		"2. (untitled) — https://example.com/x\n" +
-		"\n2 results"
+		"\n2 results · firecrawl"
 	if got != want {
 		t.Fatalf("RenderResults =\n%q\nwant\n%q", got, want)
 	}
@@ -699,26 +779,26 @@ func TestRenderResultsCaps(t *testing.T) {
 
 	t.Run("never more than maxRendered", func(t *testing.T) {
 		for _, limit := range []int{0, -1, 8, 50} {
-			got := RenderResults(many, limit)
+			got := RenderResults(many, limit, "exa")
 			if n := strings.Count(got, " — https://"); n != maxRendered {
 				t.Errorf("RenderResults(limit=%d) rendered %d results, want %d", limit, n, maxRendered)
 			}
 			// The footer tells the model these are the first few, not all.
-			if want := fmt.Sprintf("\n%d of %d results", maxRendered, len(many)); !strings.HasSuffix(got, want) {
+			if want := fmt.Sprintf("\n%d of %d results · exa", maxRendered, len(many)); !strings.HasSuffix(got, want) {
 				t.Errorf("RenderResults(limit=%d) footer = %q, want it to end %q", limit, got, want)
 			}
 		}
 	})
 
 	t.Run("a caller's own limit is respected below the cap", func(t *testing.T) {
-		got := RenderResults(many, 3)
+		got := RenderResults(many, 3, "exa")
 		if n := strings.Count(got, " — https://"); n != 3 {
 			t.Errorf("RenderResults(limit=3) rendered %d results, want 3", n)
 		}
 	})
 
 	t.Run("snippets are clipped", func(t *testing.T) {
-		got := RenderResults(many, 1)
+		got := RenderResults(many, 1, "exa")
 		for _, line := range strings.Split(got, "\n") {
 			if strings.HasPrefix(line, "  x") && len(line) > maxSnippet+2 {
 				t.Fatalf("snippet line is %d bytes, want at most %d", len(line), maxSnippet+2)
@@ -727,13 +807,31 @@ func TestRenderResultsCaps(t *testing.T) {
 	})
 
 	t.Run("one result is singular, none is a sentence", func(t *testing.T) {
-		if got := RenderResults(many[:1], 5); !strings.HasSuffix(got, "\n1 result") {
+		if got := RenderResults(many[:1], 5, "firecrawl"); !strings.HasSuffix(got, "\n1 result · firecrawl") {
 			t.Errorf("RenderResults(one) = %q, want a singular footer", got)
 		}
-		if got := RenderResults(nil, 5); got != "no results" {
-			t.Errorf("RenderResults(nil) = %q, want %q", got, "no results")
+		if got := RenderResults(nil, 5, "firecrawl"); got != "no results · firecrawl" {
+			t.Errorf("RenderResults(nil) = %q, want %q", got, "no results · firecrawl")
 		}
 	})
+}
+
+// V1 and V2: only successful named count footers may become a tool-row stat.
+func TestResultSummaryAcceptsOnlyNamedResultFooters(t *testing.T) {
+	for _, test := range []struct {
+		output string
+		want   string
+	}{
+		{"1. One — https://example.com\n\n5 results · firecrawl", "5 results · firecrawl"},
+		{"1. One — https://example.com\n\n3 of 8 results · exa", "3 of 8 results · exa"},
+		{"no results · firecrawl", "no results · firecrawl"},
+		{"Search failed (exa): no API key", ""},
+		{"an arbitrary last line · exa", ""},
+	} {
+		if got := ResultSummary(test.output); got != test.want {
+			t.Errorf("ResultSummary(%q) = %q, want %q", test.output, got, test.want)
+		}
+	}
 }
 
 func TestRenderFetch(t *testing.T) {

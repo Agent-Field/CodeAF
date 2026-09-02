@@ -248,16 +248,14 @@ var settingReaders = map[string]string{
 	// time would let the low row prove this one.
 	KeyTierReflexModel: "RoleReflex",
 	KeyModelRoles:      "PinKey",
-	// The four web-search rows are read by the v3 door, which turns them into
-	// the [search.Options] it resolves the session's pair from
-	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader
-	// rather than the mapping they share, so a row that stops being read
-	// cannot be proven by its neighbours' call site.
-	KeySearchProvider: "SearchProviderAt",
+	// The search pin and three credentials are read together by SearchOptionsAt.
+	// The v3 door retains that one mapping behind search.Live, so every operation
+	// sees one current snapshot without a caller rebuilding or partly reading it.
+	KeySearchProvider: "SearchOptionsAt",
 	KeyAPIKey:         "APIKeyAt",
-	KeyExaKey:         "ExaKeyAt",
-	KeyFirecrawlKey:   "FirecrawlKeyAt",
-	KeyJinaKey:        "JinaKeyAt",
+	KeyExaKey:         "SearchOptionsAt",
+	KeyFirecrawlKey:   "SearchOptionsAt",
+	KeyJinaKey:        "SearchOptionsAt",
 	// The Google pair is read by the v3 door, which turns it into the manager
 	// hung off session.Config.Connect (cmd/aforge/chatv3.go's v3Connect). Both
 	// rows name the same reader because the reader answers both halves at once:

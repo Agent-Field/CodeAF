@@ -489,7 +489,8 @@ The whole list, by settings key:
   `google_oauth_secret`, and `google_oauth_client`, which is useless without the
   secret beside it. These restrain nothing; they are refused because a key
   overwritten with something a model invented is a working account broken in a
-  way nothing on screen can show you.
+  way nothing on screen can show you. Search credentials written by you are read
+  again on the next search in the running conversation; no restart is needed.
 
 Everything else is fair game: which model does what, how the screen draws, how
 long the room stays quiet, where a search goes, which model draws your pictures.

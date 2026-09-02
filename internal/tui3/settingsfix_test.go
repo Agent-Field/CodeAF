@@ -195,6 +195,44 @@ func TestTheContextReuseRowStatesItsUnit(t *testing.T) {
 	}
 }
 
+// V3 and V6: the selected searching row is a live explanation of the current
+// pin and keys, and each write promises the very next search rather than a new
+// session.
+func TestTheSearchingRowFollowsProviderAndKeyWrites(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	a, _ := sheetApp(t)
+	a.openSettings()
+	drive(t, a, key("right")) // Context
+	cursorTo(t, a, config.KeySearchProvider)
+	if screen := plain(frame(a)); !strings.Contains(screen, "now firecrawl, keyless — set search.exaKey or search.firecrawlKey to raise it") {
+		t.Fatalf("the untouched searching row reads:\n%s", screen)
+	}
+
+	// V5: the first press is the safe keyless default, not a keyed pin.
+	drive(t, a, key("enter"))
+	row, _ := a.sheet.registry.Row(config.KeySearchProvider)
+	if got := row.Value(); got != "firecrawl" {
+		t.Fatalf("one cycle from auto landed on %q, want firecrawl", got)
+	}
+	// The remaining order is duckduckgo, exa, which reaches the broken-pin
+	// explanation through the same cycle a person uses.
+	drive(t, a, key("enter"), key("enter"))
+	if screen := plain(frame(a)); !strings.Contains(strings.Join(strings.Fields(screen), " "), "exa is pinned but search.exaKey is not set — every search answers \"Search failed (exa): no API key\". Choose auto, or set the key.") {
+		t.Fatalf("the pinned searching row reads:\n%s", screen)
+	}
+
+	cursorTo(t, a, config.KeyExaKey)
+	drive(t, a, key("enter"))
+	a.sheet.edit.box.setText("exa-live")
+	drive(t, a, key("enter"))
+	cursorTo(t, a, config.KeySearchProvider)
+	if screen := plain(frame(a)); !strings.Contains(screen, "exa, with your key") {
+		t.Fatalf("the searching row did not follow the key write:\n%s", screen)
+	}
+}
+
 // ── 3. a picker row is a model you can talk to ──────────────────────────────
 
 // THE FILTER IS ON EVERY RUNG: the door's list, the disk cache and the

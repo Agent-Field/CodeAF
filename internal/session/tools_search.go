@@ -16,10 +16,10 @@ import (
 // merged tool would either fetch every hit (slow, and mostly pages nobody
 // wanted) or make the model say which hit to fetch before it has seen the list.
 //
-// Neither tool knows a vendor. Both call an interface [Config] was handed
-// (internal/search resolved it against the person's settings at boot), so
-// adding a back end changes nothing here, and a test drives a scripted one
-// without a network.
+// Neither tool knows a vendor. Both call an interface [Config] was handed;
+// internal/search's live wrapper resolves that interface from the person's
+// current settings on each operation. Adding a back end changes nothing here,
+// and a test drives a scripted one without a network.
 
 // Result-count bounds for one web_search call. The default is what a model
 // asking for nothing gets; the cap is [search.RenderResults]'s own render
@@ -82,7 +82,7 @@ func (a *Agent) webSearchTool(provider search.Provider) bare.Tool {
 				return "Invalid arguments: query is required", true, nil
 			}
 			count := searchCount(parsed.Count)
-			results, err := provider.Search(ctx, query, count)
+			results, name, err := search.SearchWithName(ctx, provider, query, count)
 			if err != nil {
 				// A failed search is a TOOL ERROR and never a Go error: the
 				// network is down, the key expired, the back end rate-limited
@@ -91,9 +91,9 @@ func (a *Agent) webSearchTool(provider search.Provider) bare.Tool {
 				// them a reason to fail the turn. The plug's name is in the
 				// message because "search failed" without it leaves a person
 				// reading the transcript no way to tell which back end broke.
-				return "Search failed (" + provider.Name() + "): " + err.Error(), true, nil
+				return search.Failure(name, err), true, nil
 			}
-			return search.RenderResults(results, count), false, nil
+			return search.RenderResults(results, count, name), false, nil
 		},
 	}
 }
@@ -114,9 +114,9 @@ func (a *Agent) webFetchTool(fetcher search.Fetcher) bare.Tool {
 			if url == "" {
 				return "Invalid arguments: url is required", true, nil
 			}
-			text, err := fetcher.Fetch(ctx, url)
+			text, name, err := search.FetchWithName(ctx, fetcher, url)
 			if err != nil {
-				return "Fetch failed (" + fetcher.Name() + "): " + err.Error(), true, nil
+				return "Fetch failed (" + name + "): " + err.Error(), true, nil
 			}
 			return search.RenderFetch(text), false, nil
 		},

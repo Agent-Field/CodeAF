@@ -423,7 +423,6 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	}
 }
 
-
 func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	saved := 0
 	rows := NewSettings(SettingsOptions{
@@ -492,7 +491,6 @@ func TestTheDividerRowIsAbsentWithoutSomewhereToSaveIt(t *testing.T) {
 	}
 }
 
-
 // ── the web-search rows ─────────────────────────────────────────────────────
 
 // The provider row is a choice with a working default: a person who has never
@@ -538,6 +536,79 @@ func TestSearchProviderDefaultsToAutoAndRefusesAPlugItDoesNotKnow(t *testing.T) 
 	}
 	if SearchProviderAt(dir) != SearchProviderAuto {
 		t.Fatalf("a stale pin did not fall back to auto: %q", SearchProviderAt(dir))
+	}
+}
+
+// V3 and V5: the public rows feed one options mapping, and the provider choices
+// follow the deliberate built-in order rather than registry init order.
+func TestSearchRowsMapToOptionsAndProvidersHaveOneOrder(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	if got, want := strings.Join(SearchProviders, ","), "auto,firecrawl,duckduckgo,exa,jina-search"; got != want {
+		t.Fatalf("SearchProviders = %q, want %q", got, want)
+	}
+
+	dir := t.TempDir()
+	rows := registry(t, dir)
+	for key, value := range map[string]string{
+		KeySearchProvider: "exa",
+		KeyExaKey:         "exa-sheet",
+		KeyFirecrawlKey:   "firecrawl-sheet",
+		KeyJinaKey:        "jina-sheet",
+	} {
+		row, ok := rows.Row(key)
+		if !ok {
+			t.Fatalf("row %q is absent", key)
+		}
+		if err := row.Apply(value); err != nil {
+			t.Fatalf("Apply(%s): %v", key, err)
+		}
+	}
+	opts := SearchOptionsAt(dir)
+	if opts.Provider != "exa" || opts.ExaKey != "exa-sheet" || opts.FirecrawlKey != "firecrawl-sheet" || opts.JinaKey != "jina-sheet" {
+		t.Fatalf("SearchOptionsAt = %+v", opts)
+	}
+
+	auto := t.TempDir()
+	if got := SearchOptionsAt(auto).Provider; got != "" {
+		t.Fatalf("an untouched auto row became pin %q", got)
+	}
+}
+
+// V2, V4, and V6: the searching row explains the live next-call state, quotes
+// the pinned-key failure exactly, and no search row still promises a session
+// restart.
+func TestSearchHintsDescribeTheNextCall(t *testing.T) {
+	for _, env := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(env, "")
+	}
+	dir := t.TempDir()
+	rows := registry(t, dir)
+	if got, want := SearchProviderHintAt(dir), "now firecrawl, keyless — set search.exaKey or search.firecrawlKey to raise it"; got != want {
+		t.Fatalf("auto hint = %q, want %q", got, want)
+	}
+
+	provider, _ := rows.Row(KeySearchProvider)
+	if err := provider.Apply("exa"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := SearchProviderHintAt(dir), "exa is pinned but search.exaKey is not set — every search answers \"Search failed (exa): no API key\". Choose auto, or set the key."; got != want {
+		t.Fatalf("missing-key hint = %q, want %q", got, want)
+	}
+	exa, _ := rows.Row(KeyExaKey)
+	if err := exa.Apply("exa-sheet"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := SearchProviderHintAt(dir), "exa, with your key"; got != want {
+		t.Fatalf("keyed hint = %q, want %q", got, want)
+	}
+
+	for _, key := range []string{KeySearchProvider, KeyExaKey, KeyFirecrawlKey, KeyJinaKey} {
+		row, _ := rows.Row(key)
+		if strings.Contains(strings.ToLower(row.Hint), "next session") || !strings.Contains(strings.ToLower(row.Hint), "next search") {
+			t.Errorf("%s hint does not describe the next search: %q", key, row.Hint)
+		}
 	}
 }
 
@@ -1227,4 +1298,3 @@ func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
 		t.Fatalf("a persisted lift cap of 0 read back as %v", cap)
 	}
 }
-

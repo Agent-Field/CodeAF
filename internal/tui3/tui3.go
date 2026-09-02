@@ -285,6 +285,12 @@ type Options struct {
 	// rather than drawing an empty result list.
 	Search SearchStore
 
+	// SearchStatus names the web-search plug the conversation's next call will
+	// use and whether it has a key. Nil means that conversation has no web-search
+	// hand, so /status omits the row under the emptiness law. It is a function
+	// because search settings apply while this surface remains open.
+	SearchStatus func() string
+
 	// UsageLedger is the machine-wide spending ledger the spend place reads —
 	// one line per model call, written where the turn was taken
 	// (internal/session's usage_ledger.go). Empty falls through to

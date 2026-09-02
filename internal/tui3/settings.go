@@ -836,6 +836,9 @@ type sheet struct {
 	tab int
 
 	registry *config.Settings
+	// profileDir is retained only for live explanations derived from several
+	// rows. The registry remains the writer and reader of every individual row.
+	profileDir string
 	// conns is the door onto the accounts, for the Connections tab. It is the
 	// surface's own door (app.conns) and not a second one: two readings of "is
 	// this connected" is how a tab and a panel disagree about somebody's mail.
@@ -1081,6 +1084,7 @@ func (a *app) raiseSettings() {
 	a.readTreeSpend()
 	a.sheet = sheet{
 		registry:     a.registry(),
+		profileDir:   a.profileDir,
 		conns:        a.conns,
 		defaults:     settingDefaults(),
 		sessionModel: a.model,
@@ -1171,7 +1175,7 @@ func (s *sheet) build() {
 			return
 		}
 		for _, row := range s.tabRows() {
-			meta, _ := settingMetaFor(row)
+			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
@@ -1189,7 +1193,7 @@ func (s *sheet) build() {
 	for tab, title := range settingTabs {
 		start := len(s.items)
 		for _, row := range s.rows {
-			meta, ok := settingMetaFor(row)
+			meta, ok := s.metaFor(row)
 			if !ok || meta.tab != title || !settingMatches(row, meta, query) {
 				continue
 			}
@@ -1223,6 +1227,17 @@ func (s *sheet) build() {
 		s.cursor = 0
 	}
 	s.top = 0
+}
+
+// metaFor adds the one explanation whose answer comes from several rows. The
+// sheet rebuilds after every write, so the selected search row follows keys and
+// pins immediately while ordinary frame rendering stays read-only.
+func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
+	meta, ok := settingMetaFor(row)
+	if ok && row.Key == config.KeySearchProvider {
+		meta.about = config.SearchProviderHintAt(s.profileDir)
+	}
+	return meta, ok
 }
 
 // tabRows is this tab's rows in READING order: the keys [modelsSection] leads

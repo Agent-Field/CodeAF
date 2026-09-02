@@ -80,7 +80,7 @@ func (e exaSearch) Search(ctx context.Context, query string, limit int) ([]Resul
 	if !e.Available(e.opts) {
 		// Reachable only through an explicit pin, which [Resolve] honours on
 		// purpose. Saying which key is missing beats a 401 from a vendor.
-		return nil, fmt.Errorf("exa: no API key")
+		return nil, ErrNoAPIKey
 	}
 
 	body, err := json.Marshal(exaSearchRequest{
@@ -138,7 +138,7 @@ func (e exaFetch) Fetch(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("exa-fetch: empty url")
 	}
 	if !e.Available(e.opts) {
-		return "", fmt.Errorf("exa-fetch: no API key")
+		return "", ErrNoAPIKey
 	}
 
 	body, err := json.Marshal(exaContentsRequest{URLs: []string{url}, Text: true})
