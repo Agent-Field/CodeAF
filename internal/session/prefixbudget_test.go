@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -88,6 +89,23 @@ import (
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.
 const fixedPrefixBudget = 48_000
 
+// widestPage is the page at its heaviest: prompts/system.md with every one of
+// its tool-naming facts in the PRESENT case (beltfacts.go).
+//
+// THE BUDGET WEIGHS THE WIDEST PAGE AND NOT ONE SHAPE'S. Those facts are
+// composed per agent now — a worker without `watch` reads one sentence where a
+// conversation reads another — so there is no single string to measure any
+// more, and the honest thing to bound is the most any agent can be handed. It
+// is also the page the person's own conversation reads, which is the one that
+// is paid for on every turn of every day.
+func widestPage() string {
+	widest := make([]string, 0, len(beltFacts))
+	for _, fact := range beltFacts {
+		widest = append(widest, fact.present)
+	}
+	return strings.Replace(systemPrompt, beltFactsToken, strings.Join(widest, "\n"), 1)
+}
+
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
@@ -101,7 +119,7 @@ func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools, prompt := len(block), len(systemPrompt)
+	tools, prompt := len(block), len(widestPage())
 	total := tools + prompt
 	t.Logf("the fixed prefix is %d bytes (~%d tokens): prompt %d + tools %d", total, total/4, prompt, tools)
 

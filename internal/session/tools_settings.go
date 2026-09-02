@@ -102,7 +102,11 @@ func (a *Agent) settingsTools() []bare.Tool {
 	// written. So an empty string is not "there is no profile", it is "the
 	// profile where it always is", and the tools belong on the belt either way.
 	dir := strings.TrimSpace(a.config.ProfileDir)
-	if a.config.InTask {
+	// THE GATE IS THE PROMPT'S GATE. [Config.maySeeSettings] is the one reading
+	// of this question, and the sentence telling the model to change a
+	// preference through these two is composed from it (beltfacts.go), so the
+	// page cannot go on naming a hand this line has just withheld.
+	if !a.config.maySeeSettings() {
 		return nil
 	}
 	// One registry, built once and shared by both hands. Every row reads its

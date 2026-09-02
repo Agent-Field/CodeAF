@@ -365,6 +365,14 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	cfg.InTask = true
 	cfg.Standing = nil
 	cfg.standingItems = nil
+	// AND THE STORE GOES, BECAUSE THIS AGENT HAS NO BRAIN TO READ IT WITH. The
+	// throwaway below is assembled by hand rather than by newAgent, so nothing
+	// builds the memory brain the parent's Config.Memory stands for — and a
+	// config claiming a store the agent does not have is exactly the
+	// disagreement between a belt and a page that [Config.hasStore] exists to
+	// make impossible (beltfacts.go). The belt is unchanged either way: without
+	// a brain there was never a `search_conversations` on it.
+	cfg.Memory = nil
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
