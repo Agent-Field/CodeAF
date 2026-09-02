@@ -11,7 +11,7 @@ invalidates:
   - "`.github/known-red.txt` could gain a line in a pull request. It cannot now: `internal/ci` holds `knownRedEntries` (12 at 1de89c08), fails if the file has more, fails if it has fewer without the constant lowered in the same change, and fails if a listed name is not a test the tree declares. Ruled 2026-09-02: the ledger burns to zero in its own wave and never gains an entry. The commit that deletes the file deletes that test with it; an absent ledger skips nothing."
   - "CLAUDE.md copied the list of tests that fail on a clean tree. It no longer does; `.github/known-red.txt` is the one place it is written, and CLAUDE.md's Tests section points there."
   - "Two full suites could run on one box at once, and on 2026-09-02 nine did, manufacturing reds by load. `make test` on `./...` now takes `scripts/one-suite.sh`'s lock — a pid with its command line checked, so a dead holder never blocks — and a second whole-tree run refuses to start, naming the holder. Runs of named packages do not take it."
-  - "gofmt was not in the gate. `make fmt-check` is, and `internal/cachedir/cachedir_test.go` and `internal/tui3/ground_test.go` are formatted."
+  - "gofmt was not in the gate. `make fmt-check` is, and the gofmt law lands with the tree formatted: `internal/cachedir/cachedir_test.go`, `internal/tui3/ground_test.go` and `internal/tui3/app.go` (which #439 merged with a field left unaligned) are its first sweep. A pull request that rebases onto an unformatted file fails this step naming the file; `gofmt -w` it in the same pull request."
 ---
 
 docs/rules/ci.md is rewritten to say all of this. The one thing the gate cannot prove
