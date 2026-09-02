@@ -45,33 +45,39 @@ const (
 // ── the floors ──────────────────────────────────────────────────────────────
 //
 // THESE ARE MEASURED NUMBERS AND NOTHING ELSE, and they are set UNDER the
-// measurement rather than at it. Four passes of this file were run on
-// deepseek-v4-flash while #307 landed — two with the fix and two without — and
-// what they measured was:
+// measurement rather than at it. Five passes of this file were run on
+// deepseek-v4-flash while #307 landed — three with the fix and two without,
+// same file, same code path — and what they measured was:
 //
 //	                     opened   first   within four
 //	the 25, without        19/25   11/25    18/25
 //	the 25, without        17/25   14/25    16/25
 //	the 25, with           19/25   14/25    18/25
 //	the 25, with           20/25   12/25    20/25
+//	the 25, with           22/25   13/25    22/25
 //	held out, without      18/22    5/22    12/22
 //	held out, without      17/22    5/22    16/22
 //	held out, with         17/22    6/22    13/22
 //	held out, with         13/22    5/22    11/22
+//	held out, with         17/22    5/22    15/22
 //
 // The spread inside one column is bigger than the difference between the two
 // halves of the table, and the reason is in the first column: WHETHER THE MODEL
-// REACHES FOR THE TOOL AT ALL moves by seven questions between runs, and a turn
+// REACHES FOR THE TOOL AT ALL moves by up to nine questions between runs — it
+// answers from memory, or reads "my files" literally and runs `ls` — and a turn
 // that never opened the manual cannot reach a page. Read against the turns that
-// did look something up, the page reached the model 38 times of 39 with the fix
-// and 34 of 36 without, and came FIRST 11 times of 30 against 10 of 35 on the
-// cold set. The claim this file can make honestly is that the page stays
-// reachable through a model, not that it moved a number by three.
+// DID look something up: on the twenty-five the page reached the model 60 times
+// of 61 with the fix and 34 of 36 without, and on the cold set 39 of 47 against
+// 28 of 35, coming FIRST 16 times of 47 against 10 of 35. The direction is
+// right and none of it is significant at three passes to two. The claim this
+// file can make honestly is that the page stays REACHABLE through the model
+// that answers — which nothing free in this build notices — not that it moved a
+// number by three.
 //
-// So the floors below sit under the LOWEST of the four passes. A floor at a
-// measured number would go red on the model's own appetite rather than on a
-// regression, and a red that means "the model was in a mood" is a red nobody
-// reads. Read the run's own log lines for what the wire does today.
+// So the floors below sit under the LOWEST of the passes. A floor at a measured
+// number would go red on the model's own appetite rather than on a regression,
+// and a red that means "the model was in a mood" is a red nobody reads. Read the
+// run's own log lines for what the wire does today.
 //
 // They are deliberately SEPARATE from plainquestions_test.go's floors. Those
 // measure the corpus, exactly and for free; these measure the corpus THROUGH a
