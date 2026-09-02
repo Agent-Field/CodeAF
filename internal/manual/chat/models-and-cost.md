@@ -761,6 +761,28 @@ Two things it deliberately does not do:
 Standing items never take this posture, whatever the session that set them up was started
 with. They fire on their own clock long after your run ended, and the crew answers for them.
 
+## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew receipt when a task starts
+
+**The crew segment names the flag, because the flag is what seats the call.** Under
+`--one-model` the status line's crew segment reads `one model` rather than the preset your four
+rows derive to, and `/status` answers its crew line with `one model · every call rides the model
+you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
+the same word. All of them read one answer, so none of them can disagree with another.
+
+**Your crew word is not gone, it is overridden.** The rows are untouched on disk — this flag
+writes nothing — and the next session started without it draws `crew balanced`, `crew max` or
+`crew custom` again exactly as before. What the flag refuses to do is print a crew that is not
+seating anything this run.
+
+**And no crew receipt is posted.** The line a profile older than the work seat ordinarily gets
+when its first task starts — `your crew was set before the work seat existed · it is running on
+your small work model until you pick a crew again` — is not said under this flag. That line
+reports a substitution, and under the flag there is none: every call is already on the model
+you are talking to, which is your own answer to the question it asks. Picking a crew would not
+change what runs, so the sentence is not offered, and the `/crew` sheet says nothing about an
+inherited work seat either. Without the flag, the same profile draws `crew custom` and says
+that line once, exactly as it always did.
+
 ## What temperature does aforge use — sampling settings like temperature, top-p and seed
 
 **None of its own.** No call aforge makes sets `temperature`, `top_p`, `top_k`, a seed

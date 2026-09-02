@@ -469,6 +469,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the variable named, so a gate turned off in the sheet stayed on and
 		// nothing on screen said why.
 		ProfileDir: settings.ProfileDir,
+		// AND WHETHER THOSE ROWS SEAT ANYTHING THIS RUN. `--one-model` empties the
+		// roles source and the task model above, so the crew in the profile is
+		// still on disk and still seats nothing — and a surface that did not know
+		// drew `crew custom` for the whole run and promised a work seat that
+		// picking a crew would move (#444). It is read off the session's own
+		// config and not off the flag pointer so the surface reports the bit the
+		// session is actually carrying, which is [applyV3Governance]'s answer and
+		// not the door's question.
+		OneModel: cfg.OneModel,
 		// The countdown reads the same frozen value the session clock armed. A
 		// profile edit changes both together on the next session rather than
 		// moving only the surface's number at a turn boundary.

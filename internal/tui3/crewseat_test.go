@@ -204,3 +204,103 @@ func TestTheWorkSeatTheSheetNamesIsTheModelTheWorkerRowResolvesTo(t *testing.T) 
 		t.Fatalf("the work seat fell to the build's default with a whole crew written above it")
 	}
 }
+
+// ── the flag that overrides the crew ────────────────────────────────────────
+//
+// THE STATUS LINE NAMES WHAT SEATS THE CALL (#444).
+//
+// A canary run under `--one-model` on exactly the profile above read `crew
+// custom` for its whole life and, when the first task started, was told its crew
+// was set before the work seat existed and was running on its small work model
+// "until you pick a crew again". Both sentences are true about the file on disk
+// and false about the run: the flag empties the roles source and the task model
+// at the door, so the four rows seat nothing and picking a crew would have
+// changed nothing either.
+
+// oneModelSeatLab is [crewSeatLab] with the launch's flag on, which is the one
+// difference between the two halves below.
+func oneModelSeatLab(t *testing.T, rows map[string]string) *app {
+	t.Helper()
+	a := crewSeatLab(t, rows)
+	a.oneModel = true
+	return a
+}
+
+// UNDER THE FLAG EVERY CREW SURFACE NAMES THE FLAG, AND NO SEAT IS PROMISED.
+//
+// The five readings come through one function on purpose (crew.go's
+// [app.crewReading]), so this asserts all five: if one of them ever grows a
+// second source, this is where it says so.
+func TestUnderOneModelTheCrewSurfacesNameTheFlagAndNoSeatReceiptIsPosted(t *testing.T) {
+	a := oneModelSeatLab(t, preSeatCrew)
+	a.model = "deepseek/deepseek-v4-flash"
+
+	if got := a.crewSegment(); got != crewOneModelSegment {
+		t.Errorf("the status line's crew segment reads %q, want %q", got, crewOneModelSegment)
+	}
+	if got := a.crewWord(); got != crewOneModelWord {
+		t.Errorf("the page's crew word reads %q, want %q", got, crewOneModelWord)
+	}
+	if a.crewHint() != a.crewSegment() {
+		t.Errorf("the picker's hint says %q and the segment says %q", a.crewHint(), a.crewSegment())
+	}
+	if got := a.welcomeModelLine(); !strings.Contains(got, crewOneModelSegment) || strings.Contains(got, "crew") {
+		t.Errorf("the welcome line reads %q, want the flag beside the model and no preset", got)
+	}
+	// AND NOT ONE OF THEM READS THE PRESET the four rows still derive to. The
+	// rows are untouched on disk — that is the flag's own promise — so the word
+	// they make is the one thing this run must not print.
+	a.slash("/status")
+	page := lastNote(t, a)
+	if !strings.Contains(page, "\ncrew     "+crewOneModelWord) {
+		t.Errorf("/status does not read the same word:\n%s", page)
+	}
+	if strings.Contains(page, config.CrewCustom) {
+		t.Errorf("/status names the crew the flag overrode:\n%s", page)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, "crew "+config.CrewCustom) {
+		t.Errorf("the status line still draws the overridden crew:\n%q", line)
+	}
+
+	// AND THE RECEIPT IS NOT OWED. It reports a SUBSTITUTION, and the flag is
+	// the person's own answer to the question it asks.
+	a.taskUpdate(oneRunningNode(41, "widening the sluice"))
+	for _, entry := range a.entries {
+		if entry.kind == entryNote && strings.Contains(entry.text, "your crew was set before") {
+			t.Fatalf("a run under --one-model was promised a crew that seats nothing: %q", entry.text)
+		}
+	}
+	if seat := a.workSeat(); seat.Model != "" || seat.Source != "" {
+		t.Errorf("the flag left a work seat of %q (%s)", seat.Model, seat.Source)
+	}
+	if line := a.crewInheritedLine(); line != "" {
+		t.Errorf("the /crew sheet claims an inherited row under the flag: %q", line)
+	}
+}
+
+// AND WITHOUT THE FLAG THE SAME PROFILE IS TOLD EXACTLY WHAT IT WAS BEFORE.
+// The #311/#314 behaviour is not what was wrong here, and this is the half that
+// says so: one profile, one difference, two readings.
+func TestWithoutOneModelTheSameProfileStillDrawsItsCrewAndSaysTheSeatOnce(t *testing.T) {
+	a := crewSeatLab(t, preSeatCrew)
+	a.model = "deepseek/deepseek-v4-flash"
+
+	if got, want := a.crewSegment(), "crew "+config.CrewCustom; got != want {
+		t.Errorf("the status line's crew segment reads %q, want %q", got, want)
+	}
+	if got := a.crewWord(); !strings.HasPrefix(got, config.CrewCustom+" ·") {
+		t.Errorf("the page's crew word reads %q, want the preset the four rows derive to", got)
+	}
+	if strings.Contains(a.crewWord(), crewOneModelSegment) {
+		t.Errorf("a launch that never typed the flag reads %q", a.crewWord())
+	}
+
+	a.taskUpdate(oneRunningNode(41, "widening the sluice"))
+	notice := config.TierSeatAt(a.profileDir, config.ModelTierWorker).Notice()
+	if notice == "" {
+		t.Fatal("the fixture's work seat is not inherited, so this test is about nothing")
+	}
+	if got := notesSaying(a, notice); got != 1 {
+		t.Fatalf("the receipt was said %d times, want once for the session", got)
+	}
+}
