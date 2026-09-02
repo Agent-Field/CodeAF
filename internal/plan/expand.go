@@ -480,17 +480,21 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// the fact a person reading a run with several expansions in it needs.
 	ctx = provider.WithCallNode(ctx, callNodeKey(nodeID))
 
-	// A sub-decomposition is deliberately flat: one fan-out, no spine, no
-	// binding. Running a full staged build inside each node was the first
-	// instinct and it was wrong — every subtree contributed its own internal
-	// depth, and two levels of recursion turned a graph with a critical path of
-	// 3 into one with a critical path of 12. Depth multiplies where width adds.
+	// A sub-decomposition is one fan-out, no spine, no binding. Running a full
+	// staged build inside each node was the first instinct and it was wrong —
+	// every subtree contributed its own internal depth, and two levels of
+	// recursion turned a graph with a critical path of 3 into one with a
+	// critical path of 12. Depth multiplies where width adds. The expansion
+	// costs two calls instead of eight, and that is the discipline the second
+	// move below is written to keep.
 	//
-	// The restriction is also the honest reading of what expansion is for. We
-	// split an oversized node to find work that can happen at the same time; if
-	// what is inside it is a sequence, splitting it buys nothing and the node
-	// should stay whole, which is exactly what the shrinkage guard then decides.
-	// As a side effect the expansion costs two calls instead of eight.
+	// What the restriction may NOT do is decide that a node whose inside is a
+	// sequence stays whole. That was the reading here for a long time — split to
+	// find work that can happen at once, and where there is none, leave it — and
+	// it is only half of the burden the sizing pass states: a node that cannot be
+	// brought to an end inside what one worker can hold is divided whether or not
+	// anything in it runs at the same time. The fan-out asks the first question;
+	// sequence.go asks the second, of the nodes the first one could not answer.
 	// The subtree inherits the settled points verbatim, the evidence standard
 	// included. Without this a sub-planner rebinds the goal's free variables for
 	// itself, which is exactly how one expansion produced Berlin, Paris and
@@ -518,6 +522,15 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	usage := fanUsage
 	if len(nodes) == 0 {
 		return expansion{nodeID: nodeID, usage: usage, err: fmt.Errorf("expand %q: %w", node.Title, err)}
+	}
+	// THE SECOND MOVE. The fan-out has answered the simultaneity question with
+	// the node itself, which for a node past one worker's reach is the answer
+	// that leaves the burden's other discharge standing: it cannot be carried to
+	// an end in one sitting, so it is divided in time instead. Sizing the single
+	// restated part would buy a verdict nobody can act on — the node's own size
+	// is already on the node — so that call is spent on the stages instead.
+	if len(nodes) == 1 && dividesInTime(node) {
+		return expandAsStages(ctx, client, sub, node, goal, usage)
 	}
 	for _, child := range nodes {
 		sub.Add(child)

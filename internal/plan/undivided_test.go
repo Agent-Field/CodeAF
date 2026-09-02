@@ -16,6 +16,7 @@ type countingPlanner struct {
 	mutex     sync.Mutex
 	stages    string
 	sizeReply string
+	chain     string
 	passes    []string
 }
 
@@ -50,8 +51,25 @@ func (c *countingPlanner) CompleteWithMessages(_ context.Context, messages []ai.
 	case auditPrompt:
 		c.passes = append(c.passes, "audit")
 		return textResponse(`{"checks":[]}`), nil
+	case sequencePrompt:
+		c.passes = append(c.passes, "stages")
+		return textResponse(c.chain), nil
 	}
 	return nil, fmt.Errorf("unexpected planning call: %.48s…", system)
+}
+
+// made counts one pass, which is how a test says "exactly one sizing call" as
+// opposed to "sizing happened".
+func (c *countingPlanner) made(pass string) int {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	seen := 0
+	for _, reached := range c.passes {
+		if reached == pass {
+			seen++
+		}
+	}
+	return seen
 }
 
 func (c *countingPlanner) reached(pass string) bool {
@@ -90,10 +108,76 @@ func TestAnUngatedRemainderStopsAtOneWorker(t *testing.T) {
 	if brief := graph.Nodes[0].Brief; !strings.Contains(brief, "Run pytest and show the output") {
 		t.Fatalf("the one worker was not given the remainder: %q", brief)
 	}
-	for _, unbought := range []string{"fanout", "bind", "size", "audit"} {
+	for _, unbought := range []string{"fanout", "bind", "audit", "stages"} {
 		if client.reached(unbought) {
 			t.Fatalf("an ungated remainder still bought the %s pass: %v", unbought, client.passes)
 		}
+	}
+	// One call is what the shortcut now pays, and it is the only thing standing
+	// between a spine that was asked about gates and a worker that will be
+	// handed the whole remainder.
+	if made := client.made("size"); made != 1 {
+		t.Fatalf("the shortcut made %d sizing calls, want exactly one: %v", made, client.passes)
+	}
+}
+
+// THE SHORTCUT IS NOT A SIZE VERDICT. A remainder the spine finds nothing gated
+// in, and the ruler puts past one worker's reach, is the leaf that exhausted
+// itself being handed back to itself. It falls through to the pipeline, where
+// the division of a sequence lives.
+func TestAnOversizedRemainderIsNotHandedToOneWorker(t *testing.T) {
+	replies := func() *countingPlanner {
+		return &countingPlanner{
+			stages: `{"stages":[{"title":"Finish","summary":"Finish the remainder."}]}`,
+			// The whole is past one worker's reach; the stages it is made of
+			// are not.
+			sizeReply: `{"sizes":[{"node":1,"size":"oversized","split_into":["one","two"]},{"node":2,"size":"atomic","split_into":[]},{"node":3,"size":"atomic","split_into":[]}]}`,
+			chain: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+				`{"title":"Change","summary":"Make the change.","needs":[1]},` +
+				`{"title":"Prove","summary":"Show that it holds.","needs":[2]}]}`,
+		}
+	}
+
+	client := replies()
+	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 1, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Three ordered stages under the node they were drawn for, and the
+	// one-sitting collapse leaves them alone: the links sit at depth 1, and the
+	// whole they came from is the node the ruler put past one worker's reach.
+	links := 0
+	for _, node := range graph.Nodes {
+		if node.Kind == KindWork && node.Depth == 1 {
+			links++
+		}
+	}
+	if links != 3 {
+		t.Fatalf("an oversized remainder kept %d ordered stages of 3, in %d nodes: %v",
+			links, len(graph.Nodes), client.passes)
+	}
+	// Binding and audit have nothing to say about a single stage with one node
+	// in it; what the fall-through is for is the fan-out, the ruler, and the
+	// stage question underneath them.
+	for _, required := range []string{"fanout", "size", "stages"} {
+		if !client.reached(required) {
+			t.Fatalf("the fall-through skipped the %s pass: %v", required, client.passes)
+		}
+	}
+	// A remainder is allowed one level of division, and this is what depth zero
+	// costs it: the same remainder, the same rulings, and nowhere for the
+	// oversized node to go.
+	shallow := replies()
+	flat, err := Build(context.Background(), shallow, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, MaxDepth: 0, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shallow.reached("stages") || len(flat.Nodes) != 1 {
+		t.Fatalf("depth zero divided the remainder after all (%d nodes): %v", len(flat.Nodes), shallow.passes)
 	}
 }
 
