@@ -240,6 +240,27 @@ func jobNameOf(info jobInfo) string {
 // to the roster's own number, which is wrong as a handle and right as a name —
 // better a row saying `job 4` than a conversation that quietly lost the six
 // commands it ran.
+// liveJobNotices is every published job as the registry holds it right now.
+//
+// IT IS THE REPLAY'S LIVE HALF. [jobNoticeFromRow] recovers what the file kept;
+// this recovers what the process still knows. A task-kind worker is left out —
+// it is in the registry for the id space and the kill, and it already has a
+// roster row of its own (jobs.go's [jobRegistry.announceRow]).
+func (a *Agent) liveJobNotices() map[int]JobNotice {
+	if a == nil || a.jobs == nil {
+		return nil
+	}
+	held := a.jobs.all()
+	out := make(map[int]JobNotice, len(held))
+	for _, one := range held {
+		if one.kind == jobKindTask {
+			continue
+		}
+		out[one.id] = noticeOf(one.info())
+	}
+	return out
+}
+
 func jobNoticeFromRow(row TaskNotice) (JobNotice, bool) {
 	if row.Kind != TaskKindJob {
 		return JobNotice{}, false
@@ -264,13 +285,13 @@ func jobNoticeFromRow(row TaskNotice) (JobNotice, bool) {
 
 // jobStateFromRow maps a kept row's state onto a job's own.
 //
-// THE RUNNING CASE IS NOT ONLY FOR CHECKPOINTS. A row restored from a file is
-// always settled — a job that was still moving when aforge closed is stopped on
-// the way in (task_store.go), because nothing survives the process it forked
-// from — but the SAME rows are replayed to a lane that attaches while the work
-// is going, which is what a person switching back to this conversation opens.
-// Reading a live row as an ending would tell them the command they are watching
-// had already failed.
+// THE RUNNING CASE IS THE FALLBACK WHEN THE REGISTRY HAS ALREADY LET GO. A
+// row restored from a file is always settled — a job that was still moving
+// when aforge closed is stopped on the way in (task_store.go) — and a lane
+// that attaches while the work is still going is handed the live notice
+// ([Agent.liveJobNotices]), not this projection. Reading a leftover running
+// row as an ending would still be wrong if the overlay missed, so the
+// mapping stays honest.
 func jobStateFromRow(row TaskNotice) JobState {
 	switch {
 	case row.Stopped:
