@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
@@ -40,6 +41,11 @@ import (
 //     taken it gets as far as the claim and is told [ErrExists]. See
 //     [Store.gated] for how the race is decided and [Store.write] for why a
 //     retry would write a lineage that lies.
+//
+// A CALLER ON A TURN PATH GETS AN ANSWER WITHIN [mintGateBound], NEVER A WAIT:
+// a mint that cannot have the gate inside that bound is refused with
+// [ErrMintBusy] and has written nothing, so the caller may say so, or mint
+// again, but it never blocks a turn on somebody else's lock.
 //
 // Content that an ANCESTOR once had is still a new version. A revert is a real
 // event with its own place in the lineage, and collapsing it onto the version it
@@ -165,6 +171,17 @@ func (s *Store) claim(name string, laid []file, hash, parent, why string) (Versi
 // directory, a filesystem with no advisory locking: fn still runs, with the
 // exclusive create in [Store.write] as the floor it has always been. That is the
 // same trade internal/lane makes over its beliefs, for the same reason.
+//
+// A GATE SOMEBODY ELSE IS HOLDING IS A DIFFERENT ANSWER ENTIRELY, AND IT IS A
+// REFUSAL RATHER THAN A WAIT. The acquire is non-blocking, retried under
+// [mintGateBound], and gives up with [ErrMintBusy]; it does NOT fall through and
+// run fn unlocked, because running unlocked is the forked lineage this gate was
+// built to close, and it does not block, because a blocking file lock with no
+// deadline is exactly the shape that silenced a turn for twenty-nine minutes in
+// #264. Mint has no caller on a turn path today; the bound is here so that the
+// first one cannot inherit the freeze. The two answers are told apart by
+// [filelock.IsBusy]: busy is somebody else, and anything else is a filesystem
+// that will not lock at all.
 func (s *Store) gated(name string, fn func() (Version, error)) (Version, error) {
 	if err := os.MkdirAll(s.nameDir(name), 0o755); err != nil {
 		return fn()
@@ -174,11 +191,38 @@ func (s *Store) gated(name string, fn func() (Version, error)) (Version, error) 
 		return fn()
 	}
 	defer gate.Close()
-	if err := filelock.Lock(gate, true, false); err != nil {
-		return fn()
+	held, err := takeGate(name, gate)
+	if err != nil {
+		return Version{}, err
 	}
-	defer filelock.Unlock(gate)
+	if held {
+		defer filelock.Unlock(gate)
+	}
 	return fn()
+}
+
+// takeGate takes the gate under [mintGateBound] and says whether it holds it.
+//
+// The three answers are the whole of the contract [Store.gated] states: held,
+// so unlock it afterwards; not held and no error, because this filesystem does
+// not do advisory locks and the exclusive create is the floor; or [ErrMintBusy],
+// because another mint held it for the whole bound and this one is refused
+// having touched nothing.
+func takeGate(name string, gate *os.File) (bool, error) {
+	deadline := time.Now().Add(mintGateBound)
+	for pause := mintGateFirstPause; ; pause = min(pause*2, mintGateMaxPause) {
+		err := filelock.Lock(gate, true, true)
+		if err == nil {
+			return true, nil
+		}
+		if !filelock.IsBusy(err) {
+			return false, nil
+		}
+		if !time.Now().Add(pause).Before(deadline) {
+			return false, fmt.Errorf("%w: %q is being minted by somebody else — try again", ErrMintBusy, name)
+		}
+		time.Sleep(pause)
+	}
 }
 
 // write stages the whole bundle, claims its version, and moves the staging
