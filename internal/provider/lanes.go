@@ -253,8 +253,26 @@ func LaneTalkAsk(model string, now time.Time) lanes.Request {
 // it is applied, so that the ask this adapter remembers per model and the
 // sighting it later attributes are filed under one name.
 //
-// The wire keeps the suffix. Only the bookkeeping loses it.
-func laneModel(model string) string { return lanes.BareModel(normalizeModel(model)) }
+// AND THE SAME SEAM ANSWERS THE FLOATING ALIAS, which is the shipped default's
+// version of the same split and the worse one, because every install routes by
+// it. `~deepseek/deepseek-v4-flash-latest` is what the config carries and what
+// the wire sends; OpenRouter resolves it on its own side, per request, and
+// publishes the endpoints page under the concrete model it points at — there is
+// no such page for the alias. Filed as written, this side keyed
+// `deepseek/deepseek-v4-flash-latest`, the beat asked for a sheet under
+// `~deepseek/deepseek-v4-flash-latest`, and the machines that answered were
+// `deepseek/deepseek-v4-flash-0731`'s. One model, three ledger keys, and the
+// default model of every install therefore chose between no lanes at all.
+//
+// [lanes.LedgerModel] folds both — the tier suffix and the alias — and the fold
+// is INJECTED rather than imported, so on a build with no catalog installed this
+// line is exactly the bare-model normalisation it always was. The alias is
+// resolved to its alias TARGET and never to the canonical slug: for these rows
+// the router repeats the alias in canonical_slug, and the dated id one hop on is
+// served nowhere.
+//
+// The wire keeps the suffix and the alias. Only the bookkeeping resolves them.
+func laneModel(model string) string { return lanes.LedgerModel(normalizeModel(model)) }
 
 // laneNow is the moment a choice is made at and a sighting is stamped with.
 //

@@ -572,6 +572,50 @@ func (c *Catalog) Identity(modelID string) string {
 	return id
 }
 
+// Servable is the id the router will actually serve this spelling under, and it
+// is the only fold a per-model LEDGER may use.
+//
+// [Catalog.Identity] answers a neighbouring question and answers it wrongly for
+// this one. Identity is asked whether two spellings describe one model, and it
+// prefers the dated canonical slug because that is the name which cannot float.
+// For a floating alias the router publishes canonical_slug as the ALIAS itself
+// and, one hop on, as a dated id it lists nowhere and serves through no
+// endpoints page: on 2026-09-01 `~deepseek/deepseek-v4-flash-latest` resolved
+// through Identity to `deepseek/deepseek-v4-flash-20260731`, which is not a
+// model anybody can send to. A ledger keyed on that would hold beliefs about a
+// name no request will ever wear — the same split this fixes, one spelling
+// further out. The alias target, `deepseek/deepseek-v4-flash-0731`, is the real
+// servable id and the endpoints page is published under it.
+//
+// The bare undated id is not the answer either, and it is worth saying because
+// it looks like one: `deepseek/deepseek-v4-flash` is the 0423 snapshot, a
+// DIFFERENT MODEL with its own machines and its own speeds.
+//
+// So: one hop, alias target only, and never the canonical slug. A row without
+// an alias target is already servable and comes back as written.
+//
+// It never waits, for [Catalog.Identity]'s reason and one more: this is read on
+// the send path as well as at launch, and a fold that could block would put a
+// fetch in front of a request. A catalog that has not warmed yet answers the id
+// as written, which is what every caller had before this existed.
+func (c *Catalog) Servable(modelID string) string {
+	// Lowercased as well as ~-stripped, exactly as Identity does it, so that the
+	// two folds agree about which spellings are one spelling.
+	id := strings.ToLower(normalizeID(modelID))
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return id
+	}
+	model, ok := resolved.byID[id]
+	if !ok {
+		return id
+	}
+	if target := strings.ToLower(normalizeID(model.AliasTarget)); target != "" && target != id {
+		return target
+	}
+	return id
+}
+
 // Supports answers whether modelID advertises modality in direction. Unknown
 // models and directions calmly return false.
 func (c *Catalog) Supports(modelID, direction, modality string) bool {

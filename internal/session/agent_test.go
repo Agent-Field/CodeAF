@@ -3058,6 +3058,23 @@ func TestABaseThatIsNotARouterRunsNoLaneBeat(t *testing.T) {
 	}
 }
 
+// The default this build ships is a floating alias, and the router publishes no
+// endpoints page under one. Two spellings of it are one model, one sheet and one
+// fetch — which is also the only reason a shipped default has any prior at all.
+func TestTheBeatAsksForTheModelTheRouterActuallyServes(t *testing.T) {
+	t.Cleanup(func() { lanes.UseServable(nil) })
+	lanes.UseServable(func(model string) string {
+		if strings.TrimPrefix(model, "~") == "talk/model-latest" {
+			return "talk/model-0731"
+		}
+		return model
+	})
+	got := laneBeatModels(Config{Model: "~talk/model-latest", TaskModel: "talk/model-latest:high"})
+	if len(got) != 1 || got[0] != "talk/model-0731" {
+		t.Fatalf("laneBeatModels gave %v, want one fetch for [talk/model-0731]", got)
+	}
+}
+
 func TestTheBeatAsksAboutEachSlotModelOnce(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		config Config
