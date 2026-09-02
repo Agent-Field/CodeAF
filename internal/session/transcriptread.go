@@ -38,9 +38,15 @@ package session
 // THEY DO NOT FAIL. A path that is empty or missing is not an error and answers
 // nothing — the record is EVIDENCE, not a prerequisite, and a page that refused
 // to open because a file was not there yet would refuse to show the live work
-// beside it as well. A file with a line this build cannot read answers with
-// EVERYTHING ABOVE THAT LINE and says which line it was ([Record.UnreadFrom]),
-// which is the same answer a resume gets from the same file.
+// beside it as well.
+//
+// BUT A SHORT READING IS NEVER A SILENT ONE. Two files come back with less than
+// they hold: one whose line this build cannot get past, which answers with
+// EVERYTHING ABOVE THAT LINE, and one written by a NEWER AFORGE, which a resume
+// refuses outright and which answers here with nothing at all. Returning either
+// as an ordinary short record would be the page saying, in the only way a page
+// can, that this is all the work there ever was. So the reading carries what it
+// could not do ([Record.Unreadable]) and the page draws it.
 //
 // THEY DO NOT OPEN A PICTURE'S FILE. The parts come back as references to where
 // the bytes were ([journalPart.reference]) and never as the bytes: these
@@ -51,6 +57,7 @@ package session
 import (
 	"bytes"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -76,9 +83,15 @@ type Record struct {
 	Entries []DisplayEntry
 	Earlier []DisplayEntry
 	Floor   int
-	// UnreadFrom is the 1-based line of the file this reading could not get past,
-	// and zero for a file read to its end. Everything above it is in Entries.
-	UnreadFrom int
+	// Unreadable is what a page must SAY about this reading, and "" for a record
+	// read whole — which is nearly all of them.
+	//
+	// IT IS A FINISHED SENTENCE and not a code or a line number, for the reason
+	// [SteerMark.Landing] is one: the fact belongs to whoever did the reading,
+	// and a surface composing the sentence from parts is a second place the
+	// answer can be wrong. There is at most one, because a reading either stopped
+	// AT a line or was refused the whole file, never both.
+	Unreadable string
 }
 
 // ReadTranscript is one session file, at rest, as display entries — the shape
@@ -118,16 +131,21 @@ func ReadTranscriptBytes(data []byte) Record {
 // session-authored mark and its steer mark, and the marks are on the LINES the
 // scan just consumed. Nothing here can write: the door was never given a handle.
 //
-// An error is not a reason to draw nothing. The only one this can carry is a
-// file written by a newer aforge, and what came back with it is every line this
-// build did understand — which is the record as far as it is legible, and that
-// is what a page shows.
+// THE ONE ERROR THIS CAN CARRY is a file written by a newer aforge: a build that
+// reads it anyway would drop every entry type and field it does not know, in
+// silence, and show a shortened copy of somebody's work as though it were the
+// work. The scan refuses it and hands back nothing, so the reading here has one
+// thing to say and says it — the page draws that sentence and no entries, which
+// is the truth about the file.
 //
 // THE FLOOR IS COUNTED BY DOING THE SHAPING, exactly as the resume path counts
 // it (agent.go): the journal counts MESSAGES and a surface indexes ENTRIES, and
 // a second rule for how many entries a message makes is a rule that can disagree
 // with [shapeEntries].
-func transcriptFrom(replayed replayedSession, _ error) Record {
+func transcriptFrom(replayed replayedSession, err error) Record {
+	if err != nil {
+		return Record{Unreadable: unreadNewerWord}
+	}
 	journal := &sessionFile{
 		images:    replayed.images,
 		notes:     replayed.notes,
@@ -142,6 +160,29 @@ func transcriptFrom(replayed replayedSession, _ error) Record {
 		Entries:    shapeEntries(replayed.messages, journal),
 		Earlier:    shapeEntries(replayed.earlier, journal),
 		Floor:      len(shapeEntries(replayed.messages[:overlap], journal)),
-		UnreadFrom: replayed.unread,
+		Unreadable: unreadPastLine(replayed.unread),
 	}
+}
+
+// ── WHAT A SHORT READING SAYS ───────────────────────────────────────────────
+//
+// Both sentences STATE BOTH HALVES: what this build could not do, and what is
+// on the page in spite of it. "Something went wrong" is not an answer anybody
+// can act on, and a row that only named the trouble would leave a person
+// guessing whether the work above it is real.
+
+// unreadNewerWord is a file this build has no business reading. It names the
+// remedy by naming the cause: the file is not damaged and nothing is lost — a
+// newer aforge opens it.
+const unreadNewerWord = "this transcript was written by a newer aforge — this build cannot read it"
+
+// unreadPastLine is a file that stopped being legible partway down, and "" for
+// one read to its end. It names the LINE, which is a place in a file somebody
+// can open, rather than a fault somewhere in it.
+func unreadPastLine(line int) string {
+	if line <= 0 {
+		return ""
+	}
+	return "this transcript could not be read past line " + strconv.Itoa(line) +
+		" — everything above it is on this page"
 }

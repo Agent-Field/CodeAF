@@ -331,7 +331,7 @@ func TestATaskPageSaysWhereItsRecordStopped(t *testing.T) {
 	// IT IS THE TOP ROW, and it names the line — a place in a file somebody can
 	// open — rather than saying something went wrong somewhere.
 	head := blocks[0]
-	if head.kind != entrySeam || !strings.Contains(head.text, unreadWord+"4") {
+	if head.kind != entrySeam || !strings.Contains(head.text, "past line 4") {
 		t.Fatalf("the page does not say where its record stopped: %#v", head)
 	}
 	if !blockSaying(blocks, "the map is never made") {
@@ -356,7 +356,7 @@ func TestATaskPageThatCouldBeReadWholeSaysNothingAboutIt(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	blocks, _ := a.roomRecord(session.ReadTranscript(path), 0)
 	for i := range blocks {
-		if strings.Contains(blocks[i].text, unreadWord) {
+		if strings.Contains(blocks[i].text, "could not be read") {
 			t.Fatalf("a record read whole claimed it stopped short: %#v", blocks)
 		}
 	}
@@ -414,5 +414,38 @@ func TestACallAboveTheSeamIsNeverDrawnAsStillRunning(t *testing.T) {
 	if running != 1 {
 		t.Fatalf("%d calls below the seam are drawn as running, want the one in flight:\n%#v",
 			running, blocks[seam:])
+	}
+}
+
+// AND A WHOLE RECORD THIS BUILD CANNOT READ SAYS SO ON THE SAME ROW. A node's
+// file written by a newer aforge is refused entire — nothing above a line, no
+// entries at all — so a page that drew what came back and nothing else would
+// open BLANK, which reads as a task that has done no work rather than as a
+// record this build has no business reading.
+func TestATaskPageFromANewerAforgeSaysWhyItIsEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	record := strings.Join([]string{
+		`{"type":"session","version":9,"id":"n1","cwd":"/tmp/lab"}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"the map is never made"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	a := newTestApp(&fakeAgent{})
+	blocks, turns := a.roomRecord(session.ReadTranscript(path), 0)
+	// ONE ROW, and it is the seam's own dim register — this is a limit on what is
+	// on screen, not work somebody did.
+	if len(blocks) != 1 || blocks[0].kind != entrySeam {
+		t.Fatalf("the page drew %d blocks, want the one row saying why it is empty: %#v",
+			len(blocks), blocks)
+	}
+	if !strings.Contains(blocks[0].text, "newer aforge") {
+		t.Fatalf("the page does not say why it is empty: %q", blocks[0].text)
+	}
+	// AND IT OPENS NO TURN. Nothing was read, so there is nothing to number.
+	if turns != 0 {
+		t.Fatalf("a record nobody could read counted %d turns", turns)
 	}
 }

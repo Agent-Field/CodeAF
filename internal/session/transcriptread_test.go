@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -314,8 +315,9 @@ func TestALineTooLongKeepsEveryLineAboveItOnBothPaths(t *testing.T) {
 	}
 	// AND IT SAYS WHICH LINE. "Something went wrong somewhere in this file" is
 	// not an answer somebody can act on; a line number is.
-	if read.UnreadFrom != 4 {
-		t.Fatalf("UnreadFrom = %d, want line 4 — the over-long one", read.UnreadFrom)
+	if !strings.Contains(read.Unreadable, "past line 4") {
+		t.Fatalf("the reading says %q, want a sentence naming line 4 — the over-long one",
+			read.Unreadable)
 	}
 
 	// THE RESUME PATH ANSWERS THE SAME, because it is the same fact about the
@@ -338,5 +340,51 @@ func TestALineTooLongKeepsEveryLineAboveItOnBothPaths(t *testing.T) {
 	if got := agent.Transcript(); len(got) != 2 {
 		t.Fatalf("the resumed conversation holds %d entries, want the two that were readable: %#v",
 			len(got), got)
+	}
+}
+
+// A FILE THIS BUILD HAS NO BUSINESS READING SAYS SO. A record whose header
+// declares a format above this build's holds entry types and fields nothing here
+// knows, and every one of them would be dropped in silence — so the scan refuses
+// it, exactly as a resume does.
+//
+// The door used to swallow that refusal and answer with an empty record, which
+// is the page opening blank and saying nothing: the same lie as a short reading,
+// told about a whole file instead of a line. THE LENS MAY LOWER SALIENCE; IT MAY
+// NOT DROP A FACT.
+func TestARecordFromANewerAforgeIsRefusedOutLoud(t *testing.T) {
+	record := `{"type":"session","version":` + strconv.Itoa(sessionFileVersion+1) + `,"id":"n1","cwd":"/tmp/lab"}
+{"type":"message","role":"user","content":"Fix the nil-map crash"}
+{"type":"message","role":"assistant","content":"Found it — the map is never made."}
+`
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	// THE RESUME PATH REFUSES IT, which is the behaviour the door has to answer
+	// for rather than quietly disagree with.
+	if _, err := replaySessionFile(path); err == nil {
+		t.Fatal("the resume opened a file written by a newer aforge")
+	}
+
+	for _, door := range []struct {
+		name string
+		read func() Record
+	}{
+		{"a path", func() Record { return ReadTranscript(path) }},
+		{"bytes", func() Record { return ReadTranscriptBytes([]byte(record)) }},
+	} {
+		read := door.read()
+		if len(read.Entries) != 0 || len(read.Earlier) != 0 {
+			t.Fatalf("%s: the door drew %d entries from a record it cannot read: %#v",
+				door.name, len(read.Entries), read.Entries)
+		}
+		// AND IT SAYS WHY, in words naming the cause — which is also the remedy,
+		// because a newer build opens the same file.
+		if !strings.Contains(read.Unreadable, "newer aforge") {
+			t.Fatalf("%s: the reading says %q, want it to say the file is from a newer aforge",
+				door.name, read.Unreadable)
+		}
 	}
 }

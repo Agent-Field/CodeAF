@@ -468,23 +468,6 @@ const earlierMark = "· earlier · keep scrolling"
 // The manual quotes the row as the person sees it, "· " and all.
 const seamMark = "above here the model keeps a shortened record — you can still read it all"
 
-// unreadWord is what a page says when the record it is drawn from has a line
-// this build could not read — one very large paste is enough — and it is said in
-// the seam's own shape and register for the seam's own reason: it is a LIMIT ON
-// WHAT IS ON SCREEN, stated plainly, in the dim lane this surface says
-// everything of its own in.
-//
-// IT STATES BOTH HALVES, exactly as [seamMark] does. "Something went wrong" is
-// not an answer anybody can act on, and "the transcript ends here" would be a
-// second lie on top of the first — so the row names the line, which is a place
-// in a file somebody can open, and says that everything above it is here.
-const unreadWord = "this transcript could not be read past line "
-
-// unreadMark is that sentence about one record.
-func unreadMark(line int) string {
-	return unreadWord + itoa(line) + " — everything above it is on this page"
-}
-
 // earlierRow is the marker painted, or "" when the beginning is already drawn.
 func (a *app) earlierRow(width int) string {
 	if width < 1 || !a.moreHistory() {
@@ -560,12 +543,18 @@ func roomReplay(tail int) replayShape {
 // nobody scrolled to and drop the work that is happening now.
 func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
 	blocks, turns := a.recordBlocks(record, tail)
-	// AND THE LINE NOBODY COULD READ IS SAID AT THE TOP, above the window rather
-	// than inside it. It is a fact about the READING and not about the work, so a
-	// page long enough to be windowed must not quietly stop saying it — which is
-	// the whole reason it is added after the tail is taken.
-	if record.UnreadFrom > 0 {
-		blocks = append([]entry{{kind: entrySeam, text: unreadMark(record.UnreadFrom)}}, blocks...)
+	// AND WHAT THE READING COULD NOT DO IS SAID AT THE TOP, above the window
+	// rather than inside it. It is a fact about the READING and not about the
+	// work, so a page long enough to be windowed must not quietly stop saying it
+	// — which is the whole reason it is added after the tail is taken.
+	//
+	// It is drawn in the seam's own shape and register for the seam's own reason:
+	// it is a LIMIT ON WHAT IS ON SCREEN, stated plainly, in the dim lane this
+	// surface says everything of its own in. The words are the session's
+	// ([session.Record.Unreadable]) and are drawn as written — one reading, one
+	// sentence, one place it can be wrong.
+	if record.Unreadable != "" {
+		blocks = append([]entry{{kind: entrySeam, text: record.Unreadable}}, blocks...)
 	}
 	return blocks, turns
 }
