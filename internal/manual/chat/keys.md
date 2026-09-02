@@ -343,9 +343,11 @@ second `esc` inside half a second is the rewind's door and `ctrl+c` is the quit 
 neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out aforge stops waiting on its own.
 
-**What happens at 10 seconds.** aforge detaches from the turn: the background waits are
-ended, whatever request was still open to the model is aborted, the conversation gets the
-note `detached — the turn was let go of and nothing is waiting for it`, and the box is
+**What happens at 10 seconds.** aforge detaches from the turn: the waits aforge holds are
+ended and whatever request was still open to the model is aborted. A wait that ignores
+being cancelled — a command whose output a grandchild is still holding, say — may run on
+behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
+more, not that it is already gone. The conversation gets the note `detached — the turn was let go of and nothing is waiting for it`, and the box is
 yours again — you can type the next thing straight away. If the turn had spent anything,
 the note names it, for example `detached — the turn was let go of and nothing is waiting
 for it — it spent $0.04`; under half a cent it says `it spent under a cent` rather than a

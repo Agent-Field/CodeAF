@@ -230,7 +230,10 @@ func TestTheFrameClockRunsForTheWholeStoppingWindow(t *testing.T) {
 // repository probe, because a turn may have committed, branched or dirtied the
 // tree, and the bounded fade ticks. [app.stopSweep] settles the turn it detaches
 // and must therefore CARRY those out to the frame's batch rather than drop them
-// on the floor.
+// on the floor. WHAT THIS TEST OBSERVES IS THE PROBE ALONE: the fade ticks reach
+// the same batch by the same return value, so a dropped return takes both, but
+// only the probe runs through a seam a test can hold. Nothing here should be
+// read as proof the ticks were drawn.
 //
 // IT IS PINNED HERE BECAUSE NOTHING ELSE WOULD SAY. The rest of this file asks
 // whether the surface was freed, and a sweep whose return value is discarded

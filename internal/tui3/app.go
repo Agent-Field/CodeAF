@@ -6619,13 +6619,16 @@ func (a *app) interruptTurn() {
 // stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
 // of the turn without it ([app.stopSweep]).
 //
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. The waits that make
-// an ordinary winding-down long are measurable and small: bash's `WaitDelay` on
-// a leaked output pipe is three seconds, and a `jobs` kill spends two seconds on
-// a SIGTERM grace and two more on the SIGKILL behind it. Ten sits comfortably
-// ABOVE the worst ordinary settle rather than inside it, so this deadline can
-// only ever fire on a turn that was genuinely not going to let go — never on one
-// that was three seconds from finishing tidily and handing back what it did.
+// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
+// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
+// graces any more: this change put the call's context on both of those, so a
+// stop ends them at once rather than waiting them out. What is left behind the
+// bound is the class this change cannot reach from outside — a wait that never
+// looks at its context at all, a command whose output a grandchild still holds,
+// anything a tool blocks on that was written before cancellation existed. Ten
+// seconds is chosen to sit far above every settle we can measure, so the
+// deadline fires only on that class and never on a turn that was about to end
+// tidily and hand back what it did.
 //
 // IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
 // is the only moment the person is timing from.
@@ -6635,8 +6638,11 @@ const stopGrace = 10 * time.Second
 // has not closed yet: the seconds between a person's esc and the engine letting
 // go of the turn.
 //
-// IT IS A REAL WINDOW AND IT IS NOT SHORT. [session.Agent.Interrupt] cancels the
-// turn's context and returns at once, but the turn goroutine does not close its
+// IT IS A REAL WINDOW, THOUGH IT IS NO LONGER A LONG ONE FOR ORDINARY WORK.
+// [session.Agent.Interrupt] cancels the turn's context and returns at once, and
+// since this change the tool batch's wait and the jobs graces take that context
+// too, so the ordinary settle is now the time a cancelled call needs to unwind.
+// The window survives because the turn goroutine does not close its
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. Two ordinary calls
 // outlast the cancel by seconds: a `bash` whose command left a grandchild
