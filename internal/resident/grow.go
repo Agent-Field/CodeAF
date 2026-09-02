@@ -778,13 +778,20 @@ func SetJobCloser(close func(jobRoot, keep, reason string) int) {
 // worker that is asking would release the very claim it is in the middle of
 // settling, and the node would go back on the queue to be claimed again.
 func closeOutJob(jobRoot, keep, reason string) {
-	jobCloserMu.RLock()
-	close := jobCloser
-	jobCloserMu.RUnlock()
+	close := installedJobCloser()
 	if close == nil {
 		return
 	}
 	close(jobRoot, keep, reason)
+}
+
+// installedJobCloser is whatever SetJobCloser last installed. It is its own
+// function so the read lock is held from a defer while the closer, which stops
+// workers and may take its time, runs outside it.
+func installedJobCloser() func(jobRoot, keep, reason string) int {
+	jobCloserMu.RLock()
+	defer jobCloserMu.RUnlock()
+	return jobCloser
 }
 
 // NoteResumedRound journals a round nobody asked the governor for.

@@ -258,13 +258,21 @@ func sshControlPath() string {
 // minutes of retries against a machine that is switched off would leave a row of
 // them.
 func (l *engineLink) hold(process *exec.Cmd, tail *tailWriter) {
-	l.mu.Lock()
-	previous, reaped := l.process, l.reaped
-	l.process, l.stderr, l.reaped, l.err = process, tail, false, nil
-	l.mu.Unlock()
+	previous, reaped := l.swap(process, tail)
 	if previous != nil && !reaped {
 		guard.Go("chatv3/host-reap", func() { _ = previous.Wait() })
 	}
+}
+
+// swap installs the new child and answers the old one and whether it was
+// already reaped. It is its own method so the mutex is held from a defer while
+// the wait on the previous child stays outside the lock.
+func (l *engineLink) swap(process *exec.Cmd, tail *tailWriter) (previous *exec.Cmd, reaped bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	previous, reaped = l.process, l.reaped
+	l.process, l.stderr, l.reaped, l.err = process, tail, false, nil
+	return previous, reaped
 }
 
 // dialEngine starts the engine on the far machine, completes the handshake, and
@@ -330,20 +338,35 @@ func (l *engineLink) close() error {
 
 // reap waits on the current ssh child, once.
 func (l *engineLink) reap() error {
-	l.mu.Lock()
-	process, reaped := l.process, l.reaped
-	if process == nil || reaped {
-		err := l.err
-		l.mu.Unlock()
+	process, err := l.claimReap()
+	if process == nil {
 		return err
 	}
-	l.reaped = true
-	l.mu.Unlock()
-	err := process.Wait()
-	l.mu.Lock()
-	l.err = err
-	l.mu.Unlock()
+	err = process.Wait()
+	l.noteReaped(err)
 	return err
+}
+
+// claimReap marks the current child as being waited on and hands it back, or
+// answers nil and the error already recorded when there is nothing to wait on.
+// It is its own method so the mutex is held from a defer while the wait itself
+// stays outside the lock.
+func (l *engineLink) claimReap() (*exec.Cmd, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.process == nil || l.reaped {
+		return nil, l.err
+	}
+	l.reaped = true
+	return l.process, nil
+}
+
+// noteReaped records what the wait answered. It is its own method so the mutex
+// is held from a defer.
+func (l *engineLink) noteReaped(err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.err = err
 }
 
 // exitCode is ssh's exit status once it has been waited on, or -1.
@@ -359,13 +382,20 @@ func (l *engineLink) exitCode() int {
 
 // said is the tail of what ssh and the far shell printed on the current link.
 func (l *engineLink) said() string {
-	l.mu.Lock()
-	tail := l.stderr
-	l.mu.Unlock()
+	tail := l.tail()
 	if tail == nil {
 		return ""
 	}
 	return tail.String()
+}
+
+// tail is the current link's stderr keeper. It is its own method so the mutex
+// is held from a defer while the read of the keeper, which takes a lock of its
+// own, stays outside this one.
+func (l *engineLink) tail() *tailWriter {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.stderr
 }
 
 // pipePair is the ssh child's two halves as one [io.ReadWriteCloser], which is
@@ -973,18 +1003,26 @@ func (h *hostStanding) list(workspace string) []standing.Item {
 	if workspace == "" {
 		return nil
 	}
-	h.mu.Lock()
-	held, at := h.items[workspace], h.read[workspace]
-	stale := at.IsZero() || time.Since(at) >= hostStandingEvery
-	start := stale && !h.fetching[workspace]
-	if start {
-		h.fetching[workspace] = true
-	}
-	h.mu.Unlock()
+	held, start := h.snapshot(workspace)
 	if start {
 		guard.Go("chatv3/host-standing", func() { h.fetch(workspace) })
 	}
 	return held
+}
+
+// snapshot answers what is held for the workspace and claims the refresh when
+// what is held has aged. It is its own method so the mutex is held from a
+// defer while the fetch, which takes the same mutex, is started outside it.
+func (h *hostStanding) snapshot(workspace string) (held []standing.Item, start bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	held, at := h.items[workspace], h.read[workspace]
+	stale := at.IsZero() || time.Since(at) >= hostStandingEvery
+	start = stale && !h.fetching[workspace]
+	if start {
+		h.fetching[workspace] = true
+	}
+	return held, start
 }
 
 // fetch is the round trip, on a goroutine of its own.
@@ -1183,18 +1221,26 @@ func newHostWorld(client *remote.Client) *hostWorld {
 // world is [tui3.Options.World]: what is held, right now, with a refresh started
 // behind it when what is held has aged.
 func (h *hostWorld) world() (session.World, bool) {
-	h.mu.Lock()
-	held, known := h.held, h.known
-	stale := h.read.IsZero() || time.Since(h.read) >= hostWorldEvery
-	start := stale && !h.fetching
-	if start {
-		h.fetching = true
-	}
-	h.mu.Unlock()
+	held, known, start := h.snapshot()
 	if start {
 		guard.Go("chatv3/host-world", func() { h.fetch() })
 	}
 	return held, known
+}
+
+// snapshot answers what is held and claims the refresh when what is held has
+// aged. It is its own method so the mutex is held from a defer while the
+// fetch, which takes the same mutex, is started outside it.
+func (h *hostWorld) snapshot() (held session.World, known, start bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	held, known = h.held, h.known
+	stale := h.read.IsZero() || time.Since(h.read) >= hostWorldEvery
+	start = stale && !h.fetching
+	if start {
+		h.fetching = true
+	}
+	return held, known, start
 }
 
 // fetch is the round trip, on a goroutine of its own.
@@ -1229,14 +1275,23 @@ func (h *hostWorld) fetch() {
 // rather than a guess, which is why this is a convenience rather than a
 // correctness fix.
 func (h *hostWorld) prime() {
-	h.mu.Lock()
-	if h.fetching {
-		h.mu.Unlock()
+	if !h.claimFetch() {
 		return
 	}
-	h.fetching = true
-	h.mu.Unlock()
 	guard.Go("chatv3/host-world-prime", func() { h.fetch() })
+}
+
+// claimFetch reports whether the caller is the one to start the round trip. It
+// is its own method so the mutex is held from a defer while the fetch, which
+// takes the same mutex, is started outside it.
+func (h *hostWorld) claimFetch() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.fetching {
+		return false
+	}
+	h.fetching = true
+	return true
 }
 
 // hostLedger keeps the far ledger off the surface goroutine. A wider window
@@ -1252,23 +1307,40 @@ type hostLedger struct {
 func newHostLedger(c *remote.Client) *hostLedger { return &hostLedger{ask: c.Ledger} }
 func (h *hostLedger) prime()                     { h.start(time.Now().AddDate(0, 0, -14)) }
 func (h *hostLedger) read(since time.Time) ([]session.UsageLine, bool, bool) {
-	h.mu.Lock()
-	lines, held, known := append([]session.UsageLine(nil), h.lines...), h.held, h.known
-	need := !h.fetching && (!known || since.Before(h.floor))
-	h.mu.Unlock()
+	lines, held, known, need := h.snapshot(since)
 	if need {
 		h.start(since)
 	}
 	return lines, held, known
 }
-func (h *hostLedger) start(since time.Time) {
+
+// snapshot copies what is held and says whether a wider window is wanted. It is
+// its own method so the mutex is held from a defer while start, which takes the
+// same mutex, is called outside it.
+func (h *hostLedger) snapshot(since time.Time) (lines []session.UsageLine, held, known, need bool) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
+	lines, held, known = append([]session.UsageLine(nil), h.lines...), h.held, h.known
+	need = !h.fetching && (!known || since.Before(h.floor))
+	return lines, held, known, need
+}
+
+// claimFetch reports whether the caller is the one to start the round trip. It
+// is its own method so the mutex is held from a defer while the fetch, which
+// takes the same mutex, is started outside it.
+func (h *hostLedger) claimFetch() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if h.fetching {
-		h.mu.Unlock()
-		return
+		return false
 	}
 	h.fetching = true
-	h.mu.Unlock()
+	return true
+}
+func (h *hostLedger) start(since time.Time) {
+	if !h.claimFetch() {
+		return
+	}
 	guard.Go("chatv3/host-ledger", func() {
 		reading, err := h.ask(since)
 		h.mu.Lock()
@@ -1294,13 +1366,9 @@ type hostMemory struct {
 func newHostMemory(c *remote.Client) *hostMemory { return &hostMemory{client: c} }
 func (h *hostMemory) prime()                     { h.refresh(500, time.Time{}) }
 func (h *hostMemory) refresh(limit int, at time.Time) {
-	h.mu.Lock()
-	if h.fetching {
-		h.mu.Unlock()
+	if !h.claimFetch() {
 		return
 	}
-	h.fetching = true
-	h.mu.Unlock()
 	guard.Go("chatv3/host-memory", func() {
 		s, err := h.client.Snapshot(limit)
 		learned, letGo, changedErr := h.client.ChangedSince(at)
@@ -1313,20 +1381,47 @@ func (h *hostMemory) refresh(limit int, at time.Time) {
 	})
 }
 func (h *hostMemory) Snapshot(limit int) (store.MemoryShelves, error) {
-	h.mu.Lock()
-	s, known := h.shelves, h.known
-	h.mu.Unlock()
+	s, known := h.shelvesHeld()
 	if !known {
 		h.refresh(limit, time.Time{})
 	}
 	return s, nil
 }
 func (h *hostMemory) ChangedSince(at time.Time) (int, int, error) {
-	h.mu.Lock()
-	learned, letGo := h.learned, h.letGo
-	h.mu.Unlock()
+	learned, letGo := h.changesHeld()
 	h.refresh(500, at)
 	return learned, letGo, nil
+}
+
+// claimFetch reports whether the caller is the one to start the round trip. It
+// is its own method so the mutex is held from a defer while the fetch, which
+// takes the same mutex, is started outside it.
+func (h *hostMemory) claimFetch() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.fetching {
+		return false
+	}
+	h.fetching = true
+	return true
+}
+
+// shelvesHeld answers the last shelves the engine sent and whether it has sent
+// any. It is its own method so the mutex is held from a defer while refresh,
+// which takes the same mutex, is called outside it.
+func (h *hostMemory) shelvesHeld() (store.MemoryShelves, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.shelves, h.known
+}
+
+// changesHeld answers the last learned and let-go counts the engine sent. It is
+// its own method so the mutex is held from a defer while refresh, which takes
+// the same mutex, is called outside it.
+func (h *hostMemory) changesHeld() (learned, letGo int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.learned, h.letGo
 }
 func (h *hostMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
 	return h.client.ListMemories(scope, limit)

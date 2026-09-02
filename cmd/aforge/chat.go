@@ -4561,10 +4561,7 @@ type leafLife struct {
 // working is the exec.LivenessMark this listener installs.
 func (l *leafLife) working() func() {
 	began := time.Now()
-	l.mutex.Lock()
-	l.open++
-	l.last = began
-	l.mutex.Unlock()
+	l.opened(began)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -4580,6 +4577,16 @@ func (l *leafLife) working() func() {
 			}
 		})
 	}
+}
+
+// opened records one more span in flight. It is its own method so the mutex is
+// held from a defer: a panic absorbed inside the section would otherwise leave
+// the lock held, and the watchdog reading silence would wedge behind it.
+func (l *leafLife) opened(began time.Time) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	l.open++
+	l.last = began
 }
 
 // silence is how long this worker has shown no sign of life, and whether it is
