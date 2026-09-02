@@ -212,13 +212,11 @@ here is a proposal, and the template is for defects.
 ## Tests
 
 `go test ./internal/tui3/` takes ~150s; budget for it. These fail on a clean tree and are
-**not** yours: `cmd/aforge TestHarnessEntriesFromStore`, `internal/tui`
-`TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four `cmd/harness-design`
-tests, two `internal/guard`
+**not** yours: `internal/tui TestSettingsSheetIsOneCalmColumnAtEveryWidth`, four
+`cmd/harness-design` tests, two `internal/guard`
 tests (`TestEveryGoroutineInTheGuardedTreeIsGuarded`, `TestEveryLockInTheGuardedTreeUnlocksFromADefer`),
-`internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly), and two more
-`internal/tui` settings tests (`TestSettingsNavigatesAndEditsEveryKindAndPersists`,
-`TestSettingsRefusesToFightTheEnvironment`), and on macOS `internal/enginehost
+`internal/thread TestEveryMessageWriteUsesThreadPost` (`chatlog.go` posts directly),
+and on macOS `internal/enginehost
 TestTheSocketMovesWithTheStateRoot` (the `t.TempDir()` path is too long for a unix socket;
 green with `TMPDIR=/tmp/eh`) — all verified failing at what is now `origin/dev`
 on 2026-08-26. Confirm anything else with a stash-and-rerun before chasing it.
