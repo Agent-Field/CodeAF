@@ -86,12 +86,11 @@ func TestBothInheritedRootsAreRefused(t *testing.T) {
 // from inside one: the product resolves its files exactly as it always has, and
 // the gate is one bool read on a path that is taken once per process.
 func TestOutsideATestBinaryNothingChanges(t *testing.T) {
-	restore := underTest
+	gate, roots := underTest, inheritedRoots
+	t.Cleanup(func() { underTest, inheritedRoots = gate, roots })
 	underTest = false
-	t.Cleanup(func() { underTest = restore })
 	t.Setenv(home.EnvVar, filepath.Join(t.TempDir(), "inherited"))
 	inheritedRoots = []string{os.Getenv(home.EnvVar)}
-	t.Cleanup(func() { inheritedRoots = []string{home.Dir(), os.Getenv(profileDirEnv)} })
 	if got, want := StorePath(), home.Join("v3", "lanes.json"); got != want {
 		t.Errorf("the product's belief file resolved to %q, want %q", got, want)
 	}

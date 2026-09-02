@@ -56,6 +56,10 @@ func runTests(m *testing.M) int {
 	// already pointed somewhere else.
 	real := home.Dir()
 	before := journalTrees(real)
+	// AND THE CHECKOUT THIS BINARY IS RUNNING IN, for the same reason and at the
+	// same moment: a node commits as well as journals, and a git command with no
+	// directory of its own runs here. See hermetic_checkout_test.go.
+	tree := watchTheCheckout()
 
 	root, err := os.MkdirTemp("", "aforge-session-test-home-")
 	if err != nil {
@@ -92,6 +96,12 @@ func runTests(m *testing.M) int {
 
 	code := m.Run()
 
+	if moved := tree.moved(); moved != "" {
+		fmt.Fprintf(os.Stderr, "\n%s\n", moved)
+		if code == 0 {
+			code = 1
+		}
+	}
 	if leaked := grew(before, journalTrees(real)); len(leaked) > 0 {
 		fmt.Fprintf(os.Stderr, "\nsession tests wrote %d file(s) into the real state root at %s:\n", len(leaked), real)
 		for _, path := range leaked {

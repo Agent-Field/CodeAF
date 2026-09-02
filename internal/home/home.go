@@ -76,10 +76,10 @@ func StoreDir(store, kind string) string {
 
 // Contains reports whether path is the directory root or something under it.
 // It is here because "is this file inside that root" is the state root's own
-// question, and the two callers that ask it — the call log's refusal to write
-// into an inherited ledger, and the lane package's refusal to read one — must
-// answer it identically or the same omission is a defect in one place and not
-// the other.
+// question, and it is asked by the packages that refuse to touch the state of
+// whoever started a test binary — internal/lane's, today; internal/calllog
+// still carries a private copy of this from #352, and should adopt this one, so
+// that the same omission cannot be a defect in one place and not the other.
 //
 // It compares by path elements rather than by string prefix, so a sibling named
 // like the root — /state/root-2 beside /state/root — is not mistaken for a
