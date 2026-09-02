@@ -393,13 +393,27 @@ func TestALateFirstTokenIsRescuedByTheAlternativeAndTheLoserIsCancelled(t *testi
 }
 
 func TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole(t *testing.T) {
+	// A IS HELD BY A SIGNAL AND NOT BY A DURATION. What this test is about is
+	// the rule that a rescue which lands while the primary is still quiet takes
+	// the answer — and the rule the other way round is just as real: a primary
+	// that comes back and finishes first KEEPS the answer, which is what
+	// TestAnAlmostFinishedAnswerIsNeverAbandoned demands. So an A told to resume
+	// after some number of milliseconds is asserting nothing but the slack
+	// between two wall-clock figures, and a starved machine that eats the slack
+	// makes a correct build look broken. Held open until this channel closes —
+	// and it closes only at teardown, never while the call is out — A cannot
+	// finish first, so B winning is the rule and not the luck.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "stall/mid-answer",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
-			StallAfter: 30, StallFor: 200 * time.Millisecond,
+			StallAfter: 30, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	// Released after the assertions and BEFORE the rig closes its server, so a
+	// run that never reached the cancel still lets the handler go.
+	t.Cleanup(func() { close(resume) })
 	// Believed at a quarter of what it really writes at, which is the honest
 	// shape of a belief: ordinary jitter is never a surprise and a twenty-second
 	// silence is nothing else.
@@ -765,13 +779,20 @@ func (c *countingChooser) times() int {
 // and this test holds all three facts at the same time: asked once, on the
 // wire, and in force at the watch.
 func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
+	// A IS HELD BY A SIGNAL AND NOT BY A DURATION, for the reason spelled out
+	// over TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole: the
+	// last assertion here names B as the winner, and a primary told to resume
+	// after a couple of hundred milliseconds can honestly beat the rescue home
+	// on a loaded machine. The channel closes only at teardown.
+	resume := make(chan struct{})
 	rig := newLaneRig(t, "choice/once",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
-			StallAfter: 30, StallFor: 200 * time.Millisecond,
+			StallAfter: 30, StallUntil: resume,
 		}},
 		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
 	)
+	t.Cleanup(func() { close(resume) })
 	rig.believes("A", 2, 250)
 	chooser := &countingChooser{choice: choiceFor(rig.model, 12*time.Millisecond)}
 	lanes.Default().SetChooser(chooser)
