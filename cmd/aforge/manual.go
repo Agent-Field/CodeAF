@@ -29,10 +29,11 @@ import (
 )
 
 // manualQuestionSections is how many sections a typed question is answered
-// from. It is deliberately more than the four a model is handed
-// ([manual.DefaultResults]): that four is a budget — a model handed a document
-// quotes the wrong half of it — and nobody is paying for this one.
-const manualQuestionSections = 8
+// from: the number a model is handed ([manual.DefaultResults]), doubled. That
+// four is a context budget — a model handed a document quotes the wrong half of
+// it — and nobody is paying for this one, so it is written as the multiple
+// rather than as a second number that would drift away from it.
+const manualQuestionSections = 2 * manual.DefaultResults
 
 // runManual reads the CHAT's corpus, never the resident's. This binary's
 // command line is the door onto the program a person sits in front of, and the
