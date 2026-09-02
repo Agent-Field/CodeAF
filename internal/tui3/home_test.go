@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/sys/unix"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -1745,11 +1746,22 @@ func TestTheFactsFooterOmitsWhatIsNotAFact(t *testing.T) {
 	if got := homeText(a); !strings.Contains(got, "spent $1.25 · 34k tokens · last active 1m") {
 		t.Fatalf("the footer does not read as one line of facts:\n%s", got)
 	}
-	// AND A CONVERSATION HAS NO RUNG TO PRINT. The install's default is a fact
-	// about the machine and not about this chat, so the line that carries spend
-	// and thinking says nothing about thinking here ([app.homeCardFacts]).
-	if got := strings.Join(homeCardFor(t, a, quiet), "\n"); strings.Contains(got, effortClauseWord) {
-		t.Fatalf("the facts line claimed a rung a conversation does not have:\n%s", got)
+	// AND THE RUNG IS ON THE LINE, which is where the emptiness law stops: the
+	// clause is the INSTALL'S rung — what work started from this card would think
+	// at — and an install that has chosen nothing runs at the shipped one, so
+	// there is a fact here and it is drawn ([app.homeCardFacts], SCREEN 1d,
+	// FIDELITY.md item 8; effortscope_test.go's [TestCtrlVOnAConversationRow…]
+	// states the same reading from the other side).
+	//
+	// THIS ASSERTION USED TO READ THE OTHER WAY and it was passing for the wrong
+	// reason. It demanded that no rung appear, on the argument that the machine's
+	// default is not a fact about this chat — a law SCREEN 1d had already
+	// overruled — and what kept it green was a defect rather than the design:
+	// [app.effortProfile] answered "no profile" on an empty profile directory,
+	// this lab names none, and so the clause was silenced here exactly as it was
+	// silenced on every real launch (#322).
+	if got := strings.Join(homeCardFor(t, a, quiet), "\n"); !strings.Contains(got, effortClauseWord+effort.Ship.String()) {
+		t.Fatalf("the facts line does not state the rung work started here would think at:\n%s", got)
 	}
 }
 

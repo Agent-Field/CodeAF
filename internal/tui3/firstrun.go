@@ -139,16 +139,30 @@ func setupStepsFor(profileDir string) []setupStep {
 // is a prerequisite rather than a greeting: on a local interactive launch
 // using the default OpenRouter endpoint, no key opens the one-step connection
 // even when the profile has met setup before or the conversation was resumed.
+//
+// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
+// ABSENCE IS A HOSTED WINDOW. This function used to return on an empty
+// [app.profileDir], reasoning that a door opened without a profile has nowhere
+// to write an answer — and the reasoning was sound about a fact that is not
+// true. [config.ProfileDir] is AFORGE_PROFILE_DIR, which almost nobody exports,
+// so the empty string is what very nearly EVERY launch hands this surface, and
+// internal/config has always resolved it to this process's own profile in the
+// state root ([config.ProfilePath]). The guard therefore closed the front door
+// on the ordinary launch and opened it only on the rare one: a fresh install
+// with no key, started the normal way, was never shown the screen that connects
+// a provider, and every person who tested it already had a key (#322).
+//
+// THE HOSTED WINDOW IS THE ONE THAT KEEPS ITS EARLY RETURN, and it is the whole
+// of what the old guard was reaching for. What this screen writes — a key, a
+// crew, three spending rails, the marker saying it was shown — lands in the
+// profile of the machine the AGENT is on, and over --host that machine is not
+// this one. A form here would write this laptop's answers about somebody else's
+// session, so a connection is asked nothing.
 func (a *app) openSetup(allowed bool) {
 	if a.hosted() {
 		return
 	}
-	dir := strings.TrimSpace(a.profileDir)
-	if dir == "" {
-		// A door that opened without a profile has nowhere to write an answer,
-		// and a setup whose enter lands nothing would be a form that lies.
-		return
-	}
+	dir := a.profileDir
 	providerMissing := a.routerConnect != nil && !config.APIKeyConfigured(dir)
 	firstRun := allowed && !a.resumed && len(a.entries) == 0 && config.SetupSeenAt(dir).IsZero()
 	if !providerMissing && !firstRun {

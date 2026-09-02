@@ -28,25 +28,22 @@ import (
 // package's own sources is listed below WITH THE REASON IT IS THERE. A new one
 // fails this test by name, and the fix is nearly always [app.hosted]: a
 // connection is the one window whose profile is somebody else's machine.
+//
+// THE LIST IS EMPTY, AND THAT IS THE POINT. It held three names when this test
+// landed — openSetup, effortProfile and readApproval — each left alone on
+// purpose because each decided more than a status segment: whether the front
+// door opens at all, whether the install's rung is drawn, and whether the
+// status line may say the tool gate is open. #322 moved all three to the right
+// side of the law with their own end-to-end run behind them
+// (ordinarylaunch_test.go), so this is no longer a ledger of exceptions with a
+// gate around it: it is a GUARANTEE over the whole package. An entry added back
+// here is a claim that some site genuinely means "there is no profile" and not
+// "AFORGE_PROFILE_DIR is unset", and the three that were here for months are
+// the evidence that such a claim is nearly always wrong.
 func TestNoNewSiteReadsAnEmptyProfileDirectoryAsNoProfile(t *testing.T) {
 	// known is every site that compares a profile directory against "" today,
-	// as `file.go:function`, and what it decides.
-	known := map[string]string{
-		// The setup screen has nowhere to write an answer — the reading it was
-		// given when the guard was written. It is on the wrong side of this law
-		// like the four above it, and it is left alone here on purpose: it
-		// decides whether a whole screen opens, so moving it is its own change
-		// with its own end-to-end run behind it, not a line carried along by the
-		// status line's.
-		"firstrun.go:openSetup": "whether the first-run and provider screens open at all",
-		// The effort rung draws nothing without a profile to write into — the
-		// same shape, left for the same reason.
-		"effortscope.go:effortProfile": "whether the install's own effort rung is drawn",
-		// The gate's posture is deliberately NOT the default here: the YOLO
-		// segment's law is that it appears only when somebody said so, and this
-		// answer feeds a safety claim. Same shape, same standing question.
-		"app.go:readApproval": "whether the status line may claim the gate is open",
-	}
+	// as `file.go:function`, and what it decides. There are none.
+	known := map[string]string{}
 
 	found := map[string]string{}
 	for _, name := range packageSources(t) {

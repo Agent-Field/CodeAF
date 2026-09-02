@@ -61,7 +61,6 @@ package tui3
 // (taskeffort.go's [app.cycleTaskEffort], room.go's [app.retargetTask]).
 
 import (
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -173,9 +172,16 @@ func (a *app) effortInk(where string, pal palette) func(string) string {
 // for a window that has none.
 //
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A surface with no profile
-// — the hosted door and every test that never named one — draws no rung at all,
-// rather than drawing one it could not move.
+// draws no rung at all, rather than drawing one it could not move.
+//
+// AND THE WINDOW WITH NO PROFILE IS THE HOSTED ONE, WHICH IS NOT THE ONE WITH AN
+// EMPTY PROFILE DIRECTORY. This used to answer false on an empty
+// [app.profileDir], which is what AFORGE_PROFILE_DIR being unset looks like —
+// so the install's own rung was drawn on the rare launch that exported it and
+// for nobody else (#322). The empty string has always meant this process's own
+// profile in the state root ([config.ProfilePath]), and that profile is exactly
+// the install whose rung this line states. A connection's is another machine's,
+// and it is the one asked nothing.
 func (a *app) effortProfile() (string, bool) {
-	dir := strings.TrimSpace(a.profileDir)
-	return dir, dir != ""
+	return a.profileDir, !a.hosted()
 }
