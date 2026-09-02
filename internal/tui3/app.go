@@ -4542,31 +4542,6 @@ func (a *app) dropForming() {
 	a.dropFormingCard()
 }
 
-// dropRetryingFormingTools removes calls that were still being spelled when a
-// provider request was cut. The session discards those partial calls rather
-// than recording them, so settling their rows as cancelled would leave a call
-// on screen that never existed in the transcript.
-//
-// Forming rows are normally the newest entries. The empty assistant fallback is
-// the same one [feed.dropLive] uses when a later row holds an index in place.
-func (a *app) dropRetryingFormingTools() {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
-		if e.turn != a.turn {
-			break
-		}
-		if e.kind != entryTool || e.status != toolForming {
-			continue
-		}
-		if i == len(a.entries)-1 {
-			a.entries = a.entries[:i]
-			continue
-		}
-		a.entries[i] = entry{kind: entryAssistant, turn: a.turn, stale: true}
-	}
-	a.touch()
-}
-
 // fadeTicks are the two catch-up wakeups a settled turn schedules: one where
 // the fresh tier ends and one where the warm tier does. They are tea.Ticks and
 // not a ticker on purpose — see [hudFadeMsg].
@@ -4641,65 +4616,6 @@ func (a *app) settleTurn() {
 		// [app.entryRows] until something says they are wrong.
 		e.settled, e.stale = true, true
 	}
-}
-
-// dropLive throws away the assistant block the CURRENT attempt was streaming
-// into, because that attempt has been cut and its text is void.
-//
-// It is the one place on this surface where something a person watched arrive is
-// REMOVED rather than settled, and the asymmetry is the point: an interrupt
-// leaves the partial reply on screen because the engine keeps it in the
-// transcript, while a cut stream leaves nothing anywhere. A row the transcript
-// does not contain must not stay on the page — the next question would be
-// answered underneath somebody else's abandoned sentence, and the person would
-// have no way of telling which of the two the model actually read.
-//
-// The block is truncated when it is the last thing on screen, which is what a
-// cut mid-text always leaves, and emptied otherwise: removing an entry from the
-// middle would move every index after it, and the forming rows, the selection
-// and the thought marker are all held by index.
-func (a *app) dropLive() {
-	if a.live < 0 || a.live >= len(a.entries) || a.entries[a.live].kind != entryAssistant {
-		a.live = -1
-		return
-	}
-	if a.live == len(a.entries)-1 {
-		a.entries = a.entries[:a.live]
-	} else {
-		a.entries[a.live].text = ""
-		a.entries[a.live].stale = true
-	}
-	a.live = -1
-	a.touch()
-}
-
-// said puts one of the PERSON'S OWN lines into the transcript without cutting
-// the answer that is still streaming in two.
-//
-// THE DEFECT IT FIXES. A message sent while a reply was streaming went in the
-// obvious way — close the live block, append the line — and the very next delta
-// found no live block and opened a second one under it. What the reader saw was
-// one flowing answer with somebody else's sentence wedged between two of its
-// paragraphs, as though the model had quoted them mid-thought. The words were in
-// the right place in TIME and in the wrong place on the PAGE, and the page is
-// the only record anybody reads back.
-//
-// SO THE STREAMED BLOCK STAYS WHOLE. The line is appended after it and the live
-// index is left where it was, which is still valid — appending never moves an
-// earlier entry — so the next delta grows the block it was already growing and
-// the person's line stays below it. A tool row is deliberately NOT treated this
-// way: a call lands in place, between two paragraphs, because that is where it
-// happened and the reply is written around it.
-//
-// The room's own transcript takes the same rule from [app.roomSaid] (room.go).
-func (a *app) said(e entry) {
-	live := a.live
-	a.entries = append(a.entries, e)
-	if live < 0 || live >= len(a.entries)-1 || a.entries[live].kind != entryAssistant {
-		a.live = -1
-		return
-	}
-	a.live = live
 }
 
 // refreshUsage asks the session what it has spent and folds the answer in. It is
