@@ -301,3 +301,118 @@ func blockSaying(blocks []entry, words string) bool {
 	}
 	return false
 }
+
+// ── the two things the record cannot draw over ──────────────────────────────
+
+// A PAGE SAYS SO WHEN THE RECORD IT IS DRAWN FROM STOPS SHORT. A journaled
+// message can be a whole file's content, so one very large paste is one line
+// this build cannot read — and everything below it is missing from the page.
+// Drawing a shorter transcript and saying nothing is the page claiming that is
+// all the work there was.
+func TestATaskPageSaysWhereItsRecordStopped(t *testing.T) {
+	huge := strings.Repeat("x", 5<<20)
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	record := strings.Join([]string{
+		`{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"the map is never made"}`,
+		`{"type":"message","role":"user","content":"` + huge + huge + `"}`,
+		`{"type":"message","role":"assistant","content":"never read"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	a := newTestApp(&fakeAgent{})
+	blocks, _ := a.roomRecord(session.ReadTranscript(path), 0)
+	if len(blocks) == 0 {
+		t.Fatal("the page drew nothing at all")
+	}
+	// IT IS THE TOP ROW, and it names the line — a place in a file somebody can
+	// open — rather than saying something went wrong somewhere.
+	head := blocks[0]
+	if head.kind != entrySeam || !strings.Contains(head.text, unreadWord+"4") {
+		t.Fatalf("the page does not say where its record stopped: %#v", head)
+	}
+	if !blockSaying(blocks, "the map is never made") {
+		t.Fatalf("the work above the unreadable line is not on the page: %#v", blocks)
+	}
+
+	// AND THE WINDOW DOES NOT CUT IT AWAY. It is a fact about the reading, not
+	// about the work, so a page long enough to be windowed still says it.
+	windowed, _ := a.roomRecord(session.ReadTranscript(path), 1)
+	if len(windowed) != 2 || windowed[0].kind != entrySeam {
+		t.Fatalf("a windowed page dropped the line it could not read: %#v", windowed)
+	}
+}
+
+// AND AN ORDINARY RECORD SAYS NOTHING, which is what makes the row above mean
+// something on the pages that do carry it.
+func TestATaskPageThatCouldBeReadWholeSaysNothingAboutIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	if err := os.WriteFile(path, []byte(midCallRoomRecord), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+	a := newTestApp(&fakeAgent{})
+	blocks, _ := a.roomRecord(session.ReadTranscript(path), 0)
+	for i := range blocks {
+		if strings.Contains(blocks[i].text, unreadWord) {
+			t.Fatalf("a record read whole claimed it stopped short: %#v", blocks)
+		}
+	}
+}
+
+// NOTHING ABOVE THE MARKER IS STILL RUNNING. A call is drawn as in flight
+// because the record names it with no result under it, and the end that settles
+// such a row arrives on the LIVE lane — which reaches the tail of the record and
+// nothing above a compaction that finished minutes or days ago. A row left
+// spinning up there spins for ever.
+func TestACallAboveTheSeamIsNeverDrawnAsStillRunning(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	record := strings.Join([]string{
+		`{"type":"session","version":1,"id":"n1","cwd":"/tmp/lab"}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		// A batch the pass swept up before its results were journaled: above the
+		// marker this call has no answer under it and never will.
+		`{"type":"message","role":"assistant","content":"reading","toolCalls":[` +
+			`{"id":"c1","function":{"name":"read","arguments":"{\"path\":\"load.go\"}"}}]}`,
+		`{"type":"compaction","stubbed":2,"window":2,"tokensBefore":84000}`,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"[folded]"}`,
+		// And the work happening NOW, with a call that really is in flight.
+		`{"type":"message","role":"assistant","content":"running the tests","toolCalls":[` +
+			`{"id":"c9","function":{"name":"bash","arguments":"{\"command\":\"go test ./...\"}"}}]}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(record), 0o600); err != nil {
+		t.Fatalf("writing the record: %v", err)
+	}
+
+	a := newTestApp(&fakeAgent{})
+	blocks, _ := a.roomRecord(session.ReadTranscript(path), 0)
+	seam := -1
+	for i := range blocks {
+		if blocks[i].kind == entrySeam {
+			seam = i
+		}
+	}
+	if seam < 0 {
+		t.Fatalf("the page drew no seam: %#v", blocks)
+	}
+	for i := range blocks[:seam] {
+		if blocks[i].kind == entryTool && blocks[i].status.live() {
+			t.Fatalf("a call above the seam is drawn as still running: %#v", blocks[i])
+		}
+	}
+	// AND THE ONE THAT REALLY IS IN FLIGHT STILL SPINS. The live lane reaches the
+	// tail of the record, so that row has an end coming.
+	running := 0
+	for _, block := range blocks[seam:] {
+		if block.kind == entryTool && block.status.live() {
+			running++
+		}
+	}
+	if running != 1 {
+		t.Fatalf("%d calls below the seam are drawn as running, want the one in flight:\n%#v",
+			running, blocks[seam:])
+	}
+}

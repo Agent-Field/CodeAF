@@ -468,6 +468,23 @@ const earlierMark = "· earlier · keep scrolling"
 // The manual quotes the row as the person sees it, "· " and all.
 const seamMark = "above here the model keeps a shortened record — you can still read it all"
 
+// unreadWord is what a page says when the record it is drawn from has a line
+// this build could not read — one very large paste is enough — and it is said in
+// the seam's own shape and register for the seam's own reason: it is a LIMIT ON
+// WHAT IS ON SCREEN, stated plainly, in the dim lane this surface says
+// everything of its own in.
+//
+// IT STATES BOTH HALVES, exactly as [seamMark] does. "Something went wrong" is
+// not an answer anybody can act on, and "the transcript ends here" would be a
+// second lie on top of the first — so the row names the line, which is a place
+// in a file somebody can open, and says that everything above it is here.
+const unreadWord = "this transcript could not be read past line "
+
+// unreadMark is that sentence about one record.
+func unreadMark(line int) string {
+	return unreadWord + itoa(line) + " — everything above it is on this page"
+}
+
 // earlierRow is the marker painted, or "" when the beginning is already drawn.
 func (a *app) earlierRow(width int) string {
 	if width < 1 || !a.moreHistory() {
@@ -542,6 +559,19 @@ func roomReplay(tail int) replayShape {
 // for the PAGE — a helping cut from each half would keep a screenful of a region
 // nobody scrolled to and drop the work that is happening now.
 func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
+	blocks, turns := a.recordBlocks(record, tail)
+	// AND THE LINE NOBODY COULD READ IS SAID AT THE TOP, above the window rather
+	// than inside it. It is a fact about the READING and not about the work, so a
+	// page long enough to be windowed must not quietly stop saying it — which is
+	// the whole reason it is added after the tail is taken.
+	if record.UnreadFrom > 0 {
+		blocks = append([]entry{{kind: entrySeam, text: unreadMark(record.UnreadFrom)}}, blocks...)
+	}
+	return blocks, turns
+}
+
+// recordBlocks is the record's own two halves, joined and windowed.
+func (a *app) recordBlocks(record session.Record, tail int) ([]entry, int) {
 	live := record.Entries
 	if record.Floor > 0 && record.Floor <= len(live) {
 		live = live[record.Floor:]
@@ -550,13 +580,21 @@ func (a *app) roomRecord(record session.Record, tail int) ([]entry, int) {
 		return a.replayBlocks(live, roomReplay(tail))
 	}
 	// Neither half is windowed on its own; the join below is.
+	//
+	// AND NOTHING ABOVE THE MARKER IS STILL RUNNING. A call is drawn as in flight
+	// because the record names it with no result under it, and the end that would
+	// settle it arrives on the LIVE lane — which reaches the tail of the record
+	// and nothing above a pass that finished minutes or days ago. A row left
+	// spinning up there would spin for ever, waiting for an end that already
+	// happened and was then folded away.
 	shape := roomReplay(0)
+	shape.running = false
 	blocks, turns := a.replayBlocks(record.Earlier, shape)
 	blocks = append(blocks, entry{kind: entrySeam, text: seamMark, turn: turns})
 	// The instruction is the FIRST of the person's messages and it is above the
 	// marker — a pass never folds what somebody said — so the half below opens no
 	// second one, and its turns carry on from the half above.
-	shape.turn, shape.brief = turns, false
+	shape.turn, shape.brief, shape.running = turns, false, true
 	rest, more := a.replayBlocks(live, shape)
 	return keepTail(append(blocks, rest...), tail), turns + more
 }

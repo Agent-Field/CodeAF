@@ -133,7 +133,7 @@ A job that has written nothing yet draws no tail and no error. The old feet
 `this log grows as the job works — say it to main` and
 `a background job keeps a log, not a transcript` are gone: there is no composer to refuse.
 
-## Steer a task from its page — correcting work that is already running, and how corrections read
+## Steer a task from its page — the `└` elbow, the `· delivered` clause, and how corrections read back
 
 `enter` inside a task's page sends what you typed to the task itself. It arrives on the
 page where you said it, under whatever the work had already done, drawn as an **elbow**:
