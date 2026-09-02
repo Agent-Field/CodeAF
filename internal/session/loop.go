@@ -567,7 +567,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// drains the queue under the same lock that clears running (agent.go),
 		// so a leftover lands ahead of the next Submit's message.
 		if ctx.Err() != nil {
-			a.keepPartial(partial)
+			a.keepPartial(partial, hub)
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
@@ -626,7 +626,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				a.addUsage(&turn, response, model, served.Name(), facts)
 				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
-				a.keepSteeredPartial(partial, reasoning, droppedCall)
+				a.keepSteeredPartial(partial, reasoning, droppedCall, hub)
 				warm.reset()
 				forming.reset()
 				continue
@@ -635,7 +635,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// before the cut is real work the person watched arrive, so it
 			// stays in the transcript and the turn ends normally.
 			if ctx.Err() != nil {
-				a.keepPartial(partial)
+				a.keepPartial(partial, hub)
 				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 				return false
 			}
@@ -666,7 +666,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// watched: the streamed text is kept and the turn is sealed, so an
 			// error leaves the same record an interrupt does and the surface
 			// gets the turn's duration with the reason.
-			a.keepPartial(partial)
+			a.keepPartial(partial, hub)
 			hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(turn, started, model)})
 			return false
 		}
@@ -953,15 +953,43 @@ func (p *partialBuffer) take() string {
 	return text
 }
 
+// stoppedSoupNote is what the person reads when the reply they stopped is not
+// in the conversation. It says the same thing the reply guard's own retry note
+// says, because it is the same judgement about the same text.
+const stoppedSoupNote = "the reply you stopped had lost its thread — that text was not kept"
+
 // keepPartial records the interrupted step's streamed text as an assistant
 // message. Nothing is recorded when nothing was streamed — an empty assistant
 // turn is noise in the transcript and a shape some providers reject.
-func (a *Agent) keepPartial(partial *partialBuffer) {
+//
+// AND NOTHING IS RECORDED WHEN WHAT STREAMED HAD STOPPED BEING LANGUAGE. The
+// reply guard cuts a degenerate stream it wins the race against; a person who
+// stopped the stream first used to be handed the soup as their own kept reply
+// — written to the transcript, the journal and the store, and replayed on every
+// request after, which is the one way a provider's bad minute became a
+// conversation's bad afternoon (streamguard.go's header: junk in the
+// transcript breeds junk). The judgement is the guard's own
+// ([provider.LostItsThread]), and it is not made at all when the guard is off:
+// off means the person sees, and keeps, whatever arrives.
+func (a *Agent) keepPartial(partial *partialBuffer, hub *eventHub) {
 	text := partial.take()
 	if strings.TrimSpace(text) == "" {
 		return
 	}
+	if a.stoppedSoup(text, hub) {
+		return
+	}
 	a.record(textMessage("assistant", text))
+}
+
+// stoppedSoup is the keep path's one question, and its one word to the person
+// when the answer is yes.
+func (a *Agent) stoppedSoup(text string, hub *eventHub) bool {
+	if a.config.ReplyGuardOff || !provider.LostItsThread(text) {
+		return false
+	}
+	hub.send(Event{Kind: EventNotice, Text: stoppedSoupNote})
+	return true
 }
 
 // keepSteeredPartial records the legal assistant half of a cut generation.
@@ -969,8 +997,13 @@ func (a *Agent) keepPartial(partial *partialBuffer) {
 // a provider-invalid assistant message. When fragments had arrived, the text
 // says why that instruction is not in the record; otherwise only the text and
 // continuation metadata actually received are kept.
-func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool) {
+func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool, hub *eventHub) {
 	text := partial.take()
+	// The same law as keepPartial: a steer that cut a stream mid-soup keeps
+	// none of it, and the person is told.
+	if a.stoppedSoup(text, hub) {
+		return
+	}
 	if droppedCall {
 		if strings.TrimSpace(text) != "" {
 			text += "\n\n"

@@ -1116,11 +1116,31 @@ Both doors are real. A different model is different weights on the same conversa
 in — which is why `/compact` is still worth doing even after a fallback model has rescued
 the turn.
 
-**What it will not cut.** Fenced code blocks are never judged, so a page of zeros, a long
-test log, a generated table or a big JSON dump is safe however repetitive it is. Neither
-is a reply that is simply multilingual: switching language between words is ordinary
-writing, and only switching *inside* words counts. A short repetitive answer is never cut
-either — there has to be several kilobytes of it.
+**How soon.** The reply is read at two lengths as it arrives. One token or one line over
+and over — the shape a screen full of `</think></think></think>` is — is cut after about
+a kilobyte of it, a second or two at the rates these endpoints write; a whole paragraph
+repeated needs about four kilobytes before the repetition is plain. Before 2026-09-02
+everything waited for the four, which was long enough for a person to give up and stop
+the turn by hand first.
+
+**The thinking is watched too.** A model that loops one glyph inside its thinking pass
+shows you nothing while it runs to the output ceiling and bills every token of it. That
+is cut the same way, with the same line, and nothing of it is kept.
+
+**If you stop it yourself.** Press esc while a reply is coming apart and the text you
+watched stays on the screen, but it does not go into the conversation: a dim line says
+`the reply you stopped had lost its thread — that text was not kept`, and the next thing
+you ask is answered as if it had never been written. A reply you stopped that was still
+language is kept as it always was, up to the word it stopped on.
+
+**What it will not cut.** Fenced code blocks are not judged, so a page of zeros, a long
+test log, a generated table or a big JSON dump is safe however repetitive it is — up to
+sixty-four kilobytes of one block. A fence that opens and never closes past that point is
+read like everything else, because a code block that long with no end is a model that
+opened one and then came apart inside it. Neither is a reply that is simply multilingual
+cut: switching language between words is ordinary writing, and only switching *inside*
+words counts. A short repetitive answer is never cut either — there has to be about a
+kilobyte of it.
 
 **The endpoint that served it loses standing.** A reply that had to be cut — because it lost
 its thread, because it came back as tool markup, or because it went quiet and never came
@@ -1132,7 +1152,8 @@ an hour, and every usable answer it serves afterwards walks it back up. Recovery
 serving properly, which is the only evidence there could be.
 
 **Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
-or `off`, and the default is **on**. Off means you see whatever arrives. You can also just
+or `off`, and the default is **on**. Off means you see whatever arrives, and keep whatever
+you stop. You can also just
 ask aforge to turn it off; it is not one of the rows it refuses. The two clocks in the
 section above have no switch — a request that produced nothing at all has failed by any
 reading. Setting `routing` to `off` on the same tab stops aforge steering between endpoints
