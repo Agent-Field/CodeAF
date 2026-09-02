@@ -1971,7 +1971,7 @@ accent-coloured under the pointer. Clicking it, or pressing `ctrl+l`, rejoins th
 edge — the room's edge if a room is open. It is not shown while copy mode, a room, or
 the fullscreen roster is up.
 
-## Selecting text with your mouse — drag to copy
+## Selecting text with your mouse — drag to copy, select a word with the mouse, why did copying take the whole line instead of the words I dragged over
 
 **Just drag.** Put the pointer on a character, sweep to another with the left button
 down, and the cells between them highlight — from where you pressed to the end of
@@ -1991,6 +1991,15 @@ bracket or a quote ends one, and the full stop closing a sentence is left behind
 The status line says `copied · 1 word` or `copied · 1 line`. Two quick clicks on a
 tool call or a fold are still two clicks — open, then shut — because a button acts on
 every click; only text is taken by a double-click.
+
+**Copying took the whole line instead of the words you dragged over?** Two things do that,
+and neither is a fault. A **third** click in quick succession takes the whole row — that is
+what triple-click is, and a double-click with a stray third click becomes one.
+And a sweep that **leaves the row it started on** is a stream, not a box: it takes your
+anchor to the end of that row, every row between in full, and the last row up to the
+pointer, exactly as your terminal would. To take a few words and nothing else, sweep
+sideways and stay on the one row — the status line then says `copied · 14 chars` rather
+than `copied · 2 lines`, which is how you tell the two apart.
 
 **A wide glyph is never split.** A sweep that starts or ends inside a CJK character
 or an emoji takes the whole glyph, and the highlight covers both of its cells.
