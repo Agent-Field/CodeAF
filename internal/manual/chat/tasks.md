@@ -2601,6 +2601,17 @@ and ask again. The reason is that everything the parts write goes
 into **one deliverable**: a file two parts wrote is kept once, and the other part's
 version of it would simply be gone, with no conflict for anybody to notice.
 
+**Shared material is read, never written — and that half is not enforced.** A file every
+part reads is nobody's to change: everything the parts write goes into one deliverable, so
+a shared file two of them edited is kept once and the other's edit is simply gone, which is
+the same loss the rule above exists to stop. A part that finds something wrong in shared
+material says so in its report and leaves the file as it stands. Nothing checks this: the
+reading compares the parts **with each other**, never a part against the work it started
+from. What holds it is what the parts are told — the splitting worker is asked to say it in
+the brief of any part it hands shared material to, and the mastermind that reads the plan is
+asked to write the file a part produces into that part's done-condition where the brief names
+files and the done-condition names none.
+
 **It is checked twice, and the first one is free.** The parts as the worker wrote them are
 read before the mastermind is, so the commonest case — a worker that drew its own
 boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts

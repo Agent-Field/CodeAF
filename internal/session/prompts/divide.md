@@ -59,6 +59,15 @@ what that part PRODUCES — every file it writes, and nothing it only reads. Wri
 it that way for every part: it is what the part is judged against when it lands,
 and it is where ownership is read.
 
+AND A PART WRITES ONLY WHAT ITS DONE-CONDITION NAMES. Material several parts
+share is read and never written — the plan you wrote for them, the notes you
+gathered, the file they all start from. Say so in the brief of any part you hand
+shared material to. A part that finds something wrong in it says so in its report
+and leaves it as it stands: everything the parts write goes into one deliverable,
+so a shared file two of them changed is kept once and the other's change is
+quietly gone — the same loss two parts owning one file would have been. Nothing
+refuses this for you; it is a boundary you draw when you write the briefs.
+
 AND EVERY PART OWNS ITS OWN FILES, WHICH IS ENFORCED. If two of your parts'
 done-conditions name the same file, the division is refused before anything is
 handed out and you are told which file. That is not tidiness: everything the
