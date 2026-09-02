@@ -818,8 +818,9 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request, clock Clock
 		// ledger of elapsed time stays a sum of the durations the script named
 		// — the wait here is the ordinary gap between two tokens and nothing
 		// more. Only after that gap is spent does the arm hang on the channel.
-		held := lane.StallAfter > 0 && delta == lane.StallAfter && lane.StallUntil != nil
-		if lane.StallAfter > 0 && delta == lane.StallAfter && !held {
+		stalling := lane.StallAfter > 0 && delta == lane.StallAfter
+		held := stalling && lane.StallUntil != nil
+		if stalling && !held {
 			wait += lane.StallFor
 		}
 		delta++
