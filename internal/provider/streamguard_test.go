@@ -130,10 +130,80 @@ func TestLegitimateRepliesAreLeftAlone(t *testing.T) {
 
 // TestAShortRepetitionIsNotADegeneration pins the full-window rule: somebody
 // answering "no, no, no" is not a model that has come off the rails, and the
-// compression test may not say anything until it has four kilobytes to read.
+// compression test may not say anything until it has a whole window — the
+// short one, a kilobyte — to read.
 func TestAShortRepetitionIsNotADegeneration(t *testing.T) {
-	if tripped, _ := feed(strings.Repeat("no. ", 400), 8); tripped {
+	if tripped, _ := feed(strings.Repeat("no. ", 200), 8); tripped {
 		t.Fatal("a short repeated line was cut before the window was even full")
+	}
+}
+
+// TestOneTokenOverAndOverIsCutInsideTwoKilobytes is the 2026-09-01 shape: a
+// serving stack looping the chat template's own closer into the answer, which
+// a person watched for fourteen seconds and stopped by hand because the guard
+// could not speak before four kilobytes. The short window makes it a matter
+// of a second or two. "# 1.0." in the middle is what the real screen showed,
+// and it must not rescue the loop.
+func TestOneTokenOverAndOverIsCutInsideTwoKilobytes(t *testing.T) {
+	for name, text := range map[string]string{
+		"a bare closer loop":        strings.Repeat("</think>", 2000),
+		"a closer loop with a word": strings.Repeat("</think>", 60) + "# 1.0." + strings.Repeat("</think>", 2000),
+		"a zero loop with no fence": strings.Repeat("    0\n", 3000),
+	} {
+		tripped, at := feed(text, 48)
+		if !tripped {
+			t.Fatalf("%s streamed to the end untouched", name)
+		}
+		if at > 2*babbleShortWindow {
+			t.Fatalf("%s was cut only after %d bytes; the short window should have read it by %d", name, at, 2*babbleShortWindow)
+		}
+	}
+}
+
+// TestALoopBehindAFenceThatNeverClosesIsStillCut pins the fence cap. A model
+// that opens a real code fence and then comes apart inside it used to be
+// invisible for the rest of the stream — measured, 240 kilobytes of one token
+// after a bare "```go" line never tripped — and a fenced innocent under the cap
+// is still never judged.
+func TestALoopBehindAFenceThatNeverClosesIsStillCut(t *testing.T) {
+	soup := "here is the patch:\n```go\n" + strings.Repeat("</think>", 32000)
+	tripped, at := feed(soup, 64)
+	if !tripped {
+		t.Fatal("a loop behind an open fence was never cut")
+	}
+	if at < fenceCap || at > fenceCap+4*babbleShortWindow {
+		t.Fatalf("cut at %d bytes; want just past the %d-byte fence cap", at, fenceCap)
+	}
+	// Under the cap a fenced block may be as repetitive as it likes.
+	dump := "```json\n" + strings.Repeat("  {\"id\": 1, \"name\": \"row\", \"value\": 0},\n", 1200) + "```\n" +
+		"That is the whole file — every row is the same, as you suspected.\n"
+	if len(dump) > fenceCap {
+		t.Fatalf("the innocent dump is %d bytes, over the cap it is meant to sit under", len(dump))
+	}
+	if tripped, at := feed(dump, 64); tripped {
+		t.Fatalf("a %d-byte repetitive code block under the cap was cut at %d", len(dump), at)
+	}
+}
+
+// TestLostItsThreadReadsTheTailOfAStoppedReply pins the keep path's judgement:
+// the same window and floor as the live guard, read once over text that has
+// already streamed. A healthy reply and a short one are kept; soup is not.
+func TestLostItsThreadReadsTheTailOfAStoppedReply(t *testing.T) {
+	if !LostItsThread(strings.Repeat("</think>", 400)) {
+		t.Fatal("three kilobytes of one token were not read as soup")
+	}
+	if !LostItsThread(plainProse(20) + strings.Repeat("</think>", 400)) {
+		t.Fatal("a reply that came apart at its tail was not read as soup")
+	}
+	for name, text := range map[string]string{
+		"a healthy half answer": plainProse(30),
+		"a short repeated word": strings.Repeat("no. ", 100),
+		"a fenced zero matrix":  "```\n" + strings.Repeat("    0\n", 900) + "```\n",
+		"nothing at all":        "",
+	} {
+		if LostItsThread(text) {
+			t.Fatalf("%s was read as soup", name)
+		}
 	}
 }
 
@@ -481,6 +551,64 @@ func TestADegenerateStreamComesBackAsACutAndNothingElse(t *testing.T) {
 	}
 }
 
+// TestALoopOnTheThinkingChannelIsCut pins that the working is watched too. The
+// reproduced upstream failure on these models loops one glyph inside the
+// reasoning pass with no content at all (sgl-project/sglang#36669): a stream
+// that showed a person nothing while it ran to the ceiling and billed every
+// token. It ends the same way a loop in the answer does — a cut, no response.
+func TestALoopOnTheThinkingChannelIsCut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		for range 4000 {
+			fmt.Fprint(w, "data: "+reasoningChunk("!!!!")+"\n\n")
+			w.(http.Flusher).Flush()
+		}
+		fmt.Fprint(w, "data: "+deltaChunk("the answer")+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	response, err := streamAgainst(t, server.URL, nil)
+	cut, ok := CutFrom(err)
+	if !ok {
+		t.Fatalf("err = %v, want a stream cut", err)
+	}
+	if cut.Reason != CutBabble {
+		t.Fatalf("reason = %d, want CutBabble", cut.Reason)
+	}
+	if response != nil {
+		t.Fatalf("a cut stream returned a response of %d bytes", len(response.Text()))
+	}
+}
+
+// And a long, ordinary run of thought is left alone: thinking is prose.
+func TestALongOrdinaryThoughtIsNotCut(t *testing.T) {
+	thought := plainProse(120)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		for at := 0; at < len(thought); at += 120 {
+			end := min(at+120, len(thought))
+			fmt.Fprint(w, "data: "+reasoningChunk(thought[at:end])+"\n\n")
+			w.(http.Flusher).Flush()
+		}
+		fmt.Fprint(w, "data: "+deltaChunk("the answer")+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	response, err := streamAgainst(t, server.URL, nil)
+	if err != nil {
+		t.Fatalf("a healthy thought was cut: %v", err)
+	}
+	if response == nil || response.Text() != "the answer" {
+		t.Fatalf("response = %#v, want the answer after the thought", response)
+	}
+}
+
 func TestTheGuardCanBeSwitchedOff(t *testing.T) {
 	soup := loadCorpus(t, "babble-repetition-loop.txt")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -535,6 +663,18 @@ func shortenStallBoundsCapped(t *testing.T, first, gap, buffered time.Duration) 
 func deltaChunk(text string) string {
 	payload, err := json.Marshal(streamChunk{
 		Choices: []streamChoice{{Delta: streamDelta{Content: text}}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(payload)
+}
+
+// reasoningChunk is one streamed delta on the REASONING channel — the working,
+// which a person never reads as answer.
+func reasoningChunk(text string) string {
+	payload, err := json.Marshal(streamChunk{
+		Choices: []streamChoice{{Delta: streamDelta{Reasoning: text}}},
 	})
 	if err != nil {
 		panic(err)

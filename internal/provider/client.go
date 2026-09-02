@@ -1132,9 +1132,18 @@ func (c *Client) completeWithMessagesStreaming(
 	// And the degeneration guard, unless this call has it switched off. It is
 	// nil rather than dormant when off, so a call that is not watching pays
 	// nothing per delta for the fact.
-	var babble *babbleWatch
+	//
+	// There are TWO of it, one per channel. `babble` reads the answer, which
+	// is what the person is watching; `thoughts` reads the WORKING — the
+	// reasoning channel, and working that arrived fenced inside `content`
+	// (answer.go) — because the commonest shape of this failure on the open
+	// models lives there: a serving stack that loops one token inside the
+	// thinking pass (sgl-project/sglang#36669 is the reproduced case) shows a
+	// person nothing at all while it runs to the output ceiling and bills
+	// every token of it. A loop nobody can see is still a loop.
+	var babble, thoughts *babbleWatch
 	if babbleGuardOn(ctx) {
-		babble = &babbleWatch{}
+		babble, thoughts = &babbleWatch{}, &babbleWatch{}
 	}
 	// THE ONLY PLACE TTFT IS REALLY OBSERVABLE. The two facts the ledger wants
 	// are separated by the stream itself: how long the endpoint took to say
@@ -1219,6 +1228,24 @@ func (c *Client) completeWithMessagesStreaming(
 	// the lag law's department (velocity.go's LagGap).
 	var lastWrite time.Time
 	var widestGap time.Duration
+	// soup is the one road out for a reply that stopped being language,
+	// whichever channel it stopped on. The lane is struck, the quality belief
+	// learns the plainest thing it can, the pin moves, and nothing past this
+	// point becomes a response — so no soup is ever returned to the turn loop
+	// and none of it reaches the transcript.
+	soup := func() (*ai.Response, bool, error) {
+		cut := &StreamCut{Reason: CutBabble}
+		c.stampCut(cut, served, began, content.String())
+		cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
+		// Soup is the plainest possible statement that this lane's answers
+		// cannot be used, so it is the plainest thing the quality belief can
+		// learn (lanes.go's noteLaneOutcome).
+		c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
+		// An endpoint producing soup has failed this lineage as surely as one
+		// that went quiet, so the pin moves too.
+		c.releaseEndpoint(ctx, c.modelFor(request))
+		return nil, false, cut
+	}
 	for {
 		chunk, decodeErr := decoder.DecodeChunk()
 		if decodeErr != nil {
@@ -1416,18 +1443,15 @@ func (c *Client) completeWithMessagesStreaming(
 				// point becomes a response, so no soup is ever returned to the
 				// turn loop and none of it reaches the transcript.
 				if babble != nil && babble.write(answerText) {
-					cut := &StreamCut{Reason: CutBabble}
-					c.stampCut(cut, served, began, content.String())
-					cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
-					// Soup is the plainest possible statement that this lane's
-					// answers cannot be used, so it is the plainest thing the
-					// quality belief can learn (lanes.go's noteLaneOutcome).
-					c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
-					// An endpoint producing soup has failed this lineage as
-					// surely as one that went quiet, so the pin moves too.
-					c.releaseEndpoint(ctx, c.modelFor(request))
-					return nil, false, cut
+					return soup()
 				}
+			}
+			// AND THE WORKING IS READ THE SAME WAY, whichever channel carried
+			// it. The split has already handed the person what there was to
+			// hand (nothing — working is never drawn as answer); this only
+			// decides whether the stream goes on.
+			if workingText != "" && thoughts != nil && thoughts.write(workingText) {
+				return soup()
 			}
 			// The run of reasoning is announced ONCE — that boundary is what a
 			// surface drawing "thinking…" needs — and the text of it follows per
@@ -1444,6 +1468,9 @@ func (c *Client) completeWithMessagesStreaming(
 					event.Session = session
 					split.reasoning(event.Delta)
 					observer(event)
+					if thoughts != nil && event.Delta != "" && thoughts.write(event.Delta) {
+						return soup()
+					}
 				}
 			}
 			// AND THE WORKING THE SPLIT CARVED OUT OF THE ANSWER CHANNEL rides
