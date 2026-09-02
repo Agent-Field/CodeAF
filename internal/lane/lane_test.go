@@ -306,6 +306,10 @@ func (fixedChooser) Choose(Request) Choice { return Choice{Only: []string{"CoreW
 
 // TestTheStorePathIsStatedOnce keeps the file from being spelled twice.
 func TestTheStorePathIsStatedOnce(t *testing.T) {
+	// A HOME OF ITS OWN, because a test binary is entitled to no path at all
+	// under the root it merely inherited — that is what makes the shape below a
+	// question about this package rather than about the machine (undertest.go).
+	t.Setenv(home.EnvVar, t.TempDir())
 	if got := StorePath(); got == "" || got[len(got)-len("v3/lanes.json"):] != "v3/lanes.json" {
 		t.Fatalf("beliefs sleep at %q", got)
 	}

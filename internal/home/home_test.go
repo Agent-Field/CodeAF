@@ -57,3 +57,28 @@ func TestBlankOverrideIsIgnored(t *testing.T) {
 		t.Fatalf("state root: got %q, want %q", got, want)
 	}
 }
+
+// TestContainsComparesPathElementsAndNotPrefixes is the whole reason this is a
+// function and not a strings.HasPrefix at each caller: a sibling directory
+// named like the root reads as a child of it under a prefix test, and the
+// callers use the answer to decide whether a file belongs to somebody else.
+func TestContainsComparesPathElementsAndNotPrefixes(t *testing.T) {
+	const root = "/state/root"
+	for path, want := range map[string]bool{
+		root:                       true,
+		root + "/v3/lanes.json":    true,
+		"/state/root-2/lanes.json": false,
+		"/state/rootless":          false,
+		"/state":                   false,
+		"/elsewhere/v3/lanes.json": false,
+	} {
+		if got := Contains(root, path); got != want {
+			t.Errorf("Contains(%q, %q) = %v, want %v", root, path, got, want)
+		}
+	}
+	// A root nobody named contains nothing, which is what an unset override has
+	// to mean to a caller that asks about both roots in turn.
+	if Contains("  ", "/state/root/v3/lanes.json") {
+		t.Error("an empty root claimed a file")
+	}
+}

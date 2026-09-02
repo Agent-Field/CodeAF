@@ -195,7 +195,7 @@ func TestThePriceTermBitesAtTheAttentionValue(t *testing.T) {
 		Visible: 0, Hidden: 2000, MaxTokens: 2000,
 		ValueOfTime: AttentionValue, QualityNeed: workNeed, Horizon: 40, Now: e2eMoment,
 	}
-	choice := (&chooser{ledger: l}).Choose(work)
+	choice := chooserOn(l).Choose(work)
 	if len(choice.Frontier) == 0 {
 		t.Fatal("nothing survived the gate")
 	}

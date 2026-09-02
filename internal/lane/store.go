@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
-	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // ── WHERE A BELIEF SLEEPS ───────────────────────────────────────────────────
@@ -98,7 +97,11 @@ var ErrNoStore = errors.New("lane: no belief store")
 // StorePath is the file beliefs sleep in, `~/.aforge/v3/lanes.json` under the
 // home this process was pointed at. It is stated once, here, because a path
 // that appears twice is a path that drifts.
-func StorePath() string { return home.Join("v3", "lanes.json") }
+//
+// It resolves through [stateFile], so a test binary that was handed a home
+// rather than choosing one gets "" and, with it, [ErrNoStore] — the belief file
+// of the person who started the run is never opened. See undertest.go.
+func StorePath() string { return stateFile("v3", "lanes.json") }
 
 // store is the belief file.
 //
