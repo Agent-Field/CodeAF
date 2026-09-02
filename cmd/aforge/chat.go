@@ -4843,8 +4843,20 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			Journal:    briefJournal(history, prefix),
 			Progress:   progress,
 		})
-		if err != nil {
+		// THE LAW: STRUCTURE THE PLANNER HAS ALREADY FOUND IS NEVER DISCARDED
+		// FOR A DOWNSTREAM FAULT. The fall-back below is for a planner that
+		// drew nothing, and that is exactly the condition it now asks about. It
+		// used to ask whether anything at all had gone wrong, which is a
+		// different question: a build reports the faults of every pass it ran,
+		// and a drawn six-node graph was thrown away — the whole job run as one
+		// oversized worker — because one leaf's brief call came back cut. A
+		// plan that exists is better than the smallest plan there is, however
+		// it was arrived at.
+		if graph == nil {
 			return smallest(err)
+		}
+		if err != nil {
+			log.Printf("note: the plan for %s was drawn with faults (%v); running it as drawn", prefix, err)
 		}
 		gatePlanDivision(graph, compiled.Goal)
 		// The acceptance checklist, on the one node that hands the finished
@@ -5154,10 +5166,10 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			Undivided: true,
 			Progress:  progress,
 		})
-		if err == nil {
-			gatePlanDivision(graph, goal)
-		}
-		if err != nil {
+		// The same law the first build is held to: a remainder that was drawn
+		// is run as drawn, and the one-leaf remainder below is for a planner
+		// that drew nothing at all.
+		if graph == nil {
 			return store.Subtree{Nodes: []store.NodeSpec{{
 				ID:    prefix,
 				Brief: goal,
@@ -5165,6 +5177,10 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 				Stage: 1,
 			}}}, nil
 		}
+		if err != nil {
+			log.Printf("note: the remainder for %s was drawn with faults (%v); running it as drawn", prefix, err)
+		}
+		gatePlanDivision(graph, goal)
 		contractUsage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 		if err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
