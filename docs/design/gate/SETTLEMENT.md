@@ -797,23 +797,48 @@ against a schema.
 
 **It is asked at the moment a round would otherwise be bought, and nowhere
 else** — never per turn, never on the happy path — so its cost is bounded by the
-rounds it replaces. There are two doors:
+rounds it replaces. There are three seams:
 
 - `cmd/aforge/chat.go`, `requestSettled`, after both world-doors and before the
   repair round. A yes sets `gate.Pass`, clears the gap, stamps
   `revision.RequestMetWords` on the verdict, on `store.DeliveryGate.Receipt` and
   on the node's own record. Every reader downstream turns on `gate.Pass`, so no
   repair, no remainder, no continuation and no reservation follow.
-- `revision.ExtendForGap`, before `ReplanOverrunAs`, through `metExtension`. It
-  is for the callers that reach the extension without the gate's own caller; the
-  resident's resume path is a third door and is not wired here.
+- The same call on the judgement the REPAIR produced, before the extension. A
+  repair round rewrites the deliverable and is judged again, so that is a
+  different verdict over a different text and the answer may have changed with
+  it; without asking, the run buys a whole remainder over a request the repair
+  had just satisfied.
+- `revision.ExtendForGap`, before `ReplanOverrunAs`, through `metExtension`, for
+  the callers that reach the extension without the gate's own caller. The
+  resident's resume path is a fourth door and is not wired here.
 
-`Judgment.RequestAsked` carries the answer between the two, so a gate told "no"
-at the first door does not pay for the same answer at the second.
-`revision.ConstraintFinding` is the one-line predicate that keeps the question
-away from a verdict whose gap is a stated rule being broken — a run that produced
-everything the request asked for in a way the request forbade has not met the
-request as stated.
+`Judgment.RequestAsked` carries the answer between them, so one verdict is never
+paid for twice. `Judgment.Request` is the question itself, bound at
+`JudgeDeliverable`'s single exit beside `Subject` and `HeldPoint` and for the
+identical reason: **a field set by the caller is a field the next caller
+forgets**, and until it was bound there the extension door was dead wiring for
+every caller that is not the chat surface.
+
+### A MODEL'S READING MAY NOT OVERTURN A MEASUREMENT
+
+`revision.MeasuredFinding`, and it is the law this door lives or dies by. The
+question is one model looking at a deliverable and a record. A file the plan
+promised and the disk does not hold, a check that passed before the work and
+fails after it, a name the tree no longer binds, a behaviour nothing exercises,
+a definition its callers no longer fit — each is a fact somebody gathered, and no
+reading of the request is competent to overturn one. The two world-doors above
+this are allowed to acquit only because they weigh a finding against the disk and
+against the delivered text; this weighs it against a sentence, so it may be put
+ONLY of the judge's own prose — "that is a report about the output, not the
+output itself" — which is a reading of the request and is answerable by another
+reading of the request. Without the restriction the door would do exactly what
+§2 spent a whole sweep making impossible.
+
+`revision.RequestQuestionable` is the one predicate both doors read, so neither
+can spell half the law. `revision.ConstraintFinding` is its other half and the
+one-line seam for constraints — a run that produced everything the request asked
+for in a way the request forbade has not met the request as stated.
 
 ### The fail-open direction is the existing path
 

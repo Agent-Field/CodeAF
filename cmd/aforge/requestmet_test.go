@@ -161,3 +161,103 @@ func TestTheReceiptReachesTheStreamAndTheRunIsNotPartial(t *testing.T) {
 		t.Fatalf("a run that met its request closed with a reservation:\n%s", standing)
 	}
 }
+
+// A MODEL'S READING MAY NOT OVERTURN A MEASUREMENT, and the door at the gate is
+// where that could most easily have happened: it ran for EVERY failed gate, so
+// a regression, a file the plan promised and the disk does not hold, or a
+// behaviour nothing exercises could have been talked away by one sentence about
+// the deliverable. The two world-doors above it are forbidden to acquit on
+// evidence; this must not acquit on prose.
+func TestAMeasuredFailureIsNeverOverturnedAtTheGatesDoor(t *testing.T) {
+	graph, node := errandGraph(t)
+	settings := config.Config{Model: "worker/model"}
+	for name, gate := range map[string]revision.Judgment{
+		"a file the plan promised": {Pass: false, Checked: true, Mechanical: true,
+			Gaps: "the plan promised report.md and the disk does not hold it"},
+		"a check this work broke": {Pass: false, Checked: true, Sourced: true,
+			Gaps: "this work broke checks that were passing before it"},
+		"a behaviour nothing exercises": {Pass: false, Checked: true,
+			Gaps: "1 behaviour the request states has no check that exercises it",
+			Unexercised: []string{"the final line is reported"}},
+		"the checks this work wrote, red": {Pass: false, Checked: true,
+			Gaps: "the checks this work wrote fail", OwnFailing: []string{"test_probe"}},
+		"a definition its callers no longer fit": {Pass: false, Checked: true,
+			Gaps: "callers expect the old shape", Consumers: []string{"configs"}},
+	} {
+		gate.Grounds = revision.Grounds{Intent: node.Provenance.Intent}
+		answer := &gateCaptureClient{model: "worker/model", response: `{"met":true,"missing":""}`}
+		evidence := store.DeliveryGate{Pass: false, Gap: gate.Gaps}
+
+		requestSettled(context.Background(), settings,
+			adoptLiveClient(settings, answer.model, answer), graph, node,
+			"here is the answer", revision.Evidence{Observed: true}, &gate, &evidence)
+
+		if answer.messages != nil {
+			t.Errorf("%s: a measurement was sent to a model to be overturned", name)
+		}
+		if gate.Pass || evidence.Pass || evidence.Receipt != "" {
+			t.Errorf("%s: a measured failure was talked into a pass: %+v", name, evidence)
+		}
+		if gate.RequestAsked {
+			t.Errorf("%s: the record says a question was put that never was", name)
+		}
+	}
+}
+
+// THE REPAIR'S OWN JUDGEMENT IS A DIFFERENT VERDICT OVER A DIFFERENT TEXT, and
+// it gets its own question. A repair round rewrites the deliverable and is
+// judged again, so the answer to "is the request satisfied" may have changed
+// with it — and without asking, the run buys a whole remainder over a request
+// the repair had just satisfied. It is still asked only once per verdict.
+func TestTheRepairsOwnJudgementIsAskedAndTheFirstIsNotAskedTwice(t *testing.T) {
+	graph, node := errandGraph(t)
+	settings := config.Config{Model: "worker/model"}
+	grounds := revision.Grounds{Intent: node.Provenance.Intent}
+
+	// The first gate: the question is put and the answer is no, so the repair
+	// round is bought exactly as it was.
+	first := &gateCaptureClient{model: "worker/model",
+		response: `{"met":false,"missing":"report the final line it prints"}`}
+	gate := revision.Judgment{Pass: false, Checked: true, Grounds: grounds,
+		Gaps: "the deliverable does not carry the line"}
+	evidence := store.DeliveryGate{Pass: false, Gap: gate.Gaps}
+	requestSettled(context.Background(), settings,
+		adoptLiveClient(settings, first.model, first), graph, node,
+		"I ran the command.", revision.Evidence{Observed: true}, &gate, &evidence)
+	if gate.Pass || !gate.RequestAsked || evidence.Missing == "" {
+		t.Fatalf("the first door did not put the question: %+v / %+v", gate, evidence)
+	}
+
+	// The same verdict, carried into the extension seam, is not paid for again.
+	unmet := gate
+	twice := &gateCaptureClient{model: "worker/model", response: `{"met":true,"missing":""}`}
+	requestSettled(context.Background(), settings,
+		adoptLiveClient(settings, twice.model, twice), graph, node,
+		"I ran the command.", revision.Evidence{Observed: true}, &unmet, &evidence)
+	if twice.messages != nil {
+		t.Fatal("one verdict was asked about twice")
+	}
+	if unmet.Pass {
+		t.Fatal("a verdict already told no came back met without being asked")
+	}
+
+	// And the judgement the REPAIR produced is a new verdict over new text, so
+	// it is asked, and a yes ends the run before any remainder is bought.
+	repaired := revision.Judgment{Pass: false, Checked: true, Grounds: grounds,
+		Gaps: "that is a report about the output, not the output itself"}
+	second := &gateCaptureClient{model: "worker/model", response: `{"met":true,"missing":""}`}
+	requestSettled(context.Background(), settings,
+		adoptLiveClient(settings, second.model, second), graph, node,
+		"The command completed. The final line printed was:\n\n```\nok\t0.4s\n```",
+		revision.Evidence{Observed: true}, &repaired, &evidence)
+
+	if second.messages == nil {
+		t.Fatal("the repair's own judgement was never asked about")
+	}
+	if !repaired.Pass || repaired.Gaps != "" {
+		t.Fatalf("a request the repair satisfied still bought a remainder: %+v", repaired)
+	}
+	if evidence.Receipt != revision.RequestMetWords || evidence.Gap != "" {
+		t.Fatalf("the receipt did not replace the gap on the record: %+v", evidence)
+	}
+}

@@ -1315,8 +1315,8 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// And the other half of the same question, derived the same way and for the
 	// same reason: WHICH behaviour this verdict was held to, or that there was
 	// no list to hold it to. See heldPointWords.
-	judgment.HeldPoint = heldPointWords(evidence,
-		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
+	grounds := Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done}
+	judgment.HeldPoint = heldPointWords(evidence, grounds,
 		newBounds(options).budget(DeliverablePrompt), judgment)
 	// AND A REFUSAL THAT QUOTES A RULE THE PERSON SET IS A BROKEN RULE, WHOEVER
 	// REACHED IT. The mechanical door settles the two readings arithmetic can
@@ -1325,6 +1325,17 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// It is stamped here, at the one exit, above every reader that decides what a
 	// round may be bought for. See ConstraintQuoted.
 	judgment = ConstraintQuoted(judgment, evidence.Constraints)
+	// AND THE ONE QUESTION THIS VERDICT CAN STILL BE ASKED IS BOUND HERE, ONCE,
+	// FOR THE SAME REASON EVERYTHING ELSE ABOVE IS.
+	//
+	// The question needs a model client, and only this function's caller has
+	// one — so a field left for some later caller to fill in is a field nothing
+	// fills in, and `ExtendForGap`'s door was dead wiring on every caller that
+	// is not the chat surface. Bound at the one exit every verdict in this
+	// program leaves through, it is live for all of them and there is nothing
+	// left for a constructor to forget. Nil where there is no client, which is
+	// how a caller that cannot ask already behaves. See satisfied.go.
+	judgment.Request = requestQuestion(settings, client, node, grounds, deliverable, evidence)
 	return judgment
 }
 

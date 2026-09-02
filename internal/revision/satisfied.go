@@ -185,6 +185,56 @@ func statedRulesBlock(grounds Grounds, evidence Evidence) string {
 // this names none.
 func statedRules(Grounds, Evidence) []string { return nil }
 
+// MeasuredFinding says this verdict rests on A MEASUREMENT OF THE WORLD rather
+// than on a reading of the request, and it is the whole of what the question
+// below may not be put of.
+//
+// THE LAW: A MODEL'S READING MAY NOT OVERTURN A MEASUREMENT. The request-met
+// question is one model looking at a deliverable and a record; a file the plan
+// promised and the disk does not hold, a check that passed before the work and
+// fails after it, a name the tree no longer binds, a behaviour nothing
+// exercises — each of those is a fact somebody gathered, and no reading of the
+// request is competent to overturn one. Without this the door would do exactly
+// what the two world-doors above it are forbidden to do, and it would do it on
+// the strength of a sentence. It is the same line store.DeliveryGate.Overturned
+// draws and for the same reason (SETTLEMENT.md §2).
+//
+// So the question is put only of a verdict that is the judge's OWN PROSE — "the
+// deliverable is a report about the output, not the output itself" — which is a
+// reading of the request, answerable by another reading of the request.
+func MeasuredFinding(verdict Judgment) bool {
+	return verdict.Mechanical || verdict.Sourced ||
+		len(verdict.Unexercised) > 0 || len(verdict.Unasserted) > 0 ||
+		len(verdict.OwnFailing) > 0 || len(verdict.Consumers) > 0 ||
+		len(verdict.Unbound) > 0
+}
+
+// RequestQuestionable says the question may be put of this verdict at all. It
+// is one function so that both doors and every future one read the same law
+// rather than each spelling their own half of it.
+func RequestQuestionable(verdict Judgment) bool {
+	return !MeasuredFinding(verdict) && !ConstraintFinding(verdict)
+}
+
+// requestQuestion binds the question to everything it needs, at the one place
+// every verdict in this program is made.
+//
+// It is bound rather than left for a caller to assemble because the two doors
+// are in two packages and only this one holds a model client: a field nothing
+// assigns is dead wiring, and an extension door that cannot ask is an extension
+// door that buys a remainder over a request already satisfied. Nil where there
+// is no client to ask with, which is how every caller that cannot ask already
+// behaves.
+func requestQuestion(settings config.Config, client *pool.Client, node store.Node,
+	grounds Grounds, deliverable string, evidence Evidence) RequestQuestion {
+	if client == nil {
+		return nil
+	}
+	return func(ctx context.Context) (bool, string, bool) {
+		return RequestMet(ctx, settings, client, node, grounds, deliverable, evidence)
+	}
+}
+
 // ConstraintFinding says this verdict's gap is a rule the person stated being
 // BROKEN, rather than something the request asked for being ABSENT.
 //
@@ -205,7 +255,7 @@ func ConstraintFinding(Judgment) bool { return false }
 // met" one door earlier must not pay for the same answer on the way to the same
 // conclusion — and nothing where the verdict cannot ask at all.
 func metExtension(ctx context.Context, extension Extension, unmet Judgment) (Extension, bool) {
-	if unmet.RequestAsked || unmet.Request == nil || ConstraintFinding(unmet) {
+	if unmet.RequestAsked || unmet.Request == nil || !RequestQuestionable(unmet) {
 		return extension, false
 	}
 	met, receipt, asked := unmet.Request(ctx)

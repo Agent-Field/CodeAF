@@ -196,3 +196,66 @@ func TestTheChecksTheRunWroteAreReadOffTheTree(t *testing.T) {
 		}
 	}
 }
+
+// A SUITE THAT TIMED OUT SOMEWHERE ELSE SAYS NOTHING ABOUT A RUN WITH NO
+// COVERAGE QUESTION TO ANSWER. Unreadable is settled before anything has
+// classified what the request asked for, so a read-only errand — "run this
+// command, report the final line, change no files" — failed Whole() over a
+// whole-suite reading that was cut at its ceiling, and left as `partial`. There
+// was never a check that could have exercised anything it asked for.
+func TestAnErrandWithNoCoverageQuestionIsWholeOverASuiteNobodyCouldRead(t *testing.T) {
+	ForgetChecklists()
+	// A project that DECLARES a test command, whose reading was never taken:
+	// the exact shape that sets Unreadable.
+	cut := verify.Reading{
+		Plan:   verify.Plan{Entrypoints: []verify.Entrypoint{{Kind: verify.KindTest, Command: "go test ./..."}}},
+		Unread: "the whole-suite reading was killed at its ceiling of 4m0s without finishing",
+	}
+	for _, run := range []struct {
+		name     string
+		evidence Evidence
+	}{
+		// The request states only actions of the run.
+		{"an all-action checklist", Evidence{Accept: errandPoints(), Observed: true,
+			Workspace: t.TempDir(), Verification: cut}},
+		// And the request states behaviours, over a run that changed nothing.
+		{"a run that changed no code", Evidence{Accept: ofetchPoints(), Observed: true,
+			Workspace: t.TempDir(), Verification: cut}},
+	} {
+		grounds := theErrand()
+		if run.name == "a run that changed no code" {
+			grounds = ofetchGrounds(t)
+		}
+		settled := settleAcceptance(context.Background(), config.Config{}, nil, nil,
+			store.Node{ID: "task-2"}, run.evidence, grounds, "worker/model",
+			Judgment{Pass: true, Checked: true})
+
+		if settled.Unreadable {
+			t.Fatalf("%s was charged for a suite that could not have acquitted it either", run.name)
+		}
+		if !(store.DeliveryGate{Pass: settled.Pass, Unreadable: settled.Unreadable,
+			Unexercised: settled.Unexercised}).Whole() {
+			t.Fatalf("%s delivered partial with no coverage question to answer", run.name)
+		}
+		if strings.TrimSpace(settled.Unmeasured) == "" {
+			t.Fatalf("%s says nothing about why nothing was measured", run.name)
+		}
+	}
+
+	// AND THE THIRD SILENCE STILL STANDS. A request that states behaviours, over
+	// a change that was made, leaves a real question unanswered when the suite
+	// cannot be read — which is where ink s7 exited 0 at 13 of 25.
+	root := t.TempDir()
+	source := filepath.Join(root, "breaker.py")
+	if err := os.WriteFile(source, []byte("def probe():\n    return True\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed := settleAcceptance(context.Background(), config.Config{}, nil, nil,
+		store.Node{ID: "task-2"},
+		Evidence{Accept: ofetchPoints(), Observed: true, Workspace: root,
+			Artifacts: []string{source}, Verification: cut},
+		ofetchGrounds(t), "worker/model", Judgment{Pass: true, Checked: true})
+	if !changed.Unreadable {
+		t.Fatal("a delivery whose suite nobody could read stopped being held short")
+	}
+}

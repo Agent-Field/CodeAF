@@ -579,8 +579,10 @@ that before delivering`.
 - **The request is already satisfied.** Before any repair is started, the run asks one more
   question with your request in front of it exactly as you wrote it: is this, as stated,
   satisfied by what is in hand? A yes ends the job there, with `the request was met as
-  stated` on the record and on the last line. Nothing is redone and nothing is queued. See
-  "Why it kept going after it already had the answer" below.
+  stated` on the record and on the last line. Nothing is redone and nothing is queued. It is
+  only ever asked about the review's own reading of your words — never about something
+  measured, such as a file that is not on disk, a check this work turned red, or a behaviour
+  nothing exercises. See "Why it kept going after it already had the answer" below.
 - **It is already there.** The file the review says is missing is on disk under the name
   you used. The review was checked against the world and lost, and the answer is handed
   over as finished: `a review raised this: … — I've delivered as it stands, because what
@@ -1328,7 +1330,14 @@ finished work that was not re-checked as something missing.
 
 When the answer is no, nothing changes: the repair round is bought exactly as before, and
 what the question found absent is kept on the record beside the review's own gap rather
-than mixed into it.
+than mixed into it. If that repair round produces a new answer, the new answer gets its own
+question before any further work is planned — but one verdict is never asked about twice.
+
+**It is never asked about something measured.** A file the plan promised that is not on
+disk, a check that passed before the work and fails after it, a name nothing in the tree
+binds, a behaviour no check exercises: those are facts gathered from your project, and no
+reading of your request can talk one away. The question is put only about what the review
+itself concluded from your words.
 
 There is a second receipt for a different ending. Where the project's own checks could not
 be read at all but the work's own checks ran and every one of them settled, the delivery

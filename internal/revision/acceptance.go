@@ -1164,13 +1164,40 @@ const (
 // and never overwrites a sentence that is already there.
 //
 // settleUnmeasured's reading is about the WORLD — whether anything could be
-// read at all — and it is both the older and the more particular fact. These
-// three are about the request and the change, and a verdict that holds both
-// should say the one a person can act on first.
+// read at all — and it is both the older and the more particular fact. Where
+// both hold, a verdict should say the one that is about this run's own tree.
 func sayUnmeasured(verdict Judgment, why string) Judgment {
 	if strings.TrimSpace(verdict.Unmeasured) == "" {
 		verdict.Unmeasured = why
 	}
+	return verdict
+}
+
+// unaskable is the verdict of a delivery THE COVERAGE QUESTION COULD NOT BE PUT
+// OF AT ALL, and it takes Unreadable back off.
+//
+// Unreadable says the project declared a way of checking itself and this run
+// could not read it, and it is what turns a pass into a partial — the floor
+// that stops a delivery nothing checked from leaving as done (FAILSAFE clause
+// 5). It is settled above this, before anything has classified what the request
+// even asked for, and that ordering was wrong for exactly two runs: one whose
+// request states no behaviour of any finished thing, and one that changed no
+// code. NEITHER OF THEM HAS A COVERAGE QUESTION TO ANSWER, so a suite that
+// timed out somewhere else in the repository says nothing whatever about them,
+// and holding such a delivery partial over it charges an errand for a silence
+// that could not have acquitted it either.
+//
+// The read-only errand is the case that measured it: "run this command and
+// report the final line, change no files", over a project whose whole-suite
+// reading was cut at its ceiling, failed Whole() and left as `partial` — and
+// there was never a check that could have exercised anything it asked for.
+//
+// The third silence is NOT this one. Where the request states behaviours over a
+// change that was made, an unreadable suite leaves a real question unanswered
+// and Unreadable stands, which is where ink s7 exited 0 at 13 of 25.
+func unaskable(verdict Judgment, why string) Judgment {
+	verdict.Unreadable = false
+	verdict.Unmeasured = why
 	return verdict
 }
 
@@ -1270,14 +1297,14 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 	// find it. See plan.Behaviours.
 	behaviours := plan.Behaviours(points)
 	if len(behaviours) == 0 {
-		return sayUnmeasured(verdict, NoBehaviourAsked)
+		return unaskable(verdict, NoBehaviourAsked)
 	}
 	// AND A CHECK EXERCISES SOMETHING THAT EXISTS. A run that left the tree as
 	// it found it produced nothing for a check to be missing from, so there is
 	// no coverage question to ask and no round to buy for the answer. The
 	// delivery is still judged for substance by everything above this.
 	if !codeChanged(evidence) {
-		return sayUnmeasured(verdict, NoCodeChanged)
+		return unaskable(verdict, NoCodeChanged)
 	}
 	if !Measured(evidence) && !reading.Taken {
 		// AND A FINDING ALREADY MEASURED STANDS UNTIL A MEASUREMENT CLOSES IT.

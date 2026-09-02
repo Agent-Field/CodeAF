@@ -163,3 +163,99 @@ func TestAQuestionAlreadyPutIsNotPutAgainAtTheSecondDoor(t *testing.T) {
 		t.Fatalf("a verdict already told no came back met: %+v", extension)
 	}
 }
+
+// A FIELD NOTHING ASSIGNS IS DEAD WIRING. The extension door could only ask
+// through a closure on the judgement, and nothing in production put one there —
+// so for every caller that is not the chat surface the door was decoration, and
+// a remainder could be bought over a request already satisfied. It is bound at
+// the one exit every verdict in this program leaves through.
+func TestEveryVerdictCarriesTheQuestionAndTheSecondDoorCanPutIt(t *testing.T) {
+	graph := gateStore(t)
+	node, ok, err := graph.Node("task-2")
+	if err != nil || !ok {
+		t.Fatalf("node: ok=%v err=%v", ok, err)
+	}
+	settings := config.Config{Model: "worker/model"}
+	// The gate fails on its own prose, and the question that follows says the
+	// request is satisfied anyway — the shape #428 measured, where a judge
+	// convicted a correct answer for how it was wrapped.
+	judge := &scriptedJudge{replies: []*ai.Response{
+		said(`{"pass":false,"gaps":"that is a report about the output, not the output itself","quote":"persist the feature schema"}`),
+		said(`{"met":true,"missing":""}`),
+	}}
+	client := pool.Adopt(settings, judge.Model(), judge)
+
+	verdict := JudgeDeliverable(context.Background(), settings, client, graph, node,
+		"The command completed. The final line printed was:\n\n```\nok\t0.4s\n```", "",
+		Evidence{Observed: true}, "worker/model")
+	if verdict.Pass {
+		t.Fatalf("the fixture did not fail its gate: %+v", verdict)
+	}
+	if verdict.Request == nil {
+		t.Fatal("a verdict left the gate with no way to ask whether the request was met")
+	}
+
+	extension := ExtendForGap(context.Background(), graph, node, "done", verdict, nil, 0,
+		func(context.Context, string, string) (store.Subtree, error) {
+			t.Fatal("a remainder was bought over a request already satisfied")
+			return store.Subtree{}, nil
+		})
+
+	if !extension.Met || extension.Unclosed || extension.Spliced != 0 {
+		t.Fatalf("the second door could not put the question: %+v", extension)
+	}
+	if !strings.Contains(extension.Refused, RequestMetWords) {
+		t.Fatalf("the receipt did not reach the person: %q", extension.Refused)
+	}
+}
+
+// AND THE DOOR IS SHUT ON A MEASUREMENT. A model's reading may not overturn a
+// file the plan promised and the disk does not hold, a check this work turned
+// red, or a behaviour nothing exercises — the two world-doors are forbidden to
+// do it on evidence, and this must not do it on a sentence.
+func TestAMeasuredFindingIsNeverPutToTheRequestQuestion(t *testing.T) {
+	graph := gateStore(t)
+	node, _, err := graph.Node("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := func(context.Context) (bool, string, bool) {
+		t.Fatal("a measurement was offered to a model to overturn")
+		return true, RequestMetWords, true
+	}
+	for name, unmet := range map[string]Judgment{
+		"a file the plan promised": {Gaps: "the file is not on disk", Mechanical: true,
+			Citations: []string{"persist the feature schema"}, Request: asked},
+		"a check this work broke": {Gaps: "this work broke checks that were passing", Sourced: true,
+			Citations: []string{"persist the feature schema"}, Request: asked},
+		"a behaviour nothing exercises": {Gaps: "no check exercises it",
+			Unexercised: []string{"a probe holds its slot"},
+			Citations:   []string{"persist the feature schema"}, Request: asked},
+		"a check that names it and asserts nothing": {Gaps: "asserted by no check",
+			Unasserted: []string{"a probe holds its slot"},
+			Citations:  []string{"persist the feature schema"}, Request: asked},
+		"a name the tree no longer binds": {Gaps: "nothing binds it",
+			Unbound:   []string{"temp_post_req_data_path"},
+			Citations: []string{"persist the feature schema"}, Request: asked},
+	} {
+		if RequestQuestionable(unmet) {
+			t.Errorf("%s was offered to the request question", name)
+		}
+		if extension, met := metExtension(context.Background(), Extension{}, unmet); met {
+			t.Errorf("%s was overturned by a reading: %+v", name, extension)
+		}
+	}
+	// And the judge's own prose still is, which is the whole point of the door.
+	prose := Judgment{Gaps: "that is a report about the output, not the output itself",
+		Citations: []string{"report the final line it prints"},
+		Grounds:   Grounds{Intent: node.Provenance.Intent},
+		Request: func(context.Context) (bool, string, bool) {
+			return true, RequestMetWords, true
+		}}
+	if !RequestQuestionable(prose) {
+		t.Fatal("the judge's own reading of the request stopped being answerable by one")
+	}
+	if _, met := metExtension(context.Background(), Extension{}, prose); !met {
+		t.Fatal("a satisfied request could not end the run")
+	}
+}

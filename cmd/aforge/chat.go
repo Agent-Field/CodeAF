@@ -1600,9 +1600,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// it, satisfied by what is in hand? A yes ends the delivery here
 				// with a receipt saying so, and buys no repair, no remainder and
 				// no round. It is asked at this one seam and nowhere else, so
-				// its cost is one call in place of the leaf it replaces — see
-				// revision.RequestMet.
-				if !gate.Pass && ungrounded == "" && closed == "" && !revision.ConstraintFinding(gate) {
+				// its cost is one call in place of the leaf it replaces.
+				//
+				// AND IT IS PUT ONLY OF THE JUDGE'S OWN PROSE. A model's reading
+				// may not overturn a measurement — see revision.MeasuredFinding.
+				if !gate.Pass && ungrounded == "" && closed == "" {
 					requestSettled(gateCtx, settings, planClient, graph, node, text, records, &gate, &evidence)
 				}
 				if !gate.Pass && ungrounded == "" && closed == "" {
@@ -1752,6 +1754,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						closed := revision.JudgeDeliverable(withRepairJournal(ctx, graph, node.ID),
 							settings, planClient, graph, node, text, task.Contract,
 							reread, polishModel)
+						// AND THE CURRENT RECORD IS THE ONE THE REPAIR LEFT. Every
+						// reader below this point is asking about the tree as it
+						// now stands, and until this they were handed the record
+						// the repair was given rather than the one it produced.
+						records = reread
 						// Did the round move anything? Same stamp, same record,
 						// taken after everything the repair was going to do.
 						evidence.Unmoved = revision.TreeStamp(reread.Artifacts) == foundWorldAs
@@ -1830,6 +1837,26 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// waves and a fact threaded through signatures is a
 						// fact that works on whichever caller somebody
 						// remembered. See resident.FindingOf.
+						// AND THE SAME QUESTION IS PUT OF WHAT THE REPAIR
+						// PRODUCED, BEFORE A REMAINDER IS BOUGHT FOR IT.
+						//
+						// The judgement here is not the one the first door
+						// asked about: a repair round rewrites the deliverable
+						// and is judged again, so `unmet` is a fresh verdict
+						// over a fresh text and the answer to "is the request
+						// satisfied" may have changed with it. Without this the
+						// run could buy a whole remainder over a request the
+						// repair had just satisfied — and `ExtendForGap`'s own
+						// door refuses the round without passing the delivery,
+						// which is a run ending short over work that is done.
+						// Same law as the first door: only the judge's own
+						// prose, never a measurement.
+						requestSettled(gateCtx, settings, planClient, graph, node, text, records,
+							&unmet, &evidence)
+						if unmet.Pass {
+							gate = unmet
+							break
+						}
 						growCtx := resident.WithFinding(ctx, resident.FindingOf(evidence))
 						extension := revision.ExtendForGap(growCtx, graph, node, outcome.Text, unmet, absolute,
 							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot),
@@ -2715,6 +2742,16 @@ func requestSettled(ctx context.Context, settings config.Config, client *pool.Cl
 	graph *store.Store, node store.Node, deliverable string, records revision.Evidence,
 	gate *revision.Judgment, evidence *store.DeliveryGate,
 ) {
+	// A MODEL'S READING MAY NOT OVERTURN A MEASUREMENT, and that is the whole
+	// of what this door may not be opened on. A file the plan promised and the
+	// disk does not hold, a check that passed before the work and fails after
+	// it, a name the tree no longer binds, a behaviour nothing exercises — each
+	// is a fact somebody gathered, and no reading of the request is competent to
+	// overturn one. The two world-doors above are forbidden to do it on evidence;
+	// this must not do it on a sentence. See revision.RequestQuestionable.
+	if gate.RequestAsked || !revision.RequestQuestionable(*gate) {
+		return
+	}
 	// The grounds ride on the judgement, which is where the gate assembled them,
 	// and the node carries the same verbatim intent for a judgement built by a
 	// caller that predates them. One value, filled from one place, so this door

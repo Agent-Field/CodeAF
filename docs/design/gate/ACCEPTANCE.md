@@ -816,3 +816,16 @@ SOURCE THAT DOES NOT NEED THE PROJECT TO COLLECT.
 
 The account plumbing itself is not restored here, and until it is, `Evidence.Patch`,
 `patchBlock`, `removedChecks` and `Compose`'s patch remain unreachable.
+
+### 5. Unreadable is settled after the classification, not before it
+
+`settleUnmeasured` runs at the top of `settleAcceptance`, before anything has
+asked what the request even wanted — so a read-only errand failed `Whole()`
+because an unrelated whole-suite reading had been cut at its ceiling, and left as
+`partial` over work that was complete. **A run with no coverage question to
+answer may not be charged for a silence that could not have acquitted it
+either.** `revision.unaskable` takes `Unreadable` back off on the two exits above
+— no behaviour stated, no code changed — and states the reason instead. The third
+silence is untouched: where the request states behaviours over a change that was
+made, an unreadable suite leaves a real question unanswered and `Unreadable`
+stands, which is FAILSAFE clause 5 and where ink s7 exited 0 at 13 of 25.
