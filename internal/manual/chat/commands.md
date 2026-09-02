@@ -589,7 +589,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes:
 
 ```
-crew     max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3
+crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3
 ```
 
 On the live status line the same fact is one short segment — `crew max`, or

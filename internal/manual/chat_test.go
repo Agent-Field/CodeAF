@@ -320,6 +320,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say which files each hand may write", "tasks"},
 		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
+		// The same question in the two plainest ways somebody types it, which
+		// are both about the money and neither of which uses the word cost as a
+		// verb the way the line above does.
+		{"how much has this conversation cost", "models-and-cost"},
+		{"what has this chat cost me", "models-and-cost"},
+		// And the money read off the row rather than out of /cost: the figure
+		// that used to arrive from the conversation somebody had just left.
+		{"the money jumped when I switched chats", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},
 		// Written from a live task that compacted fifteen times in six minutes.
@@ -1069,6 +1077,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the reply was just </think> repeated over and over", "models-and-cost"},
 		{"I stopped it while it was printing garbage, is that still in the conversation", "models-and-cost"},
 		{"does it watch the thinking for repetition too", "models-and-cost"},
+		// The same stop asked by somebody who did NOT know the reply had come
+		// apart: they pressed a key and their text went, so they ask what took
+		// it and where it went, in the two spellings of that key.
+		{"why was the text deleted when I pressed escape", "models-and-cost"},
+		{"where did the reply go after I hit esc", "models-and-cost"},
 
 		// The 2026-08-31 incident, asked the ways a person describes what they
 		// saw: a serving endpoint leaked the model's own tool grammar as text,
@@ -1129,6 +1142,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you run something every monday morning", "keeping-an-eye"},
 		{"does it keep working when I close the terminal", "keeping-an-eye"},
 		{"how do I stop a reminder", "keeping-an-eye"},
+		// The two clocks, asked apart: how often aforge LOOKS, which is one
+		// figure for everything standing, and a cadence somebody gave an item
+		// themselves, which is the one they name when they want it to stop.
+		{"how often does my watch check", "keeping-an-eye"},
+		{"stop the thing that runs every hour", "keeping-an-eye"},
 		// The eleventh wave: the ambient side arriving on home. Each of these is
 		// asked by somebody LOOKING at a row they did not expect — a glyph they
 		// have not met, a segment at the foot of the frame, a card that appeared
@@ -1291,6 +1309,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The deliberate gesture and the visible door, in the words of somebody
 		// reaching for them — or noticing that recognition missed.
 		{"how do I force it to be standing", "standing-orders"},
+		// The word nobody on this surface uses and everybody types: there is no
+		// delete, and the page has to be reachable by the two ways somebody asks
+		// for one before they learn that stopping is what it is called.
+		{"delete a standing order", "standing-orders"},
+		{"get rid of a standing order", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},
 		{"can I click keeping an eye on 2", "standing-orders"},

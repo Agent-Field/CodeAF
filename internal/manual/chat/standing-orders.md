@@ -486,14 +486,20 @@ if it cannot honour one of these, it says so in its report.
 Why it matters: told that "remind me at 6 to check the deploy" was a condition to work
 within, a worker will hedge everything it does for a sentence that was never about it.
 
-## Stop reminding me — stopping, pausing and narrowing one
+## Stop reminding me — how do I delete, remove or get rid of a standing order, and stopping, pausing or narrowing one
+
+**Delete, remove and get rid of are all the same thing here, and the word for it is
+stop.** There is no separate delete: `s` on the standing orders page stops the order for
+good, and the receipt reads `stopped · ` and then the order's own words back at you. The
+row then leaves the page and home, because neither is keeping an eye on it any more; the
+conversation that set it up still holds the whole record of what it did.
 
 Three different things, and they are not the same:
 
-- **Stop it.** `s` on the standing orders page, or just say it: "stop the CI one", "stop
-  reminding me about the plants". Stopping is permanent — setting it up afresh is a new
-  card. If your words match more than one, aforge will not guess; it lists them and asks
-  which.
+- **Stop it.** `s` on the standing orders page, or just say it: "stop the CI one", "delete
+  the CI one", "stop reminding me about the plants". Stopping is permanent — setting it up
+  afresh is a new card. If your words match more than one, aforge will not guess; it lists
+  them and asks which.
 - **Pause it.** `p`, or "pause the weekly update for now". A paused order is not checked
   and not fired, and it keeps everything it knows — what it has cost, when it last ran,
   what it last saw. `p` again starts it.
