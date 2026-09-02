@@ -425,6 +425,7 @@ func TestTheShaperReportsItsReasoningApartFromItsAnswer(t *testing.T) {
 		t.Fatalf("THE REASONING WAS SPLICED INTO THE ANSWER: %q", seen[2].answer)
 	}
 }
+
 // THE CUT IS SAID, AND ONLY WHEN A SHAPER ACTUALLY RAN (path (a) of issue
 // #133). "No shaper configured" is the documented silent pass-through and
 // stays silent; but a shaper that was genuinely invoked and came back cut —
