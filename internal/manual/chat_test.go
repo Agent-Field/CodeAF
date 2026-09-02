@@ -472,6 +472,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I give it a longer context", "models-and-cost"},
 		{"how do I make it think harder", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
+		// A run of thought that has gone quiet, asked the way somebody asks it:
+		// the wait is measured against how long THIS model usually thinks, so
+		// the question has to reach the lanes page rather than the model one.
+		{"how long does aforge wait on a model that is thinking?", "lanes"},
 		// The echo and the push, in the words somebody actually types when they
 		// notice either one.
 		{"why is my message dimmer than usual over --host", "running-on-another-machine"},

@@ -111,6 +111,26 @@ past the patience for that kind of work borrows another one for that answer and
 says so in the log. An instruction whose author cannot be reached is honoured by
 getting them their answer.
 
+## Waiting on a model that is thinking
+
+A reasoning model writes its thinking before it writes a word you can read, and
+none of that is on your screen. It is not a stall, so aforge does not treat it
+as one. While a run of thought is arriving, the patience it is given is measured
+against **how long this model itself usually thinks** — learned from every
+thought aforge has timed for it, at the effort it was asked at, and from nothing
+else.
+
+So a thought that has gone quiet for far longer than that model's own thinking
+ever runs is treated as a stall and rescued the same way a slow lane is: a
+second request goes out and the status line says `slow · trying …`. A long
+thought that is still arriving is left alone however long it runs, because
+leaving one costs a whole fresh run of thought and buys you nothing.
+
+Until aforge has watched a model think a few dozen times it has no opinion about
+that model's thinking, and the ceiling on how long any silence may run is the
+only thing ending a hung one. That is why a model you have been using feels
+quicker to rescue than one you have just picked.
+
 ## When every lane is slow
 
 Sometimes there is nowhere better to go — everything serving that model is

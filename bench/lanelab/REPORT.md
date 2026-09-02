@@ -1961,6 +1961,13 @@ wherever this arm is reported.
 
 ## The long-think gate, restated — and what stays ungated (issue #316)
 
+> **HALF OF THIS SECTION IS HISTORY — #316 is closed by PR #365 and the floor
+> now lifts.** (a) and (b) below are what the build did while `lane.Thinks`
+> passed a constant, and they stand exactly as measured; the new measurement,
+> the n the gate closes at, and the half of #316's acceptance this close does
+> NOT buy are at the end of the section under "Closed, and what the close does
+> not buy".
+
 **The gate is now: ≥95% enforced at full force on every WARMED arm, and
 REPORTED on cold ones.** Not an allowance for being cold. What follows is the
 mechanism, measured twice — once off the code and once in the rig — because the
@@ -2087,3 +2094,58 @@ above is not withdrawn, it is explained.
 this criterion still read `true` for the cold arms. Every measured value is
 unchanged; only which of them carries a verdict has moved, and the table above is
 that mapping.
+
+### Closed, and what the close does not buy (#316, PR #365)
+
+**The floor lifts. Everything in (a) and (b) above stands as measured and is now
+history: it is what the build did while `Thinks` passed a constant.**
+
+Nobody publishes how much one run of thought varies, and that is why the floor
+was there. Something **observes** it: every `lane.NoteThought` is one draw of
+exactly that quantity. So the think chain keeps its own dispersion account per
+(model, rung) — Welford's count, mean and sum of squared deviations, folded on
+the same lock and in the same call as the belief — and `lane.Thinks` passes that
+to `Chain.Survival` where `SpreadFloor` used to stand. The law is the sample
+spread pooled with the prior at one observation's weight,
+
+    σ² = (SpreadFloor² + Σ(z − z̄)²) / n
+
+floored at `lane.SpreadTightest` = 0.15 nat, so one thought cannot collapse the
+tail and a spread of nothing is never claimed.
+
+#### (c) The gate closes at n = 31
+
+`go test ./bench/lanelab/gosim/ -run TestWhenTheThinkGateCloses -v`, the same
+sweep as (a), through the same `lane.NoteThought` door, at z = 2.7131 against
+the talk role's 10 s ceiling:
+
+| observations *n* | μ | **σ** | median | quantile at z = 2.7131 | inside the 10 s ceiling |
+|---:|---:|---:|---:|---:|---|
+| 0 | 2.079 | 1.432 | 8.00 s | 389.14 s | no |
+| 1 | 1.745 | 1.040 | 5.73 s | 96.28 s | no |
+| 2 | 1.712 | 0.875 | 5.54 s | 59.57 s | no |
+| 5 | 1.705 | 0.604 | 5.50 s | 28.31 s | no |
+| 10 | 1.705 | 0.405 | 5.50 s | 16.50 s | no |
+| 20 | 1.705 | 0.270 | 5.50 s | 11.45 s | no |
+| 30 | 1.705 | 0.221 | 5.50 s | 10.03 s | no |
+| **31** | 1.705 | **0.218** | 5.50 s | **9.94 s** | **yes** |
+| 40 | 1.705 | 0.197 | 5.50 s | 9.39 s | yes |
+| 60 | 1.705 | 0.174 | 5.50 s | 8.82 s | yes |
+
+The test asserts that n rather than its absence, and refuses anything past 40.
+
+#### (d) And it stays open on a model whose thinking really varies
+
+This is the half that could have been got wrong silently: the estimate's own
+spread shrinks with evidence whatever the evidence says, so a build that merely
+deleted the constant would call every well-measured model steady — including one
+that thinks for two seconds on one question and forty on the next — and would
+start hedging its legitimate long thoughts.
+`TestAModelWhoseThinkingReallyVariesKeepsItsGateOpen` folds the same sixty
+observations with a real 0.9-nat spread around the same median:
+
+| sixty thoughts | σ | quantile at z = 2.7131 | gate |
+|---|---:|---:|---|
+| identical | 0.174 | 8.82 s | closed |
+| varying by 0.9 nats | 0.909 | 68.25 s | **open** |
+
