@@ -341,7 +341,8 @@ ended, whatever request was still open to the model is aborted, the conversation
 note `detached — the turn was let go of and nothing is waiting for it`, and the box is
 yours again — you can type the next thing straight away. If the turn had spent anything,
 the note names it, for example `detached — the turn was let go of and nothing is waiting
-for it — it spent $0.04`.
+for it — it spent $0.04`; under half a cent it says `it spent under a cent` rather than a
+figure, and a turn that spent nothing says nothing about money at all.
 
 **Nothing is silently orphaned.** A turn that had to be detached is written into the
 conversation's own journal file as `abandoned`, with the tokens and the money it had spent
