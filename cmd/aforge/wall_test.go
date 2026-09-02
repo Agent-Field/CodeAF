@@ -24,7 +24,9 @@ func TestTheWallTakesAUnitAndStillTakesBareSeconds(t *testing.T) {
 			t.Fatalf("parseWall(%q) = %v, %v; want %v", tc.text, got, err, tc.want)
 		}
 	}
-	for _, text := range []string{"5x", "", "0", "-5", "0s", "later"} {
+	// 9223372037 seconds is one more than a duration can hold; multiplied out
+	// it wrapped to a wall of 145 ms that passed every check.
+	for _, text := range []string{"5x", "", "0", "-5", "0s", "later", "9223372037", "99999999999999"} {
 		if _, err := parseWall(text); err == nil {
 			t.Fatalf("parseWall(%q) accepted a wall that is not one", text)
 		}

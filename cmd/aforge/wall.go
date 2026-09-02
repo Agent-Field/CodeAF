@@ -33,19 +33,20 @@ func (f *wallFlag) Set(text string) error {
 // parseWall reads a wall from a person's spelling of it: a duration with a
 // unit, or a bare integer of seconds. Zero and below are refused here rather
 // than downstream, so the one error a person sees names the flag they typed.
+//
+// A bare integer is read by giving it the unit and parsing it as the duration
+// it is, rather than by multiplying: a count of seconds too large to hold is
+// refused as unreadable, where the product would have wrapped into a wall of
+// a few milliseconds that passed the positivity check.
 func parseWall(text string) (time.Duration, error) {
 	text = strings.TrimSpace(text)
-	if seconds, err := strconv.Atoi(text); err == nil {
-		return positiveWall(time.Duration(seconds) * time.Second)
+	if _, err := strconv.Atoi(text); err == nil {
+		text += "s"
 	}
 	wall, err := time.ParseDuration(text)
 	if err != nil {
 		return 0, fmt.Errorf("a duration such as 15m or 2h, or a number of seconds")
 	}
-	return positiveWall(wall)
-}
-
-func positiveWall(wall time.Duration) (time.Duration, error) {
 	if wall <= 0 {
 		return 0, fmt.Errorf("must be positive")
 	}
