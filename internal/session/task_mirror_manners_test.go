@@ -36,7 +36,12 @@ func aMirrorOn(t *testing.T, ground string) taskTree {
 // its copy, the person rewrites their own while it works, and the landing lays
 // nothing at all.
 func TestAFolderLandingRefusesToWriteOverThePersonsOwnEdit(t *testing.T) {
-	ground := t.TempDir()
+	// THE GROUND IS NAMED THE WAY THE DOOR SPELLS IT. prepareTaskTreeOn
+	// canonicalizes the folder it stands on (place.go's [canonicalPath]) and
+	// every sentence about it names that spelling — which on macOS is
+	// /private/var/… for the /var/… that t.TempDir hands out, so a test that
+	// compared the raw one was green on Linux and red on every Mac.
+	ground := canonicalPath(t.TempDir())
 	writeFile(t, filepath.Join(ground, "notes.md"), "the original line\n")
 
 	tree := aMirrorOn(t, ground)

@@ -45,9 +45,20 @@ import (
 // same model and is what the settings row takes.
 const e2eModel = "deepseek/deepseek-v4-flash"
 
-// personConfig is the credentials this lane borrows. It is COPIED into a
-// throwaway AFORGE_HOME and never read out loud: it holds the person's key.
-const personConfig = "/home/santosh/.aforge/config.json"
+// personConfig is the credentials this lane borrows: the profile in the
+// person's OWN aforge home, read before the throwaway one is put in front of
+// it. It is COPIED into that throwaway AFORGE_HOME and never read out loud,
+// because it holds the person's key.
+//
+// IT IS RESOLVED, NOT SPELLED. It was a constant naming one machine's home
+// directory, and on every other machine the whole lane — families, standing,
+// the phase clock — skipped with "no provider credentials", which reads as a
+// key that was never set rather than as a path that was never yours. Resolving
+// through [home.Dir] honours the same override the binary does, so a person
+// who runs aforge out of AFORGE_HOME runs this lane out of it too.
+func personConfig() string {
+	return filepath.Join(home.Dir(), "config.json")
+}
 
 // ── the throwaway machine ───────────────────────────────────────────────────
 
@@ -73,6 +84,9 @@ func newWorld(t *testing.T) *world {
 	if strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) == "" {
 		t.Skip("no OPENROUTER_API_KEY: this lane drives a real model")
 	}
+	// The person's own profile is located BEFORE the override lands: after the
+	// Setenv below, home.Dir is the throwaway.
+	profile := personConfig()
 	dir := t.TempDir()
 	t.Setenv(home.EnvVar, dir)
 	// AFORGE_PROFILE_DIR is the narrow override that would move the profile
@@ -80,9 +94,9 @@ func newWorld(t *testing.T) *world {
 	// answers <dir>/config.json — the file copied one line down.
 	t.Setenv("AFORGE_PROFILE_DIR", "")
 
-	raw, err := os.ReadFile(personConfig)
+	raw, err := os.ReadFile(profile)
 	if err != nil {
-		t.Skipf("no provider credentials at %s: %v", personConfig, err)
+		t.Skipf("no provider credentials at %s: %v", profile, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
 		t.Fatalf("copy the profile: %v", err)
