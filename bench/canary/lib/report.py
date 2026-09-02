@@ -29,7 +29,8 @@ import subprocess
 # column where it has always been.
 COLUMNS = ["run", "sha", "id", "door", "anchor", "pass", "wall_s", "cost_usd", "ttft_ms",
            "changed_files", "f2p_passed", "f2p_failed", "suite_passed", "suite_failed", "load", "reason",
-           "door_verdict", "tests_verdict", "source", "tier", "gate_rounds"]
+           "door_verdict", "tests_verdict", "source", "tier", "gate_rounds", "task_done_s", "done_to_wall_s",
+           "mark_fails", "carry_ons"]
 
 
 def cells(run_dirs):
@@ -46,7 +47,7 @@ def cells(run_dirs):
 
 def row(meta, cell):
     f2p, suite = cell.get("f2p") or {}, cell.get("suite") or {}
-    return {
+    values = {
         "run": meta["run"], "sha": meta["sha"], "id": cell["id"], "door": cell["door"],
         "anchor": "yes" if cell.get("anchor") else "fresh", "pass": "pass" if cell["pass"] else "FAIL",
         "wall_s": cell.get("wall_s") or "", "cost_usd": "%.4f" % cell["cost_usd"] if cell.get("cost_usd") else "",
@@ -59,7 +60,14 @@ def row(meta, cell):
         "door_verdict": cell.get("door_verdict", ""), "tests_verdict": cell.get("tests_verdict", ""),
         "source": cell.get("source", ""), "tier": cell.get("tier", ""),
         "gate_rounds": cell.get("gate_rounds", ""),
+        "task_done_s": cell.get("task_done_s") if cell.get("task_done_s") is not None else "",
+        "done_to_wall_s": cell.get("done_to_wall_s") if cell.get("done_to_wall_s") is not None else "",
+        "mark_fails": cell.get("mark_fails") if cell.get("mark_fails") is not None else "",
+        "carry_ons": cell.get("carry_ons") if cell.get("carry_ons") is not None else "",
     }
+    # Missing measurements stay empty everywhere. In particular, older chat
+    # rows may carry an explicit null gate count, which must not print `None`.
+    return {name: "" if value is None else value for name, value in values.items()}
 
 
 def provenance(r):
@@ -80,7 +88,10 @@ def table(rows):
     # run and `tests` is the pull request's verdict on the tree it left. The two
     # are never merged, because a door that ends badly on work the tests call
     # green is a finding, and one column cannot say it.
-    head = ["issue", "via", "set", "door", "tests", "wall", "cost", "ttft", "files", "f2p", "suite", "gate", "load", "why"]
+    # The done-to-wall column exists because a chat that runs past its own
+    # task's landing to the wall is a product defect (#468), and the fix must
+    # be visible per anchor when it lands.
+    head = ["issue", "via", "set", "door", "tests", "wall", "cost", "ttft", "files", "f2p", "suite", "gate", "done→wall", "marks", "carry", "load", "why"]
     out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in rows:
         cost = "$" + r["cost_usd"] if r["cost_usd"] else ""
@@ -88,9 +99,11 @@ def table(rows):
         ttft = "%sms" % r["ttft_ms"] if r["ttft_ms"] != "" else ""
         f2p = "%s/%s" % (r["f2p_passed"], r["f2p_failed"]) if r["f2p_passed"] != "" else ""
         suite = "%s/%s" % (r["suite_passed"], r["suite_failed"]) if r["suite_passed"] != "" else ""
-        out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+        done_to_wall = "%ss" % r["done_to_wall_s"] if r["done_to_wall_s"] != "" else ""
+        out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
             r["id"], r["door"], provenance(r), r["door_verdict"], r["tests_verdict"], wall, cost, ttft,
-            r["changed_files"], f2p, suite, r["gate_rounds"], r["load"], r["reason"]))
+            r["changed_files"], f2p, suite, r["gate_rounds"], done_to_wall, r["mark_fails"], r["carry_ons"],
+            r["load"], r["reason"]))
     return "\n".join(out)
 
 
