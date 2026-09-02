@@ -12,12 +12,11 @@ Three things follow from that, and they are the whole feature:
 
 - **You settle the input before it runs.** That is the intake card (below): every field of
   the schema, the answered ones stated, the required blanks marked.
-- **They come from four places and nothing on screen says which is which.** Some ship in
-  this binary; some are bundles under `~/.aforge/subharnesses`; some are bundles committed
-  into the project you are working in; and some are the pages a design wrote when you asked
-  aforge to build you one, under `~/.aforge/harnesses`. The mark on a row reads `built-in`,
-  `yours` or `from this project`, and that is where it was found, not what language it is
-  in or which door built it.
+- **They come from three places and nothing on screen says which is which.** Some are
+  bundles under `~/.aforge/subharnesses`; some are bundles committed into the project you
+  are working in; and some are the pages a design wrote when you asked aforge to build you
+  one, under `~/.aforge/harnesses`. The mark on a row reads `yours` or `from this project`,
+  and that is where it was found, not what language it is in or which door built it.
 - **A run is a task.** It gets a roster row, a room, a journal and a `✕`, like every other
   piece of work you can walk away from.
 
@@ -35,7 +34,7 @@ Type `/subharness` (or `/sub`) with nothing after it. A filtering list opens und
 message box, at most **12** lines, with the filter box in the box's own place:
 
 ```
-flake-triage      chase a flaky test · up to 15m · built-in
+flake-triage      chase a flaky test · up to 15m · yours
 weekly-update     the Monday note for the team · yours · yesterday · finished · $0.12
 ```
 
@@ -137,7 +136,7 @@ program already does, aforge offers it — and the offer is **this same intake c
 in front of you with a line saying why:
 
 ```
-flake-triage · chase a flaky test · up to 15m · built-in
+flake-triage · chase a flaky test · up to 15m · yours
 this looks like flake-triage: the brief and a failing test name are both here
 ▲ test              the failing test's name
   branch            main
@@ -211,7 +210,7 @@ The card is what opens on `enter` from the list, and what `/subharness <name>` o
 directly. **It is one card either way** — the same rows, the same keys.
 
 ```
-flake-triage · chase a flaky test · up to 15m · built-in
+flake-triage · chase a flaky test · up to 15m · yours
 ▲ test              the failing test's name
   branch            main
   run it

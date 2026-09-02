@@ -70,25 +70,26 @@ For a headless run, start bare `aforge` once to connect in a terminal, or export
 The environment outranks the file, always; the setup only asks for what nothing else has
 answered.
 
-## The crew step — the four models aforge uses on its own behalf
+## The crew step — the five models aforge uses on its own behalf
 
 The second step draws the three presets exactly as bare `/crew` does — each preset's
-word, its one-line description and the four class models under it — with the cursor on
+word, its one-line description and the five class models under it — with the cursor on
 `balanced`. `↑`/`↓` move it, `enter` takes the row under the cursor.
 
 The sentence above the rows is the one people most need on their first day:
 
-> these four are the models aforge uses on its own behalf — planning, checking, reading
-> every turn. the model you talk to is a separate choice, made with /model.
+> these five are the models aforge uses on its own behalf — the work inside every
+> task, planning, checking, reading every turn. the model you talk to is a separate
+> choice, made with /model.
 
-The crew and the model you talk to are **two different settings**. The crew is the four
-class rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.high`,
-`models.tiers.mastermind`) that aforge's own side-calls run on; the model that answers
-you in the conversation is chosen with `/model` and shown in the status line, and the
-crew never touches it. Choosing a crew here writes those four rows in one go, which is
-exactly what `/crew balanced` does.
+The crew and the model you talk to are **two different settings**. The crew is the five
+class rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`,
+`models.tiers.high`, `models.tiers.mastermind`) that aforge's own side-calls run on; the
+model that answers you in the conversation is chosen with `/model` and shown in the status
+line, and the crew never touches it. Choosing a crew here writes those five rows in one go,
+which is exactly what `/crew balanced` does.
 
-If any of the four rows is already in your profile — you pinned one by hand, or an
+If any of the five rows is already in your profile — you pinned one by hand, or an
 earlier `/crew` wrote them — this step is not shown.
 
 ## The first-run rails screen — what may aforge spend

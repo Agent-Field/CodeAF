@@ -10,11 +10,10 @@ The point of having one is that the good way of doing something stops depending 
 remembering it. A program that works out why a test is flaky does that the same way every
 time, for the same money, and tells you the same shaped answer at the end.
 
-Some of them are built into aforge. Some are files on your machine under
-`~/.aforge/subharnesses`, or in the project you are working in. Some are the pages a design
-wrote when you asked aforge to build you one, under `~/.aforge/harnesses`. **They are one
-list and nothing in it says which is which** beyond where each was found — a saved program
-and a built-in one are the same kind of thing here on purpose.
+Some are files on your machine under `~/.aforge/subharnesses`, or in the project you are
+working in. Some are the pages a design wrote when you asked aforge to build you one, under
+`~/.aforge/harnesses`. **They are one list and nothing in it says which is which** beyond
+where each was found.
 
 A **harness** is one of these too, reached by another door: `/harness` picks one and takes
 your request as a sentence, `/subharness` lists it beside everything else and takes your

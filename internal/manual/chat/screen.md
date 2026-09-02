@@ -447,8 +447,8 @@ say so. The **money figure** further along the row is a door in the same way: pr
 is the keyboard door onto the same tab.
 
 Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
-`crew frugal`, or `crew custom` when you pinned one of the four yourself — so the two model
-dials sit side by side: the model you talk to on the left, the preset the four models aforge
+`crew frugal`, or `crew custom` when you pinned one of the five yourself — so the two model
+dials sit side by side: the model you talk to on the left, the preset the five models aforge
 uses on its own behalf are on to its right. It is absent on a session with no profile, and
 it is one of the first segments a narrow row drops.
 
@@ -471,7 +471,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
-| 0 | crew | `crew max` | which preset the four models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent on a session with no profile |
+| 0 | crew | `crew max` | which preset the five models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent on a session with no profile |
 | 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
 | 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
 | 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
@@ -1875,8 +1875,8 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 running on.** On macOS every chord is drawn with `⌥` — `⌥1`…`⌥7`, `⌥.`, `⌥enter`, `⌥g`, `⌥q`,
 `⌥s`, `⌥w`, `⌥o` — because that is what the keycap says. On Linux, on Windows, and everywhere
 else the same chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint
-line, the key map, the composer layer's rows and the `/keys` sheet read that one spelling, so
-what is on your screen is what is on your keyboard.
+line, the key map, the composer layer's rows and the key sheet `/help` draws read that one
+spelling, so what is on your screen is what is on your keyboard.
 
 The manual names both spellings together — `alt+1` (`⌥1` on a Mac) — because it is one book
 for both platforms. If a page here says `alt+` and your screen says `⌥`, they are the same
