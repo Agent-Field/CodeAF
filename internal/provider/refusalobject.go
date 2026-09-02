@@ -203,6 +203,15 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 // machine that was named on the wire.
 func (c *Client) onlyLane(model string, knobs callKnobs, request *ai.Request) string {
 	prefs := c.wirePreferences(model, knobs, request)
+	// ONE NAME OR NO NAME, because a strike has to name the machine it takes
+	// away. A demand listing two machines and refused as a whole says only that
+	// the pair could not serve the model between them, and striking either on
+	// that evidence would be striking on a guess — the same reason a refusal
+	// that names no upstream at all is left to the breaker in #138 rather than
+	// struck here. Nothing on the wire builds such a demand today: a person's
+	// pin is one machine (lanes.go) and a rescue's demand is the single arm it
+	// walked to, so this arm is a guard against a future caller rather than a
+	// case anybody can reach.
 	if prefs == nil || len(prefs.Only) != 1 {
 		return ""
 	}

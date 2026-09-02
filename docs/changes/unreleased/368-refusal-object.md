@@ -12,9 +12,11 @@ invalidates:
     `provider.only`, and a router refusal against a demanded machine also writes that
     machine out of `internal/lane`'s serving set for the model."
   - "The endpoint-refusal ladder's first rung dropped `provider.require_parameters`,
-    `provider.ignore` and `provider.max_price`. It now drops the WHOLE provider object,
-    `provider.only` and `provider.allow_fallbacks` included, and it is offered whenever a
-    demand is on the wire — including one a rescue added after the ledger's own preferences
+    `provider.ignore` and `provider.max_price`. It now drops every MEMBERSHIP restriction —
+    `provider.only` and `provider.allow_fallbacks` included, so nothing is left that can
+    empty the endpoint set — while the ranking asks, `provider.sort` and `provider.order`,
+    stay exactly as they were: a rung is for widening who may answer, never for changing
+    who is preferred. It is offered whenever a demand is on the wire — including one a rescue added after the ledger's own preferences
     were assembled, which a pinned request never used to get a first rung for at all."
   - "`internal/lane`'s candidate gate read only the endpoints sheet. `lane.Serves(model, lane)`
     is now a second, negative half of the serving set, written by the transport when the wire
