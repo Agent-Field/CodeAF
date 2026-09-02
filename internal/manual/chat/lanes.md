@@ -115,21 +115,21 @@ getting them their answer.
 
 A reasoning model writes its thinking before it writes a word you can read, and
 none of that is on your screen. It is not a stall, so aforge does not treat it
-as one. While a run of thought is arriving, the patience it is given is measured
-against **how long this model itself usually thinks** — learned from every
+as one. While a thought is arriving, its patience is measured against **how the
+model itself usually thinks** — learned from every
 thought aforge has timed for it, at the effort it was asked at, and from nothing
 else.
 
-So a thought that has gone quiet for far longer than that model's own thinking
-ever runs is treated as a stall and rescued the same way a slow lane is: a
-second request goes out and the status line says `slow · trying …`. A long
-thought that is still arriving is left alone however long it runs, because
-leaving one costs a whole fresh run of thought and buys you nothing.
+So a thought that has gone quiet far beyond that model's usual thinking is
+treated as a stall and rescued the same way a slow lane is: a second request
+goes out and the status line shows `slow · trying …`. A deep thought that is
+still arriving is left alone for all the patience it needs, because leaving one
+costs a whole fresh thought and buys you nothing.
 
 Until aforge has watched a model think a few dozen times it has no opinion about
-that model's thinking, and the ceiling on how long any silence may run is the
-only thing ending a hung one. That is why a model you have been using feels
-quicker to rescue than one you have just picked.
+that model's thinking, and only the ceiling on silence can end a hung one. That
+is why a model you have been using feels quicker to rescue than one you have
+just picked.
 
 ## When every lane is slow
 
