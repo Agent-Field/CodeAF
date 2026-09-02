@@ -1611,38 +1611,34 @@ aborted, because its edits are already in your tree.
 So work is recoverable even when it did not merge. The branch name is in the landing note,
 in the checkpoint on disk, and in the project's index of landed work.
 
-## Work that needs your look holds up what depends on it
+## Work that needs your look holds up what depends on it — did my task see all of the earlier tasks' work, why did my task only see part of the earlier task's report, does the task get everything the previous task found
 
-A task can name `depends_on` — the ids of tasks that must finish first. When it starts,
-its brief is given their reports, under the line
-`What the work before you learned:` and then, per prerequisite,
-`<title> (task N):` and the report. That lands inside the `THE WORK` part of what the task
-reads, below the model's brief.
+A task can name `depends_on` — ids that must finish first. When it starts, their reports
+land in `THE WORK` under `What the work before you learned — N reports:`, then
+`<title> (task N):` and the report. `N` is how many are there, so a six-row table can
+count.
 
-What happens depends on how the earlier task landed:
+**Every earlier task is always represented.** Keeping four of six and saying nothing
+about the other two is how a sink once wrote a confident four-row table. The list is
+never shortened. **The task's own brief is never cut.** The reports share what is left
+of a 6000-byte bound after it, equally; unused share goes to whoever still needs it. A
+report that does not fit is cut and marked with `…`, so the worker can see it is a
+fragment and go read the earlier task's whole report. A report that fits is handed
+over unchanged, with no mark. So: no, not every byte — yes, every earlier task.
 
 | The task it waits on | What happens |
 | --- | --- |
 | Finished | It becomes ready and starts when a slot is free |
-| Failed | It fails too, with the report `it waits on task 3, which did not finish` |
+| Failed | It fails too, with `it waits on task 3, which did not finish` |
 | Not in this session's work at all | It fails, with `it waits on task 3, which is not in this session's work` |
 | **Needs your look** | It **stays queued** — it does not fail |
 
 **A bad id never gets that far on a new proposal.** `depends_on` takes only ids
-`propose_task` itself returned in this session. A number that names no task — a
-background job's id, an adaptive run's, a step count — and a number whose task has
-already failed are both refused on the spot, before you are even asked about the task:
-`depends_on names task 1 — no task in this session has that id`. Nothing is created and
-nothing dies; aforge corrects the proposal and asks again. The failure rows above remain
-for work that goes wrong **after** a task was admitted — a prerequisite that fails while
-its dependent is already queued.
-
-That last row is the point. Work that needs your look does not knock over everything
-behind it. Dependents wait rather than failing, and they wait indefinitely: nothing will
-move them on its own until you decide what to do with the task in front of them.
-
-Dependencies can only point backwards — ids ascend — and that is enforced when a session's
-work is reloaded from disk.
+`propose_task` itself returned. A job, an adaptive run, a step count, or a task that
+already failed is refused on the spot:
+`depends_on names task 1 — no task in this session has that id`. The rows above are
+for work that goes wrong after admission. Dependents of work that needs your look wait
+indefinitely. Dependencies only point backwards — ids ascend — including on reload.
 
 ## A task's own sub-tasks are its problem — can I accept a sub-task before its parent finishes, does a sub-task ask me for a look while the parent is running, nested tasks that need a look
 
@@ -2231,7 +2227,8 @@ pointer — they still point at your turn, never at the parent task's own journa
 Four more arguments, all optional. Every bad value is an ordinary result, not an error.
 
 **`depends_on`** — an array of task ids that must finish first. The task waits for them,
-and their reports are put in front of it when it starts. Ids can only point backwards,
+and their reports are put in front of it when it starts — every one of them, bounded
+and counted as the section above on work that needs your look says. Ids can only point backwards,
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.

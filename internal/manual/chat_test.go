@@ -272,6 +272,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the silent note mean", "keys"},
 		{"what does the exclamation mark next to a task mean", "how-tasks-run"},
 		{"task blocked by another task", "how-tasks-run"},
+		{"did my task see all of the earlier tasks' work", "how-tasks-run"},
+		{"why did my task only see part of the earlier task's report", "how-tasks-run"},
+		{"does the task get everything the previous task found", "how-tasks-run"},
 		{"why does it say not accepted under my task", "how-tasks-run"},
 		// Written from a real run too: a task that split its work sat waiting for
 		// its parts and was killed as stuck, and a sibling fast-forwarded its own

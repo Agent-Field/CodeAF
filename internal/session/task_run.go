@@ -1237,6 +1237,19 @@ func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	return brief
 }
 
+// inheritedLearnedLead opens the section that hands a node what ran before it.
+// The count of reports is appended when any are present — the same idiom
+// PERF.md records for `openFindingsLimit`: the worker is told how many there
+// are, so a sink writing a six-row table can count. A heading with nothing
+// under it is not printed (the emptiness law).
+const inheritedLearnedLead = "What the work before you learned"
+
+// inheritedReportFloor is the smallest share one prerequisite's report may be
+// given. Below this a fragment names nothing a worker can act on — a title and
+// an ellipsis — and the model reads past it the way the fanin6 sink read past
+// the two sections it was never shown.
+const inheritedReportFloor = 512
+
 // inheritedLocked is the half of the brief above that A PART OF THIS WORK
 // INHERITS: what the node was admitted with, and what the work before it
 // learned. It is a function of its own because the division road composes every
@@ -1244,21 +1257,134 @@ func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 // one section it must not carry — the frontier appends those to each part in its
 // own right a moment later, so a part composed on the whole assembled brief
 // would read the house rules twice.
+//
+// THE TASK'S OWN BRIEF IS NEVER CUT. Its ask, its work, what to produce and its
+// done conditions are the contract. The reports take what is left of
+// [taskShapeBriefLimit] after that brief and the heading that names how many
+// there are. They share that room equally; a short report's unused share is
+// handed to whoever is still clipped, so one long finding cannot starve five
+// short ones.
+//
+// NO PREREQUISITE IS EVER DROPPED. A capped pot once fed a sink four of six
+// sections and it wrote a confident four-row table — no node failed, the
+// delivery gate passed it, the only evidence was the row count. The list gets
+// thinner, never shorter. When the remaining room cannot hold every report at
+// [inheritedReportFloor], the bound YIELDS and each report still gets the
+// floor: arithmetic that would have produced a zero-length share is how the
+// four-of-six pot happens again.
+//
+// A clipped report is marked with [clip], which is the one fitting mark on this
+// road. [familyOf] will fit this whole string a second time as its ground; clip
+// moves a trailing mark rather than stacking one, so a report is marked once
+// or not at all.
 func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
-	var learned strings.Builder
+	type learned struct {
+		title  string
+		id     uint64
+		report string
+	}
+	var reports []learned
 	for _, id := range node.dependsOn {
 		prerequisite := g.nodes[id]
-		if prerequisite == nil || strings.TrimSpace(prerequisite.report) == "" {
+		if prerequisite == nil {
 			continue
 		}
-		fmt.Fprintf(&learned, "\n\n%s (task %d):\n%s",
-			prerequisite.spec.title, id, prerequisite.report)
+		report := strings.TrimSpace(prerequisite.report)
+		if report == "" {
+			continue
+		}
+		reports = append(reports, learned{
+			title:  prerequisite.spec.title,
+			id:     id,
+			report: report,
+		})
 	}
 	brief := node.spec.brief
-	if learned.Len() > 0 {
-		brief += "\n\nWhat the work before you learned:" + learned.String()
+	if len(reports) == 0 {
+		return brief
 	}
-	return brief
+
+	heading := inheritedLearnedHeading(len(reports))
+	headers := make([]string, len(reports))
+	bodies := make([]string, len(reports))
+	overhead := len(brief) + len("\n\n") + len(heading)
+	for i, item := range reports {
+		headers[i] = fmt.Sprintf("\n\n%s (task %d):\n", item.title, item.id)
+		bodies[i] = item.report
+		overhead += len(headers[i])
+	}
+	fitted := shareReports(bodies, taskShapeBriefLimit-overhead)
+
+	var out strings.Builder
+	out.WriteString(brief)
+	out.WriteString("\n\n")
+	out.WriteString(heading)
+	for i := range reports {
+		out.WriteString(headers[i])
+		out.WriteString(fitted[i])
+	}
+	return out.String()
+}
+
+// inheritedLearnedHeading is the lead plus how many reports follow it. The
+// count is the cheapest defence against a silent drop: a worker told there
+// are six can notice when it can only name four.
+func inheritedLearnedHeading(n int) string {
+	noun := "reports"
+	if n == 1 {
+		noun = "report"
+	}
+	return fmt.Sprintf("%s — %d %s:", inheritedLearnedLead, n, noun)
+}
+
+// shareReports allots a pot of bytes across reports so that one long report
+// cannot starve the others, and so that NO report is dropped. Each report is
+// given an equal first share; unused remainder is handed to whoever is still
+// clipped. A share that would fall under [inheritedReportFloor] is lifted to
+// the floor — the bound yields before a report vanishes, because a 4 KiB pot
+// once fed a sink four of six sections and it wrote a confident four-row
+// table. A report that fits its share is passed through unclipped, with no
+// mark (the emptiness law). A report that does not is marked by [clip].
+func shareReports(reports []string, pot int) []string {
+	n := len(reports)
+	if n == 0 {
+		return nil
+	}
+	if need := n * inheritedReportFloor; pot < need {
+		// THE BOUND YIELDS BEFORE A REPORT VANISHES. N times the floor did not
+		// fit in what was left after the task's own brief; shrinking a share
+		// to zero, or dropping the tail, is the four-of-six pot again.
+		pot = need
+	}
+	share := pot / n
+	allotted := make([]int, n)
+	remaining := pot
+	for i, report := range reports {
+		allotted[i] = share
+		if len(report) < share {
+			allotted[i] = len(report)
+		}
+		remaining -= allotted[i]
+	}
+	for i, report := range reports {
+		if remaining <= 0 {
+			break
+		}
+		growth := len(report) - allotted[i]
+		if growth <= 0 {
+			continue
+		}
+		if growth > remaining {
+			growth = remaining
+		}
+		allotted[i] += growth
+		remaining -= growth
+	}
+	out := make([]string, n)
+	for i, report := range reports {
+		out[i] = clip(report, allotted[i])
+	}
+	return out
 }
 
 // complete settles one node and turns the frontier again. The runner has
