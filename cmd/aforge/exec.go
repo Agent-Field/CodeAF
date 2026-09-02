@@ -71,7 +71,7 @@ func runExec(args []string) error {
 	// because only the work seat runs anything.
 	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
 	applySeats(&settings, seats)
-	fmt.Fprintln(os.Stderr, seats.Work.Line())
+	fmt.Fprintln(os.Stderr, seats.Work.Report())
 	modelCatalog := sharedCatalog(settings)
 	settings.Models = modelCatalog
 	client, err := settings.Client()
