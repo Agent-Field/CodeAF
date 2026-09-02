@@ -10,6 +10,8 @@ invalidates:
   - "`internal/tui3`'s room parsed a node's session file itself. It never parses JSONL again: `session.ReadTranscript` and `session.ReadTranscriptBytes` are the door, and `replayBlocks` is the only entry-shaping path for both the conversation and a task page."
   - "A line delivered into a node was journaled as a plain user message. It now carries a steer mark — the instant it was sent, delivered, and the engine's landing sentence — so a reopened page can tell a correction from a brief."
   - "`readRoomJournal`, `readRoomJournalTail`, `readRoomJournalBytes` and `shapeRoomJournal` were `internal/tui3`'s functions. They are gone, together with the `journalArgsLimit`/`journalOutputLimit` caps hand-copied from `internal/session`."
+  - "A session file with one line past the scanner's buffer — one very large paste — resumed as an EMPTY conversation. Every message above that line comes back now, and the line it could not read is named (`Record.UnreadFrom`)."
+  - "A task page opened after its node compacted showed only the pass's shortened copy, so calls above the marker opened onto stubs. The region the pass edited away is drawn above the seam row, as the conversation already draws it."
 ---
 
 Lane L3 of #252. The task page and the conversation were meant to be one transcript
