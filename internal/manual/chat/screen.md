@@ -2527,7 +2527,7 @@ and then a slow answer is simply waited out — the status line still says what 
 and how long it has been, and draws no countdown, because nothing is going to happen at
 the end of one.
 
-## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go
+## Why did the reply restart, what does "trying again" mean, and where did the text that was on screen go — the text it was writing disappeared
 
 Sometimes the wait line stops naming a model and reads this instead:
 

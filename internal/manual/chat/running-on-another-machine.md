@@ -292,7 +292,7 @@ copying, and the place a conversation lives never moves.
 **And the places are neither.** They are a listing of one machine's disk, and they follow the
 machine your session is on. Nothing about them opens a second window or moves a conversation.
 
-## What happens when you press enter over --host — your message appears at once
+## What happens when you press enter over --host — your message appears at once, my message disappeared after I sent it over ssh
 
 **Your sentence goes onto the page the moment you press enter**, in the exact place it
 will keep, and it is drawn **a shade quieter than usual** until the far machine has

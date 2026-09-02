@@ -421,7 +421,8 @@ func (c *Corpus) Cues() []string {
 
 // searchStopWords are the function words that carry no reference. Dropping them
 // costs nothing — BM25 already discounts a word that is in every section — and
-// it keeps a short question from being scored mostly on its grammar.
+// it keeps a short question from being scored mostly on its grammar. "How much"
+// is the commonest question shape, and "much" has no business deciding its ranking.
 var searchStopWords = map[string]bool{
 	"a": true, "an": true, "the": true, "of": true, "to": true, "in": true,
 	"on": true, "at": true, "by": true, "for": true, "and": true, "or": true,
@@ -433,6 +434,7 @@ var searchStopWords = map[string]bool{
 	"should": true, "could": true, "has": true, "have": true, "had": true,
 	"but": true, "so": true, "if": true, "then": true, "than": true,
 	"what": true, "which": true, "who": true, "why": true, "how": true,
+	"much": true,
 }
 
 // cueStopWords are words a manual's own headings use that would fire the
@@ -493,23 +495,70 @@ func tokenize(text string) []string {
 
 // stem is the smallest reduction that makes the questions people actually ask
 // meet the words the pages actually use: plurals, gerunds and past tenses, plus
-// the doubled consonant English adds before them. Nothing here is a linguistic
-// claim — it is the difference between "why did you ask before cancelling" and
-// a page that says "cancel".
+// the doubled consonant English adds before them. BOTH SIDES OF A LOOKUP PASS
+// THROUGH THIS ONE FUNCTION, so a page's word and a question's word need only
+// land on the same string. Stripping every final e was wrong because it merged
+// paste with past and bare with bar; Porter's measure guard keeps those distinct
+// words apart while still letting longer inflections meet.
 func stem(word string) string {
+	base := word
+	restoreE := false
 	switch {
 	case len(word) > 4 && strings.HasSuffix(word, "ies"):
-		return word[:len(word)-3] + "y"
+		base = word[:len(word)-3] + "y"
 	case strings.HasSuffix(word, "ss") || strings.HasSuffix(word, "us"):
-		return word
+		base = word
 	case len(word) > 5 && strings.HasSuffix(word, "ing"):
-		return undouble(word[:len(word)-3])
+		withoutSuffix := word[:len(word)-3]
+		base = undouble(withoutSuffix)
+		restoreE = base == withoutSuffix
 	case len(word) > 4 && strings.HasSuffix(word, "ed"):
-		return undouble(word[:len(word)-2])
+		withoutSuffix := word[:len(word)-2]
+		base = undouble(withoutSuffix)
+		restoreE = base == withoutSuffix
 	case len(word) > 3 && strings.HasSuffix(word, "s"):
-		return word[:len(word)-1]
+		base = word[:len(word)-1]
 	}
-	return word
+	if restoreE && measure(base) == 1 && endsCVC(base) {
+		base += "e"
+	}
+	if strings.HasSuffix(base, "e") && measure(base[:len(base)-1]) > 1 {
+		base = base[:len(base)-1]
+	}
+	return base
+}
+
+// measure is Porter's m: how many vowel-to-consonant crossings a word has,
+// which is the nearest cheap thing to a syllable count. It is what tells
+// "paste" (one) from "refuse" (two), and that difference is the whole guard.
+func measure(word string) int {
+	m := 0
+	for i := 1; i < len(word); i++ {
+		if isVowel(word, i-1) && !isVowel(word, i) {
+			m++
+		}
+	}
+	return m
+}
+
+// endsCVC is Porter's *o: the word ends consonant, vowel, consonant, with the
+// last consonant not w, x or y. A one-measure stem of that shape lost an e to
+// its suffix — siz, typ, clos — and gets it back.
+func endsCVC(word string) bool {
+	if len(word) < 3 {
+		return false
+	}
+	last := word[len(word)-1]
+	if last == 'w' || last == 'x' || last == 'y' {
+		return false
+	}
+	return !isVowel(word, len(word)-3) && isVowel(word, len(word)-2) && !isVowel(word, len(word)-1)
+}
+
+// isVowel reads y as a vowel when it follows a consonant, as Porter does, so
+// "type" and "typ" measure the same way.
+func isVowel(word string, at int) bool {
+	return strings.ContainsRune("aeiou", rune(word[at])) || word[at] == 'y' && at > 0 && !isVowel(word, at-1)
 }
 
 func undouble(word string) string {
