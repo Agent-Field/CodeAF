@@ -1994,6 +1994,15 @@ claim ("these rows are what a copy would take"), so it is the same paint; it use
 drawn at the pointer's own quieter step, which said a sweep in progress was a shadow
 rather than a selection.
 
+**The selection covers every cell it takes — a code span or a chip included.** An inline
+code span wears a background of its own (the raised plane that makes it read as code),
+and so does a chip, but under a sweep they are part of what is being claimed: the
+highlight paints over them, in the sweep's colour, their text keeping its own colour
+and weight. Every terminal's own selection replaces the background it sweeps over, and
+this one reads the same. The clipboard is unchanged — what is highlighted is still
+exactly what is copied — so a sweep across a row with `code spans` in it copies the
+row you saw lit, to the character.
+
 **The selection sticks to the text, not to the screen.** A task's page streams and
 follows its live edge, so rows can scroll while your button is down; the highlight
 rides the rows you swept, the copy is those rows wherever they moved to, and a click

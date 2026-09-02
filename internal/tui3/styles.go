@@ -1421,11 +1421,157 @@ func (p palette) tint(s string, ink func(string) string) string {
 	return p.background(ink(s), 0, p.ramp.selected)
 }
 
+// holdGround re-lays the step's ground under every cell of s: an inner
+// background set becomes the step's ground, an inner background clear becomes
+// the step's ground, and a full reset keeps its reset and re-lays the ground
+// behind it. Inks and attributes are untouched, so a marked code span keeps its
+// colour, its bold and its italic — only the plane under it is made one.
+// ground is the step's own background as an SGR parameter list ("48;2;r;g;b"
+// or "48;5;n"), without the ESC[…m wrapper.
+//
+// THE SELECTION WINS OVER THE CHIP, and that is the ruling rather than a side
+// effect. The mark step is the loudest rung of the ground ladder; a raised
+// plane inside it says "this cell is a different kind of thing" at exactly the
+// moment the person is being told "these cells are the ones". Every terminal's
+// own selection replaces the background it sweeps over, and this one reads the
+// same. Before this walker existed, a background was one code, the text, one
+// reset — true only of text carrying no background of its own — so a sweep
+// across a row with an inline code span lit the cells before the span and
+// nothing after it: the span's own ground took the plane, and its compound
+// `49;39` on the way out switched the step's ground off for the rest of the
+// row (#294).
+//
+// Every form the styler can emit is answered, not just the obvious one:
+// `48;5;n`, `48;2;r;g;b`, the sixteen-colour `40`–`47` and `100`–`107`, the
+// bare `49`, the compound `49;39` that prose actually emits, and `0` — which a
+// terminal also spells as no parameters at all. Foreground and underline
+// colours (`38…`, `39`, `58…`) and every attribute keep their sub-parameters
+// and pass through untouched.
+func holdGround(s, ground string) string {
+	if !strings.Contains(s, "\x1b") {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		if s[i] != '\x1b' || i+1 >= len(s) || s[i+1] != '[' {
+			out.WriteByte(s[i])
+			i++
+			continue
+		}
+		// The sequence's end: an SGR is ESC [ <params> m, and anything else
+		// with an escape in it is not this walker's to rewrite.
+		j := i + 2
+		for j < len(s) && (s[j] == ';' || (s[j] >= '0' && s[j] <= '9')) {
+			j++
+		}
+		if j >= len(s) || s[j] != 'm' {
+			// Not an SGR sequence: pass the escape through verbatim.
+			out.WriteString(s[i:min(j+1, len(s))])
+			i = min(j+1, len(s))
+			continue
+		}
+		params := s[i+2 : j]
+		if params == "" {
+			// No parameters is the same as 0: a full reset, kept exactly as
+			// it came, with the ground re-laid behind it.
+			out.WriteString(s[i : j+1])
+			out.WriteString("\x1b[" + ground + "m")
+		} else if rebuilt, relaid := regroundParams(params, ground); !relaid {
+			out.WriteString("\x1b[" + rebuilt + "m")
+		} else {
+			out.WriteString("\x1b[" + rebuilt + "m")
+			out.WriteString("\x1b[" + ground + "m")
+		}
+		i = j + 1
+	}
+	return out.String()
+}
+
+// regroundParams rewrites one SGR parameter list so no parameter inside it can
+// set or clear a background: a background parameter becomes the step's ground,
+// and a full reset (0) is kept and asks for the ground to be re-laid after the
+// sequence. Everything else — inks, underline colours, attributes, and the
+// sub-parameters of the colour forms — passes through untouched.
+func regroundParams(params, ground string) (string, bool) {
+	parts := strings.Split(params, ";")
+	out := make([]string, 0, len(parts))
+	relaid := false
+	for k := 0; k < len(parts); k++ {
+		switch p := parts[k]; {
+		case p == "38" || p == "58":
+			// A foreground or underline colour keeps its sub-parameters.
+			out = append(out, p)
+			if n := colourSubs(parts, k+1); n > 0 {
+				out = append(out, parts[k+1:k+1+n]...)
+				k += n
+			}
+		case p == "48":
+			// A background colour of any form becomes the step's ground.
+			if n := colourSubs(parts, k+1); n > 0 {
+				k += n
+			}
+			out = append(out, ground)
+		case p == "49" || isBg16(p):
+			// A background clear, and the sixteen-colour backgrounds plain
+			// and bright, become the step's ground.
+			out = append(out, ground)
+		case p == "0":
+			// A full reset keeps its reset and asks for the ground behind it.
+			out = append(out, p)
+			relaid = true
+		default:
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, ";"), relaid
+}
+
+// isBg16 is the sixteen-colour background parameters, plain (40–47) and
+// bright (100–107).
+func isBg16(p string) bool {
+	if len(p) == 2 && p[0] == '4' && p[1] >= '0' && p[1] <= '7' {
+		return true
+	}
+	return len(p) == 3 && p[:2] == "10" && p[2] >= '0' && p[2] <= '7'
+}
+
+// colourSubs is how many parameters follow a 38/48/58 at parts[i] as that
+// colour's own: two for the 256-colour form (5;n), four for the truecolour one
+// (2;r;g;b), none for anything else — a malformed colour is left as it stands.
+func colourSubs(parts []string, i int) int {
+	if i >= len(parts) {
+		return 0
+	}
+	switch parts[i] {
+	case "5":
+		if i+1 < len(parts) {
+			return 2
+		}
+		return 1
+	case "2":
+		if i+3 < len(parts) {
+			return 4
+		}
+		return len(parts) - i
+	default:
+		return 0
+	}
+}
+
 // background is the one place this file draws a background: the row padded to
 // the full width, wrapped in the colour, closed with SGR 49. A terminal below
 // ANSI256 gets the row back untouched — there is no weight that means "this
 // row", and the callers each carry a text-side marker anyway (the lead glyph,
 // the bold label).
+//
+// THE GROUND IS HELD OVER EVERY CELL IT COVERS (holdGround): the wrapped text
+// may carry a background of its own — an inline code span on the raised plane,
+// a chip — and one code, text, one reset is true only of text that does not.
+// An inner set would take the plane off the step, and the compound `49;39`
+// prose closes its spans with would switch it off for the rest of the row
+// (#294).
 func (p palette) background(s string, width int, h hue) string {
 	if s == "" {
 		return s
@@ -1435,10 +1581,11 @@ func (p palette) background(s string, width int, h hue) string {
 	}
 	switch p.profile {
 	case tokens.TrueColor:
-		return "\x1b[48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" +
-			itoa(int(h.b)) + "m" + s + "\x1b[49m"
+		ground := "48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" + itoa(int(h.b))
+		return "\x1b[" + ground + "m" + holdGround(s, ground) + "\x1b[49m"
 	case tokens.ANSI256:
-		return "\x1b[48;5;" + itoa(int(h.idx)) + "m" + s + "\x1b[49m"
+		ground := "48;5;" + itoa(int(h.idx))
+		return "\x1b[" + ground + "m" + holdGround(s, ground) + "\x1b[49m"
 	default:
 		return s
 	}
