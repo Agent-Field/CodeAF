@@ -488,12 +488,19 @@ func (s *store) locked(path string, fn func() error) error {
 // point: a session that has only ever talked to one model must not be able to
 // delete what another session learned about a different one. The result is
 // sorted, so that two processes writing the same set write the same bytes.
+//
+// IT IS ALSO WHERE A SPLIT ALREADY ON DISK IS CLOSED FOR GOOD. Every id on
+// either side goes through [ID.key], so the rows an older build filed under the
+// alias and under the served slug meet on one key here and are reconciled by
+// [fresher] — and because this is the merge that writes, the next process opens
+// a file with one row in it rather than folding the same three again.
 func mergeBeliefs(onDisk, ours []Belief) []Belief {
 	held := make(map[ID]Belief, len(onDisk)+len(ours))
 	fold := func(belief Belief) {
 		if belief.ID.Zero() {
 			return
 		}
+		belief.ID = belief.ID.key()
 		if seen, ok := held[belief.ID]; ok {
 			held[belief.ID] = fresher(seen, belief)
 			return

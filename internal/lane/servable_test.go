@@ -85,3 +85,71 @@ func TestTheLedgerKeyDoesNotMoveUnderARunningSession(t *testing.T) {
 		t.Errorf("after a late install the key was %q", got)
 	}
 }
+
+// A FOLD THAT CANNOT ANSWER YET IS ASKED AGAIN, and this is the half of the
+// memo that had to be taken back out. The catalog behind the fold warms in the
+// background and a process may ask before it lands — headless runs do, every
+// time — so remembering "the name as written" from a cold fold would key the
+// whole run on the alias and never fold again, which is issue #289 made
+// permanent by the thing meant to fix it.
+func TestAFoldThatCannotAnswerYetIsAskedAgain(t *testing.T) {
+	resetServable(t)
+	asked := 0
+	cold := true
+	UseServable(func(model string) string {
+		asked++
+		if cold {
+			return ""
+		}
+		return "deepseek/deepseek-v4-flash-0731"
+	})
+	const alias = "deepseek/deepseek-v4-flash-latest"
+	if got := LedgerModel(alias); got != alias {
+		t.Fatalf("while the fold could not answer the key was %q, want the name as written", got)
+	}
+	if got := LedgerModel(alias); got != alias {
+		t.Fatalf("a second ask before the catalog landed gave %q", got)
+	}
+	if asked != 2 {
+		t.Fatalf("the fold was asked %d times; an answer it could not give must not be remembered", asked)
+	}
+	cold = false
+	if got := LedgerModel(alias); got != "deepseek/deepseek-v4-flash-0731" {
+		t.Fatalf("once the catalog landed the key was %q, want the id the router serves", got)
+	}
+	// And THEN it is remembered, because from here on the answer is real.
+	before := asked
+	if got := LedgerModel(alias); got != "deepseek/deepseek-v4-flash-0731" || asked != before {
+		t.Fatalf("the answered fold was asked again (%d then %d) and gave %q", before, asked, got)
+	}
+}
+
+// The fold is idempotent, and it has to be: the same name reaches the ledger
+// from a config slot, from a wire answer and from a row already on disk, so a
+// key that moved on the second application would re-split what the first folded
+// together. Held against the rows the live catalog really publishes.
+func TestTheLedgerKeyIsTheSameOnTheSecondApplication(t *testing.T) {
+	resetServable(t)
+	UseServable(func(model string) string {
+		if model == "deepseek/deepseek-v4-flash-latest" {
+			return "deepseek/deepseek-v4-flash-0731"
+		}
+		return model
+	})
+	for _, spelling := range []string{
+		"deepseek/deepseek-v4-flash-latest",
+		"deepseek/deepseek-v4-flash-latest:high",
+		"deepseek/deepseek-v4-flash-0731",
+		// The bare undated id is a DIFFERENT snapshot and stays its own key.
+		"deepseek/deepseek-v4-flash",
+		"anthropic/claude-opus-5",
+	} {
+		once := LedgerModel(spelling)
+		if twice := LedgerModel(once); twice != once {
+			t.Errorf("LedgerModel(%q) = %q, and folding that again gave %q", spelling, once, twice)
+		}
+	}
+	if got := LedgerModel("deepseek/deepseek-v4-flash"); got != "deepseek/deepseek-v4-flash" {
+		t.Errorf("the bare id folded to %q; it is the older snapshot and a model of its own", got)
+	}
+}

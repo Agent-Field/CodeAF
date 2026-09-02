@@ -275,8 +275,15 @@ func (s *sheet) freshness(model string, now time.Time) (time.Duration, bool) {
 // as it never did.
 
 // Wants queues one model for the beat to fetch once, and returns at once.
+//
+// IT IS THE LEDGER'S NAME FOR THE MODEL AND NOT THE PICKER'S. A person picks a
+// spelling, and a floating alias has no endpoints page of its own — the router
+// publishes one under the id it currently resolves to. Queued as typed, the
+// beat fetches a page that does not exist and the session pays for a refusal;
+// queued folded, the sheet lands under the key the sighting side is already
+// filing beliefs on. See [LedgerModel].
 func (s *sheet) Wants(model string) {
-	model = BareModel(model)
+	model = LedgerModel(model)
 	if model == "" {
 		return
 	}
@@ -367,7 +374,10 @@ func (s *sheet) Tag(id ID) string {
 // rows that are already there: a lane sheet that is half an hour old is a
 // better prior than no prior, and the belief is what corrects it anyway.
 func (s *sheet) Refresh(ctx context.Context, model string) error {
-	model = BareModel(model)
+	// THE PAGE IS PUBLISHED UNDER THE ID THE ROUTER SERVES, never under the
+	// alias that resolves to it, so the fold happens before the URL is built as
+	// well as before the rows are filed. See [LedgerModel].
+	model = LedgerModel(model)
 	if model == "" {
 		return ErrNoSheet
 	}
@@ -674,11 +684,14 @@ func (s *sheet) cachePath(model string) string {
 // under the home this process was pointed at, with the slash in a model id
 // escaped so that "deepseek/deepseek-v4-flash" is one file and not a directory
 // nobody meant to make.
+// It is keyed on the ledger's name for the model, so that a sheet fetched under
+// the alias and a sheet fetched under the served id are one file rather than
+// two accounts of one endpoints page.
 func cachePathIn(dir, model string) string {
 	if strings.TrimSpace(dir) == "" {
 		dir = home.Join("v3", "lanes")
 	}
-	return filepath.Join(dir, url.PathEscape(model)+".json")
+	return filepath.Join(dir, url.PathEscape(LedgerModel(model))+".json")
 }
 
 // readCache reads one model's cached sheet. A file that is not there is not an
