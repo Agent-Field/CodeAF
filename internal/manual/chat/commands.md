@@ -221,6 +221,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
+| `/manual` | — | — | every page of aforge's own manual, one per line |
+| `/manual` | — | `<page>` | prints that page as it is written |
+| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat
@@ -1626,3 +1629,69 @@ was renamed degrades to a working one instead of failing at the provider. If not
 list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
+
+## /manual — how do I read the manual, is there a help page, show me the page about X
+
+`/manual` is aforge's own manual, printed into the conversation. It is the same writing
+the chat reads to answer questions about itself, and it arrives **as it is written** —
+nothing is retold, summarized or shortened on the way to you.
+
+Three forms, and which one you get is decided by what you type after the word:
+
+| Typed | What comes back |
+|---|---|
+| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
+| `/manual permissions` | that page, whole, exactly as written |
+| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+
+A single word is read as a page **name**. More than one word is read as a **question**, and
+the question is answered out of every page at once, so you do not have to know which page
+a thing is written on before you can ask about it. The label over each answer — like
+`[permissions · What runs without asking]` — is the page you can open next with
+`/manual <name>`.
+
+Nothing here costs anything. The pages are inside aforge; reading them makes no model
+call, so `/manual` spends nothing and works with no key set up and with no connection.
+
+## aforge manual — reading the manual from the terminal, without a key and without spending anything
+
+The same manual is a command line, for the questions people ask **before** they have set
+anything up:
+
+```
+aforge manual                          every page, one per line, with what each is about
+aforge manual permissions              that page, printed as it is written
+aforge manual "who can see my files"   the sections that answer it, labelled with page and heading
+```
+
+It needs no API key, makes no model call, opens nothing and spends nothing — so
+`what is this`, `what does it cost` and `who can see my files` are all answerable on a
+machine where you have not decided yet whether to set aforge up. Quote a question so your
+shell hands it over as one piece.
+
+**Nothing is cut.** A page printed here is the whole page, however long it is — the limits
+the chat reads under are about what a model can be handed at once, and a terminal has no
+such limit. If a page is longer than your screen, pipe it: `aforge manual keys | less`.
+
+`aforge --help` lists it beside the other commands.
+
+## What /manual refuses — a page name that does not exist, and a question with no answer
+
+A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
+never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
+says there is no page by that name and prints the list of pages there are, and changes
+nothing. From the terminal `aforge manual no-such-page` does the same and **exits
+non-zero**, so a script can tell a missing page from a page it just read.
+
+A **question** the manual has nothing on is a different thing, and it is an answer rather
+than a failure: you are told
+
+```
+the manual has nothing on that, which usually means aforge does not do it
+```
+
+followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
+aforge does not do that" is a fact about aforge, not a broken command.
+
+The manual describes **this** conversation surface. It has no pages about anything else,
+and it will not answer out of what the model remembers about other programs.

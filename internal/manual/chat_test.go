@@ -1421,6 +1421,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to the keyboard when a window closes", "staying-on-that-machine"},
 		{"my window came back and now I cannot type", "when-the-connection-drops"},
 		{"it says the keyboard is on another machine", "staying-on-that-machine"},
+
+		// THE MANUAL'S OWN DOOR. Until it had one the manual had exactly one
+		// reader and it was not the person: every lookup was a model call, so it
+		// wanted a key and cost money, and what came back was a retelling. These
+		// are the words somebody uses when they want to read it themselves —
+		// from the conversation, and from a terminal where nothing is set up yet.
+		{"how do I read the manual", "commands"},
+		{"is there a help page", "commands"},
+		{"show me the page about a command", "commands"},
+		{"can I read the manual from the terminal", "commands"},
+		{"does reading the manual cost anything", "commands"},
+		{"list every page of the manual", "commands"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

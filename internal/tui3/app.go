@@ -5956,6 +5956,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// itself, and why it is typed rather than a card, is cachecmd.go.
 		return a.runCacheCommand(rest)
 
+	case "manual":
+		// Aforge's own manual, in the conversation, AS WRITTEN (manualcmd.go).
+		// It is an answer rather than a place for /status' reason — a person who
+		// asked a question about the product wants it where they can scroll back
+		// to it — and it is a lookup rather than a turn, so it makes no model
+		// call and spends nothing.
+		a.runManualCommand(rest)
+		return nil
+
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person

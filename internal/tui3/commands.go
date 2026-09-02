@@ -219,8 +219,11 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
-	// AND WHAT AFORGE WORKS WITH, beside what it knows about you. The four models
-	// it uses on your behalf, answered as one word (crew.go). Two rows for one
+	// AND WHAT AFORGE WORKS WITH, beside what it knows about you. The five models
+	// it uses on your behalf, answered as one word (crew.go). FIVE, because
+	// [config.CrewModels] sets five seats in every preset — reflex, low, worker,
+	// high and mastermind — and the one these rows used to leave out was the
+	// worker, which is the seat that pays most of a task's bill. Two rows for one
 	// command, the way /model and /export have two: the bare form is the listing
 	// nearly everybody wants, and a single row carrying <preset> would make it
 	// unreachable from this list — [app.runMenu] puts a row that TAKES something
@@ -230,8 +233,8 @@ var commands = []command{
 	// know" and this is "what does it think WITH", and because position in this
 	// table is a claim about frequency: a person sets their crew once and then
 	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the four models aforge uses on its own behalf, beside the one you talk to"},
-	{name: "crew", args: "<preset>", desc: "…set the four to frugal, balanced or max · /model stays"},
+	{name: "crew", desc: "the five models aforge uses on its own behalf, beside the one you talk to"},
+	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
@@ -367,6 +370,20 @@ var commands = []command{
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
 	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
+	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE
+	// LOST. /help is what you can TYPE; this is what aforge DOES, in the writing
+	// aforge is built from (manualcmd.go). They sit together because a person who
+	// has just read a list of commands and still does not know what one of them
+	// means is one row away from the page that says.
+	//
+	// Three rows for one command, /export's reason exactly: the bare form is the
+	// listing nearly everybody wants and is the only one that can be RUN from
+	// this list, since [app.runMenu] puts a row that TAKES something into the
+	// draft instead of running it. The two that take something ride under it
+	// wearing the "…".
+	{name: "manual", desc: "aforge's own manual · every page, one per line"},
+	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
+	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
