@@ -88,8 +88,8 @@ func TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt(t *testing.T) {
 				continue
 			}
 			if want := fmt.Sprintf(quote.pattern, fact.value); !strings.Contains(text, want) {
-				t.Errorf("%s does not say %s as %q — %s is %q and the page did not follow",
-					quote.page, fact.fact, want, fact.owner, fact.value)
+				t.Errorf("%s does not carry %s as %s says it: %q",
+					quote.page, fact.fact, fact.owner, want)
 			}
 		}
 		for page, stale := range fact.staleIn(pages) {
@@ -159,52 +159,97 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value:  grouped(ctxbudget.DefaultCompletionReserveTokens),
 		quotes: []quotedIn{{"compacting-over-and-over", "`answer room` setting, %s tokens"}},
 	}}
-	return append(facts, crewFacts()...)
+	return append(facts, crewFacts(t)...)
 }
 
-// crewFacts is the crew table as the pages copy it out by hand: every preset's
-// one line, and every one of its models in both the spelling the chooser prints
-// and the short one the models page tabulates.
+// crewFacts is the crew table as the pages copy it out by hand: the chooser's
+// line for each preset, and the models page's row for each seat.
 //
-// Nobody would keep thirty-odd ids green by reading them, so they are generated
-// from [config.CrewModels]: re-point a preset at a better model and every page
-// still printing the old id names itself.
-func crewFacts() []quotedFact {
-	facts := make([]quotedFact, 0, len(config.CrewPresets)*(2*len(config.ModelTiers)+1)+1)
+// IT PINS THE MAPPING AND NOT ONLY THE IDS. A fact per id would go green on a
+// page that had frugal's worker and max's worker the wrong way round, because
+// both ids are on the page somewhere. So a fact is a whole LINE — every seat of
+// one preset in order, or one seat across all three presets in order — built
+// from [config.CrewModels] with the seat words the settings registry owns. Point
+// a preset at a better model and the page still printing the old table names
+// itself.
+func crewFacts(t *testing.T) []quotedFact {
+	t.Helper()
+	seats := seatLabels(t)
+	crews := make(map[string]map[string]string, len(config.CrewPresets))
+	facts := make([]quotedFact, 0, 2*len(config.CrewPresets)+len(config.ModelTiers)+1)
 	for _, preset := range config.CrewPresets {
-		facts = append(facts, quotedFact{
-			fact: preset + "'s own line", owner: "config.CrewLine(" + strconv.Quote(preset) + ")",
-			value:  config.CrewLine(preset),
-			quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
-		})
-		models, _ := config.CrewModels(preset)
+		crews[preset], _ = config.CrewModels(preset)
+		line := make([]string, 0, len(config.ModelTiers))
 		for _, tier := range config.ModelTiers {
-			owner := "config.CrewModels(" + strconv.Quote(preset) + ")[" + strconv.Quote(tier) + "]"
-			facts = append(facts,
-				quotedFact{fact: preset + "'s " + tier + " model", owner: owner, value: models[tier],
-					quotes: []quotedIn{{"commands", "%s"}}},
-				quotedFact{fact: preset + "'s " + tier + " model, short", owner: owner, value: baseModel(models[tier]),
-					quotes: []quotedIn{{"models-and-cost", "`%s`"}}},
-			)
+			line = append(line, seats[tier]+" "+crews[preset][tier])
 		}
+		facts = append(facts,
+			quotedFact{
+				fact: preset + "'s own line", owner: "config.CrewLine(" + strconv.Quote(preset) + ")",
+				value:  config.CrewLine(preset),
+				quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
+			},
+			quotedFact{
+				fact: preset + "'s row in the crew chooser", owner: "config.CrewModels(" + strconv.Quote(preset) + ")",
+				value:  strings.Join(line, " · "),
+				quotes: []quotedIn{{"commands", "%s"}},
+			})
+	}
+	for _, tier := range config.ModelTiers {
+		row := make([]string, 0, len(config.CrewPresets))
+		for _, preset := range config.CrewPresets {
+			row = append(row, "`"+baseModel(crews[preset][tier])+"`")
+		}
+		facts = append(facts, quotedFact{
+			fact: "the " + tier + " seat across the presets", owner: "config.CrewModels",
+			value:  "| " + seats[tier] + " | " + strings.Join(row, " | ") + " |",
+			quotes: []quotedIn{{"models-and-cost", "%s"}},
+		})
 	}
 	return append(facts, quotedFact{
-		fact: "the line /crew max confirms with", owner: `config.CrewModels("max")`,
-		value:  crewConfirmLine(config.CrewMax),
+		fact: "the line /crew max confirms with", owner: "config.CrewSummary after config.ApplyCrew",
+		value:  crewConfirmLine(t, config.CrewMax),
 		quotes: []quotedIn{{"commands", "%s"}},
 	})
 }
 
-// crewConfirmLine is the sentence config.CrewSummary builds, for the one preset
-// the commands page prints an example of. The order of the three classes is the
-// order that function names them in: what thinks, what works, what checks.
-func crewConfirmLine(preset string) string {
-	models, _ := config.CrewModels(preset)
-	return "crew → " + preset +
-		" · brain " + baseModel(models[config.ModelTierMastermind]) +
-		" · hands " + baseModel(models[config.ModelTierWorker]) +
-		" · checks " + baseModel(models[config.ModelTierHigh])
+// crewConfirmLine is the sentence a person reads after /crew, taken from the
+// function that builds it rather than rebuilt here: a gate that spelled the line
+// itself would go on passing through a change to the words or the order, which
+// is the drift it exists to catch.
+func crewConfirmLine(t *testing.T, preset string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := config.ApplyCrew(dir, preset); err != nil {
+		t.Fatalf("the %s crew would not apply: %v", preset, err)
+	}
+	return config.CrewSummary(dir)
 }
+
+// seatLabels is the word each crew seat wears on a settings surface, read from
+// the registry that owns it. The chooser and the models page both print these
+// beside the ids, so a gate on a line of ids has to spell them the same way.
+func seatLabels(t *testing.T) map[string]string {
+	t.Helper()
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
+	labels := make(map[string]string, len(config.ModelTiers))
+	for _, tier := range config.ModelTiers {
+		row, ok := registry.Row(seatKey(tier))
+		if !ok {
+			// A seat with no settings row is worth saying on its own, but it must
+			// not stop the pages being read: the run that adds a seat is exactly
+			// the run that needs the list of pages now behind.
+			t.Errorf("the settings registry has no %s row for the %s seat", seatKey(tier), tier)
+			labels[tier] = tier
+			continue
+		}
+		labels[tier] = row.Label
+	}
+	return labels
+}
+
+// seatKey is one seat's settings row, which is also the word the pages print.
+func seatKey(tier string) string { return "models.tiers." + tier }
 
 // EVERY SEAT LIST NAMES EVERY SEAT.
 //
@@ -219,9 +264,9 @@ func TestEverySeatListInTheChatManualNamesEverySeat(t *testing.T) {
 			continue
 		}
 		for _, tier := range config.ModelTiers {
-			if !strings.Contains(text, "models.tiers."+tier) {
-				t.Errorf("%s writes the crew's settings rows out and leaves models.tiers.%s off — config.ModelTiers has %d seats",
-					name, tier, len(config.ModelTiers))
+			if !strings.Contains(text, seatKey(tier)) {
+				t.Errorf("%s writes the crew's settings rows out and leaves %s off — config.ModelTiers has %d seats",
+					name, seatKey(tier), len(config.ModelTiers))
 			}
 		}
 	}
@@ -298,12 +343,12 @@ func crewCommandRows(t *testing.T) []string {
 // permissions page tells a person the same names and says how many there are. A
 // fourth entry in that table without its sentence here would leave the page
 // telling somebody a message goes out silently when it does not — the one
-// mistake a page about permissions must never make. The names are read from the
-// table itself rather than repeated here, because a list repeated in a test is
-// the same list going stale twice.
+// mistake a page about permissions must never make. The names come from the
+// table itself ([approval.ActsInThePersonsNameTools]) rather than being repeated
+// here, because a list repeated in a test is the same list going stale twice.
 func TestThePermissionsPageNamesEveryToolTheFloorHolds(t *testing.T) {
 	page := flatChatPages(t)["permissions"]
-	tools := floorTools(t)
+	tools := approval.ActsInThePersonsNameTools()
 	if len(tools) == 0 {
 		t.Fatal("internal/approval names no call that acts in the person's name")
 	}
@@ -319,23 +364,6 @@ func TestThePermissionsPageNamesEveryToolTheFloorHolds(t *testing.T) {
 		t.Errorf("the permissions page does not say the floor is exactly %s tools — internal/approval names %d",
 			count, len(tools))
 	}
-}
-
-// floorTools is approval's own table of the calls that act in somebody's name.
-var floorToolName = regexp.MustCompile(`(?m)^\s*"([a-z_]+)":\s*true,`)
-
-func floorTools(t *testing.T) []string {
-	t.Helper()
-	source := sourceText(t, "../approval/approval.go")
-	table := regexp.MustCompile(`(?s)actsInThePersonsName = map\[string\]bool\{(.*?)\n\}`).FindStringSubmatch(source)
-	if table == nil {
-		t.Fatal("internal/approval no longer holds a table named actsInThePersonsName")
-	}
-	tools := make([]string, 0, 4)
-	for _, match := range floorToolName.FindAllStringSubmatch(table[1], -1) {
-		tools = append(tools, match[1])
-	}
-	return tools
 }
 
 // ONE LOOKUP IS ONE SIZE, WHEREVER IT IS ASKED FOR.
