@@ -532,7 +532,7 @@ from a worker's belt, and its instructions say what to do instead:
   worker runs in a copy of its own with nobody watching, and a permanent change
   to your machine that no transcript ever showed you is exactly what it must not
   be able to make. A task asked to change a preference says it cannot from a
-  task and points you at `/settings`; it will not edit a config file instead.
+  task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
   the memory store, and a task is handed no store, so what was said in other
   conversations cannot be looked up from inside one. A worker answers out of the
@@ -549,10 +549,7 @@ from a worker's belt, and its instructions say what to do instead:
 None of these is a refusal you will see as an error. **A capability a worker
 cannot have is absent from its belt rather than present and failing**, and its
 instructions are composed to match the belt it was actually given — so it is
-never told to call a verb it does not have. Before this, a worker on the floor
-of the tree was told to call `tasks` first and was answered `Unknown tool:
-tasks`, which cost it a step and left it guessing what else it had been told
-wrongly.
+never told to call a verb it does not have.
 
 ## How a task is told to spend its time — the measure, a zero, and not remaking what exists
 

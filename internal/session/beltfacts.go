@@ -105,7 +105,7 @@ var beltFacts = []beltFact{{
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering, and `tasks` with `scope: \"everywhere\"` groups every OTHER project holding live work.\n" +
-		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and a row that prints none says so.\n" +
+		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and say so when a row prints no transcript.\n" +
 		"- `tasks` with `id` shows the call in flight, the steps, the spend and the last of what a running task said and did: pull it to SEE inside a run. Steer with `id` and `say`.\n" +
 		"- `needs your look`: not done or failed, branch kept; settle with `tasks` id and `resolve`, the choice theirs unless told to decide. `lost the connection`, `went in circles`, `was blocked by another task`, `ran out of steps` mean halted, not failed: offer a rerun.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see.",
