@@ -122,7 +122,32 @@ func sequenceOnce(ctx context.Context, client Completer, goal string) ([]Stage, 
 		return nil, usageOf(response), annotate(errors.New("stages: no stages returned"), response)
 	}
 	provider.Report(ctx, provider.VerdictVerifiedSuccess)
-	return levelled(stages), usageOf(response), nil
+	return orderedStages(stages), usageOf(response), nil
+}
+
+// orderedStages reads a drawn stage list as the sequence it was asked for.
+//
+// The spine's levelling is the right reading of every stage list that says what
+// it waits for, and it is the wrong one for a list that says nothing at all. A
+// spine's order is the order the work was SPOKEN in, so a spine whose stages
+// name no needs is seven things that can all start now; this question asked for
+// the stages in the order they happen, and the schema makes the needs field
+// mandatory, so a model that answered the ask and left the bookkeeping empty
+// hands back exactly that list. Levelling it would fold the whole sequence into
+// one stage and refuse it as the node again — the old dead end reached by a new
+// road, and it was seen happening on the second of two draws of the same brief.
+//
+// So: where any stage states what it waits for, the stated needs are the
+// schedule and levelling reads them, folding stages that wait for nothing
+// together exactly as it does for a spine. Where none of them states anything,
+// the order they were drawn in is the sequence.
+func orderedStages(stages []Stage) []Stage {
+	for _, stage := range stages {
+		if len(stage.Needs) > 0 {
+			return levelled(stages)
+		}
+	}
+	return clearNeeds(stages)
 }
 
 // keptStages drops what a stage list says nothing with. It is shared with the

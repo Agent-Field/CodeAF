@@ -63,6 +63,18 @@ func oversizedGraph() (*Graph, int) {
 	return graph, id
 }
 
+// childrenOf reads a node's spliced children in the order they were added, which
+// for a chain is the order they were drawn in.
+func childrenOf(graph *Graph, parent int) []*Node {
+	var children []*Node
+	for index := range graph.Nodes {
+		if node := &graph.Nodes[index]; node.Parent == parent {
+			children = append(children, node)
+		}
+	}
+	return children
+}
+
 // THE LAW. An oversized node whose fan-out gives it straight back is divided
 // into the ordered stages it is made of, and the chain is spliced with the
 // waiting the stages stated.
@@ -81,12 +93,7 @@ func TestAnOversizedNodeThatCannotRunAtOnceIsDividedIntoStages(t *testing.T) {
 	if spliced != 1 {
 		t.Fatalf("spliced %d nodes, want 1 — the sequence was left whole", spliced)
 	}
-	links := make([]*Node, 0, 3)
-	for index := range graph.Nodes {
-		if node := &graph.Nodes[index]; node.Parent == parent {
-			links = append(links, node)
-		}
-	}
+	links := childrenOf(graph, parent)
 	if len(links) != 3 {
 		t.Fatalf("the chain has %d links, want 3", len(links))
 	}
@@ -188,21 +195,54 @@ func TestAStageAnswerOfOneStageIsTheOnePieceRefusal(t *testing.T) {
 	}
 }
 
-// Stages that wait for nothing are not a sequence. The spine's own levelling
-// says so, and what it folds into one stage the acceptance check then refuses in
-// the words it already has.
-func TestStagesThatWaitForNothingAreNotASequence(t *testing.T) {
+// The needs field is mandatory in the schema, so a model that answers the ask
+// and leaves the bookkeeping empty says nothing about waiting. The order it drew
+// the stages in is then the sequence — folding them all into one stage would
+// refuse a sequence over a field nobody filled in, which is the old dead end
+// reached by a new road. Seen on a real draw before it was fixed.
+func TestStagesThatStateNoWaitingAreReadInTheOrderTheyWereDrawn(t *testing.T) {
 	client := &stagePlanner{
 		parts:  `{"parts":[{"title":"Work","summary":"Carry the whole thing to an end"}]}`,
 		stages: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},{"title":"Write","summary":"Write it up.","needs":[]}]}`,
+		sizes:  `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`,
+	}
+	graph, parent := oversizedGraph()
+
+	spliced, _, err := ExpandLevel(t.Context(), client, graph, Options{MaxDepth: 2, NodeBudget: 40})
+	if err != nil {
+		t.Fatalf("ExpandLevel: %v", err)
+	}
+	if spliced != 1 {
+		t.Fatalf("spliced %d nodes, want 1 — the drawn order is the sequence", spliced)
+	}
+	links := childrenOf(graph, parent)
+	if len(links) != 2 || len(links[1].Needs) != 1 || links[1].Needs[0] != links[0].ID {
+		t.Fatalf("the drawn order did not become a chain: %+v", links)
+	}
+}
+
+// Where the stages DO say what they wait for, that is the schedule and the
+// spine's levelling reads it: two stages waiting on the same earlier one wait
+// for nothing from each other, and one worker takes them together.
+func TestStatedWaitingIsStillTheSchedule(t *testing.T) {
+	client := &stagePlanner{
+		parts: `{"parts":[{"title":"Work","summary":"Carry the whole thing to an end"}]}`,
+		stages: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]},` +
+			`{"title":"Check","summary":"Show that it holds.","needs":[1]}]}`,
+		sizes: `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`,
 	}
 	graph, parent := oversizedGraph()
 
 	if _, _, err := ExpandLevel(t.Context(), client, graph, Options{MaxDepth: 2, NodeBudget: 40}); err != nil {
 		t.Fatalf("ExpandLevel: %v", err)
 	}
-	if node := graph.Node(parent); node.Undivided != RefusalOnePiece {
-		t.Errorf("undivided = %q, want %q", node.Undivided, RefusalOnePiece)
+	links := childrenOf(graph, parent)
+	if len(links) != 2 {
+		t.Fatalf("the two stages that wait for the same thing were not levelled into one: %+v", links)
+	}
+	if !strings.Contains(links[1].Title, "Change") || !strings.Contains(links[1].Title, "Check") {
+		t.Errorf("the second link is %q, want the two levelled stages", links[1].Title)
 	}
 }
 
