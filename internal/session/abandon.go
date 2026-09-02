@@ -164,7 +164,6 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 		CacheWrite: spend.CacheWrite,
 		CostUSD:    spend.CostUSD,
 		Calls:      spend.Calls,
-		DurationMS: spend.Duration.Milliseconds(),
 	})
 	return spend, true
 }

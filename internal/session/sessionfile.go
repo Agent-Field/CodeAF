@@ -326,6 +326,13 @@ type journalRule struct {
 // A turn abandoned before it had spent anything writes the line with no figures
 // on it, which is the emptiness law: the fact worth recording is that the turn
 // was let go of, and zeroes would read as a measurement.
+//
+// THERE IS NO DURATION ON IT, deliberately. A seal carries how long its turn
+// took because a turn that ends knows when it ended; nobody waited for this one,
+// so the only honest answer would be "how long until somebody stopped waiting",
+// which is [tui3.stopGrace] plus whenever the person happened to press the key —
+// a fact about the surface and not about the turn. The line's own timestamp says
+// when it was let go of, which is the question that can be answered.
 type journalAbandoned struct {
 	Reason     string  `json:"reason,omitempty"`
 	Input      int     `json:"input,omitempty"`
@@ -334,7 +341,6 @@ type journalAbandoned struct {
 	CacheWrite int     `json:"cacheWrite,omitempty"`
 	CostUSD    float64 `json:"costUsd,omitempty"`
 	Calls      int     `json:"calls,omitempty"`
-	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
 // journalCreated is ONE FILE THIS SESSION MADE.
