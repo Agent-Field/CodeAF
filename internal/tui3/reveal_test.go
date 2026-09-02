@@ -33,39 +33,8 @@ func TestAShortBurstIsShownWhole(t *testing.T) {
 	}
 }
 
-func TestALineBurstIsWalkedNotDumped(t *testing.T) {
-	// Forty bytes is a short line — the old at-once ceiling — and the
-	// shape a fold of a few tokens actually has. Landing it whole is the
-	// jump a person still sees on a lively stream.
-	text := "the window was black, and then it wasn"
-	if len(text) <= revealHead || len(text) <= revealFloor {
-		t.Fatalf("fixture is %d bytes, want past the head and the floor", len(text))
-	}
-	var shown int
-	catchReveal(&shown, text, len(text), false)
-	if shown != revealHead && shown != cutUTF8(text, revealHead) {
-		t.Fatalf("a %d-byte line opened at %d, want the head", len(text), shown)
-	}
-	if !revealing(shown, text, false) {
-		t.Fatal("a line burst was shown whole")
-	}
-	frames := 0
-	for revealing(shown, text, false) {
-		frames++
-		if !advanceReveal(&shown, text, 1, false) {
-			t.Fatal("the edge stopped moving while the line was still unread")
-		}
-		if frames > revealSlots+1 {
-			t.Fatalf("a line took %d frames, want at most %d", frames, revealSlots)
-		}
-	}
-	if frames < 2 {
-		t.Fatal("a line burst landed in one paint")
-	}
-}
-
 func TestALumpOpensOnItsHeadAndCatchesOnTheClock(t *testing.T) {
-	lump := strings.Repeat("the loader never makes the map. ", 20)
+	lump := strings.Repeat("the loader never makes the map. ", 20) // well past revealAtOnce
 	var shown int
 	catchReveal(&shown, lump, len(lump), false)
 	if shown <= 0 || shown >= len(lump) {

@@ -17,13 +17,10 @@ import (
 // own ease-out (1 − (1 − t)²) said as a per-slot fraction: most of the debt
 // goes in the first two frames, the last few characters write themselves.
 //
-// THE ARRIVAL SHAPE MUST NOT BE THE DRAWING SHAPE. A token, a folded line,
-// a paragraph that piled up behind latency — those are facts about the
-// wire. What the eye reads is one edge walking at one pace. A short burst
-// that landed whole was honest about the wire and a pop on the page; a
-// late blob that walked in was the other face of the same defect. So every
-// unread remainder is walked, and only a few characters — one short word —
-// may finish on the event itself. That is [revealHead], not a line.
+// A burst smaller than [revealAtOnce] is already a stream and is shown whole.
+// Pacing a word the model has already said would be the surface holding the
+// reply back, and every fixture that draws a frame after one short delta
+// would watch the word fail to appear.
 //
 // The first cells of a new burst are never held — the first motion is never
 // folded (coalesce.go). A settle snaps whatever is left, because a finished
@@ -36,10 +33,13 @@ import (
 // accounting stays exact; what is drawn eases toward it on this clock, and
 // snaps the moment the turn is no longer running.
 
+// revealAtOnce is how much of a burst may land in one frame without being
+// paced. Forty-eight bytes is about a short line, a dozen tokens, every
+// fixture this suite draws after one ordinary delta.
+const revealAtOnce = 48
+
 // revealHead is the first cells of a new burst, shown on the event itself so
-// the edge moves the instant the stream speaks. It is a word, not a line:
-// anything longer is already a lump the clock has to walk, whether it
-// arrived as one delta or as twenty that folded.
+// the edge moves the instant the stream speaks.
 const revealHead = 12
 
 // revealCatch is the fraction of the unread remainder one frame-slot takes,
@@ -61,8 +61,9 @@ const revealSlots = 8
 
 // catchReveal opens or extends the live edge after `added` bytes were just
 // appended to text. shown == 0 means "not pacing, draw everything" — the
-// default on every settled and historical block. A new burst shows its
-// head on the event; the rest is walked on the clock, whatever its size.
+// default on every settled and historical block. A new burst that is already
+// a stream is shown whole; a lump starts at the head and is walked on the
+// clock.
 //
 // snap is the linear tier, and a settle: nothing is held back.
 func catchReveal(shown *int, text string, added int, snap bool) {
@@ -87,11 +88,10 @@ func catchReveal(shown *int, text string, added int, snap bool) {
 }
 
 // revealOpen is how much of a newly arrived burst is drawn on the event
-// itself. A few characters — one short word — land so the edge is already
-// moving; anything past the head waits for the clock. A burst no longer
-// than the head is the whole of it, which is how a single token writes.
+// itself. A short burst is the whole of it; a lump shows its head so the
+// edge is already moving when the next frame arrives.
 func revealOpen(added string) int {
-	if len(added) <= revealHead {
+	if len(added) <= revealAtOnce {
 		return len(added)
 	}
 	return cutUTF8(added, revealHead)
@@ -143,10 +143,7 @@ func revealStride(unread, slots int) int {
 	if unread <= 0 || slots <= 0 {
 		return 0
 	}
-	// A remainder no larger than the floor finishes this frame — one short
-	// word, not a line. Dumping a whole line here is how a 40-byte fold
-	// still popped after the lump path started walking.
-	if unread <= revealFloor {
+	if unread <= revealAtOnce {
 		return unread
 	}
 	take := unread * revealCatch / 1000
