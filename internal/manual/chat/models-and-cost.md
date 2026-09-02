@@ -2243,6 +2243,11 @@ taught aforge about that model.
 a call goes *out* as well as when it comes back: a planning call four minutes into a
 65,536-token ceiling used to look exactly like a machine doing nothing.
 
+**A line may leave a number out and say which one in its `note`** — `cost_s was +Inf
+and is not on this row.` — because a figure the endpoint or the wait never really measured
+is missing rather than invented, so a row short of `cost_s`, `wait_s`, `waste_usd` or
+`cost` beside a sentence like that is an honest line and not a broken one.
+
 **The headless waiting line reads the same record.** When `aforge do` has nothing new to
 say it prints `still waiting: … · last call <model> <n> ago`, and that `last call` is the
 newest answer this process has heard — the call log's own memory, kept even with the file

@@ -26,12 +26,16 @@
 // for the rest of the process and prints one line naming the path it could not
 // write. A model call that failed because its log could not be written would be
 // the worst possible trade for a debugging convenience.
+//
+// AND A ROW IS NEVER LOST OVER A VALUE. A number JSON has no spelling for — the
+// wait controller's +Inf when it holds no alternative lane — is taken off the
+// row and named in words on it rather than costing the row, because a row that
+// vanishes is a call that reads as in flight forever (finite.go).
 package calllog
 
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -428,11 +432,14 @@ func Last() (LastCall, bool) {
 const timeLayout = "2006-01-02T15:04:05.000Z07:00"
 
 func (l *log) write(record Record) {
-	line, err := json.Marshal(record)
+	line, err := marshalRecord(record)
 	if err != nil {
 		// A record that will not serialize is a bug in the builder rather than
 		// a broken disk, and it must not silence the log for the calls that
-		// follow.
+		// follow. It must not be quiet either: a row that vanishes is a call
+		// that reads as in flight forever, which is the one failure a log may
+		// not have (finite.go, and the numbers it rescues before this point).
+		reportUnspellable(err)
 		return
 	}
 	l.mutex.Lock()
