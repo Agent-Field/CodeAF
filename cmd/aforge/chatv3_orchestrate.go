@@ -82,8 +82,8 @@ type v3Runs struct {
 // after the agent is built.
 func (r *v3Runs) bind(agent *session.Agent) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.agent = agent
-	r.mu.Unlock()
 }
 
 // start launches one adaptive run on the bound session. An unbound seam is a
@@ -91,11 +91,18 @@ func (r *v3Runs) bind(agent *session.Agent) {
 // a sentence rather than a panic for the reason every other refusal on this
 // surface does: a conversation is not worth crashing over.
 func (r *v3Runs) start(ctx context.Context, goal, model string, capDollars float64) (string, error) {
-	r.mu.Lock()
-	agent := r.agent
-	r.mu.Unlock()
+	agent := r.bound()
 	if agent == nil {
 		return "", errors.New("this conversation is not ready to run one yet")
 	}
 	return agent.RunOrchestrate(ctx, goal, model, capDollars)
+}
+
+// bound is the agent the seam belongs to, or nil before bind. It is its own
+// method so the mutex is held from a defer while the run, which lasts as long
+// as the run does, happens outside it.
+func (r *v3Runs) bound() *session.Agent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.agent
 }
