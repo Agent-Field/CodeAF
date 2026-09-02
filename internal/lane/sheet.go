@@ -456,6 +456,19 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 	if len(models) == 0 && queue == nil {
 		return
 	}
+	// ONE BEAT PER SHEET, HOWEVER MANY DOORS ASK FOR ONE. Two of them do now —
+	// the process seats a beat at its one measuring seam and a session still
+	// starts its own — and a second fetch loop over one sheet would pay the
+	// router twice for the same half-hour aggregate and tick on a clock the
+	// cache disagrees with. So the second caller HANDS ITS MODELS OVER through
+	// the queue that already exists for exactly this — a model somebody is about
+	// to send to, arriving from outside the round — and returns at once.
+	release, first := claimTheBeat(queue)
+	if !first {
+		handOver(s, models)
+		return
+	}
+	defer release()
 	if every <= 0 {
 		every = sheetTTL
 	}
@@ -486,7 +499,15 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 			// send to it, and joined, because the next half hour of its sheet is
 			// worth as much as the first minute. A nil queue is a channel that
 			// never fires, which is what a bench's own sheet gets.
-			models = withModel(models, model)
+			//
+			// A MODEL THIS ROUND ALREADY HOLDS IS NOT FETCHED AGAIN. It arrives
+			// here from a door that joined this beat rather than running one, and
+			// the sheet it would fetch is the one this beat read a moment ago.
+			joined := withModel(models, model)
+			if len(joined) == len(models) {
+				continue
+			}
+			models = joined
 			refreshAndPrime(ctx, s, model)
 		case <-ticker.C:
 			for _, model := range models {
@@ -496,6 +517,53 @@ func Beat(ctx context.Context, s Sheet, models []string, every time.Duration) {
 				refreshAndPrime(ctx, s, model)
 			}
 		}
+	}
+}
+
+// beating is the sheets a beat is running on, KEYED ON THE QUEUE ITSELF.
+//
+// The queue is the right key for two reasons. It is the identity of the one
+// thing a second caller needs — the channel it hands its models to — so a sheet
+// that offers none cannot be joined and is not tracked at all, which leaves
+// every bench fixture behaving exactly as it did. And a channel is comparable
+// whatever a [Sheet] implementation turns out to be, so this map cannot be made
+// to panic by a sheet somebody writes later.
+var beating = struct {
+	sync.Mutex
+	on map[<-chan string]bool
+}{on: map[<-chan string]bool{}}
+
+// claimTheBeat records that a beat is running on this queue and hands back the
+// release, or reports that one already is. A sheet with no queue is never
+// claimed: nothing could join it, so a second beat over it is the caller's own
+// business exactly as it was before.
+func claimTheBeat(queue <-chan string) (release func(), first bool) {
+	if queue == nil {
+		return func() {}, true
+	}
+	beating.Lock()
+	defer beating.Unlock()
+	if beating.on[queue] {
+		return nil, false
+	}
+	beating.on[queue] = true
+	return func() {
+		beating.Lock()
+		defer beating.Unlock()
+		delete(beating.on, queue)
+	}, true
+}
+
+// handOver gives one caller's models to the beat that is already running. It
+// never waits: [sheet.Wants] is a non-blocking send that drops a name a full
+// queue has no room for, and a dropped name is one the next ask makes again.
+func handOver(s Sheet, models []string) {
+	wanter, ok := s.(Wanter)
+	if !ok {
+		return
+	}
+	for _, model := range models {
+		wanter.Wants(model)
 	}
 }
 
