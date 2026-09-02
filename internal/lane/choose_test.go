@@ -660,6 +660,10 @@ func (h fakeHierarchy) Shifted(ID) bool { return false }
 // from the real ledger too.
 func (h fakeHierarchy) Draw(ID) (float64, float64) { return SpreadFloor, SpreadFloor }
 
+// And nothing has been WATCHED thinking either, which is the same statement
+// about the one quantity no sheet carries.
+func (h fakeHierarchy) ThinkDraw(string, string) float64 { return SpreadFloor }
+
 // It learns nothing: this double is a WORLD, scripted, and a fold here would be
 // the test rewriting the fixture it is asserting against.
 func (h fakeHierarchy) NoteThinking(string, string, time.Duration, time.Time) {}

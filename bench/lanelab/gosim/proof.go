@@ -1979,22 +1979,23 @@ func proofGates(rows []proofRow, store, mix, policy string) []proofGate {
 	// Not an allowance for being cold — it is what the number MEASURES that
 	// differs. §B's abnormality gate asks whether a wait is past the quantile of
 	// the survival its clock reads, and for the duration clock that survival is
-	// [lane.Thinks]. A thinking phase has no published dispersion, so
-	// `Chain.Survival` floors its spread at [lane.SpreadFloor] and the quantile
-	// is pinned at about fifteen times the believed median — permanently past
-	// the role's ten-second ceiling. THE DURATION CLOCK THEREFORE NEVER ACTS
-	// BEFORE THE CEILING for any model that deliberates for more than about two
-	// thirds of a second, at any amount of evidence
-	// (`TestWhenTheThinkGateCloses` measures it).
+	// [lane.Thinks]. On an arm with no timing belief behind it, what the
+	// long-think rate counts is how often the WORLD's own thinking phase
+	// outlasts the ceiling — a property of the model and the role's patience,
+	// which no correct policy controls and which a gate cannot ask a controller
+	// to change. On a warmed arm the first-token and gap clocks are sharp, the
+	// spurious arms that land inside a thought are the ones a policy really does
+	// decide, and the criterion is about the build again. It is enforced there
+	// at full force: a warmed arm under 95% is red.
 	//
-	// So on an arm with no timing belief behind it, what the long-think rate
-	// counts is how often the WORLD's own thinking phase outlasts the ceiling —
-	// a property of the model and the role's patience, which no correct policy
-	// controls and which a gate cannot ask a controller to change. On a warmed
-	// arm the first-token and gap clocks are sharp, the spurious arms that land
-	// inside a thought are the ones a policy really does decide, and the
-	// criterion is about the build again. It is enforced there at full force: a
-	// warmed arm under 95% is red.
+	// AND THE DURATION CLOCK'S OWN GATE CLOSES NOW, which is what makes this
+	// criterion worth enforcing rather than merely worth reading. It stood on
+	// [lane.SpreadFloor] for ever — a thinking phase has no published dispersion
+	// — so its quantile sat at about fifteen times the believed median, past
+	// every role's ceiling at any amount of evidence. The chain measures that
+	// dispersion for itself now (#316) and `TestWhenTheThinkGateCloses` pins the
+	// n it closes at; what this row proves is that closing it did not turn a
+	// legitimate long think into a hedge.
 	return append(out, proofGate{
 		Criterion: "long think, not hedged",
 		Threshold: ">= 95% of thinking phases",
