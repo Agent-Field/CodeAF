@@ -150,6 +150,10 @@ func TestTheBackgroundAfterClockKeepsTheCommandAndTheConversationMovesOn(t *test
 			return textResponse("The late command finished."), nil
 		},
 	}}
+	// A promoted command becomes a job, and a job is named on a goroutine of its
+	// own (jobname.go). The namer is answered by shape so it cannot take one of
+	// the three steps this test scripted. See [answerTheNamerOffTheQueue].
+	answerTheNamerOffTheQueue(completer)
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.BashBackgroundAfterSeconds = 2
 	})

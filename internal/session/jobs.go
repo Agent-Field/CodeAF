@@ -374,6 +374,11 @@ type jobRegistry struct {
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
 	// the registry reports what a job is doing and has no idea what a roster is,
 	// and a caller with nothing to draw leaves it nil and pays nothing.
+	//
+	// IT IS ALSO THE NAMER'S DOOR. The function the agent hangs here
+	// ([Agent.announceJobRow]) starts the cheap namer on first sight, on a
+	// goroutine, so a new starter inherits the name by announcing and the job
+	// never waits to be named (jobname.go).
 	announce func(jobInfo)
 
 	mu   sync.Mutex

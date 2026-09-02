@@ -16,8 +16,18 @@ import (
 // it sends: its own system line. The instruction itself rides at the END of the
 // user message, where a small model reads it (taskname.go).
 func isNameCall(messages []ai.Message) bool {
-	return len(messages) > 0 && messages[0].Role == "system" &&
-		messageContentText(messages[0]) == taskNameSystem
+	if len(messages) == 0 || messages[0].Role != "system" {
+		return false
+	}
+	// EVERY NAMER, AND NOT JUST THE FIRST ONE. This predicate answers "is this
+	// an errand rather than a step of the turn under test", and the answer has
+	// to be true of all of them: a scripted step stolen by the JOB namer is the
+	// same red as one stolen by the task namer, and it arrives in whichever
+	// suite happens to start a background command. A third namer added later
+	// belongs on this line rather than in a second predicate somebody has to
+	// remember to call.
+	said := messageContentText(messages[0])
+	return said == taskNameSystem || said == jobNameSystem
 }
 
 // nameSettings puts a model on the cheap tier, which is where the namer's role

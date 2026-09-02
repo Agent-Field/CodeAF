@@ -174,6 +174,39 @@ func (a *Agent) announceJobRow(info jobInfo) {
 	// nothing between them to order.
 	a.emitTaskUpdate(notice)
 	a.graph().keepRunRows(row, []TaskNotice{notice})
+	// AND AS A JOB, ON ITS OWN KIND. The TaskNotice above is still published
+	// because other readers still draw from it; the JobNotice is the one a
+	// surface that knows what a job is reads. Additive: the old row does not
+	// go away because the new one arrived.
+	a.emitJobUpdate(noticeOf(info))
+	if minted {
+		// THE JOB NEVER WAITS TO BE NAMED. The process is already running —
+		// start announced after the fork — and this is an errand on its own
+		// goroutine, reached through the same announce seam the registry
+		// already uses to find the agent (agent.go's jobs.announce).
+		a.nameJob(info)
+	}
+}
+
+// emitJobUpdate fans one job's notice out to whoever is listening: the turn's
+// hub, if a turn is in flight, and every standing watcher. It is
+// [Agent.emitTaskUpdate] for a job, on the same two lanes, because a job
+// outlives the turn that started it for the same reason a node does and the
+// subscribers who already hold that lane are who will draw it.
+func (a *Agent) emitJobUpdate(notice JobNotice) {
+	event := Event{Kind: EventJobUpdate, Job: &notice}
+	a.mu.Lock()
+	hub := a.hub
+	watchers := make([]*eventStream, len(a.taskWatchers))
+	copy(watchers, a.taskWatchers)
+	a.mu.Unlock()
+
+	if hub != nil {
+		hub.send(event)
+	}
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }
 
 // jobRowID is the roster id for one job, minted from the task graph's sequence

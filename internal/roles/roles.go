@@ -183,6 +183,12 @@ const (
 	// nothing downstream is decided from it. Registered from
 	// internal/session/taskname.go, which owns the call.
 	RoleTaskName Role = "taskname"
+	// RoleJobName is the three or four words a background command is CALLED on
+	// its row — made from the command itself when the registry left a raw
+	// invocation there instead of a label. Low, for the title's reason: a wrong
+	// name costs a glance at a column and nothing downstream is decided from it.
+	// Registered from internal/session/jobname.go, which owns the call.
+	RoleJobName Role = "jobname"
 	// RoleShaper turns the words somebody typed after /task into the brief the
 	// worker is actually handed: it reads one request and writes the paragraphs
 	// and the done-condition around it. It sits HIGH for the auditor's reason
@@ -389,6 +395,7 @@ var roleDescriptions = map[Role]string{
 	RoleVision:        "reads images for a model that cannot see them",
 	RoleShaper:        "the brief a task you started yourself is given",
 	RoleTaskName:      "the two or three words a task is called",
+	RoleJobName:       "the three or four words a background job is called",
 }
 
 var (
