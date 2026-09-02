@@ -1490,6 +1490,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 								if len(absolute) > 0 {
 									text += summaryFileList + strings.Join(absolute, "\n")
 								}
+								// A REPAIR ACCEPTED WITHOUT A SECOND GATE IS STILL
+								// UNDER THE RULES THE PERSON SET. This is the one
+								// repair in this file whose result is taken on
+								// trust — the quorum round commits unconditionally
+								// and no re-judgement runs behind it — so a round
+								// bought to satisfy two validators could write the
+								// file the person forbade and ship over a pass.
+								// The one finding no judge could talk its way out
+								// of is therefore re-taken here by hand, over what
+								// this round actually left behind, and the verdict
+								// it produces rejoins the ordinary failed path
+								// below: no repair, no remainder, the rule on the
+								// record. See revision.ConstraintsHeld.
+								if held, broke := revision.ConstraintsHeld(gateEvidence(node, task.Spec,
+									outcome, jobArtifacts(opts.produced, absolute), true, jobDir)); broke {
+									gate = held
+									evidence.Pass, evidence.Gap = false, held.Gaps
+									evidence.Quote, evidence.Quotes = held.Quote, held.Citations
+									evidence.Mechanical, evidence.Finding = true, held.Finding
+									evidence.Constraint = held.Constraint
+									outcome.Verdict = provider.VerdictSemanticFailure
+								}
 							}
 							log.Printf("quorum: revised after reject")
 						}

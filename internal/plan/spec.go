@@ -223,6 +223,57 @@ func (s Spec) Render(limit int) string {
 	return clipSpec(out.String(), limit)
 }
 
+// mintedInside puts every node of a sub-graph inside the spec of the node it
+// came out of. It is the one seam a claim-time child passes through, and it
+// takes the parent's whole SPEC rather than a field of it — a division that
+// inherited its constraints and not its criterion is a child minted inside half
+// of what its parent was held to, and which half was a matter of whichever
+// caller was written last.
+//
+// Until it existed, an expansion inherited the graph-level premises — the
+// settled points, the terrain, the invoice — and NOTHING off the node. The
+// children came back with an empty Spec, so a divided node lost its criterion,
+// its working method and (once they existed) the rules the person set, all at
+// once and silently. See expandScoped, its one caller.
+//
+// Each field keeps its own law, and they are different laws for good reasons:
+//
+//   - Done and Method are FILLED WHERE EMPTY AND NEVER OVERWRITTEN. What the
+//     sub-plan wrote about a child is about that child and beats anything
+//     inherited; what it left empty used to be nothing at all, and the parent's
+//     is the only standard in the building that applies. Inside a full build the
+//     brief and contract passes run after this and write their own, which is
+//     the same rule expressed by ordering.
+//   - Constraints go on EVERY child, because a rule the person stated is a
+//     property of the job and dividing a node is not how a job walks out from
+//     under it. See SetConstraints.
+//   - Accept follows the checklist's own law and answers to deliverableOwner:
+//     the request's behaviours belong to whoever hands the finished thing over,
+//     and a sub-graph with several sinks has not gathered yet — stamping all of
+//     them would buy one repair round per sink for one gap. See SetAcceptance.
+//
+// Instruction and Sources are deliberately NOT inherited. A child told its
+// parent's whole instruction does its parent's whole job — the appetite failure
+// the fan-out rule exists to refuse — and its own sources are what the division
+// just decided. A child with no instruction falls back to its brief, which is
+// what every reader downstream already does.
+func (g *Graph) mintedInside(parent Spec) {
+	if g == nil || parent.Empty() {
+		return
+	}
+	for index := range g.Nodes {
+		spec := &g.Nodes[index].Spec
+		if spec.Done.Empty() {
+			spec.Done = parent.Done
+		}
+		if strings.TrimSpace(spec.Method) == "" {
+			spec.Method = parent.Method
+		}
+	}
+	g.SetConstraints(parent.Constraints)
+	g.SetAcceptance(parent.Accept)
+}
+
 // Criterion is the wave's rollback switch. On, the brief call returns an
 // instruction and a done-criterion together. Off, it returns today's prose
 // brief and every spec's Done stays empty — which every reader downstream

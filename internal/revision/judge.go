@@ -1282,6 +1282,13 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	judgment.HeldPoint = heldPointWords(evidence,
 		Grounds{Intent: node.Provenance.Intent, Method: method, Done: evidence.Done},
 		newBounds(options).budget(DeliverablePrompt), judgment)
+	// AND A REFUSAL THAT QUOTES A RULE THE PERSON SET IS A BROKEN RULE, WHOEVER
+	// REACHED IT. The mechanical door settles the two readings arithmetic can
+	// settle; the rest are put to the judge, and a judge that convicts on one was
+	// right about the finding and had no way to say what KIND of finding it is.
+	// It is stamped here, at the one exit, above every reader that decides what a
+	// round may be bought for. See ConstraintQuoted.
+	judgment = ConstraintQuoted(judgment, evidence.Constraints)
 	return judgment
 }
 

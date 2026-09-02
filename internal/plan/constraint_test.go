@@ -131,27 +131,77 @@ func TestRulesAboveKeepsTheRuleInFrontOfTheOrder(t *testing.T) {
 	}
 }
 
-// DIVIDING A NODE IS NOT HOW A JOB WALKS OUT FROM UNDER ITS RULES. An expansion
-// mints a fresh sub-graph and inherits the settled points, the terrain and the
-// prices from the graph it came out of; the rules the person set come down with
-// them, or a job under "change no files" acquires the permission to write the
-// moment one of its nodes turns out to be big enough to divide.
-func TestAnExpandedSubtreeInheritsTheRulesItsParentWasUnder(t *testing.T) {
-	rules := []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}}
+// A CLAIM-TIME CHILD IS MINTED INSIDE ITS PARENT'S SPEC, AS ONE OBJECT.
+//
+// An expansion inherits the graph's own premises — the settled points, the
+// terrain, the invoice — and until this it inherited nothing whatever off the
+// node it divided. So a divided node lost its criterion, its working method and
+// the rules the person set in one silent step, and dividing was how a job walked
+// out from under the one thing it was forbidden to do. Each field keeps its own
+// law and they are asserted here beside each other, because the failure was that
+// they were settled one at a time by whichever caller was written last.
+func TestAClaimTimeChildIsMintedInsideItsParentsSpec(t *testing.T) {
 	graph, parent := claimableGraph()
-	graph.SetConstraints(rules)
+	graph.Node(parent).Spec = Spec{
+		Instruction: "own every unit the gather listed",
+		Method:      "read what exists before writing anything",
+		Done:        Done{Produces: []string{"a per-unit note"}},
+		Constraints: []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}},
+		Accept:      []Point{{Behaviour: "every unit has a note", Quote: "a note for each unit"}},
+	}
 
 	sub, _, err := ExpandOne(t.Context(), &capturingClient{reply: splitReply}, graph, parent,
 		Options{MaxDepth: 4, NodeBudget: 40}, ClaimContext{})
 	if err != nil {
 		t.Fatalf("ExpandOne: %v", err)
 	}
-	if len(sub.Nodes) == 0 {
-		t.Fatal("the expansion produced no nodes to be under anything")
+	if len(sub.Nodes) < 2 {
+		t.Fatalf("the expansion produced %d nodes; the fixture divides into two", len(sub.Nodes))
 	}
 	for _, node := range sub.Nodes {
 		if len(node.Spec.Constraints) != 1 || node.Spec.Constraints[0].Text != "Change no files." {
 			t.Fatalf("%q was minted outside the rule: %+v", node.Title, node.Spec.Constraints)
 		}
+		// The criterion and the method the sub-plan wrote nothing about. The
+		// parent's is the only standard in the building that applies to them.
+		if len(node.Spec.Done.Produces) != 1 || node.Spec.Done.Produces[0] != "a per-unit note" {
+			t.Fatalf("%q was minted with no criterion: %+v", node.Title, node.Spec.Done)
+		}
+		if node.Spec.Method != "read what exists before writing anything" {
+			t.Fatalf("%q was minted with no working method: %q", node.Title, node.Spec.Method)
+		}
+		// And never the parent's instruction: a child told the whole of it does
+		// the whole of it, which is the division undone.
+		if strings.Contains(node.Spec.Instruction, "own every unit") {
+			t.Fatalf("%q inherited its parent's whole assignment: %q", node.Title, node.Spec.Instruction)
+		}
+	}
+	// THE CHECKLIST FOLLOWS ITS OWN LAW AND NOT THE RULE'S. Two parts running at
+	// once are two sinks, the sub-graph has not gathered, and stamping the
+	// request's behaviours on both would buy one repair round per sink for one
+	// gap. It is deliberately on neither.
+	for _, node := range sub.Nodes {
+		if len(node.Spec.Accept) != 0 {
+			t.Fatalf("%q was held to the whole request's behaviours: %+v", node.Title, node.Spec.Accept)
+		}
+	}
+	// And where the sub-graph DOES gather, it lands on the one node that hands
+	// the finished thing over, exactly as it does on a whole plan.
+	gathered := &Graph{NextID: 1}
+	first := gathered.Add(Node{Stage: 1, Kind: KindWork, Title: "First"})
+	gathered.Add(Node{Stage: 2, Kind: KindSynthesis, Title: "Gather", Needs: []int{first}})
+	gathered.mintedInside(graph.Node(parent).Spec)
+	if len(gathered.Nodes[0].Spec.Accept) != 0 || len(gathered.Nodes[1].Spec.Accept) != 1 {
+		t.Fatalf("the checklist did not land on the node that delivers: %+v", gathered.Nodes)
+	}
+	// And a child the sub-plan DID write a method or a criterion for keeps its
+	// own: what the division decided about a child beats anything inherited.
+	written := &Graph{NextID: 1}
+	written.Add(Node{Stage: 1, Kind: KindWork, Title: "Its own",
+		Spec: Spec{Method: "its own method", Done: Done{Produces: []string{"its own product"}}}})
+	written.mintedInside(graph.Node(parent).Spec)
+	if written.Nodes[0].Spec.Method != "its own method" ||
+		written.Nodes[0].Spec.Done.Produces[0] != "its own product" {
+		t.Fatalf("the parent overwrote what the division decided: %+v", written.Nodes[0].Spec)
 	}
 }

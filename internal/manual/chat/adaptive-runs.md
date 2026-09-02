@@ -532,27 +532,26 @@ for. It is never held to this.
 ## "I said change no files" — rules you state are laws of the run: do not touch anything, only write inside one folder
 
 A rule you state about what the run may or may not **do** — as distinct from what it must
-produce — is carried as a rule, not as advice. Tell it to touch nothing (`Change no
-files.`) or to stay inside one folder (`Only touch docs/.`, `Don't write outside src/.`)
-and that sentence is a law of the run, not a preference in the brief. It is read off your
-request in your own words, and aforge may only hold you to words you actually wrote: a
-rule it cannot quote back out of your request is dropped.
-
-**Three things then happen with it.**
+produce — is a law of the run, not a preference in the brief. Tell it to touch nothing
+(`Change no files.`) or to stay inside one folder (`Only touch docs/.`, `Don't write
+outside src/.`). aforge may only hold you to words you actually wrote: a rule it cannot
+quote back out of your request is dropped. **Three things then happen with it.**
 
 - **Every worker reads it first.** It sits above the working method in the brief of every
   piece of the job — including the ones spliced later by a repair round or by work planned
   to close a review's finding, which is where it used to be lost. A repair round is told
   in as many words that your rule outranks the review's gap.
 - **The gate checks the files the run changed against it**, before any review is bought.
-  A run told to touch nothing is stopped by any file it left in your workspace; a run told
-  to stay in one folder, by anything it wrote outside that folder. aforge's own
-  bookkeeping — its `.aforge/` logs and traces — is never counted, and neither is a
-  dependency tree something installed. A rule no such arithmetic can settle — "don't use
-  the network" — is put to the review as the standard beside your request instead.
+  A run told to touch nothing is stopped by any file it left in your workspace — **or
+  deleted from it**; a run told to stay in one folder, by anything it wrote outside that
+  folder. aforge's own bookkeeping — its `.aforge/` logs and traces — is never counted, and
+  neither is a dependency tree something installed. A rule no such arithmetic can settle —
+  "don't use the network" — is put to the review as the standard beside your request
+  instead, and **a review that fails the work by quoting one of your rules ends it the same
+  way**: no round is bought for that either.
 - **A run that broke one ends failed, with the rule quoted and the files named**, and no
-  round is bought to close it. Nothing is repaired and nothing further is planned: the work
-  did the one thing you said not to, and more of it is not the answer. Headless, that is
+  round is bought: nothing is repaired and nothing further is planned, because the work did
+  the one thing you said not to and more of it is not the answer. Headless, that is
   **exit 2** and a last line like:
 
 ```

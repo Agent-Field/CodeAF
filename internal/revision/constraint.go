@@ -167,16 +167,24 @@ func constraintBreaks(evidence Evidence) []constraintBreak {
 // constraintChanges is what the run left behind, as the workspace-relative
 // names a person would recognise.
 //
-// Three things are dropped, and each is dropped because it is not a change the
-// person forbade. A recorded path that is not a file on disk is an account of
-// something rather than an observation of it, and FAILSAFE clause 1 says the
-// world settles this. A path outside the workspace is the harness's own
-// machinery by construction — the scratch directory that holds spilled
-// observations, turn traces and job logs is deliberately outside the root
-// (exec.Workspace.scratch) — and a person forbidding writes forbade writes to
-// their own tree, not to our bookkeeping. And a path under a directory
-// verify.SkipTree names is the same fact one level in: our dot-directories, the
-// tooling's, and the dependency installs a `pip install` leaves behind.
+// Two things are dropped, and each is dropped because it is not a change the
+// person forbade. A path outside the workspace is the harness's own machinery by
+// construction — the scratch directory that holds spilled observations, turn
+// traces and job logs is deliberately outside the root (exec.Workspace.scratch)
+// — and a person forbidding writes forbade writes to their own tree, not to our
+// bookkeeping. And a path under a directory verify.SkipTree names is the same
+// fact one level in: our dot-directories, the tooling's, and the dependency
+// installs a `pip install` leaves behind.
+//
+// A PATH THE RECORD HOLDS IS A CHANGE WHETHER OR NOT IT IS STILL THERE. This is
+// the one door that must not ask the disk whether the file exists, and it is the
+// opposite of every other reading in this package: elsewhere a missing file
+// convicts a claim that it was written, and here the question is whether the run
+// touched the tree at all. A run told to change nothing that DELETED a file
+// changed the tree in the loudest way there is, and a dangling symlink is the
+// same event wearing a stat error. Only a directory is skipped, and only when
+// the stat succeeded well enough to say so — a directory is where files live and
+// never a file the run wrote.
 func constraintChanges(evidence Evidence) []string {
 	root := strings.TrimSpace(evidence.Workspace)
 	seen := make(map[string]bool, len(evidence.Artifacts))
@@ -185,21 +193,21 @@ func constraintChanges(evidence Evidence) []string {
 		if path = strings.TrimSpace(path); path == "" {
 			continue
 		}
-		name := path
+		name := filepath.ToSlash(path)
 		if root != "" {
 			relative, err := filepath.Rel(root, path)
-			if err != nil || relative == "." || strings.HasPrefix(relative, "..") {
+			if err != nil {
 				continue
 			}
 			name = filepath.ToSlash(relative)
-		} else {
-			name = filepath.ToSlash(name)
+			if name == "." || outsideWorkspace(name) {
+				continue
+			}
 		}
 		if skippedConstraintPath(name) {
 			continue
 		}
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			continue
 		}
 		if seen[name] {
@@ -212,6 +220,21 @@ func constraintChanges(evidence Evidence) []string {
 	// in, and a rule broken by the same two files must read the same way twice.
 	sort.Strings(changed)
 	return changed
+}
+
+// outsideWorkspace reads a workspace-relative path and answers whether it climbs
+// out of the workspace. It tests the SEGMENT and never the prefix, because a
+// file a person legitimately keeps at the root of their tree may perfectly well
+// be called `..config` — and the prefix test rejected every one of them, which
+// would have let a run told to change nothing quietly change any dotfile whose
+// name began with two dots.
+//
+// The containment is lexical: a workspace reached through a symlink is not
+// resolved here, and that is deliberate — it is how the artifact record spells
+// its paths, and two spellings of one place is the drift this reading cannot
+// afford.
+func outsideWorkspace(relative string) bool {
+	return relative == ".." || strings.HasPrefix(relative, "../")
 }
 
 // skippedConstraintPath answers whether any directory on the way to this file is
@@ -278,4 +301,60 @@ func ConstraintsBlock(constraints []plan.Constraint) string {
 	}
 	return plan.ConstraintsBlock("Rules the person set, in their own words. "+
 		"A rule they set and the work broke is a gap, and you quote the rule", judged)
+}
+
+// ConstraintQuoted stamps a MODEL JUDGE's refusal that turns out to be about a
+// rule the person set, so that it is treated as one.
+//
+// The mechanical door above settles the two readings arithmetic can settle and
+// returns before a model is bought. Everything else — "don't use the network",
+// "keep it under two hundred words", "don't delete anything" — is shown to the
+// judge as the standard beside the request, and the judge can and does convict
+// on it. Until this, such a verdict was an ordinary gap: it bought the repair
+// round and it bought the remainder, which is precisely the thing a broken rule
+// may never buy. The finding was the right one and only its KIND was wrong.
+//
+// The match is the containment rule this program already uses for a behaviour
+// (behaviourNamed), and it runs one way for the same reason: a quote that is
+// part of a stated rule is that rule, quoted shorter, and a model asked for a
+// verbatim span may reasonably give less than the whole of one. A quote that
+// CONTAINS a rule is a longer span of the request that happens to have a rule
+// inside it, and reading that as a broken rule would refuse rounds for gaps that
+// are nothing of the sort.
+//
+// Only ConstraintOther is matched, and that is not an oversight. A mechanical
+// rule was already held above and found KEPT — that is why there was a model
+// round at all — so a judge convicting on one is convicting on a question this
+// gate has already answered against it, and the honest reading of that verdict
+// is whatever else it says.
+func ConstraintQuoted(judgment Judgment, constraints []plan.Constraint) Judgment {
+	if judgment.Pass || len(judgment.Constraint) > 0 {
+		return judgment
+	}
+	quote := constraintFold(judgment.Quote)
+	if quote == "" {
+		return judgment
+	}
+	for _, constraint := range constraints {
+		if constraint.Kind != plan.ConstraintOther {
+			continue
+		}
+		rule := constraintFold(constraint.Text)
+		if rule == "" || !strings.Contains(rule, quote) {
+			continue
+		}
+		judgment.Finding = FindingConstraint
+		judgment.Constraint = []string{constraint.Text}
+		return judgment
+	}
+	return judgment
+}
+
+// constraintFold is one sentence's identity for the purposes of matching it
+// against another: its words, whitespace-normalized and case-folded. It is the
+// same reading head.keepStatedConstraints holds the compiler to and
+// plan.NormalizeConstraints dedupes on, so a rule kept there, deduped there and
+// matched here agree about what "the same words" means.
+func constraintFold(text string) string {
+	return strings.ToLower(strings.Join(strings.Fields(text), " "))
 }

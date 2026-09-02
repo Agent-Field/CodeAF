@@ -735,3 +735,40 @@ which did nothing is the first of the three rules above, written down.
 `store.DeliveryGate.Constraint` records it, and `Whole()` counts it as leaving
 the delivery short — no pass, no closed repair and no overturned refusal covers
 it, because none of the three is about the rule.
+
+Four edges of the same law, each one a place it could have leaked out.
+
+**A claim-time child is minted inside its parent's spec.** An expansion inherits
+the graph's own premises — the settled points, the terrain, the invoice — and
+inherited NOTHING off the node it divided, so a divided node lost its criterion,
+its working method and its rules in one silent step. `plan.Graph.mintedInside`
+takes the parent's whole spec at the single seam every minted child passes
+through: Done and Method fill what the sub-plan left empty and never overwrite
+what it wrote, Constraints go on every child, and Accept answers to
+`deliverableOwner` as it always has, because stamping the checklist on every sink
+buys one repair round per sink for one gap.
+
+**A rule the JUDGE convicts on is a broken rule.** The rules no arithmetic can
+settle are shown to the judge as the standard beside the request, and a verdict
+that quotes one was right about the finding and had no way to say what KIND of
+finding it is — so it bought the repair round and the remainder like any other
+gap. `ConstraintQuoted` stamps it at the gate's one exit, on the containment rule
+this program already uses for a behaviour, and only for `other`: a mechanical
+rule was held above and found KEPT, so a judge convicting on one is convicting on
+an answered question.
+
+**The `no_writes` neutrality is not an amnesty.** It makes an unmoved repair
+neutral about findings only work could close, which is what a run under that rule
+needs. It does not cover a MECHANICAL gap — a file the plan or the person
+promised and the disk does not hold — because no rule about what a run may not
+write makes an absent deliverable appear, and without the guard one rule on the
+record would switch §8 off for everything.
+
+**Deleting is changing, and containment is lexical.** The reading that holds the
+rule is the only one in this package that must not ask the disk whether a file
+still exists: a run told to change nothing that DELETED a file changed the tree in
+the loudest way there is, and a dangling symlink is the same event wearing a stat
+error. A workspace reached through a symlink is not resolved — that is how the
+artifact record spells its paths, and two spellings of one place is drift this
+reading cannot afford. Only a real climb out of the root (`..`, `../…`) is
+outside it; `..config` at the root of somebody's tree is a file they keep there.

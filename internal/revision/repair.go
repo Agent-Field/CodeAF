@@ -211,7 +211,7 @@ func RepairClosed(rejudged, finding Judgment, evidence Evidence, unmoved bool) b
 	if !rejudged.Checked || !rejudged.Pass {
 		return false
 	}
-	if unmoved && !toldToMoveNothing(evidence) && GroundedInTheWorld(finding, evidence) {
+	if unmoved && !toldToMoveNothing(finding, evidence) && GroundedInTheWorld(finding, evidence) {
 		return false
 	}
 	return true
@@ -232,7 +232,18 @@ func RepairClosed(rejudged, finding Judgment, evidence Evidence, unmoved bool) b
 // It reads the constraint and never the absence of artifacts: a run that
 // happened to produce nothing is not a run that was told to produce nothing,
 // and only the person's own words can say which of the two this is.
-func toldToMoveNothing(evidence Evidence) bool {
+//
+// AND IT NEVER EXCUSES A MECHANICAL FINDING, whatever the person said. A
+// mechanical gap is a file the plan or the person PROMISED and the disk does not
+// hold, and no rule about what a run may not write makes an absent deliverable
+// appear: closing that one still takes the disk moving. Without the guard, one
+// `no_writes` rule on the record would have made an unmoved repair able to close
+// every world-grounded finding the second judge happened to pass — which is §8
+// switched off by a sentence about something else.
+func toldToMoveNothing(finding Judgment, evidence Evidence) bool {
+	if finding.Mechanical {
+		return false
+	}
 	for _, constraint := range evidence.Constraints {
 		if constraint.Kind == plan.ConstraintNoWrites {
 			return true

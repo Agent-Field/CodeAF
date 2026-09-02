@@ -223,3 +223,140 @@ func TestOnlyTheRulesAReaderMustSettleReachTheJudge(t *testing.T) {
 		t.Fatal("a job with no rules sent a heading with nothing under it")
 	}
 }
+
+// A PATH THE RECORD HOLDS IS A CHANGE WHETHER OR NOT IT IS STILL THERE.
+//
+// This door is the opposite of every other reading in this package: elsewhere a
+// missing file convicts a claim that it was written, and here the question is
+// whether the run touched the tree at all. A run told to change nothing that
+// DELETED a file changed the tree in the loudest way there is, and a dangling
+// symlink is the same event wearing a stat error — both used to walk straight
+// through, because the reading dropped anything it could not stat.
+func TestARuleIsBrokenByAFileTheRunDeletedOrLeftDangling(t *testing.T) {
+	root := t.TempDir()
+	removed := filepath.Join(root, "docs/notes.md")
+	if err := os.MkdirAll(filepath.Dir(removed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(removed, []byte("was here\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(removed); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(root, "link.txt")
+	if err := os.Symlink(filepath.Join(root, "gone.txt"), dangling); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+
+	broken := HoldConstraints(Evidence{Artifacts: []string{removed, dangling},
+		Workspace: root, Constraints: noWrites})
+	if len(broken) != 1 {
+		t.Fatalf("a deleted file and a dangling link did not break the rule: %+v", broken)
+	}
+	for _, want := range []string{"docs/notes.md", "link.txt"} {
+		if !strings.Contains(broken[0], want) {
+			t.Fatalf("the record does not name %q: %q", want, broken[0])
+		}
+	}
+	// And a directory is still not a file the run wrote: it is where files live.
+	if held := HoldConstraints(Evidence{Artifacts: []string{filepath.Join(root, "docs")},
+		Workspace: root, Constraints: noWrites}); len(held) != 0 {
+		t.Fatalf("a directory was held against the run: %+v", held)
+	}
+}
+
+// A NAME IS NOT A DIRECTION. `..config` at the root of somebody's tree is a file
+// they keep there, and the containment test used to read its first two
+// characters as a climb out of the workspace — so a run told to change no files
+// could quietly change any dotfile whose name began with two dots.
+func TestARootLevelDotDotNameIsInsideTheWorkspace(t *testing.T) {
+	root, record := constraintWorkspace(t, "..config")
+
+	broken := HoldConstraints(Evidence{Artifacts: record, Workspace: root, Constraints: noWrites})
+	if len(broken) != 1 || !strings.Contains(broken[0], "..config") {
+		t.Fatalf("a file at the root of the workspace was read as outside it: %+v", broken)
+	}
+	// And a path that really does climb out is still outside. The scratch
+	// directory the harness writes its own traces into is exactly that by
+	// construction, and holding it against the run would fail every job of this
+	// shape whether it wrote anything or not.
+	outside := filepath.Join(filepath.Dir(root), "elsewhere.txt")
+	if err := os.WriteFile(outside, []byte("machinery\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if held := HoldConstraints(Evidence{Artifacts: []string{outside}, Workspace: root,
+		Constraints: noWrites}); len(held) != 0 {
+		t.Fatalf("a path outside the workspace was held against the run: %+v", held)
+	}
+}
+
+// A RULE THE JUDGE CONVICTS ON IS A BROKEN RULE, AND BUYS WHAT A BROKEN RULE
+// BUYS, WHICH IS NOTHING. The rules no arithmetic can settle are shown to the
+// judge as the standard beside the request, and a verdict that quotes one was
+// right about the finding with no way to say what kind of finding it is — so it
+// bought the repair round and the remainder like any other gap.
+func TestAJudgeThatQuotesAStatedRuleRaisesTheRuleFinding(t *testing.T) {
+	rule := plan.Constraint{Text: "Do not use the network.", Kind: plan.ConstraintOther}
+	settings := config.Config{Model: "worker/model"}
+	judge := &recordingJudge{replies: []string{
+		`{"pass":false,"gaps":"The work fetched the figures over HTTP.","quote":"Do not use the network."}`}}
+	node := store.Node{ID: "task-1", Brief: "total the figures",
+		Provenance: store.Provenance{Intent: "Total the figures in the file. Do not use the network."}}
+
+	judgment := JudgeDeliverable(context.Background(), settings,
+		pool.Adopt(settings, judge.Model(), judge), nil, node,
+		"I fetched the current figures and totalled them.", "",
+		Evidence{Observed: true, Constraints: []plan.Constraint{rule}}, "worker/model")
+
+	if judgment.Pass {
+		t.Fatalf("the judge's refusal was lost: %+v", judgment)
+	}
+	if judgment.Finding != FindingConstraint {
+		t.Fatalf("a refusal quoting a stated rule is not a rule finding: %q", judgment.Finding)
+	}
+	if len(judgment.Constraint) != 1 || judgment.Constraint[0] != rule.Text {
+		t.Fatalf("the rule is not on the record: %+v", judgment.Constraint)
+	}
+	// The containment runs one way. A quote that CONTAINS a rule is a longer span
+	// of the request that happens to have one inside it, and reading that as a
+	// broken rule would refuse rounds for gaps that are nothing of the sort.
+	wider := ConstraintQuoted(Judgment{Pass: false,
+		Quote: "Total the figures in the file. Do not use the network."}, []plan.Constraint{rule})
+	if len(wider.Constraint) != 0 {
+		t.Fatalf("a span that swallows a rule was read as the rule: %+v", wider.Constraint)
+	}
+	// And a mechanical rule is never matched here: it was held above and found
+	// KEPT, which is why there was a model round at all.
+	settled := ConstraintQuoted(Judgment{Pass: false, Quote: "Change no files."}, noWrites)
+	if len(settled.Constraint) != 0 {
+		t.Fatalf("a rule this gate already cleared was convicted on: %+v", settled.Constraint)
+	}
+}
+
+// A REPAIR ACCEPTED WITHOUT A SECOND GATE IS STILL UNDER THE PERSON'S RULES.
+//
+// The quorum round is the one repair whose result is taken on trust: it commits
+// unconditionally and nothing re-judges it. So the record it leaves behind is
+// re-read against the rules by hand, and what comes back rejoins the ordinary
+// failed path — a verdict that buys no round, exactly as the first gate's would
+// have. This pins the two halves that wiring depends on together.
+func TestARepairAcceptedWithoutASecondGateIsStillHeldToTheRules(t *testing.T) {
+	root, record := constraintWorkspace(t, "quorum_fix_test.go")
+	held, broke := ConstraintsHeld(Evidence{Artifacts: record, Workspace: root,
+		Observed: true, Constraints: noWrites})
+	if !broke || held.Pass || held.Finding != FindingConstraint {
+		t.Fatalf("the round's own record did not raise the rule: %+v", held)
+	}
+
+	node := store.Node{ID: "task-1", Provenance: store.Provenance{Intent: constraintErrandIntent}}
+	planned := 0
+	extension := ExtendForGap(context.Background(), &store.Store{}, node, "the line was reported",
+		held, nil, 10, func(context.Context, string, string) (store.Subtree, error) {
+			planned++
+			return store.Subtree{}, nil
+		})
+	if planned != 0 || extension.Spliced != 0 || !extension.Unclosed {
+		t.Fatalf("a rule broken by an unjudged repair still bought work: %+v", extension)
+	}
+}
