@@ -34,6 +34,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 const (
@@ -112,10 +114,10 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 	// no cheaper way to put a clock on a call the driver will not let anybody
 	// interrupt.
 	landed := make(chan attempt, 1)
-	go func() {
+	guard.Go("store/begin-write attempt", func() {
 		tx, err := db.BeginTx(context.Background(), nil)
 		landed <- attempt{tx: tx, err: err}
-	}()
+	})
 	timer := time.NewTimer(limit)
 	defer timer.Stop()
 	select {
@@ -126,12 +128,12 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 		// ends by itself within busyWait, and if it wins the lock on the way out
 		// it is rolled back at once: a transaction nobody is holding must not be
 		// left holding the lock the next writer is waiting for.
-		go func() {
+		guard.Go("store/begin-write rollback", func() {
 			got := <-landed
 			if got.tx != nil {
 				_ = got.tx.Rollback()
 			}
-		}()
+		})
 		return nil, fmt.Errorf("%w (waited %s)", ErrBusy, limit)
 	}
 }

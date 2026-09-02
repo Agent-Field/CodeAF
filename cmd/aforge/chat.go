@@ -4629,7 +4629,7 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 	}
 	ch := make(chan verdict, 2)
 	for range 2 {
-		go func() {
+		guard.Go("chat/quorum-verify", func() {
 			vctx := pool.WithSpendNode(errandContext(ctx, settings, "quorum", lane.RoleJudge), nodeID)
 			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
 			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
@@ -4642,7 +4642,7 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 			} else {
 				ch <- verdict{true, ""}
 			}
-		}()
+		})
 	}
 	v1, v2 := <-ch, <-ch
 	var reasons []string

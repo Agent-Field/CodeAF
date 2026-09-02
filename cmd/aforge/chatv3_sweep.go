@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -44,7 +45,7 @@ const sweepLogName = "sweep.log"
 // that the rule can be pointed at a temp directory and proved. [v3StandingRoot]
 // is the one answer to where that is.
 func startPlaceSweep() {
-	sweepOnce.Do(func() { go session.SweepHome(v3StandingRoot(), noteSweep) })
+	sweepOnce.Do(func() { guard.Go("chatv3/sweep-home", func() { session.SweepHome(v3StandingRoot(), noteSweep) }) })
 }
 
 var sweepOnce sync.Once

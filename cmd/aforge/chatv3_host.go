@@ -828,12 +828,15 @@ func hostFollow(seams hostSeams) func() <-chan tui3.Following {
 	return func() <-chan tui3.Following {
 		once.Do(func() {
 			out = make(chan tui3.Following)
-			go func() {
+			guard.Go("chatv3/host-follow", func() {
+				// A recovered panic must end the follow the way the seam's own
+				// end does, or the surface waits on a channel nobody will close
+				// again.
+				defer close(out)
 				for turn := range seams.Follow() {
 					out <- tui3.Following{Said: turn.Said, Events: turn.Events}
 				}
-				close(out)
-			}()
+			})
 		})
 		return out
 	}
