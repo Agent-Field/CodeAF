@@ -44,9 +44,11 @@ holder_alive() {
 }
 
 # Take the lock, or refuse naming the holder. A stale lock — a holder that is
-# dead, or a pid reused by something else — is removed and the take is tried
-# once more; a second failure after that is a live holder that arrived in
-# between, and the refusal stands.
+# dead, or a pid reused by something else — is MOVED ASIDE, not removed: two
+# contenders can both judge it stale, and only one mv of the same directory
+# succeeds, so the other cannot delete a lock the winner has just taken. The
+# take is then tried once more; a failure after that is a live holder that
+# arrived in between, and the refusal stands.
 take() {
 	mkdir "$lock" 2>/dev/null
 }
@@ -57,7 +59,10 @@ if ! take; then
 			'Wait for it, or run the packages you touched: make test PKGS=./internal/whatever' >&2
 		exit 1
 	fi
-	rm -rf "$lock"
+	stale="$lock.stale.$$"
+	if mv "$lock" "$stale" 2>/dev/null; then
+		rm -rf "$stale"
+	fi
 	if ! take; then
 		echo 'another full suite took the lock this instant; try again.' >&2
 		exit 1
@@ -74,6 +79,13 @@ child=$!
 trap 'rm -rf "$lock"' EXIT
 trap 'kill -INT "$child" 2>/dev/null || true' INT
 trap 'kill -TERM "$child" 2>/dev/null || true' TERM
+# AND THE WAIT OUTLIVES THE SIGNAL. A trapped signal returns from `wait` at
+# once, before the child has acted on the one forwarded to it; exiting then
+# would drop the lock with the suite still running. So the wait is repeated
+# until the child is really gone, and only its own status is kept.
 status=0
-wait "$child" || status=$?
+while true; do
+	if wait "$child"; then status=0; else status=$?; fi
+	kill -0 "$child" 2>/dev/null || break
+done
 exit "$status"

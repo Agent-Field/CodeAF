@@ -142,7 +142,7 @@ test-laws:
 fmt-check:
 	@dirs="$$(go list -f '{{.Dir}}' ./...)" || exit 1; \
 	test -n "$$dirs" || { echo 'go list found no packages'; exit 1; }; \
-	files="$$(gofmt -l $$dirs)"; \
+	files="$$(printf '%s\n' "$$dirs" | tr '\n' '\0' | xargs -0 gofmt -l)" || exit 1; \
 	if test -n "$$files"; then \
 		printf '%s\n' 'gofmt would rewrite:' "$$files"; \
 		exit 1; \
