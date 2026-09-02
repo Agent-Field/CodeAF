@@ -882,4 +882,11 @@ func TestARequestThatNamesAPackageIsReadOverThatPackage(t *testing.T) {
 	if strings.Contains(first.Command, "internal/session") {
 		t.Errorf("the reading reached a package the request never named: %q", first.Command)
 	}
+	// AND THE RUNNER'S OWN "EVERYTHING" IS NOT STILL ON THE COMMAND LINE. `go
+	// test -json ./... ./internal/subharness/...` is a reading of the whole
+	// repository wearing a scope's clothes: measured at 4,588 checks against a
+	// selection that had correctly chosen seventeen files.
+	if strings.Contains(first.Command, "./...") {
+		t.Errorf("the scoped reading still names the whole tree: %q", first.Command)
+	}
 }
