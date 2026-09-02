@@ -57,12 +57,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// screen is actually showing them.
 		{"I clicked on the task and there is nothing there at all", "task-rooms-after-restart"},
 		{"nothing on this page yet", "reading-a-task-page"},
-		// The switcher, asked in the words people bring to it: the gesture they
-		// already know from every other program, the thing they are looking for,
-		// and the two spellings of the key.
+		// Escape pressed on a turn that keeps going, asked the three ways people
+		// say it: the key that seemed to do nothing, how long the wait lasts, and
+		// what happens when it will not let go.
 		{"I pressed escape and it is still running", "keys"},
 		{"how long does stop take", "keys"},
 		{"what happens if it will not stop", "keys"},
+		// A machine that refused the work, asked in the word the screen puts on
+		// the row: the provider named in the refusal, the model nothing will
+		// serve, and why that word is not the one for slow.
+		{"it says coreweave refused", "models-and-cost"},
+		{"a machine will not serve my model", "lanes"},
+		{"why does it say refused instead of slow", "models-and-cost"},
+		// The switcher, asked in the words people bring to it: the gesture they
+		// already know from every other program, the thing they are looking for,
+		// and the two spellings of the key.
 		{"alt tab between conversations", "keys"},
 		{"switch chats without pressing enter", "keys"},
 		{"ctrl+k switched me right away how do I stop that", "keys"},

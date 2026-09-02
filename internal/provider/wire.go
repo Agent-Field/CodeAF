@@ -386,18 +386,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
-	wire.Provider = c.providerPreferences(model, knobs, &scrubbed)
-	// And the second request of a hedged pair names its lane outright, over
-	// whatever the ledger's own ranking preferred (hedge.go). It is a no-op on
-	// every request that is not one.
-	wire.Provider = hedgePreference(wire.Provider, knobs)
-	if knobs.relaxed.has(relaxEndpointFilter) {
-		// The two fields that can narrow the endpoint set to nothing: the hard
-		// parameter filter, and this process's own refusals. The SORT stays —
-		// it is a preference among whatever is left, and it can never empty the
-		// set — so a relaxed request still asks for the fastest thing available.
-		wire.Provider = relaxedPreferences(wire.Provider)
-	}
+	//
+	// THE COMPOSITION IS NAMED ONCE AND LIVES IN velocity.go, because the
+	// endpoint-refusal ladder has to decide its first rung from the SAME object
+	// this line writes ([Client.relaxationPlan]). It read only the ledger's half
+	// of it for a while, could not see the demand a rescue adds, and offered a
+	// pinned request no first rung at all (issue #266).
+	wire.Provider = c.wirePreferences(model, knobs, &scrubbed)
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = &ceiling

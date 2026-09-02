@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -375,6 +374,40 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 	return prefs
 }
 
+// wirePreferences is the `provider` object THIS REQUEST ACTUALLY GOES OUT
+// WITH: the ledger's own preferences, plus a rescue's demand, minus whatever
+// the ladder has already taken off.
+//
+// IT IS NAMED ONCE BECAUSE TWO READERS HAVE TO AGREE ABOUT IT. The encoder
+// writes the object (wire.go) and the ladder decides its first rung from it
+// (endpoints.go's [Client.relaxationPlan]); a ladder reading only the ledger's
+// half could not see the demand [hedgePreference] adds afterwards, so a pinned
+// request was offered no first rung and climbed every other one still pinned to
+// the machine that had refused it (issue #266).
+func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Request) *providerPrefs {
+	prefs := hedgePreference(c.providerPreferences(model, knobs, request), knobs)
+	if knobs.relaxed.has(relaxEndpointFilter) {
+		prefs = relaxedPreferences(prefs)
+	}
+	return prefs
+}
+
+// narrowing reports whether this preference object carries anything that can
+// leave the router with NO endpoint to send to.
+//
+// It is the whole membership rule of the ladder's first rung, written once, so
+// that the rung is offered exactly when it would do something
+// ([Client.relaxationPlan]) and takes off exactly what it was offered for
+// ([relaxedPreferences]). Two lists that had to agree were two lists that
+// disagreed for a whole run: `only` could empty the set and was on neither.
+func (p *providerPrefs) narrowing() bool {
+	if p == nil {
+		return false
+	}
+	return p.RequireParameters != nil || len(p.Ignore) > 0 || p.MaxPrice != nil ||
+		len(p.Only) > 0 || p.AllowFallbacks != nil
+}
+
 // relaxedPreferences is the preference object with everything that can EXCLUDE
 // an endpoint taken out of it, leaving only what orders the ones that remain.
 //
@@ -395,7 +428,23 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 	// answer than a dear one. It comes off with the rest of the filter, and the
 	// sort still asks for the fastest of whatever remains.
 	relaxed.MaxPrice = nil
-	if relaxed.Sort == "" && len(relaxed.Order) == 0 && relaxed.AllowFallbacks == nil {
+	// AND THE DEMAND COMES OFF WITH THEM, which is the fourth and was the one
+	// that mattered. `only` names the machines this request may go to and
+	// `allow_fallbacks: false` forbids any other — together they are the
+	// narrowest filter this process ever sends, and the refusal they earn is
+	// literally the router saying the set is empty. A ladder that dropped the
+	// parameter filter and left the pin on climbed six rungs still pinned to
+	// the machine that had said no (issue #266); the pin is what has to go, and
+	// it goes first.
+	//
+	// A RESCUE THAT REACHES THIS RUNG HAS ALREADY LOST ITS ARGUMENT FOR THE
+	// PIN. The demand exists so that a hedge cannot land on the lane that is
+	// already stalling (hedge.go), and it is only ever relaxed on the LAST arm
+	// — the one the race had no other machine to walk to — where the choice is
+	// between a wider request and no answer at all.
+	relaxed.Only = nil
+	relaxed.AllowFallbacks = nil
+	if relaxed.Sort == "" && len(relaxed.Order) == 0 {
 		return nil
 	}
 	return &relaxed
@@ -648,20 +697,39 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // earns — a lane this process has decided not to send to — and it travels the
 // same way, in `provider.ignore` on every request encoded after it.
 //
-// IT ONLY EVER FIRES ON AN UPSTREAM'S REFUSAL. A 4xx the router answered for
-// itself names no provider ([APIError.OurRequest]) and strikes nothing: there is
-// no lane to blame for a request that is malformed, and refusing endpoints over
-// our own bytes would empty the ledger one attempt at a time. A 429 is left to
-// [Client.notePacedProvider], which knows the wait the provider named.
-func (c *Client) refuseUpstream(model string, err error) bool {
+// IT STRIKES A LANE OR IT STRIKES NOTHING, and which of the two is not this
+// function's to decide: it is reader (a) of the one refusal object
+// (refusalobject.go), and every question about what a refusal MEANS is answered
+// there. A 4xx over our own bytes that demanded no machine names no lane and
+// strikes nothing — there is no endpoint to blame for a malformed request, and
+// refusing endpoints over our own bytes would empty the ledger one attempt at a
+// time. A 429 is left to [Client.notePacedProvider], which knows the wait the
+// provider named.
+//
+// ── AND THE ROUTER'S OWN REFUSAL IS NO LONGER EXEMPT ────────────────────────
+//
+// It used to require `provider_name` in the error metadata, which OpenRouter
+// puts there exactly when it is relaying somebody ELSE'S refusal — so the one
+// refusal that is certain about a lane, the router's own
+// `…your request's provider.only preference permits only: coreweave`, was
+// structurally unable to strike the lane it named. It carried no
+// `provider_name` because the router was answering for itself, so the strike
+// declined it, and the same machine was chosen three more times in one run
+// (issue #266). The lane a refusal is about now comes from OUR OWN REQUEST, and
+// a router refusal against a demanded machine is terminal for that pairing: it
+// is both paced here and written out of the serving set, because a pin the
+// frontier can still choose is a pin that comes back on the next turn.
+func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error) bool {
 	if c.velocity == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
 		return false
 	}
-	refusal, ok := RefusalFrom(err)
-	if !ok || !refusal.FromUpstream() || refusal.Status == http.StatusTooManyRequests {
+	model := c.modelFor(request)
+	refusal := c.refusalObject(request, knobs, err)
+	if !refusal.struck() {
 		return false
 	}
-	return c.velocity.pace(model, refusal.Provider, 0)
+	c.refuseServing(model, refusal)
+	return c.velocity.pace(model, refusal.Lane, 0)
 }
 
 // pacedProviderName reads which endpoint a 429 came from, "" when the body

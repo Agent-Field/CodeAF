@@ -136,10 +136,37 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
-| `slow · trying parasail…` | a second request is out; the first one to answer wins |
+| `slow · trying parasail…` | a machine was late; a second request is out and the first to answer wins |
+| `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
+| `parasail refused` | the machine that second request went to said no as well |
 | `via parasail · rescued` | it worked, for this answer only |
 | `coreweave is slow · switch to auto? (y)` | your pinned machine is quiet, and you can end the wait |
 | `all lanes slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
+
+## When a machine refuses to serve the model
+
+`slow` and `refused` are two different facts and the row says which. **Slow** is
+a wait: the machine is answering and taking its time. **Refused** is a machine
+saying it will not serve this model at all — the router answers
+`no endpoints found … your request's provider.only preference permits only:
+coreweave`, which means the machine aforge asked for is not in the set that
+serves this model right now.
+
+A refusal is final for that machine, immediately:
+
+- the next request leaves at once, for a different machine, and does not name
+  the refused one;
+- that machine is taken out of the set aforge will choose from for this model,
+  so it is not picked again later in the session;
+- if there is nowhere left to move to, the request itself is widened — the
+  demand for one machine is the first thing dropped — and the answer usually
+  arrives from wherever the router picks.
+
+The row keeps up with all of it. `refused · trying parasail…` while the answer
+is moving, and if parasail refuses too the promise is **taken back** rather than
+left standing: the row reads `parasail refused`, which is what actually
+happened. A row still saying `trying …` about a request that has already failed
+is the one thing it will not do.
 
 ## Turning lane routing off
 

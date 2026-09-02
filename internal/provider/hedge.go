@@ -253,7 +253,7 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				// still be stalled with nothing on the screen, and the next
 				// machine behind this model is a cheaper answer than relaxing
 				// the request or changing the model would be.
-				r.walk(result.index)
+				r.walk(result.index, result.err)
 			}
 			if result.err == nil {
 				// FINISHING IS COMMITTING. An arm that reached the end of its
@@ -524,7 +524,7 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	// unexplained pause; the one sentence this build says about a slow answer is
 	// said while something is already being done about it (internal/tui3's
 	// laneRider).
-	r.report.started(alt)
+	r.report.started(RescueNews{Alt: alt, Reason: RescueSlow})
 	// AND THE CLOCK SAYS SO IN THE SAME BREATH. "stalled 9s · switching to
 	// parasail" is one sentence: the first half is why, and a person shown only
 	// the second half would not know what it was about (phase.go).
@@ -710,11 +710,26 @@ func (r *hedgeRace) affordableAlt() (string, bool) {
 //
 // THE PRIMARY IS NEVER WALKED FROM. An arm that is still streaming has not
 // failed, and the controller is the only thing allowed to give up on it.
-func (r *hedgeRace) walk(from int) {
+func (r *hedgeRace) walk(from int, cause error) {
 	if r == nil || r.base == nil || r.base.Err() != nil {
 		return
 	}
-	alt := r.claim("", true)
+	// THE ARM THAT DIED IS CLASSIFIED BEFORE ANYTHING IS DONE ABOUT IT, through
+	// the same object the strike and the ladder read (refusalobject.go). The
+	// walk knows what a request cannot tell it and a request knows what the walk
+	// cannot: an arm IS the machine it demanded, so it asks the classifier by
+	// lane rather than re-deriving a `provider.only` it wrote itself.
+	dead := r.armLane(from)
+	refusal := r.client.laneRefusalFor(r.model, dead, cause)
+	// AND THE CLAIM WE MADE ABOUT IT IS WITHDRAWN FIRST. `trying coreweave…` is
+	// a promise about the present tense; nothing retracted it when coreweave
+	// died, so it sat on the status line until a ten-minute window aged it out,
+	// describing a request that had already failed (issue #266). Only a rescue
+	// is retracted, because only a rescue was ever announced.
+	if dead != "" {
+		r.report.ended(refusal.news(dead))
+	}
+	alt := r.claimServing()
 	if alt == "" {
 		return
 	}
@@ -724,9 +739,38 @@ func (r *hedgeRace) walk(from int) {
 	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
 		return
 	}
-	r.report.started(alt)
+	r.report.started(refusal.news(alt))
 	r.phase.switching(strings.ToLower(alt), "")
 	r.start(index, alt)
+}
+
+// armLane is the machine one arm demanded, empty for the primary — which
+// demanded none and therefore had nothing announced about it.
+func (r *hedgeRace) armLane(index int) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if arm := r.armAt(index); arm != nil {
+		return arm.lane
+	}
+	return ""
+}
+
+// claimServing is [hedgeRace.claim] for the walk: the next untried machine that
+// the WIRE still says serves this model.
+//
+// A PIN IS ONLY EVER CHOSEN FROM THE SET KNOWN TO SERVE THE MODEL. The plan's
+// alternatives were computed from the frontier before this question went out,
+// and a refusal collected since is newer than all of it — walking onto a lane
+// that has just been written out of the serving set would spend an arm to be
+// told the same 404 a second time. Each turn of the loop is a claim, so a lane
+// the walk skips is also a lane it never returns to.
+func (r *hedgeRace) claimServing() string {
+	for {
+		alt := r.claim("", true)
+		if alt == "" || lanes.Serves(r.model, alt) {
+			return alt
+		}
+	}
 }
 
 // ── THE ONE VOICE ───────────────────────────────────────────────────────────

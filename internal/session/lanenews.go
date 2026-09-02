@@ -33,6 +33,14 @@ import (
 // state of a hedge, and it is over before the call returns, so it cannot be
 // reported from the answer. It arrives from [provider.HedgeReport.OnHedgeStart]
 // instead, and it is the one place this build calls an answer slow.
+//
+// AND THAT SEAM CARRIES WHY, NOT ONLY WHO. It used to hand over a lane name and
+// nothing else, so a lane that was LATE and a lane that had REFUSED the model
+// outright arrived here identical and were drawn identically — `· slow · trying
+// nextbit…` for a 404 that said the machine could not serve the model at all
+// (issue #266). [provider.RescueNews] carries the transport's own
+// classification, and a rescue that itself fails arrives a second time to
+// withdraw the sentence the first one put on the screen.
 
 // LaneNews is one answer's lane story, as the layer that sent it knows it.
 //
@@ -59,6 +67,20 @@ type LaneNews struct {
 	// out RIGHT NOW and nobody has committed yet.
 	Hedged bool
 	Trying bool
+
+	// Reason is why the rescue went out, in the transport's own two words —
+	// [provider.RescueSlow] or [provider.RescueRefused]. Empty is a rescue
+	// nobody classified, which a surface reads as slow.
+	//
+	// IT IS CARRIED AND NEVER DECIDED HERE. The word a person reads has to be
+	// the word the ledger acted on, and a second opinion formed at this seam is
+	// how a status line ends up disagreeing with the routing it is describing.
+	Reason string
+	// Failed WITHDRAWS a claim this seam already made: the lane named in Alt is
+	// the one a `trying X…` was about, and it has now failed. A surface that
+	// went on drawing the promise would be telling somebody about a request
+	// that is over.
+	Failed bool
 
 	// Role is who the answer was for (internal/lane's roles.go). A surface
 	// draws only the roles a person is reading: a naming errand and a memory
@@ -159,13 +181,25 @@ func (a *Agent) watchLaneRescue(model string, report *provider.HedgeReport) {
 	report.OnHedgeStart(a.laneRescueStarted(model))
 }
 
-// laneRescueStarted is what a rescue's start becomes. It is a named function
-// rather than a literal so that the sentence a person reads can be asserted
-// without staging a slow lane and a race to produce it; the race itself is
-// proved in internal/provider, which is the layer that owns one.
-func (a *Agent) laneRescueStarted(model string) func(string) {
-	return func(alt string) {
-		postLaneNews(LaneNews{Model: model, Alt: alt, Trying: true, Role: a.laneRole()})
+// laneRescueStarted is what a rescue's start — and its death — becomes. It is a
+// named function rather than a literal so that the sentence a person reads can
+// be asserted without staging a slow lane and a race to produce it; the race
+// itself is proved in internal/provider, which is the layer that owns one.
+//
+// A FAILED RESCUE IS NOT A RESCUE IN FLIGHT, which is the whole of why Trying
+// is the negation of Failed here rather than always true: the news that arrives
+// when an arm dies exists to take a promise off the screen, and posting it with
+// Trying set would put the promise back.
+func (a *Agent) laneRescueStarted(model string) func(provider.RescueNews) {
+	return func(news provider.RescueNews) {
+		postLaneNews(LaneNews{
+			Model:  model,
+			Alt:    news.Alt,
+			Reason: news.Reason,
+			Failed: news.Failed,
+			Trying: !news.Failed,
+			Role:   a.laneRole(),
+		})
 	}
 }
 

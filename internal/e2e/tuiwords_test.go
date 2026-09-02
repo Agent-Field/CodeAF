@@ -311,6 +311,30 @@ var tuiWords = map[string]tuiWord{
 		why:    "the other half of that report — acting would buy nothing, and saying so IS the act",
 	},
 
+	// ── a machine that will not serve this model ─────────────────────────────
+	//
+	// THE SURFACE SAYS WHAT THE WIRE SAID, and for a whole measured run it did
+	// not: a 404 meaning `your request's provider.only preference permits only:
+	// coreweave` was drawn as `· slow · trying nextbit…`, which is a sentence
+	// about a wait rather than about a machine, and it stayed on the row for
+	// ten minutes after the arm it described had died (issue #266). All three
+	// rows are internal/tui3's own literals, written out rather than composed,
+	// so this gate can find them.
+	"laneRefusedTrying": {
+		screen: " · refused · trying ",
+		why:    "a lane said no and the answer is already on its way somewhere else",
+	},
+	"laneRefusedTail": {
+		screen: " refused",
+		why: "the retraction: the rescue this row was promising has itself been refused, " +
+			"so the promise comes off and the fact is what is left",
+	},
+	"laneSlowTrying": {
+		screen: " · slow · trying ",
+		why: "the same row about a lane that was merely LATE — waited for as an ABSENCE " +
+			"by the refusal subtest, which is how a wrong word is caught rather than a missing one",
+	},
+
 	// ── a question answered from another window ──────────────────────────────
 	"consentAskWord": {
 		screen: "allow? ",

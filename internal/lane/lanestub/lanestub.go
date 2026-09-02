@@ -134,6 +134,27 @@ const DefaultTokens = 24
 type Lane struct {
 	Name string
 	Profile
+
+	// SheetOnly is a lane the endpoints page PUBLISHES and the completion
+	// endpoint will not serve.
+	//
+	// IT IS THE ONE DISAGREEMENT THIS STUB COULD NOT STAGE, and it is the
+	// disagreement issue #266 was measured on. A real router publishes a
+	// model's endpoints page under one id and resolves the completion under
+	// another, so the machines on the sheet and the machines on the wire are
+	// two sets that overlap rather than one set read twice: on 2026-09-01
+	// three of five tool-capable lanes on the sheet were not in the router's
+	// serving set, a pin was chosen from the sheet, and every request carrying
+	// it came back `…but your request's provider.only preference permits only:
+	// coreweave`. Serving the sheet and the completions from one slice made
+	// that state unreachable, so the defect had no replication a stranger
+	// could run.
+	//
+	// A SheetOnly lane therefore appears in [Lane.row] exactly like any other
+	// and is invisible to [pick]. A request that merely RANKS it (`order`)
+	// lands on the next lane and never notices; a request that DEMANDS it
+	// (`only`) gets the router's real refusal, in the router's own words.
+	SheetOnly bool
 }
 
 // ── THE CLOCK ───────────────────────────────────────────────────────────────
@@ -225,6 +246,11 @@ type Ask struct {
 	Order        []string
 	Only         []string
 	Ignore       []string
+	// At is when the request arrived, on the wall clock and never the scripted
+	// one: it is what a test measures a GAP with — how long a run sat between
+	// two requests — and a gap measured on a clock the stub itself advances
+	// would be a measurement of the script rather than of the code under it.
+	At time.Time
 }
 
 // ── THE SERVER ──────────────────────────────────────────────────────────────
@@ -257,9 +283,19 @@ func New(model string, lanes ...Lane) *Server {
 	}
 	server.Model(model, lanes...)
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/models/{author}/{slug}/endpoints", server.serveSheet)
-	mux.HandleFunc("GET /api/v1/models", server.serveCatalog)
-	mux.HandleFunc("POST /api/v1/chat/completions", server.serveCompletion)
+	// THE SAME ROUTER, MOUNTED TWICE. The second mount is what [Server.RouterURL]
+	// hands out, and it exists because two gates in this build ask whether the
+	// thing on the other end IS a router by looking at the base URL for
+	// `openrouter.ai` (internal/provider's isOpenRouter and LaneSheetAvailable).
+	// A loopback address is not one, so a run pointed at this stub through
+	// AFORGE_BASE_URL correctly gets no endpoints page and no lane sheet at all
+	// — which makes the whole frontier untestable end to end, and the frontier
+	// is where issue #266's refusal came from.
+	for _, prefix := range []string{"", routerPathPrefix} {
+		mux.HandleFunc("GET "+prefix+"/api/v1/models/{author}/{slug}/endpoints", server.serveSheet)
+		mux.HandleFunc("GET "+prefix+"/api/v1/models", server.serveCatalog)
+		mux.HandleFunc("POST "+prefix+"/api/v1/chat/completions", server.serveCompletion)
+	}
 	server.http = httptest.NewServer(mux)
 	return server
 }
@@ -306,6 +342,28 @@ func (s *Server) SetClock(clock Clock) {
 // real router's own URL carries, so nothing about a client has to be shaped
 // differently for the stub.
 func (s *Server) URL() string { return s.http.URL + "/api/v1" }
+
+// routerPathPrefix is the path segment that makes [Server.RouterURL] read as a
+// router to the two gates that decide by hostname.
+const routerPathPrefix = "/openrouter.ai"
+
+// RouterURL is [Server.URL] spelled so that this build RECOGNISES the stub as a
+// router rather than as some OpenAI-compatible endpoint.
+//
+// WHY IT HAS TO EXIST. Two gates in internal/provider answer "is this a router"
+// by looking for `openrouter.ai` in the base URL — isOpenRouter, which decides
+// whether a routing preference is sent at all, and LaneSheetAvailable, which
+// decides whether the endpoints page is ever fetched. A test that configures a
+// client can dodge the first by spelling its MODEL `openrouter/…`, and there is
+// no such dodge for the second: a whole binary driven through AFORGE_BASE_URL
+// at a loopback stub gets no sheet, so its frontier stays empty, so it never
+// ranks a lane and never demands one. Issue #266's refusal is a refusal of a
+// DEMAND, so without this there was no way to reproduce it end to end.
+//
+// It is a URL and not a flag on purpose: the seam being staged is the one the
+// product really reads, so a build that stopped recognising routers by hostname
+// would stop recognising this too, which is the honest way for a stub to fail.
+func (s *Server) RouterURL() string { return s.http.URL + routerPathPrefix + "/api/v1" }
 
 // Close shuts the router down.
 func (s *Server) Close() { s.http.Close() }
@@ -520,7 +578,10 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "could not read the request", "")
 		return
 	}
-	record := Ask{Model: ask.Model, Stream: ask.Stream, Tools: len(ask.Tools) > 0, PromptTokens: promptTokens(ask)}
+	record := Ask{
+		Model: ask.Model, Stream: ask.Stream, Tools: len(ask.Tools) > 0,
+		PromptTokens: promptTokens(ask), At: time.Now(),
+	}
 	if ask.MaxTokens != nil {
 		record.MaxTokens = *ask.MaxTokens
 	}
@@ -544,6 +605,22 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 
 	lane, found := pick(lanes, record)
 	if !found {
+		// A DEMAND THAT NAMED NOBODY THE ROUTER SERVES GETS THE ROUTER'S OWN
+		// SENTENCE ABOUT IT, which is a different refusal from an empty set
+		// with no demand in it and is answered differently by everything
+		// downstream (internal/provider's classifier, issue #266). The ask is
+		// still counted against every lane it demanded — the request WAS
+		// addressed to them — so a test can assert that a refused lane is never
+		// asked a second time.
+		if len(record.Only) > 0 {
+			s.mu.Lock()
+			for _, demanded := range record.Only {
+				s.requests[canonical(lanes, demanded)]++
+			}
+			s.mu.Unlock()
+			writeError(w, http.StatusNotFound, permitsOnly(served, lanes, record.Only), "")
+			return
+		}
 		// The router's own words when a preference has emptied the set. It is
 		// the shape the endpoint-refusal ladder in `internal/provider` reads,
 		// so a relaxation test gets the real thing.
@@ -573,9 +650,15 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 // `order` is a ranking among whatever survives both. With no preference at all
 // the first lane declared answers, which is what makes a test's scripted order
 // mean something.
+//
+// A [Lane.SheetOnly] lane is not here at all: the completion endpoint has never
+// heard of it, whatever the endpoints page says.
 func pick(lanes []Lane, ask Ask) (Lane, bool) {
 	allowed := make([]Lane, 0, len(lanes))
 	for _, lane := range lanes {
+		if lane.SheetOnly {
+			continue
+		}
 		if len(ask.Only) > 0 && !names(ask.Only, lane.Name) {
 			continue
 		}
@@ -595,6 +678,46 @@ func pick(lanes []Lane, ask Ask) (Lane, bool) {
 		}
 	}
 	return allowed[0], true
+}
+
+// permitsOnly is the router's real sentence when `provider.only` named nothing
+// the router will serve this model from, copied from the body a live run
+// collected on 2026-09-01 (issue #266) down to its punctuation.
+//
+// IT NAMES THE SET IT DOES SERVE, and that is the half worth staging: the
+// refusal carries the answer to "then who?" while the layer that reads it is
+// deciding whether the demanded lane is worth asking again. It is prose, and no
+// classification in this repository is allowed to be parsed out of it — the
+// lane a refusal is ABOUT comes from the request's own `only`, never from these
+// words.
+func permitsOnly(model string, lanes []Lane, only []string) string {
+	serving := make([]string, 0, len(lanes))
+	for _, lane := range lanes {
+		if !lane.SheetOnly {
+			serving = append(serving, strings.ToLower(lane.Name))
+		}
+	}
+	demanded := make([]string, 0, len(only))
+	for _, name := range only {
+		demanded = append(demanded, strings.ToLower(name))
+	}
+	return "No endpoints found for " + model + ". Providers serving " + model + ": " +
+		strings.Join(serving, ", ") +
+		", but your request's provider.only preference permits only: " +
+		strings.Join(demanded, ", ")
+}
+
+// canonical is a demanded lane spelled the way this stub declared it, so that
+// [Server.Requests] counts one machine under one name however the wire spelled
+// it. A word naming no declared lane is counted under itself, because a test
+// that demanded a machine the router never had still asked for something.
+func canonical(lanes []Lane, demanded string) string {
+	for _, lane := range lanes {
+		if equalName(lane.Name, demanded) {
+			return lane.Name
+		}
+	}
+	return demanded
 }
 
 // names reports whether a list of preference words names this lane. The router

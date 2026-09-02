@@ -70,12 +70,53 @@ func TestARescueIsToldWhileItIsStillOutAndAgainWhenItLands(t *testing.T) {
 	report := &provider.HedgeReport{}
 	agent.watchLaneRescue("openrouter/model", report)
 
-	agent.laneRescueStarted("openrouter/model")("coreweave")
+	agent.laneRescueStarted("openrouter/model")(provider.RescueNews{Alt: "coreweave", Reason: provider.RescueSlow})
 	if len(*heard) != 1 {
 		t.Fatalf("%d posts while the rescue was out, want one", len(*heard))
 	}
 	if trying := (*heard)[0]; !trying.Trying || trying.Alt != "coreweave" {
 		t.Fatalf("the in-flight post reads %+v, want a rescue out to coreweave", trying)
+	}
+}
+
+// AND THE SEAM CARRIES WHY, NOT ONLY WHO. A lane that was LATE and a lane that
+// REFUSED the model outright used to arrive here identical, because the
+// callback carried a lane name and nothing else — so a 404 saying the machine
+// could not serve the model at all was drawn as `· slow · trying nextbit…`
+// (issue #266). The word is the transport's and this seam only carries it.
+func TestARescueCarriesTheWordTheWireSaid(t *testing.T) {
+	heard := hears(t)
+	agent := &Agent{}
+	tell := agent.laneRescueStarted("openrouter/model")
+
+	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused})
+	if len(*heard) != 1 {
+		t.Fatalf("%d posts, want one", len(*heard))
+	}
+	if news := (*heard)[0]; news.Reason != provider.RescueRefused || !news.Trying || news.Failed {
+		t.Fatalf("a refusal in flight reads %+v", news)
+	}
+}
+
+// AND A RESCUE THAT DIES TAKES ITS OWN SENTENCE BACK. A failed rescue is not a
+// rescue in flight: the post exists to withdraw a promise, and one that arrived
+// with Trying still set would put the promise straight back.
+func TestARescueThatFailsWithdrawsTheClaimItMade(t *testing.T) {
+	heard := hears(t)
+	agent := &Agent{}
+	tell := agent.laneRescueStarted("openrouter/model")
+
+	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused})
+	tell(provider.RescueNews{Alt: "nextbit", Reason: provider.RescueRefused, Failed: true})
+	if len(*heard) != 2 {
+		t.Fatalf("%d posts, want the claim and its retraction", len(*heard))
+	}
+	withdrawn := (*heard)[1]
+	if !withdrawn.Failed || withdrawn.Trying {
+		t.Fatalf("the retraction reads %+v, want a claim taken back rather than made again", withdrawn)
+	}
+	if withdrawn.Alt != "nextbit" {
+		t.Fatalf("the retraction is about %q, want the machine the claim named", withdrawn.Alt)
 	}
 }
 
