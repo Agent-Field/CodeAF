@@ -2409,11 +2409,13 @@ Where they show up:
 - **the piece's own room** says `part of: <the parent's title>` under its header, so a task
   you walked into knows it is a piece of something.
 
-Each piece works in a copy of its **parent's** own working copy **as that copy stood at the
-moment the pieces were handed out**, and its branch merges back into the parent's — so a
-family's work comes home as the parent's work, in one merge, not as three branches racing
-for yours. Work the parent had not committed yet goes with them; work it does *after*
-handing out does not. *What the parts start with* below says how that is written down. That is true whether the family is working on a
+Each piece works in a copy of its **parent's** own working copy, and its branch merges back
+into the parent's — so a family's work comes home as the parent's work, in one merge, not as
+three branches racing for yours. **A piece's copy is cut when that piece starts**, not when
+it was proposed: work the parent had not committed yet goes with it, and so does work the
+parent did after proposing it if the piece began later. A task that *divides itself* is the
+other road and does freeze one world for all its parts at the split — *What the parts start
+with* below says how that is written down. That is true whether the family is working on a
 repository or on a plain folder: a family on a folder gets a private copy of it to work in,
 and the pieces branch off that copy and merge back into it, so two pieces writing different
 files never touch each other's directory. The person's own folder is written once, at the
@@ -2465,18 +2467,22 @@ call, not after it.
 
 Three things follow, and they are the ones worth knowing:
 
-- **You never see that commit as a commit.** It lives on the family's branch, which is
-  internal to the task. When the whole family lands, it comes home inside **one merge**
-  along with everything else the family did.
+- **It arrives inside the merge, not on its own.** It is an ordinary commit on the family's
+  branch, so when the whole family lands it comes home inside **one merge** along with
+  everything else the family did — and on a repository `git log` shows it there afterwards.
+  On a plain folder it stays in the family's private copy and never reaches you.
 - **It is aforge committing, never the worker.** Tasks are told they never run `git add`,
   and that is still true.
 - **Nothing is committed in your own folder.** A task working *in place* — in the directory
   you are sitting in — has no branch of its own, so there is nothing to commit to and
   aforge does not make one. Its parts share the directory, which is what "here" means.
 
-If the family's branch cannot take that commit at all — a disk gone read-only, a repository
-somebody broke — **the split is refused** rather than taken on a world the parts do not
-have. The worker is told in one line and carries on with the work in its own hands.
+If the family's branch is there and **cannot take that commit** — a disk gone read-only, a
+repository somebody broke — **the split is refused** rather than taken on a world the parts
+do not have. The worker is told in one line and carries on with the work in its own hands.
+A family whose private copy could not be made **at all** is the other case and is not
+refused: the split runs, the parts share your folder instead of each getting a copy, and the
+task says so in one line.
 
 **The worker is not the only one who can ask.** When a long answer of mine was handed over
 because a second model read it and drew its parts, that drawing is put to this same road
@@ -2950,7 +2956,7 @@ With nothing in common at all (a word like "fast" or "cheap"):
 no model here is called "fast". Name a model id the person has, or leave model out to run on <default id>.
 ```
 
-A word matching more than four models is refused the same way, because that is a list and
+A word matching more than four ids is refused the same way, because that is a list and
 not a shortlist: `"claude" matches several models — say which: a, b, c, d.`
 
 No proposal reaches you until that is settled. The model can name one of the ids the

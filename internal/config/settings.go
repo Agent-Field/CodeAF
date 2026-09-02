@@ -184,18 +184,18 @@ const (
 	// It is the one row whose value may carry a LEVEL as well as a model
 	// (`moonshotai/kimi-k3:low`), because it is the one row where how hard the
 	// model thinks is the point. Every tier row accepts the notation —
-	// [ValidateTierValue] is the same gate on all four — but this is the one the
+	// [ValidateTierValue] is the same gate on all five — but this is the one the
 	// shipped crew writes it into.
 	KeyTierMastermindModel = "models.tiers.mastermind"
-	// KeyCrew is the four tiers answered as ONE DECISION. Nobody arrives wanting
-	// to name four model ids; they arrive wanting to spend pennies, or to spend
+	// KeyCrew is the five tiers answered as ONE DECISION. Nobody arrives wanting
+	// to name five model ids; they arrive wanting to spend pennies, or to spend
 	// what it takes. So the row takes one word — frugal, balanced, max — and
-	// writes all four tier rows from it.
+	// writes all five tier rows from it.
 	//
-	// IT IS NOT STORED. The row's reading is DERIVED from the four live tier
+	// IT IS NOT STORED. The row's reading is DERIVED from the five live tier
 	// values: they match a preset and it says so, or they do not and it says
-	// custom. A stored word would be a claim about four other rows that anybody
-	// could falsify by editing one of them, and a settings sheet that told you
+	// custom. A stored word would be a claim about five other rows that any one
+	// of them could falsify by being edited, and a settings sheet that told you
 	// "balanced" over a hand-pinned tier would be lying in the one place a person
 	// went to check.
 	KeyCrew = "models.crew"
@@ -837,7 +837,7 @@ const (
 	ModelTierMastermind = "mastermind"
 )
 
-// ModelTiers lists the four tier words in the order a settings surface renders
+// ModelTiers lists the five tier words in the order a settings surface renders
 // them, cheapest first. It is [roles.Tiers] spelled as the words on disk, and
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}

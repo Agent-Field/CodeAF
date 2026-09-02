@@ -201,7 +201,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the five-seat reading: the model you talk to, then the three crew presets |
+| `/crew` | — | — | opens the six-seat reading: the model you talk to, then the three crew presets |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | sizes the work, then starts one worker that can split itself if it is wide; shapes the brief |
@@ -1282,21 +1282,21 @@ in force wears a highlighted ground, `›` is where **enter** is aimed and it op
 line points at the settings row where one seat can be pinned by itself; the chooser does not
 pick seats one at a time.
 
-If you have pinned one of the four yourself, no preset wears the ground and the chooser says
-`yours is none of the three — picking one puts all four back` above the closing line.
+If you have pinned one of the five yourself, no preset wears the ground and the chooser says
+`yours is none of the three — picking one puts all five back` above the closing line.
 
 A word that is not one of the three changes nothing and prints the three:
 `/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
 
-What each of the four classes funds, and how to set one of them on its own, is on the models
+What each of the five classes funds, and how to set one of them on its own, is on the models
 page.
 
 ## /crew <preset> — the confirm line, and the model it leaves alone
 
-`/crew frugal`, `/crew balanced` or `/crew max` sets the four and confirms in one line:
+`/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
 
 ```
-crew → max · brain kimi-k3:high · hands deepseek-v4-pro · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 **The model ids are drawn brighter than the words around them.** `crew →`, the preset
@@ -1320,7 +1320,7 @@ status line says `crew max` beside the model, `/status` prints the `crew` line u
 **That promise is local-session only.** Over `--host`, `/crew` reads and writes this
 machine's profile; the session resolves its crew from the other machine. There is no crew
 write across the connection and this build prints no host-specific warning, so `/crew max`
-does not change the four models the far session uses. Change that machine's profile there.
+does not change the five models the far session uses. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
@@ -1442,7 +1442,7 @@ Session · Context · Workspace · Display · Spending · Safety · Tasks · Pro
 "fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
 "ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
 
-The four models aforge uses on your behalf are **not** here — they are on Providers, with
+The five models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
 errands on two screens. Neither is the conversation's own money limit here any more: it is
@@ -1519,7 +1519,7 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The first three of the four classes are **select** rows and open the model picker. The
+The first four of the five classes are **select** rows and open the model picker. The
 **mastermind** row is a **text** box instead, because its value may carry a thinking level
 (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
 
