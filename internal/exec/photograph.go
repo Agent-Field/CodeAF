@@ -87,7 +87,7 @@ func PhotographBefore(
 	// What the job has produced or changed by the time this leaf starts. It is
 	// the same record focusOf reads for the same reason: the rounds this leaf
 	// continues are the only account of the work that exists yet.
-	tree := verify.TreeState(changedSoFar(task))
+	tree := verify.TreeState(workspace.Root(), changedSoFar(task))
 	pace := verify.Pace{}
 	if held, ok := verify.BaselineFor(workspace.Root(), job); ok {
 		moved = !verify.TreeUnchangedSince(workspace.Root(), job, tree)
@@ -113,6 +113,23 @@ func PhotographBefore(
 	// the photograph rather than after it. Only this leaf's own work can move
 	// the tree from here, and that is what changed says at the other end.
 	return reading, false
+}
+
+// leafMovedTheTree says this leaf changed the tree it was standing in, AND IT
+// COUNTS A DELETION.
+//
+// The artifact list cannot: Workspace.Artifacts holds what the tree still has,
+// deliberately, because that list is also what the person is shown and a
+// deletion is not a file anybody can open. So a leaf whose whole job was to take
+// a file out reported an empty list, which read here as a leaf that changed
+// nothing — and the second reading, the one that would have caught what the
+// removal broke, was never taken. The workspace's own before-and-after record
+// knows the difference and is asked for it (Workspace.ArtifactFacts).
+func leafMovedTheTree(workspace *Workspace, leaf string) bool {
+	// The facts are the artifact list PLUS the deletions — Artifacts is these
+	// with ArtifactDeleted taken out — so this is the older `len(Artifacts) > 0`
+	// widened by exactly the one thing it could not see.
+	return workspace != nil && len(workspace.ArtifactFacts(leaf)) > 0
 }
 
 // changedSoFar is the job's own account of what it has produced or changed

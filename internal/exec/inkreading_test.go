@@ -301,3 +301,46 @@ func TestATreeNothingChangedIsNotReadTwice(t *testing.T) {
 		t.Error("a round standing on an earlier round's files was told the tree had not moved")
 	}
 }
+
+// A DELETION IS A CHANGE, AND THE ARTIFACT LIST CANNOT SAY SO.
+//
+// Workspace.Artifacts holds what the tree STILL has — deliberately, because that
+// list is also what the person is shown — so a leaf whose whole job was to take
+// a file out reported an empty list. Read as "this leaf changed nothing", it
+// skipped the second reading, which is the one that would have caught what the
+// removal broke.
+func TestALeafThatOnlyDeletedAFileIsStillRead(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	workspace, log := countingSuite(t)
+	ctx, leaf := context.Background(), "task-2"
+	doomed := filepath.Join(workspace.Root(), "doomed.go")
+	if err := os.WriteFile(doomed, []byte("package thing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{Goal: "Take the dead file out. Change nothing else.", NodeKey: leaf}
+
+	reading, moved := PhotographBefore(ctx, workspace, nil, time.Hour, task)
+	if !reading.Taken {
+		t.Fatalf("the leaf took no reading: %q", reading.Unread)
+	}
+	workspace.WatchTree(task.leafKey())
+	if err := os.Remove(doomed); err != nil {
+		t.Fatal(err)
+	}
+	workspace.RecordChanges(task.leafKey())
+
+	if artifacts := workspace.Artifacts(task.leafKey()); len(artifacts) != 0 {
+		t.Fatalf("a deletion reached the artifact list, so this test measures nothing: %#v",
+			artifacts)
+	}
+	if !leafMovedTheTree(workspace, task.leafKey()) {
+		t.Fatal("a leaf that deleted a file was read as a leaf that changed nothing")
+	}
+	outcome := &Outcome{Artifacts: workspace.Artifacts(task.leafKey())}
+	PhotographAfter(ctx, workspace, nil, time.Hour, task, reading,
+		leafMovedTheTree(workspace, task.leafKey()), moved, outcome)
+	if count := readings(t, log); count != 2 {
+		t.Errorf("the tree lost a file and was read %d times, want the second reading", count)
+	}
+}

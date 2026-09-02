@@ -1121,10 +1121,14 @@ broken in round one is red in round two's baseline and is never reported again. 
 means a repair round runs the suite once rather than twice.
 
 **And the second reading is taken only when the tree changed.** What counts as changed is
-the run's own record of the files it produced or altered, read off the disk. When the job
-has changed no file since the reading before the work, that reading *is* the reading of the
-finished tree — it stands, the record says it was inherited, and no command runs. The same
-holds at the check at the end of the job: it does not read a tree nothing has touched.
+the run's own record of the files it produced or altered, settled against the disk: each
+recorded file's size and write time, and a marker for a recorded file that is no longer
+there. A rewrite of a file already recorded, and a deletion — which never appears in a file
+list, because that list is what you are shown and a deleted file is not something you can
+open — both count. When the job has changed nothing since the reading before the work, that
+reading *is* the reading of the finished tree: it stands, the record says it was inherited,
+and no command runs. The same holds at the check at the end of the job, for the tree it
+already has a reading of.
 
 **A behaviour you asked for that no check covers keeps the run from ending clean.** The
 check at the end of a job maps every behaviour your request states against the checks that
@@ -1238,9 +1242,13 @@ what the work touched**, and it is taken again only when the tree actually chang
   tree; now the finished tree is only read when the run's own record says a file moved.
 - **Never the same reading twice.** A reading killed at its budget is retaken only over a
   strictly smaller selection. A whole-suite reading has none, so it stands.
-- **Nothing to read is an answer.** A job that changed no files, on a request that names
-  nothing to read, is recorded as `nothing to read` — not as a two-minute reading of
-  everything that was killed before it said anything.
+- **A deletion counts as a change.** What decides all of the above is the run's own record
+  of the tree, read off the disk — each recorded file's size and write time, and a marker
+  for a recorded file that is gone. So a round that rewrote a file it had already written,
+  and a leaf whose only change was to REMOVE a file, are both read again; a file list alone
+  could see neither. And where nothing watched the tree — a job no worker photographed —
+  the check at the end reads it rather than assuming an empty file list means an untouched
+  tree.
 
 What that was worth: one measured errand — run one package's tests and report the last line,
 change no files — read `go test -json ./...` over 4,587 tests nine times, each killed at its

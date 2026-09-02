@@ -2589,7 +2589,7 @@ func (e *Evidence) measureFinalTree(ctx context.Context, job string) {
 	if !reading.Taken || reading.AfterTaken || strings.TrimSpace(e.Workspace) == "" {
 		return
 	}
-	if verify.TreeUnchangedSince(e.Workspace, job, verify.TreeState(e.Artifacts)) {
+	if verify.TreeUnchangedSince(e.Workspace, job, verify.TreeState(e.Workspace, e.Artifacts)) {
 		if settled, unchanged := reading.OnAnUnchangedTree(); unchanged {
 			e.Verification = settled
 		}

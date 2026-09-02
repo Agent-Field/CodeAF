@@ -26,6 +26,8 @@ package verify
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -120,10 +122,27 @@ func TreeUnchangedSince(root, job, tree string) bool {
 // which is the state most errands are in for their whole life, and it is what a
 // job that has produced nothing yields at every reader.
 //
+// A LIST OF NAMES IS NOT A STATE OF A TREE, and reading it as one is how this
+// was first written. A repair round's whole job is usually to rewrite a file the
+// round before it already recorded, so the record's NAMES are identical either
+// side of the work while its BYTES are not — and a state built from names alone
+// would call that tree unchanged and hand the gate a reading taken before the
+// repair. So every recorded path is settled against the disk: its size and its
+// modification time, which is the same before-and-after pair the workspace's own
+// watch uses to decide a file moved (exec.Workspace.RecordChanges).
+//
+// AND A PATH THE TREE NO LONGER HOLDS IS THE LOUDEST CHANGE THERE IS. A deletion
+// never reaches an artifact list — exec.Workspace.Artifacts holds what the tree
+// still has, deliberately, because the list is also what a person is shown — so
+// a caller that hands a deleted path in a continuation's record would otherwise
+// get the same digest it got before the file went. It folds in as a marker,
+// which is what makes the state answer the question its name asks.
+//
 // Sorted first, so two accounts of one tree that were assembled in different
-// orders are one state. Paths are compared as they are recorded, because both
-// sides of every comparison come from the same recorder.
-func TreeState(record []string) string {
+// orders are one state. A path is taken as recorded and resolved against root
+// when it is relative, because both sides of every comparison come from the same
+// recorder and the recorders disagree about which spelling they keep.
+func TreeState(root string, record []string) string {
 	paths := make([]string, 0, len(record))
 	for _, entry := range record {
 		if clean := strings.TrimSpace(entry); clean != "" {
@@ -134,8 +153,26 @@ func TreeState(record []string) string {
 		return ""
 	}
 	sort.Strings(paths)
-	sum := sha256.Sum256([]byte(strings.Join(slices.Compact(paths), "\n")))
-	return hex.EncodeToString(sum[:8])
+	digest := sha256.New()
+	for _, path := range slices.Compact(paths) {
+		full := path
+		if !filepath.IsAbs(full) {
+			full = filepath.Join(root, filepath.FromSlash(path))
+		}
+		fmt.Fprintf(digest, "%s\x00", path)
+		switch info, err := os.Stat(full); {
+		case err != nil:
+			// Gone, or unreadable from here. Both are "not the file that was
+			// read", and a state that cannot see the difference is a state that
+			// lets a deletion pass for an unchanged tree.
+			fmt.Fprint(digest, "gone\n")
+		case info.IsDir():
+			fmt.Fprint(digest, "dir\n")
+		default:
+			fmt.Fprintf(digest, "%d\x00%d\n", info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	return hex.EncodeToString(digest.Sum(nil)[:8])
 }
 
 // RememberBaseline records what this job's leaves are measured against, for

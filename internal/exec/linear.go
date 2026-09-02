@@ -1336,7 +1336,7 @@ func (l *Linear) land(
 	// a reason in the record, never an absence. The alternative, a fresh clock,
 	// would let a measurement push Run past the deadline its caller leased it.
 	PhotographAfter(ctx, l.workspace, l.history, l.deadline, task, reading,
-		len(outcome.Artifacts) > 0, moved, outcome)
+		leafMovedTheTree(l.workspace, task.leafKey()), moved, outcome)
 	outcome.Elapsed = time.Since(started)
 	// AND THE METER IS READ AT LAND, NOT AT THE GRANT. The two live bounds are
 	// read when the landing reserve is handed out, and then the landing turns

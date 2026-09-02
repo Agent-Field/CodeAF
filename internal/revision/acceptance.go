@@ -250,7 +250,7 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 			// PhotographAfter is written to, one seam later, because the leaf
 			// and the node that gets judged are routinely not the same node.
 			if verify.TreeUnchangedSince(
-				evidence.Workspace, job, verify.TreeState(evidence.Artifacts)) {
+				evidence.Workspace, job, verify.TreeState(evidence.Workspace, evidence.Artifacts)) {
 				if settled, unchanged := held.OnAnUnchangedTree(); unchanged {
 					held = settled
 				}
@@ -267,7 +267,7 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 				retaken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 					gateFocus(evidence), held.Pace())
 				verify.RememberBaseline(evidence.Workspace, job,
-					verify.TreeState(evidence.Artifacts), retaken)
+					verify.TreeState(evidence.Workspace, evidence.Artifacts), retaken)
 				journalGateReading(graph, nodeID, retaken, retaken.Before, false)
 				return retaken
 			}
@@ -292,6 +292,19 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 	// It is taken on the wall this gate has left, through the same arithmetic
 	// the worker is held to, and it is REMEMBERED AGAINST THE JOB — so it costs
 	// one reading per job rather than one per round, exactly like the worker's.
+	//
+	// AND AN EMPTY RECORD IS NOT AN UNCHANGED TREE, WHICH IS WHY THERE IS NO
+	// "nothing to read" ANSWER HERE. It is tempting: a job that changed no file,
+	// on a request that names nothing, has nothing this reader could usefully
+	// look at, and saying so costs nothing where a whole reading costs an eighth
+	// of a wall. But the only account of the work this gate holds is the
+	// artifact list, and that list EXCLUDES DELETIONS by construction
+	// (exec.Workspace.Artifacts) — so a job whose one change was to remove a
+	// file arrives here indistinguishable from a job that did nothing, and the
+	// answer "nothing to read" would hide exactly the regression a removal
+	// causes. The tree is known unchanged only where something watched it, and
+	// that is the arm above, where a reading is inherited against a tree-state
+	// the workspace settled. Here nothing watched, so the tree is read.
 	deadline, timed := ctx.Deadline()
 	if !timed {
 		// A budget is a share of a wall, and there is no wall here to take a
@@ -302,22 +315,9 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 			"deadline, so there was no wall to size a reading against"}, verify.Result{}, false)
 		return evidence.Verification
 	}
-	// AND THERE IS AN HONEST ANSWER THAT COSTS NOTHING. A job that changed no
-	// file, working on a request that names nothing to read, has given this
-	// reader no tree to compare and no place to look — and what that used to buy
-	// was a reading of the whole repository, killed at its ceiling two minutes
-	// later, which answered neither question either. The errand measured in #429
-	// was exactly this shape: run one package's tests, report the last line,
-	// change nothing. NOTHING TO READ IS A FACT, AND A FACT ABOUT THE RUN
-	// REACHES THE RECORD (FAILSAFE.md clause 4).
-	if len(gateFocus(evidence)) == 0 {
-		journalGateReading(graph, nodeID, verify.Reading{Unread: "nothing to read: the work " +
-			"changed no files and the request names nothing to read"}, verify.Result{}, false)
-		return evidence.Verification
-	}
 	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 		gateFocus(evidence), verify.Pace{})
-	verify.RememberBaseline(evidence.Workspace, job, verify.TreeState(evidence.Artifacts), taken)
+	verify.RememberBaseline(evidence.Workspace, job, verify.TreeState(evidence.Workspace, evidence.Artifacts), taken)
 	journalGateReading(graph, nodeID, taken, taken.Before, false)
 	return taken
 }

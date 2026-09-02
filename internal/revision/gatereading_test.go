@@ -143,12 +143,9 @@ func TestEveryRefusalToReadReachesTheRecord(t *testing.T) {
 		{
 			// A job with no checklist still has its world read. The checklist
 			// governs coverage; it has no say in whether the project can be
-			// read at all. The work left a file behind, which is what gives
-			// this gate something to read at all — see the rule that a job
-			// which changed nothing, on a request that names nothing, is told
-			// there is nothing to read rather than reading everything.
+			// read at all.
 			name:     "no checklist, and the world read anyway",
-			evidence: Evidence{Workspace: t.TempDir(), Artifacts: []string{"notes.md"}},
+			evidence: Evidence{Workspace: t.TempDir()},
 			timed:    true, says: "declares no way of checking itself",
 		},
 	} {
@@ -484,7 +481,7 @@ func TestTheGateInheritsTheReadingOfATreeNothingChanged(t *testing.T) {
 	graph := gateStore(t)
 	root := igelWorkspace(t)
 	job := verify.JobKey("run the suite and report the final line; change no files")
-	verify.RememberBaseline(root, job, verify.TreeState(nil), verify.Reading{
+	verify.RememberBaseline(root, job, verify.TreeState(root, nil), verify.Reading{
 		Taken: true,
 		Before: verify.Result{
 			Strategy: verify.Strategy{
@@ -513,33 +510,46 @@ func TestTheGateInheritsTheReadingOfATreeNothingChanged(t *testing.T) {
 	}
 }
 
-// AND A JOB THAT CHANGED NOTHING, ON A REQUEST THAT NAMES NOTHING, HAS NOTHING
-// TO READ — which is an answer, and a free one.
+// AN EMPTY ARTIFACT LIST IS NOT AN UNCHANGED TREE, AND THE GATE MAY NOT READ IT
+// AS ONE.
 //
-// What it used to buy was a reading of the whole repository, killed at its
-// ceiling two minutes later, which answered neither the coverage question nor
-// the regression one. NOTHING TO READ IS A FACT, AND A FACT ABOUT THE RUN
-// REACHES THE RECORD.
-func TestAGateWithNothingToReadSaysSoRatherThanReadingEverything(t *testing.T) {
+// A deletion never reaches an artifact list — exec.Workspace.Artifacts holds
+// what the tree still has — so a job whose one change was to REMOVE a file
+// arrives at a gate that nobody photographed for looking exactly like a job that
+// did nothing at all. Answering "nothing to read" there would skip the one
+// reading that could see what the removal broke. Where nothing watched the tree,
+// the tree is read.
+func TestAJobWhoseOnlyChangeIsADeletionIsStillRead(t *testing.T) {
 	verify.ForgetBaselines()
 	t.Cleanup(verify.ForgetBaselines)
 	graph := gateStore(t)
+	root := igelWorkspace(t)
+	// The job's one change: a source file taken out. It is in no artifact list
+	// and in no focus, which is the whole point.
+	if err := os.Remove(filepath.Join(root, "igel/igel.py")); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 
-	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: igelWorkspace(t)},
-		verify.JobKey("report the final line the suite prints; change no files"))
-	if reading.Taken {
-		t.Error("a gate with nothing to read read the whole repository anyway")
-	}
+	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: root},
+		verify.JobKey("take the dead module out; change nothing else"))
 	rows, err := graph.VerificationsFor("task-2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].Read {
-		t.Fatalf("the gate did not journal one refusal: %#v", rows)
+	if len(rows) != 1 {
+		t.Fatalf("the gate journaled %d rows for one reading: %#v", len(rows), rows)
 	}
-	if !strings.Contains(rows[0].Why, "nothing to read") {
-		t.Errorf("the row does not say there was nothing to read: %q", rows[0].Why)
+	if strings.Contains(rows[0].Why, "nothing to read") {
+		t.Fatalf("a job that deleted a file was told there was nothing to read: %q", rows[0].Why)
+	}
+	// It read, or it said in its own words why it could not — never that there
+	// was nothing worth reading.
+	if !reading.Taken && strings.TrimSpace(rows[0].Why) == "" {
+		t.Error("the gate neither read the tree nor said why not")
+	}
+	if reading.Taken && strings.TrimSpace(rows[0].Command) == "" {
+		t.Error("a reading was taken and the row names no command")
 	}
 }
