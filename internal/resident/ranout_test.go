@@ -38,7 +38,7 @@ func TestALeafThatRanOutOfItsBudgetIsNotCompleted(t *testing.T) {
 	runner := NewRunner(graph, func(context.Context, store.Node) (ExecResult, error) {
 		return ExecResult{
 			Summary: "All 722 tests pass. Let me verify the dry-run tests specifically:",
-			Stopped: true, Stop: executor.StopBudget,
+			Stop:    executor.StopBudget,
 			Meter: executor.Meter{Name: executor.MeterCost, Reached: 199131,
 				Allowed: 176834, Unit: "tokens of billed work"},
 		}, nil
@@ -69,7 +69,7 @@ func TestALeafThatRanOutOfItsBudgetIsNotCompleted(t *testing.T) {
 func TestALeafWhoseRemainderWasSplicedStillSettles(t *testing.T) {
 	graph := ranOutJob(t)
 	runner := NewRunner(graph, func(context.Context, store.Node) (ExecResult, error) {
-		return ExecResult{Summary: "as far as it got", Stopped: true,
+		return ExecResult{Summary: "as far as it got",
 			Stop: executor.StopBudget, Continued: true}, nil
 	}, "continued-runner", 1)
 	if _, err := runner.Tick(context.Background()); err != nil {
@@ -93,7 +93,7 @@ func TestAnEndingNobodyRecordedIsNotReadAsRunningOut(t *testing.T) {
 		name   string
 		result ExecResult
 	}{
-		{"finished", ExecResult{Summary: "done", Stopped: true, Stop: executor.StopDone}},
+		{"finished", ExecResult{Summary: "done", Stop: executor.StopDone}},
 		{"nothing recorded", ExecResult{Summary: "done"}},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestTheReleaseOfACutLeafCarriesItsRecordedTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := NewRunner(graph, func(context.Context, store.Node) (ExecResult, error) {
-		return ExecResult{Summary: "cut off", Stopped: true, Stop: executor.StopBudget,
+		return ExecResult{Summary: "cut off", Stop: executor.StopBudget,
 			Meter: executor.Meter{Name: executor.MeterCost, Reached: 199131, Allowed: 176834,
 				Unit: "tokens of billed work"}}, nil
 	}, "release-runner", 1)
