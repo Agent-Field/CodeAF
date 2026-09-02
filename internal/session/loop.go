@@ -849,6 +849,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
+		// NOTHING. [waitBatch] is the one wait in this loop that can return with
+		// its work still running, and everything below this line writes: the tool
+		// messages go into a.messages, which by now belongs to whatever turn the
+		// person started after they stopped this one. A left-behind turn appending
+		// its results there would be another conversation's transcript growing
+		// tool rows nobody asked for.
+		//
+		// It is read here and nowhere else because this is the only boundary an
+		// abandoned turn can reach — the batch above is what it was parked in, and
+		// its own cleanup already knows to do nothing (agent.go's turnSeq). The
+		// read is non-blocking and costs an ordinary turn one closed-channel test
+		// per tool round.
+		if abandoned(ctx) {
+			return false
+		}
 		if severed != nil {
 			results[severed.index] = severed.amend(results[severed.index])
 		}

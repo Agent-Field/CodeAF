@@ -31,7 +31,12 @@ import (
 // entered is closed once the call is in the wait, so a test never has to sleep
 // to know the turn is parked.
 func wedgeTool(entered chan<- struct{}) bare.Tool {
-	forever := make(chan struct{})
+	return releasableWedgeTool(entered, make(chan struct{}))
+}
+
+// releasableWedgeTool is [wedgeTool] with a way OUT, for the one test that needs
+// the left-behind turn to carry on running rather than to stay parked.
+func releasableWedgeTool(entered chan<- struct{}, forever <-chan struct{}) bare.Tool {
 	opened := false
 	return bare.Tool{
 		Name:        "wedge",
@@ -52,11 +57,22 @@ func wedgeTool(entered chan<- struct{}) bare.Tool {
 // when the turn has actually parked on it.
 func wedged(t *testing.T, completer Completer) (*Agent, chan struct{}, string) {
 	t.Helper()
+	return wedgedReleasable(t, completer, nil)
+}
+
+// wedgedReleasable is [wedged] with the wedge's own way out in the caller's hand.
+// A nil channel is a wedge nothing ever opens, which is what every other test
+// here wants.
+func wedgedReleasable(t *testing.T, completer Completer, release <-chan struct{}) (*Agent, chan struct{}, string) {
+	t.Helper()
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
 	agent, _ := newTestAgent(t, completer, func(c *Config) { c.SessionFile = journal })
 	entered := make(chan struct{})
+	if release == nil {
+		release = make(chan struct{})
+	}
 	agent.mu.Lock()
-	agent.tools = append(agent.tools, wedgeTool(entered))
+	agent.tools = append(agent.tools, releasableWedgeTool(entered, release))
 	definitions, err := toolDefinitions(agent.tools)
 	agent.mu.Unlock()
 	if err != nil {
@@ -169,6 +185,58 @@ func TestAnAbandonedTurnLeavesTheSessionFreeForTheNextPrompt(t *testing.T) {
 	}
 	if completer.requests() <= before {
 		t.Fatal("the turn after an abandoned one never reached the model")
+	}
+}
+
+// AND THE TURN THAT WAS LEFT BEHIND NEVER WRITES INTO THE CONVERSATION AGAIN.
+//
+// THIS IS THE COST OF GIVING THE BATCH AN ESCAPE, and it has to be paid or the
+// escape is worse than the wait it replaced. [waitBatch] returns while the tools
+// are still running, so the loop under an abandoned turn reaches its step
+// boundary — where it records one tool message per call — with a.messages that
+// by now belongs to whatever turn the person started after they stopped this
+// one. The wedge is released here on purpose, so the left-behind turn actually
+// runs on and gets its chance to write.
+func TestATurnThatWasLeftBehindNeverWritesIntoTheConversationAgain(t *testing.T) {
+	released := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("the turn after it"), nil
+		},
+	}}
+	agent, entered, _ := wedgedReleasable(t, completer, released)
+
+	if _, err := agent.Submit(context.Background(), "park"); err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	waitUntilClosed(t, "the turn parking on the wedge", entered, 10*time.Second)
+	agent.Interrupt()
+	agent.Abandon(AbandonStopTimeout)
+
+	// The abandoned turn is let out of its wait now, with every reason to write:
+	// its batch has an answer, and the step below the batch records one tool
+	// message per call.
+	close(released)
+
+	next, err := agent.Submit(context.Background(), "and now something else")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	for range next {
+	}
+	// Long enough for the left-behind goroutine to have reached the boundary it
+	// would have written at.
+	time.Sleep(time.Second)
+
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	for _, message := range agent.messages {
+		if message.ToolCallID == "call-1" {
+			t.Fatalf("the abandoned turn's tool result reached the conversation: %+v", message)
+		}
 	}
 }
 

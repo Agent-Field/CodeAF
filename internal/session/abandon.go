@@ -271,3 +271,24 @@ func (s *batchSlots) taken(finished bool) []toolResult {
 // says the one thing the model could act on if it ever read it: the call did not
 // finish and nothing is coming.
 const toolAbandonedWord = "the person stopped this turn and it was not waited for; this call did not finish"
+
+// abandoned reports that the turn this context belongs to has been let go of.
+//
+// IT IS A NON-BLOCKING READ and it is the answer to "may I still write?". A turn
+// that has been abandoned must not touch the session's transcript again: the
+// session has moved on and a.messages belongs to whatever turn the person
+// started next, so an append from here is one conversation growing another's
+// rows. False is the ordinary answer and false is what every context with no
+// abandon signal on it gets.
+func abandoned(ctx context.Context) bool {
+	gone := abandonOf(ctx)
+	if gone == nil {
+		return false
+	}
+	select {
+	case <-gone:
+		return true
+	default:
+		return false
+	}
+}

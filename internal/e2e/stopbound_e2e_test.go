@@ -273,6 +273,88 @@ func TestBoundedStopE2E(t *testing.T) {
 		stub := &stopStub{kind: parkOnPipe}
 		runBoundedStop(t, stub, "stoppipe", "read the pipe please")
 	})
+
+	// AND THE ISSUE'S OWN REPLICATION, WITH A REAL MODEL ON THE WIRE.
+	//
+	// The two above are scripted so the run can say exactly what the turn was
+	// parked on. This one is the report as it was filed: a person types a
+	// sentence, the model decides what to do with it, the turn parks on a wait
+	// nothing can cancel, and the person presses esc. Nothing here is scripted
+	// except the pipe — which is the environment and not the harness — so what
+	// it proves is that the bound holds on the product as somebody actually uses
+	// it, at the price of being the one case in this file that costs money.
+	t.Run("a real model on an uncancellable wait", func(t *testing.T) {
+		// THE KEY IS LOOKED FOR WHERE THE PRODUCT LOOKS FOR IT. [newHome] copies
+		// the person's own profile into this run's state root, so a machine with a
+		// key in `~/.aforge/config.json` and nothing in its environment can run
+		// this exactly as the product does.
+		if config.APIKeyAt(config.ProfileDir()) == "" {
+			t.Skip("no OpenRouter key anywhere the product looks: the issue's own replication needs a real model on the wire")
+		}
+		if _, err := exec.LookPath("mkfifo"); err != nil {
+			t.Skip("no mkfifo: this scenario needs a named pipe to park on")
+		}
+		runRealModelBoundedStop(t)
+	})
+}
+
+// runRealModelBoundedStop is #265's replication against the shipped default
+// model: no stub, no script, and the same three things asserted.
+func runRealModelBoundedStop(t *testing.T) {
+	t.Helper()
+	workspace := newWorkspace(t, "stopreal", false)
+	pipe := filepath.Join(workspace, "wedge.fifo")
+	if out, err := exec.Command("mkfifo", pipe).CombinedOutput(); err != nil {
+		t.Fatalf("mkfifo: %v\n%s", err, out)
+	}
+	home := newHome(t, map[string]any{
+		"tools.approvalMode": "allow",
+		config.KeySetupSeen:  time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	rig := start(t, "stopreal", home, workspace, 120, 40)
+
+	rig.lit("use the read tool on " + pipe + " and tell me what is in it")
+	rig.keys("Enter")
+
+	// THE TURN HAS TO BE GENUINELY INSIDE THE CALL BEFORE THE KEY IS PRESSED.
+	// Waiting for the word `read` is not enough — it is in the sentence the person
+	// typed, so it is on screen before the model has decided anything, and a run
+	// that pressed esc there would be timing the stop of a turn that was between
+	// steps. The status line's own phase clause is the honest evidence: it reads
+	// `running read · Ns` only while the call is executing (internal/tui3's
+	// phase segment), and a call parked on a pipe with no writer never leaves it.
+	rig.waitFor(modelPatience, "running read")
+	// And it is STILL there several seconds later, which is what tells a call that
+	// is stuck apart from one that is merely slow.
+	time.Sleep(6 * time.Second)
+	screen := rig.capture()
+	if !strings.Contains(screen, "running read") {
+		t.Fatalf("the read call came back, so this run is not about an uncancellable wait:\n%s", screen)
+	}
+
+	pressed := time.Now()
+	rig.keys("Escape")
+
+	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
+	t.Logf("=== REAL MODEL: pane after esc (the bound, stated) ===\n%s", stopping)
+
+	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
+	took := time.Since(pressed)
+	t.Logf("=== REAL MODEL: pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
+	if took > stopBoundPatience {
+		t.Fatalf("the turn took %s to detach, which is past the bound", took)
+	}
+
+	line := onlyAbandonedLine(t, home)
+	if line.CostUSD <= 0 && line.Input == 0 && line.Output == 0 {
+		t.Fatalf("the abandoned line carries no spend at all: %+v", line)
+	}
+	t.Logf("=== REAL MODEL: the abandoned line: %+v", line)
+
+	// AND THE NEXT PROMPT IS USABLE, which is the whole of what the person wanted.
+	rig.lit("say the word ready and nothing else")
+	rig.keys("Enter")
+	rig.waitFor(modelPatience, "ready")
 }
 
 // runStoppedInTime is the scenario where the engine DOES let go: the surface's
