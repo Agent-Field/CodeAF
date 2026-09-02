@@ -1298,3 +1298,24 @@ func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
 		t.Fatalf("a persisted lift cap of 0 read back as %v", cap)
 	}
 }
+
+// V1: A fresh profile gets the fifteen-second proposal window, while explicit
+// five-second and no-clock values survive persistence unchanged.
+func TestTaskCountdownDefaultAndPersistedValues(t *testing.T) {
+	dir := t.TempDir()
+	if got := TaskAutoApproveAt(dir); got != 15 {
+		t.Fatalf("fresh task countdown = %d, want 15", got)
+	}
+	if err := writeProfileValue(dir, KeyTaskAutoApprove, 5); err != nil {
+		t.Fatalf("persist 5: %v", err)
+	}
+	if got := TaskAutoApproveAt(dir); got != 5 {
+		t.Fatalf("persisted task countdown = %d, want 5", got)
+	}
+	if err := writeProfileValue(dir, KeyTaskAutoApprove, 0); err != nil {
+		t.Fatalf("persist 0: %v", err)
+	}
+	if got := TaskAutoApproveAt(dir); got != 0 {
+		t.Fatalf("persisted no-clock value = %d, want 0", got)
+	}
+}

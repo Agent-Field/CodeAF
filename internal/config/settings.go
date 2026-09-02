@@ -1088,15 +1088,15 @@ const (
 	// and a default would box in every sitting at a number nobody chose.
 	DefaultSpendRailUSD = 0.0
 
-	// DefaultTaskAutoApprove is five seconds, and the direction it is wrong in
+	// DefaultTaskAutoApprove is fifteen seconds, and the direction it is wrong in
 	// is the whole choice. A task proposal is not a permission question — the
-	// model has already groomed the work and the brief, and the countdown is
-	// the person's window to REDIRECT it or wave it off. A long countdown makes
-	// every task a keystroke the person owes; no countdown at all would make
-	// the surface a gate the work waits behind. Five seconds is long enough to
-	// read a title and a two-line summary and reach for a key, and short enough
-	// that ignoring it is a decision rather than a wait.
-	DefaultTaskAutoApprove = 5
+	// model has already groomed the work and the brief, and the countdown is the
+	// person's window to REDIRECT it or wave it off. Five seconds once looked
+	// long enough to read a title and summary and reach for a key; a real card,
+	// with its where line and three answers, was gone before the person's no.
+	// Fifteen keeps silence as approval without making every task a keystroke the
+	// person owes, and gives the actual card enough time to read.
+	DefaultTaskAutoApprove = 15
 
 	// DefaultTaskRepairRounds is ONE, and one is the whole argument. The failure
 	// this exists for is a piece of work that came back nearly right — a report
@@ -3519,7 +3519,7 @@ func ResponseLiftCapAt(profileDir string) float64 {
 //
 // A persisted 0 is a VALUE and not an absence, which is why the reader tests
 // ok before it tests the number: a person who turned the clock off must not
-// find it back at five the next morning.
+// find it back at fifteen the next morning.
 func TaskAutoApproveAt(profileDir string) int {
 	if value, ok := persistedInt(profileDir, KeyTaskAutoApprove); ok && value >= 0 {
 		return value
