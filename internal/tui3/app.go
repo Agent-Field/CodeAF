@@ -6768,13 +6768,23 @@ func (a *app) detachTurn() tea.Cmd {
 	}
 	spend, letGo := door.Abandon(session.AbandonStopTimeout)
 	a.stopBy = time.Time{}
+	if !letGo {
+		// THERE WAS NOTHING LEFT TO DETACH. The engine let go between the last
+		// frame and this one, so the stream's own close is already on its way and
+		// it settles the turn as an ordinary stop. The surface stands down here
+		// rather than freeing anything: a note saying "detached" over a turn that
+		// ended by itself would be this surface claiming an act it did not
+		// perform, and dropping a stream that is about to close cleanly would
+		// throw away the turn's own last events for nothing.
+		return nil
+	}
 	a.stream = nil
 	a.gen++
 	// AND THE PERSON IS TOLD, in the conversation, in the words the countdown
 	// they were reading promised. A surface that detached silently would have
 	// spent ten seconds announcing a bound and then said nothing when it fired,
 	// which is a promise kept invisibly and therefore not kept.
-	a.note(stopDetachedNote(spend, letGo))
+	a.note(stopDetachedNote(spend))
 	return a.settle()
 }
 
@@ -6785,13 +6795,7 @@ func (a *app) detachTurn() tea.Cmd {
 // the journal line carries. It says nothing about a turn that spent nothing,
 // which is the emptiness law — a `$0.00` here would be the surface reporting a
 // measurement where it has only an absence.
-func stopDetachedNote(spend session.Usage, letGo bool) string {
-	if !letGo {
-		// The engine had already let go between the last frame and this one, so
-		// the deadline is landing on a turn that is over. Nothing was detached
-		// and the note says only what is true.
-		return stopDetachedWord
-	}
+func stopDetachedNote(spend session.Usage) string {
 	if spend.CostUSD <= 0 {
 		return stopDetachedWord
 	}

@@ -260,3 +260,37 @@ func TestADetachedTurnIsOwedTheSameSettleAsAnyOtherFinishedTurn(t *testing.T) {
 			"[app.stopSweep]'s commands are being dropped rather than batched")
 	}
 }
+
+// AND A DEADLINE THAT LANDS ON A TURN THE ENGINE HAS ALREADY LET GO OF DETACHES
+// NOTHING AND SAYS NOTHING.
+//
+// The two acts race by a frame: the door reports false because there was no turn
+// left to abandon, and at that point the stream's own close is already on its way
+// and settles the turn as an ordinary stop. Saying "detached" there would be the
+// surface claiming an act it did not perform, and dropping the stream would throw
+// away the turn's last events for nothing.
+func TestADeadlineOnATurnThatAlreadyEndedDetachesNothing(t *testing.T) {
+	a, agent, advance := boundedStopApp(t)
+	agent.letGo = false
+	stream := a.stream
+
+	advance(stopGrace)
+	drive(t, a, frameMsg{})
+
+	if agent.abandons != 1 {
+		t.Fatalf("the door was opened %d times, want exactly one attempt", agent.abandons)
+	}
+	if a.stream != stream {
+		t.Fatal("the surface dropped a stream that was closing cleanly on its own")
+	}
+	if got := lastNote(t, a); strings.Contains(got, stopDetachedWord) {
+		t.Fatalf("the surface claimed a detach it did not perform: %q", got)
+	}
+	// AND IT DOES NOT KEEP ASKING. The window is spent either way, so the next
+	// frame finds no deadline and the door is not opened again.
+	advance(stopGrace)
+	drive(t, a, frameMsg{})
+	if agent.abandons != 1 {
+		t.Fatalf("the lapsed deadline kept opening the door (%d)", agent.abandons)
+	}
+}
