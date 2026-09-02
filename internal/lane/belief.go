@@ -1150,6 +1150,23 @@ func (l *ledger) Think(model, rung string, now time.Time) Chain {
 	return l.think.look(thoughtOf(model, rung), now)
 }
 
+// ThinkDraw is how much ONE run of thought by this model at this rung varies
+// around what is believed about it, in nats of log-spread.
+//
+// IT IS [ledger.Draw]'S ANSWER FOR THE ONE QUANTITY NO SHEET PUBLISHES, and it
+// is measured rather than read. Nothing ages here for the same reason nothing
+// ages there: a model does not deliberate more steadily because nobody has
+// asked it anything lately.
+func (l *ledger) ThinkDraw(model, rung string) float64 {
+	if LedgerModel(model) == "" {
+		return SpreadFloor
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.restore()
+	return l.think.draw(thoughtOf(model, rung)[LevelPair], SpreadFloor)
+}
+
 // Shifted reports whether a change point has just reset this pair's own
 // component toward its parents, and clears the flag.
 func (l *ledger) Shifted(id ID) bool {
@@ -1194,11 +1211,20 @@ func (l *ledger) NoteThinking(model, rung string, took time.Duration, at time.Ti
 // in and the unit the controller waits in — and it is folded at the leaf's own
 // prior width, because one timed thought is worth about as much as the spread
 // between two thoughts of one model at one rung.
+// AND IT IS ALSO THE ONLY PLACE THE DURATION CLOCK'S DISPERSION COMES FROM.
+// The same number answers two questions — where this model's median thought
+// sits, and how far one thought sits from it — and nobody publishes the second
+// about a thinking phase the way a sheet publishes it about a lane. So the leaf
+// keeps its own account of the draws it has been shown ([chains.widen]), which
+// is what [ledger.ThinkDraw] reads back and what lets the duration clock's gate
+// close with evidence the way the wire clocks' gates already do.
 func (l *ledger) deliberated(seen thought) {
 	if seen.Took <= 0 || seen.At.IsZero() {
 		return
 	}
-	l.think.fold(thoughtOf(seen.Model, seen.Rung), everyLevel, math.Log(seen.Took.Seconds()), levelVariance(LevelPair), seen.At)
+	of, z := thoughtOf(seen.Model, seen.Rung), math.Log(seen.Took.Seconds())
+	l.think.fold(of, everyLevel, z, levelVariance(LevelPair), seen.At)
+	l.think.widen(of[LevelPair], z)
 }
 
 // Skipped is how many journal lines this ledger could not read. A half-written

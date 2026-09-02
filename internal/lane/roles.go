@@ -164,7 +164,27 @@ const ActionFloor = 700 * time.Millisecond
 // ([Hierarchy.Draw]) and this is the prior for where there is not, which is the
 // law the rest of this package keeps everywhere: a measured thing outranks a
 // prior, and a prior is what an unmeasured thing gets instead of a certainty.
+//
+// AND WHERE NOTHING IS PUBLISHED, WHAT IS OBSERVED OUTRANKS IT TOO. A thinking
+// phase has no sheet row of any kind, so this prior stood under the duration
+// clock permanently and its abnormality gate could never close. It is now what
+// the think chain's own dispersion account starts from and shrinks away from as
+// thoughts are folded in ([chains.draw]), which is the same law again: a
+// measured thing outranks a prior, whoever measured it.
 const SpreadFloor = 1.0
+
+// SpreadTightest is the narrowest one draw is ever believed to be, in nats of
+// log-spread.
+//
+// A DISPERSION LEARNED FROM OBSERVATIONS CAN REACH ZERO AND MUST NOT BE
+// BELIEVED THERE. A model asked the same question at the same rung really does
+// deliberate for nearly the same time, and a handful of such draws would fit a
+// spread of nothing — which says the tail is IMPOSSIBLE, and a controller that
+// believes that acts on the first draw that is a little late. This is a p90 a
+// fifth above the p50, tighter than anything the measured sheet publishes about
+// any lane, so it bounds the claim without bounding what a real measurement of
+// a real model is allowed to say.
+const SpreadTightest = 0.15
 
 // Hysteresis is how much better acting has to look before it is done.
 //

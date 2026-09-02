@@ -123,6 +123,16 @@ long-think criterion is gated at full force on warmed arms for this reason and
 reported on cold ones, where what it counts is the world's own think-tail rather
 than anything a controller decides.
 
+**HALF OF THAT LIMITATION IS NOW STALE — #316 closed the gate.** The think chain
+measures its own dispersion from the thoughts it is shown, `σ` falls below the
+floor with evidence, and the gate closes at 31 observations of one model at one
+rung; `TestWhenTheThinkGateCloses` asserts that n rather than its absence. What
+stands is the other half: the duration clock's payoff term prices leaving a
+thought at a whole fresh thought, so it still cannot act before a ten-second
+ceiling on a model with a five-second median, and the **4.95 s p50 named above
+is not recovered by that close**. #316's second candidate — a think-phase drift
+quantile — is what would recover it and it is still open.
+
 **A rescue is a price, not a floor, and the baseline arm is what says so.** An
 earlier reading of this lab argued that §K's spend clause could not be met
 because a rescue is a whole second request. That was an argument; the

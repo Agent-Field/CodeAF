@@ -171,6 +171,15 @@ type Hierarchy interface {
 	// and a p90. A pair nothing has been published about answers [SpreadFloor],
 	// which is the prior for the same quantity.
 	Draw(id ID) (first, gap float64)
+	// ThinkDraw is the same quantity for the one clock no sheet speaks about:
+	// how much ONE run of thought by this model at this rung varies around what
+	// is believed about it.
+	//
+	// IT IS MEASURED WHERE [Hierarchy.Draw] IS READ, and that is the only
+	// difference between them. Nobody publishes how variable a thinking phase
+	// is, so [Hierarchy.NoteThinking]'s own observations are the dispersion, and
+	// [SpreadFloor] is the prior for a model nothing has been watched of.
+	ThinkDraw(model, rung string) float64
 	// Shifted reports whether a change point has just reset this pair's own
 	// component toward its parents, and clears the flag. It is what the call log
 	// records and what the HUD may explain a sudden re-route with.
@@ -208,10 +217,14 @@ func Thinks(model, rung string, now time.Time) control.Survival {
 	if !ok || model == "" {
 		return control.Survival{}
 	}
-	// A THINKING PHASE HAS NO PUBLISHED DISPERSION. No sheet says how much one
-	// run of thought varies around this model's usual one, so the prior stands
-	// here where a lane's own figure stands in [PaceFor].
-	return chains.Think(model, rung, now).Survival(SpreadFloor, 1)
+	// A THINKING PHASE HAS NO PUBLISHED DISPERSION AND IT HAS AN OBSERVED ONE.
+	// No sheet says how much one run of thought varies around this model's
+	// usual one, so where [PaceFor] reads a lane's own figure off the sheet this
+	// reads the model's off the thoughts it has been shown — and [SpreadFloor]
+	// is the prior until it has been shown any. Standing on the prior for ever
+	// pinned this quantile at fifteen times the believed median, which is past
+	// every role's ceiling: the clock had a gate that could never close.
+	return chains.Think(model, rung, now).Survival(chains.ThinkDraw(model, rung), 1)
 }
 
 // NoteThought folds in how long one whole run of reasoning really lasted. It is
