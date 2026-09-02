@@ -804,6 +804,33 @@ The word before the colon is the call: `plan`, `gate`, or `compile`. Every one o
 lines is also kept with the job, so a run can be read back afterwards and its repairs
 counted.
 
+## When the compiler supplies no reading — your words are the goal
+
+Compiling your request is the first model call of every job, and its reply can come back
+well-formed with the goal field blank — measured when a long reply was cut inside the goal
+and the continuation restarted from the field after it. That used to end the run at the
+first call with `compile intent: empty goal`, before any work existed.
+
+It no longer refuses. **Your request, word for word, is the goal**: the compiler's own
+reading was always a gloss on top of your exact words, and the words alone are complete.
+The rest of the reply — the name, the scale, the working method — is kept. The receipt
+says what happened, so the substitution is never silent:
+
+```
+The compiler supplied no reading of its own, so your request stands as the goal, word for word.
+```
+
+On `aforge do`, where the goal is your request whatever the compiler wrote and the receipt
+is filed rather than printed, the same fact is one line in the progress stream:
+
+```
+  compile — no reading of its own — your request stands as the goal, word for word  12s
+```
+
+A compile that cannot be read at all is still the `↻ compile` sequence above, and when it
+gives up, the error now quotes the head of what the model sent (`reply="…"`), because a
+streamed call's log row carries no body and the error is the only record of it.
+
 ## When the planner cannot lay a job out — one worker instead of nothing
 
 Planning is itself a model call, and it can fail before any piece of work exists. It used

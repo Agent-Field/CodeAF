@@ -20,6 +20,7 @@ type scripted struct {
 	replies  []*ai.Response
 	ceilings []int
 	sent     [][]ai.Message
+	formats  []string
 }
 
 func (s *scripted) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -35,6 +36,11 @@ func (s *scripted) CompleteWithMessages(_ context.Context, messages []ai.Message
 	}
 	s.ceilings = append(s.ceilings, ceiling)
 	s.sent = append(s.sent, messages)
+	format := ""
+	if request.ResponseFormat != nil {
+		format = request.ResponseFormat.Type
+	}
+	s.formats = append(s.formats, format)
 	index := len(s.ceilings) - 1
 	if index >= len(s.replies) {
 		index = len(s.replies) - 1
@@ -390,4 +396,46 @@ func (d *fussyDestination) UnmarshalJSON(data []byte) error {
 	}
 	d.OK = raw.OK
 	return nil
+}
+
+// A FRAGMENT HAS NO SHAPE. The attempt and the re-ask ask for an object on the
+// wire; the continuation of a cut object asks for the room alone, because a
+// shape hint on "emit the characters that come next" makes the model restart a
+// whole object instead — measured on the intent compile, where the restarted
+// object carried every field but the one the fragment held (#335).
+func TestAContinuationCarriesNoShapeHint(t *testing.T) {
+	client := &scripted{replies: []*ai.Response{
+		cut(`{"parts":[{"title":"read the failing test"},{"title":"fix the fol`, 8192),
+		whole(`low state"}]}`),
+	}}
+	var decoded parts
+	if _, err := Answer(context.Background(), client, Ask{Lane: "plan", JSON: true}, &decoded); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	if len(client.formats) != 2 || client.formats[0] != "json_object" || client.formats[1] != "" {
+		t.Fatalf("response formats = %v, want json_object on the attempt and none on the continuation", client.formats)
+	}
+	client = &scripted{replies: []*ai.Response{
+		whole("I cannot answer that in JSON."),
+		whole("Still prose."),
+	}}
+	_, _ = Answer(context.Background(), client, Ask{Lane: "plan", JSON: true}, &decoded)
+	if len(client.formats) != 2 || client.formats[1] != "json_object" {
+		t.Fatalf("response formats = %v, want the re-ask to keep asking for an object", client.formats)
+	}
+}
+
+// The fault a caller is handed carries the head of the reply, because a
+// streamed call's log row carries no body and the error is the only record
+// of what the model said (#335).
+func TestTheFaultQuotesTheReplyItCouldNotRead(t *testing.T) {
+	client := &scripted{replies: []*ai.Response{
+		whole("Here is my answer, in prose, as a paragraph."),
+		whole("Here is my answer, in prose, as a paragraph."),
+	}}
+	var decoded parts
+	_, err := Answer(context.Background(), client, Ask{Lane: "plan", JSON: true}, &decoded)
+	if err == nil || !strings.Contains(err.Error(), `reply="Here is my answer, in prose`) {
+		t.Fatalf("err = %v, want the reply quoted in the fault", err)
+	}
 }

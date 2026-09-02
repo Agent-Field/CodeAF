@@ -157,6 +157,7 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient, 
 			ServiceIntent:   brief.ServiceIntent,
 			WorkModel:       brief.WorkModel,
 			ModelNote:       brief.ModelNote,
+			Note:            brief.Note,
 		}, nil
 	}
 }
