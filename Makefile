@@ -115,6 +115,11 @@ TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
 # ci-full's old 8m cut it off at the finish line and reported whichever test
 # happened to be running as though it had hung. Fifteen minutes is that number
 # with headroom, and a package that really hangs still names itself.
+#
+# THE NUMBER IS PROVISIONAL. Of tui3's 478 seconds, 362 are its harness
+# sleeping 150ms for every command that never returns (#399); once that lands
+# the package is near two minutes and this can come down. Lower it from a new
+# measurement, never raise it to fit a slow run.
 TEST_TIMEOUT := 15m
 TEST_FLAGS ?=
 PKGS ?= ./...
