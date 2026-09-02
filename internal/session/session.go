@@ -1700,6 +1700,26 @@ type Config struct {
 	// they did not write. The door says so in one line at launch.
 	Unattended bool
 
+	// OneModel is the door's `--one-model` promise kept where it can actually be
+	// kept: EVERY TEXT CALL THIS SESSION MAKES RIDES THE CONVERSATION'S MODEL,
+	// including the roles that otherwise refuse to fall back to it.
+	//
+	// It has to be carried as a bit rather than expressed as an empty ladder
+	// because two callers hold the opposite law on purpose. The mark's reader and
+	// the brief's writer are CREW-ONLY — they hand [Agent.callRole] an empty
+	// floor so an install with no mastermind gets no second opinion at all rather
+	// than the running model marking its own work (checkpoint.go's two
+	// [roles.Register] calls) — and under the flag that left them with no pin, no
+	// tier and no floor, which is a role with no model rather than a role on the
+	// session's. A person who passed the flag has said the conversation's model
+	// IS the crew, so the answer is given once at the seam and the next crew-only
+	// caller is right without knowing the flag exists (#443).
+	//
+	// The media slots are untouched by it, for the door's own reason: vision,
+	// image, speech and video are capability-qualified, and a text model settled
+	// on them would not be one model, it would be a broken one.
+	OneModel bool
+
 	// Budget is the ceiling an unattended session runs under: hours, dollars, or
 	// both. THE ZERO BUDGET IS NO CEILING, which is what every session has always
 	// had, and it is what leaves `--yolo` alone exactly as it was.

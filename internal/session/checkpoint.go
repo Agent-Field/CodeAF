@@ -1550,6 +1550,11 @@ const (
 	carrySaidUnreachable = "the second model could not be reached"
 	carrySaidNothingNew  = "the second model had nothing new to say"
 	carrySaidNoMaterial  = "there was nothing to write it from"
+	// AND A ROLE WITH NO MODEL IS NOT A WIRE EVENT. A tier nobody filled in and a
+	// session with no client are configuration, not silence on a socket, and
+	// telling somebody the model could not be reached sends them to look at their
+	// network for a row they never wrote (#443).
+	carrySaidNoSecond = "no second model is set"
 )
 
 // carryAskOnlyNote is what is added to the line a person reads when the move
@@ -1585,13 +1590,25 @@ type carryStep struct {
 // TOLD APART FROM A REFUSAL because on the measured run it was the deadline —
 // [checkpointHandoffWindow] elapsed with no answer — and "could not be reached"
 // would have sent whoever read the line looking at the wrong thing.
+//
+// AND A ROLE WITH NO MODEL IS TOLD APART FROM BOTH, for the same reason twice
+// over: [roles.ErrNoModel] is a tier nobody filled in and [errNoCompleter] is a
+// session with no client, and neither of them is a wire that failed. The measured
+// run under `--one-model` had exactly this — no rung to call at all — and read as
+// an unreachable provider, which is the wrong thing to go and check (#443).
+//
+// The journal keeps err.Error() throughout: the file is where the exact sentence
+// belongs, and `roles: no model for role "handoff"` is the row that names it.
 func carryFault(err error) (reason, said string) {
 	if err == nil {
 		return carryNotProse, carrySaidNothingNew
 	}
 	said = carrySaidUnreachable
-	if errors.Is(err, context.DeadlineExceeded) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
 		said = carrySaidTooSlow
+	case errors.Is(err, roles.ErrNoModel), errors.Is(err, errNoCompleter):
+		said = carrySaidNoSecond
 	}
 	reason = err.Error()
 	if refusal, ok := provider.RefusalFrom(err); ok {

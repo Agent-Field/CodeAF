@@ -2329,6 +2329,8 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 		// moving (task_run.go's [TaskNode.pacing]).
 		pacing:      node.pacing,
 		RolesSource: parent.RolesSource,
+		// Beside the ladder it overrides, for task_run.go's reason.
+		OneModel: parent.OneModel,
 	}, client)
 	if err != nil {
 		return nil, err

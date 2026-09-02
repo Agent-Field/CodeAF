@@ -1022,8 +1022,10 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		writeScope:       node.WriteScope,
 		SupportsImages:   parent.SupportsImages,
 		RolesSource:      parent.RolesSource,
-		SearchProvider:   parent.SearchProvider,
-		SearchFetcher:    parent.SearchFetcher,
+		// Beside the ladder it overrides, for task_run.go's reason.
+		OneModel:       parent.OneModel,
+		SearchProvider: parent.SearchProvider,
+		SearchFetcher:  parent.SearchFetcher,
 		// The foreground-command handoff clock rides along for a task node's
 		// reason (task_run.go's newTaskAgent): a node's work is the person's
 		// work at one remove, and a clock that stopped at the conversation

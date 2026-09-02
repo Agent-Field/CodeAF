@@ -5086,8 +5086,19 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// nothing could put a deterministic answer behind.
 		TaskProgressCheck: parent.TaskProgressCheck,
 		RolesSource:       parent.RolesSource,
-		SearchProvider:    parent.SearchProvider,
-		SearchFetcher:     parent.SearchFetcher,
+		// AND THE ONE-MODEL PROMISE TRAVELS WITH THE LADDER IT OVERRIDES. The
+		// flag is a promise about the SESSION — every text call it makes rides
+		// the model the person named — and a session is not only the turns typed
+		// into it: it is the nodes those turns hand out and the hands those nodes
+		// lift. A child that forgot the flag would be a rung the flag never
+		// reached, and it would be exactly the crew-only rungs that forgot,
+		// because they are the only ones that need telling (auxiliary.go's
+		// [Agent.callRole], #443). Every other place a child copies RolesSource
+		// copies this beside it, for this reason: fork.go, orchestrate.go and
+		// task_audit.go.
+		OneModel:       parent.OneModel,
+		SearchProvider: parent.SearchProvider,
+		SearchFetcher:  parent.SearchFetcher,
 		// The person's connected accounts travel too, for the reason the search
 		// pair does: a node is the same worker doing the same job somewhere
 		// quieter, and work briefed around a mailbox needs the mailbox. What a

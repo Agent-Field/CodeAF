@@ -69,6 +69,15 @@ func TestOneModelSettlesEveryTextSlotOnTheSessionModel(t *testing.T) {
 	if cfg.NearestModels != nil {
 		t.Error("the catalog's nearest-model guess survived --one-model")
 	}
+
+	// AND THE FLAG ITSELF TRAVELS, which is the row the withheld ladder cannot
+	// stand in for. Two errands hand the ladder an empty floor on purpose — the
+	// mark's reader and the brief's writer are crew-only — so under an empty
+	// ladder they resolve to no model at all rather than to the session's, and
+	// the session is the only place that can know better (#443).
+	if !cfg.OneModel {
+		t.Error("the flag did not reach the session, so the crew-only rungs have no model")
+	}
 }
 
 // The half that protects everybody who never types the flag.
@@ -90,6 +99,9 @@ func TestWithoutOneModelEveryRowStillAnswers(t *testing.T) {
 	}
 	if len(cfg.ModelFallbacks) == 0 {
 		t.Error("the fallback chain did not survive a run without the flag")
+	}
+	if cfg.OneModel {
+		t.Error("a run that never typed the flag carries it into the session")
 	}
 }
 
