@@ -55,11 +55,18 @@ import (
 //	Alt       the lane that second request went to
 //	Winner    Response.Winner — the lane whose answer was actually read
 //	Trying    the in-flight event: a hedge is out and nobody has committed yet
+//	Reason    why that rescue went out — "slow" or "refused"
+//	Failed    the retraction: the machine named in Alt has failed
 //
 // A caller posts twice for a rescued answer: once with Trying while the hedge
 // is in flight, and once at the end with Hedged and Winner. It may post once
 // for every other answer. Anything it does not know is left zero, and a zero
 // field draws nothing.
+//
+// AND A RESCUE THAT DIES POSTS AGAIN TO TAKE ITS OWN SENTENCE BACK. `trying
+// coreweave…` is a claim about the present tense, and until Failed existed
+// nothing withdrew it: a refused arm left the promise on the status line until
+// the ten-minute window aged it out (issue #266).
 type LaneNews struct {
 	Model  string
 	Lane   string
@@ -71,6 +78,17 @@ type LaneNews struct {
 
 	Hedged bool
 	Trying bool
+
+	// Reason is why the rescue went out, in the transport's own two words
+	// ([provider.RescueSlow], [provider.RescueRefused]). It is CARRIED and never
+	// decided here: a surface that formed its own opinion about a refusal would
+	// be a second classifier, drifting from the one the routing acted on
+	// (internal/provider's refusalobject.go). An empty word reads as slow, which
+	// is what every rescue was called before there was a word at all.
+	Reason string
+	// Failed says the machine named in Alt has failed, so whatever this surface
+	// last said about it is no longer true.
+	Failed bool
 
 	// Role is who the answer was for (internal/lane's roles.go), carried from
 	// the seam that already knows it (internal/session's lanenews.go).
@@ -1019,12 +1037,23 @@ func (a *app) laneRowChanged() {
 // THREE STATES AND NO FOURTH:
 //
 //	via cloudflare · 0.6s · 61 t/s     an ordinary answer, and who wrote it
-//	slow · trying coreweave…           a rescue is in flight
+//	slow · trying coreweave…           a lane is late and a rescue is in flight
+//	refused · trying nextbit…          a lane said no and a rescue is in flight
+//	coreweave refused                  the rescue itself was refused
 //	via coreweave · rescued            it worked, for this answer only
 //
-// The middle one is the only place this surface says the word "slow", and it
-// says it while something is already being done about it. A status line that
-// called an answer slow and then sat there would be a complaint.
+// THE SURFACE SAYS WHAT THE WIRE SAID. "slow" is a claim about a wait and
+// "refused" is a claim about a machine, and for a whole measured run this line
+// said the first about the second: a 404 meaning `your request's provider.only
+// preference permits only: coreweave` was drawn as `· slow · trying nextbit…`
+// (issue #266). Neither word is decided here — both are carried on the news
+// from the layer that read the refusal — and the line says slow only while
+// something is already being done about it, because a status line that called
+// an answer slow and then sat there would be a complaint.
+//
+// AND A CLAIM THAT HAS STOPPED BEING TRUE IS TAKEN BACK. The fourth state is a
+// retraction: the rescue this line promised has itself been refused, so the
+// promise goes and what is left is the fact.
 //
 // AND ALL THREE ARE ABOUT AN ANSWER THAT IS FINISHED, which is why the phase
 // clock takes the segment away from them while a request is actually in flight
@@ -1042,7 +1071,23 @@ func (a *app) laneRider() string {
 		return ""
 	}
 	if news.Trying && news.Alt != "" {
+		// BOTH SENTENCES ARE WRITTEN OUT. Composing them from a word would save
+		// a line and cost the gate that keeps this surface's vocabulary honest:
+		// internal/e2e's tuiwords table reads these sources back for the exact
+		// strings its tmux suite waits for, and a sentence assembled at runtime
+		// is a sentence that table cannot find.
+		if news.Reason == provider.RescueRefused {
+			return " · refused · trying " + strings.ToLower(news.Alt) + "…"
+		}
 		return " · slow · trying " + strings.ToLower(news.Alt) + "…"
+	}
+	// THE RETRACTION. The machine this line was promising has failed, so the
+	// promise comes off and the only thing left worth saying is what it did.
+	if news.Failed && news.Alt != "" {
+		if news.Reason == provider.RescueRefused {
+			return " · " + strings.ToLower(news.Alt) + " refused"
+		}
+		return ""
 	}
 	if news.rescued() {
 		return " · via " + strings.ToLower(news.Winner) + " · rescued"

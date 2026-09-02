@@ -2107,7 +2107,7 @@ until the request ends. The ranking is by tense: the phase is what this request 
 some answer did in the last ten minutes. Drawing the older one under a request that has
 been stalled for a minute is exactly the thing this ordering exists to stop.
 
-## What "rescued" means on the status line, and "slow · trying …"
+## What "rescued" means on the status line, and "slow · trying …" and "refused"
 
 Those two only appear together, and only when the **speed guard** is on.
 
@@ -2123,9 +2123,17 @@ The moment the second request goes out, the status line says so and says **why**
 The stall comes first because it is the reason — the switch on its own is the same
 sentence with the cause taken out of it. After that the line goes back to the ordinary
 phases for the new request (`first word`, then `thinking` or `writing`). Where nothing on
-the wire is reporting, the older wording `slow · trying coreweave…` is drawn instead —
+the wire is reporting, the wording `slow · trying coreweave…` is drawn instead —
 either way this is the only place the program calls anything slow, and it says it while
 something is already being done about it.
+
+**A machine that REFUSED is not a machine that was slow, and the line says so.** When the
+router answers that the machine aforge asked for is not one that serves this model —
+`your request's provider.only preference permits only: coreweave` — the same spot reads
+`refused · trying nextbit…`. That machine is then finished for this model: it is not asked
+again, and it leaves the set aforge chooses from for thirty minutes. If the
+machine the answer moved to refuses as well, the promise is withdrawn rather than left on
+the screen, and the row reads `nextbit refused`.
 
 If the second lane wins, the line reads `via coreweave · rescued` for that answer once the
 request has finished, and goes back to normal on the next one.

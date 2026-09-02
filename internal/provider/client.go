@@ -1066,7 +1066,7 @@ func (c *Client) completeWithMessagesStreaming(
 			began: logBegan, status: httpResponse.StatusCode,
 			err: refusal, responseBody: payload,
 		})
-		c.refuseUpstream(c.modelFor(request), refusal)
+		c.refuseUpstream(request, knobs, refusal)
 		return nil, false, refusal
 	}
 	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
@@ -1341,7 +1341,7 @@ func (c *Client) completeWithMessagesStreaming(
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: refusal,
 			})
-			c.refuseUpstream(c.modelFor(request), refusal)
+			c.refuseUpstream(request, knobs, refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
 			return nil, false, refusal
 		}

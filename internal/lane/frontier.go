@@ -102,6 +102,16 @@ type gateOptions struct {
 // answers "could this lane serve the request"; only evidence answers "and is it
 // the one to send".
 func capable(belief Belief, req Request, opts gateOptions) bool {
+	// THE WIRE OVERRULES THE SHEET ABOUT WHO SERVES THIS MODEL. Every other
+	// gate here reads the endpoints page; this one reads what the router
+	// answered when we actually asked, and the two disagreed for a whole run
+	// (issue #266, sheet.go's negative half). A lane the router has refused
+	// this model from is not a slow lane or a derated one — it is not a
+	// candidate at all, and leaving it in is how a pin gets chosen from a set
+	// the wire has already emptied.
+	if !Serves(belief.ID.Model, belief.ID.Lane) {
+		return false
+	}
 	facts := belief.Facts
 	// THE ROW WAS PUBLISHED AND IT SAYS NO. That is the only reading of a false
 	// tools flag this gate acts on.
