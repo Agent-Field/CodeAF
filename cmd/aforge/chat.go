@@ -2676,19 +2676,13 @@ func exhaustionAllowance(bound exec.StopReason, deadline time.Duration) string {
 // ordinary words — the machinery vocabulary law — and it never says "failed",
 // because an attempt that was still working when its budget ended did not.
 func exhaustionWords(bound exec.StopReason, allowed string, turns int) string {
-	subject := "the room it was given"
-	switch bound {
-	case exec.StopDeadline:
-		subject = "its time"
-		if allowed != "" {
-			subject = "its " + allowed
-		}
-	case exec.StopTurnCap:
-		subject = "its turns"
-	case exec.StopBudget:
-		subject = "its tokens"
-	case exec.StopOverrun:
-		subject = "far more than this kind of work usually takes"
+	// WHAT RAN OUT IS SPELLED ONCE, in exec, because the scheduler says it again
+	// on the far side of the seam when it hands the node back to the queue. The
+	// wall is the one bound this caller knows a figure for, so it is the one
+	// this caller may sharpen; every other ending is the shared word.
+	subject := exec.RanOutSubject(bound)
+	if bound == exec.StopDeadline && allowed != "" {
+		subject = "its " + allowed
 	}
 	words := "it was still working when it ran out of " + subject
 	if turns > 0 {
@@ -2820,11 +2814,10 @@ func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string, banked ex
 	// one place a resident.ExecResult is built on this path, so it is the only
 	// place the fact can be put on: a field added to the struct and never filled
 	// in here is dead code that reads like a fix, which is exactly what one
-	// attempt at this defect shipped. Stopped is set whenever there is an
-	// outcome to read, so an ending of "done" is recorded as an ending rather
-	// than as a silence. See resident.ExecResult.RanOut.
+	// attempt at this defect shipped. The ending is carried whenever there is an
+	// outcome to read, so a leaf that finished records "done" rather than
+	// leaving the ending blank. See resident.ExecResult.RanOut.
 	if outcome != nil {
-		result.Stopped = true
 		result.Stop = leafStop(outcome)
 		result.Meter = outcome.Meter
 	}
