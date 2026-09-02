@@ -1300,6 +1300,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
 		})
 		return nil, nil
+	case MethodTaskHold:
+		args, err := arg[TaskHoldArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ HoldTask(uint64) })
+		if !ok {
+			return nil, errors.New("engine: this session has no task proposal clock to hold")
+		}
+		door.HoldTask(args.ID)
+		return nil, nil
 	case MethodTaskPending:
 		ids, known := sess.pendingTasks()
 		if !known {

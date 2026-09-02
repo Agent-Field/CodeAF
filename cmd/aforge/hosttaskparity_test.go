@@ -8,7 +8,7 @@ import (
 )
 
 // A REMOTE SURFACE MUST NOT BE A LESSER SURFACE, and the task seam is where that
-// law was quietly broken: [tui3.DrawsTasks] is one type assertion over four
+// law was quietly broken: [tui3.DrawsTasks] is one type assertion over five
 // methods, so a wire missing any one of them leaves the rail unsubscribed with
 // nothing on any screen saying why. This is the assertion the compiler cannot
 // make for us — internal/remote cannot import internal/tui3 — so it is made

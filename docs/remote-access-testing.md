@@ -99,11 +99,15 @@ aforge chat --host localhost:code/app --model deepseek/deepseek-v4-flash
 Driving the real surface without a keyboard, which is what an agent has to do:
 
 ```sh
+REMOTE_DEMO=$(mktemp -d)
 tmux new-session -d -s dx -x 200 -y 50 \
-  "bin/aforge chat --host localhost:code/app --session new --model deepseek/deepseek-v4-flash"
+  "bin/aforge chat --host localhost:$REMOTE_DEMO --model deepseek/deepseek-v4-flash"
 tmux send-keys -t dx "use the bash tool: sleep 45 && echo done" Enter
 tmux capture-pane -p -t dx | tail -4          # read the screen back
 ```
+
+An empty directory starts a fresh session for this check. `--session` takes a transcript
+path; `new` is not a sentinel for creating one.
 
 To drop the link on purpose, kill the ssh child this session started — and kill it **by
 pid**, because a pattern wide enough to match `aforge engine` also matches the shell you
@@ -257,8 +261,9 @@ without a keyboard.
 **Set up a session and make it write a file.**
 
 ```sh
+REMOTE_FILES=$(mktemp -d)
 tmux new-session -d -s fx -x 200 -y 50 \
-  "bin/aforge chat --host localhost:code/app --session new --model deepseek/deepseek-v4-flash"
+  "bin/aforge chat --host localhost:$REMOTE_FILES --model deepseek/deepseek-v4-flash"
 tmux send-keys -t fx "write a file notes/hello.txt containing hello, then say where you put it" Enter
 sleep 30
 tmux capture-pane -p -t fx | tail -6
