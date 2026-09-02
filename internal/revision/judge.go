@@ -1820,6 +1820,14 @@ type Extension struct {
 	Round      int
 	Refused    string
 	Mechanical bool
+	// Cause is the growth governor's machine-readable word for WHICH governor
+	// refused, verbatim from resident.GrowVerdict, and empty when nothing
+	// refused. Refused above is what a person reads; this is what a decision is
+	// made from, and the two are separate fields because a decision read out of
+	// a sentence is a decision that breaks when the sentence is reworded. See
+	// resident.GrowthStopped, which is the only thing allowed to turn one of
+	// these words into an ending.
+	Cause string
 	// Unclosed says the gap is still open: the repair was refused for want of
 	// money, rounds or a planner, rather than because the gap itself was found
 	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
@@ -1944,7 +1952,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// The reason travels rather than being inherited: this is quality failure
 	// growing a job, not resource failure, and the journal that bounds growth
 	// could not tell the two apart while one borrowed the other's whole path.
-	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
+	spliced, _, cause, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
 		dailyBudgetUSD, resident.Growth{Reason: resident.GrowGap, Records: records,
 			// A finding that names a file of the record is a reading of the
 			// world, so the first round it buys is not the coverage question's
@@ -1955,6 +1963,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		extension.Refused, extension.Unclosed = "the work that would close it could not be planned", true
 		return extension
 	}
+	extension.Cause = cause
 	if spliced == 0 {
 		// A governor has already said so in the thread in its own words, or the
 		// rail has journaled the repair and is waiting on consent. Either way
@@ -1967,6 +1976,15 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		if coverageRefused(graph, base) {
 			extension.Refused, extension.Unclosed = "the job's own reading of what it is "+
 				"judged on found nothing left to add, so nothing further was started", true
+			return extension
+		}
+		// AND THE TWO GOVERNORS THAT READ THE WORLD SAY IT IN THEIR OWN WORDS.
+		// "no more work could be started on it" is true of a cap, a wall and a
+		// planner that came back empty, and it is the wrong account of a job
+		// that has concluded nothing is changing — which is a finding about the
+		// work rather than about what is left to spend on it.
+		if words, stopped := resident.GrowthStopped(cause); stopped {
+			extension.Refused, extension.Unclosed = words, true
 			return extension
 		}
 		extension.Refused, extension.Unclosed = "no more work could be started on it", true

@@ -108,6 +108,27 @@ type ExecResult struct {
 	// with nothing behind it has no account, and the scheduler must not write
 	// one for it. See Runner.runOne.
 	Continued bool
+
+	// RefusedGrowth is the growth governor's own [GrowVerdict.Cause] — the word
+	// "standstill" or "fixed-point" — when the round that would have carried
+	// this leaf's remainder was refused because NOTHING IS CHANGING, and it is
+	// the empty string when growth was not refused on that ground, which
+	// includes every ordinary leaf, every cap, and the daily rail.
+	//
+	// EMPTY MEANS NO SUCH REFUSAL AND THE VALUE IS THE CAUSE WORD, never a
+	// sentence and never a flag: the sentence a person reads is derived from it
+	// exactly once, by GrowthStopped, so the stream, the record and the node's
+	// ending cannot describe one event three ways.
+	//
+	// It rides here because the governor's finding was already true and already
+	// printed by the time the leaf landed, and the scheduler — the one thing
+	// that can stop paying for the job — was the only reader never told. It
+	// carried "it ran out" and "nothing is continuing it", both of which were
+	// also true of the very first fruitless round, so the queue could not tell
+	// the two apart and put a job that had concluded nothing was changing back
+	// on it for a third attempt. Stop still answers what stopped the leaf; this
+	// answers what the job concluded about carrying on.
+	RefusedGrowth string
 }
 
 // RanOut reports that this leaf STOPPED BECAUSE IT RAN OUT, and that nothing is
@@ -1398,7 +1419,30 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 	// is incremented at the claim, so a node that has run out on three claims
 	// with nothing able to continue it has said all it is going to say, and it
 	// is failed with the ending named rather than handed round again for ever.
-	if result.RanOut() {
+	//
+	// A PASSED DELIVERY GATE SETTLES THE NODE. Running out is a statement about
+	// RESOURCES — the meter reached its bound while the worker was still going —
+	// and a gate pass is a statement about the WORK, taken by reading the result
+	// against the words the person used. "Is this done" is the work's question,
+	// so the work's verdict is what answers it, and a node requeued over a pass
+	// buys a second run of work that is already finished and judged.
+	//
+	// AND ONCE THE JOB HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING ON
+	// IT: a refusal for standstill or fixed point is the growth governor saying
+	// the world did not move over two rounds of paying for it, so the node is
+	// handed over with that sentence as its ending rather than claimed again.
+	// The round cap below stays as the backstop for everything else, and the
+	// first fruitless round is never refused — the governor encodes that clause,
+	// and this arm carries its answer rather than deriving a second one.
+	//
+	// The order is the three facts in the order they settle the question: what
+	// the work was judged to be, what the job concluded about carrying on, and
+	// only then what is left to spend.
+	if result.RanOut() && !r.gatePassed(node) {
+		if words, stopped := GrowthStopped(result.RefusedGrowth); stopped {
+			_ = r.graph.Fail(claim, nothingChangedFailure(result, words))
+			return
+		}
 		_, recorded := BankedRun(r.graph, node.ID)
 		if node.Attempt < MaxOverrunRounds && recorded > 0 {
 			_ = r.graph.ReleaseWithRecord(claim, outOfRoomClaimReason(result, recorded), recorded)
@@ -1487,6 +1531,24 @@ func (r *Runner) firingRoot(node store.Node) (string, error) {
 // links the store enforces, so this is a belt against a corrupted view rather
 // than an expected depth.
 const maxFiringDepth = 32
+
+// gatePassed reports that this node's work has already been JUDGED AGAINST THE
+// REQUEST and found to be what was asked for.
+//
+// It is the one thing that outranks a leaf running out. Running out is a
+// measured fact about the meter and it is why a cut leaf is never settled on its
+// own last sentence — but a delivery gate is not the leaf's own claim, it is a
+// separate reading of the work against the words the person used, and a reading
+// that says the work is there is not overturned by the news that the worker was
+// short of room while producing it. A node handed back to the queue over a pass
+// buys a second run of work that is already done.
+//
+// A journal that cannot be read answers false, which costs a requeue and never a
+// wrong settlement.
+func (r *Runner) gatePassed(node store.Node) bool {
+	gate, found, err := r.graph.DeliveryGateFor(node.ID)
+	return err == nil && found && gate.Pass
+}
 
 // recordSpend journals what one execution cost, on every way out of runOne.
 // It is one function rather than three call sites because the three endings —

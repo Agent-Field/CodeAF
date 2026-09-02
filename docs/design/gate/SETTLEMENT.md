@@ -611,3 +611,48 @@ funded as one. And when no verdict can be read at all, the gate runs that same
 promised-versus-present check and raises what the filesystem says, journaled
 `subject: fallback`. What it does NOT do is re-ask under the claim contract: that
 was built and it re-admitted the three findings §6 exists to refuse.
+
+
+## Addendum, 2026-09-02: a tree with no diff has nothing to judge and nothing to repair
+
+§8 established that a repair round which moved nothing may not close a finding
+about the world, and it did it by stamping the tree either side of the round. The
+same stamp, taken either side of the LEAF, answers a question one step earlier
+and cheaper: was there ever anything here to judge at all?
+
+The run that made it necessary read a large file to its budget twice over. Its
+growth governor declared a standstill — the sentence went to the stream and the
+journal — and the settlement then paid two gate calls of ~114K tokens whose
+refusal described work that did not exist, ran a full twenty-turn repair round
+against that refusal, re-judged it, printed the standstill again, and resumed the
+same leaf a third time. Every one of those was bought over a tree that was
+byte-for-byte the tree the leaf had started from.
+
+> **ONCE THE HARNESS HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING ON
+> THAT JOB: no gate on a tree with no diff, no repair round on a tree with no
+> diff, and no resume.**
+
+Three parts, one law. The gate and the repair are skipped on the MEASUREMENT —
+the record stamped as the leaf started against the same record where the gate
+would be asked — because a leaf that wrote and altered nothing has produced
+nothing for a judge to read and nothing for a repair to build on. The resume is
+stopped on the VERDICT: the growth governor's cause word rides out on the leaf's
+result (`resident.ExecResult.RefusedGrowth`) and the scheduler ends the node with
+the governor's own sentence rather than claiming it again. The two are separate
+readings on purpose — a job can be at a standstill while a leaf writes scratch,
+and a leaf can change nothing on a round nobody has refused yet — and the first
+fruitless round is bought by both, because the governor already encodes that
+clause (FAILSAFE clause 5) and nothing here re-derives it.
+
+An unasked gate is journaled as what it was. The row carries the handover
+sentence in `refused` and leaves the delivery `unclosed`, and it never carries a
+pass: a run that changed nothing handed over less than it promised, and the
+ledger a battery reads must not be able to mistake it for work that was checked.
+
+The sibling ruling, at the same seam: **a delivery gate that PASSED settles the
+node, even where the leaf ran out of room getting there.** Running out is a
+statement about the meter; a gate pass is a reading of the work against the words
+the person used, and "is this done" is the work's question. What is still refused
+is the one that produced the defect this document is named after — a remainder
+judge shown the brief and the worker's own last sentence, whose "nothing is left"
+settles nothing at all.
