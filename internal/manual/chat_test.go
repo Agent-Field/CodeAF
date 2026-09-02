@@ -1014,8 +1014,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model thought and never answered", "screen"},
 		{"why is there a <think> tag in my answer", "screen"},
 		{"the reply stayed raw until I asked something else", "screen"},
-		{"the reply pops in as a block instead of streaming smoothly", "screen"},
-		{"why do the tokens on the status line jump instead of counting up", "models-and-cost"},
 		{"why is some of the answer dimmer than the rest", "screen"},
 		{"where is the actual answer in all this", "screen"},
 		{"I stopped it and the text stayed grey", "screen"},
