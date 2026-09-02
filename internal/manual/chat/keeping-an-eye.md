@@ -412,11 +412,15 @@ aforge looks; your own words are what decides whether looking finds anything. So
 item is checked twelve times an hour and fires once, and a rule with no cadence at all is
 never woken by the clock — something has to happen first.
 
-**Which means a firing can be up to five minutes late.** A window's first check is five
-minutes after it opened, so a reminder set for one minute from now arrives on the check
-after it comes due, not on the second. A late check says it was late; it does not pretend
-it happened on time. Nothing fires while the machine is asleep, and nothing fires when you
-are not logged in.
+**Which means a firing can be up to five minutes late.** A window's first check is a whole
+five minutes after it opened — nothing is checked at the moment you launch — so a reminder
+set for one minute from now arrives on the check after it comes due, not on the second.
+Nothing is checked while the machine is **asleep**, and nothing is checked when **you are
+not logged in**: the timer runs under your own login and is not a system service. The
+machine's own timer is asked to catch a missed check up rather than skip it, so a laptop
+that was shut picks the pass up when it comes back — once, not once for every check it
+slept through. What was actually missed is on the item itself: its row says when it last
+ran.
 
 The card you said yes to states the cadence back to you in words — "Mondays at 9am" — and
 an item's own row says when it last ran. Those two together are the honest answer to "when
@@ -525,9 +529,10 @@ Either way it is said **once, ever**. The fact is written down beside your items
 **before** your machine is touched, so an install that half-worked is still one
 you were told about rather than one you are told about again tomorrow.
 
-**The limits are real.** Nothing runs while the machine is **asleep** — a late
-check says it was late rather than pretending it happened on time. Nothing runs
-when **you are not logged in**: it is a per-user timer, not a system service. And
+**The limits are real.** Nothing runs while the machine is **asleep**; the timer
+is asked to catch one missed check up when the machine comes back rather than
+skip it. Nothing runs when **you are not logged in**: it is a per-user timer,
+not a system service. And
 on any host that is neither macOS nor Linux there is no timer to install, so
 things are checked only while a window is open and the settings row is not there
 at all.
@@ -835,8 +840,8 @@ transcript reads with the same tools as any other conversation.
   is refused with the current time in it, and aforge is asked to work it out
   again from that.
 - **It will not fire while the machine is asleep**, and it will not fire when you
-  are not logged in. A late check says it was late; it does not pretend it
-  happened on time.
+  are not logged in. A missed check is caught up once when the machine comes
+  back, and the item's own row says when it last ran.
 - **It will not reach your phone.** There is no notification, no email, no
   outward lane at all. News lands in a chat you have open, or waits on home and
   in the next chat you open in that project ("Where a reminder arrives").
