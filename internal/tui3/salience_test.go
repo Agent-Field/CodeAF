@@ -102,6 +102,10 @@ var salienceTable = []salienceCase{
 		"its own transcript: a room that narrated its own state would be the page telling you what the line " +
 		"above it already says (task.go, room.go's header)",
 		ev: session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{ID: 4, State: session.TaskRunning}}},
+	{name: "EventJobUpdate", chatOnly: "a background job is a roster row and its page is a reading of its " +
+		"log, not a transcript (jobstate.go): the update files a fact for the roster and draws no block " +
+		"on either page",
+		ev: session.Event{Kind: session.EventJobUpdate, Job: &session.JobNotice{ID: 4}}},
 	{name: "EventTaskPhase", chatOnly: "which of its three lives a node is in is drawn in the header instrument, " +
 		"once, rather than as a line each time it moves (taskphase.go)",
 		ev: session.Event{Kind: session.EventTaskPhase, Task: &session.TaskNotice{ID: 4}}},
