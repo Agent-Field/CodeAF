@@ -464,7 +464,7 @@ func (a *app) tickMeters(slots int, snap bool) {
 // spendDrawn is the bill the status line paints. The books stay on
 // [app.spendShown]; this is only the figure in motion.
 func (a *app) spendDrawn() float64 {
-	if !a.meterChasing {
+	if !a.chasingMeters() {
 		return a.spendShown()
 	}
 	return a.shownCost
@@ -472,8 +472,23 @@ func (a *app) spendDrawn() float64 {
 
 // ctxDrawn is the conversation weight the meter paints, on the same terms.
 func (a *app) ctxDrawn() int {
-	if !a.meterChasing || a.shownCtx == 0 {
+	if !a.chasingMeters() || a.shownCtx == 0 {
 		return a.ctxTokens
 	}
 	return a.shownCtx
+}
+
+// chasingMeters reports whether a figure in motion is the one to draw.
+//
+// A FIGURE ONLY MOVES WHILE THE TURN DOES, AND THE STATE SAYS SO RATHER THAN
+// A FRAME. [app.tickMeters] snaps the drawn figures the moment the turn stops
+// working, but it only runs when a frame does — and the frame clock stops when
+// there is nothing left animating. A turn that settled on its last paint would
+// leave [app.meterChasing] set over a figure that had not finished easing, and
+// the status line would draw that stale reading for as long as the surface sat
+// idle. Asking the state here means the exact bill is drawn on the instant the
+// turn ends, whether or not another frame ever arrives. It is livestate.go's
+// law in the status line's column: a thing stops pacing when it stops moving.
+func (a *app) chasingMeters() bool {
+	return a.meterChasing && a.state == stateWorking
 }
