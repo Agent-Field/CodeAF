@@ -13,9 +13,21 @@ package standing
 // names are v3's own.
 //
 // STATUS IS DERIVED, NEVER ASSERTED. Installed means the definition file still
-// matches, byte for byte, what this build would write. Nothing shells out to
-// ask, because the answer to "is my watch running" must not depend on a command
-// that might not be on the PATH.
+// matches, byte for byte, what this build would write for the pair it names.
+// Nothing shells out to ask, because the answer to "is my watch running" must
+// not depend on a command that might not be on the PATH.
+//
+// THE TIMER IS A (HOME, PROGRAM) PAIR, and the definition carries both: the
+// state root it ticks and the program it runs. There is one timer per login,
+// so two homes and two builds on one machine all share it, and the law that
+// keeps them from fighting over it is that a launch speaks only for its own
+// pair. It leaves a timer that names another home alone, and it leaves a timer
+// that names another program alone for as long as that program can still run;
+// it steps in only when the program the timer names is gone, or the definition
+// is not one this build would have written for this home. Before this law the
+// timer followed whichever aforge launched last, every launch of the other
+// build rewrote it, and a build that was then deleted left it failing every
+// five minutes in silence.
 
 import (
 	"context"
@@ -30,6 +42,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // DarwinTickLabel and LinuxTickTimer are what this machine's own scheduler
@@ -88,8 +102,12 @@ type WatchOptions struct {
 	Platform   string
 	HomeDir    string
 	Executable string
-	UID        int
-	Runner     WatchRunner
+	// StateRoot is the home the timer ticks — AFORGE_HOME when set, the
+	// login's default otherwise — and the half of the pair a test has to name
+	// for a home it is not running under. Empty is this process's own.
+	StateRoot string
+	UID       int
+	Runner    WatchRunner
 	// WakeLog is where passes leave their one line each — [Store.WakeLogPath].
 	// It is a path rather than a store because the timer has no business
 	// reading items, only proof that something woke.
@@ -103,6 +121,7 @@ type Timer struct {
 	platform   string
 	homeDir    string
 	executable string
+	stateRoot  string
 	uid        int
 	runner     WatchRunner
 	wakeLog    string
@@ -132,6 +151,13 @@ func NewWatch(options WatchOptions) (*Timer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("standing: find this program: %w", err)
 	}
+	if strings.TrimSpace(options.StateRoot) == "" {
+		options.StateRoot = home.Dir()
+	}
+	stateRoot, err := filepath.Abs(options.StateRoot)
+	if err != nil {
+		return nil, fmt.Errorf("standing: find the state root: %w", err)
+	}
 	if options.UID == 0 {
 		options.UID = os.Getuid()
 	}
@@ -148,8 +174,8 @@ func NewWatch(options WatchOptions) (*Timer, error) {
 	}
 	return &Timer{
 		platform: options.Platform, homeDir: filepath.Clean(options.HomeDir),
-		executable: absolute, uid: options.UID, runner: options.Runner,
-		wakeLog: options.WakeLog, now: options.Now,
+		executable: absolute, stateRoot: stateRoot, uid: options.UID,
+		runner: options.Runner, wakeLog: options.WakeLog, now: options.Now,
 	}, nil
 }
 
@@ -195,60 +221,37 @@ func (w *Timer) Status() (WatchStatus, error) {
 		return WatchStatus{}, err
 	}
 	status.LastWake = last
-
-	definition := w.primaryPath()
-	info, err := os.Stat(definition)
+	seen, err := w.read()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return status, nil
-		}
-		return WatchStatus{}, fmt.Errorf("standing: look at the timer: %w", err)
+		return WatchStatus{}, err
 	}
-	if !info.Mode().IsRegular() {
-		return WatchStatus{}, fmt.Errorf("standing: %s is not a regular file", definition)
-	}
-	primary, err := os.ReadFile(definition)
-	if err != nil {
-		return WatchStatus{}, fmt.Errorf("standing: read the timer: %w", err)
-	}
-	want := darwinPlist(w.executable)
-	if w.platform == "linux" {
-		want = linuxTimerUnit()
-	}
-	if string(primary) != want {
+	// INSTALLED IS "SOMETHING IS CHECKING THIS HOME", which is a definition for
+	// this home, in this build's shape, naming a program that is there — and
+	// not "naming this program": with two builds on one machine the timer runs
+	// one of them, and a row that said `off` while it ran the other would be
+	// the same defect as the flip, on a different surface.
+	if !seen.drift.Present || !seen.ours || seen.drift.Stale {
 		return status, nil
-	}
-	if w.platform == "linux" {
-		service, err := os.ReadFile(w.linuxServicePath())
-		if err != nil {
-			if os.IsNotExist(err) {
-				return status, nil
-			}
-			return WatchStatus{}, fmt.Errorf("standing: read the timer: %w", err)
-		}
-		if string(service) != linuxServiceUnit(w.executable) {
-			return status, nil
-		}
 	}
 	status.Installed = true
 	base := status.LastWake
 	if base.IsZero() {
 		// Nothing has woken yet, so the only honest guess at the next check is
 		// one interval after the timer was installed.
-		base = info.ModTime()
+		base = seen.wrote
 	}
 	status.NextDue = base.Add(Interval)
 	return status, nil
 }
 
 // WatchDrift is what [Timer.Drift] answers: a definition already on this
-// machine, and whether the program it names is still this one.
+// machine, and whether the launch that asked may put it back.
 //
 // IT IS A SEPARATE READING FROM [WatchStatus] ON PURPOSE. Status answers the
 // only question a person asks — is anything checking — and a definition
-// pointing at a binary that has moved is not checking, so Status says no. This
-// says WHY it said no, which is a different question with exactly one caller:
-// the launch that repairs the drift ([Timer.Install] rewrites it).
+// pointing at a binary that has been deleted is not checking, so Status says no.
+// This says WHY it said no, which is a different question with exactly one
+// caller: the launch that repairs the drift ([Timer.Install] rewrites it).
 type WatchDrift struct {
 	// Present is a definition file on disk, whatever it says.
 	Present bool
@@ -256,10 +259,18 @@ type WatchDrift struct {
 	// could not be parsed for one. It is read for the log line the repair
 	// writes; nothing decides on it.
 	Executable string
-	// Stale is Present and the definition is not the one this build would write
-	// — the program moved, was deleted, or an older build wrote the file. Every
-	// one of those is repaired by installing over it, which is why they are one
-	// bool rather than three.
+	// Gone is Executable naming a path with no program on it — the build was
+	// deleted, or moved and the old path left empty.
+	Gone bool
+	// Stale is a definition for THIS timer's home that this launch may repair:
+	// the program it names is gone, or the bytes are not what this build writes
+	// for that pair (an older build wrote them, or somebody edited them).
+	//
+	// IT IS NEVER TRUE FOR A TIMER THAT IS SOMEBODY ELSE'S: one naming another
+	// home, or one naming another program that can still run. Repairing either
+	// would be this launch taking the machine's one timer away from a pair that
+	// was serving it, which is the flip this law exists to end. Turning the
+	// settings row off and on is the one hand that moves it on purpose.
 	Stale bool
 }
 
@@ -269,68 +280,110 @@ func (w *Timer) Drift() (WatchDrift, error) {
 	if w == nil {
 		return WatchDrift{}, errors.New("standing: no timer")
 	}
-	raw, err := os.ReadFile(w.primaryPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return WatchDrift{}, nil
-		}
-		return WatchDrift{}, fmt.Errorf("standing: read the timer: %w", err)
-	}
-	drift := WatchDrift{Present: true}
-	want := darwinPlist(w.executable)
-	if w.platform == "linux" {
-		want = linuxTimerUnit()
-		// The timer unit names no program at all — the SERVICE beside it does —
-		// so on Linux the executable is read from there, and a service that is
-		// missing is itself drift.
-		service, serviceErr := os.ReadFile(w.linuxServicePath())
-		switch {
-		case serviceErr == nil:
-			drift.Executable = definitionExecutable("linux", string(service))
-			if string(service) != linuxServiceUnit(w.executable) {
-				drift.Stale = true
-			}
-		case os.IsNotExist(serviceErr):
-			drift.Stale = true
-		default:
-			return WatchDrift{}, fmt.Errorf("standing: read the timer: %w", serviceErr)
-		}
-	} else {
-		drift.Executable = definitionExecutable(w.platform, string(raw))
-	}
-	if string(raw) != want {
-		drift.Stale = true
-	}
-	// AND A DEFINITION THAT STILL READS RIGHT CAN STILL POINT AT NOTHING. The
-	// bytes match when the program was replaced in place under the same name;
-	// they also match when that name was deleted, and a timer firing at a path
-	// with no program on it is a check that fails every five minutes in
-	// silence. So the program is looked for as well.
-	if drift.Executable != "" && !drift.Stale {
-		if _, err := os.Stat(drift.Executable); err != nil {
-			drift.Stale = true
-		}
-	}
-	return drift, nil
+	seen, err := w.read()
+	return seen.drift, err
 }
 
-// definitionExecutable digs the program out of a definition this package wrote.
-// It is a best effort for ONE LOG LINE and never a decision: a file it cannot
-// read gives an empty string, and the emptiness law leaves that clause off the
-// line rather than printing a placeholder.
-func definitionExecutable(platform, content string) string {
+// reading is one look at the definition and everything both askers derive from
+// it. Drift and Status are two views of ONE READING, so the settings row and
+// the launch's repair cannot disagree about the same bytes.
+type reading struct {
+	drift WatchDrift
+	// ours is the definition naming this timer's state root — the one home a
+	// launch may speak for. Another home's timer is neither installed here nor
+	// drift, whatever it says.
+	ours  bool
+	wrote time.Time
+}
+
+func (w *Timer) read() (reading, error) {
+	primary, info, err := readDefinition(w.primaryPath())
+	if err != nil || info == nil {
+		return reading{}, err
+	}
+	named, service := primary, ""
+	if w.platform == "linux" {
+		// The timer unit names no program at all — the SERVICE beside it does —
+		// so on Linux the pair is read from there, and a service that is
+		// missing is itself drift.
+		if service, _, err = readDefinition(w.linuxServicePath()); err != nil {
+			return reading{}, err
+		}
+		named = service
+	}
+	executable, root := definitionPair(w.platform, named)
+	if root == "" {
+		// A definition an earlier build wrote carries no home, and what it
+		// ticks is the login's default one.
+		root = home.DefaultUnder(w.homeDir)
+	}
+	seen := reading{wrote: info.ModTime(), ours: filepath.Clean(root) == w.stateRoot}
+	seen.drift = WatchDrift{Present: true, Executable: executable}
+	if !seen.ours {
+		return seen, nil
+	}
+	if executable != "" {
+		_, err := os.Stat(executable)
+		seen.drift.Gone = err != nil
+	}
+	wantPrimary, wantService := w.texts(executable)
+	shaped := executable != "" && primary == wantPrimary && service == wantService
+	seen.drift.Stale = !shaped || seen.drift.Gone
+	return seen, nil
+}
+
+// readDefinition is one file's bytes, with a nil info for a file that is not
+// there: absence is an answer here, never a fault.
+func readDefinition(path string) (string, os.FileInfo, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil, nil
+		}
+		return "", nil, fmt.Errorf("standing: look at the timer: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("standing: %s is not a regular file", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("standing: read the timer: %w", err)
+	}
+	return string(raw), info, nil
+}
+
+// texts is what this build writes for a program ticking this timer's home: the
+// primary definition and, on Linux, the service beside it (empty elsewhere).
+func (w *Timer) texts(executable string) (primary, service string) {
+	if w.platform == "linux" {
+		return linuxTimerUnit(), linuxServiceUnit(executable, w.stateRoot)
+	}
+	return darwinPlist(executable, w.stateRoot), ""
+}
+
+// definitionPair digs the program and the home out of a definition this
+// package wrote. A file it cannot read gives empty strings, and the emptiness
+// law leaves the program's clause off the log line rather than printing a
+// placeholder.
+func definitionPair(platform, content string) (executable, root string) {
 	if platform == "linux" {
 		for _, line := range strings.Split(content, "\n") {
-			rest, found := strings.CutPrefix(strings.TrimSpace(line), "ExecStart=")
-			if !found {
-				continue
+			line = strings.TrimSpace(line)
+			if rest, found := strings.CutPrefix(line, "ExecStart="); found {
+				executable = unquoteSystemd(strings.TrimSuffix(strings.TrimSpace(rest), " tick"))
 			}
-			rest = strings.TrimSuffix(strings.TrimSpace(rest), " tick")
-			return unquoteSystemd(rest)
+			if rest, found := strings.CutPrefix(line, "Environment="); found {
+				root, _ = strings.CutPrefix(unquoteSystemd(rest), home.EnvVar+"=")
+			}
 		}
-		return ""
+		return executable, root
 	}
-	_, after, found := strings.Cut(content, "<key>ProgramArguments</key>")
+	return plistString(content, "<key>ProgramArguments</key>"), plistString(content, "<key>"+home.EnvVar+"</key>")
+}
+
+// plistString is the first <string> after marker, or empty.
+func plistString(content, marker string) string {
+	_, after, found := strings.Cut(content, marker)
 	if !found {
 		return ""
 	}
@@ -364,7 +417,7 @@ func (w *Timer) installDarwin(ctx context.Context) error {
 	case !os.IsNotExist(err):
 		return fmt.Errorf("standing: look at the timer: %w", err)
 	}
-	if err := writeDefinition(path, []byte(darwinPlist(w.executable))); err != nil {
+	if err := writeDefinition(path, []byte(darwinPlist(w.executable, w.stateRoot))); err != nil {
 		return err
 	}
 	if err := w.runner.Run(ctx, "launchctl", "bootstrap", w.darwinDomain(), path); err != nil {
@@ -400,7 +453,7 @@ func (w *Timer) uninstallDarwin(ctx context.Context) error {
 }
 
 func (w *Timer) installLinux(ctx context.Context) error {
-	if err := writeDefinition(w.linuxServicePath(), []byte(linuxServiceUnit(w.executable))); err != nil {
+	if err := writeDefinition(w.linuxServicePath(), []byte(linuxServiceUnit(w.executable, w.stateRoot))); err != nil {
 		return err
 	}
 	if err := writeDefinition(w.linuxTimerPath(), []byte(linuxTimerUnit())); err != nil {
@@ -544,8 +597,10 @@ func removeIfPresent(path string) error {
 
 // darwinPlist and the two systemd units below interpolate [Interval] rather
 // than spelling five minutes again: a cadence that appears in two places is a
-// cadence that will disagree with itself.
-func darwinPlist(executable string) string {
+// cadence that will disagree with itself. Both carry the home the tick runs
+// against as AFORGE_HOME, because a tick that inherited nothing ticked the
+// login's default home whatever home had installed it.
+func darwinPlist(executable, root string) string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -557,6 +612,11 @@ func darwinPlist(executable string) string {
     <string>` + html.EscapeString(executable) + `</string>
     <string>tick</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>` + home.EnvVar + `</key>
+    <string>` + html.EscapeString(root) + `</string>
+  </dict>
   <key>StartInterval</key>
   <integer>` + strconv.Itoa(int(Interval/time.Second)) + `</integer>
   <key>RunAtLoad</key>
@@ -566,12 +626,13 @@ func darwinPlist(executable string) string {
 `
 }
 
-func linuxServiceUnit(executable string) string {
+func linuxServiceUnit(executable, root string) string {
 	return `[Unit]
 Description=` + tickUnitTitle + `
 
 [Service]
 Type=oneshot
+Environment=` + quoteSystemd(home.EnvVar+"="+root) + `
 ExecStart=` + quoteSystemd(executable) + ` tick
 `
 }

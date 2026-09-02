@@ -383,17 +383,23 @@ type backgroundTimer interface {
 // in the standing log.
 //
 // THE DEFINITION EMBEDS THE PROGRAM'S PATH, which is what makes this necessary:
-// a person who moves the binary, installs a new one somewhere else, or deletes
-// the one the plist names still has a launchd agent — it simply runs nothing.
-// Nothing on screen could say so, because the honest reading of that timer is
-// `off` and off is what they would see in /settings; so the launch repairs it
-// instead of reporting it.
+// a person who moves the binary, or deletes the one the definition names, still
+// has a timer — it simply runs nothing. Nothing on screen could say so, because
+// the honest reading of that timer is `off` and off is what they would see in
+// /settings; so the launch repairs it instead of reporting it.
 //
 // IT ONLY EVER REPAIRS, NEVER INSTALLS. A definition that is not there at all is
 // somebody who has never had one or who turned the row off, and writing one for
 // either of them would make the row a suggestion. And the row outranks all of
 // it: `wanted` is [config.BackgroundChecksWantedAt], and a person who turned
 // background checks off is left exactly as they left their machine.
+//
+// AND IT SPEAKS ONLY FOR ITS OWN PAIR. The machine has one timer per login and
+// it is a (home, program) pair; a timer naming another home, or another program
+// that can still run, is not drift and is left exactly as it is
+// (internal/standing's WatchDrift says why). So a launch under an isolated
+// AFORGE_HOME has nothing to say about the machine's timer, and two builds on
+// one machine no longer take it from each other on every launch.
 func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
 	if watch == nil || !wanted {
 		return ""
@@ -405,10 +411,10 @@ func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
 	if err := watch.Install(context.Background()); err != nil {
 		return "could not put the background check back: " + err.Error()
 	}
-	if drift.Executable != "" {
-		return "the background check ran " + drift.Executable + ", which is not this program: installed it again"
+	if drift.Gone && drift.Executable != "" {
+		return "the background check ran " + drift.Executable + ", which is no longer there: installed it again"
 	}
-	return "the background check had drifted from this program: installed it again"
+	return "the background check was not as this program writes it: installed it again"
 }
 
 // startBackgroundRepair runs that once per process, off the launch's own

@@ -75,7 +75,7 @@ func (d *driftedTimer) Install(context.Context) error {
 // standing log.
 func TestTheLaunchPutsABackgroundCheckBackWhenItsProgramMoved(t *testing.T) {
 	timer := &driftedTimer{drift: standing.WatchDrift{
-		Present: true, Stale: true, Executable: "/old/bin/aforge",
+		Present: true, Stale: true, Gone: true, Executable: "/old/bin/aforge",
 	}}
 	line := repairBackgroundChecks(timer, true)
 	if timer.installs != 1 {
