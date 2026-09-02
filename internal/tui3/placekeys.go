@@ -55,10 +55,13 @@ import (
 //
 // WHERE IT IS CALLED FROM MATTERS. A case added to input.go's plain switch is
 // invisible to every place, because each place's handler returns above it. So
-// this function is the FIRST LINE of each place's own key handler — five call
-// sites, each keeping its right of first refusal — which is also what leaves the
-// task page's "every printable key is the filter" law untouched: `alt+` and
-// `shift+` chords carry no text and never reach a default arm.
+// the router is read twice, by design: once inside [app.placeKeyPress] —
+// reached from one place only, the conversation router's pageShowing branch
+// (input.go) — and once more as the first line of the handlers that kept the
+// old convention (tasks, home), which costs nothing: it is idempotent for a
+// key it did not take. That is also what leaves the task page's
+// "every printable key is the filter" law untouched: `alt+` and `shift+`
+// chords carry no text and never reach a default arm.
 
 // placeKeyPress is every key on whatever place is standing: the router's own six
 // classes first, and then that place's own reading of whatever is left.

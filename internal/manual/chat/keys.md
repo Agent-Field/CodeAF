@@ -1560,9 +1560,11 @@ over `--host`, where what opens is the **far machine's** home.
 standing, the two spaces are read against that place's own box — the tasks filter, the
 memory filter, the search and spend composers — and open home just as they do from a
 draft. On home itself the door is a no-op: the page is already open, and two spaces type
-into home's own filter. Two places the door does not answer from, because something
-already stands under it: settings, where space is the drawn verb on a row (`activate`),
-and standing, whose box its own keys never type into.
+into home's own filter. It also does not answer from under a layer that owns the
+keyboard: on the settings panel space is the drawn verb on a row (`activate`),
+and memory's card editor keeps every key while it is open. Standing cannot arm
+the door — its own keys never type into its box — but the box is the shared
+composer, so a space left in it on another place still opens home from standing.
 
 **A box that looks empty and is not still answers it.** Blank lines left by `ctrl+j`,
 `alt+enter`, or by `ctrl+enter`/`shift+enter` on a terminal that cannot send those chords,

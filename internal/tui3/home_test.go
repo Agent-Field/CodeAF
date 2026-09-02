@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -3796,7 +3797,7 @@ func TestHomeOverHostNeverResolvesTheFarMachinesPathsOnThisDisk(t *testing.T) {
 
 // driveToPlace lands a session, then stands the person on `where` the way the
 // router does — [app.showPage] — and answers the place's box.
-func driveToPlace(t *testing.T, lab *homeLab, standing string, where page) (*app, *editor) {
+func driveToPlace(t *testing.T, lab *homeLab, where page) (*app, *editor) {
 	t.Helper()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", "/tmp/alpha", time.Now())
 	lab.session("-tmp-alpha", "aaaa000000000002", "elsewhere", "/tmp/alpha", time.Now().Add(-time.Hour))
@@ -3814,7 +3815,7 @@ func driveToPlace(t *testing.T, lab *homeLab, standing string, where page) (*app
 func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
 	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
 		lab := newHomeLab(t)
-		a, box := driveToPlace(t, lab, "", where)
+		a, box := driveToPlace(t, lab, where)
 		if box == nil {
 			t.Fatalf("%v has no box to type into", where)
 		}
@@ -3841,7 +3842,7 @@ func TestDoubleSpaceFromEveryTypingPlaceGoesHome(t *testing.T) {
 // — one space behind the caret — and holds the door open from there.
 func TestDoubleSpaceFromStandingGoesHome(t *testing.T) {
 	lab := newHomeLab(t)
-	a, box := driveToPlace(t, lab, "", pageStanding)
+	a, box := driveToPlace(t, lab, pageStanding)
 	if box == nil {
 		t.Fatal("standing has no box to type into")
 	}
@@ -3862,7 +3863,7 @@ func TestDoubleSpaceFromStandingGoesHome(t *testing.T) {
 // door cannot arm there at all — which is the whole of why this is honest.
 func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
 	lab := newHomeLab(t)
-	a, _ := driveToPlace(t, lab, "", pageSettings)
+	a, _ := driveToPlace(t, lab, pageSettings)
 	a.key(key(" "))
 	a.key(key(" "))
 	if a.at(pageHome) {
@@ -3879,7 +3880,7 @@ func TestSpaceStaysTheVerbOnSettings(t *testing.T) {
 func TestASingleSpaceThenALetterTypesNormallyOnAPlace(t *testing.T) {
 	for _, where := range []page{pageTasks, pageMemory, pageSpend, pageSearch} {
 		lab := newHomeLab(t)
-		a, box := driveToPlace(t, lab, "", where)
+		a, box := driveToPlace(t, lab, where)
 		a.key(key(" "))
 		a.key(key("x"))
 		if got := box.String(); got != " x" {
@@ -3918,5 +3919,62 @@ func TestThePlaceDoorIsShutOnHome(t *testing.T) {
 	}
 	if got := a.home.box.String(); got != "  " {
 		t.Fatalf("home's own filter holds %q, want the two spaces typed plainly", got)
+	}
+}
+
+// AND THE DOOR STAYS SHUT OVER A PLACE'S OWN WHOLE-KEYBOARD LAYER. Memory's card
+// editor was the one that got away: it lives inside the place's own key handler,
+// below the door, and its box is the very box the door reads — so a card cleared
+// down to its last space armed the door, and the second space wiped the wording
+// and stood the person on home mid-edit. [placeMemory.owns] now claims the
+// keyboard while the editor is open, the same claim settings makes for its value
+// editor, and this holds it: the two spaces type into the card, and the person
+// stays where they are.
+func TestTheDoorStaysShutOverTheMemoryCardEditor(t *testing.T) {
+	a, memory := memoryPlaceApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
+	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
+	// THE DOOR HAS TO EXIST FOR THIS TEST TO MEAN ANYTHING. The gesture is bound
+	// only on a machine home is reachable from ([app.homeDoorOpen] — a.canOpen()),
+	// and the memory fixture builds with no seam set, so a test that left it
+	// unset was holding the law against a door that did not exist and could not
+	// have failed however wrong the fix was. Hand the app one seam, and then
+	// insist the door is open before driving the editor — a fixture whose door
+	// went dark again must fail here, not pass silently below.
+	a.resume = func(string) (Agent, error) { return &fakeAgent{model: "m"}, nil }
+	if !a.homeDoorOpen() {
+		t.Fatal("the door is shut, so this test would hold nothing: give the fixture a seam")
+	}
+	a.slash("/memory")
+	if _, ok := a.mem.shelfUnder(); !ok {
+		t.Fatalf("the cursor did not open on a shelf heading")
+	}
+	drive(t, a, key("enter")) // roll the biggest shelf up
+	if strings.Contains(plain(frame(a)), "uses neovim") {
+		t.Fatalf("enter did not close the shelf")
+	}
+	drive(t, a, key("enter")) // and back open, the way the hand walks it
+	drive(t, a, key("down"))  // onto the line under the cursor
+	if got, ok := a.mem.choice(); !ok || got.ID != "m1" {
+		t.Fatalf("down did not land on the line: %v %v; frame:\n%s", got, ok, plain(frame(a)))
+	}
+	drive(t, a, key("right")) // the line's verbs
+	drive(t, a, key("e"))     // fix: the card's wording, pre-loaded into the editor
+	if a.mem.edit == nil {
+		if _, ok := a.mem.choice(); !ok {
+			t.Fatalf("the cursor never reached the line; frame:\n%s", plain(frame(a)))
+		}
+		t.Fatalf("the card editor did not open; frame:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("ctrl+u")) // clear the wording down to nothing
+	typeInto(t, a, " ")       // the first space arms the door's law
+	drive(t, a, key(" "))     // the second, which must not open it
+	if a.at(pageHome) {
+		t.Fatal("the door opened home over the memory card editor")
+	}
+	if a.mem.edit == nil {
+		t.Fatal("the door closed the card editor")
+	}
+	if got := a.mem.edit.String(); got != "  " {
+		t.Fatalf("the card editor holds %q, want the two spaces typed plainly", got)
 	}
 }

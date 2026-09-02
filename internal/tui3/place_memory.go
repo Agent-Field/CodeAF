@@ -888,3 +888,21 @@ func (placeMemory) wheel(a *app, delta int) bool {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeMemory) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.memoryKey(msg) }
+
+// owns is the card editor, and the door home is the reason it is here: the
+// editor is a whole-keyboard surface inside [placeMemory.key], and without this
+// method it lived BELOW the door in the place router — so a card cleared down to
+// its last space armed the door on the editor's own box ([placeMemory.box] hands
+// the editor over while it is open), and the second space wiped the wording and
+// stood the person on home mid-edit. The settings panel already holds this exact
+// shape for its own nested boxes ([placeSettings.owns]); this is the same claim,
+// and [app.memoryKey]'s edit arm answers every key the way that one does — a
+// chord it does not know is swallowed rather than walking the place and leaving
+// the editor dangling open over a page the person is no longer reading.
+func (placeMemory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.mem.edit == nil {
+		return nil, false
+	}
+	return a.memoryKey(msg), true
+}
+
