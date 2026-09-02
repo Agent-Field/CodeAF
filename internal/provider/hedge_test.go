@@ -135,10 +135,6 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	}
 	rigLanes.Store(model, names)
 	t.Cleanup(func() {
-		// THE NEGATIVE HALF OF THE SERVING SET IS PACKAGE STATE, so a scenario
-		// that refuses a lane would otherwise hand the refusal to every test
-		// that runs after it (internal/lane's sheet.go).
-		lanes.ForgetRefusals()
 		registry.SetLedger(nil)
 		// PUT BACK WHAT WAS FOUND, and never nil: the shipped factory is
 		// installed at this package's own init, and a rig that cleared it would

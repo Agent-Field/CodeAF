@@ -1,5 +1,7 @@
 package provider
 
+import lanes "github.com/Agent-Field/aforge-v2/internal/lane"
+
 // resetSharedLearners puts every package-level learner back to a fresh one.
 //
 // A PACKAGE-LEVEL LEARNER IS RESET BY THE RIG BETWEEN TESTS, so a test's result
@@ -46,13 +48,17 @@ package provider
 // reading a learner back takes this call in its own cleanup rather than a third
 // private override.
 //
-// THE THIRD-PARTY SPOT: #368 adds `refusedLanes` in `internal/lane` with the
-// reset door `lane.ForgetRefusals()`. It belongs in this function, on the line
-// marked below, and the call is added when that branch is in — the symbol does
-// not exist yet.
+// THE FOURTH LEARNER IS NOT THIS PACKAGE'S OWN, and it is reset here on the
+// same law. #368 landed `refusedLanes` in `internal/lane` (sheet.go) — the
+// negative half of the serving set — behind the reset door
+// `lanes.ForgetRefusals()`. It is process-wide state that accumulates what it
+// saw, so a scenario that refuses a lane would otherwise hand that refusal to
+// every test running after it. This function is the ONLY place in this package
+// that names it: a rig keeping its own copy of the call would be a second list
+// to hold in step with this one, which is the fault this helper exists to end.
 func resetSharedLearners() {
 	sharedVelocity = newVelocityLedger()
 	sharedPins = newEndpointPins()
 	sharedLimiter = newAdaptiveLimiter()
-	// HERE: lane.ForgetRefusals() — see the note above, waiting on #368.
+	lanes.ForgetRefusals()
 }
