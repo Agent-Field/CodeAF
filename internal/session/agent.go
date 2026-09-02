@@ -401,13 +401,6 @@ func (a *Agent) startLaneBeat() {
 	// (lanenews.go's [Agent.Typing]), and a session that runs no beat may still
 	// buy a measurement. It is cancelled once, by Close.
 	a.laneCtx, a.laneStop = context.WithCancel(context.Background())
-	// AND THE BELIEF WRITER STARTS WITH IT, above the refusals below and for the
-	// same reason: the file behind it is written by any observation this session
-	// makes, and a probe on a session that runs no beat is one of them. It is
-	// the goroutine that owns the belief file's exclusive lock, which is exactly
-	// why it is not the send path's — one held lock used to stop every model
-	// call in the process for as long as somebody else had the file (#264).
-	go lanes.Persist(a.laneCtx)
 	if a.config.Routing == provider.RoutingOff {
 		return
 	}
@@ -468,14 +461,7 @@ func laneBeatModels(config Config) []string {
 // flight is a prior the next session will read off the wire again, and a quit
 // that waited on somebody else's half-hour aggregate would be a quit that hangs
 // on a slow router.
-//
-// WHAT THIS SESSION LEARNED IS WRITTEN DOWN FIRST, and that is not a wait: the
-// belief file's lock is asked for and never waited on, so this is one merge and
-// one rename or nothing at all (internal/lane's store.go). Without it a short
-// run would leave its afternoon in the journal for the next process to replay
-// rather than in the state file beside it.
 func (a *Agent) stopLaneBeat() {
-	lanes.Flush()
 	if a.laneStop != nil {
 		a.laneStop()
 	}
