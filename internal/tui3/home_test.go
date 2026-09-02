@@ -3966,8 +3966,8 @@ func TestTheDoorStaysShutOverTheMemoryCardEditor(t *testing.T) {
 		t.Fatalf("the card editor did not open; frame:\n%s", plain(frame(a)))
 	}
 	drive(t, a, key("ctrl+u")) // clear the wording down to nothing
-	typeInto(t, a, " ")       // the first space arms the door's law
-	drive(t, a, key(" "))     // the second, which must not open it
+	typeInto(t, a, " ")        // the first space arms the door's law
+	drive(t, a, key(" "))      // the second, which must not open it
 	if a.at(pageHome) {
 		t.Fatal("the door opened home over the memory card editor")
 	}
