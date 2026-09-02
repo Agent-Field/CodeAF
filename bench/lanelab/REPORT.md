@@ -1911,3 +1911,50 @@ left to a reader to infer.
 **This paragraph was written and committed while the large run was still in
 flight**, before anybody had seen its result — which is the only condition under
 which assigning authority between two runs is not a choice about the answer.
+
+#### The verdict run, and what it says
+
+`go run ./bench/lanelab/gosim -proof -store cold -pace shipped -mix stress
+-seeds-are 31,37,41 -requests 600`, five rows, three seeds, **1,800 requests per
+row**, **9,000 trials** — `gosim/tiebreak.json`.
+
+| the same arm, `cold · shipped · stress` | thinking phases | long think, not hedged |
+|---|---:|---|
+| familiar seeds 7 / 9 / 11 | 225 | **94.67%** — under the bound |
+| held-out seeds 23 / 25 / 27 | 225 | **97.33%** — over it |
+| first tiebreaker, 31 / 37 / 41 at 150 a cell — **not the verdict** | 223 | 95.52% |
+| **the verdict run, 31 / 37 / 41 at 600 a cell** | **895** | **95.53%** |
+
+**Wilson 95% interval on the verdict run: [93.97%, 96.70%].** One phase is now
+0.112 points rather than 0.45, which is what the amendment was for; 855 of 895
+phases finished with no arm behind them.
+
+> ### The interval straddles 95%, so the pre-stated third outcome is the one that fired
+>
+> **This is not a pass and it is not a failure, and it will not be recorded as
+> either.** The finding is the one the rule named in advance: **this arm sits at
+> the threshold, and the gate needs restating.** The bound cannot be settled
+> from here — four honest measurements of the same arm land at 94.67, 97.33,
+> 95.52 and 95.53, and the interval around the largest of them contains 95% with
+> a point and a half of room on the low side. **The lane stops and it goes back
+> to the owner.**
+
+**Why the answer is genuinely uncertain rather than merely unlucky.** The
+quantity is a share of thinking phases that finished unmolested, and this arm is
+the COLD store — the one with no belief behind it, where §B's abnormality gate
+stands open because a survival nobody has measured has no quantile, and the
+ceiling is doing all of the work. A rate that lands within a point of its bound
+on four seed sets is a rate whose true value is near the bound. Raising the trial
+count sharpened the interval and moved the point estimate by a hundredth of a
+point; it did not move the answer, because the answer is not noise.
+
+**What restating it might mean is the owner's call, not this lane's.** The three
+shapes visible from here: bound the cold arm separately from the warmed one,
+since a cold store cannot use the gate the criterion assumes; state the
+criterion as an interval rather than a point, which is what four measurements
+of one quantity ask for; or accept 95% as approximate and say by how much.
+Nothing here chooses between them.
+
+**No constant was touched, no arm was re-run for a better number, and the
+tiebreaker is disclosed in full** — all four figures above travel together
+wherever this arm is reported.
