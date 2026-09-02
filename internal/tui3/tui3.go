@@ -551,6 +551,20 @@ type Options struct {
 	// not been told otherwise.
 	ProfileDir string
 
+	// OneModel is the door's `--one-model`, carried here so the surface reports
+	// THE FLAG AND NOT THE PROFILE IT OVERRIDES. Under it the door hands the
+	// session no roles source and no task model, so every text call rides the
+	// conversation's own model and the four crew rows in [Options.ProfileDir]
+	// seat nothing (cmd/aforge's applyV3Governance, internal/session's Config.OneModel).
+	// A surface that did not know the flag existed read those rows anyway and
+	// drew `crew custom` over a crew that was not in force (#444).
+	//
+	// It is a bit and not a derivation because the profile cannot be asked: the
+	// rows are still on disk, unchanged, and the flag is the only thing that
+	// knows they are not seating this run. The --host door refuses the flag at
+	// the door (cmd/aforge's chatv3.go), so a hosted surface never sets it.
+	OneModel bool
+
 	// SaveApproval and SaveBashApproval are how the consent card's "always"
 	// outlives the session (consent.go): the first remembers one TOOL's allow,
 	// the second one whole shell COMMAND, both into the person's own profile

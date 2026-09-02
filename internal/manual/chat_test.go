@@ -477,6 +477,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},
 		{"how do I make it think harder", "models-and-cost"},
+		// And the reading of the crew that is not the profile's: a run under
+		// `--one-model` names the flag on the status line and is owed no crew
+		// receipt, because the flag is what seats every call (#444).
+		{"why does the status line say one model", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
 		// A thought that has gone quiet, asked the way somebody asks it: the
 		// patience is measured against how the model usually thinks, so

@@ -1852,6 +1852,11 @@ type app struct {
 	// line can name it without reading four settings rows off the disk on every
 	// frame (crew.go's [app.crewReading]).
 	crew crewReading
+	// oneModel is the launch's `--one-model`, which OVERRIDES the four rows
+	// above rather than being one of them: under it the door seats every text
+	// call on the conversation's own model and the crew on disk seats nothing,
+	// so the readings built from it name the flag ([Options.OneModel], #444).
+	oneModel bool
 	// workSeatSaid is whether this session has already asked whether its work
 	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
 	// SESSION and not about the profile: the line is a receipt for work that is
@@ -2138,6 +2143,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		artifacts:           opts.ArtifactsIndex,
 		ctxWindow:           opts.ContextWindow,
 		profileDir:          opts.ProfileDir,
+		oneModel:            opts.OneModel,
 		settings:            opts.Settings,
 		saveApproval:        opts.SaveApproval,
 		saveBashApproval:    opts.SaveBashApproval,

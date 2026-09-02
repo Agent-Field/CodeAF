@@ -153,7 +153,16 @@ func (a *app) statusFacts(text string) []string {
 	out := make([]string, 0, len(facts)+2)
 	for _, fact := range facts {
 		if fact == crew {
-			out = append(out, config.CrewClassModels(a.profileDir)...)
+			// AND UNDER `--one-model` THERE IS NOTHING HERE TO LIFT. The word names
+			// the flag rather than four rows ([app.crewReading]), the ids
+			// [config.CrewClassModels] would put up are exactly the ones the flag
+			// has taken out of the run, and the model that IS seating every call is
+			// already the lifted fact one row above. So the row keeps its sentence
+			// and stays in the dim tier, which is what a row whose answer is a
+			// sentence should do (#444).
+			if !a.oneModel {
+				out = append(out, config.CrewClassModels(a.profileDir)...)
+			}
 			continue
 		}
 		out = append(out, fact)
