@@ -85,6 +85,19 @@ way into it from here. For a shape of work that recurs, the thing to reach for i
 **sub-harness** — built once, saved, offered again (*Saved shapes of work*) — and for one
 job that leaves the conversation, a **task**.
 
+## The plan said "not settled" — what do I do
+
+For every oversized work node the planner could not divide, `aforge plan` writes this line
+to the error stream:
+
+```
+not settled: <title> — <reason>
+```
+
+The graph was still written, but the command exits with code **2**. The reason means the
+planner could not divide a node that is too large for one worker. Rephrase the request and
+name the parts you want, or run it anyway with `aforge do`, which plans again.
+
 ## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
