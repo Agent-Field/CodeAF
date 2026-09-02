@@ -399,8 +399,21 @@ func callLogLine(record calllog.Record, answered bool, now time.Time) string {
 	if record.EmptyAtCeiling {
 		fields = append(fields, "empty at the ceiling")
 	}
+	// WHAT THE MONEY BOUGHT, IN BOTH HALVES. The record has carried
+	// prompt_tokens and completion_tokens since it was written; this line spent
+	// only the second of them, as one unlabelled "466 tok", so a row that said
+	// "$0.0003" said nothing about how many tokens that was for. The prompt
+	// figure is the one a person checks a context size against, and neither
+	// figure means anything without being told which it is.
+	//
+	// Each half stands on its own so the emptiness law survives an endpoint
+	// that reports one of them and not the other, and a reply with no usage
+	// block at all still shows neither.
+	if record.PromptTokens > 0 {
+		fields = append(fields, fmt.Sprintf("%d in", record.PromptTokens))
+	}
 	if record.CompletionTokens > 0 {
-		tokens := fmt.Sprintf("%d tok", record.CompletionTokens)
+		tokens := fmt.Sprintf("%d out", record.CompletionTokens)
 		if record.ReasoningTokens > 0 {
 			tokens += fmt.Sprintf(" (%d thinking)", record.ReasoningTokens)
 		}

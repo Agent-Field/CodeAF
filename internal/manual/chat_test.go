@@ -43,6 +43,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"show me the raw rows", "models-and-cost"},
 		{"filter aforge logs by model", "models-and-cost"},
 		{"open a call's body", "models-and-cost"},
+		// And what a line's two token figures are. Somebody reading a bill or
+		// a context size asks for "tokens", never for "in" and "out", so the
+		// asker's word is what the heading has to carry.
+		{"how many tokens did that call use", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.

@@ -2299,7 +2299,7 @@ aforge logs --path          print the file and nothing else
 One line per call, and it reads like this:
 
 ```
-21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  466 tok  $0.0003  acted hedge  2 arms  hedged  waste $0.0012
+21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  2 arms  hedged  waste $0.0012
 21:12:41  compile  z-ai/glm-5.3-flash  deepinfra  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
 21:13:04  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  deadline 30.0s  ⋯ in flight 3m12s
 ```
@@ -2310,9 +2310,9 @@ was asked for and which one actually answered**, the thinking level and the **ce
 really travelled** — which is larger than the one asked for, because the thinking pass is
 given room in front of the answer — how many messages and tools the request carried, the
 status it came back with, how long it took and **how long the first token took**, the
-deadline the wait was being held against, how it finished, the tokens and the cost,
-anything that was **done about a silence**, and anything the refusal taught aforge about
-that model.
+deadline the wait was being held against, how it finished, **what it spent in tokens and
+what it cost**, anything that was **done about a silence**, and anything the refusal taught
+aforge about that model.
 
 **`auto→coreweave` is the router overriding a choice** — the endpoint asked for on the
 left, the one that answered on the right. When they are the same you see one name, and a
@@ -2320,6 +2320,27 @@ call to something that is not a router shows none. **`acted hedge · 2 arms · h
 waste $0.0012`** is a call that went quiet, had a second request fired at another endpoint
 to rescue it, and what the arm that lost cost. Almost every line has none of that, because
 almost nothing has to be done.
+
+## How many tokens did one call use — the N in and N out figures on a log line
+
+Two figures, and the line says which is which:
+
+```
+1204 in  466 out (312 thinking)  1024 cached  $0.0003
+```
+
+**`in` is the prompt** — everything the request carried to the model, which is also the only
+place a run's context size is written down. **`out` is the completion** — what the model
+wrote back. `(312 thinking)` sits beside `out` when the endpoint said how much of what it
+wrote went to the thinking pass rather than to the answer; most endpoints do not say, and
+then there is no bracket. `1024 cached` is the share of `in` the provider billed at the
+cached rate.
+
+Each figure is left off when the provider did not report it, so a reply that came back with
+no usage block at all shows neither a token figure nor a cost — a zero there would be a
+measurement nobody made. There is no single unlabelled `tok` figure any more: it carried the
+completion count only, and a number that does not say which half it is cannot be checked
+against a bill or against a context window.
 
 ## Find one call in the log — filtering `aforge logs` by run, call, tag, model or node
 
@@ -2354,9 +2375,11 @@ no call 4f2a91c7 in this log                that call id is not in the file
 the debug-record foundation, still being built — so on every machine right now `--run`
 prints `no row in this log carries a run id yet` rather than pretending every call belongs
 to the run you named. It starts working the day the writer starts writing it, with no
-change to the command. A tag, a model or a node that matched nothing gets no sentence: an
-empty listing already says a search came back empty, and only an id you pasted is
-something you believed was there.
+change to the command. **`--node` is equally empty on a headless run's rows** — the node a
+call belongs to is not stamped on them yet either, and that lands with the headless
+attribution change, so `--node build` today matches only the chat's own work. A tag, a
+model or a node that matched nothing gets no sentence: an empty listing already says a
+search came back empty, and only an id you pasted is something you believed was there.
 
 ## Show me the raw rows, and open one call's body
 
