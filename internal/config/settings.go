@@ -3317,14 +3317,25 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // TierModelAt resolves the model one auxiliary tier runs on. Empty means the
 // tier follows the session's own model, which is internal/roles' floor.
 //
-// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all four tiers. A profile that has
+// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all five tiers. A profile that has
 // never held the key gets this build's own choice for that class of work
-// ([DefaultReflexModel] and its three neighbours), because a person who never
+// ([DefaultReflexModel] and its four neighbours), because a person who never
 // opened the sheet should not have the whole crew answering on the most
 // expensive model in the build — which is what following the conversation means
 // once there is a mastermind tier in it. A row somebody emptied ON PURPOSE reads
 // empty and follows the conversation, because refusing to let them turn it off
 // would make a default into a rule.
+//
+// AND UNSET HAS TWO READINGS OF ITS OWN, which is the rung this function learned
+// in #312. A key that was never held on a profile OLDER THAN ITS SEAT is not a
+// person declining to answer — it is a crew chosen before the row existed — so
+// the read climbs [TierSeatAt], where an unheld key asks the row it was split
+// out of first ([tierLineage]) and only a profile with nothing above it reaches
+// the build's choice. Every caller of this function therefore reads the model a
+// conversation ACTUALLY runs that class of work on: the role map cmd/aforge
+// builds, the settings sheet's five rows, and [CrewAt], which is why the crew
+// word and the work cannot disagree. A caller that also needs to say WHERE the
+// answer came from asks [TierSeatAt] for the seat instead of this for the model.
 //
 // The reflex tier was the first row written this way, for the reason its key
 // still states: a call made twice a turn is a bill nobody agreed to. The other
@@ -3335,13 +3346,7 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
 // settings surface wants the string the person wrote and a request wants the two
 // halves apart.
-func TierModelAt(profileDir, tier string) string {
-	key := tierKeyFor(tier)
-	if value, ok := persistedString(profileDir, key); ok {
-		return strings.TrimSpace(value)
-	}
-	return defaultTierModel(tier)
-}
+func TierModelAt(profileDir, tier string) string { return TierSeatAt(profileDir, tier).Model }
 
 // tierKeyFor is the settings key one tier word writes. It is total over
 // [ModelTiers] and degrades to the low row, which is what an unknown word has

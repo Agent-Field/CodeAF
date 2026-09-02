@@ -150,6 +150,94 @@ func inheritedTier(profileDir, tier string) (model, from string, ok bool) {
 	return "", "", false
 }
 
+// tierSeatRole is what one tier's seat is CALLED in the line a person reads
+// about it. The two seats a run sits somebody in have names of their own
+// ([SeatWork], [SeatPlan]) and both surfaces have to spell them the same way: a
+// conversation whose work seat was inherited must read the sentence `aforge do`
+// prints, not a second wording for one fact. Every other row answers with its
+// own name on the settings sheet, so a tier that joins the lineage tomorrow has
+// a sentence before anybody writes one.
+func tierSeatRole(tier string) SeatRole {
+	switch tier {
+	case ModelTierWorker:
+		return SeatWork
+	case ModelTierMastermind:
+		return SeatPlan
+	}
+	return SeatRole(tierWords(tier))
+}
+
+// crewRow is THE PROFILE HALF OF THE LADDER, and the one place that tells a row
+// somebody WROTE from a row they CLEARED from a key that was NEVER HELD.
+//
+// The distinction is the whole mechanism and it is decided here so that the two
+// ladders above it cannot decide it differently: [resolveSeat], which climbs a
+// flag and a variable first for a run, and [TierSeatAt], which is what a
+// conversation and the settings sheet read. A second copy of these three cases
+// is how a person's crew comes to mean one thing headless and another in chat,
+// which is the defect this file was written for one surface at a time (#166,
+// #302, #312).
+//
+// source is empty when the profile has nothing this ladder can use, and
+// `cleared` tells the two ways of having nothing apart: a row emptied ON PURPOSE
+// says "follow the conversation", which a conversation can do and a headless run
+// cannot, so each caller's own bottom rung answers for it.
+func crewRow(profileDir, tier string) (model, from string, source SeatSource, cleared bool) {
+	if written, held := persistedString(profileDir, tierKeyFor(tier)); held {
+		if value := strings.TrimSpace(written); value != "" {
+			return value, "", SeatCrew, false
+		}
+		return "", "", "", true
+	}
+	// The key was never held, which on a profile older than this seat means the
+	// crew was chosen before the seat existed. It still answers, through the row
+	// this row was split out of ([tierLineage]).
+	if value, ancestor, ok := inheritedTier(profileDir, tier); ok {
+		return value, ancestor, SeatInherited, false
+	}
+	return "", "", "", false
+}
+
+// TierSeatAt is ONE TIER ROW READ AS A SEAT, for the surfaces that seat roles
+// rather than run a door: the conversation's role map (cmd/aforge's v3Crew), the
+// five rows of the settings sheet, and the crew word derived from them.
+//
+// IT IS [resolveSeat] WITHOUT THE TWO RUNGS THAT BELONG TO AN INVOCATION. A flag
+// is something a command line said and a conversation has no command line for
+// its crew; AFORGE_MODEL names the model a person TALKS TO ([Load] folds it into
+// Config.Model), and a variable that also filled the work seat of every task
+// handed off in that conversation would be one word quietly moving two dials.
+// What is left is the profile — which is where a conversation's seats have
+// always come from.
+//
+// Where it differs from a run is the BOTTOM, and only there:
+//
+//   - a row the person WROTE is the crew answering;
+//   - a row they CLEARED reads empty, and stays empty, because on this surface
+//     that is an answer — "follow the conversation" — and refusing it would make
+//     a default into a rule ([TierModelAt] argues it at length);
+//   - a key NEVER HELD asks the lineage before the bottom rung, so a profile
+//     older than the worker seat hands a task the same model `aforge do` hands
+//     it (#302 headless, #312 in the conversation), and the seat carries the fact
+//     so a surface can say it once ([Seat.Notice]);
+//   - anything else is this build's own choice for that class of work.
+//
+// THE PRESET WORD IS DELIBERATELY NOT READ HERE. [Seat.Crew] stays empty:
+// [CrewAt] derives the preset from all five rows THROUGH this function, so a
+// seat that filled it in would be the ladder asking the summary that is computed
+// from the ladder — five extra file reads per row, and a cycle. A surface that
+// wants both facts asks for both.
+func TierSeatAt(profileDir, tier string) Seat {
+	model, from, source, cleared := crewRow(profileDir, tier)
+	if source == "" {
+		source = SeatDefault
+		if !cleared {
+			model = defaultTierModel(tier)
+		}
+	}
+	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from}
+}
+
 // ModelEnv and PlanModelEnv are the two variables the seats read. They are
 // spelled here once because three places need them by name: the ladder, [Load],
 // and the receipt that says one of them answered.
@@ -242,6 +330,18 @@ func (s Seat) Notice() string {
 	}
 	return "your crew was set before the " + string(s.Role) + " seat existed · " +
 		"it is running on your " + tierWords(s.From) + " model until you pick a crew again"
+}
+
+// FromWords is the row this seat's model was inherited from, in the words the
+// settings sheet calls that row by — empty unless the source is
+// [SeatInherited]. It is exported for the surface that has its own sentence to
+// build about the same fact ([Notice] is the sentence; this is the noun), so two
+// surfaces cannot invent two names for one row.
+func (s Seat) FromWords() string {
+	if s.Source != SeatInherited {
+		return ""
+	}
+	return tierWords(s.From)
 }
 
 // Report is what a door prints: the seat, and the line that says a row was
@@ -365,8 +465,8 @@ func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
 // in three values — which flag, which tier, what the bottom rung is — and in
 // nothing else, which is why there is one function and not two.
 //
-// UNTOUCHED IS NOT THE CREW ANSWERING. A tier is read through [persistedString]
-// rather than [TierModelAt] so that a profile which has never held the key falls
+// UNTOUCHED IS NOT THE CREW ANSWERING. A tier is read through [crewRow] rather
+// than [TierModelAt] so that a profile which has never held the key falls
 // THROUGH to the default rather than being reported as `crew balanced` — the
 // five shipped tier defaults are the balanced row, so TierModelAt would answer
 // for a person who has never said anything, the bottom rung would become
@@ -399,22 +499,17 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 		seat.Model, seat.Source = value, SeatEnv
 		return seat
 	}
-	if written, ok := persistedString(profileDir, tierKeyFor(tier)); ok {
-		if value := strings.TrimSpace(written); value != "" {
-			seat.Model, seat.Source, seat.Crew = value, SeatCrew, CrewAt(profileDir)
-			return seat
-		}
+	// AND THE PROFILE IS READ THROUGH THE ROW A CONVERSATION READS IT THROUGH
+	// ([crewRow]), so the three cases a tier key can be in are decided once for
+	// both surfaces. Nothing the profile can say fills this seat with the
+	// fallback except silence: a row cleared on purpose says "follow the
+	// conversation", which a headless run has no conversation to answer with,
+	// and it lands on the same bottom rung a profile that said nothing does.
+	model, from, source, _ := crewRow(profileDir, tier)
+	if source == "" {
 		seat.Model, seat.Source = fallback, SeatDefault
 		return seat
 	}
-	// The key was never held, which on a profile older than this seat means the
-	// crew was chosen before the seat existed. It still answers, through the row
-	// this row was split out of ([tierLineage]) — and the seat carries the fact
-	// so the run can say it out loud.
-	if value, from, ok := inheritedTier(profileDir, tier); ok {
-		seat.Model, seat.Source, seat.From, seat.Crew = value, SeatInherited, from, CrewAt(profileDir)
-		return seat
-	}
-	seat.Model, seat.Source = fallback, SeatDefault
+	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)
 	return seat
 }
