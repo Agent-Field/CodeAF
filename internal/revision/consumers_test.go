@@ -94,7 +94,7 @@ func configsJob(t *testing.T) (root string, record []string) {
 	}
 	// The baseline is the tree before the job's FIRST change, and it carries the
 	// surface on every path — including this one, where no check could be read.
-	verify.RememberBaseline(root, verify.JobKey(configsIntent), verify.Reading{
+	verify.RememberBaseline(root, verify.JobKey(configsIntent), "", verify.Reading{
 		Surface: verify.PublicSurface(root),
 		Unread:  "this project declares no way of checking itself",
 	})

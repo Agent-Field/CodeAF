@@ -241,6 +241,20 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 	}
 	if held, ok := verify.BaselineFor(evidence.Workspace, job); ok {
 		if held.Taken {
+			// AND THE READING OF A TREE NOTHING CHANGED IS THE READING SOMEBODY
+			// ALREADY TOOK OF IT. The gate is here to weigh the FINISHED tree,
+			// and where the job has produced or changed no file since the
+			// reading before the work, the finished tree is that tree — so the
+			// before half stands as the after half and the suite is not run a
+			// second time over identical bytes. It is the same law
+			// PhotographAfter is written to, one seam later, because the leaf
+			// and the node that gets judged are routinely not the same node.
+			if verify.TreeUnchangedSince(
+				evidence.Workspace, job, verify.TreeState(evidence.Artifacts)) {
+				if settled, unchanged := held.OnAnUnchangedTree(); unchanged {
+					held = settled
+				}
+			}
 			journalGateReading(graph, nodeID, held, held.Before, true)
 			return held
 		}
@@ -252,7 +266,8 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 			if deadline, timed := ctx.Deadline(); timed {
 				retaken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 					gateFocus(evidence), held.Pace())
-				verify.RememberBaseline(evidence.Workspace, job, retaken)
+				verify.RememberBaseline(evidence.Workspace, job,
+					verify.TreeState(evidence.Artifacts), retaken)
 				journalGateReading(graph, nodeID, retaken, retaken.Before, false)
 				return retaken
 			}
@@ -287,9 +302,22 @@ func jobReading(ctx context.Context, graph *store.Store, nodeID string,
 			"deadline, so there was no wall to size a reading against"}, verify.Result{}, false)
 		return evidence.Verification
 	}
+	// AND THERE IS AN HONEST ANSWER THAT COSTS NOTHING. A job that changed no
+	// file, working on a request that names nothing to read, has given this
+	// reader no tree to compare and no place to look — and what that used to buy
+	// was a reading of the whole repository, killed at its ceiling two minutes
+	// later, which answered neither question either. The errand measured in #429
+	// was exactly this shape: run one package's tests, report the last line,
+	// change nothing. NOTHING TO READ IS A FACT, AND A FACT ABOUT THE RUN
+	// REACHES THE RECORD (FAILSAFE.md clause 4).
+	if len(gateFocus(evidence)) == 0 {
+		journalGateReading(graph, nodeID, verify.Reading{Unread: "nothing to read: the work " +
+			"changed no files and the request names nothing to read"}, verify.Result{}, false)
+		return evidence.Verification
+	}
 	taken := verify.Photograph(ctx, evidence.Workspace, time.Until(deadline),
 		gateFocus(evidence), verify.Pace{})
-	verify.RememberBaseline(evidence.Workspace, job, taken)
+	verify.RememberBaseline(evidence.Workspace, job, verify.TreeState(evidence.Artifacts), taken)
 	journalGateReading(graph, nodeID, taken, taken.Before, false)
 	return taken
 }

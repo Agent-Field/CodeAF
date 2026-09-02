@@ -143,9 +143,12 @@ func TestEveryRefusalToReadReachesTheRecord(t *testing.T) {
 		{
 			// A job with no checklist still has its world read. The checklist
 			// governs coverage; it has no say in whether the project can be
-			// read at all.
+			// read at all. The work left a file behind, which is what gives
+			// this gate something to read at all — see the rule that a job
+			// which changed nothing, on a request that names nothing, is told
+			// there is nothing to read rather than reading everything.
 			name:     "no checklist, and the world read anyway",
-			evidence: Evidence{Workspace: t.TempDir()},
+			evidence: Evidence{Workspace: t.TempDir(), Artifacts: []string{"notes.md"}},
 			timed:    true, says: "declares no way of checking itself",
 		},
 	} {
@@ -465,5 +468,78 @@ func TestTheChecksThisWorkWroteAreTheirOwnFinding(t *testing.T) {
 	regression, _ := Regressions(red)
 	if regression.Gaps == unfinished.Gaps {
 		t.Error("the two findings still say the same thing")
+	}
+}
+
+// THE GATE DOES NOT PHOTOGRAPH A TREE NOTHING CHANGED.
+//
+// It is the same law the leaf's own second reading is written to, one seam
+// later, because the leaf that did the work and the node that gets judged are
+// routinely not the same node. The run measured in #429 read `go test -json
+// ./...` over 4,587 tests on four "finished" trees that were byte for byte the
+// tree the first reading had already been taken of.
+func TestTheGateInheritsTheReadingOfATreeNothingChanged(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	graph := gateStore(t)
+	root := igelWorkspace(t)
+	job := verify.JobKey("run the suite and report the final line; change no files")
+	verify.RememberBaseline(root, job, verify.TreeState(nil), verify.Reading{
+		Taken: true,
+		Before: verify.Result{
+			Strategy: verify.Strategy{
+				Command: "python3 -m pytest -rA", Runner: "pytest", Scope: verify.ScopeWhole},
+			Reported: []string{"test_fit", "test_predict"},
+		},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+
+	// The job changed no file, so the tree in front of the gate is the tree in
+	// the reading it is holding.
+	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: root}, job)
+	if !reading.AfterTaken {
+		t.Fatal("the gate was left with no reading of the tree it is judging")
+	}
+	if len(reading.After.Reported) != 2 {
+		t.Errorf("the roster that stands is not the one that was read: %#v", reading.After.Reported)
+	}
+	rows, err := graph.VerificationsFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || !rows[0].Inherited || !rows[0].Read {
+		t.Fatalf("the gate did not journal one inherited reading: %#v", rows)
+	}
+}
+
+// AND A JOB THAT CHANGED NOTHING, ON A REQUEST THAT NAMES NOTHING, HAS NOTHING
+// TO READ — which is an answer, and a free one.
+//
+// What it used to buy was a reading of the whole repository, killed at its
+// ceiling two minutes later, which answered neither the coverage question nor
+// the regression one. NOTHING TO READ IS A FACT, AND A FACT ABOUT THE RUN
+// REACHES THE RECORD.
+func TestAGateWithNothingToReadSaysSoRatherThanReadingEverything(t *testing.T) {
+	verify.ForgetBaselines()
+	t.Cleanup(verify.ForgetBaselines)
+	graph := gateStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+
+	reading := jobReading(ctx, graph, "task-2", Evidence{Workspace: igelWorkspace(t)},
+		verify.JobKey("report the final line the suite prints; change no files"))
+	if reading.Taken {
+		t.Error("a gate with nothing to read read the whole repository anyway")
+	}
+	rows, err := graph.VerificationsFor("task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Read {
+		t.Fatalf("the gate did not journal one refusal: %#v", rows)
+	}
+	if !strings.Contains(rows[0].Why, "nothing to read") {
+		t.Errorf("the row does not say there was nothing to read: %q", rows[0].Why)
 	}
 }

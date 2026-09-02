@@ -224,9 +224,25 @@ moved — this leaf's own before-and-after comparison of the workspace, or an
 earlier round of the same job having already changed it. A first leaf that
 changed nothing cannot have regressed anything; a continuation that changed
 nothing still hands over a tree an earlier round may have broken, which is why
-the inherited baseline is reason enough on its own. So the quarter-of-the-wall
-worst case is paid only by a long leaf, in a project that says how it is checked,
-in a job that actually wrote something.
+the job's own account of what it has changed is what decides it. So the
+quarter-of-the-wall worst case is paid only by a long leaf, in a project that
+says how it is checked, in a job that actually wrote something.
+
+**A reading is retaken only when the tree changed, and never over the scope that
+was just killed.** The baseline is remembered against the state of the tree it is
+a reading of — `verify.TreeState`, a digest of the job's own artifact record at
+the moment it was taken — and a leaf or a gate standing in a tree that carries the
+same state inherits the reading rather than running the suite again over identical
+bytes (`verify.TreeUnchangedSince`, `Reading.OnAnUnchangedTree`). What used to
+stand in for that question was "did this leaf inherit a baseline", which every
+leaf after the first does whatever it touched, so every one of them bought a whole
+second reading. `Reading.Retakeable` carries the other half: a reading killed at
+its budget is taken again only where the measured pace affords a **strictly
+smaller** selection, because a second identical attempt cannot finish where the
+first did not. A whole-suite reading has no narrower scope to fall to and stands
+as it is. The measured cost of neither rule existing (#429): nine readings of `go
+test -json ./...` over 4,587 tests on one errand, each killed at its two-minute
+budget, 82% of an 11m40s wall, for a request that named one package.
 
 `capturedOutputLimit` bounds the memory rather than the time: it keeps the last
 4 MiB of a reading's output, ten times the largest suite output in that sweep

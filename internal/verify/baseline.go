@@ -27,6 +27,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -44,6 +46,11 @@ const rememberedTrees = 16
 type jobBaseline struct {
 	job     string
 	reading Reading
+	// tree is the workspace's own account of what the job had produced or
+	// changed at the moment this reading was taken, digested. It is what makes
+	// "has the tree moved since somebody looked" answerable without looking
+	// again — see TreeState and TreeUnchangedSince.
+	tree string
 }
 
 // baselines is process-scoped because a job is process-scoped: `aforge do` is
@@ -64,14 +71,71 @@ var baselines = struct {
 // answer the first one reached, and inherits it rather than re-deriving it,
 // because both answers are facts about a tree that has since moved.
 func BaselineFor(root, job string) (Reading, bool) {
+	reading, _, ok := BaselineOf(root, job)
+	return reading, ok
+}
+
+// BaselineOf is the same answer with the tree-state it was taken against, for
+// the two readers that have to know whether anything has happened since.
+//
+// The pair exists rather than one call with three results because most readers
+// want the reading and nothing else — the coverage settlement, the consumer
+// scan, the removed-surface comparison — and a caller that has to ignore a
+// return value is a caller that will one day ignore the wrong one.
+func BaselineOf(root, job string) (Reading, string, bool) {
 	key := treeKey(root)
 	baselines.mutex.Lock()
 	defer baselines.mutex.Unlock()
 	held, ok := baselines.taken[key]
 	if !ok || held.job != job {
-		return Reading{}, false
+		return Reading{}, "", false
 	}
-	return held.reading, true
+	return held.reading, held.tree, true
+}
+
+// TreeUnchangedSince says the job has produced or changed nothing since its
+// reading was taken: the tree carries the same account of the work now as it did
+// then.
+//
+// IT IS THE WHOLE CONDITION FOR NOT LOOKING AGAIN. A reading is a measurement of
+// a tree, so a tree that has not moved has already been measured — and the run
+// that measured it wrote the answer down. Every retake of an unchanged tree is
+// an eighth of a wall spent to reproduce a roster the run is already holding.
+//
+// It is false where nothing was ever remembered, which is the honest answer: a
+// question about "since" needs a moment to be since, and a caller with none must
+// look rather than assume.
+func TreeUnchangedSince(root, job, tree string) bool {
+	_, held, ok := BaselineOf(root, job)
+	return ok && held == tree
+}
+
+// TreeState is the workspace's own account of what a job has produced or
+// changed, as one comparable word.
+//
+// The account is the artifact record — every file the run created or changed,
+// settled against the disk by whoever holds it — and it is digested rather than
+// kept because this is compared, never read: two states are the same state or
+// they are not. The empty string is the honest spelling of an UNTOUCHED tree,
+// which is the state most errands are in for their whole life, and it is what a
+// job that has produced nothing yields at every reader.
+//
+// Sorted first, so two accounts of one tree that were assembled in different
+// orders are one state. Paths are compared as they are recorded, because both
+// sides of every comparison come from the same recorder.
+func TreeState(record []string) string {
+	paths := make([]string, 0, len(record))
+	for _, entry := range record {
+		if clean := strings.TrimSpace(entry); clean != "" {
+			paths = append(paths, clean)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	sort.Strings(paths)
+	sum := sha256.Sum256([]byte(strings.Join(slices.Compact(paths), "\n")))
+	return hex.EncodeToString(sum[:8])
 }
 
 // RememberBaseline records what this job's leaves are measured against, for
@@ -85,11 +149,17 @@ func BaselineFor(root, job string) (Reading, bool) {
 // ceiling; without this, every continuation of that job spends the same five
 // and a half minutes to learn the same thing.
 //
+// tree is the state of the tree the reading is of, as TreeState spells it: what
+// the job had produced or changed when it was taken. It is remembered beside the
+// reading because the ONE question every later reader asks is whether anything
+// has happened since, and the reading itself cannot answer it — a photograph
+// holds no account of the world outside its own frame.
+//
 // A Reading that says nothing at all — neither taken nor carrying a reason — is
 // not remembered. That is the zero value, it is what a caller that never looked
 // produces, and remembering it would make the next leaf inherit a silence
 // instead of taking the photograph the job still owes.
-func RememberBaseline(root, job string, reading Reading) {
+func RememberBaseline(root, job, tree string, reading Reading) {
 	if !reading.Taken && strings.TrimSpace(reading.Unread) == "" {
 		return
 	}
@@ -103,7 +173,7 @@ func RememberBaseline(root, job string, reading Reading) {
 			baselines.order = baselines.order[1:]
 		}
 	}
-	baselines.taken[key] = jobBaseline{job: job, reading: reading}
+	baselines.taken[key] = jobBaseline{job: job, reading: reading, tree: tree}
 }
 
 // ForgetBaselines drops everything remembered. Its only callers are tests, which
