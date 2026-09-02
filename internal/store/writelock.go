@@ -71,6 +71,15 @@ const (
 // caller that cannot should say so to whoever asked.
 var ErrBusy = errors.New("the graph is busy being written by something else")
 
+// errAttemptFell is what the caller is told when the goroutine that opens the
+// transaction falls over inside the driver rather than returning. It is
+// deliberately NOT ErrBusy: nothing is holding the lock, the attempt broke, and
+// a caller that reads busy would retry a call that will break again the same
+// way. It is pre-loaded into the attempt's outcome before BeginTx is called and
+// stands unless BeginTx returns, which is the only way a recovered panic can
+// still reach whoever is waiting.
+var errAttemptFell = errors.New("begin write: the transaction attempt fell")
+
 // beginWrite starts an immediate transaction, waiting no longer than
 // [writeLockWait] for the write lock.
 func (s *Store) beginWrite() (*sql.Tx, error) {
@@ -105,6 +114,16 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 	if db == nil {
 		return nil, fmt.Errorf("begin write: %w: no database", ErrInvalid)
 	}
+	return beginWithin(func() (*sql.Tx, error) {
+		return db.BeginTx(context.Background(), nil)
+	}, limit)
+}
+
+// beginWithin is the clock itself, holding the opener at arm's length. The
+// opener is a parameter rather than the handle because the only way to see what
+// this function does when the attempt FALLS is to hand it one that falls, and
+// nothing can make the sqlite driver panic on demand.
+func beginWithin(open func() (*sql.Tx, error), limit time.Duration) (*sql.Tx, error) {
 	type attempt struct {
 		tx  *sql.Tx
 		err error
@@ -115,8 +134,19 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 	// interrupt.
 	landed := make(chan attempt, 1)
 	guard.Go("store/begin-write attempt", func() {
-		tx, err := db.BeginTx(context.Background(), nil)
-		landed <- attempt{tx: tx, err: err}
+		// A GOROUTINE SOMEBODY WAITS ON DELIVERS ITS RESULT FROM A DEFER. Two
+		// readers wait on landed — the select below until the clock runs out,
+		// and after that the rollback goroutine, forever — so an attempt that
+		// ends without sending is a caller told the store is busy when it is
+		// not and a goroutine parked for the life of the process. A panic
+		// guard.Go recovers unwinds this literal without reaching a send at
+		// the end of it, so the outcome is declared first, pre-loaded with a
+		// failure that NAMES the fault rather than blaming the lock, and
+		// overwritten only when BeginTx has actually returned.
+		outcome := attempt{err: errAttemptFell}
+		defer func() { landed <- outcome }()
+		tx, err := open()
+		outcome = attempt{tx: tx, err: err}
 	})
 	timer := time.NewTimer(limit)
 	defer timer.Stop()
@@ -128,6 +158,11 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 		// ends by itself within busyWait, and if it wins the lock on the way out
 		// it is rolled back at once: a transaction nobody is holding must not be
 		// left holding the lock the next writer is waiting for.
+		//
+		// This goroutine waits with no clock of its own, which is only safe
+		// because the attempt above sends from a defer and therefore always
+		// sends — including when it falls. That send is what ends this
+		// goroutine; without it there would be one parked here per fault.
 		guard.Go("store/begin-write rollback", func() {
 			got := <-landed
 			if got.tx != nil {

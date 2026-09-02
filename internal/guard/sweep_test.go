@@ -116,7 +116,10 @@ func TestSpawnAllowlistIsStillReal(t *testing.T) {
 // guarded goroutine reported as bare. The second is spine.go's sampler, whose
 // recover reads a flag declared just above it. The rest are the ways a
 // goroutine is honestly open or honestly not, so a change to the checker has to
-// keep every verdict rather than just the one that was wrong.
+// keep every verdict rather than just the one that was wrong — including the
+// two shapes that spell a recover the runtime would never reach, `if false {
+// recover() }` and `for { recover() }`, which read as guards to anything that
+// only asks whether the identifier appears somewhere inside the defer.
 func TestSpawnSweepReadsTheDefersNotTheDistance(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -180,6 +183,26 @@ func TestSpawnSweepReadsTheDefersNotTheDistance(t *testing.T) {
 		{
 			name:    "a recover that belongs to a nested literal, not to the goroutine",
 			body:    "go func() {\n\tdefer func() {\n\t\tinner := func() { _ = recover() }\n\t\t_ = inner\n\t}()\n\twork()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "the house shape, a recover in the init of the deferred literal's own if",
+			body:    "go func() {\n\tdefer func() {\n\t\tif r := recover(); r != nil {\n\t\t\tnote(r)\n\t\t}\n\t}()\n\twork()\n}()",
+			guarded: true,
+		},
+		{
+			name:    "a bare recover statement, which is the whole of the deferred body",
+			body:    "go func() {\n\tdefer func() {\n\t\trecover()\n\t}()\n\twork()\n}()",
+			guarded: true,
+		},
+		{
+			name:    "a recover the runtime would never reach, behind a condition that is never true",
+			body:    "go func() {\n\tdefer func() {\n\t\tif false {\n\t\t\trecover()\n\t\t}\n\t}()\n\twork()\n}()",
+			guarded: false,
+		},
+		{
+			name:    "a recover in a loop body, which is a block below the top level",
+			body:    "go func() {\n\tdefer func() {\n\t\tfor {\n\t\t\trecover()\n\t\t}\n\t}()\n\twork()\n}()",
 			guarded: false,
 		},
 		{
@@ -296,10 +319,20 @@ func calls(statement ast.Stmt) bool {
 }
 
 // recovers reports whether a deferred call absorbs a panic: it is the guard's
-// own Recover, or a literal whose body calls the builtin. A recover inside a
-// nested literal is not counted, because a recover only stops a panic when it
-// is called by the deferred function itself, and the sweep should not believe
-// a guard the runtime would not honour.
+// own Recover, or a literal that calls the builtin at the TOP LEVEL of its own
+// body — as a statement of its own, as the right-hand side of an assignment, or
+// in the init or condition of a top-level `if`, which is the house shape
+// `if r := recover(); r != nil { … }` (internal/plan/plan.go and spine.go both
+// write it that way).
+//
+// The rule is that narrow because a recover the runtime honours is one the
+// deferred function reaches unconditionally while the panic is running, and
+// anywhere else the word appears is a recover that may never be called at all:
+// `if false { recover() }` and `for { recover() }` both read as guards to a
+// checker that only asks whether the identifier is present, and neither stops
+// anything. A recover inside a nested literal is not counted either, for the
+// same reason from the other direction — it is called by the inner function
+// rather than by the deferred one, and does not stop the panic.
 func recovers(call *ast.CallExpr) bool {
 	if guardCall(call, "Recover") {
 		return true
@@ -308,8 +341,34 @@ func recovers(call *ast.CallExpr) bool {
 	if !ok {
 		return false
 	}
+	for _, statement := range literal.Body.List {
+		switch shape := statement.(type) {
+		case *ast.ExprStmt:
+			if callsRecover(shape.X) {
+				return true
+			}
+		case *ast.AssignStmt:
+			if callsRecover(shape) {
+				return true
+			}
+		case *ast.IfStmt:
+			if shape.Init != nil && callsRecover(shape.Init) {
+				return true
+			}
+			if callsRecover(shape.Cond) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// callsRecover reports whether this fragment of syntax calls the builtin
+// itself. It does not descend into a function literal, because a recover that
+// belongs to an inner function is that function's, not the deferred one's.
+func callsRecover(node ast.Node) bool {
 	found := false
-	ast.Inspect(literal.Body, func(node ast.Node) bool {
+	ast.Inspect(node, func(node ast.Node) bool {
 		if _, nested := node.(*ast.FuncLit); nested {
 			return false
 		}

@@ -4610,7 +4610,9 @@ func (l *leafLife) longest() time.Duration {
 // parallel and returns the number of ACCEPT verdicts plus any reject reasons.
 // Each validator sees the original ask and the deliverable, and must reply
 // ACCEPT or REJECT with a reason. A provider error is fail-open (ACCEPT) so a
-// transient failure does not block a gate that already passed.
+// transient failure does not block a gate that already passed; a verifier that
+// FALLS is not the same thing and says no, because it never saw an answer to
+// be lenient about.
 func quorumVerify(ctx context.Context, settings config.Config, clients *messageClientPool, nodeID, ask, deliverable string) (accepts int, rejects string) {
 	client, err := clients.ForModel("deepseek/deepseek-v4-flash")
 	if err != nil || client == nil {
@@ -4630,17 +4632,30 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 	ch := make(chan verdict, 2)
 	for range 2 {
 		guard.Go("chat/quorum-verify", func() {
+			// A GOROUTINE SOMEBODY WAITS ON DELIVERS ITS RESULT FROM A DEFER.
+			// Two reads of ch are waiting below and there is nothing else to
+			// wake them, so a verifier that ends without sending parks this
+			// function for the life of the process — which is what a panic
+			// guard.Go recovers would do if the sends stayed on the happy
+			// paths. The answer is therefore declared before the first call
+			// that can fall and sent from a defer, so a recovered panic
+			// arrives at the reader as a result. It says no, and it says why:
+			// a check that did not finish has not seen the deliverable, and
+			// fail-open is for a provider that answered nothing, not for
+			// machinery that broke mid-answer.
+			said := verdict{accept: false, reason: "REJECT: the check did not finish"}
+			defer func() { ch <- said }()
 			vctx := pool.WithSpendNode(errandContext(ctx, settings, "quorum", lane.RoleJudge), nodeID)
 			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
 			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
-				ch <- verdict{true, ""} // fail-open
+				said = verdict{true, ""} // fail-open
 				return
 			}
 			text := strings.TrimSpace(resp.Choices[0].Message.Content[0].Text)
 			if strings.HasPrefix(strings.ToUpper(text), "REJECT") {
-				ch <- verdict{false, text}
+				said = verdict{false, text}
 			} else {
-				ch <- verdict{true, ""}
+				said = verdict{true, ""}
 			}
 		})
 	}
