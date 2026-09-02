@@ -136,6 +136,12 @@ type Request struct {
 	Horizon int
 	// Now is the moment the request is being made. See the note on the type.
 	Now time.Time
+	// Typical, when set, ranks on posterior means and does not sample.
+	// It is the display question: which machine would auto pick if it
+	// were not exploring this turn. The send path never sets it. A
+	// picker that asked the send-path question on every frame named a
+	// different via each paint, because Choose seeds its draws on Now.
+	Typical bool
 }
 
 // Scored is one candidate lane with the numbers the choice was made on.
