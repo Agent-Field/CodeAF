@@ -47,7 +47,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -157,30 +156,12 @@ func contains(words []string, word string) bool {
 
 // designerSystem is the brief: the meta-guide, with this build's machinery filled
 // into it. It is one string built once so the whole of what the model was told can
-// be printed beside what it produced.
+// be printed beside what it produced. The transport rule — JSON delimiters are
+// ASCII — is in the guide's own output contract now, so there is nothing for this
+// rig to bolt on after rendering.
 func designerSystem(tools []toolSpec) (string, error) {
-	guide, err := prompts.Render(prompts.Designer, machinery(tools))
-	if err != nil {
-		return "", err
-	}
-	return guide + asciiRule, nil
+	return prompts.Render(prompts.Designer, machinery(tools))
 }
-
-// asciiRule is the one line of output contract this rig adds to the guide it was
-// handed. It lives here rather than in the guide because the guide is a document
-// about DESIGN and this is a fact about the transport: a page whose delimiters
-// came out as typographic quotes is a good design that will not parse, and the
-// cheapest place to fix that is before it is written.
-//
-// It draws the line where the salvage ladder draws it — syntax is ASCII, prose is
-// the writer's — so a designer is never told to flatten an em-dash out of a brief
-// in order to be read.
-const asciiRule = "\n" + `
-One rule about the characters, not the design: JSON DELIMITERS AND SYNTAX ARE
-ASCII. The quotes around every key and every string value are " (U+0022) — never
-“ ” ‘ ’ — and so are the braces, brackets, colons and commas. Prose may use any
-character INSIDE a string value: an em-dash in a brief is content and stays.
-`
 
 // reviewSystem is stage 1.5's brief. It is the WHOLE designer guide plus PART
 // FOUR, because a critic that cannot see the law it is judging against would be
@@ -194,27 +175,16 @@ func reviewSystem(tools []toolSpec) (string, error) {
 	return guide + "\n" + prompts.Reviewer, nil
 }
 
-// machinery is every value the guide leaves a hole for. It is the one place this
-// binary's numbers meet that document, and prompts.Render refuses a hole nobody
-// filled and a value nothing reads — so this map and that guide cannot drift apart
-// without the next run saying so.
+// machinery is every value the guide leaves a hole for, with THIS binary's belt
+// in it. The values are [subharness.Machinery]'s — the one map both doors read —
+// because a copy kept here drifted from the guide for a fortnight and no run of
+// this binary could render a brief until it was noticed.
 func machinery(tools []toolSpec) map[string]string {
-	belt := make([]string, 0, len(tools))
+	belt := make([]subharness.BeltEntry, 0, len(tools))
 	for _, tool := range tools {
-		belt = append(belt, fmt.Sprintf("%-6s %s", tool.name, tool.about))
+		belt = append(belt, subharness.BeltEntry{Name: tool.name, About: tool.about})
 	}
-	return map[string]string{
-		"max_turns":      strconv.Itoa(subharness.MaxTurns),
-		"max_rounds":     strconv.Itoa(subharness.MaxRounds),
-		"default_rounds": strconv.Itoa(subharness.DefaultRounds),
-		"max_width":      strconv.Itoa(subharness.MaxWidth),
-		"max_nodes":      strconv.Itoa(subharness.MaxNodes),
-		"max_id_bytes":   strconv.Itoa(subharness.MaxIdBytes),
-		"max_dyn_cap":    strconv.Itoa(subharness.MaxDynCap),
-		"verify_ladder":  strings.Join(subharness.VerifyLadder(), " < "),
-		"dyn_ladder":     strings.Join(subharness.DynLadder(), " < "),
-		"tools":          strings.Join(belt, "\n"),
-	}
+	return subharness.Machinery(belt)
 }
 
 // attempt is what one turn of the model cost, told separately from what it
