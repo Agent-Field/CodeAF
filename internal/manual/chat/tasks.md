@@ -2996,6 +2996,15 @@ repository in a state two of them fought over.
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
 
+**A hand has nine tools, and it is told which nine.** It opens on the whole conversation —
+the same transcript and the same instructions the answer that forked it was reading, word
+for word, because that shared page is what makes a copy of a mind cheap to make. Those
+instructions were written for the belt the **caller** carries, which is a much longer list,
+so a short note is added under them naming what is actually this reader's: `read`, `grep`,
+`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. Nothing else is on a
+hand's belt however the page above the note reads, and a call for anything else is answered
+`Unknown tool` rather than run.
+
 **They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
 that started it has finished, and its report wakes the session when it lands — the same thing
 a background command's exit does. What stops a hand where it stands is **your interrupt**
