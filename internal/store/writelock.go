@@ -114,16 +114,25 @@ func beginWriteWithin(db *sql.DB, limit time.Duration) (*sql.Tx, error) {
 	if db == nil {
 		return nil, fmt.Errorf("begin write: %w: no database", ErrInvalid)
 	}
-	return beginWithin(func() (*sql.Tx, error) {
+	tx, _, err := beginWithin(func() (*sql.Tx, error) {
 		return db.BeginTx(context.Background(), nil)
 	}, limit)
+	return tx, err
 }
 
-// beginWithin is the clock itself, holding the opener at arm's length. The
-// opener is a parameter rather than the handle because the only way to see what
-// this function does when the attempt FALLS is to hand it one that falls, and
-// nothing can make the sqlite driver panic on demand.
-func beginWithin(open func() (*sql.Tx, error), limit time.Duration) (*sql.Tx, error) {
+// beginWithin is the clock itself, holding the opener at arm's length and
+// handing back the end of the abandoned rollback.
+//
+// Both of those are here for the same reason, and the reason is that the two
+// promises this function makes are otherwise unobservable. The opener is a
+// parameter rather than the handle because nothing can make the sqlite driver
+// panic on demand, and what happens when the attempt FALLS is the whole
+// question. The second return is closed when the rollback goroutine has ended,
+// and is nil when the attempt landed in time and no rollback was started — the
+// claim that the rollback ALWAYS ends is what this shape exists for, and a
+// goroutine ending is not something anybody can see from outside except by
+// being told. No caller in the store reads it.
+func beginWithin(open func() (*sql.Tx, error), limit time.Duration) (*sql.Tx, <-chan struct{}, error) {
 	type attempt struct {
 		tx  *sql.Tx
 		err error
@@ -152,7 +161,7 @@ func beginWithin(open func() (*sql.Tx, error), limit time.Duration) (*sql.Tx, er
 	defer timer.Stop()
 	select {
 	case got := <-landed:
-		return got.tx, got.err
+		return got.tx, nil, got.err
 	case <-timer.C:
 		// The attempt is ABANDONED, not cancelled — nothing can cancel it. It
 		// ends by itself within busyWait, and if it wins the lock on the way out
@@ -163,12 +172,14 @@ func beginWithin(open func() (*sql.Tx, error), limit time.Duration) (*sql.Tx, er
 		// because the attempt above sends from a defer and therefore always
 		// sends — including when it falls. That send is what ends this
 		// goroutine; without it there would be one parked here per fault.
+		rolledBack := make(chan struct{})
 		guard.Go("store/begin-write rollback", func() {
+			defer close(rolledBack)
 			got := <-landed
 			if got.tx != nil {
 				_ = got.tx.Rollback()
 			}
 		})
-		return nil, fmt.Errorf("%w (waited %s)", ErrBusy, limit)
+		return nil, rolledBack, fmt.Errorf("%w (waited %s)", ErrBusy, limit)
 	}
 }

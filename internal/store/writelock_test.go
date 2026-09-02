@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 )
@@ -140,7 +139,7 @@ func TestAnAttemptThatFallsReachesItsCallerAndFreesTheRollback(t *testing.T) {
 
 	// The fall lands while the caller is still waiting, which is the ordinary
 	// case: it is told what happened rather than told the store is busy.
-	tx, err := beginWithin(func() (*sql.Tx, error) {
+	tx, rolledBack, err := beginWithin(func() (*sql.Tx, error) {
 		panic("the driver fell over inside BEGIN")
 	}, writeLockWait)
 	if tx != nil {
@@ -156,26 +155,28 @@ func TestAnAttemptThatFallsReachesItsCallerAndFreesTheRollback(t *testing.T) {
 	if !errors.Is(err, errAttemptFell) {
 		t.Fatalf("the caller was told %v, want the fault the attempt fell with", err)
 	}
+	if rolledBack != nil {
+		t.Fatal("a rollback was started for an attempt the caller was still waiting on")
+	}
 
 	// And the fall that lands AFTER the caller has given up, where the only one
-	// still waiting is the rollback goroutine. It ends because the send comes.
-	settled := make(chan struct{})
-	before := runtime.NumGoroutine()
-	_, err = beginWithin(func() (*sql.Tx, error) {
-		defer close(settled)
+	// still waiting is the rollback goroutine. It ends because the send comes,
+	// and it says so by closing — the one way a goroutine's exit can be watched
+	// for rather than inferred from a count that anything else in the process
+	// could move.
+	_, rolledBack, err = beginWithin(func() (*sql.Tx, error) {
 		time.Sleep(100 * time.Millisecond)
 		panic("the driver fell over on its way out")
 	}, 20*time.Millisecond)
 	if !errors.Is(err, ErrBusy) {
 		t.Fatalf("an attempt abandoned on the clock should say busy, said: %v", err)
 	}
-	<-settled
-	deadline := time.Now().Add(5 * time.Second)
-	for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	if rolledBack == nil {
+		t.Fatal("the abandoned attempt started no rollback to take the lock back")
 	}
-	if left := runtime.NumGoroutine(); left > before {
-		t.Fatalf("%d goroutines are still running against %d before the fall; "+
-			"the rollback is waiting on an attempt that will never send", left, before)
+	select {
+	case <-rolledBack:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the rollback is still waiting on an attempt that will never send")
 	}
 }

@@ -196,6 +196,11 @@ func TestSpawnSweepReadsTheDefersNotTheDistance(t *testing.T) {
 			guarded: true,
 		},
 		{
+			name:    "the same recover in the header of a switch rather than an if",
+			body:    "go func() {\n\tdefer func() {\n\t\tswitch r := recover(); r {\n\t\tcase nil:\n\t\tdefault:\n\t\t\tnote(r)\n\t\t}\n\t}()\n\twork()\n}()",
+			guarded: true,
+		},
+		{
 			name:    "a recover the runtime would never reach, behind a condition that is never true",
 			body:    "go func() {\n\tdefer func() {\n\t\tif false {\n\t\t\trecover()\n\t\t}\n\t}()\n\twork()\n}()",
 			guarded: false,
@@ -321,9 +326,13 @@ func calls(statement ast.Stmt) bool {
 // recovers reports whether a deferred call absorbs a panic: it is the guard's
 // own Recover, or a literal that calls the builtin at the TOP LEVEL of its own
 // body — as a statement of its own, as the right-hand side of an assignment, or
-// in the init or condition of a top-level `if`, which is the house shape
-// `if r := recover(); r != nil { … }` (internal/plan/plan.go and spine.go both
-// write it that way).
+// in the header of a top-level `if` or `switch`, which is where the house shape
+// `if r := recover(); r != nil { … }` puts it (internal/plan/plan.go and
+// spine.go both write it that way). A header is the init and the condition of an
+// `if`, and the init and the tag — or the type-switch assignment — of a
+// `switch`: `switch r := recover(); r {` is as real a guard as the `if`, and the
+// runtime honours it for the same reason, so the rule reads both rather than
+// picking a favourite spelling.
 //
 // The rule is that narrow because a recover the runtime honours is one the
 // deferred function reaches unconditionally while the panic is running, and
@@ -352,12 +361,35 @@ func recovers(call *ast.CallExpr) bool {
 				return true
 			}
 		case *ast.IfStmt:
-			if shape.Init != nil && callsRecover(shape.Init) {
+			if header(shape.Init, shape.Cond) {
 				return true
 			}
-			if callsRecover(shape.Cond) {
+		case *ast.SwitchStmt:
+			if header(shape.Init, shape.Tag) {
 				return true
 			}
+		case *ast.TypeSwitchStmt:
+			if header(shape.Init, shape.Assign) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// header reads the two slots a branching statement evaluates before it branches,
+// either of which may be nil. Both run unconditionally when the statement is
+// reached, which is what makes a recover in one of them a recover the runtime
+// honours, and neither is a block.
+func header(parts ...ast.Node) bool {
+	for _, part := range parts {
+		// An absent init or tag arrives as a nil node, and ast.Inspect panics
+		// on one rather than ignoring it.
+		if part == nil {
+			continue
+		}
+		if callsRecover(part) {
+			return true
 		}
 	}
 	return false
