@@ -2299,18 +2299,114 @@ aforge logs --path          print the file and nothing else
 One line per call, and it reads like this:
 
 ```
-21:12:53  compile  z-ai/glm-5.3-flash  low  max 10240  → 200  12.7s  stop  466 tok  $0.0003
-21:12:41  compile  z-ai/glm-5.3-flash  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
-21:13:04  leaf  #build  z-ai/glm-5.3  high  max 65536  ⋯ in flight 3m12s
+21:12:53  compile  z-ai/glm-5.3-flash  auto→coreweave  low  max 10240  → 200  12.7s  first token 0.4s  deadline 8.0s  stop  1204 in  466 out  1024 cached  $0.0003  acted hedge  2 arms  hedged  waste $0.0012
+21:12:41  compile  z-ai/glm-5.3-flash  deepinfra  low  max 10240  → 400  0.2s  Reasoning is mandatory for this endpoint  learned reasoning_mandatory
+21:13:04  leaf  #build  z-ai/glm-5.3  novita  high  max 65536  deadline 30.0s  ⋯ in flight 3m12s
 ```
 
 What one line holds: when the call went out, what it was for (`turn`, `leaf`, `task`,
-`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`), which model was asked and which endpoint
-actually answered, the thinking level and the **ceiling that really travelled** — which is
-larger than the one asked for, because the thinking pass is given room in front of the
-answer — how many messages and tools the request carried, the status it came back with,
-how long it took, how it finished, the tokens and the cost, and anything the refusal
-taught aforge about that model.
+`compile`, `ground`, `brief`, `contract`, `gate`, `reflex`), which model was asked, **which endpoint
+was asked for and which one actually answered**, the thinking level and the **ceiling that
+really travelled** — which is larger than the one asked for, because the thinking pass is
+given room in front of the answer — how many messages and tools the request carried, the
+status it came back with, how long it took and **how long the first token took**, the
+deadline the wait was being held against, how it finished, **what it spent in tokens and
+what it cost**, anything that was **done about a silence**, and anything the refusal taught
+aforge about that model.
+
+**`auto→coreweave` is the router overriding a choice** — the endpoint asked for on the
+left, the one that answered on the right. When they are the same you see one name, and a
+call to something that is not a router shows none. **`acted hedge · 2 arms · hedged ·
+waste $0.0012`** is a call that went quiet, had a second request fired at another endpoint
+to rescue it, and what the arm that lost cost. Almost every line has none of that, because
+almost nothing has to be done.
+
+## How many tokens did one call use — the N in and N out figures on a log line
+
+Two figures, and the line says which is which:
+
+```
+1204 in  466 out (312 thinking)  1024 cached  $0.0003
+```
+
+**`in` is the prompt** — everything the request carried to the model, which is also the only
+place a run's context size is written down. **`out` is the completion** — what the model
+wrote back. `(312 thinking)` sits beside `out` when the endpoint said how much of what it
+wrote went to the thinking pass rather than to the answer; most endpoints do not say, and
+then there is no bracket. `1024 cached` is the share of `in` the provider billed at the
+cached rate.
+
+Each figure is left off when the provider did not report it, so a reply that came back with
+no usage block at all shows neither a token figure nor a cost — a zero there would be a
+measurement nobody made. There is no single unlabelled `tok` figure any more: it carried the
+completion count only, and a number that does not say which half it is cannot be checked
+against a bill or against a context window.
+
+## Find one call in the log — filtering `aforge logs` by run, call, tag, model or node
+
+The filters are exact matches and they combine, so each one you add narrows further:
+
+```
+aforge logs --tag turn            only the chat's own turns
+aforge logs --model z-ai/glm-5.3  only calls that asked for that model
+aforge logs --node build          only calls belonging to that piece of work
+aforge logs --call 4f2a91c7       one call — both its rows, out and back
+aforge logs --run r-7f3a          one run's calls
+aforge logs --tail 200 --follow --tag leaf    they work with everything else
+```
+
+`--call` takes the eight-character call id and is the one filter that shows you **both** rows
+of an attempt: the row written when the request went out — marked `sent` — and the row
+written when it came back. Everywhere else the reader shows the answer only, because a
+start whose end has arrived says nothing the end does not say better, and it is only a
+call with no answer yet that reads `⋯ in flight`.
+
+**When a filter finds nothing, the reader says which kind of nothing it is.** A search that
+came back empty and a question the log cannot answer yet are different answers, and being
+given the first when the truth is the second costs an afternoon:
+
+```
+no row in this log carries a run id yet     nothing on this machine is stamped with a run
+no calls for run r-7f3a                     rows do carry runs, and none of them is that one
+no call 4f2a91c7 in this log                that call id is not in the file
+```
+
+**`--run` is honest about today.** The run id is not written onto the rows yet — that is
+the debug-record foundation, still being built — so on every machine right now `--run`
+prints `no row in this log carries a run id yet` rather than pretending every call belongs
+to the run you named. It starts working the day the writer starts writing it, with no
+change to the command. **`--node` is equally empty on a headless run's rows** — the node a
+call belongs to is not stamped on them yet either, and that lands with the headless
+attribution change, so `--node build` today matches only the chat's own work. A tag, a
+model or a node that matched nothing gets no sentence: an empty listing already says a
+search came back empty, and only an id you pasted is something you believed was there.
+
+## Show me the raw rows, and open one call's body
+
+```
+aforge logs --json                 the matching rows exactly as they are on disk
+aforge logs --json --tag leaf      and only the leaf calls
+aforge logs --body 4f2a91c7        what that call sent and what came back
+```
+
+`--json` is a passthrough, not a rendering. It prints the file's own lines, one per line,
+unchanged, and **without the path header in front of them**, because the reason to ask for
+it is that another program — `jq`, a script, a spreadsheet — is reading what comes out. The
+filters apply first, so `--json --tag leaf` is exactly the leaf rows and nothing else.
+
+`--body` takes a call id and prints the request and reply that were recorded for it,
+looking first in the run trace (`~/.aforge/logs/trace/<run>/calls/<id>.json`) and then in
+the kept-failure folder (`~/.aforge/logs/failures/<id>.json`). **Neither is written yet.**
+The switch that fills the trace and the always-on keeping of a failed call are both still
+being built, so today `--body` almost always prints:
+
+```
+no body recorded for 4f2a91c7
+```
+
+That is the truthful answer and not a fault. Until those land, the way to get the exact
+bytes is `AFORGE_CALL_LOG_BODIES=1`, described below, which puts them on the log line
+itself.
 
 **A call still running shows as `⋯ in flight`.** That is the reason a line is written when
 a call goes *out* as well as when it comes back: a planning call four minutes into a
