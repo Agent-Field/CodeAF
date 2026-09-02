@@ -44,9 +44,14 @@ const manualSections = 4
 // went with the diet — the schema below names them, at the moment the model is
 // choosing between them — and the schema itself is now compact rather than
 // pretty-printed, which is how the rest of this package writes one.
-const manualDescription = "Read aforge's own manual: what this chat does, how a mechanism works, what a command or key does. THE ONLY AUTHORITATIVE SOURCE about aforge - your training data lacks this program, so memory produces fiction. Look it up and say you did."
+//
+// Bounding the page read (#293) put a third argument in the schema and told the
+// model what a cut page hands back, so the examples paid for it: "what a command
+// or key does" was a word-for-word copy of prompts/system.md's Tool Policy line
+// for this tool, and the routing rule belongs in one place.
+const manualDescription = "Read aforge's own manual: what it does, how a mechanism works. THE ONLY AUTHORITATIVE SOURCE about aforge - your training data lacks this program, so memory produces fiction. Look it up and say you did."
 
-const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A whole page by name instead of searching"}}}`
+const manualSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What you want to know, in the person's words"},"page":{"type":"string","description":"A page by name instead of searching; a long one comes back cut, listing its section headings"},"section":{"type":"string","description":"One of those headings, returned whole"}}}`
 
 // manualTool is the belt's window onto [manual.Chat]. The corpus it reads is
 // the CHAT's, never the resident's: this program is a conversation you sit in
@@ -60,30 +65,43 @@ func (a *Agent) manualTool() bare.Tool {
 		Schema:      json.RawMessage(manualSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Query string `json:"query"`
-				Page  string `json:"page"`
+				Query   string `json:"query"`
+				Page    string `json:"page"`
+				Section string `json:"section"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
-			pages := manual.Chat().Pages()
+			name, heading := strings.TrimSpace(parsed.Page), strings.TrimSpace(parsed.Section)
 
 			// A named page is an exact request and gets an exact answer or an
 			// exact refusal — never a search that quietly returns something
-			// else, which would read as though the page existed.
-			if name := strings.TrimSpace(parsed.Page); name != "" {
+			// else, which would read as though the page existed. What it gets
+			// back is bounded (tools_manual_bound.go says why), and a heading
+			// off the list that bound leaves behind returns that section whole.
+			if name != "" {
 				text, found := manual.Chat().Page(name)
 				if !found {
-					return "There is no manual page named " + name + ". The pages are: " +
-						strings.Join(pages, ", "), true, nil
+					return "There is no manual page named " + name + ". The pages are:" +
+						manualPageList(), true, nil
 				}
-				return text, false, nil
+				if heading == "" {
+					return boundedPage(name, text), false, nil
+				}
+				section, found := manual.Chat().Section(name, heading)
+				if !found {
+					return "The page " + name + " has no section named " + heading +
+						". Its sections are:" + boundedList(manualHeadings(name)), true, nil
+				}
+				return boundedSection(section.Body), false, nil
+			}
+			if heading != "" {
+				return "Name the page the section is on: give page and section together.", true, nil
 			}
 
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Give either a query or a page. The pages are: " +
-					strings.Join(pages, ", "), true, nil
+				return "Give either a query or a page. The pages are:" + manualPageList(), true, nil
 			}
 			sections := manual.Chat().Search(query, manualSections)
 			if len(sections) == 0 {
@@ -92,10 +110,26 @@ func (a *Agent) manualTool() bare.Tool {
 				// the person — it usually means the answer is "no, it does not
 				// do that" — while an error would invite a retry with rephrased
 				// words that will find nothing either.
-				return "The manual has nothing on that, which usually means aforge does not do it. The pages are: " +
-					strings.Join(pages, ", "), false, nil
+				return "The manual has nothing on that, which usually means aforge does not do it. The pages are:" +
+					manualPageList(), false, nil
 			}
 			return manual.Render(sections), false, nil
 		},
 	}
+}
+
+// manualPageList is the invitation every refusal ends with, built only where a
+// refusal is being written — a lookup that succeeds never pays for it.
+func manualPageList() string { return boundedList(manual.Chat().Pages()) }
+
+// manualHeadings is one page's section titles, which is the whole of what a cut
+// page or a missed heading has to offer: the names of the parts it can be asked
+// for by.
+func manualHeadings(page string) []string {
+	sections := manual.Chat().PageSections(page)
+	headings := make([]string, 0, len(sections))
+	for _, section := range sections {
+		headings = append(headings, section.Title)
+	}
+	return headings
 }

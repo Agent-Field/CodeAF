@@ -943,15 +943,37 @@ Ask it anything about aforge — what a tool does, what a command does, why it j
 behaved a certain way — and it looks the answer up and tells you it looked it up.
 
 `manual` takes either a `query`, in your own words, which returns the most
-relevant sections, or a `page` name to read a whole page. A page name that does
-not exist gets an exact refusal listing the pages that do, never a search result
-that reads as though the page existed.
+relevant sections, or a `page` name to read a page — whole when it is short, and
+cut with a list of its headings when it is long (the next question). A page name
+that does not exist gets an exact refusal listing the pages that do, never a
+search result that reads as though the page existed.
 
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means aforge does not do it.`
 
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
+
+## Can you read me a whole page, and what happens when the page is a long one?
+
+Short pages arrive whole. A long one arrives cut, and says so.
+
+A `page` lookup is bounded by the same limit a file read is bounded by, because
+a result is a result whatever it read, and the longest pages in this manual are
+several times that limit. When a page is over it, what comes back is the start of
+the page — ending at a whole line, and never inside an example — followed by a
+note in square brackets that begins `[Cut: … bytes of …. The rest of this page is
+in its sections — ask for the same page again with section set to one of:` and
+then lists every heading on that page, one to a line, before it closes.
+
+Those headings are the addresses of the rest. Ask for the same page with one of
+them in `section` and that part comes back whole, however far past the cut it
+sat. A heading that is not on the page is refused by name, and the refusal lists
+the headings that are — never a neighbouring section handed over as though it
+were the one asked for.
+
+So no part of the manual is out of reach, and no single lookup can fill the
+conversation with one page.
 
 ## Can you change my aforge settings for me — set my daily budget, change a preference, or tell me what one is set to?
 
