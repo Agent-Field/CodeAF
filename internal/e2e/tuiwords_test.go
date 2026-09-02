@@ -352,6 +352,27 @@ var tuiWords = map[string]tuiWord{
 		why: "the one cell that asks the question on the roster row (internal/tui3's glyphUnverified); " +
 			"it is one character, so the frame it is read in is held together by the three sentences beside it",
 	},
+
+	// ── the front door, on a machine that has never run aforge ───────────────
+	"setupTitleWord": {
+		screen: "setting up",
+		why:    "the dim line over the first-run question, which says where in the flow this is",
+	},
+	"setupConnectHeading": {
+		screen: "connect openrouter",
+		why:    "the heading of the step a fresh install meets first — the whole subject of #322",
+	},
+	"setupConnectSentence": {
+		screen: "sign in once in your browser",
+		why: "the sentence under that heading, which is what makes the step answerable rather than " +
+			"a bare box; the constant runs on past this into what it will and will not send, and the " +
+			"block wraps it, so the needle is the clause the reader meets first",
+	},
+	"setupNotConnectedNote": {
+		screen: "openrouter is not connected",
+		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
+			"a person who declined is told the next direct road rather than left on an empty screen",
+	},
 }
 
 // say is how the tmux suite reaches a literal, and THE ONLY WAY IT MAY.

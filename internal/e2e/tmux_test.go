@@ -131,6 +131,24 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	return home
 }
 
+// emptyHome is a state root WITH NOTHING IN IT — an empty directory, and not one
+// thing more.
+//
+// [newHome] is the fixture every other rig here uses and it writes a config.json
+// on the way out: the person's own rows, the suite's model, an approval posture.
+// That file is what makes those runs about the surface rather than about setup,
+// and it is exactly what a fresh-install run must not have. A machine that has
+// never run aforge has no profile file, no key, no crew and no marker, and the
+// first thing that writes into this directory is the product.
+func emptyHome(t *testing.T) string {
+	t.Helper()
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatalf("home: %v", err)
+	}
+	return home
+}
+
 // newWorkspace makes a throwaway project directory and puts a repository in it.
 //
 // A REPOSITORY IS NOT DECORATION HERE. It is what makes a /tmp directory a
@@ -170,6 +188,45 @@ func newWorkspace(t *testing.T, name string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	return startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+		name, home, ws, cols, rows, args...)
+}
+
+// keylessEnv is every variable a fresh-install run must not inherit: the two the
+// key resolution reads in order (internal/config's APIKeyAt), the three capability
+// keys the belt reads, and the one override that would move the profile out from
+// under an empty state root.
+//
+// THEY ARE UNSET AND NOT BLANKED. A blank is what the suite's own rigs pass and it
+// reads as absent everywhere in internal/config, but a fresh install is a machine
+// where the variable is NOT THERE, and the two have been different before now.
+var keylessEnv = []string{
+	"OPENROUTER_API_KEY", "OPENAI_API_KEY",
+	"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY",
+	"AFORGE_PROFILE_DIR", "AFORGE_DAILY_BUDGET",
+}
+
+// startFresh is [start] for A MACHINE THAT HAS NEVER RUN AFORGE: the same rig,
+// with every provider key and the profile override taken out of the environment
+// rather than passed through it.
+//
+// It exists because the one thing a fixture cannot fake is emptiness. The class
+// of defects #322 closes is emptiness read as absence, so a run that pre-created
+// a config file — or exported a key the way every other rig here does — would
+// hide exactly the failure it is there to catch.
+func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
+	unset := make([]string, 0, 2*len(keylessEnv))
+	for _, name := range keylessEnv {
+		unset = append(unset, "-u", name)
+	}
+	return startWithEnv(t, unset, name, home, ws, cols, rows, args...)
+}
+
+// startWithEnv is the body both doors share: `env`, whatever the caller puts in
+// front of the assignments, then the state root and the terminal.
+func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
 	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
 	// suite at once on one machine, and with a fixed session name each start()
 	// kills the other run's rig before opening its own — a whole suite then
@@ -177,14 +234,13 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// The pid LEADS the name: tmux falls back to prefix matching on -t, so a
 	// sibling's `kill-session -t afe2e_a` would still reach `afe2e_a-<pid>`.
 	name = fmt.Sprintf("p%d-%s", os.Getpid(), name)
-	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	command := []string{
-		"env",
-		"AFORGE_HOME=" + home,
-		"OPENROUTER_API_KEY=" + key,
+	command := []string{"env"}
+	command = append(command, env...)
+	command = append(command,
+		"AFORGE_HOME="+home,
 		"TERM=xterm-256color",
 		binary(t),
-	}
+	)
 	command = append(command, args...)
 	quoted := make([]string, 0, len(command))
 	for _, part := range command {
