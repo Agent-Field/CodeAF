@@ -1671,10 +1671,36 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	if a.closed {
+		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
+		// OF IT. `closed` is set below before anything is cut, so returning here
+		// on the strength of it used to tell a second caller that the session
+		// had closed while its turn, its nodes and its jobs were all still
+		// running — the same false sentence, one layer up, that this quit exists
+		// to make true.
+		//
+		// The wait needs no bound of its own: the caller it is waiting for is
+		// itself bounded, by the turn's grace and then one [jobShutdownGrace]
+		// each for the graph and the jobs. A nil channel means a session that
+		// was closed before this field existed in it — impossible now that both
+		// are written under this lock, and answered by returning rather than by
+		// blocking forever.
+		waitOn := a.closeDone
 		a.mu.Unlock()
+		if waitOn != nil {
+			<-waitOn
+		}
 		return nil
 	}
 	a.closed = true
+	if a.closeDone == nil {
+		a.closeDone = make(chan struct{})
+	}
+	// AS THE LAST ACT, past every round below and past the file's own close: a
+	// deferred close runs after `return file.Close()` has evaluated, so a caller
+	// released by it is released by a session that has finished leaving. Every
+	// road out of this function goes through it, which is the reason it is a
+	// defer and not a line at the end.
+	defer close(a.closeDone)
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).

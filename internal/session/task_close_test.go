@@ -320,3 +320,81 @@ func TestStartsRacingTheShutdownNeverGrowTheClosedRegistry(t *testing.T) {
 			after-atTheWalk, atTheWalk, after)
 	}
 }
+
+// AND A CLOSE IS FINISHED FOR EVERYBODY WHO CALLS IT, NOT ONLY THE FIRST.
+//
+// `a.closed` is set at the top of [Agent.Close], before a single node is cut, so
+// a second concurrent caller read it and returned nil at once — while the first
+// was still cutting the graph and killing jobs. That caller was told the session
+// had closed while its nodes were running, which is the same false sentence this
+// whole change exists to remove, one layer up from the graph.
+//
+// Two windows quitting the same conversation is the ordinary way this happens,
+// and a surface that acts on the answer — removing the session's directory, say —
+// acts on it while the work is still in there.
+//
+// BOTH CALLERS ARE ASKED THE QUESTION, because which of them wins the race is
+// not something the test may assume: each checks, the instant its own Close
+// returns and without blocking, whether the node had already landed.
+func TestASecondCloseDoesNotReturnBeforeTheFirstHasFinished(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	running := make(chan struct{}, 1)
+	exited := make(chan struct{})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		ctx, _ := node.runContext()
+		select {
+		case running <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		// THE WINDOW IS WIDENED ON PURPOSE, and this is the one place a pause
+		// belongs: it is not how the assertion below synchronises — that is a
+		// hard ordering check either way — it is how a window a few instructions
+		// wide is made big enough that a scheduler cannot hide the defect. The
+		// first Close waits here, bounded by the graph's own grace; a second
+		// Close that answers over the top of it answers during this sleep.
+		time.Sleep(100 * time.Millisecond)
+		close(exited)
+	})
+
+	graph.admit(graph.reserve(), taskSpec{
+		title: "still landing", brief: "runs until the quit cuts it", acceptance: "cut",
+	})
+	select {
+	case <-running:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the node never started")
+	}
+
+	var (
+		wg     sync.WaitGroup
+		landed [2]bool
+		go_    = make(chan struct{})
+	)
+	for at := 0; at < len(landed); at++ {
+		wg.Add(1)
+		go func(at int) {
+			defer wg.Done()
+			<-go_
+			if err := agent.Close(); err != nil {
+				t.Errorf("Close #%d: %v", at, err)
+			}
+			// Non-blocking, for the reason the test above gives: a wait would
+			// pass just as happily for a Close that answered first and a node
+			// that landed afterwards, which is precisely the bug.
+			select {
+			case <-exited:
+				landed[at] = true
+			default:
+			}
+		}(at)
+	}
+	close(go_)
+	wg.Wait()
+
+	for at, ok := range landed {
+		if !ok {
+			t.Fatalf("Close #%d returned while the session still had a node running", at)
+		}
+	}
+}
