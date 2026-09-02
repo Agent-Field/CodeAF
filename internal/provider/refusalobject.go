@@ -192,6 +192,15 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 // about a SET, and striking one of them would be this process guessing which.
 // Nothing in this build sends more than one today; this is what it means if
 // something ever does.
+//
+// AND RE-DERIVING THE OBJECT IS SAFE FOR THIS ONE FIELD, which is worth saying
+// because the chooser underneath it is a SAMPLED decision and two draws are two
+// different answers (lanes.go's [Client.laneChoiceFor]). A streamed call
+// carries the choice it was decided on and re-derives nothing; an unstreamed
+// one draws again, and the ranking it draws may differ — but `only` is never
+// the ranking. It is set from a strict pin or from a rescue's own demand, both
+// of which are facts rather than draws, so the machine named here is the
+// machine that was named on the wire.
 func (c *Client) onlyLane(model string, knobs callKnobs, request *ai.Request) string {
 	prefs := c.wirePreferences(model, knobs, request)
 	if prefs == nil || len(prefs.Only) != 1 {
