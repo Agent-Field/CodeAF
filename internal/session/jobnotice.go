@@ -35,7 +35,11 @@ package session
 // source of truth about what is running, and this is a projection of it taken at
 // the moment something moved.
 
-import "time"
+import (
+	"strconv"
+	"strings"
+	"time"
+)
 
 // JobKind is what sort of background work a job is, in the one vocabulary a
 // surface reads. It is the registry's own [jobKind] made public.
@@ -214,6 +218,69 @@ func jobNameOf(info jobInfo) string {
 		return firstLine(info.label)
 	}
 	return info.name
+}
+
+// jobNoticeFromRow reads one CHECKPOINTED row back as the job it was, and
+// reports whether the row was a job's at all.
+//
+// THE CHECKPOINT IS THE ONE PLACE THE OLD PACKED SENTENCE STILL LIVES, and that
+// is a fact about files already written rather than a shape anybody would choose
+// now. A conversation reopened tomorrow is drawn from rows saved by the aforge
+// that closed it — `job 3 · log /…/3.log` in a task row's prose field — so the
+// choice is to read that sentence here or to tell every person with a
+// conversation on disk that their history began today.
+//
+// SO IT IS PARSED EXACTLY ONCE, AT THE EDGE OF THE STORE. Two surfaces used to
+// cut on this separator to get at either half; what made that a defect was that
+// it was the LIVE contract. As a storage format read back in one function it is
+// ordinary, and everything above this line still receives a [JobNotice] with the
+// id and the path in fields of their own.
+//
+// A ROW THAT ARRIVES WITHOUT THE SENTENCE IS STILL A JOB. The id then falls back
+// to the roster's own number, which is wrong as a handle and right as a name —
+// better a row saying `job 4` than a conversation that quietly lost the six
+// commands it ran.
+func jobNoticeFromRow(row TaskNotice) (JobNotice, bool) {
+	if row.Kind != TaskKindJob {
+		return JobNotice{}, false
+	}
+	notice := JobNotice{
+		ID:      int(row.ID),
+		Name:    row.Title,
+		Kind:    JobKindCommand,
+		State:   jobStateFromRow(row),
+		Elapsed: row.Elapsed,
+	}
+	handle, path, cut := strings.Cut(row.Report, jobRowLogSep)
+	if !cut {
+		return notice, true
+	}
+	notice.LogPath = strings.TrimSpace(path)
+	if id, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(handle, "job "))); err == nil && id > 0 {
+		notice.ID = id
+	}
+	return notice, true
+}
+
+// jobStateFromRow maps a kept row's state onto a job's own.
+//
+// THE RUNNING CASE IS NOT ONLY FOR CHECKPOINTS. A row restored from a file is
+// always settled — a job that was still moving when aforge closed is stopped on
+// the way in (task_store.go), because nothing survives the process it forked
+// from — but the SAME rows are replayed to a lane that attaches while the work
+// is going, which is what a person switching back to this conversation opens.
+// Reading a live row as an ending would tell them the command they are watching
+// had already failed.
+func jobStateFromRow(row TaskNotice) JobState {
+	switch {
+	case row.Stopped:
+		return JobStopped
+	case row.State == TaskDone:
+		return JobDone
+	case row.State == TaskFailed:
+		return JobFailed
+	}
+	return JobRunning
 }
 
 // jobKindWord translates the registry's private kind into the published one.

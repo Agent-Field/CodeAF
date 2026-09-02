@@ -71,8 +71,15 @@ func jobRowLead(id int, logPath string) string {
 	if logPath == "" {
 		return "job " + strconv.Itoa(id)
 	}
-	return fmt.Sprintf("job %d · log %s", id, logPath)
+	return fmt.Sprintf("job %d%s%s", id, jobRowLogSep, logPath)
 }
+
+// jobRowLogSep joins the handle to the path in the sentence above. It is a
+// constant because the sentence is now a STORAGE FORMAT as much as a row —
+// [jobNoticeFromRow] reads it back out of a checkpoint written by an older
+// aforge — and a separator spelled in two places is a separator that drifts
+// until one of them stops being able to read the other.
+const jobRowLogSep = " · log "
 
 // jobRowTitle is the short name a job's row is drawn under.
 //
@@ -172,12 +179,19 @@ func (a *Agent) announceJobRow(info jobInfo) {
 	// [jobRegistry.adopt]), so a "done" can never overtake the "running" that has
 	// to precede it, and two different jobs are two different families with
 	// nothing between them to order.
-	a.emitTaskUpdate(notice)
+	// THE ROW IS KEPT AND IT IS NOT PUBLISHED. Those were one act while a job
+	// reached a surface as a task row, and they are two things: keeping is what
+	// makes a conversation reopened tomorrow able to draw what it ran, and
+	// publishing is what a surface draws NOW. A job is published as a job
+	// (jobnotice.go), so the roster's lane is left to the work that belongs on
+	// it — anything else would be one piece of work counted twice, once in a
+	// section and once among the task families.
+	//
+	// WHAT THE STORE KEEPS IS STILL A TASK ROW because the store is a FILE, and
+	// files already written are read by the aforge that opens them next. The
+	// checkpoint's own dialect is projected back at the edge on the way out
+	// ([jobNoticeFromRow], replayed by [Agent.replayTaskRoster]).
 	a.graph().keepRunRows(row, []TaskNotice{notice})
-	// AND AS A JOB, ON ITS OWN KIND. The TaskNotice above is still published
-	// because other readers still draw from it; the JobNotice is the one a
-	// surface that knows what a job is reads. Additive: the old row does not
-	// go away because the new one arrived.
 	a.emitJobUpdate(noticeOf(info))
 	if minted {
 		// THE JOB NEVER WAITS TO BE NAMED. The process is already running —

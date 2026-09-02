@@ -1,11 +1,18 @@
 package session
 
-// A BACKGROUND JOB IS A ROW ON THE ROSTER WHILE IT LIVES (jobrow.go).
+// A BACKGROUND JOB PUBLISHES ITSELF WHILE IT LIVES (jobrow.go, jobnotice.go).
 //
-// Every case here reads the ROSTER LANE — [Agent.WatchTaskUpdates], the one door
-// every surface draws live work from — rather than the registry, because the
-// defect this wave fixed was not that the registry forgot a job. It was that
-// nothing outside the registry could ever be told about one.
+// Every case here reads the LANE a surface draws from — [Agent.WatchTaskUpdates],
+// the one standing door — rather than the registry, because the defect this
+// wave fixed was not that the registry forgot a job. It was that nothing outside
+// the registry could ever be told about one.
+//
+// WHAT THEY WAIT FOR IS AN [EventJobUpdate] AND NOT A TASK ROW. A job used to be
+// announced as a [TaskNotice] of a `job` kind, and these cases waited on that;
+// the row is still what the CHECKPOINT keeps, because a file already written is
+// read by the aforge that opens it next, but nothing is drawn from it any more.
+// A job that arrived on the roster's lane would be one piece of work counted
+// twice — once in the jobs section and once among the task families.
 
 import (
 	"context"
@@ -18,6 +25,11 @@ import (
 // rosterLane opens a standing subscription and hands back the events it has
 // been given so far, newest last. The stop is registered with the test so a
 // lane never outlives the case that opened it.
+//
+// IT IS ONE LANE FOR BOTH KINDS OF NEWS. Jobs and tasks are published as
+// different events and travel the same standing subscription, which is why this
+// is not renamed: a surface opens one door and is told about everything this
+// conversation is doing.
 func rosterLane(t *testing.T, agent *Agent) <-chan Event {
 	t.Helper()
 	lane, stop := agent.WatchTaskUpdates()
@@ -25,37 +37,37 @@ func rosterLane(t *testing.T, agent *Agent) <-chan Event {
 	return lane
 }
 
-// awaitJobRow drains a lane until a job row in the wanted state arrives, and
-// fails on the deadline. It is a poll rather than a single receive because the
-// roster carries other rows and because a job's ending is another goroutine's
-// news (jobs_test.go's [waitFor] states the same rule for the registry).
-func awaitJobRow(t *testing.T, lane <-chan Event, want TaskState) TaskNotice {
+// awaitJob drains a lane until a job in the wanted state arrives, and fails on
+// the deadline. It is a poll rather than a single receive because the lane
+// carries other news and because a job's ending is another goroutine's
+// (jobs_test.go's [waitFor] states the same rule for the registry).
+func awaitJob(t *testing.T, lane <-chan Event, want JobState) JobNotice {
 	t.Helper()
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case event, open := <-lane:
 			if !open {
-				t.Fatalf("the roster lane closed before a %s job row arrived", want)
+				t.Fatalf("the lane closed before a %s job arrived", want)
 			}
-			if event.Kind != EventTaskUpdate || event.Task == nil {
+			if event.Kind != EventJobUpdate || event.Job == nil {
 				continue
 			}
-			if event.Task.Kind == TaskKindJob && event.Task.State == want {
-				return *event.Task
+			if event.Job.State == want {
+				return *event.Job
 			}
 		case <-deadline:
-			t.Fatalf("timed out waiting for a %s job row on the roster", want)
+			t.Fatalf("timed out waiting for a %s job", want)
 		}
 	}
 }
 
-// ── the row appears ─────────────────────────────────────────────────────────
+// ── the job appears ─────────────────────────────────────────────────────────
 
 // THE OWNER'S SCENARIO, REDUCED TO ITS ONE MISSING FACT: a command started in
-// the background puts a row in front of whoever is drawing live work, naming the
+// the background is put in front of whoever is drawing live work, carrying the
 // command and its log, from the moment it starts.
-func TestABackgroundCommandPutsARowOnTheRoster(t *testing.T) {
+func TestABackgroundCommandIsPublishedToTheSurface(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
 	lane := rosterLane(t, agent)
@@ -68,17 +80,23 @@ func TestABackgroundCommandPutsARowOnTheRoster(t *testing.T) {
 		t.Fatalf("a background start answered as an error: %q", answer)
 	}
 
-	row := awaitJobRow(t, lane, TaskRunning)
-	if row.Title != "sleep 30" {
-		t.Fatalf("the row is named %q, not after the command that made it", row.Title)
+	job := awaitJob(t, lane, JobRunning)
+	if job.Command != "sleep 30" {
+		t.Fatalf("the job carries the command %q, not the one that made it", job.Command)
 	}
-	if row.ID == 0 {
-		t.Fatal("the row carries no id, so no surface can key it")
+	if job.ID == 0 {
+		t.Fatal("the job carries no id, so no surface can key it or stop it")
 	}
-	// THE LOG IS REACHABLE FROM THE ROW, which is a job's only handle back: it
-	// has no room, no branch and no report anybody wrote.
-	if !strings.Contains(row.Report, ".log") {
-		t.Fatalf("the row does not name its log: %q", row.Report)
+	// THE LOG IS A FIELD AND NOT A SENTENCE. It is a job's only handle back — it
+	// has no room, no branch and no report anybody wrote — and a surface should
+	// never have to parse prose to find it.
+	if !strings.Contains(job.LogPath, ".log") {
+		t.Fatalf("the job does not name its log: %q", job.LogPath)
+	}
+	// AND IT HAS A START, so a column can count its clock up on its own beat
+	// rather than re-asking the engine four times a second.
+	if job.Started.IsZero() {
+		t.Fatal("the job carries no start, so no clock can tick from it")
 	}
 
 	// AND THE HEAD COUNT SAYS SOMETHING IS WORKING. An empty column and a "0
@@ -90,8 +108,8 @@ func TestABackgroundCommandPutsARowOnTheRoster(t *testing.T) {
 
 // A PROMOTED COMMAND IS A JOB IN EVERY WAY, INCLUDING THIS ONE. A foreground
 // call that reaches its bound is adopted rather than killed (promote.go), and
-// the row it grows is what tells the person the work did not stop.
-func TestAPromotedCommandPutsARowOnTheRoster(t *testing.T) {
+// what it publishes is what tells the person the work did not stop.
+func TestAPromotedCommandIsPublishedToTheSurface(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
 	lane := rosterLane(t, agent)
@@ -102,19 +120,22 @@ func TestAPromotedCommandPutsARowOnTheRoster(t *testing.T) {
 	})
 	id := promotedJobID(t, answer)
 
-	row := awaitJobRow(t, lane, TaskRunning)
-	if row.Title != "sleep 30" {
-		t.Fatalf("the promoted row is named %q, not after the command that made it", row.Title)
+	job := awaitJob(t, lane, JobRunning)
+	if job.Command != "sleep 30" {
+		t.Fatalf("the promoted job carries the command %q", job.Command)
 	}
-	if !strings.Contains(row.Report, jobRowLead(id, "")) {
-		t.Fatalf("the row does not name job %d: %q", id, row.Report)
+	// THE ID IS THE ONE THE MODEL WAS ALREADY GIVEN. `jobs output 3` and
+	// `jobs kill 3` take it, and so does [Agent.Cancel] as `job:3` — one thing,
+	// one number, which is the whole reason a job no longer mints a second.
+	if job.ID != id {
+		t.Fatalf("the published job is %d and the model was told %d", job.ID, id)
 	}
 }
 
-// ── the row settles ─────────────────────────────────────────────────────────
+// ── the job settles ─────────────────────────────────────────────────────────
 
-// A JOB THAT CAME OFF IS FINISHED WORK. Nothing is left to do about it and the
-// row says so, which is what lets a column stop drawing a spinner over it.
+// A JOB THAT CAME OFF IS FINISHED WORK. Nothing is left to do about it and it
+// says so, which is what lets a column stop drawing a clock over it.
 func TestAJobThatExitsCleanlySettlesAsDone(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -125,19 +146,19 @@ func TestAJobThatExitsCleanlySettlesAsDone(t *testing.T) {
 		"background": true,
 	})
 
-	row := awaitJobRow(t, lane, TaskDone)
-	if row.Stopped {
-		t.Fatal("a job that ended on its own is marked as one somebody stopped")
+	job := awaitJob(t, lane, JobDone)
+	if job.ExitCode != 0 {
+		t.Fatalf("a job that ended cleanly carries exit %d", job.ExitCode)
 	}
-	// AND THE PRESENT IT REPORTED IS OVER. A settled row that still counted as
+	// AND THE PRESENT IT REPORTED IS OVER. A settled job that still counted as
 	// working would leave the head saying a number nothing is behind.
 	waitFor(t, "the head count to drop back to nothing", func() bool {
 		return CountWorking(agent.WorkingNow()) == 0
 	})
 }
 
-// A JOB THAT DID NOT COME OFF IS INCOMPLETE WORK, and the row is the only place
-// a person finds that out without asking.
+// A JOB THAT DID NOT COME OFF IS INCOMPLETE WORK, and this is the only place a
+// person finds that out without asking.
 func TestAJobThatExitsBadlySettlesAsIncomplete(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -148,14 +169,18 @@ func TestAJobThatExitsBadlySettlesAsIncomplete(t *testing.T) {
 		"background": true,
 	})
 
-	row := awaitJobRow(t, lane, TaskFailed)
-	if row.Stopped {
-		t.Fatal("a job that failed on its own is marked as one somebody stopped")
+	job := awaitJob(t, lane, JobFailed)
+	// THE CODE IS CARRIED AND NOT SUMMARISED. "exited 3" is a sentence a surface
+	// writes at its own width; the number is the fact.
+	if job.ExitCode != 3 {
+		t.Fatalf("a job that exited 3 carries exit %d", job.ExitCode)
 	}
 }
 
-// A JOB SOMEBODY ENDED IS NOT A FAILURE, and the row carries the difference:
-// the state is the same, and the fact beside it is the whole of the news.
+// A JOB SOMEBODY ENDED IS NOT A FAILURE, and it is a STATE of its own rather
+// than a flag beside one: "it failed" and "you stopped it" are different news
+// about a process that is equally not running, and a surface should not read two
+// fields to tell them apart.
 func TestAKilledJobSaysItWasStopped(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -169,29 +194,27 @@ func TestAKilledJobSaysItWasStopped(t *testing.T) {
 	if _, err := fmt.Sscanf(answer, "job %d started", &id); err != nil {
 		t.Fatalf("not a background-start sentence: %q", answer)
 	}
-	awaitJobRow(t, lane, TaskRunning)
+	awaitJob(t, lane, JobRunning)
 
 	if text, isError := killJobThroughTool(t, agent, id); isError {
 		t.Fatalf("the kill answered as an error: %q", text)
 	}
-	row := awaitJobRow(t, lane, TaskFailed)
-	if !row.Stopped {
-		t.Fatal("a job this session killed does not say it was stopped")
+	if job := awaitJob(t, lane, JobStopped); job.ID != id {
+		t.Fatalf("the stopped job is %d and the killed one was %d", job.ID, id)
 	}
 }
 
-// killJobThroughTool ends one job through the tool, which is the only door the model has.
+// killJobThroughTool ends one job through the tool, which is the model's door.
 func killJobThroughTool(t *testing.T, agent *Agent, id int) (string, bool) {
 	t.Helper()
 	return runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"kill","id":%d}`, id))
 }
 
-// ── the row is there for whoever arrives later ──────────────────────────────
+// ── the job is there for whoever arrives later ──────────────────────────────
 
-// A SURFACE THAT ATTACHES WHILE THE WORK IS ALREADY GOING IS HANDED THE ROW.
-// This is the case a switched-away conversation and a resumed window are both
-// made of, and the graph's own replay cannot answer it — a job is no node
-// (rosterrecord.go).
+// A SURFACE THAT ATTACHES WHILE THE WORK IS ALREADY GOING IS HANDED IT. This is
+// the case a switched-away conversation and a resumed window are both made of,
+// and the graph's own replay cannot answer it — a job is no node.
 func TestAReattachedLaneIsHandedTheJobsAlreadyRunning(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -201,18 +224,19 @@ func TestAReattachedLaneIsHandedTheJobsAlreadyRunning(t *testing.T) {
 		"command":    "sleep 30",
 		"background": true,
 	})
-	started := awaitJobRow(t, first, TaskRunning)
+	started := awaitJob(t, first, JobRunning)
 
 	// A SECOND LANE, opened with nothing drawn on it, exactly as a surface
 	// switching back to this conversation opens one.
 	second := rosterLane(t, agent)
-	replayed := awaitJobRow(t, second, TaskRunning)
+	replayed := awaitJob(t, second, JobRunning)
 	if replayed.ID != started.ID {
-		t.Fatalf("the replayed row is id %d and the live one was %d — a surface would draw two",
+		t.Fatalf("the replayed job is %d and the live one was %d — a surface would draw two",
 			replayed.ID, started.ID)
 	}
-	if replayed.Title != started.Title {
-		t.Fatalf("the replayed row is named %q and the live one %q", replayed.Title, started.Title)
+	if replayed.LogPath != started.LogPath {
+		t.Fatalf("the replayed job's log is %q and the live one's %q",
+			replayed.LogPath, started.LogPath)
 	}
 }
 
@@ -243,9 +267,39 @@ func TestAJobRowStillMovingComesBackInTheJobsOwnWords(t *testing.T) {
 	}
 }
 
+// A CHECKPOINTED ROW IS READ BACK AS THE JOB IT WAS. The store keeps a task row
+// because that is what older aforges wrote, and the packed `job 3 · log /…`
+// sentence inside it is parsed exactly once, here at the edge — so everything
+// above gets an id and a path in fields of their own (jobnotice.go).
+func TestACheckpointedRowIsReadBackAsTheJobItWas(t *testing.T) {
+	t.Parallel()
+	job, isJob := jobNoticeFromRow(TaskNotice{
+		ID: 9, Title: "npm run dev", Kind: TaskKindJob,
+		State: TaskFailed, Stopped: true,
+		Report: jobRowLead(3, "/tmp/jobs/3.log"),
+	})
+	if !isJob {
+		t.Fatal("a checkpointed job row was not read back as a job")
+	}
+	// THE JOB'S OWN NUMBER WINS OVER THE ROSTER'S. The row was drawn under 9 and
+	// the work was always job 3; 3 is what `jobs kill` and `job:3` take.
+	if job.ID != 3 {
+		t.Fatalf("the restored job is %d, not the number the model was given", job.ID)
+	}
+	if job.LogPath != "/tmp/jobs/3.log" {
+		t.Fatalf("the restored job's log is %q", job.LogPath)
+	}
+	if job.State != JobStopped {
+		t.Fatalf("a row that was cut short came back as %q", job.State)
+	}
+	if _, isJob := jobNoticeFromRow(TaskNotice{ID: 5, State: TaskDone}); isJob {
+		t.Fatal("an ordinary task row was read back as a job")
+	}
+}
+
 // AND A CONVERSATION REOPENED TOMORROW REDRAWS THE JOB IT RAN, settled: the
 // process the job WAS is gone, so nothing is restarted, nothing re-enters a
-// frontier and nothing counts as working — but the column is not empty beside a
+// frontier and nothing counts as working — but the section is not empty beside a
 // transcript that talks about the work.
 func TestAResumedConversationRedrawsAMidFlightJobSettled(t *testing.T) {
 	t.Parallel()
@@ -258,7 +312,7 @@ func TestAResumedConversationRedrawsAMidFlightJobSettled(t *testing.T) {
 		"command":    "sleep 30",
 		"background": true,
 	})
-	started := awaitJobRow(t, lane, TaskRunning)
+	started := awaitJob(t, lane, JobRunning)
 	if err := yesterday.Close(); err != nil {
 		t.Fatalf("close the first conversation: %v", err)
 	}
@@ -266,18 +320,15 @@ func TestAResumedConversationRedrawsAMidFlightJobSettled(t *testing.T) {
 	today, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.SessionFile = journal
 	})
-	restored := awaitJobRow(t, rosterLane(t, today), TaskFailed)
+	restored := awaitJob(t, rosterLane(t, today), JobStopped)
 	if restored.ID != started.ID {
-		t.Fatalf("the restored row is id %d and yesterday's was %d", restored.ID, started.ID)
+		t.Fatalf("the restored job is %d and yesterday's was %d", restored.ID, started.ID)
 	}
-	if restored.Kind != TaskKindJob {
-		t.Fatalf("the restored row came back as kind %q", restored.Kind)
-	}
-	if !restored.Stopped {
-		t.Fatalf("the restored row came back as a failure rather than work cut short: %+v", restored)
-	}
-	if restored.Title != started.Title {
-		t.Fatalf("the restored row is named %q and yesterday's was %q", restored.Title, started.Title)
+	// THE LOG SURVIVES THE PROCESS, and it is the whole of what a finished job
+	// left behind — a restored job without it is a row a person cannot act on.
+	if restored.LogPath != started.LogPath {
+		t.Fatalf("the restored job's log is %q and yesterday's was %q",
+			restored.LogPath, started.LogPath)
 	}
 	if working := CountWorking(today.WorkingNow()); working != 0 {
 		t.Fatalf("%d pieces of work are moving in a session that has started none", working)
@@ -287,7 +338,7 @@ func TestAResumedConversationRedrawsAMidFlightJobSettled(t *testing.T) {
 // ── nothing, when there is nothing ──────────────────────────────────────────
 
 // ZERO JOBS ADDS NOTHING ANYWHERE — the emptiness law, stated over the two doors
-// a job reaches: no row on the roster and no head count.
+// a job reaches: nothing published and no head count.
 func TestASessionWithNoJobsPublishesNothing(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
@@ -303,11 +354,12 @@ func TestASessionWithNoJobsPublishesNothing(t *testing.T) {
 	}
 }
 
-// ── the one job that is NOT a row ───────────────────────────────────────────
+// ── the one job that is NOT published ───────────────────────────────────────
 
-// A TASK NODE IS IN THE REGISTRY AND IS NOT A JOB ROW. It already has a roster
-// row of its own, published by the graph that runs it, and a second one here
-// would draw and count the same piece of work twice (jobs.go's [jobKindTask]).
+// A TASK NODE IS IN THE REGISTRY AND IS NOT PUBLISHED AS A JOB. It already has a
+// roster row of its own, published by the graph that runs it, and a second
+// appearance here would draw and count the same piece of work twice (jobs.go's
+// [jobKindTask]).
 func TestATaskNodeIsNotGivenASecondRow(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
