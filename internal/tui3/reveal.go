@@ -177,6 +177,25 @@ func advanceReveal(shown *int, text string, slots int, snap bool) bool {
 	return true
 }
 
+// caught is how much of a gap `slots` of the clock close, as a fraction.
+//
+// THE SLOTS COMPOUND, THEY DO NOT MULTIPLY, and getting that wrong is how an
+// ease becomes a jump. [revealCatch] is the fraction ONE slot takes; two slots
+// take 70% of the gap and not 90%, and three take 83% and not 135% — and 135%
+// is an ease that overshoots its target, which every caller below reads as
+// "close enough, land now". A paint is only one slot wide when the terminal is
+// keeping up perfectly. On a loaded machine it is routinely three, so the
+// linear form collapsed every walk on this surface into a single frame: the
+// bill, the token total and the context weight all jumped, on a build whose
+// tests all passed because a test advances one slot at a time.
+func caught(slots int) float64 {
+	left := 1.0
+	for i := 0; i < slots; i++ {
+		left *= 1 - float64(revealCatch)/1000
+	}
+	return 1 - left
+}
+
 // revealStride is how many unread bytes one paint takes. The catch fraction
 // is the ease-out; the slot ceiling is the snappy bound — a lump may never
 // take more than [revealSlots] to arrive, whatever its size.
@@ -190,14 +209,13 @@ func revealStride(unread, slots int) int {
 	if unread <= revealFloor {
 		return unread
 	}
-	take := unread * revealCatch / 1000
-	if take < revealFloor {
-		take = revealFloor
+	take := int(float64(unread) * caught(slots))
+	if floor := revealFloor * slots; take < floor {
+		take = floor
 	}
-	if need := (unread + revealSlots - 1) / revealSlots; take < need {
+	if need := ((unread + revealSlots - 1) / revealSlots) * slots; take < need {
 		take = need
 	}
-	take *= slots
 	if take > unread {
 		return unread
 	}
@@ -249,11 +267,10 @@ func easeInt(shown, target, slots int) int {
 	if delta <= 1 {
 		return target
 	}
-	step := delta * meterCatch / 1000
+	step := int(float64(delta) * caught(slots))
 	if step < 1 {
 		step = 1
 	}
-	step *= slots
 	if step >= delta {
 		return target
 	}
@@ -278,11 +295,10 @@ func easeCost(shown, target float64, slots int) float64 {
 	if delta <= grain {
 		return target
 	}
-	step := delta * float64(meterCatch) / 1000
+	step := delta * caught(slots)
 	if step < grain {
 		step = grain
 	}
-	step *= float64(slots)
 	if step >= delta {
 		return target
 	}

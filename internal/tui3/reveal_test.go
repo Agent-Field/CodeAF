@@ -392,3 +392,32 @@ func asFloats(in []int) []float64 {
 	}
 	return out
 }
+
+// A WIDE PAINT EASES, IT DOES NOT LAND.
+//
+// The catch fraction is per SLOT and a paint is as many slots wide as the time
+// since the last one. Multiplying the fraction by the slots — which is what this
+// file used to do — gives 135% of the gap at three slots, and every caller reads
+// an overshoot as "land now". A terminal that is keeping up paints one slot at a
+// time and hid it completely; a loaded one paints three, and every figure on the
+// status line jumped in a single frame. Only a multi-slot assertion catches it.
+func TestAWidePaintStillEases(t *testing.T) {
+	for _, slots := range []int{2, 3, 5} {
+		if got := caught(slots); got >= 1 {
+			t.Fatalf("%d slots close %.2f of the gap — an ease that overshoots", slots, got)
+		}
+		if got, one := caught(slots), caught(1); got <= one {
+			t.Fatalf("%d slots close %.2f, no more than one slot's %.2f", slots, got, one)
+		}
+		if got := easeInt(0, 10_000, slots); got == 10_000 {
+			t.Fatalf("a %d-slot paint landed the token total in one frame", slots)
+		}
+		if got := easeCost(0, 0.10, slots); got == 0.10 {
+			t.Fatalf("a %d-slot paint landed the bill in one frame", slots)
+		}
+		lump := strings.Repeat("the map is never made. ", 20)
+		if got := revealStride(len(lump), slots); got >= len(lump) {
+			t.Fatalf("a %d-slot paint drew the whole lump in one frame", slots)
+		}
+	}
+}
