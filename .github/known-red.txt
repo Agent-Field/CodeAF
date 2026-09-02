@@ -21,7 +21,6 @@
 # Fail on a clean tree.
 TestEveryGoroutineInTheGuardedTreeIsGuarded
 TestEveryLockInTheGuardedTreeUnlocksFromADefer
-TestEveryMessageWriteUsesThreadPost
 
 # Fail on the Linux CI runner and PASS on a clean macOS tree (each re-run
 # locally on 2026-08-31 to confirm). Environment-shaped: whoever picks one up

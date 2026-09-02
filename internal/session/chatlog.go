@@ -62,6 +62,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -271,7 +272,10 @@ func (j *chatJournal) write(message ai.Message) string {
 	if attachment != "" {
 		posted.Attachments = []string{attachment}
 	}
-	landed, err := j.store.PostMessage(posted)
+	// Through the one door and never the store directly: [thread.Post] is the
+	// single place a durable conversation write outside internal/store is
+	// allowed to happen, and internal/thread's sweep fails the build otherwise.
+	landed, err := thread.Post(j.store, posted)
 	if err != nil {
 		return ""
 	}
