@@ -953,6 +953,15 @@ phrased in.** Both are searched, the sections they agree on come first, and you
 still get the same four — so a page your words reach is a page the answer
 reaches, even when the question was looked up in different words.
 
+**And when your message is about aforge itself, the matching section titles are
+put in front of the model before it decides anything** — up to four of them,
+each one heading plus its opening words, and nothing else. It is titles only:
+the sections themselves still have to be looked up. This costs you nothing and
+happens only on a message that reaches for this manual's own vocabulary; ask for
+a file to be renamed and nothing is added to what you typed. You never see the
+block — what is kept in the conversation, in a resume and in an export is the
+sentence you wrote.
+
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means aforge does not do it.`
 

@@ -994,6 +994,14 @@ type Config struct {
 	// It says nothing about the silence watchdog beside it, which has no switch.
 	ReplyGuardOff bool
 
+	// ManualCueOff turns off the manual's matching titles beside a person's
+	// question (manual_cue.go). It is spelled as the OFF state for
+	// [Config.ReplyGuardOff]'s reason — a Config nobody filled in keeps the cue
+	// — and it exists for ONE caller: the wire lane in internal/e2e, which
+	// cannot report what a mechanism moved without a pass measured beside it on
+	// the same night, the same model and the same code path.
+	ManualCueOff bool
+
 	// TaskSettle is who decides a task that landed needing a look — the
 	// `task.settle` row, as the person set it ([TaskSettle]). Empty is
 	// [TaskSettleAsk], which is the default and the only value a caller that has
@@ -2023,6 +2031,14 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
+
+	// cued is THIS TURN'S manual cue and nothing older: the block of matching
+	// section titles, the sentence it was matched against, and where that
+	// sentence sits in the transcript (manual_cue.go). It is written by
+	// [Agent.startTurnLocked], read where a request is assembled, and replaced
+	// wholesale by the next turn — a turn that earned no cue clears it, which is
+	// what keeps a hint from outliving the question that bought it.
+	cued manualCueTurn
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note

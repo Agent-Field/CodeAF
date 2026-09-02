@@ -132,7 +132,7 @@ func TestSubmitImageWithNoImagesIsSubmit(t *testing.T) {
 
 	request := completer.request(0)
 	sent := request[len(request)-1]
-	if sent.Role != "user" || len(sent.Content) != 1 || sent.Content[0].Text != "just words" {
+	if sent.Role != "user" || len(sent.Content) != 1 || withoutManualCue(sent.Content[0].Text) != "just words" {
 		t.Fatalf("sent %+v, want the plain text message Submit would have sent", sent)
 	}
 }

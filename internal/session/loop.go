@@ -1122,6 +1122,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			attemptCtx = provider.WithCallTag(attemptCtx, "turn")
 		}
 		messages, carried := a.snapshotWithReasoning()
+		// AND THIS TURN'S MANUAL CUE RIDES ON THE COPY, never in the transcript
+		// the copy was taken from (manual_cue.go): the block is evidence for the
+		// decision this request is about to make, and a conversation that kept
+		// every one of them would be paying again on every later turn for hints
+		// about questions already answered.
+		messages = a.withManualCue(messages)
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,

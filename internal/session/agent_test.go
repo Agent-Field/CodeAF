@@ -1992,7 +1992,7 @@ func TestFollowUpsDrainOneAtATime(t *testing.T) {
 	}
 	// Each turn carried exactly one queued message, in the order they were
 	// typed: two turns' worth of transcript, not one turn with both spliced in.
-	if got := messageText(completer.request(1)[3]); got != "the follow-up" {
+	if got := withoutManualCue(messageText(completer.request(1)[3])); got != "the follow-up" {
 		t.Fatalf("second turn opened with %q", got)
 	}
 	if got, want := rolesOf(completer.request(2)),

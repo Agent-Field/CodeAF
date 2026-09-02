@@ -20,12 +20,14 @@
 package e2e
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/manual/asked"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 const (
@@ -90,10 +92,33 @@ const (
 	wireHeldWithinFloor  = 9
 )
 
+// wireNoCueEnv is how a pass is run WITHOUT the manual's titles beside the
+// question (internal/session's manual_cue.go), and it is an environment
+// variable rather than a flag because what it buys is a BASELINE MEASURED THE
+// SAME NIGHT: a number quoted from a previous release's table is a number about
+// a different model's mood as much as about this build. Set it and the run
+// measures the surface exactly as it was before the cue existed.
+//
+//	AFORGE_WIRE_NO_CUE=1 go test -tags e2e -count=1 -timeout 120m -v -run TestManualOnTheWire ./internal/e2e/
+const wireNoCueEnv = "AFORGE_WIRE_NO_CUE"
+
+// wireConfig is [manualConfig] with the cue switched to whatever this pass is
+// measuring, so both halves of the comparison run the same file and the same
+// code path and differ in one bit.
+func wireConfig(cfg *session.Config) {
+	manualConfig(cfg)
+	cfg.ManualCueOff = os.Getenv(wireNoCueEnv) != ""
+}
+
 // TestManualOnTheWire is the lane itself.
 func TestManualOnTheWire(t *testing.T) {
 	w := newManualWorld(t)
 	started := time.Now()
+	cue := "WITH the manual's titles beside the question"
+	if os.Getenv(wireNoCueEnv) != "" {
+		cue = "WITHOUT the cue (" + wireNoCueEnv + " is set)"
+	}
+	t.Logf("this pass is %s", cue)
 
 	plain := askOnTheWire(t, w, "the twenty-five", asked.Plain)
 	held := askOnTheWire(t, w, "held out", asked.HeldOut)
@@ -236,7 +261,7 @@ func askOneOnTheWire(t *testing.T, w *world, question asked.Question) wireAsk {
 	found := wireAsk{question: question.Ask, want: question.Want}
 	for attempt := 1; attempt <= wireAttempts; attempt++ {
 		started := time.Now()
-		agent, place := w.open(aPlainWorkspace(t), manualConfig)
+		agent, place := w.open(aPlainWorkspace(t), wireConfig)
 		out := w.say(agent, question.Ask, answerYes)
 		usd, models := ledgerSince(t, started)
 		found.broke = out.Err != nil

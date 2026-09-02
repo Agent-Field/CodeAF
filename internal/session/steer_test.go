@@ -86,11 +86,15 @@ func steerEvents(collected []Event) []string {
 
 // userLines is every user-role message in one request, in order — the shape
 // every assertion about "what the model was actually sent" is made against.
+// It reports WHAT THE PERSON SAID, so the manual's titles are cut back off
+// (manual_cue.go): that block rides in the message for the model alone, the
+// journal never carries it, and a helper that reported it would make every
+// assertion here about a sentence nobody typed.
 func userLines(messages []ai.Message) []string {
 	var out []string
 	for _, message := range messages {
 		if message.Role == "user" {
-			out = append(out, messageText(message))
+			out = append(out, withoutManualCue(messageText(message)))
 		}
 	}
 	return out

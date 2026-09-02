@@ -1193,6 +1193,13 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.empty() {
 		a.recordUserLocked(user)
 	}
+	// AND IF WHAT THEY TYPED IS A QUESTION ABOUT AFORGE, THE MANUAL'S MATCHING
+	// TITLES ARE FOUND NOW AND CARRIED BY THE TURN (manual_cue.go). It is a
+	// lookup in an embedded corpus rather than anything that waits, so it sits
+	// under a.mu with the rest of the turn's opening; it is decided AFTER the
+	// record because nothing about it is recorded, and where the message sits is
+	// what the block is later attached beside.
+	a.cueTurnLocked(user)
 	// THE TURN'S WORK BEGINS HERE, and the floor says so for [Agent.AttachReplay]:
 	// everything recorded at or past this index while the turn runs is work the
 	// hub's backlog can replay, so a replay-then-attach surface must not be
