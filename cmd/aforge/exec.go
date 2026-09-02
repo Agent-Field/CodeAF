@@ -53,7 +53,7 @@ func runExec(args []string) error {
 	if *debug {
 		trace.Enable()
 	}
-	traced := trace.Begin(context.Background())
+	traced := openDebugRecord("exec", *model, *workspace)
 	defer trace.Announce(traced, os.Stderr)
 	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
 		return err

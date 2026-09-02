@@ -94,6 +94,9 @@ type Recorder struct {
 	capped   bool
 	silenced bool
 	wrote    bool
+	// opened says the folder has been created and the older runs pruned, so
+	// neither happens twice.
+	opened bool
 }
 
 // Folder is where this run's record is, whether or not anything is in it yet.
@@ -264,17 +267,20 @@ func (r *Recorder) writeFile(name string, document []byte) {
 	if r.silenced || r.capped {
 		return
 	}
-	if err := r.open(); err != nil {
+	// A file of its own needs the FOLDER and not the events file, so run.json
+	// and the first call body no longer leave an empty events.jsonl beside them
+	// — a run's folder says what is in it by what is in it.
+	if err := r.folder(); err != nil {
 		r.silence(err)
-		return
-	}
-	if r.bytes+int64(len(document)) > r.max {
-		r.cap()
 		return
 	}
 	path := filepath.Join(r.dir, name)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		r.silence(err)
+		return
+	}
+	if r.bytes+int64(len(document)) > r.max {
+		r.cap()
 		return
 	}
 	if err := os.WriteFile(path, document, 0o600); err != nil {
@@ -306,26 +312,38 @@ func (r *Recorder) cap() {
 	}
 }
 
-// open creates the run's folder and the events file on first use, and prunes
-// the folders of older runs while it is there. NOTHING IS OPENED BEFORE THE
-// FIRST RECORD, so a run that records nothing — every run with the switch off,
-// and a switched-on run that never reached a feeder — leaves no folder behind.
-func (r *Recorder) open() error {
-	if r.events != nil {
+// folder creates the run's folder on first use, and prunes the folders of older
+// runs while it is there. NOTHING IS CREATED BEFORE THE FIRST RECORD, so a run
+// that records nothing — every run with the switch off — leaves nothing behind.
+func (r *Recorder) folder() error {
+	if r.opened {
 		return nil
 	}
 	if err := os.MkdirAll(r.dir, 0o700); err != nil {
 		return err
 	}
+	r.opened = true
 	prune(filepath.Dir(r.dir), r.keep)
+	return nil
+}
+
+// open is folder plus the appended file, and only the callers that append need
+// it. Its own size is what r.bytes starts from, so a folder reopened by a second
+// process in the same run counts what is already there.
+func (r *Recorder) open() error {
+	if r.events != nil {
+		return nil
+	}
+	if err := r.folder(); err != nil {
+		return err
+	}
 	file, err := os.OpenFile(filepath.Join(r.dir, EventsFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	r.events = file
-	r.bytes = 0
 	if info, err := file.Stat(); err == nil {
-		r.bytes = info.Size()
+		r.bytes += info.Size()
 	}
 	return nil
 }
@@ -340,4 +358,62 @@ func (r *Recorder) silence(err error) {
 	}
 	r.silenced = true
 	fmt.Fprintf(stderr, "aforge: cannot write the debug record at %s (%v); it is off for this run\n", r.dir, err)
+}
+
+// RunHeader is the run's own first record: which door opened it, what it was
+// asked to use, and where. It is written by the door the moment the record is
+// switched on, before anything can fail — because the question a person asks of
+// a folder they found afterwards is "which run was this?", and a folder of call
+// bodies with nothing saying what the run WAS is a folder they have to guess at.
+type RunHeader struct {
+	// Command is the door's own word: "chat", "resume", "do", "exec".
+	Command string
+	// Model is what was ASKED for, empty where the door was given no pin — the
+	// emptiness law, so an absent pin never reads as a model somebody chose.
+	Model string
+	// Build is the binary this run came out of, which is the first thing anybody
+	// reading a record from another machine needs.
+	Build string
+	// Workspace is the folder the run was pointed at.
+	Workspace string
+	// Started is when the door opened. It is the header's own field rather than
+	// the ts every record carries, because the two differ on a header written
+	// after a slow launch.
+	Started time.Time
+}
+
+// OpenRun writes the run's header, and is what every door calls once the switch
+// has been read. It is a no-op when the record is off, so a door is one line
+// either way.
+//
+// IT IS ALSO WHAT CREATES THE FOLDER, which is the whole reason it exists: a
+// person who turned the record on wants to be told where it went, and a door
+// that only announced a folder something else had already written into could
+// say nothing at all on a run that reached no feeder.
+func OpenRun(ctx context.Context, header RunHeader) {
+	For(ctx).Header(ctx, header)
+}
+
+// Header writes run.json. One document, 0600, beside the events file.
+func (r *Recorder) Header(ctx context.Context, header RunHeader) {
+	if r == nil {
+		return
+	}
+	document := map[string]any{
+		"kind": "run",
+		"run":  r.run,
+		"ts":   time.Now().Format(timeLayout),
+	}
+	putText(document, "command", header.Command)
+	putText(document, "model", header.Model)
+	putText(document, "build", header.Build)
+	putText(document, "workspace", header.Workspace)
+	if !header.Started.IsZero() {
+		document["started"] = header.Started.Format(timeLayout)
+	}
+	line, err := json.Marshal(document)
+	if err != nil {
+		return
+	}
+	r.writeFile(RunFileName, line)
 }

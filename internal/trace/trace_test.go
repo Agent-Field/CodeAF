@@ -423,3 +423,82 @@ func readEvents(t *testing.T, folder string) []map[string]any {
 	}
 	return events
 }
+
+// THE DOOR'S HEADER IS WHAT CREATES THE FOLDER, and it is the one file a
+// switched-on run always has.
+func TestTheDoorsHeaderOpensTheFolderAndNamesTheRun(t *testing.T) {
+	ctx := fresh(t)
+	started := time.Now()
+	OpenRun(ctx, RunHeader{
+		Command:   "chat",
+		Model:     "deepseek/deepseek-v4-flash",
+		Build:     "dev+69029c4e",
+		Workspace: "/home/someone/project",
+		Started:   started,
+	})
+	folder := Dir(RunFrom(ctx))
+	raw, err := os.ReadFile(filepath.Join(folder, RunFileName))
+	if err != nil {
+		t.Fatalf("run.json: %v", err)
+	}
+	var header map[string]any
+	if err := json.Unmarshal(raw, &header); err != nil {
+		t.Fatalf("run.json is not one JSON document: %v", err)
+	}
+	for field, want := range map[string]string{
+		"kind":      "run",
+		"run":       RunFrom(ctx),
+		"command":   "chat",
+		"model":     "deepseek/deepseek-v4-flash",
+		"build":     "dev+69029c4e",
+		"workspace": "/home/someone/project",
+		"started":   started.Format(timeLayout),
+	} {
+		if header[field] != want {
+			t.Fatalf("run.json %s: got %v, want %q", field, header[field], want)
+		}
+	}
+	for path, want := range map[string]os.FileMode{
+		folder:                             0o700,
+		filepath.Join(folder, RunFileName): 0o600,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("%s is %o, want %o", path, got, want)
+		}
+	}
+	// And the door can now say where the record went, which is the whole reason
+	// the header is written before anything else happens.
+	var out bytes.Buffer
+	Announce(ctx, &out)
+	if got, want := out.String(), "debug record: "+folder+"\n"; got != want {
+		t.Fatalf("announcement: got %q, want %q", got, want)
+	}
+}
+
+// WITH THE SWITCH OFF THE DOOR CREATES NOTHING, which is what makes --debug
+// safe to leave out rather than something a person has to remember to clean up.
+func TestADoorWithTheSwitchOffCreatesNoFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("AFORGE_HOME", home)
+	runs.mutex.Lock()
+	runs.by = nil
+	runs.mutex.Unlock()
+	was := on.Load()
+	t.Cleanup(func() { on.Store(was) })
+	on.Store(false)
+
+	ctx := Begin(context.Background())
+	OpenRun(ctx, RunHeader{Command: "do", Model: "deepseek/deepseek-v4-flash", Started: time.Now()})
+	if _, err := os.Stat(filepath.Join(home, DirName, TraceDirName)); !os.IsNotExist(err) {
+		t.Fatalf("a run with the record off left a trace root: %v", err)
+	}
+	var out bytes.Buffer
+	Announce(ctx, &out)
+	if out.Len() != 0 {
+		t.Fatalf("a run with the record off announced %q", out.String())
+	}
+}

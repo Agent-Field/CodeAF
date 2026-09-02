@@ -108,7 +108,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if *debug {
 		trace.Enable()
 	}
-	ctx := trace.Begin(context.Background())
+	ctx := openDebugRecord(name, *model, "")
 	defer trace.Announce(ctx, os.Stderr)
 	if flags.NArg() != 0 {
 		// Resume's usage names no --once and no --session: it opens a list of

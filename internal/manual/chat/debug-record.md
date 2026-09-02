@@ -42,25 +42,34 @@ carries, so records from two runs can never be read as one.
 
 Under `AFORGE_HOME` the folder moves with everything else aforge keeps.
 
-**What is in the folder today: `events.jsonl`, one line per thing that happened, and a
-`calls/` folder holding one file per model call.** What fills them is being built, and
-this page is honest about where that has got to:
+**The folder holds the record of that run, and the first thing in it is `run.json`** —
+written the moment the run starts, and saying which door opened it (`chat`, `resume`,
+`do`, `exec`), which model was asked for, which build of aforge this was, which folder the
+run was pointed at, and when it began. It is the file that tells you which run a folder
+you found afterwards actually was.
 
-- The switch, the run's id, the folder and its size law are here, and are what this build
-  ships.
-- **Nothing writes into the folder yet.** Model-call bodies, tool calls and the choices a
-  run made each land in their own change, and until they do a run with the record on
-  records nothing.
+Beside it the run's own records accumulate: `events.jsonl`, one line per thing that
+happened, and a `calls/` folder with one file per model call named by that call's id.
+**The pieces that write those are being added one at a time**, and this build ships the
+switch, the run, its header, the folder and its size law; the call bodies, the tool calls
+and the choices a run made arrive with the changes that record them.
 
-So today: turn it on and the run behaves exactly as before, and **a run that records
-nothing leaves no folder** — the folder is created by the first record and not by the
-switch. If you turn the record on and find no folder, that is this, and not a failure.
+Each of the three doors also prints one line to the error output when it finishes, and
+only when there is something to go and look at:
+
+```
+debug record: ~/.aforge/logs/trace/52dfbdde
+```
+
+**With the switch off, nothing is created at all** — no folder, no line, nothing to clean
+up afterwards.
 
 ## Why did that call fail — what answers it today, and what the record will
 
-The record is being built to answer exactly that from the files alone. Until the pieces
-that fill it land, the answer is in the **model-call log**, which is always on and needs
-nothing switched: `aforge logs` prints the last calls with the status each came back with,
+The record is being built to answer exactly that from the files alone; today it holds the
+run's header and the pieces that fill in the rest are landing one at a time. Until they
+have, the answer is in the **model-call log**, which is always on and needs nothing
+switched: `aforge logs` prints the last calls with the status each came back with,
 the endpoint's own first sentence on a failure, how long it took and what it cost. The
 models-and-cost page has how to read one of those lines.
 

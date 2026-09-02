@@ -209,7 +209,7 @@ func runDo(args []string) error {
 	if *debug {
 		trace.Enable()
 	}
-	ctx := trace.Begin(context.Background())
+	ctx := openDebugRecord("do", *model, *workspace)
 	defer trace.Announce(ctx, os.Stderr)
 	task, err := readText(flags.Args())
 	if err != nil {

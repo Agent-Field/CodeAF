@@ -75,6 +75,11 @@ const (
 	// reader wants exactly one of them.
 	EventsFileName = "events.jsonl"
 	CallsDirName   = "calls"
+	// RunFileName is the run's own header, written by the door that opened it:
+	// which door, which model was asked for, which build, which folder, when.
+	// It is the one file a switched-on run always has, so a folder is never a
+	// pile of bodies with nothing saying what the run was.
+	RunFileName = "run.json"
 
 	// MaxRunBytes is what ONE run's folder may hold. A quarter of a gigabyte is
 	// a very long agentic run with every body kept whole, and it is a ceiling
