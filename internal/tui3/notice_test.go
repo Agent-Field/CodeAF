@@ -489,7 +489,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventRewound: func(t *testing.T, a *app) {
 			a.agent = &rewindFake{fakeAgent: &fakeAgent{model: "m", past: rewindPast()}}
 			point := session.RewindPoint{Index: 4, Turn: true, Said: "three", Entry: 4}
-			if err := a.rewindLand(point, "1 turn", nil, 0, func() {}); err != nil {
+			if err := a.rewindLand(point, "1 turn", nil, 0, nil, func() {}); err != nil {
 				t.Fatal(err)
 			}
 		},

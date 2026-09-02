@@ -757,6 +757,7 @@ func (a *app) answerStanding(answer session.StandingAnswer, verdict, chosen stri
 	// model.
 	cleared := !a.input.empty()
 	a.input.reset()
+	a.pastes = nil
 	a.endRecall()
 	a.closeLists()
 	a.markStandStale(card)

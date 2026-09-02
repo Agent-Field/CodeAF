@@ -790,10 +790,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			a.routeJudge(ctx, hub, user, usedTools, response.Text())
 			a.endPhase()
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
-			// The name comes after the turn is done and before the hub closes:
-			// the person is not kept waiting on a title, and the event still has
-			// a stream to land on (title.go).
-			a.maybeTitle(ctx, hub)
+			// Naming is scheduled after done and does not keep this hub open. Its
+			// eventual update rides the session-lifetime lane, so the surface may
+			// become idle and start another turn immediately (title.go).
+			a.maybeTitle(ctx)
 			// AND THE EXCHANGE IS READ FOR ANYTHING WORTH KEEPING, off this
 			// goroutine entirely and on the session's own lifetime rather than
 			// the turn's (memory.go). Nobody is waiting for it, nothing it finds

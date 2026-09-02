@@ -762,7 +762,7 @@ func (a *app) runMenu() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	word, ran := chooseCommand(&a.input, &a.menu, chosen)
+	word, ran := chooseCommand(&a.input, &a.menu, chosen, a.editTags)
 	if !ran {
 		return a.edited()
 	}
@@ -792,7 +792,7 @@ func (a *app) runMenu() tea.Cmd {
 // waiting for the words it takes; true is a box that now holds the command and
 // nothing else, and has been emptied ready for the dispatch. What happens after
 // the dispatch is the caller's, because the two surfaces keep different things.
-func chooseCommand(e *editor, m *menu, chosen command) (string, bool) {
+func chooseCommand(e *editor, m *menu, chosen command, edited func(from, to, inserted int)) (string, bool) {
 	// The token's start is CLAMPED to the draft as it stands. The lists follow
 	// edits and not caret moves, so there are gestures — a history recall, a
 	// draft restored under an open list — that can leave this index pointing
@@ -810,13 +810,20 @@ func chooseCommand(e *editor, m *menu, chosen command) (string, bool) {
 		head := append([]rune(nil), e.value[:at]...)
 		tail := append([]rune(nil), e.value[end:]...)
 		e.value = append(append(head, []rune(word)...), tail...)
+		if edited != nil {
+			edited(at, end, len([]rune(word)))
+		}
 		e.cursor = at + len([]rune(word))
 		m.dismiss(at)
 		return word, false
 	}
 	m.close()
 	if chosen.args != "" {
+		old := len(e.value)
 		e.setText(word + " ")
+		if edited != nil {
+			edited(0, old, len(e.value))
+		}
 		return word, false
 	}
 	e.reset()

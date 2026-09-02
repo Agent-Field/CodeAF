@@ -115,7 +115,7 @@ const taskNameSystem = "You name pieces of work."
 // it is about — this call lands on the same small models the session's namer
 // does, and one of them handed that instruction straight back as a session's
 // name.
-const taskNamePrompt = "Name this piece of work in two or three words — a label for a narrow column, not a sentence. Lowercase, no quotes, no full stop, no file paths, no ids. Answer with the name and nothing else."
+const taskNamePrompt = "Name this piece of work in exactly three short words — a label for a narrow column, not a sentence. Lowercase, no quotes, no full stop, no file paths, no ids. Answer with the name and nothing else."
 
 const (
 	// taskNameSummaryClip and taskNameBriefClip bound what the namer is shown.
@@ -150,6 +150,66 @@ const (
 	taskNameAheadWindow = 45 * time.Second
 )
 
+// beginTaskName joins one naming errand to the session's lifetime and returns
+// the context it must use through its last rename or publication. The caller's
+// context still matters — adaptive worker naming belongs to its run as well —
+// so either parent ending cancels the joined context.
+//
+// Registration and Agent.closed are read under the same lock. That is what
+// makes the WaitGroup safe: once Close starts waiting, no later Add can race
+// it, while every Add that won before Close is already in the count Close sees.
+func (a *Agent) beginTaskName(parent context.Context) (context.Context, context.CancelFunc, func(), bool) {
+	if a == nil {
+		return nil, nil, nil, false
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return nil, nil, nil, false
+	}
+	// Tests and a few narrow internal helpers construct an Agent literally. A
+	// real session receives this lifetime in newAgent; minting it lazily here
+	// keeps those callers on the same contract instead of creating an unowned
+	// exception.
+	if a.taskNamesCtx == nil {
+		a.taskNamesCtx, a.taskNamesStop = context.WithCancel(context.Background())
+	}
+	lifetime := a.taskNamesCtx
+	a.taskNameJobs.Add(1)
+	a.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(lifetime)
+	stopParent := context.AfterFunc(parent, cancel)
+	finish := func() {
+		stopParent()
+		cancel()
+		a.taskNameJobs.Done()
+	}
+	return ctx, cancel, finish, true
+}
+
+// waitForTaskNames ends every naming errand and gives their goroutines a
+// bounded moment to leave. Naming owes no write worth delaying a quit for, so
+// cancellation comes before the wait; the wait exists to keep a late provider
+// response from spending, renaming or publishing after Close has returned.
+func (a *Agent) waitForTaskNames(stop context.CancelFunc) {
+	stop()
+	settled := make(chan struct{})
+	go func() {
+		a.taskNameJobs.Wait()
+		close(settled)
+	}()
+	timer := time.NewTimer(closeGrace)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
+}
+
 // nameNode gives one freshly admitted node a name, if it needs one.
 //
 // It is called from [TaskGraph.admit] — the ONE door every task in this package
@@ -172,6 +232,10 @@ func (g *TaskGraph) nameNode(node *TaskNode) {
 	if subject == "" && ahead == nil {
 		return
 	}
+	ctx, _, finish, ok := home.beginTaskName(context.Background())
+	if !ok {
+		return
+	}
 	// IT DOES NOT RIDE THE TURN'S CONTEXT. The turn that admitted this node ends
 	// in a moment and the node outlives it by minutes; a namer cancelled with the
 	// turn would only ever land for work admitted at the very end of one.
@@ -181,14 +245,15 @@ func (g *TaskGraph) nameNode(node *TaskNode) {
 	// a path — is the ordinary call made, off the brief this door was handed,
 	// which is a different question and may well answer.
 	go func() {
-		if name := ahead.wait(); name != "" {
+		defer finish()
+		if name := ahead.wait(ctx); name != "" {
 			g.rename(node, name)
 			return
 		}
 		if subject == "" {
 			return
 		}
-		if name := home.taskName(context.Background(), subject); name != "" {
+		if name := home.taskNameWithin(ctx, subject, taskNameWindow); name != "" {
 			g.rename(node, name)
 		}
 	}()
@@ -231,9 +296,13 @@ func (a *Agent) nameAhead(subject string) *nameAhead {
 	if a == nil || subject == "" {
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel, finish, ok := a.beginTaskName(context.Background())
+	if !ok {
+		return nil
+	}
 	ahead := &nameAhead{done: make(chan struct{}), cancel: cancel}
 	go func() {
+		defer finish()
 		defer close(ahead.done)
 		ahead.name = a.taskNameWithin(ctx, subject, taskNameAheadWindow)
 	}()
@@ -254,12 +323,20 @@ func (n *nameAhead) ready() (string, bool) {
 }
 
 // wait blocks until the call answers or gives up, and is the name or "".
-func (n *nameAhead) wait() string {
+func (n *nameAhead) wait(ctxs ...context.Context) string {
 	if n == nil {
 		return ""
 	}
-	<-n.done
-	return n.name
+	var stopped <-chan struct{}
+	if len(ctxs) > 0 && ctxs[0] != nil {
+		stopped = ctxs[0].Done()
+	}
+	select {
+	case <-n.done:
+		return n.name
+	case <-stopped:
+		return ""
+	}
 }
 
 // claim says a node took this name, so a release afterwards leaves it running.
@@ -288,10 +365,14 @@ func taskNameNeeded(title string) bool {
 	if title == "" {
 		return true
 	}
+	if orchestrate.IsGenericOrdinalName(title) {
+		return true
+	}
 	if strings.ContainsAny(title, "/\\") {
 		return true
 	}
-	return len(strings.Fields(title)) > TaskNameWords
+	words := len(strings.Fields(title))
+	return words < 2 || words > TaskNameWords
 }
 
 // taskNameSubject is what the namer reads: the gloss, then the front of the
@@ -313,6 +394,11 @@ func taskNameSubject(spec taskSpec) string {
 // taskName asks the cheap model for the name. Every failure answers "", and the
 // caller's only response to that is to leave the title where it was.
 func (a *Agent) taskName(ctx context.Context, subject string) string {
+	ctx, _, finish, ok := a.beginTaskName(ctx)
+	if !ok {
+		return ""
+	}
+	defer finish()
 	return a.taskNameWithin(ctx, subject, taskNameWindow)
 }
 
@@ -320,6 +406,10 @@ func (a *Agent) taskName(ctx context.Context, subject string) string {
 // name asked for ahead of its node has a stage to answer in and one asked for at
 // admission has a row already drawn under it ([taskNameAheadWindow]).
 func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
+	subject = strings.TrimSpace(namingText(subject))
+	if subject == "" {
+		return ""
+	}
 	a.mu.Lock()
 	model, closed, client := a.model, a.closed, a.client
 	a.mu.Unlock()
@@ -343,7 +433,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
 		},
 		ai.WithMaxTokens(taskNameTokens))
-	if callErr != nil || response == nil {
+	if callErr != nil || response == nil || ctx.Err() != nil {
 		return ""
 	}
 	// The person pays for it out of the same pocket the session's own title, the
@@ -440,8 +530,13 @@ func (f *orchestrateFamily) nameRun(goal string) {
 		return
 	}
 	agent := f.agent
+	ctx, _, finish, ok := agent.beginTaskName(context.Background())
+	if !ok {
+		return
+	}
 	go func() {
-		if name := agent.taskName(context.Background(), subject); name != "" {
+		defer finish()
+		if name := agent.taskNameWithin(ctx, subject, taskNameWindow); name != "" {
 			f.rename(name)
 		}
 	}()
@@ -504,5 +599,10 @@ func (f *orchestrateFamily) nameWorker(ctx context.Context, node orchestrate.Nod
 	if subject == "" {
 		return ""
 	}
-	return f.agent.taskName(ctx, subject)
+	ctx, _, finish, ok := f.agent.beginTaskName(ctx)
+	if !ok {
+		return ""
+	}
+	defer finish()
+	return f.agent.taskNameWithin(ctx, subject, taskNameWindow)
 }

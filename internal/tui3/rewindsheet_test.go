@@ -185,6 +185,23 @@ func TestTabLiftsTheInlineModeIntoTheTimeline(t *testing.T) {
 	}
 }
 
+func TestTimelineAndLiftCarryPasteMetadataBackToTheDraft(t *testing.T) {
+	a, _ := newRewindApp(t, rewindPast())
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, " inspect")
+	want := a.input.String()
+
+	runCmd(a.enterRewind())
+	drive(t, a, key("tab"))
+	if len(a.pastes) != 0 || len(a.rewSheet.pastes) != 1 {
+		t.Fatalf("the lift holds live=%+v sheet=%+v", a.pastes, a.rewSheet.pastes)
+	}
+	drive(t, a, key("esc"))
+	if a.input.String() != want || len(a.pasteSpans()) != 1 {
+		t.Fatalf("the timeline restored %q with %+v", a.input.String(), a.pastes)
+	}
+}
+
 // ── 3. the search ───────────────────────────────────────────────────────────
 
 // Typing narrows the list to the rows that hold the words, says what was typed,

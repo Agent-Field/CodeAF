@@ -464,9 +464,7 @@ func (a *app) completeTask(entry session.TaskIndexEntry) {
 		return
 	}
 	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at+1]...)
-	tail := append([]rune(nil), e.value[e.cursor:]...)
-	e.value = append(append(head, []rune(name)...), tail...)
+	a.replaceInput(a.comp.at+1, e.cursor, name)
 	e.cursor = a.comp.at + 1 + len([]rune(name))
 	a.comp.done = name
 	a.comp.close()

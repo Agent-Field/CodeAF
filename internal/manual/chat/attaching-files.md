@@ -29,8 +29,14 @@ selected.
 screen shows; what is sent is `paste 1:` followed by the full text in a fenced block — on an
 ordinary reply, on a message that waited and was steered into the running answer, on a
 line typed into a task's room, on a card's redirect or change, and on a follow-up queued
-with `ctrl+q`. The transcript, the waiting strip and the room keep the tag. If the model
+with `ctrl+q`, an inline `/task` or `/standing` send, and a picked harness request. Every
+door expands the held document exactly once. The transcript, the waiting strip and the room keep the tag. If the model
 ever says it cannot see a paste, that is a bug and not a setting.
+
+A token that you typed literally — even the exact text `[paste 1 · 3 lines]` — remains
+literal. Paste chips carry their own position identity; editing, removing, or inserting
+another chip cannot make a lookalike token unfold or reuse the number of a chip still in
+the draft.
 
 ## Edit what I pasted
 

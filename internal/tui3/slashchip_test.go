@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -234,6 +235,123 @@ func TestTaskTagUsesTheTaskCommandRoad(t *testing.T) {
 	}
 	if a.input.String() != "" {
 		t.Fatalf("task tag left %q in the draft", a.input.String())
+	}
+}
+
+func TestCommandLinesUseUnicodeSeparatorsAndPreserveTheirArgument(t *testing.T) {
+	want := "\"/tmp/a b\"  \\\\server\\share\n```go\nx := 1\n```"
+	word, rest, ok := splitCommandLine("/export\u2003\t" + want + "\u00a0")
+	if !ok || word != "export" || rest != want {
+		t.Fatalf("split (%q, %q, %v), want (%q, %q, true)", word, rest, ok, "export", want)
+	}
+	for _, line := range []string{
+		"/api/v1 returns 500",
+		"/Users/alice/repo fix this",
+		"/user",
+		"/definitely-not-an-aforge-path/file.go:12 inspect `x`",
+	} {
+		if isCommandLine(line) {
+			t.Fatalf("slash prose %q was classified as a command", line)
+		}
+	}
+}
+
+func TestSlashPathsQuotesBackslashesAndFencesReachChatUnchanged(t *testing.T) {
+	for _, line := range []string{
+		"/api/v1 returns 500",
+		"/Users/alice/repo fix this",
+		"/not/a/local/file \"quoted\" \\\\server\\share\n```text\nkeep /slashes\n```",
+	} {
+		agent := &fakeAgent{model: "m"}
+		a := newTestApp(agent)
+		typeLine(t, a, line)
+		if len(agent.sent) != 1 || agent.sent[0] != line {
+			t.Fatalf("%q was submitted as %q", line, agent.sent)
+		}
+	}
+}
+
+func TestAnUnknownSlashPathProbeKeepsAnInlineTagDemoted(t *testing.T) {
+	line := "/api/v1 fix /task"
+	agent := &fakeAgent{model: "m"}
+	a := newTestApp(agent)
+	a.input.setText(line)
+	tags := a.liveTags()
+	if len(tags) != 1 {
+		t.Fatalf("draft has %d live tags, want one", len(tags))
+	}
+	a.input.demotedTags = append(a.input.demotedTags, tags[0])
+
+	drive(t, a, key("enter"))
+	if len(agent.sent) != 1 || agent.sent[0] != line {
+		t.Fatalf("demoted slash prose was routed as sent=%q", agent.sent)
+	}
+}
+
+func TestAnExistingRootFolderStillUsesTheDropDoor(t *testing.T) {
+	if _, err := os.Stat("/tmp"); err != nil {
+		t.Skip("this machine has no /tmp")
+	}
+	agent := &fakeAgent{model: "m"}
+	a := newTestApp(agent)
+	typeLine(t, a, "/tmp")
+	if len(agent.sent) != 0 {
+		t.Fatalf("existing root folder was sent as %q", agent.sent)
+	}
+}
+
+func TestInlineSendDoorsUnfoldAPasteExactlyOnce(t *testing.T) {
+	pasted := "alpha\nbeta\ngamma"
+
+	a, agent := tagTestApp()
+	a.paste(pasted)
+	typeInto(t, a, "keep this /standing")
+	drive(t, a, key("enter"))
+	if len(agent.marked) != 1 || !strings.Contains(agent.marked[0], pasted) ||
+		strings.Count(agent.marked[0], "paste 1:\n") != 1 {
+		t.Fatalf("standing received %q", agent.marked)
+	}
+
+	door := &taskCommandFake{Agent: &fakeAgent{model: "m"}}
+	a = newTestApp(door)
+	a.paste(pasted)
+	typeInto(t, a, "inspect this /task")
+	drive(t, a, key("enter"))
+	if !strings.Contains(door.brief, pasted) || strings.Count(door.brief, "paste 1:\n") != 1 {
+		t.Fatalf("task sizing received %q", door.brief)
+	}
+}
+
+func TestLeadingWhitespaceDoesNotMoveAPasteOnARefusedSend(t *testing.T) {
+	a, agent := tagTestApp()
+	a.input.setText(" \u2003")
+	a.input.end()
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, "keep /standing /standing")
+	drive(t, a, key("enter"))
+	if len(a.pastes) != 1 || len(a.pasteSpans()) != 1 {
+		t.Fatalf("the refusal corrupted the held paste: %+v", a.pastes)
+	}
+	tags := a.liveTags()
+	a.input.demotedTags = append(a.input.demotedTags, tags[len(tags)-1])
+	drive(t, a, key("enter"))
+	if len(agent.marked) != 1 || !strings.Contains(agent.marked[0], "alpha\nbeta\ngamma") {
+		t.Fatalf("the later send received %q", agent.marked)
+	}
+}
+
+func TestInlineStandingPasteWaitsFoldedAndUnfoldsOnce(t *testing.T) {
+	a, _ := steerableTurn(t, "working. ")
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, "keep this /standing")
+	drive(t, a, key("enter"))
+	if len(a.parks) != 1 || len(a.parks[0].pastes) != 1 || !strings.Contains(a.parks[0].text, "[paste 1") {
+		t.Fatalf("the tagged message did not wait folded: %+v", a.parks)
+	}
+	spoken := a.parks[0].spoken()
+	if strings.Contains(spoken, "/standing") || !strings.Contains(spoken, "alpha\nbeta\ngamma") ||
+		strings.Count(spoken, "paste 1:\n") != 1 {
+		t.Fatalf("the waiting message speaks as %q", spoken)
 	}
 }
 

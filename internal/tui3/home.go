@@ -2863,11 +2863,11 @@ func (a *app) homeEnter() tea.Cmd {
 		// The row the cursor rests on while something is typed, which is what
 		// makes type-and-enter mean today what it meant yesterday.
 		//
-		// A SLASH LINE IS DISPATCHED AND NEVER SENT. Chat's composer answers a
-		// line that starts with "/" by running it (input.go's [app.enterLine]);
-		// home's used to start a conversation with it, which is the one screen
-		// where a command typed in full did nothing it promised. The same
-		// dispatcher runs it here, so every command does on home what it does in
+		// A KNOWN SLASH LINE IS DISPATCHED AND NEVER SENT. Chat's composer runs a
+		// word from the command table (input.go's [app.enterLine]); home's used to
+		// start a conversation with it, which is the one screen where a command
+		// typed in full did nothing it promised. The same dispatcher runs it here,
+		// so every command does on home what it does in
 		// chat — and the conversation-scoped ones act on the conversation this
 		// window holds behind the screen, which is parity rather than a
 		// limitation: the window always holds one.
@@ -3363,39 +3363,18 @@ func (h *homeView) startLabel() string {
 // come to disagree ([app.homeEnter], [app.homeHintWords], homephone.go's narrow
 // column).
 //
-// A LEADING SLASH IS NOT ENOUGH, because `/tmp/alpha` is a place. The two are
-// separated in THE ORDER THE DISPATCHER ITSELF SEPARATES THEM (app.go's
-// [app.slash]): a word the table knows is a command whatever else it might also
-// be — `/home` is the command even on a machine that has a `/home` directory,
-// because the table is a short list a person chose to learn and the disk is not
-// — and only then is a line that resolves to a real folder the path row's
-// ([homeView.typedPlace] resolves and never creates). What is neither is still a
-// command, so an unknown one is refused in the dispatcher's own words rather
-// than quietly becoming the first message of a conversation.
+// A LEADING SLASH IS NOT ENOUGH, because `/tmp/alpha` is a place and `/api/v1`
+// may simply be the first words of a request. A word the table knows is a
+// command whatever else it might also be — `/home` is the command even on a
+// machine that has a `/home` directory. Everything else is a place, drop, or
+// ordinary first message, decided by enter rather than punctuation.
 //
 // THE LINE IS NOT QUOTED, unlike the sentence a conversation would be started
 // with. Quotes there mark words being carried somewhere as text; a command is
 // not being carried anywhere, it is being run, and `run "/settings"` would read
 // as a quoting that a command line does not do.
 func (h *homeView) runLabel(text string) string {
-	if !strings.HasPrefix(text, "/") {
-		return ""
-	}
-	// AND A LINE WHOSE EVERY WORD IS A PATH IS A DROP AND NEVER A COMMAND
-	// (dropkeys.go's [droppedPathShape]). It is string work on runes already in
-	// memory and it asks the disk nothing, so a command pays what it always paid:
-	// no command this surface answers has a separator inside its own word, which
-	// is exactly the test. Without it a dropped screenshot stood on this row
-	// wearing `run /Users/…/Screenshot\ 2026-08-31\ at\ 5.png`, a promise enter
-	// could only break.
-	if droppedPathShape(text) {
-		return ""
-	}
-	word := strings.TrimPrefix(text, "/")
-	if at := strings.IndexAny(word, " \t"); at >= 0 {
-		word = word[:at]
-	}
-	if !knownCommand(word) && h.typedPlace(text) != "" {
+	if !isCommandLine(text) {
 		return ""
 	}
 	return homeRunWord + " " + text

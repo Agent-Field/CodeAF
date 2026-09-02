@@ -127,6 +127,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	// Task names outlive the turn that decided to create their work, but they do
+	// not outlive the session that owns the rows they rename. Every admission,
+	// ahead and adaptive namer derives from this lifetime (taskname.go), and
+	// Close cancels and settles the group before its journals and lanes close.
+	agent.taskNamesCtx, agent.taskNamesStop = context.WithCancel(context.Background())
 	agent.cacheKey = sessionCacheKey(agent.id)
 	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
 	// check. The memo survives processes (internal/provider's ServedWindow), so
@@ -1565,6 +1570,9 @@ func (a *Agent) Close() error {
 	file := a.file
 	cancel := a.cancel
 	done := a.done
+	titleCancel := a.titleCancel
+	titleDone := a.titleDone
+	taskNamesStop := a.taskNamesStop
 	// The graph THIS session owns, and nil for every session that does not: a
 	// task worker reaches its parent's graph through config.tasker, and a nil
 	// here is what keeps its close from shutting a door the parent still
@@ -1610,6 +1618,20 @@ func (a *Agent) Close() error {
 		case <-timer.C:
 		}
 		timer.Stop()
+	}
+	if titleCancel != nil {
+		titleCancel()
+	}
+	if titleDone != nil {
+		timer := time.NewTimer(closeGrace)
+		select {
+		case <-titleDone:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+	if taskNamesStop != nil {
+		a.waitForTaskNames(taskNamesStop)
 	}
 
 	// A background job's lifetime is the session's: cancelling the turn above

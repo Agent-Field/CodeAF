@@ -121,11 +121,9 @@ func TestHomeSlashTypedLineDispatches(t *testing.T) {
 	}
 }
 
-// TestHomeSlashUnknownAnswer: an unrecognized slash line gets the same answer
-// chat gives — the same words, landing in the conversation this window holds
-// behind the screen, which is where a refusal that opened nothing belongs
-// (home_test.go's [homeNotes]).
-func TestHomeSlashUnknownAnswer(t *testing.T) {
+// TestHomeUnknownSlashStarts: an unrecognized slash line is an arbitrary first
+// message, exactly as it is in chat.
+func TestHomeUnknownSlashStarts(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
@@ -138,15 +136,11 @@ func TestHomeSlashUnknownAnswer(t *testing.T) {
 	}
 	typeHome(a, "/nonsense")
 	runCmd(a.homeEnter())
-	if a.at(pageSettings) || a.at(pageNone) {
-		t.Fatalf("an unknown command moved the surface to %v", a.page)
+	if a.at(pageHome) {
+		t.Fatal("slash prose left home open")
 	}
-	notes := homeNotes(a)
-	if !strings.Contains(notes, "unknown command: /nonsense · try /help") {
-		t.Fatalf("the unknown-command answer chat gives did not land:\n%s", notes)
-	}
-	if len(next.sent) != 0 {
-		t.Fatalf("an unknown command started a conversation: %q", next.sent)
+	if len(next.sent) != 1 || next.sent[0] != "/nonsense" {
+		t.Fatalf("the first message was %q", next.sent)
 	}
 }
 
@@ -417,7 +411,7 @@ func TestHomeSlashDoesNotSwallowATypedPath(t *testing.T) {
 		t.Fatalf("the foot called a folder a command: %q", hint)
 	}
 
-	// And a slash line that is NOT a folder is still a command.
+	// A slash line from the command table is still a command.
 	a.homeKey(key("esc"))
 	typeHome(a, "/settings")
 	if got := a.home.runLabel("/settings"); got != "run /settings" {

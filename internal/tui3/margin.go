@@ -490,11 +490,16 @@ func (a *app) marginType(typed string) {
 	// first letter of the sentence they just asked for (task.go's [app.railTake]).
 	a.railTake(false)
 	a.closeLists()
-	draft := strings.TrimLeft(string(a.input.value), " ")
-	if !strings.HasPrefix(draft, typed) {
-		draft = typed + draft
+	raw := string(a.input.value)
+	draft := strings.TrimLeft(raw, " ")
+	cut := len([]rune(raw)) - len([]rune(draft))
+	if cut > 0 {
+		a.replaceInput(0, cut, "")
 	}
-	a.input.setText(draft)
+	if !strings.HasPrefix(draft, typed) {
+		a.replaceInput(0, 0, typed)
+	}
+	a.input.cursor = len(a.input.value)
 	a.touch()
 }
 

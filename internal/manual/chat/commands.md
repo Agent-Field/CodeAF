@@ -50,6 +50,13 @@ slash line typed in full and entered from home's typing row is run too — `/set
 opens the settings place rather than starting a conversation with the word in it.
 Commands that act on a conversation act on the one home holds behind the screen.
 
+Only words in that list are commands. An unknown leading slash is ordinary text in chat
+and on home: `/api/v1 returns 500`, `/user`, a nonexistent absolute path followed by a
+request, quotes, backslashes and fenced code all go through unchanged. If the whole line
+resolves to an existing folder on home it is still a place; if it resolves to an existing
+file in a composer it is still a drop. Known commands win when a name is both, so `/home`
+still opens home on a machine that also has a `/home` directory.
+
 ## Why a file path does not pop up the command list
 
 Typing `/Users/santosh/notes.md` or `/tmp/log` into the message box does not leave the
@@ -143,7 +150,7 @@ The command list follows that rule when you choose a row from it:
 So the list can never send a message you did not send yourself, and choosing a row mid
 sentence is a way of spelling a word rather than a second way of running a command.
 
-## Aliases, and what happens to an unknown command
+## Aliases, and what happens to an unknown slash word
 
 Many commands answer to more than one word. Words borrowed from other tools are accepted,
 and each one resolves through the single command table. Aliases are not separate rows:
@@ -153,16 +160,15 @@ command. Beside each row the list draws the alias tail, like `also /clear /clean
 A typed word is lower-cased and looked up against the alias lists. An alias may never
 equal a canonical name or another alias; that is checked when aforge starts.
 
-A word that is in no list is passed through as typed and gets this answer:
+A word that is in no list is not a command. If nothing in the list matches what you typed
+and you press enter, the list closes and the line is submitted as an ordinary message,
+with the slash and everything after it intact. That rule is what lets a request begin with
+a route, a Unix path, or any other slash-shaped prose without an escape convention.
 
-```
-unknown command: /<word> · try /help
-```
-
-It says the word back as you wrote it, not what it resolved to.
-
-If nothing in the list matches what you typed and you press enter, the list closes and
-the line is submitted as an ordinary message. So `/nonsense` still gets an answer.
+Whitespace around the whole submitted line is trimmed, as it is for every message.
+Between a known command and its argument, a space, tab, newline, or other Unicode
+whitespace is a separator. Only that separator run and outer whitespace are trimmed;
+quotes, backslashes, code fences, and whitespace inside the argument are preserved.
 
 No command is ever hidden from the list or from `/help`. The table is the one place a
 command is written down, and both renderings draw all of it. What varies between states

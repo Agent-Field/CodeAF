@@ -378,7 +378,8 @@ func (a *app) spellAdd() tea.Cmd {
 	// in the sentence and this text belongs at the END of the message whatever the
 	// person was mid-word on. It parks the caret after it, which is where somebody
 	// who has just added three clauses is about to type.
-	a.input.setText(draft + lead + block)
+	a.replaceInput(len(a.input.value), len(a.input.value), lead+block)
+	a.input.cursor = len(a.input.value)
 	return a.edited()
 }
 
