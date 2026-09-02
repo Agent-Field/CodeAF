@@ -4312,11 +4312,6 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 		// speaks (the wait clock above clears it).
 		a.retrying = true
 
-	case session.EventGuardianAllowed:
-		// The guardian answered for the person: quiet proof on the row's
-		// decision slot, the same place a person's answer would sit.
-		a.note("guardian allowed · " + ev.Tool)
-
 	case session.EventTurnDone:
 		// Both notes go in BEFORE the turn settles, so they land under the reply
 		// they are about rather than above whatever is said next. What was

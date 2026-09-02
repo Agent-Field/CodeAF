@@ -217,6 +217,12 @@ func (f *feed) ingest(ev session.Event) {
 		// to see that it was.
 		f.note(firstNonEmpty(ev.Hint, "stuck? nudged · "+ev.Tool))
 
+	case session.EventGuardianAllowed:
+		// The guardian answered for the person, and a gate that answers on
+		// somebody's behalf and says nothing about it is a gate nobody can audit
+		// (session's guardian.go). Same dim line, wherever the work is running.
+		f.note("guardian allowed · " + ev.Tool)
+
 	case session.EventNotice:
 		// The adapter had to reshape the request to get it accepted — which
 		// attempt it is on, and what it took off (internal/provider's

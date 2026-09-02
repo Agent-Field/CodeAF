@@ -194,3 +194,38 @@ Every word it draws:
 **`briefing a worker` is not one of them.** That one is on the status line under the message
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
+
+## How long a call took on a task's page, and the dim lines between its calls
+
+A task's page draws the same facts about work in flight that the conversation
+draws, and until recently it drew none of them: the page was built from a
+second copy of the conversation's wiring, and the copy had fallen behind.
+
+**How long a call took** now sits at the right-hand end of that call's row —
+`1.4s` under ten seconds, `12s` under a minute, `2m04s` above one. It appears
+the moment the task reports *that* call finished, which is usually before its
+result comes back: calls in a batch run together and the result waits for the
+slowest of them, so the figure is the call's own and not the batch's. A call
+too quick to be worth a number gets none.
+
+**A retry inside a task** now shows. When the model's reply is cut and the step
+asks again, the half-answer that was cut is taken off the page — it belongs to
+a reply that will never exist — and a dim line says what happened:
+`the model went quiet mid-reply — asking again`, or, where the step gives up on
+that model and finishes on another, `the reply kept losing its thread —
+finishing this one on <model>`. Before this, a task's page kept the dead
+half-answer above the live one with nothing to explain it.
+
+**The dim `· ` lines between calls** are the page saying what its own machinery
+did. Three of them reach a task now:
+
+- `Retry 1/3: removed max_tokens` — the request had to be reshaped to be
+  accepted. The work carries on; the line is there so a reply that took three
+  tries does not look like one that took one.
+- `stuck? nudged · read` — the task caught itself asking for the same thing
+  over and over and was told so.
+- `guardian allowed · bash` — a call that would have asked a person to approve
+  it was approved by the guardian instead.
+
+None of them is a failure and none of them needs an answer. A task's page is
+still quiet when the work is going well: only failure speaks.
