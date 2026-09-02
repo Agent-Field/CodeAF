@@ -9,9 +9,11 @@ package session
 //
 //   - THE FAMILY'S CONTEXT — the work being divided, and the map of who owns what
 //     — which is identical for every part and is a FACT THE HARNESS ALREADY HOLDS.
-//   - THE SCOPE — what this one part owns, the material it works on, what its
+//   - THE SCOPE — what this one part works on, the material it opens, what its
 //     done-condition rests on — which only the worker holding the material can
-//     write, and which is different for every part.
+//     write, and which is different for every part. What the part OWNS is its
+//     done-condition and travels in the contract's own DONE WHEN section, which
+//     is why this heading says WORKS ON (#281).
 //
 // THE TWO HALVES USED TO BE DECIDED BY THE ROAD RATHER THAN BY THE HALF. A part
 // the harness drew out of a sketch got the parent's brief and its siblings
@@ -49,7 +51,7 @@ import "strings"
 // actually got handed out, so it is the honest answer to "who else is holding
 // what", and it is the same answer on both roads.
 const (
-	divisionThisPart    = "WHAT THIS PART OWNS"
+	divisionThisPart    = "WHAT THIS PART WORKS ON"
 	divisionOtherParts  = "THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS RIGHT NOW: "
 	divisionStayInScope = ". Do none of them, and do not change what they own — make your own part whole and say in your report what you did."
 )
