@@ -40,13 +40,28 @@ var laneBeatCtx = context.Background()
 
 // startLaneBeat begins this process's lane-sheet beat, or does nothing at all.
 //
-// THE THREE REFUSALS ARE THE SESSION'S, WORD FOR WORD (internal/session's
+// THE TWO REFUSALS ARE THE SESSION'S, WORD FOR WORD (internal/session's
 // agent.go). Routing off is a person saying they do not want their endpoints
 // chosen for them, and a background fetch would be work nobody asked for on
-// somebody who asked for the opposite. A base that is not a router has no sheet
-// to publish, whatever the model is spelled — and the gate is the provider's
-// own, so that the wire point and this one cannot drift apart. A door with no
-// model slot filled has nothing to fetch a sheet about.
+// somebody who asked for the opposite. A door with no model slot filled has
+// nothing to fetch a sheet about.
+//
+// THE BASE URL IS NOT A THIRD. This seam used to run no beat unless the base's
+// hostname said `openrouter.ai`, which left every headless run pointed at a
+// proxy, a mirror or a router reached by its IP with no sheet at all (issue
+// #373). Whether a base publishes an endpoints page is the base's own to say,
+// once, on the first refresh; a base that says there is none is left alone
+// until that answer is stale, so on such a base the beat is one quiet request
+// every five minutes rather than a feature that is absent.
+//
+// AND THE SHEET IS WIRED HERE, from the settings, before the beat starts. On
+// `run` and on a saved program the beat is seated before any client is built,
+// and a beat over an unwired sheet fetches nothing on its first pass and then
+// waits a whole interval — so the base and the bearer the settings already
+// name are handed over at the seam that needs them. The client built a moment
+// later wires the same base again, which the sheet treats as the same fact
+// told twice ([provider.WireLaneSheet]). Nothing here blocks: wiring is a
+// field write, and the fetch is the goroutine's.
 //
 // The interval is [lanes.Beat]'s own and is not restated here: a second
 // spelling of that number is a number that would drift.
@@ -54,13 +69,11 @@ func startLaneBeat(settings config.Config, model string) {
 	if config.RoutingAt(settings.ProfileDir) == config.RoutingOff {
 		return
 	}
-	if !provider.LaneSheetAvailable(settings.BaseURL) {
-		return
-	}
 	models := laneBeatModels(settings, model)
 	if len(models) == 0 {
 		return
 	}
+	provider.WireLaneSheet(settings.BaseURL, settings.APIKey)
 	// Under the guard, like every fire-and-forget goroutine in this binary: a
 	// fault in a background fetch may not take the surface down with it.
 	ctx, sheet := laneBeatCtx, lanes.Default().Sheet()

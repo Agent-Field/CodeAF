@@ -281,6 +281,12 @@ type Server struct {
 	clock    Clock
 	http     *httptest.Server
 	next     int
+	// sheetless makes the endpoints route answer 404 for EVERY model, which is
+	// what a base that is not a router — a bare proxy, a mirror of the
+	// completions route alone — answers when asked for a page it has never
+	// heard of. It is the state a test needs to stage "there is no sheet here"
+	// as distinct from "this router does not serve that model".
+	sheetless bool
 }
 
 // New starts a router serving one model over the given lanes, in the order they
@@ -339,6 +345,20 @@ func (s *Server) Alias(alias, target string) {
 	s.aliases[alias] = target
 	s.aliases[strings.TrimPrefix(alias, "~")] = target
 	s.aliases["~"+strings.TrimPrefix(alias, "~")] = target
+}
+
+// Sheetless makes this router publish no endpoints page at all: every ask for
+// one is the same 404 a base with no such route would answer, while the
+// completions route keeps serving. It is set before any request is made.
+//
+// It exists so that a test can stage the base issue #373 is about — one that
+// answers completions and has no sheet — without a second server: the sheet
+// must learn that from the answer and not from the hostname, and this is the
+// answer.
+func (s *Server) Sheetless() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sheetless = true
 }
 
 // SetClock replaces the clock. It is set before any request is made.
@@ -475,8 +495,16 @@ func (s *Server) serveSheet(w http.ResponseWriter, r *http.Request) {
 	model := r.PathValue("author") + "/" + r.PathValue("slug")
 	s.mu.Lock()
 	lanes, known := s.models[model]
+	sheetless := s.sheetless
 	s.sheets[model]++
 	s.mu.Unlock()
+	// A sheetless router counts the ask before refusing it, because the count
+	// is the whole of what a test asserts: how many times a base that said
+	// "no page here" was asked again.
+	if sheetless {
+		writeError(w, http.StatusNotFound, "No endpoints page here", "")
+		return
+	}
 	if !known {
 		writeError(w, http.StatusNotFound, "No endpoints found for that model", "")
 		return

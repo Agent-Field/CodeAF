@@ -414,23 +414,121 @@ func TestTheSheetFetcherTurnsARefusalIntoAnError(t *testing.T) {
 	if !strings.Contains(err.Error(), "500") {
 		t.Errorf("the error was %q and does not say what the router answered", err)
 	}
+	// AND A 500 IS NOT A VERDICT ABOUT THE BASE. Only a 404 may be read as "no
+	// endpoints page here"; a router having an afternoon must stay an ordinary
+	// error, or one bad reply would cost a base its lanes for five minutes.
+	if errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Error("a 500 was read as the base saying it publishes no endpoints page")
+	}
 }
 
-// TestOnlyARouterBaseWiresTheSheet pins the gate both wire points share. The
-// sheet is fetched FROM THE BASE URL, so a client pointed anywhere else has no
-// sheet to read however its model is spelled — and the session reads the same
-// answer to decide whether to run a beat at all.
-func TestOnlyARouterBaseWiresTheSheet(t *testing.T) {
+// TestTheSheetFetcherReadsA404AsNoPageHere is the one status the sheet may
+// remember a base by, made where only the transport can see a status code.
+func TestTheSheetFetcherReadsA404AsNoPageHere(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	body, err := sheetFetcher{http: server.Client()}.Fetch(context.Background(), server.URL, "sk-test")
+	if err == nil {
+		body.Close()
+		t.Fatal("a 404 handed back a body")
+	}
+	if !errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("a 404 came back as %v, want one wrapping lanes.ErrNoSheetHere", err)
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("the error was %q and does not say what the router answered", err)
+	}
+}
+
+// TestTheShippedRouterIsCertainAndEveryOtherBaseIsAsked pins what the hostname
+// still decides, which is only whether the asking can be skipped. A loopback
+// base, a gateway, an empty base: none of them is refused, all of them are
+// wired and asked ([WireLaneSheet]).
+func TestTheShippedRouterIsCertainAndEveryOtherBaseIsAsked(t *testing.T) {
 	for base, want := range map[string]bool{
 		"https://openrouter.ai/api/v1":   true,
 		" https://OpenRouter.ai/api/v1 ": true,
 		"http://localhost:8080/v1":       false,
+		"http://127.0.0.1:43121/api/v1":  false,
 		"https://api.openai.com/v1":      false,
 		"":                               false,
 	} {
-		if got := LaneSheetAvailable(base); got != want {
-			t.Errorf("LaneSheetAvailable(%q) = %v, want %v", base, got, want)
+		if got := LaneSheetCertain(base); got != want {
+			t.Errorf("LaneSheetCertain(%q) = %v, want %v", base, got, want)
 		}
+	}
+}
+
+// TestAPlainLoopbackBaseGetsASheetFromItsOwnAnswer is acceptance 1 of #373,
+// end to end: a client built against a stub at its plain loopback address —
+// no hostname trick anywhere — has a sheet after one refresh, and the only
+// request it ever made was that refresh. THE PROBE IS THE FETCH: construction
+// costs nothing, and neither a known base nor an unknown one pays a second
+// round trip to find out what it is.
+func TestAPlainLoopbackBaseGetsASheetFromItsOwnAnswer(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/plain-base"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+		lanestub.Lane{Name: "brass", Profile: lanestub.Profile{TTFT: 30 * time.Millisecond, Rate: 300, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+	if LaneSheetCertain(server.URL()) {
+		t.Fatalf("the stub's address %q reads as the shipped router, so this test would not be asking anything", server.URL())
+	}
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)); got != 0 {
+		t.Fatalf("building a client made %d endpoints requests; the probe is the beat's fetch and never construction's", got)
+	}
+
+	if err := lanes.Default().Sheet().Refresh(context.Background(), model); err != nil {
+		t.Fatalf("one refresh against a plain loopback base: %v", err)
+	}
+	rows := lanes.Default().Sheet().Rows(model)
+	if len(rows) != 2 {
+		t.Fatalf("a plain loopback base gave %d rows after one refresh, want 2", len(rows))
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)); got != 1 {
+		t.Fatalf("one refresh cost %d endpoints requests, want exactly the fetch itself", got)
+	}
+}
+
+// TestABaseWithNoEndpointsPageIsAskedOnce is acceptance 2 through the real
+// transport: the stub answers completions and 404s every endpoints page, the
+// client is wired to it regardless, and after the base's one answer nothing
+// asks it again.
+func TestABaseWithNoEndpointsPageIsAskedOnce(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/no-sheet"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true}},
+	)
+	t.Cleanup(server.Close)
+	server.Sheetless()
+
+	if _, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model, Routing: StaticRouting(RoutingLatency)}); err != nil {
+		t.Fatal(err)
+	}
+	sheet := lanes.Default().Sheet()
+	if err := sheet.Refresh(context.Background(), model); !errors.Is(err, lanes.ErrNoSheetHere) {
+		t.Fatalf("the base's 404 came back as %v, want lanes.ErrNoSheetHere", err)
+	}
+	for _, again := range []string{model, "openrouter/another-model"} {
+		if err := sheet.Refresh(context.Background(), again); !errors.Is(err, lanes.ErrNoSheetHere) {
+			t.Fatalf("a refresh of %s after the base had answered came back as %v", again, err)
+		}
+	}
+	if got := server.Sheets(lanes.LedgerModel(model)) + server.Sheets("openrouter/another-model"); got != 1 {
+		t.Fatalf("a base that said it has no endpoints page was asked %d times, want once", got)
+	}
+	if rows := sheet.Rows(model); rows != nil {
+		t.Fatalf("a sheetless base produced rows: %v", rows)
 	}
 }
 
@@ -453,12 +551,25 @@ func TestConstructionWiresTheSheetAtARouter(t *testing.T) {
 		t.Fatalf("a fresh registry's sheet refused with %v, want ErrNoSheet", err)
 	}
 
-	// A base that is not a router wires nothing: there is no sheet there.
+	// A BASE NOBODY HAS VOUCHED FOR IS WIRED TOO. It used to wire nothing on
+	// the strength of its hostname (issue #373); now every base is wired, and
+	// whether there is a page there is the base's own to answer on the first
+	// refresh. Through a cancelled context that answer is the context's own
+	// error, which is exactly what proves the wiring reached the transport.
 	if _, err := NewClient(Config{BaseURL: "http://localhost:8080/v1", Model: "local/model", APIKey: "sk-test"}); err != nil {
 		t.Fatalf("build a client against a local base: %v", err)
 	}
+	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a local base left the sheet unwired; it refused with %v, want the cancelled context's own error", err)
+	}
+
+	// AND AN EMPTY BASE WIRES NOTHING, because there is nowhere to ask. The
+	// constructor refuses an empty base before it gets this far, so the door
+	// the process beat uses is asked directly.
+	lanes.Default().Reset()
+	WireLaneSheet("   ", "sk-test")
 	if err := lanes.Default().Sheet().Refresh(dead, "deepseek/deepseek-v4-flash"); !errors.Is(err, lanes.ErrNoSheet) {
-		t.Fatalf("a non-router base wired the sheet; it refused with %v, want ErrNoSheet", err)
+		t.Fatalf("an empty base wired the sheet; it refused with %v, want ErrNoSheet", err)
 	}
 
 	if _, err := NewClient(Config{BaseURL: "https://openrouter.ai/api/v1", Model: "deepseek/deepseek-v4-flash", APIKey: "sk-test"}); err != nil {

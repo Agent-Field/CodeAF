@@ -622,34 +622,74 @@ func (f sheetFetcher) Fetch(ctx context.Context, url, bearer string) (io.ReadClo
 		// courtesy the catalog reader pays on the same host.
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
 		response.Body.Close()
+		// A 404 IS THE ONE STATUS THAT SAYS "THERE IS NO SUCH PAGE", and it is
+		// the one status the sheet is allowed to remember a base by
+		// ([lanes.ErrNoSheetHere]). Everything else — a 500, a 429, a 502 from
+		// somebody's load balancer — is a router having an afternoon, and it
+		// stays an ordinary error so that one bad reply never costs a base its
+		// lanes for five minutes. Only this transport can see the status, which
+		// is why the reading is made here and nowhere in internal/lane.
+		if response.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("lane sheet: %s: %w", response.Status, lanes.ErrNoSheetHere)
+		}
 		return nil, fmt.Errorf("lane sheet: %s", response.Status)
 	}
 	return response.Body, nil
 }
 
-// LaneSheetAvailable reports whether base is a router that publishes a lane
-// sheet this build can read.
+// LaneSheetCertain reports whether base is KNOWN to publish a lane sheet
+// without anybody having to ask it: the shipped router, recognised by its
+// hostname.
+//
+// IT IS A HINT AND NEVER A REFUSAL. This build used to decide whether the
+// endpoints page was fetched at all by this very substring test, so a binary
+// driven through AFORGE_BASE_URL at a proxy, a mirror, a self-hosted router or
+// the router reached by its IP silently got no sheet, an empty frontier and no
+// lane behaviour whatever — nothing errored and nothing logged a refusal, the
+// feature was simply absent (issue #373). A ROUTER IS RECOGNISABLE BY WHAT IT
+// ANSWERS AND NEVER BY A SUBSTRING OF WHERE IT LIVES: every base is wired, and
+// the sheet learns from the base's own first answer whether there is a page
+// there ([lanes.ErrNoSheetHere]). What this hostname buys is only that the one
+// base everybody already knows about skips straight to "serves", so the shipped
+// path is unchanged in behaviour and pays not one extra round trip.
 //
 // IT IS THE BASE URL AND NEVER THE MODEL ID, which is where it parts company
 // with [Client.isOpenRouter]. That one is also true of a client whose model is
 // spelled `openrouter/...` behind somebody's own gateway, and it is right to
 // be: the ledger still learns from what that gateway serves. But the sheet is
-// fetched FROM THE BASE URL, so a base that is not the router has no sheet to
-// give however the model is spelled.
-//
-// It is exported because two callers need the same answer and a second spelling
-// of it would drift: this package wires the sheet at construction, and the
-// session decides whether to run a beat at all (internal/session's agent.go).
-func LaneSheetAvailable(base string) bool {
+// fetched FROM THE BASE URL, so the base is the thing a hint can be about.
+func LaneSheetCertain(base string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(base)), "openrouter.ai")
+}
+
+// WireLaneSheet points the live lane sheet at a base, with the bearer a fetch
+// should carry. It is the one door through which internal/lane is handed a
+// transport, and it is exported because two callers need it and a second
+// spelling of it would drift: [NewClient] wires the base its client talks to,
+// and the process's own beat (cmd/aforge's lanebeat.go) wires the base the
+// settings name, because on three headless doors the beat starts before any
+// client exists and a beat over an unwired sheet fetches nothing at all.
+//
+// Wiring is not a fetch — it hands the sheet a base, a bearer and something
+// that can open a connection, and nothing goes to the network until a beat
+// calls Refresh. Wiring the same base twice is harmless: the sheet keeps what
+// that base already answered, and forgets it only when the base itself moves.
+//
+// EVERY NON-EMPTY BASE IS WIRED. Whether there is an endpoints page at it is
+// the base's own to say, once, and the sheet remembers ([LaneSheetCertain]
+// says why the hostname is a hint here and not the decision).
+func WireLaneSheet(base, key string) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return
+	}
+	lanes.WireSheet(base, strings.TrimSpace(key), sheetFetcher{}, LaneSheetCertain(base))
 }
 
 // wireLaneSheet points the live lane sheet at the router this client talks to.
 //
-// IT IS CALLED FROM THE CONSTRUCTOR AND FROM NOWHERE ELSE. Wiring is not a
-// fetch — it hands the sheet a base, a bearer and something that can open a
-// connection, and nothing goes to the network until a beat calls Refresh — but
-// it is still a write to a process-wide seam, and a write repeated per request
+// IT IS CALLED FROM THE CONSTRUCTOR AND FROM NOWHERE ELSE IN THIS PACKAGE. It
+// is still a write to a process-wide seam, and a write repeated per request
 // is a lock taken in front of somebody's first token for no gain.
 //
 // A CLIENT BUILT WITHOUT A KEY STILL WIRES. `/models/{id}/endpoints` is a
@@ -658,11 +698,7 @@ func LaneSheetAvailable(base string) bool {
 // this carries is the one the client was constructed with, and the sheet does
 // not chase [Client.SetAPIKey] because a bearer buys nothing on a public read.
 func (c *Client) wireLaneSheet() {
-	base := strings.TrimSpace(c.config.BaseURL)
-	if !LaneSheetAvailable(base) {
-		return
-	}
-	lanes.WireSheet(base, strings.TrimSpace(c.config.APIKey), sheetFetcher{})
+	WireLaneSheet(c.config.BaseURL, c.config.APIKey)
 }
 
 // noteLaneOutcome folds one answer's USABILITY into the lane's belief, which is

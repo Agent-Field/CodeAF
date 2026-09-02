@@ -188,6 +188,30 @@ left standing: the row reads `parasail refused`, which is what actually
 happened. A row still saying `trying …` about a request that has already failed
 is the one thing it will not do.
 
+## Lanes on a custom base URL, a proxy, a mirror, or a self-hosted router — `AFORGE_BASE_URL`
+
+Lanes are not tied to the OpenRouter hostname. Point aforge at any base with
+`AFORGE_BASE_URL` — a proxy in front of the router, a mirror, a router of your
+own, or the router reached by its IP address — and it **asks that base whether
+it publishes an endpoints page**: the first fetch of a model's sheet, made in the
+background, is the question. A base that answers with a page has lanes exactly
+as the built-in endpoint does, with the same auto ranking, pins, hedges and
+status line. Nothing about the address is inspected; a router is recognised by
+what it answers, not by where it lives.
+
+A base that answers **404** to the endpoints page is treated as having no sheet.
+aforge then sends every request with no lane opinion, as it would to any single
+endpoint, and it does not keep asking: that base is asked again once every five
+minutes, in the background, and never in front of a request. An error that is
+not a 404 — a 500, a timeout, a rate limit — is a bad afternoon and not an
+answer, so the base is simply asked again on the next beat.
+
+Two things worth knowing. The check costs nothing extra: it is the sheet fetch
+aforge was going to make anyway, so the built-in endpoint pays no additional
+request. And a base that has said it has no sheet is believed for those five
+minutes even if you ask about a different model — the answer is about the
+address, not the model.
+
 ## Turning lane routing off
 
 Set routing off (`/settings`, or the `routing` row) and aforge sends every

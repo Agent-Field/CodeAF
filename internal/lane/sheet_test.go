@@ -48,6 +48,12 @@ func (o *overWire) Fetch(ctx context.Context, address, bearer string) (io.ReadCl
 	}
 	if response.StatusCode != http.StatusOK {
 		response.Body.Close()
+		// The same reading the real transport makes (internal/provider's
+		// sheetFetcher): a 404 is the base saying there is no such page, and it
+		// is the one status the sheet may remember a base by.
+		if response.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("the router answered %s: %w", response.Status, ErrNoSheetHere)
+		}
 		return nil, fmt.Errorf("the router answered %s", response.Status)
 	}
 	return response.Body, nil
@@ -107,7 +113,7 @@ func wired(t *testing.T) (*sheet, *lanestub.Server, *overWire) {
 	t.Cleanup(stub.Close)
 	fetch := &overWire{}
 	s := newSheet()
-	s.wire(stub.URL(), "sk-test-key", fetch)
+	s.wire(stub.URL(), "sk-test-key", fetch, false)
 	s.cacheIn(t.TempDir())
 	return s, stub, fetch
 }
@@ -202,7 +208,7 @@ func TestARowTheSchemaMovedUnderIsSkippedAndTheRestArrive(t *testing.T) {
 		 "latency_last_30m":{"p50":500,"p90":900},"throughput_last_30m":{"p50":40,"p90":70}}
 	]}}`
 	s := newSheet()
-	s.wire("http://router.invalid/api/v1", "", bytesFetcher{body: body})
+	s.wire("http://router.invalid/api/v1", "", bytesFetcher{body: body}, false)
 	s.cacheIn(t.TempDir())
 	if err := s.Refresh(context.Background(), "vendor/model"); err != nil {
 		t.Fatalf("refreshing a sheet with one unreadable row: %v", err)
@@ -231,7 +237,7 @@ func TestASheetThatDecodedToNothingLeavesWhatIsAlreadyKnown(t *testing.T) {
 	if err := s.Refresh(context.Background(), scriptedModel); err != nil {
 		t.Fatalf("refreshing the sheet: %v", err)
 	}
-	s.wire("http://router.invalid/api/v1", "", bytesFetcher{body: `{"data":{"endpoints":[]}}`})
+	s.wire("http://router.invalid/api/v1", "", bytesFetcher{body: `{"data":{"endpoints":[]}}`}, false)
 	if err := s.Refresh(context.Background(), scriptedModel); err == nil {
 		t.Fatal("a sheet that named no lanes reported a successful refresh")
 	}
