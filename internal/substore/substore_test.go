@@ -400,51 +400,82 @@ func TestABundleThatFailsValidationIsAbsentFromTheListsAndLogged(t *testing.T) {
 	}
 }
 
-// Two mints racing produce two different versions or one version and one
-// refusal, and never two writers believing they own the same page. The exclusive
-// create is what makes that a kernel fact rather than a timing hope.
+// A crowd of mints racing from one version produces exactly one winner and a
+// refusal for everybody else, and never two writers believing they own the same
+// page — nor, which is the same fault wearing a different number, two versions
+// that both call v1 their parent. The gate one mint at a time holds is what
+// makes that a kernel fact rather than a timing hope.
+//
+// THE RACE IS RUN MANY TIMES, and it has to be. The hole this pins (#274) was a
+// window between two syscalls: [Store.write] links v2's record and then renames
+// v2's bundle into place, and for that instant v2 is a spent number to the count
+// and no version at all to the head. A writer the scheduler dropped in there
+// read "the head is still v1, the next number is 3" and minted a SECOND CHILD OF
+// v1. One round of eight writers walked into that window about twice in a
+// hundred, so the test that raced eight once went green all afternoon and named
+// the bug on somebody else's machine, under somebody else's full-tree run. The
+// crowd and the rounds together are what turn "sometimes, on a busy box" into
+// every run.
 func TestConcurrentMintsNeverShareAVersion(t *testing.T) {
-	store := storeAt(t)
-	first, err := store.Mint(weekly(), "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const writers = 8
-	var group sync.WaitGroup
-	var lock sync.Mutex
-	won, lost := 0, 0
-	for index := range writers {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			files := weekly()
-			files.Program = []byte("// writer " + string(rune('a'+index)) + "\n")
-			_, err := store.Mint(files, first.Hash, "one of eight at once")
-			lock.Lock()
-			defer lock.Unlock()
-			if err == nil {
-				won++
-				return
+	const writers, rounds = 24, 100
+	for round := range rounds {
+		store := storeAt(t)
+		first, err := store.Mint(weekly(), "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var group sync.WaitGroup
+		var lock sync.Mutex
+		won, lost := 0, 0
+		for index := range writers {
+			group.Add(1)
+			go func() {
+				defer group.Done()
+				files := weekly()
+				files.Program = []byte("// writer " + string(rune('a'+index)) + "\n")
+				_, err := store.Mint(files, first.Hash, "one of a crowd at once")
+				lock.Lock()
+				defer lock.Unlock()
+				if err == nil {
+					won++
+					return
+				}
+				lost++
+				if !errors.Is(err, ErrExists) && !strings.Contains(err.Error(), "moved on") {
+					t.Errorf("round %d: a losing writer was told something else: %v", round, err)
+				}
+			}()
+		}
+		group.Wait()
+		if won != 1 {
+			t.Fatalf("round %d: %d of %d writers minted a version (and %d were refused)", round, won, writers, lost)
+		}
+		versions, err := store.Versions("weekly-marketing")
+		if err != nil || len(versions) != 2 {
+			t.Fatalf("round %d: %d racing writers left %v: %v", round, writers, versions, err)
+		}
+		// The lineage is a line and not a tree. A writer that read a stale head
+		// while counting past a fresh claim leaves two versions naming one
+		// parent, which is the fault the count above can miss whenever the loser
+		// crashes into somebody else's number instead of its own.
+		lineage, err := store.Lineage("weekly-marketing")
+		if err != nil {
+			t.Fatalf("round %d: reading the lineage: %v", round, err)
+		}
+		children := make(map[int]int, len(lineage))
+		for _, record := range lineage {
+			children[record.ParentVersion]++
+			if children[record.ParentVersion] > 1 {
+				t.Fatalf("round %d: v%d is another version minted from v%d — the lineage forked",
+					round, record.Version, record.ParentVersion)
 			}
-			lost++
-			if !errors.Is(err, ErrExists) && !strings.Contains(err.Error(), "moved on") {
-				t.Errorf("a losing writer was told something else: %v", err)
+		}
+		// Every version on disk is complete and loads. A loser that had renamed its
+		// staging directory into place would show up here.
+		for _, version := range versions {
+			if _, err := store.Load("weekly-marketing", version); err != nil {
+				t.Fatalf("round %d: v%d does not load: %v", round, version, err)
 			}
-		}()
-	}
-	group.Wait()
-	if won != 1 {
-		t.Fatalf("%d of %d writers minted a version (and %d were refused)", won, writers, lost)
-	}
-	versions, err := store.Versions("weekly-marketing")
-	if err != nil || len(versions) != 2 {
-		t.Fatalf("eight racing writers left %v: %v", versions, err)
-	}
-	// Every version on disk is complete and loads. A loser that had renamed its
-	// staging directory into place would show up here.
-	for _, version := range versions {
-		if _, err := store.Load("weekly-marketing", version); err != nil {
-			t.Fatalf("v%d does not load: %v", version, err)
 		}
 	}
 }
@@ -707,6 +738,31 @@ func TestMintRefusesABundleThatCouldNotRunAndLeavesNothingBehind(t *testing.T) {
 	entries, err := os.ReadDir(store.Dir())
 	if err == nil && len(entries) != 0 {
 		t.Fatalf("a refused mint left %d entries in the store", len(entries))
+	}
+}
+
+// A mint that names a parent for a subharness with no versions is refused after
+// it has taken that name's gate, and the gate is on no list.
+//
+// A DIRECTORY IS A SUBHARNESS WHEN IT HOLDS A VERSION, and that rule is what
+// lets [Store.gated] make a name's directory and its `.mint.lock` before it can
+// possibly know whether the mint will be allowed. The refusal spends no version
+// number either: the next mint is still v1.
+func TestARefusalAfterTheGateLeavesANameOnNoList(t *testing.T) {
+	store := storeAt(t)
+	_, err := store.Mint(weekly(), "sha256:nothing", "made from a version that is not there")
+	if err == nil || !strings.Contains(err.Error(), "no versions yet") {
+		t.Fatalf("a mint from a parent that was never written said %v", err)
+	}
+	if names, _ := store.Names(); len(names) != 0 {
+		t.Fatalf("the refused mint put %v on the list", names)
+	}
+	if versions, err := store.Versions("weekly-marketing"); err != nil || len(versions) != 0 {
+		t.Fatalf("the refused mint left %v: %v", versions, err)
+	}
+	minted, err := store.Mint(weekly(), "", "")
+	if err != nil || minted.Version != 1 {
+		t.Fatalf("the mint after the refusal is v%d: %v", minted.Version, err)
 	}
 }
 

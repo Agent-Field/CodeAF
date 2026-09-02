@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
 
 // Mint writes a new version of a subharness. It is the only door that writes a
@@ -32,9 +34,12 @@ import (
 //   - parent is the head's hash, content differs: v(head+1), recording the
 //     parent hash and the why.
 //   - parent is anything else: refused, naming the head it disagrees with.
-//   - two mints racing for the same version: exactly one wins, and the loser is
-//     refused with [ErrExists] rather than shifted along to the next number. See
-//     [Store.write] for why a retry would write a lineage that lies.
+//   - two mints racing: exactly one wins and every loser is refused, never
+//     shifted along to the next number. A loser normally reads the winner's
+//     version and is told its parent has moved on; where the gate could not be
+//     taken it gets as far as the claim and is told [ErrExists]. See
+//     [Store.gated] for how the race is decided and [Store.write] for why a
+//     retry would write a lineage that lies.
 //
 // Content that an ANCESTOR once had is still a new version. A revert is a real
 // event with its own place in the lineage, and collapsing it onto the version it
@@ -68,6 +73,19 @@ func (s *Store) Mint(files Files, parent, why string) (Version, error) {
 	}
 	hash := hashFiles(laid)
 
+	// Everything above this line judges what the caller handed over and reads
+	// nothing, which is why it sits OUTSIDE the gate: a bundle that could never
+	// be minted is refused without touching the disk at all, and that is what
+	// lets a refusal leave nothing behind.
+	return s.gated(name, func() (Version, error) { return s.claim(name, laid, hash, parent, why) })
+}
+
+// claim is the read-check-write half of a mint, and [Store.gated] runs it with
+// one writer at a time. It is a function of its own so that the gate's extent is
+// the thing you can see: everything it learns about the store at the top is
+// still true when it writes at the bottom, because nobody else may be in
+// between.
+func (s *Store) claim(name string, laid []file, hash, parent, why string) (Version, error) {
 	records, err := s.records(name)
 	if err != nil {
 		return Version{}, err
@@ -118,6 +136,49 @@ func (s *Store) Mint(files Files, parent, why string) (Version, error) {
 		return Version{}, err
 	}
 	return written, nil
+}
+
+// gated runs fn holding the exclusive right to add a version to one subharness.
+//
+// THE READ AND THE CLAIM ARE ONE STEP OR THEY ARE NOTHING. [Store.claim] counts
+// the next version from the RECORDS — a version is spent the instant its record
+// file is linked — and checks the parent against the HEAD, which is the highest
+// version whose bundle is also on disk. [Store.write] links the record first and
+// renames the bundle into place second, so for the width of that rename v2 is a
+// spent number to the count and no version at all to the check. A writer the
+// scheduler drops into that window reads "the head is still v1" and "the next
+// number is 3", passes a parent check that went stale a microsecond ago, claims
+// a number nobody is fighting it for, and mints a SECOND CHILD OF v1 — the
+// forked lineage the refusal in [Store.write] exists to prevent. That refusal
+// cannot see it: an exclusive create only catches two writers who computed the
+// same number. So the window is closed here instead, by letting one writer at a
+// time hold the whole read-check-claim.
+//
+// The gate is also what makes a record with no bundle DECIDABLE. Held, such a
+// record can only be a mint whose process died, never one in flight, which is
+// exactly the reading [Store.Versions] and the count already take: the number
+// stays spent, the next mint goes one further along, and nothing waits on a
+// writer that is never coming back. A lock the kernel drops when a process dies
+// is the only claim that can say that.
+//
+// A GATE THAT CANNOT BE TAKEN IS NOT A REASON TO REFUSE A MINT. A read-only
+// directory, a filesystem with no advisory locking: fn still runs, with the
+// exclusive create in [Store.write] as the floor it has always been. That is the
+// same trade internal/lane makes over its beliefs, for the same reason.
+func (s *Store) gated(name string, fn func() (Version, error)) (Version, error) {
+	if err := os.MkdirAll(s.nameDir(name), 0o755); err != nil {
+		return fn()
+	}
+	gate, err := os.OpenFile(s.gatePath(name), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fn()
+	}
+	defer gate.Close()
+	if err := filelock.Lock(gate, true, false); err != nil {
+		return fn()
+	}
+	defer filelock.Unlock(gate)
+	return fn()
 }
 
 // write stages the whole bundle, claims its version, and moves the staging
