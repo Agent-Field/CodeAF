@@ -162,6 +162,19 @@ func quotedFacts(t *testing.T) []quotedFact {
 		fact: "the default task proposal window", owner: "config.DefaultTaskAutoApprove",
 		value: strconv.Itoa(config.DefaultTaskAutoApprove), others: []string{"5"},
 		quotes: []quotedIn{{"tasks", "The default window is %s seconds."}},
+	}, {
+		// `exec`'s two walls. They are the figures a person running one worker
+		// without the screen plans a campaign around, and the page states both,
+		// so both are answerable to the line the command's own help prints them
+		// from.
+		fact: "how many turns one worker gets", owner: "`aforge exec`'s --turns default",
+		value:  strconv.Itoa(flagNumber(t, "../../cmd/aforge/exec.go", "turns")),
+		quotes: []quotedIn{{"adaptive-runs", "it stops itself after %s turns"}},
+	}, {
+		// Spelled in threes on the page for the reason the answer room above is.
+		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --budget default",
+		value:  grouped(flagNumber(t, "../../cmd/aforge/exec.go", "budget")),
+		quotes: []quotedIn{{"adaptive-runs", "when the run has spent %s tokens"}},
 	}}
 	return append(facts, crewFacts(t)...)
 }
@@ -461,6 +474,25 @@ func sourceNumber(t *testing.T, path, name string) int {
 	value, err := strconv.Atoi(match[1])
 	if err != nil {
 		t.Fatalf("%s = %q is not a number", name, match[1])
+	}
+	return value
+}
+
+// flagNumber is the default of one command-line flag, read out of the file that
+// declares it. It exists beside [sourceNumber] because a figure is not always a
+// named constant: a command's walls are often written as literals in the flag
+// declaration itself — `flags.Int("turns", 200, …)` — and that literal is both
+// what the command's own help prints and what a page quoting it must agree with.
+func flagNumber(t *testing.T, path, name string) int {
+	t.Helper()
+	match := regexp.MustCompile(`Int\(\s*"`+regexp.QuoteMeta(name)+`"\s*,\s*(\d+)`).
+		FindStringSubmatch(sourceText(t, path))
+	if match == nil {
+		t.Fatalf("%s no longer declares a --%s flag with a number for its default", path, name)
+	}
+	value, err := strconv.Atoi(match[1])
+	if err != nil {
+		t.Fatalf("--%s's default = %q is not a number", name, match[1])
 	}
 	return value
 }
