@@ -154,6 +154,15 @@ changes to it. If it never arrives — no model on the class, a timeout, an answ
 itself a path — the fallback stays, nothing is reported, and nothing about the work is
 affected.
 
+**Work aforge starts on its own is usually named before you hear about it.** When a turn is
+judged to be work, or a running turn is handed over at its ceiling, the name is asked for at
+that moment — beside the brief being written, not after the task exists — so by the time the
+`this looked like work, so task N started:` line is drawn the name is normally in hand and
+the line carries it. If the namer is still answering when the task starts, the line carries
+your own words and the row changes when the name lands; the task waits for that answer
+rather than asking a second time. A task that fails before its name arrives is reported under
+your words.
+
 **The name is kept with the task**, so a task that is still running when you quit comes back
 under the same name after a restart.
 

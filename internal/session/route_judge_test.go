@@ -160,6 +160,16 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 		c.mu.Unlock()
 		return textResponse(brief), nil
 	}
+	// THE NAMER, and it has to be caught above the errand branch below because
+	// its answer is now in hand BEFORE the task is announced (taskname.go's
+	// [nameAhead]): an errand's placeholder landing as the name would put
+	// "(errand)" in the told-after line on the runs where the goroutine won the
+	// race, and the person's own words on the runs where it lost. An empty
+	// answer is a namer that could not name, which leaves the title where every
+	// assertion on this page expects it.
+	if isNameCall(messages) {
+		return textResponse(""), nil
+	}
 	// WHAT COUNTS AS THE CONVERSATION BEING ASKED is the request that carries the
 	// BELT. Every errand this session runs on its own behalf — the namer a new
 	// task sends after itself, a title, a memory pass — rides the same client with
