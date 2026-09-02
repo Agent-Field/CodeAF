@@ -259,3 +259,52 @@ func TestAnErrandWithNoCoverageQuestionIsWholeOverASuiteNobodyCouldRead(t *testi
 		t.Fatal("a delivery whose suite nobody could read stopped being held short")
 	}
 }
+
+// A CHECK THE RUN WROTE AND THE SUITE THEN RAN IS ONE CHECK.
+//
+// The two sources this gate unions are two readers of the same file: the tree
+// is read for what it DECLARES — a `def` and nothing around it — and the run's
+// output is read for what pytest REPORTED, which is that same `def` under the
+// path and the class it was collected in. Deduplicating them by string let both
+// spellings through, and the mapping was handed a roster naming every check the
+// run wrote twice, once as a check it could not find in any output.
+func TestTheRunsOwnCheckAndTheSuitesReportOfItAreOneCheck(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "tests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	check := filepath.Join(root, "tests", "test_reef_contracts.py")
+	if err := os.WriteFile(check, []byte(
+		"class BearerCase:\n"+
+			"    def test_bearer_scheme_case_insensitive(self):\n        assert True\n\n"+
+			"    def test_mixed_case_scheme_authenticates(self):\n        assert True\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same two checks as the runner named them, plus one the repository
+	// already had, which nothing declared and which must survive the union.
+	reported := []string{
+		"tests/test_reef_contracts.py::BearerCase::test_bearer_scheme_case_insensitive",
+		"tests/test_reef_contracts.py::BearerCase::test_mixed_case_scheme_authenticates",
+		"tests/test_auth.py::test_token_is_rejected_when_expired",
+	}
+	checks := checkEvidence(Evidence{Workspace: root, Artifacts: []string{check}},
+		verify.Reading{Taken: true, AfterTaken: true, After: verify.Result{Reported: reported}})
+
+	if len(checks) != 3 {
+		t.Fatalf("two checks read twice and one read once came to %d: %#v", len(checks), checks)
+	}
+	// Whichever spelling the union kept, each check is in it exactly once.
+	for _, want := range []string{"test_bearer_scheme_case_insensitive",
+		"test_mixed_case_scheme_authenticates", "test_token_is_rejected_when_expired"} {
+		named := 0
+		for _, check := range checks {
+			if strings.Contains(check, want) {
+				named++
+			}
+		}
+		if named != 1 {
+			t.Errorf("the check %q reaches the mapping %d times: %#v", want, named, checks)
+		}
+	}
+}

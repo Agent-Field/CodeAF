@@ -145,7 +145,14 @@ func checkEvidence(evidence Evidence, reading verify.Reading) []string {
 	if reading.Taken {
 		checks = append(checks, roster...)
 	}
-	return verify.Subtract(checks, nil)
+	// ONE ENTRY PER CHECK, however many readers named it. The three sources
+	// above are two readers of the same suite — a diff and a tree read for what
+	// they DECLARE, a runner read for what it REPORTED — and a check the run
+	// wrote and the suite then ran is named by both. Subtract compares strings
+	// and would let `test_headers` and `tests/api_test.py::test_headers` through
+	// as two checks, which tells the mapping a behaviour is covered twice.
+	// verify.CheckIdentity is what says they are one.
+	return verify.UniqueChecks(checks)
 }
 
 // declaredByTheRun is every check identity the run's own new and changed check
@@ -160,7 +167,8 @@ func checkEvidence(evidence Evidence, reading verify.Reading) []string {
 // The identities come back as the runner-independent bare names
 // verify.DeclaredChecks reads, which is what the diff route already produced,
 // so nothing downstream learns a second spelling. A name that the project's own
-// roster ALSO reported arrives twice and is deduplicated by the Subtract above.
+// roster ALSO reported arrives twice, spelled the runner's way the second time,
+// and the two are collapsed to one check by the verify.UniqueChecks above.
 //
 // It is bounded twice, by the same two numbers the mapping's body reader
 // spends: a repository of generated fixtures may not turn a cheap scan into an
@@ -1014,7 +1022,11 @@ func requestLine(quote string, lines []string) int {
 // Sourced, for the same reason as its two siblings: nobody has to ask for their
 // tests to keep existing.
 func WeakenedChecks(removed, vanished []string) (judgment Judgment, ok bool) {
-	gone := verify.Subtract(append(append([]string{}, removed...), vanished...), nil)
+	// The two sources spell one check two ways — the diff names the declaration
+	// it took out, the roster names what the runner called it — so they are
+	// unioned by identity and not by string. A check deleted from a file the
+	// suite also ran was otherwise named twice in one finding.
+	gone := verify.UniqueChecks(append(append([]string{}, removed...), vanished...))
 	if len(gone) == 0 {
 		return Judgment{}, false
 	}

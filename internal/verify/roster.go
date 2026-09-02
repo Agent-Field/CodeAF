@@ -42,8 +42,12 @@ var passingTestPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?m)^\s*[✓√]\s+(.+?)\s*$`),
 	// cargo test
 	regexp.MustCompile(`(?m)^test\s+(\S+)\s+\.\.\.\s+ok\s*$`),
-	// gradle
-	regexp.MustCompile(`(?m)^\s*(\S+)\s+>\s+\S+\s+PASSED\s*$`),
+	// gradle, whose line is `com.example.ApiTest > testHeaders PASSED`. BOTH
+	// halves are captured and CheckIdentity keeps the second: the class is
+	// where the check lives, and the method is the check — capturing the class
+	// alone named the same identity once per check in it, and never named an
+	// identity a source reader could recognise.
+	regexp.MustCompile(`(?m)^\s*(\S+\s+>\s+\S+)\s+PASSED\s*$`),
 	// dotnet test / xunit, whose names are fully qualified. Required rather than
 	// assumed, for the reason failingTestPatterns states at its own copy of this
 	// line: after an English word, `\S+` matches an English word.
@@ -60,6 +64,13 @@ var passingTestPatterns = []*regexp.Regexp{
 // It is a superset of FailingTests by construction — the same output read
 // through both vocabularies — because a roster that omitted the red half would
 // report every failing check as one that had disappeared.
+//
+// The names are the RUNNER'S OWN spelling — the node-id path, the describe
+// chain, the subtest suffix — because a roster is read for the location in a
+// name as well as for the check: SplitReplaced tells a rewritten check from a
+// deleted one by the path it sits under. Which check one of these names is the
+// same check as is CheckIdentity's question, and it is asked where a roster
+// meets a reading of source rather than here.
 func ReportedTests(output string) []string {
 	clean := ansiEscape.ReplaceAllString(output, "")
 	seen := map[string]bool{}
@@ -116,25 +127,58 @@ var checkDeclarationPatterns = []*regexp.Regexp{
 // It reads source rather than output, so it is the one reader here that works on
 // a change nobody has run — which is what makes a diff answer the coverage
 // question at all.
+//
+// Its names are CHECK IDENTITIES — spelled by CheckIdentity, which is the one
+// function that decides which check a name names. Source carries no import
+// path, no class and no node id to qualify a declaration with, so a declaration
+// is already bare; passing it through CheckIdentity is what makes that a stated
+// law rather than a coincidence, and it is what lets the caller that matters
+// deduplicate these names against a runner's roster and get one entry per check
+// (internal/revision/acceptance.go, verify.UniqueChecks).
+//
+// The order is THE ORDER OF THE TEXT, and it is read off the offsets rather
+// than off the loop below: the patterns are walked one at a time, so a file
+// holding two of the shapes — a suite that spells some of its checks `it` and
+// the skipped ones `xit` — came back grouped by shape and not by line. A doc
+// that promised declaration order over a body that sorted was two statements
+// about one list; the file's own order is the one kept, because it is how a
+// person reads the change, and every caller that needs a set uses Subtract or
+// UniqueChecks, both order-stable in their own argument.
 func DeclaredChecks(source string) []string {
-	seen := map[string]bool{}
-	var names []string
+	// Where a declaration was, and what it named. The offset is carried so the
+	// list can be put back into the source's own order after every shape has
+	// been looked for.
+	type declaration struct {
+		at   int
+		name string
+	}
+	var found []declaration
 	for _, pattern := range checkDeclarationPatterns {
-		for _, match := range pattern.FindAllStringSubmatch(source, -1) {
+		for _, match := range pattern.FindAllStringSubmatchIndex(source, -1) {
 			// One pattern, several alternative capture groups: the quoted name
 			// in whichever quotation mark the author used. Exactly one of them
-			// is ever non-empty.
-			for _, captured := range match[1:] {
-				name := normalizeTestName(captured)
-				if name == "" || seen[name] {
+			// is ever filled, and an unfilled group is a negative offset.
+			for group := 1; 2*group+1 < len(match); group++ {
+				start, end := match[2*group], match[2*group+1]
+				if start < 0 {
 					continue
 				}
-				seen[name] = true
-				names = append(names, name)
+				if name := CheckIdentity(source[start:end]); name != "" {
+					found = append(found, declaration{at: start, name: name})
+				}
 			}
 		}
 	}
-	sort.Strings(names)
+	sort.SliceStable(found, func(i, j int) bool { return found[i].at < found[j].at })
+	seen := make(map[string]bool, len(found))
+	var names []string
+	for _, declared := range found {
+		if seen[declared.name] {
+			continue
+		}
+		seen[declared.name] = true
+		names = append(names, declared.name)
+	}
 	return names
 }
 

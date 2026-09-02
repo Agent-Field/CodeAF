@@ -2,6 +2,7 @@ package verify
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -142,4 +143,94 @@ func holds(names []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A CHECK HAS ONE IDENTITY, whichever reader named it.
+//
+// The two readers here read the same check out of two places and cannot spell
+// it the same way: a runner prints the node-id path, the class, the package and
+// the subtest it ran under, and the source those names come from holds none of
+// them. Every pair below is ONE check read both ways, and the gate unions the
+// two readings — the checks a change declared with the checks the suite
+// reported — so a pair that does not reduce to one identity is a behaviour
+// counted as covered twice and a deletion named twice.
+func TestOneCheckIsOneIdentityWhicheverReaderNamedIt(t *testing.T) {
+	for _, one := range []struct {
+		runner   string
+		output   string
+		source   string
+		identity string
+	}{{
+		// Go names the subtest under the function; the file holds the function.
+		runner:   "go",
+		output:   "--- PASS: TestOpensAfterThreshold/half_open_probe (0.01s)\n",
+		source:   "func TestOpensAfterThreshold(t *testing.T) {\n\tt.Run(\"half open probe\", nil)\n}\n",
+		identity: "TestOpensAfterThreshold",
+	}, {
+		// pytest names the file and the class in front of the check.
+		runner:   "pytest",
+		output:   "PASSED tests/state/test_cooldown.py::CooldownCase::test_cooldown_expires\n",
+		source:   "class CooldownCase:\n    def test_cooldown_expires(self):\n        assert True\n",
+		identity: "test_cooldown_expires",
+	}, {
+		// junit/testng, whose runners name the class and whose annotation names
+		// only the method. Both of the shapes maven and gradle print reduce to
+		// the method, which is the one the declaration can be read for.
+		runner: "junit",
+		output: "[ERROR] ApiTest.testHeadersAreSet Time elapsed: 0.1 s <<< FAILURE!\n" +
+			"com.example.ApiTest > testHeadersAreSet PASSED\n",
+		source:   "public class ApiTest {\n  @Test\n  public void testHeadersAreSet() {\n  }\n}\n",
+		identity: "testHeadersAreSet",
+	}, {
+		// An rspec description is written once and printed back unchanged, and
+		// the identity must leave it exactly as its author spelled it.
+		runner:   "rspec",
+		output:   " ✓ resets consecutive failures on success\n",
+		source:   "  it 'resets consecutive failures on success' do\n    expect(true)\n  end\n",
+		identity: "resets consecutive failures on success",
+	}} {
+		reported := ReportedTests(one.output)
+		if len(reported) == 0 {
+			t.Fatalf("%s: the runner's own output named no check at all", one.runner)
+		}
+		for _, name := range reported {
+			if got := CheckIdentity(name); got != one.identity {
+				t.Errorf("%s: the runner named %q, whose identity is %q, want %q",
+					one.runner, name, got, one.identity)
+			}
+		}
+		declared := DeclaredChecks(one.source)
+		if len(declared) != 1 || CheckIdentity(declared[0]) != one.identity {
+			t.Errorf("%s: the source declares %#v, want the one identity %q",
+				one.runner, declared, one.identity)
+		}
+		// And the union the gate actually takes: both readings of one check,
+		// and one check comes out.
+		if union := UniqueChecks(append(declared, reported...)); len(union) != 1 {
+			t.Errorf("%s: one check read twice was unioned as %#v", one.runner, union)
+		}
+	}
+}
+
+// The order is the order of the text. A file that spells its live checks `it`
+// and its skipped ones `xit` is read by two of the shapes, and a reader that
+// walked the shapes one at a time — or sorted at the end — reported an order
+// nobody wrote.
+func TestTheChecksASourceDeclaresComeBackInTheOrderItDeclaresThem(t *testing.T) {
+	source := `describe("circuit breaker", () => {
+  it("opens after five failures", () => {})
+  xit("keeps the half-open slot across internal retries", () => {})
+  it("resets consecutive failures on success", () => {})
+  it("opens after five failures", () => {})
+})
+`
+	want := []string{
+		"opens after five failures",
+		"keeps the half-open slot across internal retries",
+		"resets consecutive failures on success",
+	}
+	if got := DeclaredChecks(source); !reflect.DeepEqual(got, want) {
+		t.Errorf("DeclaredChecks = %#v, want the file's own order without repeats: %#v",
+			got, want)
+	}
 }
