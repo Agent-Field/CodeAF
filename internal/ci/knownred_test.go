@@ -30,9 +30,10 @@ import (
 // reading, which skips nothing when the file is gone.
 
 // knownRedEntries is the number of tests the ledger names right now. Measured
-// on 2026-09-02 at 35c1a79e. A change that fixes one lowers this by one in the
-// same commit; a change that would raise it has no road.
-const knownRedEntries = 18
+// on 2026-09-02 at 1de89c08, after #408 took five out. A change that fixes one
+// lowers this by one in the same commit; a change that would raise it has no
+// road.
+const knownRedEntries = 12
 
 // knownRedPath is where the ledger lives, relative to the repository root.
 const knownRedPath = ".github/known-red.txt"
