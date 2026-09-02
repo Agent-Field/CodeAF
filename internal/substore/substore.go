@@ -15,6 +15,7 @@
 //	~/.aforge/subharnesses/<name>/v2/
 //	~/.aforge/subharnesses/<name>/memory.md    the LIVE memory, written by remember()
 //	~/.aforge/subharnesses/<name>/last-run.json
+//	~/.aforge/subharnesses/<name>/.mint.lock   the gate one mint at a time holds
 //
 // THERE IS NO HEAD FILE. The head is the highest version present, which is the
 // rule internal/subharness/store.go states about its own pages and the reason it
@@ -25,9 +26,18 @@
 // the exclusive-create discipline this package inherited would have had nothing
 // to grip if the record lived under v2/. Written beside it, `v2.json` is exactly
 // the page the old store already minted this way: the first writer to link it
-// into place owns v2, a second writer racing it is told the name is taken and
-// mints v3, and the bundle directory is renamed into place only by the winner.
+// into place owns v2, a second writer racing it is told the name is taken —
+// refused, never shifted along to v3, for the reason [Store.write] gives — and
+// the bundle directory is renamed into place only by the winner.
 // See [Store.Mint].
+//
+// THE CLAIM IS NOT ON ITS OWN ENOUGH, and that is what `.mint.lock` is for. An
+// exclusive create refuses two writers who computed the SAME version number, and
+// two writers who read the store a moment apart do not: one of them counts past
+// a record whose bundle has not landed yet and mints a second child of the same
+// parent. [Store.gated] holds one writer at a time across the whole
+// read-check-claim so that cannot be read a moment apart, and the exclusive
+// create stays underneath it as the floor on a filesystem that will not lock.
 //
 // The store holds no cache. A bundle is small, read at launch and at dispatch,
 // and edited by hand often enough that a stale read would be the more expensive
@@ -77,6 +87,14 @@ const (
 	// name's directory never mistakes a half-written mint for a version, and it
 	// is removed by the minter whether the mint won its claim or lost it.
 	mintPrefix = ".mint-"
+
+	// gateFile is the file one mint at a time holds while it reads a name's
+	// versions and claims the next one — see [Store.gated]. It is dot-led like
+	// the staging directories beside it so that no scan of a name's directory
+	// mistakes it for a version, and it is CREATED ONCE AND NEVER REPLACED,
+	// because a lock over an inode somebody is about to rename away is two locks
+	// with one name.
+	gateFile = ".mint.lock"
 )
 
 // ErrNotFound is what a read answers for a subharness or a version that was
@@ -256,6 +274,10 @@ func (s *Store) VersionDir(name string, version int) string {
 
 func (s *Store) recordPath(name string, version int) string {
 	return filepath.Join(s.nameDir(name), versionPrefix+strconv.Itoa(version)+versionSuffix)
+}
+
+func (s *Store) gatePath(name string) string {
+	return filepath.Join(s.nameDir(name), gateFile)
 }
 
 func (s *Store) memoryPath(name string) string {
