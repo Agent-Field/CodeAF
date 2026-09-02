@@ -738,7 +738,7 @@ func (c *familyCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	// hold above this one's scope (task_divide_compose.go), so the second part's
 	// own first message carries the first part's mark as well — and a router
 	// reading the whole document would answer as its sibling and write its file.
-	// What is read is the section under WHAT THIS PART OWNS, which is this
+	// What is read is the section under WHAT THIS PART WORKS ON, which is this
 	// part's alone; a node nobody divided has no such heading and is read whole.
 	if _, own, found := strings.Cut(brief, divisionThisPart); found {
 		brief = own

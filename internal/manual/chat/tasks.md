@@ -2555,7 +2555,8 @@ waived by anything.
 every task opens on: your own message word for word, then the work being divided as the
 task itself was given it, then one line — `THE OTHER PARTS ARE IN SOMEBODY ELSE'S HANDS
 RIGHT NOW:` — naming what each of its siblings owns and telling it to leave them alone.
-Last comes `WHAT THIS PART OWNS`, and that part alone is what the splitting worker wrote.
+Last comes `WHAT THIS PART WORKS ON`, and that part alone is what the splitting worker wrote.
+What the part OWNS is under `DONE WHEN`, which is the done-condition its author gave it.
 **The harness writes everything but the scope**, and it writes the same thing for a part a
 worker split out and a part a second model drew — so a part never depends on the model
 doing the splitting remembering to restate the job once per part. Your own sentence still
