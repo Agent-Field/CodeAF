@@ -1004,6 +1004,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the model was printing garbage", "models-and-cost"},
 		{"the reply came back as gibberish", "models-and-cost"},
 		{"it started repeating the same line over and over", "models-and-cost"},
+		// 2026-09-01: a screen full of the model's own think-closer, stopped
+		// by hand. Asked as what was on the screen, as what happened to it
+		// after the stop, and as the question about the thinking pass.
+		{"the reply was just </think> repeated over and over", "models-and-cost"},
+		{"I stopped it while it was printing garbage, is that still in the conversation", "models-and-cost"},
+		{"does it watch the thinking for repetition too", "models-and-cost"},
 
 		// The 2026-08-31 incident, asked the ways a person describes what they
 		// saw: a serving endpoint leaked the model's own tool grammar as text,

@@ -505,7 +505,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		// only the note would be a reply that says who spoke and not what they
 		// said.
 		if streamed.Load() > 0 {
-			a.keepPartial(partial)
+			a.keepPartial(partial, hub)
 		} else {
 			partial.reset()
 		}
