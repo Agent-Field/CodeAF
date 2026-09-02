@@ -1022,7 +1022,7 @@ func (a *app) orchReadTranscript() {
 	}
 	var next []entry
 	if path, found := doors.OrchestrateNodeJournal(run.id, run.transcript); found {
-		next, _ = readRoomJournalTail(path, a.pal, 0, !a.hosted())
+		next, _ = a.replayBlocks(session.ReadTranscript(path), roomReplay(0))
 	}
 	if run.journalSet && reflect.DeepEqual(run.journal, next) {
 		return

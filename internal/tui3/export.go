@@ -428,6 +428,24 @@ func exportGloss(hint, args string) string {
 	return clipBytes(strings.TrimSpace(firstLine(ansi.Strip(args))), exportHintCap)
 }
 
+// clipBytes cuts at a byte budget without splitting a rune.
+//
+// It lives here because this is its one caller now. It was room.go's, part of a
+// second reader of the session file that this surface no longer has (#252); the
+// cutting itself is still owed to a gloss that has to fit a line.
+func clipBytes(text string, n int) string {
+	if len(text) <= n {
+		return text
+	}
+	cut := n - len("…")
+	for cut > 0 && !runeStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
+}
+
+func runeStart(b byte) bool { return b&0xC0 != 0x80 }
+
 // exportShort is the budget a result has to fit inside to be quoted at all.
 func exportShort(answer string) bool {
 	return len([]rune(answer)) <= exportAnswerCap &&

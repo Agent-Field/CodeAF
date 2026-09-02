@@ -116,7 +116,7 @@ func (a *app) replayList(all []session.DisplayEntry) {
 	if from < a.earlierFloor {
 		from = a.earlierFloor
 	}
-	blocks, turns := a.replayBlocks(all[from:], a.turn)
+	blocks, turns := a.replayBlocks(all[from:], chatReplay(a.turn))
 	a.entries = append(a.entries, blocks...)
 	a.turn += turns
 	a.replayFrom = from
@@ -385,7 +385,7 @@ func (a *app) backfillEarlier() bool {
 // because they are the same turn: the blocks just above the old top are the
 // beginning of the turn whose tail was already showing.
 func (a *app) prepend(entries []session.DisplayEntry, seam bool) {
-	blocks, turns := a.replayBlocks(entries, 0)
+	blocks, turns := a.replayBlocks(entries, chatReplay(0))
 	shift := a.replayFloor - turns
 	for i := range blocks {
 		blocks[i].turn += shift
@@ -476,16 +476,61 @@ func (a *app) earlierRow(width int) string {
 	return a.pal.dim(fit(earlierMark, width))
 }
 
-// replayBlocks turns a window of the journal into blocks, numbering the turns
-// from `turn`. It returns the blocks and how many of the person's messages were
-// in them, which is what the caller needs to keep its own counter straight.
+// replayShape is the whole of what one page asks of the shaping beyond the
+// entries themselves — four facts, in one value, so that the difference between
+// the conversation's transcript and a node's page is readable in the two
+// literals below rather than spread through the walk as flags.
 //
-// IT IS THE ONE PLACE A TRANSCRIPT BECOMES BLOCKS. The opening replay and every
-// backfill above it go through here, so a conversation scrolled back into
-// cannot be drawn differently from the same conversation opened onto.
-func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, int) {
+// THE SEMANTICS ARE THE SAME ON BOTH PAGES AND ONLY THE FRAMING DIFFERS. Nothing
+// here can drop an entry, change a role or re-order anything: a page that wanted
+// one of those would be a second reading of one record, which is the defect this
+// file's one walk exists to end.
+type replayShape struct {
+	// turn is the number the first turn in this window takes. A page whose whole
+	// life is one turn starts at zero and stays there.
+	turn int
+	// tail keeps only the last this-many blocks; zero keeps every one. It is the
+	// caller's window on a record that can be hundreds of messages long, and it
+	// is applied after the walk so the counting is done over the whole of it.
+	tail int
+	// brief marks the FIRST of the person's blocks as the instruction this page
+	// was given — the one message on this surface that folds (brieffold.go). It
+	// is false in the conversation, where no message is terms of reference for
+	// the ones under it.
+	brief bool
+	// running draws a call the record left unanswered as a call that has not come
+	// back ([session.DisplayEntry.Answered]). It is what a page opened on work
+	// that is STILL HAPPENING needs and what a resumed conversation must not
+	// have: the record it resumes from was mended on the way in, and a row left
+	// spinning there would be waiting for an end that already happened.
+	running bool
+}
+
+// chatReplay is the participant's page: numbered turns, no window, no brief, and
+// nothing left running.
+func chatReplay(turn int) replayShape { return replayShape{turn: turn} }
+
+// roomReplay is the overseer's page: ONE turn with elbows hanging off it
+// (steerelbow.go and the lens design's Decision 2), a window onto the tail of a
+// record that can be hundreds of messages long, the instruction at the top
+// folded, and the call that has not come back drawn as running.
+func roomReplay(tail int) replayShape {
+	return replayShape{tail: tail, brief: true, running: true}
+}
+
+// replayBlocks turns a window of the record into blocks, on the shape the page
+// asked for. It returns the blocks and how many of the person's messages were in
+// them, which is what the caller needs to keep its own counter straight.
+//
+// IT IS THE ONE PLACE A TRANSCRIPT BECOMES BLOCKS. The opening replay, every
+// backfill above it and every node's page go through here, so a conversation
+// scrolled back into cannot be drawn differently from the same conversation
+// opened onto — and a node's record cannot be drawn differently from either.
+// A second shaping is what let a room reopen a correction as a fresh question
+// for as long as rooms have existed (#252).
+func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([]entry, int) {
 	blocks := make([]entry, 0, len(entries))
-	turns := 0
+	turn, turns := shape.turn, 0
 	for _, e := range entries {
 		text := strings.TrimSpace(e.Text)
 		switch e.Role {
@@ -540,6 +585,11 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			turns++
 			blocks = append(blocks, entry{
 				kind: entryUser, text: line, turn: turn,
+				// AND THE FIRST OF THEM IS THE INSTRUCTION THIS PAGE WAS GIVEN,
+				// marked here because here is where it is knowable: it is the
+				// message that opened the first turn, and everything the person says
+				// after it on such a page is a correction to work already running.
+				brief:    shape.brief && turns == 1,
 				pictures: pictures, picturesHere: !a.hosted(),
 			})
 
@@ -558,8 +608,23 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 			if strings.TrimSpace(e.Tool) == "" {
 				continue
 			}
+			// A CALL WITH NO RESULT UNDER IT HAS NOT COME BACK, and the record is
+			// the only thing that can say so: internal/session writes the assistant
+			// message BEFORE the batch runs, so work caught mid-call records the
+			// asking and nothing else. The clock is NOT invented to go with it —
+			// began stays zero, so the row shows no age (toolview.go) — because
+			// nobody measured when it started.
+			status := toolOK
+			if shape.running && !e.Answered {
+				status = toolRunning
+			}
 			blocks = append(blocks, entry{
-				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: toolOK,
+				kind: entryTool, tool: e.Tool, text: e.Hint, turn: turn, status: status,
+				// THE CALL'S OWN IDENTITY IS KEPT because it is what a live end has
+				// to land on: a page drawn out of the record and then kept listening
+				// pairs the end that arrives a second later with the row already
+				// standing, or the same call is drawn twice.
+				callID: e.CallID,
 				// The detail is carried through UNPARSED, which is what makes a
 				// replayed row the same row: everything the expansion shows — the
 				// diff, the content preview, the highlighted command and its
@@ -598,6 +663,12 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, turn int) ([]entry, i
 				kind: entryNote, text: firstLine(text), turn: turn,
 			})
 		}
+	}
+	// THE WINDOW IS TAKEN LAST, so that the turn numbering and the count above are
+	// done over the whole of what was read: a page showing the tail of a record
+	// still knows which turn it is standing in.
+	if shape.tail > 0 && len(blocks) > shape.tail {
+		blocks = blocks[len(blocks)-shape.tail:]
 	}
 	return blocks, turns
 }
