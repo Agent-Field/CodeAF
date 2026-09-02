@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -24,7 +25,12 @@ type CallBody struct {
 	// CallID is the token the model-call log already mints per attempt. It is
 	// what joins this file to that line and to the conversation's own transcript.
 	CallID string
-	Model  string
+	// Node is the piece of work this call belonged to — a plan node, a leaf, a
+	// named errand. A feeder that knows it names it; every other feeder leaves
+	// it empty and the recorder fills it from the context ([trace.WithNode]),
+	// which is where the deep sites carry it.
+	Node  string
+	Model string
 	// Request and Response are the wire bodies as bytes. They are written as
 	// JSON where they are JSON and as a string otherwise, so a reader gets one
 	// document to read rather than JSON quoted inside JSON.
@@ -45,7 +51,10 @@ type CallBody struct {
 // never ran at all, and a record in which a refusal reads like a failure is a
 // record that sends somebody debugging the tool instead of the gate.
 type ToolEvent struct {
-	CallID   string
+	CallID string
+	// Node is the piece of work this tool call belonged to, filled from the
+	// context when the feeder does not name one — see [CallBody.Node].
+	Node     string
 	Name     string
 	Args     string
 	Result   string
@@ -63,7 +72,10 @@ type ToolEvent struct {
 // was about, Choice is what was chosen, and Alternatives are what was not — the
 // four together being what somebody reconstructing a run actually asks for.
 type Decision struct {
-	CallID       string
+	CallID string
+	// Node is the piece of work this choice was made for, filled from the
+	// context when the feeder does not name one — see [CallBody.Node].
+	Node         string
 	Kind         string
 	Subject      string
 	Choice       string
@@ -97,6 +109,9 @@ type Recorder struct {
 	// opened says the folder has been created and the older runs pruned, so
 	// neither happens twice.
 	opened bool
+	// anonymous counts the calls that arrived with no id of their own, so that
+	// two of them in the same millisecond get two files.
+	anonymous int
 }
 
 // Folder is where this run's record is, whether or not anything is in it yet.
@@ -132,6 +147,7 @@ func (r *Recorder) Call(ctx context.Context, body CallBody) {
 		"call":  body.CallID,
 		"model": body.Model,
 	}
+	putText(document, "node", nodeOf(ctx, body.Node))
 	putRaw(document, "request", body.Request)
 	putRaw(document, "response", body.Response)
 	putText(document, "reasoning", body.Reasoning)
@@ -147,8 +163,12 @@ func (r *Recorder) Call(ctx context.Context, body CallBody) {
 	if name == "" {
 		// A call with no id still has bodies worth keeping; it simply cannot be
 		// joined to a line of the model-call log. The time is the only other
-		// thing that names it.
-		name = "call-" + time.Now().Format("150405.000")
+		// thing that names it — AND THE TIME IS NOT ENOUGH ON ITS OWN: two
+		// calls that came back inside the same millisecond would write the same
+		// file name and the second would overwrite the first, losing exactly
+		// the body somebody switched the record on for. The count makes it the
+		// run's own nth anonymous call as well as its time.
+		name = r.anonymousName()
 	}
 	r.writeFile(filepath.Join(CallsDirName, name+".json"), line)
 }
@@ -164,6 +184,7 @@ func (r *Recorder) Tool(ctx context.Context, event ToolEvent) {
 		"ts":   time.Now().Format(timeLayout),
 		"tool": event.Name,
 	}
+	putText(document, "node", nodeOf(ctx, event.Node))
 	putText(document, "call", event.CallID)
 	putText(document, "args", event.Args)
 	putText(document, "result", event.Result)
@@ -192,6 +213,7 @@ func (r *Recorder) Decision(ctx context.Context, decision Decision) {
 		"run":  r.run,
 		"ts":   time.Now().Format(timeLayout),
 	}
+	putText(document, "node", nodeOf(ctx, decision.Node))
 	putText(document, "call", decision.CallID)
 	putText(document, "decision", decision.Kind)
 	putText(document, "subject", decision.Subject)
@@ -218,11 +240,34 @@ func putRaw(document map[string]any, field string, body []byte) {
 	document[field] = string(clean)
 }
 
+// nodeOf is the ONE reading of which work a record belongs to: what the feeder
+// named, and otherwise what the context carries. The field wins because a
+// feeder that knows the node is closer to the work than the context is — a
+// planner writing a record ABOUT a node it is not running is the case — and the
+// context answers everywhere else, which is most places, because the sites that
+// write records are far below the sites that know what the work is called.
+func nodeOf(ctx context.Context, named string) string {
+	if named = strings.TrimSpace(named); named != "" {
+		return named
+	}
+	return NodeFrom(ctx)
+}
+
 func putText(document map[string]any, field, value string) {
 	if value == "" {
 		return
 	}
 	document[field] = string(Scrub([]byte(value)))
+}
+
+// anonymousName is the file name for a call that carried no id: the time it
+// landed and which of this run's unnamed calls it was. It takes the recorder's
+// own mutex, and is therefore called BEFORE the write rather than inside it.
+func (r *Recorder) anonymousName() string {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.anonymous++
+	return fmt.Sprintf("call-%s-%d", time.Now().Format("150405.000"), r.anonymous)
 }
 
 func (r *Recorder) appendEvent(document map[string]any) {
@@ -304,7 +349,15 @@ func (r *Recorder) cap() {
 		"bytes": r.bytes,
 		"max":   r.max,
 	})
-	if err != nil || r.events == nil {
+	if err != nil {
+		return
+	}
+	// THE RECEIPT IS OPENED FOR IF NOTHING HAS OPENED ONE YET. A run whose very
+	// first record is a call body larger than the ceiling reaches this with no
+	// events file, and returning here left the folder empty and the person with
+	// no way to tell a capped run from a run that recorded nothing at all —
+	// which is the one reading the cap exists to prevent.
+	if r.events == nil && r.open() != nil {
 		return
 	}
 	if _, err := r.events.Write(append(line, '\n')); err == nil {

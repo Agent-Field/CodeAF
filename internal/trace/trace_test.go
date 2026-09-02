@@ -34,6 +34,7 @@ func TestEveryMethodIsANoOpOnANilRecorder(t *testing.T) {
 	recorder.Call(context.Background(), CallBody{CallID: "abcd1234"})
 	recorder.Tool(context.Background(), ToolEvent{Name: "bash"})
 	recorder.Decision(context.Background(), Decision{Kind: "lane"})
+	recorder.Header(context.Background(), RunHeader{Command: "chat", Started: time.Now()})
 	if recorder.Folder() != "" || recorder.Wrote() {
 		t.Fatalf("a nil recorder reported a folder or a write")
 	}
@@ -119,8 +120,8 @@ func TestASwitchedOnRunThatRecordsNothingLeavesNoFolder(t *testing.T) {
 func TestARunWritesItsCallsToolsAndDecisionsUnderItsOwnID(t *testing.T) {
 	ctx := fresh(t)
 	run := RunFrom(ctx)
-	if len(run) != 8 {
-		t.Fatalf("run id %q is not eight hex characters", run)
+	if len(run) != 16 {
+		t.Fatalf("run id %q is not sixteen hex characters", run)
 	}
 	recorder := For(ctx)
 	recorder.Call(ctx, CallBody{
@@ -501,4 +502,242 @@ func TestADoorWithTheSwitchOffCreatesNoFolder(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("a run with the record off announced %q", out.String())
 	}
+}
+
+// quiet points the state root at a temporary directory and puts the process
+// back the way it was found: the switch off, no recorder open, and no run
+// switched on by itself. Every test of the SCOPE needs that, because the scope
+// is exactly the difference between one run and the process.
+func quiet(t *testing.T) {
+	t.Helper()
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	runs.mutex.Lock()
+	runs.by = nil
+	runs.mutex.Unlock()
+	enabled.mutex.Lock()
+	enabled.by = nil
+	enabled.mutex.Unlock()
+	wasOn, wasAny := on.Load(), anyRun.Load()
+	t.Cleanup(func() {
+		on.Store(wasOn)
+		anyRun.Store(wasAny)
+		enabled.mutex.Lock()
+		enabled.by = nil
+		enabled.mutex.Unlock()
+	})
+	on.Store(false)
+	anyRun.Store(false)
+}
+
+// THE RUN ID ON THE CONTEXT IS THE SCOPE OF THE SWITCH. This is the defect the
+// two scopes exist to stop: one process holds two conversations, /debug is
+// typed in one of them, and the other one's prompts and replies must not land
+// in a folder its person never asked for.
+func TestDebugRecordsOnlyTheRunItWasTypedIn(t *testing.T) {
+	quiet(t)
+	mine := WithRun(context.Background(), "aaaa1111")
+	theirs := WithRun(context.Background(), "bbbb2222")
+
+	if got := EnableRun(mine); got != "aaaa1111" {
+		t.Fatalf("EnableRun named %q; want the run on the context", got)
+	}
+	if !EnabledRun(mine) {
+		t.Fatalf("the run /debug was typed in does not report itself as recording")
+	}
+	if EnabledRun(theirs) {
+		t.Fatalf("a second conversation reports itself as recording")
+	}
+	if Enabled() {
+		t.Fatalf("/debug flipped the process-wide switch")
+	}
+
+	recorder := For(mine)
+	if recorder == nil {
+		t.Fatalf("the run /debug was typed in got no recorder")
+	}
+	if got := For(theirs); got != nil {
+		t.Fatalf("a second conversation got the recorder %v; want nil", got)
+	}
+	if got, want := recorder.Folder(), Dir("aaaa1111"); got != want {
+		t.Fatalf("folder %q, want %q", got, want)
+	}
+}
+
+// A CONTEXT WITH NO RUN OF ITS OWN IS RECORDED ONLY BY THE PROCESS-WIDE SWITCH.
+// The fallback to the process's run is what lets a headless errand's deeper
+// layers record at all, and it must not be the road a /debug in one
+// conversation takes into work that belongs to another.
+func TestTheProcessRunFallbackDoesNotCarryOneRunsDebug(t *testing.T) {
+	quiet(t)
+	ctx := Begin(context.Background())
+	if EnableRun(ctx) == "" {
+		t.Fatalf("the door's own run could not be switched on")
+	}
+	if got := For(context.Background()); got != nil {
+		t.Fatalf("a context with no run got the recorder %v after a /debug elsewhere; want nil", got)
+	}
+	// And with the process-wide switch on it records again, under the process's
+	// own run — which is what --debug and AFORGE_DEBUG mean.
+	Enable()
+	recorder := For(context.Background())
+	if recorder == nil {
+		t.Fatalf("a context with no run got no recorder with the process switch on")
+	}
+	if got, want := recorder.Folder(), Dir(RunFrom(ctx)); got != want {
+		t.Fatalf("the fallback recorded into %q, want the process's run %q", got, want)
+	}
+}
+
+// THE PIN AND THE FLAG WERE GIVEN TO THE PROCESS, so every run it holds is
+// recorded — each into its own folder, because two runs interleaving into one
+// folder is the confusion the run id exists to end.
+func TestTheProcessSwitchRecordsEveryRunInItsOwnFolder(t *testing.T) {
+	quiet(t)
+	on.Store(true)
+	first, second := WithRun(context.Background(), "aaaa1111"), WithRun(context.Background(), "bbbb2222")
+	one, two := For(first), For(second)
+	if one == nil || two == nil {
+		t.Fatalf("the process switch left a run without a recorder: %v %v", one, two)
+	}
+	if one.Folder() == two.Folder() {
+		t.Fatalf("two runs share the folder %s", one.Folder())
+	}
+	OpenRun(first, RunHeader{Command: "chat", Started: time.Now()})
+	OpenRun(second, RunHeader{Command: "chat", Started: time.Now()})
+	for _, folder := range []string{one.Folder(), two.Folder()} {
+		if _, err := os.Stat(filepath.Join(folder, RunFileName)); err != nil {
+			t.Fatalf("no header under %s: %v", folder, err)
+		}
+	}
+}
+
+// A run switched on by itself writes its header and announces its own folder,
+// which is what /debug promises the person who typed it.
+func TestARunSwitchedOnByItselfWritesAndAnnouncesItsFolder(t *testing.T) {
+	quiet(t)
+	ctx := Begin(context.Background())
+	EnableRun(ctx)
+	OpenRun(ctx, RunHeader{Command: "chat", Model: "deepseek/deepseek-v4-flash", Started: time.Now()})
+	folder := Dir(RunFrom(ctx))
+	if _, err := os.Stat(filepath.Join(folder, RunFileName)); err != nil {
+		t.Fatalf("no header under %s: %v", folder, err)
+	}
+	var out bytes.Buffer
+	Announce(ctx, &out)
+	if got, want := out.String(), "debug record: "+folder+"\n"; got != want {
+		t.Fatalf("announcement: got %q, want %q", got, want)
+	}
+}
+
+// A surface that never began a run has nothing to switch on, and saying so is
+// the honest answer — the alternative is a record that goes nowhere.
+func TestEnableRunOnAContextWithNoRunSwitchesNothingOn(t *testing.T) {
+	quiet(t)
+	if got := EnableRun(context.Background()); got != "" {
+		t.Fatalf("EnableRun named %q on a context with no run", got)
+	}
+	if anyRun.Load() {
+		t.Fatalf("a context with no run switched something on")
+	}
+}
+
+// EVERY RECORD NAMES THE WORK IT BELONGED TO, not only the run. A long run is
+// dozens of calls across a plan, and a folder in which they are told apart only
+// by their timestamps is a folder somebody has to reconstruct the plan from.
+func TestEveryRecordNamesTheNodeOnItsContext(t *testing.T) {
+	ctx := fresh(t)
+	work := WithNode(ctx, "task-3")
+	recorder := For(work)
+	recorder.Call(work, CallBody{CallID: "c0ffee01", Model: "m", Request: []byte(`{"a":1}`)})
+	recorder.Tool(work, ToolEvent{CallID: "c0ffee01", Name: "bash", Status: "ok"})
+	recorder.Decision(work, Decision{CallID: "c0ffee01", Kind: "lane", Choice: "frugal"})
+
+	for _, document := range append(readEvents(t, recorder.Folder()), readCall(t, recorder.Folder(), "c0ffee01")) {
+		if got := document["node"]; got != "task-3" {
+			t.Fatalf("a %v record named the node %v, want task-3", document["kind"], got)
+		}
+	}
+}
+
+// The field wins over the context, because a feeder that names a node is closer
+// to the work than the context is — a planner writing a record ABOUT a node it
+// is not running is exactly that case.
+func TestANamedNodeBeatsTheOneOnTheContext(t *testing.T) {
+	ctx := fresh(t)
+	work := WithNode(ctx, "task-3")
+	recorder := For(work)
+	recorder.Decision(work, Decision{Kind: "hedge", Node: "task-4"})
+	events := readEvents(t, recorder.Folder())
+	if got := events[len(events)-1]["node"]; got != "task-4" {
+		t.Fatalf("the record named %v, want the node the feeder gave it", got)
+	}
+}
+
+// THE EMPTINESS LAW APPLIES TO THE FILE TOO: a record nobody named a node for
+// says nothing, rather than naming a node called "". And an empty node may not
+// hide an outer one.
+func TestARecordWithNoNodeSaysNothingAboutOne(t *testing.T) {
+	ctx := fresh(t)
+	recorder := For(ctx)
+	recorder.Decision(ctx, Decision{Kind: "lane"})
+	events := readEvents(t, recorder.Folder())
+	if _, said := events[len(events)-1]["node"]; said {
+		t.Fatalf("a record with no node still wrote one: %v", events[len(events)-1])
+	}
+	if got := NodeFrom(WithNode(WithNode(ctx, "task-3"), "  ")); got != "task-3" {
+		t.Fatalf("an empty node hid the one already there: %q", got)
+	}
+}
+
+// A CAPPED RUN SAYS SO EVEN WHEN THE FIRST RECORD IS THE ONE THAT DID NOT FIT.
+// A call body is a file of its own, so a run whose first body is over the
+// ceiling used to leave an empty folder and no line — indistinguishable from a
+// run that recorded nothing at all.
+func TestAFirstOversizedCallBodySaysTheRunWasCapped(t *testing.T) {
+	ctx := fresh(t)
+	t.Setenv(MaxMBEnvVar, "")
+	recorder := For(ctx)
+	recorder.max = 64
+	recorder.Call(ctx, CallBody{CallID: "c0ffee01", Model: "m", Request: []byte(`{"prompt":"` + strings.Repeat("x", 4096) + `"}`)})
+	if !recorder.Wrote() {
+		t.Fatalf("a capped run wrote nothing at all")
+	}
+	events := readEvents(t, recorder.Folder())
+	if len(events) != 1 || events[0]["kind"] != "capped" {
+		t.Fatalf("the capped receipt is not the events file's one line: %v", events)
+	}
+	if _, err := os.Stat(filepath.Join(recorder.Folder(), CallsDirName, "c0ffee01.json")); !os.IsNotExist(err) {
+		t.Fatalf("the body that did not fit was written anyway: %v", err)
+	}
+}
+
+// TWO CALLS WITH NO ID DO NOT OVERWRITE EACH OTHER. The time alone names them,
+// and two calls can land inside one millisecond — losing the very body somebody
+// switched the record on for.
+func TestTwoUnnamedCallsInTheSameMillisecondKeepBothBodies(t *testing.T) {
+	ctx := fresh(t)
+	recorder := For(ctx)
+	recorder.Call(ctx, CallBody{Model: "m", Request: []byte(`{"which":"first"}`)})
+	recorder.Call(ctx, CallBody{Model: "m", Request: []byte(`{"which":"second"}`)})
+	entries, err := os.ReadDir(filepath.Join(recorder.Folder(), CallsDirName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("two unnamed calls left %d files, want 2", len(entries))
+	}
+}
+
+// readCall is one call body as a reader gets it: one file, named by the call id.
+func readCall(t *testing.T, folder, call string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(folder, CallsDirName, call+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := map[string]any{}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	return document
 }

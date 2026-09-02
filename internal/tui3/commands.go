@@ -393,7 +393,7 @@ var commands = []command{
 	// and position here is a claim about frequency — nobody turns the record on
 	// twice in a day, and a row inserted higher would push a daily command
 	// behind a scroll.
-	{name: "debug", desc: "keep the full record of this run · says where it goes"},
+	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "close this conversation", alias: []string{"exit", "q"}},
 }
@@ -998,7 +998,8 @@ func modelArg(rest string) (modelIntent, string) {
 	return modelSwitch, rest
 }
 
-// runDebugCommand is /debug: keep the full record of this run from here on.
+// runDebugCommand is /debug: keep the full record of THIS conversation from
+// here on.
 //
 // IT IS ONE-WAY, and that is the whole design. A person types it because
 // something has already gone wrong, and a switch that could be turned off again
@@ -1008,10 +1009,18 @@ func modelArg(rest string) (modelIntent, string) {
 // neither of them can serve: the conversation is already open, and the turn
 // worth recording is the next one.
 //
-// It ANSWERS both ways round. Turning it on says where the record goes, because
+// IT TURNS THE RECORD ON FOR THIS RUN AND NO OTHER. One process can hold
+// several conversations, and a process-wide flip from a command typed inside
+// one of them would write another person's prompts and replies into a folder
+// they never asked for. The pin and the flag are the process-wide doors,
+// because those were handed to the process on purpose.
+//
+// It ANSWERS every way round. Turning it on says where the record goes, because
 // a command that recorded something and did not say where would leave a person
-// hunting a folder; typing it twice says it is already on and where, because
-// silence after a deliberate command reads as a command that broke.
+// hunting a folder; typing it twice says it is already on and where; and where
+// the whole process is already recording it says that instead, because "it is
+// on for everything this aforge is doing" is a different fact from "it is on
+// for you", and a person reading a folder later needs to know which.
 func (a *app) runDebugCommand() {
 	folder := trace.Dir(trace.RunFrom(a.ctx))
 	if folder == "" {
@@ -1021,9 +1030,18 @@ func (a *app) runDebugCommand() {
 		return
 	}
 	if trace.Enabled() {
+		a.note("the record is already on for every conversation this aforge holds · this one goes to " + folder)
+		return
+	}
+	if trace.EnabledRun(a.ctx) {
 		a.note("the record is already on · it goes to " + folder)
 		return
 	}
-	trace.Enable()
-	a.note("recording this run · it goes to " + folder)
+	if trace.EnableRun(a.ctx) == "" {
+		// The run id reached this surface on nothing but the process's own
+		// fallback, so there is no run on the context to switch on by itself.
+		a.note("this conversation has no run to record.")
+		return
+	}
+	a.note("recording this conversation · it goes to " + folder)
 }

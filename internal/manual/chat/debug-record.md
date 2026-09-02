@@ -25,8 +25,28 @@ wrong, and a switch you could turn back off would only ever leave you half a rec
 half after the thing you were trying to catch. It lasts for the rest of the conversation,
 and the next one starts with it off.
 
-`/debug` answers with the folder either way: the first time it says where the record is
-going, and a second time it says the record is already on and where it is going.
+`/debug` answers with the folder either way: the first time it says
+`recording this conversation · it goes to …`, and a second time
+`the record is already on · it goes to …`.
+
+## Does /debug turn the record on for my other conversations — what each door covers
+
+The three doors mean the same record and not the same reach. **With the pin or the flag,
+every conversation this process holds is recorded, each into its own folder; `/debug`
+records only the conversation you typed it in.** The pin and the flag were handed to that
+aforge on purpose, before anything opened; `/debug` was typed inside one conversation, and
+one aforge can be holding several.
+
+So if you have two conversations open and type `/debug` in one, the other one keeps
+writing nothing — its prompts, its files and its replies do not land in a folder its
+person never asked for. Each conversation that is being recorded has a folder of its own,
+named by its own run.
+
+Where the pin or the flag already turned everything on, `/debug` says so rather than
+pretending it did something: `the record is already on for every conversation this aforge
+holds · this one goes to …`, naming your own conversation's folder. And in a conversation
+that belongs to no run at all, it says `this conversation has no run to record.` instead
+of switching on a record that would go nowhere.
 
 ## Where is the debug record — the folder for a run, and what is in it
 
@@ -36,7 +56,7 @@ Every run gets a folder of its own, named after that run:
 ~/.aforge/logs/trace/<run>/
 ```
 
-`<run>` is eight characters minted when the run starts — when you open a conversation,
+`<run>` is sixteen characters minted when the run starts — when you open a conversation,
 and when `aforge do` or `aforge exec` begins. It is the id every record in that folder
 carries, so records from two runs can never be read as one.
 
@@ -50,6 +70,10 @@ you found afterwards actually was.
 
 Beside it the run's own records accumulate: `events.jsonl`, one line per thing that
 happened, and a `calls/` folder with one file per model call named by that call's id.
+Every record carries the run it belongs to, and — where the work it came from has a name —
+the piece of work, so a long run reads as the plan it was rather than a pile of calls in
+time order.
+
 **The pieces that write those are being added one at a time**, and this build ships the
 switch, the run, its header, the folder and its size law; the call bodies, the tool calls
 and the choices a run made arrive with the changes that record them.
@@ -58,7 +82,7 @@ Each of the three doors also prints one line to the error output when it finishe
 only when there is something to go and look at:
 
 ```
-debug record: ~/.aforge/logs/trace/52dfbdde
+debug record: ~/.aforge/logs/trace/52dfbdde3f1a7c04
 ```
 
 **With the switch off, nothing is created at all** — no folder, no line, nothing to clean
@@ -83,10 +107,16 @@ cannot lose its own evidence to a rotation.
 ## Is my key in the debug record — what it never holds
 
 **No key, ever.** Nothing that looks like a credential is written into the record: an
-authorization or `api-key` field, anything after `Bearer`, anything shaped like an
-`sk-…` token, and the key this machine is configured with, are each replaced by the word
-`[redacted]` before anything reaches the disk. You can grep the folder for `authorization`
-or for your own key and find nothing.
+authorization or `api-key` field, anything after `Bearer`, and anything shaped like an
+`sk-…` token are each replaced by the word `[redacted]` before anything reaches the disk.
+
+**And not only the shapes.** Every credential this machine is actually configured with —
+the model key, the search keys, an application secret you pasted for your own Google
+registration — is handed to the record by name as the run opens, and is replaced wherever
+it appears, whatever it looks like. That matters because a key with no recognisable shape
+at all (a Google `AIza…`, a Groq `gsk_…`, the plain token a self-hosted endpoint was
+given) can come back inside a provider's own error message. You can grep the folder for
+`authorization` or for your own key and find nothing.
 
 **Everything else in it is yours.** The record is built to hold what you wrote, what your
 files say and what the model answered — that is the point of it — so the folder is

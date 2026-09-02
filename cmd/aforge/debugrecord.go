@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
@@ -26,6 +27,7 @@ import (
 // process's own (see [trace.Begin]).
 func openDebugRecord(command, model, workspace string) context.Context {
 	ctx := trace.Begin(context.Background())
+	registerCredentials()
 	trace.OpenRun(ctx, trace.RunHeader{
 		Command:   command,
 		Model:     strings.TrimSpace(model),
@@ -34,6 +36,27 @@ func openDebugRecord(command, model, workspace string) context.Context {
 		Started:   time.Now(),
 	})
 	return ctx
+}
+
+// registerCredentials hands the record the exact values it must never write:
+// every credential this profile is configured with (config's [Credentials]).
+//
+// THE RECORD PROMISES A PERSON THEIR KEY IS NOT IN IT, and a promise kept by
+// shape alone is a promise kept for the shapes somebody thought of. Scrubbing
+// by shape catches `Bearer …`, an `sk-…` token and a field named
+// `authorization`; it does not catch a Google `AIza…`, a Groq `gsk_…` or the
+// plain token a self-hosted endpoint was given, any of which a provider can
+// echo back inside an error body. The literal values catch all of them, and
+// this is the door — the one place that has both the profile and the record.
+//
+// It is called at EVERY door and before anything can make a call, because a
+// value registered after the body that carried it is a redaction that arrived
+// too late. It costs one read of the profile's config file on a run that is not
+// recording, which is the same file the door is about to read anyway.
+func registerCredentials() {
+	for _, value := range config.Credentials(config.ProfileDir()) {
+		trace.Secret(value)
+	}
 }
 
 // debugRecordWorkspace is the folder a run was pointed at, as an absolute path.

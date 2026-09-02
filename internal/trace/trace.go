@@ -12,12 +12,23 @@
 // where one long turn evicts the failure the person came for.
 //
 // So: ONE SWITCH, ONE FOLDER PER RUN, AND NOTHING WRITTEN WHEN IT IS OFF. The
-// switch has three doors that mean the same thing — the environment pin
-// AFORGE_DEBUG, a --debug flag on chat, do and exec, and /debug inside a
-// conversation — and when none of them was used, [For] returns nil after one
-// atomic load and every method on that nil recorder is a no-op. A feeder site
-// therefore costs one call and one nil check on the runs nobody is debugging,
-// which is what lets the feeders sit on the hot path at all.
+// switch has three doors — the environment pin AFORGE_DEBUG, a --debug flag on
+// chat, do and exec, and /debug inside a conversation — and when none of them
+// was used, [For] returns nil after two atomic loads and every method on that
+// nil recorder is a no-op. A feeder site therefore costs one call and one nil
+// check on the runs nobody is debugging, which is what lets the feeders sit on
+// the hot path at all.
+//
+// THE THREE DOORS MEAN THE SAME RECORD AND NOT THE SAME SCOPE, and the run id
+// on the context is what draws the line. The pin and the flag were handed to
+// THIS PROCESS on purpose, so they turn the record on process-wide ([Enable]):
+// every run the process opens is recorded, each into its own folder. /debug was
+// typed inside ONE conversation, and a process can hold several — an engine
+// host holds one per person sitting in front of it — so it turns the record on
+// for that run and no other ([EnableRun]). A switch that could not tell them
+// apart would land one person's prompts, files and replies in a folder somebody
+// else asked for, which is the one thing a record of a person's own data may
+// never do.
 //
 // THE RECORD IS A PERSON'S OWN DATA. It holds their prompts, their files and
 // the model's whole reply, so it lives under the state root and nowhere else,
@@ -126,25 +137,94 @@ func pinOn(value string) bool {
 		!strings.EqualFold(value, "off")
 }
 
-// Enabled reports whether this process is keeping the record.
+// Enabled reports whether this process is keeping the record of EVERY run it
+// opens. It is what a door asks before saying so; a single conversation asks
+// [EnabledRun], because the answer for one run is not the answer for the
+// process.
 func Enabled() bool { return on.Load() }
 
-// Enable turns the record on for the rest of the process. It is what --debug
-// and /debug call; there is deliberately no way to turn it off again, because
-// the only reason to ask for the record is that something already went wrong
-// and half a record is worse than none.
+// Enable turns the record on for the rest of the process, and it is what the
+// environment pin and the --debug flag call — those two were given to THIS
+// PROCESS, so every run it opens is recorded, each into its own folder. There
+// is deliberately no way to turn it off again, because the only reason to ask
+// for the record is that something already went wrong and half a record is
+// worse than none.
 func Enable() { on.Store(true) }
+
+// enabled is the set of runs somebody turned the record on for one at a time.
+// A mutex-guarded set rather than a second atomic because it is written once
+// per /debug — a person typing — and read only after the two atomics below have
+// already said there is something in it.
+var enabled struct {
+	mutex sync.Mutex
+	by    map[string]bool
+}
+
+// anyRun says the set above is not empty, and it exists purely so that a
+// process where nobody has typed /debug pays an atomic load rather than a mutex
+// on every feeder call. It is set and never cleared, for the same reason [on]
+// is.
+var anyRun atomic.Bool
+
+// EnableRun turns the record on for ONE run — the run whose id is on the given
+// context — and returns that id, or the empty string where the context belongs
+// to no run and there is therefore nothing to record. It is what /debug calls.
+//
+// THE RUN ID ON THE CONTEXT IS THE SCOPE OF THE SWITCH. One process can hold
+// several conversations, so a /debug typed in one of them must not start
+// writing another's prompts and replies into a folder its person never asked
+// for. The process-wide flip is [Enable], and only the pin and the flag reach
+// it.
+func EnableRun(ctx context.Context) string {
+	run := runOnContext(ctx)
+	if run == "" {
+		return ""
+	}
+	enabled.mutex.Lock()
+	if enabled.by == nil {
+		enabled.by = make(map[string]bool)
+	}
+	enabled.by[run] = true
+	enabled.mutex.Unlock()
+	anyRun.Store(true)
+	return run
+}
+
+// EnabledRun reports whether THIS run is being recorded — because the process
+// is recording all of them, or because somebody typed /debug in this one. It is
+// what a conversation asks before saying "the record is already on".
+func EnabledRun(ctx context.Context) bool {
+	if on.Load() {
+		return true
+	}
+	return runIsEnabled(runOnContext(ctx))
+}
+
+// runIsEnabled is the set lookup, behind the atomic that makes it free when the
+// set is empty.
+func runIsEnabled(run string) bool {
+	if run == "" || !anyRun.Load() {
+		return false
+	}
+	enabled.mutex.Lock()
+	defer enabled.mutex.Unlock()
+	return enabled.by[run]
+}
 
 // runKey is the context key the run id travels on. It is a private type so
 // nothing else in the tree can collide with it.
 type runKey struct{}
 
-// NewRunID mints the token every record in one run carries. Four bytes is eight
-// hex characters, the same length and for the same reason as calllog.NewID: two
-// runs on one machine will not collide, and it is short enough to sit in a
-// folder name a person is typing.
+// NewRunID mints the token every record in one run carries. EIGHT BYTES, which
+// is sixteen hex characters, because the id names a FOLDER: two runs that
+// minted the same id would open the same folder and [os.MkdirAll] would merge
+// them silently, and a record of two runs read as one is worse than no record.
+// Four bytes — calllog's width, which this began as — is a collision every few
+// tens of thousands of runs on one machine; eight makes it unlikely enough to
+// stop reasoning about, and is still short enough to sit in a folder name a
+// person is typing.
 func NewRunID() string {
-	var raw [4]byte
+	var raw [8]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// A machine with no entropy is not a reason to lose the record. The
 		// caller falls back to the process's run, or to nothing.
@@ -159,6 +239,45 @@ func WithRun(ctx context.Context, id string) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, runKey{}, id)
+}
+
+// nodeKey is the context key the node travels on, and it is this package's own
+// so that internal/trace imports nothing to read it.
+type nodeKey struct{}
+
+// WithNode names the piece of work whose records these are — a plan node, a
+// leaf, a named errand — for every record written under the returned context.
+//
+// THE RECORD ANSWERS "WHICH WORK WAS THIS?" AND NOT ONLY "WHICH RUN?". A long
+// agentic run is dozens of calls across a plan, and a folder in which they are
+// distinguishable only by their timestamps is a folder somebody has to
+// reconstruct the plan from. The node is carried rather than passed because the
+// feeder sites are deep — a provider retrying a call knows nothing about plans
+// — and because it is exactly how the model-call log already carries the same
+// fact (provider's WithCallNode, which will call this too, so that one context
+// value is set in one place and both records name the same work).
+func WithNode(ctx context.Context, node string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	node = strings.TrimSpace(node)
+	if node == "" {
+		// Setting an empty node would HIDE an outer one, and a record that
+		// silently lost the name of its work is the defect this exists to stop.
+		return ctx
+	}
+	return context.WithValue(ctx, nodeKey{}, node)
+}
+
+// NodeFrom is the work a record belongs to, or the empty string where nobody
+// named one. The emptiness law applies to the file as much as to the screen: a
+// record with no node says nothing rather than naming a node called "".
+func NodeFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	node, _ := ctx.Value(nodeKey{}).(string)
+	return node
 }
 
 // processRun is the run this invocation belongs to, set by [Begin].
@@ -184,12 +303,22 @@ func Begin(ctx context.Context) context.Context {
 // RunFrom is the run a record belongs to: the id the caller carried, and this
 // process's own where a caller could not carry one.
 func RunFrom(ctx context.Context) string {
-	if ctx != nil {
-		if id, ok := ctx.Value(runKey{}).(string); ok && id != "" {
-			return id
-		}
+	if id := runOnContext(ctx); id != "" {
+		return id
 	}
 	id, _ := processRun.Load().(string)
+	return id
+}
+
+// runOnContext is the run the caller actually carried, with NO fallback. It is
+// the reading the scope of /debug is decided by: the process's run is a good
+// enough answer to "what should this record be named?" and never to "did this
+// context's person ask for a record?".
+func runOnContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(runKey{}).(string)
 	return id
 }
 
@@ -212,14 +341,37 @@ var runs struct {
 	by    map[string]*Recorder
 }
 
-// For is the recorder every feeder site calls. It returns nil when the switch
-// is off — one atomic load and a nil return — and nil when there is no run to
-// belong to, because a record nothing can be joined to is worse than no record.
-func For(ctx context.Context) *Recorder {
-	if !on.Load() {
-		return nil
+// runToRecord answers the only question [For] has: which run, if any, do this
+// context's records belong to?
+//
+// A CONTEXT WITH NO RUN OF ITS OWN IS RECORDED ONLY BY THE PROCESS-WIDE SWITCH.
+// The fallback to the process's run (see [processRun]) is what lets the deeper
+// layers of a headless errand — which still start from context.Background() —
+// write into the run their door opened, and under the pin or the flag that is
+// exactly right, because those turned every run of this process on. Letting it
+// stand for a /debug instead would take a switch somebody threw inside ONE
+// conversation and apply it to work that belongs to another, which is the leak
+// the run id exists to close.
+func runToRecord(ctx context.Context) string {
+	if run := runOnContext(ctx); run != "" {
+		if on.Load() || runIsEnabled(run) {
+			return run
+		}
+		return ""
 	}
-	run := RunFrom(ctx)
+	if !on.Load() {
+		return ""
+	}
+	run, _ := processRun.Load().(string)
+	return run
+}
+
+// For is the recorder every feeder site calls. It returns nil when nobody asked
+// for a record — two atomic loads and a nil return — and nil when there is no
+// run to belong to, because a record nothing can be joined to is worse than no
+// record.
+func For(ctx context.Context) *Recorder {
+	run := runToRecord(ctx)
 	if run == "" {
 		return nil
 	}
@@ -237,13 +389,11 @@ func For(ctx context.Context) *Recorder {
 }
 
 // Announce prints the one line a door leaves behind: where the record went. It
-// prints NOTHING when the switch is off and nothing when the run wrote nothing,
-// because a path to a folder that does not exist is a door telling somebody to
-// go and look at an empty room.
+// prints NOTHING when the run wrote nothing, because a path to a folder that
+// does not exist is a door telling somebody to go and look at an empty room —
+// and a run nobody switched on has no recorder to have written anything, which
+// is why this asks the recorder rather than the switch.
 func Announce(ctx context.Context, w io.Writer) {
-	if !on.Load() {
-		return
-	}
 	runs.mutex.Lock()
 	recorder := runs.by[RunFrom(ctx)]
 	runs.mutex.Unlock()
