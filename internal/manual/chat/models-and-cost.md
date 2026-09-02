@@ -396,7 +396,7 @@ on. The worker of an adaptive run's nodes is the same seat, and so is the work m
 This is new: until the worker seat existed a task rode the model you were talking to, and
 the crew moved everything about a task except its cost.
 
-## Does my crew reach aforge do, or only this conversation
+## Does my crew reach aforge do, or only this conversation — what models a headless run uses
 
 **It reaches both.** A crew you set here is the crew a run started from a script or a
 terminal uses — `aforge do`, `aforge exec`, `aforge plan`, `aforge run`, `aforge revise`

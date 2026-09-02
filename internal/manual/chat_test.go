@@ -894,6 +894,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what words open an adaptive run", "adaptive-runs"},
 		{"can I still type orchestrate to start a planned run", "adaptive-runs"},
 
+		// The doors that have nobody in front of them. Somebody wiring aforge
+		// into a script asks the first two before they have run anything; the
+		// second two are asked afterwards, with the terminal still on screen —
+		// one at the flag list they are choosing from, one at the last line the
+		// run printed, which is the only line a person cannot read the exit code
+		// off.
+		{"how do I run aforge without the screen", "adaptive-runs"},
+		{"run one task from a script", "adaptive-runs"},
+		{"what flags does aforge do take", "adaptive-runs"},
+		{"what does the last line of aforge do mean", "adaptive-runs"},
+		// And the door below that one: a single worker with no plan behind it,
+		// asked either by its name or by what it does.
+		{"what is aforge exec for", "adaptive-runs"},
+		{"run one worker with no plan", "adaptive-runs"},
+
 		// The one-road wave: work now STARTS on its own after a words-only turn,
 		// with a line on the transcript and no card to answer. Every one of these
 		// is asked by somebody looking at a task they did not ask for, in the
@@ -931,6 +946,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// has no models line to read the word off — they ask about the task.
 		{"why is my task running on a model I did not pick", "models-and-cost"},
 		{"my work seat is inherited from small work", "models-and-cost"},
+		// The same crew question asked from outside the conversation, by
+		// somebody whose runs happen with nobody watching.
+		{"what models does a headless run use", "models-and-cost"},
 		// The onboarding wave: the five seats. /crew and /model became two dials
 		// a person can see as two — the confirm line names the model it left
 		// alone, bare /crew opens with seat one, and the status line carries
