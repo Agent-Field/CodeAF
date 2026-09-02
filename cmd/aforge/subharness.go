@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -334,14 +335,21 @@ func registerSubharnessRunners(registry *exec.Registry, build leafBuild) {
 // A machine with no file yet keeps the prior it registered with, which is what
 // an empty Anchors already means everywhere else.
 //
-// It is also where model identity is seated, and that is not a coincidence: this
-// is the one function every surface that records anything calls before it reads
-// or writes a profile — the plan command, the headless run, chat, and the wake
-// pass. A history keyed on the operator's spelling instead of on the model is
-// two histories and two rulers for one executor, which is the thing this
-// function exists to prevent one file at a time.
+// It is also where model identity and the lane ledger's fold are seated, and
+// that is not a coincidence: this is the one function every surface that records
+// anything calls before it reads or writes a profile — the plan command, the
+// headless run, chat, and the wake pass. A history keyed on the operator's
+// spelling instead of on the model is two histories and two rulers for one
+// executor, which is the thing this function exists to prevent one file at a
+// time.
 func installMeasuredRulers(settings config.Config, model string) *profile.Profile {
-	profile.UseIdentity(sharedCatalog(settings).Identity)
+	shared := sharedCatalog(settings)
+	profile.UseIdentity(shared.Identity)
+	// And the ledger's fold, which is a DIFFERENT question with a different
+	// answer: a history asks whether two spellings are one model, while a belief
+	// about machines has to be filed under the id those machines actually serve.
+	// See [catalog.Catalog.Servable].
+	lanes.UseServable(shared.Servable)
 	measured, _ := profile.Load(settings.ProfileDir, model, exec.LinearSubharness)
 	plan.UseAnchors(measured.Anchors)
 	return measured

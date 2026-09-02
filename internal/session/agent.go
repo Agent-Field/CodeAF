@@ -432,6 +432,14 @@ func (a *Agent) startLaneBeat() {
 // and fetching a sheet for every one of them would be paying, on every session,
 // for a refusal that usually never comes.
 //
+// IT IS THE LEDGER'S NAME FOR EACH SLOT AND NOT THE OPERATOR'S. A slot may hold
+// a floating alias — the shipped default is one — and the router publishes an
+// endpoints page under the concrete model it points at, never under the alias.
+// Fetched under the spelling as typed, the sheet lands in a third ledger key
+// beside the two the sighting side was already splitting, and the session that
+// paid for it reads no prior at all. See [lanes.LedgerModel]; with no catalog
+// installed it is the bare-model normalisation the beat always had.
+//
 // It takes the Config rather than the agent so that the one question worth
 // asking of it — which models does this session mean? — can be asked without
 // building a session.
@@ -439,7 +447,7 @@ func laneBeatModels(config Config) []string {
 	var models []string
 	seen := make(map[string]bool, 2)
 	for _, slot := range []string{config.Model, config.TaskModel} {
-		slot = strings.TrimSpace(slot)
+		slot = lanes.LedgerModel(slot)
 		if slot == "" || seen[slot] {
 			continue
 		}
