@@ -241,6 +241,15 @@ type taskSpec struct {
 	// proposal rather than asked of the model (task_brief.go). It is the first
 	// thing the node reads, and it is the only part of the spec no model wrote.
 	request string
+	// origin is an ADDRESS, not inherited context. THE POINTER IS NOT THE
+	// SESSION: the node never reads this conversation, and the brief remains
+	// the contract. What this names is the filesystem path of the session
+	// journal and the line where the person's turn began, so a worker whose
+	// restatement was clipped can read the original words itself with the
+	// tools it already has. Empty is ordinary — a standing firing, a restored
+	// checkpoint written before origins were carried, a test that never set
+	// one — and [composeBrief] draws nothing for it.
+	origin taskOrigin
 	// brief, deliverable and acceptance are the contract the conversation
 	// groomed: the work, what must exist at the end, and how anybody checks it.
 	// [composeBrief] lays all four out as the node's opening message.
@@ -401,6 +410,23 @@ type taskSpec struct {
 	drawn drawnDivision
 }
 
+// taskOrigin is the pointer a worker is handed so it can find the person's
+// original words. THE POINTER IS AN ADDRESS, NOT INHERITED CONTEXT: it names
+// a file and a line the worker may read, and it does not grant the
+// conversation. THE BRIEF REMAINS THE CONTRACT — this is where the words
+// live, not a second brief.
+type taskOrigin struct {
+	journal string
+	line    int
+}
+
+// empty is the emptiness law: a pointer with no path is not a pointer, and a
+// heading over nothing is not written. A path with no line still stands —
+// the file is somewhere to look, and a made-up line number is not.
+func (o taskOrigin) empty() bool {
+	return strings.TrimSpace(o.journal) == ""
+}
+
 // taskTools is the belt's task family — one tool, in the conversation and in
 // every node that is not standing on the floor of the tree.
 //
@@ -490,6 +516,11 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// of it (task_brief.go). A node proposing a sub-task inherits the same
 	// sentence; there is nobody in a worktree to type a new one.
 	spec.request = a.taskRequest()
+	// AND WHERE THOSE WORDS LIVE, an address rather than a second copy
+	// (task_brief.go). A node proposing a sub-task inherits the same pointer
+	// so a nested worker still finds the person's turn, not its parent's
+	// journal.
+	spec.origin = a.taskOriginRef()
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.

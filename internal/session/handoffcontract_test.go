@@ -281,7 +281,7 @@ func TestTheWorkerIsToldWhatItsHandoffAssumed(t *testing.T) {
 		expectsSection([]Expectation{
 			{Path: "taskchip.go", Holds: "stripKey"},
 			{Path: "taskstrip.go", Absent: true},
-		}))
+		}), taskOrigin{})
 	for _, want := range []string{briefExpectsHeading, "taskchip.go holds stripKey", "taskstrip.go is gone"} {
 		if !strings.Contains(brief, want) {
 			t.Fatalf("the worker's document does not carry %q:\n%s", want, brief)
@@ -289,7 +289,7 @@ func TestTheWorkerIsToldWhatItsHandoffAssumed(t *testing.T) {
 	}
 	// THE EMPTINESS LAW, applied to a document: no manifest, no heading over
 	// nothing.
-	if plain := composeBrief("do the thing", "the work", "a file", "it passes", ""); strings.Contains(plain, briefExpectsHeading) {
+	if plain := composeBrief("do the thing", "the work", "a file", "it passes", "", taskOrigin{}); strings.Contains(plain, briefExpectsHeading) {
 		t.Fatalf("a handoff with no manifest got a heading over nothing:\n%s", plain)
 	}
 }

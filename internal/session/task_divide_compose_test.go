@@ -220,3 +220,56 @@ func TestAPartsBriefHoldsItsBoundWhateverLengthTheFieldsArriveAt(t *testing.T) {
 		})
 	}
 }
+
+// A PART CARRIES THE SAME ORIGIN ITS PARENT WAS HANDED, not a pointer at the
+// part's own journal. THE POINTER IS AN ADDRESS, NOT INHERITED CONTEXT: the
+// human's words live in one file, and every part of the family points there.
+func TestADividedPartCarriesTheParentsOrigin(t *testing.T) {
+	origin := taskOrigin{journal: "/home/x/.aforge/v3/sessions/abc.jsonl", line: 12}
+	nest := newDivideNestFrom(t, taskSpec{
+		title: "the whole job", request: personSentence, origin: origin,
+		brief: wideBrief, acceptance: "a", depth: 1,
+	}, 0, &scriptedCompleter{}, nil)
+
+	nest.divide(t, divideWrittenArgs(wideEvidence,
+		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only"},
+		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
+
+	kids := nest.graph.children(nest.parent.id)
+	if len(kids) != 2 {
+		t.Fatalf("the division bore %d parts, want 2", len(kids))
+	}
+	pointer := originPointer(origin)
+	for _, kid := range kids {
+		if got := kid.origin(); got != origin {
+			t.Fatalf("part %d origin = %+v, want the parent's %+v", kid.id, got, origin)
+		}
+		opening := kid.instruction()
+		if !strings.Contains(opening, pointer) {
+			t.Fatalf("part %d brief lost the origin pointer:\n%s", kid.id, opening)
+		}
+	}
+}
+
+// A PARENT WITH NO ORIGIN HANDS NONE ON. A standing firing is this shape:
+// it has a journal and no person turn, so its spec is empty on purpose and
+// every part inherits that emptiness rather than a guessed path.
+func TestADividedPartInheritsAnEmptyOriginAsNothing(t *testing.T) {
+	nest := newDivideNest(t, wideBrief, 0)
+	if !nest.parent.origin().empty() {
+		t.Fatalf("the fixture parent carried an origin: %+v", nest.parent.origin())
+	}
+
+	nest.divide(t, divideWrittenArgs(wideEvidence,
+		dividePart{Title: "the alpha adapter", Summary: "s", Brief: "alpha.go only"},
+		dividePart{Title: "the beta adapter", Summary: "s", Brief: "beta.go only"}))
+
+	for _, kid := range nest.graph.children(nest.parent.id) {
+		if !kid.origin().empty() {
+			t.Fatalf("part %d invented an origin: %+v", kid.id, kid.origin())
+		}
+		if strings.Contains(kid.instruction(), briefOriginHeading) {
+			t.Fatalf("part %d drew a pointer over nothing:\n%s", kid.id, kid.instruction())
+		}
+	}
+}
