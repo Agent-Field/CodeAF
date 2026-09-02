@@ -38,6 +38,34 @@ type scriptedCompleter struct {
 	models  []string
 	efforts []provider.Effort
 	max     []int
+
+	// aside is the escape hatch from the queue, and it exists because A SCRIPTED
+	// COMPLETER ANSWERS A CONCURRENT ERRAND BY THE SHAPE OF ITS REQUEST, NEVER BY
+	// ITS PLACE IN THE QUEUE. The steps above are one positional line: whoever
+	// calls next takes the next step, whichever goroutine they are on. That is
+	// exactly right for the turn, which makes its calls one after another, and
+	// exactly wrong for the errands this session runs beside a turn — a namer, a
+	// title, a memory pass — which are started on goroutines nothing orders
+	// against the turn.
+	//
+	// The incident was #392. #333 made the two roads that start work nobody typed
+	// ask for the name the moment they decide to, ahead of the node
+	// (taskname.go's [nameAhead]) — so the namer's call now lands in the middle
+	// of a scripted handover. Landing on the slot holding the final answer, the
+	// turn ran off the end of the script and ended on "(unscripted)"; landing on
+	// a grinding step, the namer was answered with that round's tool call and the
+	// task was announced under the trimmed wreckage of it. Both about one run in
+	// five, and neither a fact about the code under test.
+	//
+	// An aside that answers returns its own response and spends NO step, so the
+	// script the test wrote still reaches the turn in the order the test wrote
+	// it. taskname_test.go met this race first and routes by shape with
+	// [isNameCall]; this is the same remedy, made available to every fixture.
+	aside func(messages []ai.Message) (*ai.Response, bool)
+	// asides is what the aside answered, kept out of [scriptedCompleter.seen] so
+	// that a request's index is still the index of the step it rode, and kept at
+	// all so a test can assert the errand did arrive.
+	asides [][]ai.Message
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -48,10 +76,21 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		_ = option(&request)
 	}
 
-	s.mu.Lock()
-	index := len(s.seen)
 	snapshot := make([]ai.Message, len(messages))
 	copy(snapshot, messages)
+
+	s.mu.Lock()
+	// THE ASIDE IS CONSULTED BEFORE THE QUEUE IS TOUCHED, which is the whole of
+	// the law above: an errand recognised by its shape never reaches the step
+	// counter, so it cannot take a step the turn was scripted to ride.
+	if s.aside != nil {
+		if answer, answered := s.aside(snapshot); answered {
+			s.asides = append(s.asides, snapshot)
+			s.mu.Unlock()
+			return answer, nil
+		}
+	}
+	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)
 	s.efforts = append(s.efforts, provider.ReasoningEffortFrom(ctx))
@@ -98,6 +137,13 @@ func (s *scriptedCompleter) requests() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.seen)
+}
+
+// asideRequests is how many errands the aside answered off the queue.
+func (s *scriptedCompleter) asideRequests() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.asides)
 }
 
 func (s *scriptedCompleter) model(index int) string {
