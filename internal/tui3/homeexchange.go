@@ -225,9 +225,9 @@ type exchangeRow struct {
 	// finished document, so it renders as one. It is flipped at the BOUNDARY and
 	// never by looking at the text ([homeExchange.closeReply]).
 	settled bool
-	// shown is the live edge of an arriving reply, the same cursor a
-	// conversation block walks (reveal.go). Zero means the row is not pacing.
-	shown int
+	// edge is the live edge of an arriving reply, the same cursor a conversation
+	// block walks (reveal.go). Zero means the row is not pacing.
+	edge int
 	// began is when a tool row's call started and took is how long it ran, so
 	// the row can carry a clock while it is alive and its own figure after. They
 	// are the pane's reduced reading of what a tool line in the conversation
@@ -380,12 +380,7 @@ func (ex *homeExchange) spent() bool { return ex.over() && ex.seen }
 // transcript, and it is why this is one function rather than five assignments.
 //
 // It is idempotent, so a turn that ends twice settles once.
-func (ex *homeExchange) closeReply() {
-	if ex.live >= 0 && ex.live < len(ex.rows) {
-		ex.rows[ex.live].settled = true
-	}
-	ex.live = -1
-}
+func (ex *homeExchange) closeReply() { settleReply(ex.rows, &ex.live) }
 
 // exchangeRank is the triage order of the rows: what wants you, then what is
 // moving, then what is done. It is [homeState]'s law at the scale of one
@@ -539,7 +534,7 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 		}
 		row := &ex.rows[ex.live]
 		row.text += ev.Text
-		catchReveal(&row.shown, row.text, len(ev.Text), a.linear)
+		catchReveal(&row.edge, row.text, len(ev.Text), isLump(len(ev.Text)), a.linear)
 
 	case session.EventToolBegin:
 		ex.closeReply()
@@ -1606,7 +1601,7 @@ func (a *app) exchangeRowLines(row exchangeRow, width int, pal palette) []string
 			out = append(out, trimBlanks(a.renderMarkdown(row.text, width))...)
 			break
 		}
-		for _, wrapped := range wrap(revealedText(row.text, row.shown, row.settled), width) {
+		for _, wrapped := range wrap(revealedText(row.text, row.edge, row.settled), width) {
 			out = append(out, pal.ink(wrapped))
 		}
 	case exchangeTool:
@@ -1739,7 +1734,7 @@ func (a *app) exchangeStrip(ex *homeExchange, width int, pal palette) []string {
 		case exchangeReply:
 			// THE LAST LINE OF THE REPLY AND NOT THE FIRST, so that a long answer
 			// visibly grows instead of sitting still under a spinner.
-			if tail := exchangeLastLine(revealedText(row.text, row.shown, row.settled), width-4); tail != "" {
+			if tail := exchangeLastLine(revealedText(row.text, row.edge, row.settled), width-4); tail != "" {
 				lines = append(lines, "  "+pal.dim(fit(tail, width-2)))
 			}
 		}

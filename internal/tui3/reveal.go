@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"time"
 	"unicode/utf8"
 )
 
@@ -17,29 +18,58 @@ import (
 // own ease-out (1 − (1 − t)²) said as a per-slot fraction: most of the debt
 // goes in the first two frames, the last few characters write themselves.
 //
-// THE ARRIVAL SHAPE MUST NOT BE THE DRAWING SHAPE. A token, a folded line,
-// a paragraph that piled up behind latency — those are facts about the
-// wire. What the eye reads is one edge walking at one pace. A short burst
-// that landed whole was honest about the wire and a pop on the page; a
-// late blob that walked in was the other face of the same defect. So every
-// unread remainder is walked, and only a few characters — one short word —
-// may finish on the event itself. That is [revealHead], not a line.
+// THE SURFACE PACES THE WIRE'S LUMPS, NEVER ITS OWN FOLD.
 //
-// The first cells of a new burst are never held — the first motion is never
-// folded (coalesce.go). A settle snaps whatever is left, because a finished
-// answer that is still revealing is a lie. The linear tier never paces: it is
-// the screen-reader tier, and an animation is a still photograph there
-// (tui3.go's Options.Linear).
+// That is the whole of which bursts walk, and the distinction is the one this
+// file got wrong once already. A model streaming token by token is ALREADY
+// writing: the wire is delivering a few characters at a time and the page
+// should say them as they land. What pops is a single wire event carrying a
+// paragraph — an endpoint that buffers, a link that stalled and then dumped —
+// and that is the only thing worth walking.
+//
+// A FOLD IS NOT A LUMP. [waitEvent] joins the run of short deltas that piled up
+// while the last frame was being built, and that run is an artefact of THIS
+// side of the channel: the wire delivered it fine-grained. Holding it back
+// would be the surface inventing latency the connection never had, which is
+// exactly what it did — a token-by-token stream drew in slow motion, and
+// twelve fixtures that assert what one delta puts on the page saw twelve bytes
+// of it. So the fold is drawn as its parts would have drawn: whole, however
+// long the run. Only a single wire event past [revealAtOnce] opens a walk, and
+// the bytes of any later burst join a walk that is already running.
+//
+// A settle snaps whatever is left, because a finished answer that is still
+// revealing is a lie — and so does every other door out of the live state
+// (livestate.go states that law and owns the six of them). The linear tier
+// never paces: it is the screen-reader tier, and an animation is a still
+// photograph there (tui3.go's Options.Linear).
+//
+// THE WALK IS A FUNCTION OF TIME, NOT OF PICTURES. Every step below is taken
+// in SLOTS of the paint clock, and the slots are measured from the surface's
+// own clock seam ([app.now], which a test pins) rather than counted in frames
+// painted. A frame is when the walk is DRAWN; how far it has got is what the
+// clock says. That is what makes the pace the same over a link that paints ten
+// times a second as at the machine that paints thirty, and it is why nothing
+// in this file ever calls [time.Now].
+//
 //
 // THE SAME CURVE WALKS THE METERS. A token count or a bill that jumps from
 // one reading to the next is the same pop in a different column. The
 // accounting stays exact; what is drawn eases toward it on this clock, and
 // snaps the moment the turn is no longer running.
 
-// revealHead is the first cells of a new burst, shown on the event itself so
-// the edge moves the instant the stream speaks. It is a word, not a line:
-// anything longer is already a lump the clock has to walk, whether it
-// arrived as one delta or as twenty that folded.
+// revealAtOnce is how much a single wire event may carry and still land whole.
+//
+// THE REASON IS WHAT A PERSON CAN SEE, not a guess about wire shapes. Forty-
+// eight bytes is about a short line, a dozen tokens; walking one takes a
+// couple of frames and moves the edge by a few characters twice, which is
+// motion nobody perceives as writing — it reads as the line simply appearing,
+// only later. There is nothing to show, so there is nothing to hold back. Past
+// this length a walk has something to say, and a burst that arrives in one
+// piece is a burst the wire buffered rather than one it wrote.
+const revealAtOnce = 48
+
+// revealHead is the first cells of a lump, shown on the event itself so the
+// edge moves the instant the stream speaks rather than a frame later.
 const revealHead = 12
 
 // revealCatch is the fraction of the unread remainder one frame-slot takes,
@@ -59,13 +89,25 @@ const revealFloor = 8
 // lump still arrives in that window rather than typing itself out for seconds.
 const revealSlots = 8
 
+// isLump reports whether a burst of n bytes is one the wire buffered rather
+// than one it wrote. It is the ONE place the threshold is read, so the append
+// path, the fold and the tests cannot disagree about what a lump is.
+func isLump(n int) bool { return n > revealAtOnce }
+
 // catchReveal opens or extends the live edge after `added` bytes were just
 // appended to text. shown == 0 means "not pacing, draw everything" — the
-// default on every settled and historical block. A new burst shows its
-// head on the event; the rest is walked on the clock, whatever its size.
+// default on every settled and historical block.
 //
-// snap is the linear tier, and a settle: nothing is held back.
-func catchReveal(shown *int, text string, added int, snap bool) {
+// lump is what the DELIVERY said, not what the length says: [waitEvent] knows
+// whether the run it folded contained a single wire event big enough to be one,
+// and a fold of short deltas is not a lump however long the fold is. snap is
+// the linear tier and every door out of the live state: nothing is held back.
+//
+// A BURST THAT ARRIVES WHILE A LUMP IS STILL WALKING JOINS THE WALK. It does
+// not open a second edge and it does not jump the first one to the end — the
+// unread remainder simply grew, and the stride below covers it. That is the
+// `*shown >= was` test: it fires only when the edge had already caught up.
+func catchReveal(shown *int, text string, added int, lump, snap bool) {
 	if shown == nil || added <= 0 {
 		return
 	}
@@ -78,20 +120,19 @@ func catchReveal(shown *int, text string, added int, snap bool) {
 		was = 0
 	}
 	if *shown == 0 && was == 0 {
-		*shown = revealOpen(text)
+		*shown = revealOpen(text, lump)
 		return
 	}
 	if *shown >= was {
-		*shown = was + revealOpen(text[was:])
+		*shown = was + revealOpen(text[was:], lump)
 	}
 }
 
-// revealOpen is how much of a newly arrived burst is drawn on the event
-// itself. A few characters — one short word — land so the edge is already
-// moving; anything past the head waits for the clock. A burst no longer
-// than the head is the whole of it, which is how a single token writes.
-func revealOpen(added string) int {
-	if len(added) <= revealHead {
+// revealOpen is how much of a newly arrived burst is drawn on the event itself.
+// Everything the wire wrote lands at once; a lump shows a few characters — one
+// short word — so the edge is already moving, and the rest waits for the clock.
+func revealOpen(added string, lump bool) int {
+	if !lump || len(added) <= revealHead {
 		return len(added)
 	}
 	return cutUTF8(added, revealHead)
@@ -254,25 +295,25 @@ func easeCost(shown, target float64, slots int) float64 {
 // (e *entry) helpers. They exist so the conversation, a room and a thought
 // block share one spelling of the edge.
 
-func (e *entry) catchReveal(added int, snap bool) {
+func (e *entry) catchReveal(added int, lump, snap bool) {
 	if e == nil {
 		return
 	}
-	catchReveal(&e.shown, e.text, added, snap)
+	catchReveal(&e.edge, e.text, added, lump, snap)
 }
 
 func (e *entry) revealed() string {
 	if e == nil {
 		return ""
 	}
-	return revealedText(e.text, e.shown, e.settled)
+	return revealedText(e.text, e.edge, e.settled)
 }
 
 func (e *entry) advanceReveal(slots int, snap bool) bool {
 	if e == nil {
 		return false
 	}
-	if !advanceReveal(&e.shown, e.text, slots, snap || e.settled) {
+	if !advanceReveal(&e.edge, e.text, slots, snap || e.settled) {
 		return false
 	}
 	e.stale = true
@@ -283,7 +324,7 @@ func (e *entry) revealing() bool {
 	if e == nil {
 		return false
 	}
-	return revealing(e.shown, e.text, e.settled)
+	return revealing(e.edge, e.text, e.settled)
 }
 
 // advanceLive walks the conversation's live answer and its thinking block.
@@ -323,7 +364,7 @@ func (a *app) liveRevealing() bool {
 		}
 		if ex.live >= 0 && ex.live < len(ex.rows) {
 			row := ex.rows[ex.live]
-			if row.kind == exchangeReply && revealing(row.shown, row.text, row.settled) {
+			if row.kind == exchangeReply && revealing(row.edge, row.text, row.settled) {
 				return true
 			}
 		}
@@ -331,10 +372,47 @@ func (a *app) liveRevealing() bool {
 	return a.meterChasing
 }
 
-// tickReveal is one turn of the edge and the meters, on the paint clock.
-func (a *app) tickReveal() {
-	slots := a.frameStride()
+// slotsSince is how many slots of the paint clock have passed between two
+// readings of the surface's clock. It takes both times rather than asking the
+// wall clock, which is what keeps [time.Now] out of this file entirely.
+//
+// A PART SLOT IS NO SLOT. The remainder is left on the stamp by the caller, so
+// a frame that fires early moves nothing and the time it was early by is not
+// lost — it is spent by the next frame.
+func slotsSince(from, now time.Time) int {
+	if from.IsZero() {
+		return 0
+	}
+	d := now.Sub(from)
+	if d < frameInterval {
+		return 0
+	}
+	return int(d / frameInterval)
+}
+
+// tickReveal is one turn of the edge and the meters.
+//
+// IT IS CALLED FROM THE PAINT AND IS NOT PACED BY IT. `now` is the surface's
+// own clock ([app.now]); how far the walk has got is the time since it last
+// moved, so a link that paints ten times a second walks three slots per frame
+// and the machine that paints thirty walks one, and both finish a lump in the
+// same quarter of a second. [app.revealMoved] carries the remainder, so a frame
+// that arrives early moves nothing rather than rounding a slot into existence.
+func (a *app) tickReveal(now time.Time) {
 	snap := a.linear
+	// A WALK WITH NO CLOCK BEHIND IT WOULD NEVER FINISH. [app.wake] starts the
+	// stamp with the frames, but a surface that was handed an event before it
+	// ever woke has none — and a zero stamp measures no slots, which would
+	// freeze the edge exactly where it opened. The walk starts here instead.
+	if a.revealMoved.IsZero() {
+		a.revealMoved = now
+		return
+	}
+	slots := slotsSince(a.revealMoved, now)
+	if slots <= 0 && !snap {
+		return
+	}
+	a.revealMoved = a.revealMoved.Add(time.Duration(slots) * frameInterval)
 	if a.advanceLive(a.entries, a.live, a.think, slots, snap) {
 		a.dirty = true
 	}
@@ -349,7 +427,7 @@ func (a *app) tickReveal() {
 		if row.kind != exchangeReply {
 			continue
 		}
-		if advanceReveal(&row.shown, row.text, slots, snap || row.settled) {
+		if advanceReveal(&row.edge, row.text, slots, snap || row.settled) {
 			a.dirty = true
 		}
 	}

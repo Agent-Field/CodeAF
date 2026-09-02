@@ -3,28 +3,53 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
+// revealClock pins the surface's clock seam and hands back the two things a
+// walk test needs: a way to spend one slot of the paint clock, and the reading
+// the walk is measured against.
+//
+// THE WALK IS A FUNCTION OF TIME (reveal.go), so a test drives it by letting
+// time pass rather than by counting paints. [app.clock] is the seam every
+// timing test in this package already installs.
+func revealClock(a *app) (slot func(), at *time.Time) {
+	base := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	now := base
+	a.clock = func() time.Time { return now }
+	a.revealMoved = now
+	return func() {
+		now = now.Add(frameInterval)
+		a.tickReveal(now)
+	}, &now
+}
+
 // catchUpReveal walks every live edge to the end of the bytes the stream
-// already holds. Tests that are about the TRANSCRIPT — what a fold produced,
-// whether a forming reply is still source — must not also be tests of the
-// walk: they catch up, then look.
+// already holds, BY LETTING TIME PASS: the walk is measured from the clock, so
+// the way to finish one is to spend its slots. Tests that are about the
+// TRANSCRIPT — what a fold produced, whether a forming reply is still source —
+// must not also be tests of the walk: they catch up, then look.
 func catchUpReveal(a *app) {
 	if a == nil {
 		return
 	}
+	at := a.now()
+	a.revealMoved = at
 	for i := 0; i < revealSlots+4 && a.liveRevealing(); i++ {
-		a.tickReveal()
+		at = at.Add(frameInterval)
+		a.tickReveal(at)
 	}
 }
+
+// ── WHAT IS A LUMP ──────────────────────────────────────────────────────────
 
 func TestAShortBurstIsShownWhole(t *testing.T) {
 	var shown int
 	text := "it parses."
-	catchReveal(&shown, text, len(text), false)
+	catchReveal(&shown, text, len(text), isLump(len(text)), false)
 	if shown != len(text) {
 		t.Fatalf("a %d-byte burst started at %d, want the whole of it", len(text), shown)
 	}
@@ -33,52 +58,76 @@ func TestAShortBurstIsShownWhole(t *testing.T) {
 	}
 }
 
-func TestALineBurstIsWalkedNotDumped(t *testing.T) {
-	// Forty bytes is a short line — the old at-once ceiling — and the
-	// shape a fold of a few tokens actually has. Landing it whole is the
-	// jump a person still sees on a lively stream.
-	text := "the window was black, and then it wasn"
-	if len(text) <= revealHead || len(text) <= revealFloor {
-		t.Fatalf("fixture is %d bytes, want past the head and the floor", len(text))
+// A LINE IS NOT A LUMP. Forty bytes is a short line, and walking one moves the
+// edge by a few characters twice — motion nobody perceives as writing. Holding
+// it back is the surface adding latency and showing nothing for it, which is
+// what #440 did and what twelve fixtures caught.
+func TestALineFromTheWireLandsWhole(t *testing.T) {
+	line := "the window was black, and then it was"
+	if len(line) <= revealHead || len(line) > revealAtOnce {
+		t.Fatalf("fixture is %d bytes, want past the head and inside the line", len(line))
 	}
 	var shown int
-	catchReveal(&shown, text, len(text), false)
-	if shown != revealHead && shown != cutUTF8(text, revealHead) {
-		t.Fatalf("a %d-byte line opened at %d, want the head", len(text), shown)
+	catchReveal(&shown, line, len(line), isLump(len(line)), false)
+	if revealedText(line, shown, false) != line {
+		t.Fatalf("a %d-byte wire event was held back at %d", len(line), shown)
 	}
-	if !revealing(shown, text, false) {
-		t.Fatal("a line burst was shown whole")
-	}
-	frames := 0
-	for revealing(shown, text, false) {
-		frames++
-		if !advanceReveal(&shown, text, 1, false) {
-			t.Fatal("the edge stopped moving while the line was still unread")
-		}
-		if frames > revealSlots+1 {
-			t.Fatalf("a line took %d frames, want at most %d", frames, revealSlots)
-		}
-	}
-	if frames < 2 {
-		t.Fatal("a line burst landed in one paint")
+	if revealing(shown, line, false) {
+		t.Fatal("a line opened a walk")
 	}
 }
 
-func TestALumpOpensOnItsHeadAndCatchesOnTheClock(t *testing.T) {
-	lump := strings.Repeat("the loader never makes the map. ", 20)
-	var shown int
-	catchReveal(&shown, lump, len(lump), false)
-	if shown <= 0 || shown >= len(lump) {
-		t.Fatalf("a lump opened at %d of %d, want the head only", shown, len(lump))
+// AND A FOLD IS NOT A LUMP EITHER, however long the fold is. This drives the
+// real folding lane — [waitEvent] over a channel already holding two short
+// deltas — because the fold is the only thing that can answer the question, and
+// asserting it on [catchReveal] alone would prove nothing about the plumbing.
+func TestAFoldOfShortDeltasLandsWhole(t *testing.T) {
+	parts := []string{"the loader reads the map, ", "and the map is never made."}
+	whole := strings.Join(parts, "")
+	if len(whole) <= revealAtOnce {
+		t.Fatalf("the fold is %d bytes, want it past the line so the test can fail", len(whole))
 	}
-	if shown > revealHead {
-		// UTF-8 walk can only land on or before the head.
-		t.Fatalf("the head was %d, want at most %d", shown, revealHead)
+	ch := make(chan session.Event, len(parts))
+	for _, part := range parts {
+		ch <- session.Event{Kind: session.EventTextDelta, Text: part}
+	}
+	msg, _ := waitEvent(ch, 0)().(streamEventMsg)
+	if msg.ev.Text != whole {
+		t.Fatalf("the lane folded %q, want %q", msg.ev.Text, whole)
+	}
+	if msg.lump {
+		t.Fatalf("a fold of %d- and %d-byte deltas was called a lump",
+			len(parts[0]), len(parts[1]))
 	}
 
-	// Eight slots is the snappy bound: whatever the size, the last frame of
-	// the window has caught up. The test walks one slot at a time so the
-	// edge is seen to MOVE rather than snap on the first paint.
+	// AND THE PAGE AGREES, with no frame at all: what the wire delivered is on
+	// the screen on the event.
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 80, 24
+	a.applyEvent(msg.ev, msg.lump)
+	if a.live < 0 {
+		t.Fatal("the fold did not open a live block")
+	}
+	if got := a.entries[a.live].revealed(); got != whole {
+		t.Fatalf("the fold drew %q, want the whole of it", got)
+	}
+}
+
+// A SINGLE WIRE EVENT PAST THE LINE IS THE ONE THING THAT WALKS.
+func TestALumpOpensOnItsHeadAndCatchesOnTheClock(t *testing.T) {
+	lump := strings.Repeat("the loader never makes the map. ", 13)
+	if len(lump) < 400 {
+		t.Fatalf("the fixture is %d bytes, want the paragraph a stalled wire dumps", len(lump))
+	}
+	var shown int
+	catchReveal(&shown, lump, len(lump), isLump(len(lump)), false)
+	if shown <= 0 || shown > revealHead {
+		t.Fatalf("a lump opened at %d, want at most the %d-byte head", shown, revealHead)
+	}
+
+	// Eight slots is the snappy bound: whatever the size, the last slot of the
+	// window has caught up. One slot at a time, so the edge is seen to MOVE
+	// rather than snap on the first paint.
 	frames := 0
 	for revealing(shown, lump, false) {
 		frames++
@@ -86,39 +135,50 @@ func TestALumpOpensOnItsHeadAndCatchesOnTheClock(t *testing.T) {
 			t.Fatal("the edge stopped moving while bytes were still unread")
 		}
 		if frames > revealSlots+1 {
-			t.Fatalf("a lump took %d frames to arrive, want at most %d", frames, revealSlots)
+			t.Fatalf("a lump took %d slots to arrive, want at most %d", frames, revealSlots)
 		}
 	}
 	if shown != len(lump) {
 		t.Fatalf("caught up at %d of %d", shown, len(lump))
 	}
 	if frames < 2 {
-		t.Fatal("a lump landed in one frame: the edge never moved")
+		t.Fatal("a lump landed in one slot: the edge never moved")
 	}
 }
 
-func TestASettleSnapsTheUnreadRemainder(t *testing.T) {
-	e := &entry{kind: entryAssistant, text: strings.Repeat("word ", 40)}
-	e.catchReveal(len(e.text), false)
-	if !e.revealing() {
-		t.Fatal("a lump was shown whole before the settle")
+// A BURST ARRIVING MID-WALK JOINS THE WALK. It must not jump the edge to the
+// end — the reader would see the paragraph they were watching arrive finish
+// itself the instant one more token landed — and it must not open a second one.
+func TestAShortBurstMidWalkJoinsTheWalk(t *testing.T) {
+	lump := strings.Repeat("the loader never makes the map. ", 13)
+	var shown int
+	catchReveal(&shown, lump, len(lump), true, false)
+	advanceReveal(&shown, lump, 1, false)
+	was := shown
+	if was >= len(lump) {
+		t.Fatal("the lump caught up in one slot")
 	}
-	e.settled = true
-	if e.revealed() != e.text {
-		t.Fatal("a settled block still held bytes back")
+
+	grown := lump + " and then it was."
+	catchReveal(&shown, grown, len(grown)-len(lump), false, false)
+	if shown != was {
+		t.Fatalf("a short burst moved the edge from %d to %d instead of joining the walk", was, shown)
 	}
-	// The first paint after the settle snaps the cursor; the next one has
-	// nothing left to walk.
-	e.advanceReveal(1, false)
-	if e.advanceReveal(1, false) {
-		t.Fatal("a settled block still had an edge to walk")
+	if !revealing(shown, grown, false) {
+		t.Fatal("a short burst ended a walk that was still running")
+	}
+	for i := 0; i < revealSlots+2 && revealing(shown, grown, false); i++ {
+		advanceReveal(&shown, grown, 1, false)
+	}
+	if shown != len(grown) {
+		t.Fatalf("the walk caught up at %d of %d", shown, len(grown))
 	}
 }
 
 func TestLinearShowsTheBurstAtOnce(t *testing.T) {
 	lump := strings.Repeat("αβγ ", 30)
 	var shown int
-	catchReveal(&shown, lump, len(lump), true)
+	catchReveal(&shown, lump, len(lump), true, true)
 	if shown != len(lump) {
 		t.Fatalf("linear opened at %d of %d, want everything", shown, len(lump))
 	}
@@ -140,11 +200,72 @@ func TestTheEdgeLandsOnARuneBoundary(t *testing.T) {
 func TestACaughtUpStreamShowsTheNextWordAtOnce(t *testing.T) {
 	var shown int
 	text := "hello"
-	catchReveal(&shown, text, len(text), false)
+	catchReveal(&shown, text, len(text), false, false)
 	text += " there"
-	catchReveal(&shown, text, len(" there"), false)
+	catchReveal(&shown, text, len(" there"), false, false)
 	if shown != len(text) {
 		t.Fatalf("a short follow-up started at %d of %d, want the whole word", shown, len(text))
+	}
+}
+
+// ── THE WALK RUNS ON THE CLOCK, NOT ON THE FRAME COUNT ──────────────────────
+
+func TestTheWalkIsMeasuredInTimeAndNotInPaints(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 80, 24
+	slot, at := revealClock(a)
+
+	lump := strings.Repeat("the map is never made. ", 20)
+	a.applyEvent(text(session.EventTextDelta, lump), true)
+	if a.live < 0 {
+		t.Fatal("the lump did not open a live block")
+	}
+	e := &a.entries[a.live]
+	opened := e.revealed()
+	if opened == e.text {
+		t.Fatal("a lump was shown whole on the event")
+	}
+
+	// A PAINT THAT FIRES EARLY MOVES NOTHING. The clock has not turned, so the
+	// edge has not either — however many times the frame is asked for.
+	for i := 0; i < 5; i++ {
+		a.tickReveal(*at)
+	}
+	if e.revealed() != opened {
+		t.Fatal("the edge walked without any time passing")
+	}
+
+	slot()
+	if e.revealed() == opened {
+		t.Fatal("a slot of the clock did not walk the edge")
+	}
+	for i := 0; i < revealSlots+2 && e.revealing(); i++ {
+		slot()
+	}
+	if e.revealed() != e.text {
+		t.Fatalf("the clock did not catch the lump: %d of %d", e.edge, len(e.text))
+	}
+}
+
+// AND A SLOWER LINK IS COVERED BY ELAPSED TIME. Three slots' worth of clock in
+// one paint walks three slots, which is what makes a lump take the same quarter
+// of a second over a connection as it does at the machine.
+func TestOnePaintCoversEveryElapsedSlot(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	lump := strings.Repeat("the map is never made. ", 20)
+	base := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return base }
+	a.revealMoved = base
+	a.applyEvent(text(session.EventTextDelta, lump), true)
+	e := &a.entries[a.live]
+
+	one := *e
+	oneShown := one.edge
+	advanceReveal(&oneShown, one.text, 3, false)
+	a.tickReveal(base.Add(3 * frameInterval))
+	if e.edge != oneShown {
+		t.Fatalf("one paint after three slots walked to %d, want the three-slot stride %d",
+			e.edge, oneShown)
 	}
 }
 
@@ -169,30 +290,5 @@ func TestMeterEaseIsFastThenFine(t *testing.T) {
 	// First step takes the most — ease-out, not a linear count.
 	if steps[0] < steps[1]-steps[0] {
 		t.Fatalf("the first step was not the largest: %v", steps)
-	}
-}
-
-func TestAStreamingLumpIsDrawnAcrossFrames(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.width, a.height = 80, 24
-	lump := strings.Repeat("the map is never made. ", 16)
-	a.event(text(session.EventTextDelta, lump))
-	if a.live < 0 {
-		t.Fatal("the lump did not open a live block")
-	}
-	e := &a.entries[a.live]
-	if e.shown <= 0 || e.shown >= len(e.text) {
-		t.Fatalf("the live edge opened at %d of %d", e.shown, len(e.text))
-	}
-	first := e.revealed()
-	a.tickReveal()
-	if e.revealed() == first {
-		t.Fatal("a paint did not walk the live edge")
-	}
-	for i := 0; i < revealSlots+2 && e.revealing(); i++ {
-		a.tickReveal()
-	}
-	if e.revealed() != e.text {
-		t.Fatal("the clock did not catch the lump")
 	}
 }

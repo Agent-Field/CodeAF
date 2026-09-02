@@ -928,7 +928,10 @@ func (a *app) roomAppend(e entry) {
 		return
 	}
 	room.entries = append(room.entries, e)
-	room.live = -1
+	// THE POINTER GOES AND THE EDGE SNAPS WITH IT (livestate.go). The block is
+	// deliberately not settled here — [app.roomCloseLive] is the door that ends
+	// one — but a block nobody is walking must not stay a prefix on the page.
+	abandonLive(room.entries, &room.live)
 	a.roomTouched()
 }
 

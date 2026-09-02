@@ -785,13 +785,7 @@ func (f *feed) resolveUnfinished() {
 // with mid-stream: unrendered markdown, and the live ink of render.go's growing
 // edge left bright on an answer that finished minutes ago. Setting both in one
 // statement is deliberate: the two facts are one event.
-func (f *feed) closeLive() {
-	if f.live >= 0 && f.live < len(f.entries) {
-		e := &f.entries[f.live]
-		e.settled, e.stale = true, true
-	}
-	f.live = -1
-}
+func (f *feed) closeLive() { leaveLive(f.entries, &f.live) }
 
 // settleThought collapses the streaming block WITHOUT letting go of it. It is
 // what a text delta does to the reasoning above it: the block folds to its one
@@ -811,7 +805,7 @@ func (f *feed) settleThought() {
 	}
 	e := &f.entries[f.think]
 	if !e.settled {
-		e.settled, e.stale = true, true
+		settleBlock(e)
 		if !e.latched {
 			e.open = false
 		}
@@ -833,14 +827,9 @@ func (f *feed) collapseThought() {
 	if f.think < 0 {
 		return
 	}
-	if f.think < len(f.entries) && f.entries[f.think].kind == entryThinking {
-		e := &f.entries[f.think]
-		e.settled, e.stale = true, true
-		if !e.latched {
-			e.open = false
-		}
+	if e := leaveLive(f.entries, &f.think); e != nil && e.kind == entryThinking && !e.latched {
+		e.open = false
 	}
-	f.think = -1
 	f.touch()
 }
 
