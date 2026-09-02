@@ -50,7 +50,7 @@ Inside the paste editor, `ctrl+x` does the same thing. There is no recovery afte
 is discarded, though ordinary unsent draft recovery still applies to the rest of the
 message.
 
-## Send a file with your message — /attach
+## Send a file with your message — /attach, how do I share a file with aforge
 
 `/attach <path>` puts an ordinary file — a log, a CSV, a PDF, a stack trace you saved —
 on the tray above the message box, and it goes with the next thing you send.

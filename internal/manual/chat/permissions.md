@@ -1,4 +1,4 @@
-# What runs without asking
+# What runs without asking, and who can see your files
 
 ## The question aforge asks before it runs a tool
 
@@ -282,7 +282,7 @@ setting must never be the one that opens the gate.
 tool gate that a stray export could widen to "allow everything" is a gate with a
 bypass.
 
-## Per-tool exceptions
+## Per-tool exceptions — how do I make it never touch a file, or never run a tool at all
 
 `tools.approval` overrides the blanket mode for named tools. It is the
 `/settings` row **"tool approvals"** — empty it reads `none`, filled it looks
@@ -320,7 +320,7 @@ are not separators, and neither are brace groups.
 A bash call whose command cannot be read degrades an allow to a **prompt**, with
 the rule `bash call with no readable command`. A deny or a prompt stands.
 
-## `--yolo`
+## `--yolo` — how do I let it run things without asking
 
 `aforge chat --yolo` and `aforge resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
@@ -416,7 +416,7 @@ It is deliberately not the whole rule set asked over again — only those two. A
 bash call whose command cannot be read is not on this list, because the rules
 already turned it into a prompt of its own.
 
-## What is allowed without asking by default
+## What is allowed without asking by default — who can see my files, and what aforge can read without asking
 
 Some tools this build never had a reason to ask about are seeded as `allow`
 underneath whatever you wrote:
