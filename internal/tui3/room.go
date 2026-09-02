@@ -1962,51 +1962,186 @@ func (a *app) roomBackAt(y int) bool {
 	return a.roomOpen() && a.headHeight() != 0 && y == 0
 }
 
-// roomHeadWord is the header's left: the node's mark, the trail, the three
-// facts about the work, and — where somebody has set one — the rung it thinks
-// at. Every one of them is DROPPED when nobody has published it: a queued node
-// has no clock, an unpriced one has no cost, and a node nobody has dialled has
-// no rung. That is the reason the turn footer drops its own fields
-// (timestamps.go): a figure that is zero is a figure nobody measured.
+// ── THE HEADER IS THE INSTRUMENT ────────────────────────────────────────────
+//
+// roomHeadWord is the header's left, and it carries THE JUDGMENT AND
+// ACCOUNTABILITY ACTS WHOLE so that the transcript below it does not have to:
+// which node this is, what it is doing, how long it has been at it, what it has
+// cost, how many calls it has made, and — where it is running — the vaguest
+// true sentence about what is happening right now.
+//
+// WHY THEY ARE HERE AND NOT DOWN THE PAGE. A person comes to a task to steer
+// and to check. The check is one glance, and a glance is a fixed number of
+// cells at the top of the frame — so a room's numbers gather in one line
+// instead of dribbling down a scroll that has to be read to be summed
+// (lens.go's [receiptsHeader]; the conversation keeps its per-turn receipts,
+// which is the opposite posture and the right one out there).
+//
+// EVERY SEGMENT IS DROPPED WHEN NOBODY HAS PUBLISHED IT — THE EMPTINESS LAW,
+// PER SEGMENT. A queued node has no clock, an unpriced one no cost, a node that
+// has called nothing no count, and a node nobody has dialled no rung. That is
+// the reason the turn footer drops its own fields (timestamps.go): a figure
+// that is zero is a figure nobody measured, and `$0.00 · 0 tool calls` is the
+// row spending its scarce cells saying nothing twice.
+//
+// AND IT DEGRADES BY WHAT IT IS FOR, on the fitter every list on this surface
+// already uses (rowfit.go). THE IDENTITY IS WHOLE OR THE ROW IS POINTLESS: the
+// mark and the trail take every cell they ask for before a fact gets one,
+// because a person on a narrow terminal is first of all working out which page
+// they are on. The facts behind it are a RANKED PREFIX — the first one that
+// will not fit ends the line and nothing later is skipped forward into the gap
+// — so a narrow header says the same ranked things a wide one does, with the
+// tail missing rather than a different tail.
 //
 // It is built PLAIN, without paint, because the whole line is painted once by
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
 // the rest of the line would fall back to the terminal's default mid-sentence.
 func (a *app) roomHeadWord(width int) string {
-	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the three facts under
-	// it are a node's — a state, a clock, a spend — and a run has none of them.
+	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the facts under it
+	// are a node's — a state, a clock, a spend — and a run has none of them.
 	// What it has instead is a tank, and the tank is the fact that cannot be left
 	// off this line.
 	if a.orchOpen() {
 		return a.orchHeadWord(width)
 	}
 	node := a.roomNode()
-	word := a.roomMark(node) + " " + a.roomTrail()
+	name := a.roomMark(node) + " " + a.roomTrail()
+	room := max(width-roomHeadFurniture, 0)
 	if node == nil {
 		// A room on a node this surface has had no update for. The trail is still
 		// true and nothing else is, which is exactly what gets said.
-		return fit(word, width)
+		return fit(name, room)
 	}
-	// The model joins the three because it answers the same kind of question
-	// they do — what is true of this work right now — and it is dropped by the
-	// same rule when nobody published one. It goes last: the state and the clock
-	// change while you watch, and whose hands the work is in was settled before
-	// it started.
-	//
-	// AND THE RUNG GOES AFTER THE MODEL, for the reason the model goes after the
-	// clock, one step further along the same argument: how hard this node is
-	// asked to think is a setting somebody made about it rather than news, it
-	// belongs beside the model because the two together are what a call is made
-	// of, and it is dropped by the same rule — a node nobody has set a rung on
-	// says nothing at all (taskeffort.go's [app.taskEffortClause]). It is
-	// `ctrl+v` on this page that moves it.
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node),
-		strings.TrimSpace(node.model), a.taskEffortClause(node)} {
-		if part != "" {
-			word += " · " + part
+	name = fit(name, room)
+	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
+	if tail == "" {
+		return name
+	}
+	return name + rowSep + tail
+}
+
+// roomHeadFurniture is what [app.legendLine] spends on the header's own rule
+// before the words start: the lead `─ `, the space after the left label, and the
+// one fill cell that line refuses to draw without. It is subtracted here so the
+// fitter is measuring the cells the words actually have, rather than fitting to
+// the frame and letting the legend fall back to a cut.
+const roomHeadFurniture = 4
+
+// roomHeadFacts is the instrument's ranked prefix: what a person checking on
+// work reads, in the order they read it.
+//
+// THE ORDER IS THE ARGUMENT. The verb is first because "is it going right" is
+// the question the visit is for. Elapsed and spend are next because they are
+// the two figures nobody can recover by looking at the page. The call count is
+// the size of what happened, and the live line is the one thing on the row that
+// moves. The model and the rung come last together: they are settings somebody
+// made before the work started, not news, and they are the first thing a narrow
+// frame can afford to lose.
+func (a *app) roomHeadFacts(node *taskNode) []rowField {
+	work := roomWorkOf(a.roomEntries())
+	return []rowField{
+		rowSay(a.roomStateWord(node)),
+		rowSay(a.roomClock(node)),
+		rowSay(a.roomSpend(node)),
+		roomCallField(work.calls),
+		rowSay(a.roomLiveWord(node, work)),
+		rowSay(strings.TrimSpace(node.model), modelBase(strings.TrimSpace(node.model))),
+		rowSay(a.taskEffortClause(node)),
+	}
+}
+
+// roomCallField is HOW MUCH WORK THIS IS, counted. It is the chip's own grammar
+// (workfold.go's [app.workfoldLabel]) so that the header and the chips under it
+// count in one vocabulary, with a shorter spelling for a narrow frame.
+//
+// A NODE THAT HAS CALLED NOTHING SAYS NOTHING. The emptiness law, per segment:
+// `0 tool calls` is a measurement of nothing dressed as a measurement.
+func roomCallField(calls int) rowField {
+	if calls <= 0 {
+		return rowSay()
+	}
+	if calls == 1 {
+		return rowSay("1 tool call", "1 call")
+	}
+	return rowSay(itoa(calls)+" tool calls", itoa(calls)+" calls")
+}
+
+// roomLiveWord is THE LIVE LINE: what is happening on this node right now, and
+// nothing when the honest answer is that nobody knows.
+//
+// THE VAGUEST TRUE SENTENCE IS WHAT IS LEFT WHEN NO BETTER ONE IS KNOWN, which
+// is the conversation's own ladder read downwards (render.go's [stillWorking]).
+// A call in flight is the specific answer and it wins; past that, a page that
+// has not moved for ten seconds says so, because from the outside a retry and a
+// long tool-free think are indistinguishable from a hang and "still working" is
+// true of both.
+//
+// IT NEVER REPEATS THE VERB BESIDE IT. The state word already says `designing`
+// or `awaiting your look` where the engine published one ([app.roomStateWord]),
+// and one line saying the same thing twice is a line read twice to learn once.
+//
+// A NODE THAT IS NOT RUNNING HAS NO LIVE LINE AT ALL. What a finished node is
+// doing is nothing, and the surface does not spend a segment saying so.
+func (a *app) roomLiveWord(node *taskNode, work roomWork) string {
+	if node.state != session.TaskRunning {
+		return ""
+	}
+	word := work.running
+	if word == "" && !work.last.IsZero() && a.now().Sub(work.last) >= stillWorking {
+		word = strings.TrimPrefix(stillWorkingWord, " · ")
+	}
+	if word == a.roomStateWord(node) {
+		return ""
+	}
+	return word
+}
+
+// roomWork is what the page's own rows say about the work: how many calls have
+// CLOSED, which one is in flight, and when anything last moved.
+//
+// It is one walk answering three questions because all three are read on the
+// same frame by the same line, and three walks over the same slice is the same
+// arithmetic done three times. It reads the ENTRIES — the rows a person can see
+// — so the header cannot claim a call the page does not show.
+type roomWork struct {
+	calls   int
+	running string
+	last    time.Time
+}
+
+func roomWorkOf(es []entry) roomWork {
+	var out roomWork
+	for i := range es {
+		e := &es[i]
+		if !e.ended.IsZero() && e.ended.After(out.last) {
+			out.last = e.ended
+		}
+		if !e.began.IsZero() && e.began.After(out.last) {
+			out.last = e.began
+		}
+		if e.kind != entryTool {
+			continue
+		}
+		switch e.status {
+		case toolOK, toolFailed:
+			out.calls++
+		case toolRunning:
+			// THE NEWEST ONE IN FLIGHT, because a row that named the oldest would
+			// go stale while the work moved on under it.
+			out.running = e.tool
 		}
 	}
-	return fit(word, width)
+	return out
+}
+
+// roomEntries is the open page's blocks, or none. It is a door rather than a
+// field read because the header is drawn for a run's page too, and a run has a
+// graph where a node has a transcript.
+func (a *app) roomEntries() []entry {
+	if a.room == nil || a.room.orch != nil {
+		return nil
+	}
+	return a.room.entries
 }
 
 // roomKinRowCap is how many rows the kin block may take under the header. Three
