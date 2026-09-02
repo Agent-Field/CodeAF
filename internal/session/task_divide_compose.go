@@ -114,6 +114,12 @@ type divisionFamily struct {
 //  3. THE GROUND TAKES WHAT REMAINS. A part that lost the last page of what the
 //     work already found out is worse off; a part that lost the sentence saying
 //     what it owns, or the one saying what its siblings own, is dangerous.
+//
+// The ground is [TaskGraph.inheritedLocked]'s answer, which has already fitted
+// the prerequisite reports and marked any cut with [clip]. This second fit
+// must not stack a second mark on a cut that already carried one — [clip]
+// moves a trailing mark rather than doubling it, so a report is marked once
+// or not at all.
 func familyOf(request, brief string, parts []dividePart) divisionFamily {
 	scopes := make([]string, len(parts))
 	for index, part := range parts {

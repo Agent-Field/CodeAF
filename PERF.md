@@ -1031,6 +1031,26 @@ if they ever become two.
 `internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
 never being outrun, and the three repairs.
 
+## What a gated task inherits from the work before it
+
+`TaskGraph.inheritedLocked` is the seam every gated node’s brief passes through:
+its own contract, then the reports of the work it waited on. The reports used to
+arrive whole, with no bound, so a sink gated on six long leaves could have its
+own brief pushed off the window — and a 4 KiB pot once fed that sink four of
+six sections and it wrote a confident four-row table.
+
+| what | bound | the rule |
+| --- | --- | --- |
+| the task's own brief | never cut | the contract takes priority absolutely |
+| the prerequisite reports | what remains of `taskShapeBriefLimit` (**6000**) after that brief and the heading | equal first shares; unused remainder goes to whoever is still clipped |
+| one report's floor | `inheritedReportFloor` (**512**) | when N times the floor will not fit, the bound yields — the list gets thinner, never shorter |
+| a cut | marked with `…` (`clip`) | one mark or none; a second fit on the division road (`familyOf`) moves a trailing mark rather than stacking one |
+| the count | printed on the heading when any reports are present | `What the work before you learned — N reports:` — the same idiom as `openFindingsLimit` |
+
+Pinned by `internal/session/task_inherit_test.go`. The number on
+`taskShapeBriefLimit` is the brief bound every brief on this road is already
+held to; this section is the first time the inherited half is held to it.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000
