@@ -159,13 +159,15 @@ func TestAnOversizeDroppedPictureIsNotAnUnknownCommand(t *testing.T) {
 	}
 }
 
-// AND A COMMAND THAT NAMES NOTHING ON THE DISK REFUSES EXACTLY AS IT DID.
-func TestAnUnknownCommandThatNamesNothingStillRefuses(t *testing.T) {
+// AND A SLASH WORD THAT NAMES NOTHING IS PROSE. Punctuation cannot reserve an
+// otherwise arbitrary first message for the surface.
+func TestAnUnknownSlashWordThatNamesNothingIsSent(t *testing.T) {
 	a, _, _ := dropLab(t, nil)
 	typeText(t, a, "/nonsense")
 	drive(t, a, key("enter"))
-	if got := plain(frame(a)); !strings.Contains(got, "unknown command: /nonsense") {
-		t.Fatalf("an unknown command stopped refusing:\n%s", got)
+	agent := a.agent.(*imageAgent)
+	if len(agent.sent) != 1 || agent.sent[0] != "/nonsense" {
+		t.Fatalf("the slash prose was sent as %q", agent.sent)
 	}
 }
 

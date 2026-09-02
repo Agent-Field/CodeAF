@@ -655,11 +655,12 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
+	title := cleanTitleCandidate(parsed.Title)
 	spec := taskSpec{
-		title: strings.TrimSpace(parsed.Title),
+		title: title,
 		// THE MODEL GROOMED THIS PROPOSAL AND NAMED IT IN THE SAME BREATH, so the
 		// namer leaves it alone (taskname.go).
-		named:       strings.TrimSpace(parsed.Title) != "",
+		named:       title != "" && !taskNameNeeded(title),
 		summary:     strings.TrimSpace(parsed.Summary),
 		brief:       strings.TrimSpace(parsed.Brief),
 		deliverable: strings.TrimSpace(parsed.Deliverable),

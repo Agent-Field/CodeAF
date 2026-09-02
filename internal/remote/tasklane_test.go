@@ -182,6 +182,33 @@ func TestAHostedRailOpenedLateStillGetsTheRoster(t *testing.T) {
 	}
 }
 
+// A title earned after its turn closes travels on the same lifetime lane as a
+// task landing. The remote engine must update its facts replica before handing
+// that event to the surface, including when the lane itself opened late.
+func TestALateHostedTitleUpdatesTheReplicaBeforeItsEvent(t *testing.T) {
+	far := &railAgent{fakeAgent: &fakeAgent{}}
+	far.name("text boundary audit")
+	far.roster = []session.Event{{Kind: session.EventTitleChanged, Text: "text boundary audit"}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	handle := loop.Client.Agent()
+	lane, stop := handle.WatchTaskUpdates()
+	t.Cleanup(stop)
+	event := nextTask(t, lane)
+	if event.Kind != session.EventTitleChanged || event.Text != "text boundary audit" {
+		t.Fatalf("late lane carried %+v", event)
+	}
+	if got := handle.Title(); got != "text boundary audit" {
+		t.Fatalf("replica title = %q after its event", got)
+	}
+}
+
 // TAKING UP A SECOND CONVERSATION REPLACES THE LANE AND NEVER ADDS ONE. Two
 // pumps on one channel would each take half the events, which is a rail that
 // silently drops rows.

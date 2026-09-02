@@ -314,6 +314,27 @@ func TestEnterWithAChipAndNoWordsRunsNothing(t *testing.T) {
 	}
 }
 
+func TestPickedHarnessUnfoldsAPasteExactlyOnce(t *testing.T) {
+	a, agent, _ := pickApp(t)
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, "review this")
+	a.harnChip = "triage-flake"
+	drive(t, a, key("enter"))
+	if !strings.Contains(agent.text, "alpha\nbeta\ngamma") || strings.Count(agent.text, "paste 1:\n") != 1 {
+		t.Fatalf("the harness received %q", agent.text)
+	}
+	var shown string
+	for _, entry := range a.entries {
+		if entry.kind == entryUser {
+			shown = entry.text
+			break
+		}
+	}
+	if strings.Contains(shown, "alpha\nbeta") || !strings.Contains(shown, "[paste 1") {
+		t.Fatalf("the transcript kept %q", shown)
+	}
+}
+
 // A SESSION THAT CANNOT RUN ONE SAYS SO, and says the sentence /harness has
 // always said. The capability is absent rather than broken.
 func TestAHarnessChipOnASurfaceThatCannotRunOne(t *testing.T) {

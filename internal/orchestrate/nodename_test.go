@@ -2,6 +2,7 @@ package orchestrate
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,13 +133,62 @@ func TestANameThatIsNothingButTheIdIsNotAName(t *testing.T) {
 		{Node{ID: "r1", Title: "r1"}, true},
 		{Node{ID: "synth"}, true},
 		{Node{ID: "n3", Title: "  "}, true},
+		{Node{ID: "slice-a", Title: "paste 1"}, true},
+		{Node{ID: "slice-b", Title: "step-2"}, true},
+		{Node{ID: "slice-c", Title: "task_03"}, true},
+		{Node{ID: "slice-d", Title: "/tmp/parser.go"}, true},
+		{Node{ID: "slice-e", Title: "inspect every parser implementation in the tree"}, true},
 		{Node{ID: "token-bucket"}, false},
 		{Node{ID: "r1", Title: "retry storms"}, false},
 		{Node{ID: "sliding_window_log"}, false},
+		{Node{ID: "migration", Title: "phase 2"}, false},
+		{Node{ID: "bug", Title: "issue 376"}, false},
+		{Node{ID: "parser", Title: "step 2 parser"}, false},
 	} {
 		if got := NodeNeedsName(probe.node); got != probe.want {
 			t.Errorf("a node %q titled %q needs a name: %v, want %v",
 				probe.node.ID, probe.node.Title, got, probe.want)
+		}
+	}
+}
+
+func TestPathAndSentencePlannerTitlesGoThroughTheNamerBeforeClipping(t *testing.T) {
+	namer := &namerOf{answer: "parser boundary audit"}
+	run := withNamer(namer.name)
+	run.apply(Amendment{Add: []Node{
+		{ID: "path", Title: "/tmp/parser.go", Goal: "Inspect the parser."},
+		{ID: "sentence", Title: "inspect every parser implementation in the tree", Goal: "Inspect every parser."},
+	}})
+	for _, id := range []string{"path", "sentence"} {
+		if got := named(t, run, id); got != "parser boundary audit" {
+			t.Fatalf("node %q settled as %q, want the namer's answer", id, got)
+		}
+	}
+	asked := namer.seen()
+	sort.Strings(asked)
+	if strings.Join(asked, ",") != "path,sentence" {
+		t.Fatalf("namer saw %v, want both invalid planner titles", asked)
+	}
+}
+
+func TestGenericOrdinalNamesAreExactAndUnicodeAware(t *testing.T) {
+	for _, probe := range []struct {
+		name string
+		want bool
+	}{
+		{"paste 1:", true},
+		{"PASTE#1", true},
+		{"node\u0662", true},
+		{"conversation 004", true},
+		{"task 21st", true},
+		{"step32nd", true},
+		{"issue 441", false},
+		{"python 3", false},
+		{"task 2 parser", false},
+		{"paste parser", false},
+	} {
+		if got := IsGenericOrdinalName(probe.name); got != probe.want {
+			t.Errorf("IsGenericOrdinalName(%q) = %v, want %v", probe.name, got, probe.want)
 		}
 	}
 }

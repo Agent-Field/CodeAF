@@ -623,6 +623,9 @@ func TestTheHolderLetsGoAndLandsOnAFreshConversation(t *testing.T) {
 
 	a := lab.app(mine)
 	held := a.agent.(*fakeAgent)
+	a.paste("alpha\nbeta\ngamma")
+	typeInto(t, a, " inspect")
+	wantDraft := a.input.String()
 	a.taskEvent(session.Event{Kind: session.EventTakeover, Text: session.TakeoverWord})
 
 	if held.closes != 1 {
@@ -633,6 +636,12 @@ func TestTheHolderLetsGoAndLandsOnAFreshConversation(t *testing.T) {
 	}
 	if said := homeNotes(a); !strings.Contains(said, session.TakeoverWord) {
 		t.Fatalf("the window said %q about letting go", said)
+	}
+	if a.input.String() != wantDraft || len(a.pasteSpans()) != 1 {
+		t.Fatalf("fresh landing restored draft=%q pastes=%+v", a.input.String(), a.pastes)
+	}
+	if spoken := a.pastesUnfolded(a.input.String()); !strings.Contains(spoken, "alpha\nbeta\ngamma") {
+		t.Fatalf("the fresh landing's paste speaks as %q", spoken)
 	}
 }
 

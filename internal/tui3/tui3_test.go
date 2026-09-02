@@ -1165,8 +1165,8 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 
 	typeLine(t, a, "/nonsense")
-	if !strings.Contains(plain(frame(a)), "unknown command: /nonsense") {
-		t.Fatalf("an unknown slash has to answer:\n%s", plain(frame(a)))
+	if len(agent.sent) != 1 || agent.sent[0] != "/nonsense" {
+		t.Fatalf("unknown slash prose was sent as %q", agent.sent)
 	}
 
 	typeLine(t, a, "/help")
@@ -1185,8 +1185,8 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 		t.Fatalf("help did not reach the screen:\n%s", plain(frame(a)))
 	}
 
-	if len(agent.sent) != 0 {
-		t.Fatalf("a slash command reached the model: %v", agent.sent)
+	if len(agent.sent) != 1 || agent.sent[0] != "/nonsense" {
+		t.Fatalf("known commands changed the model sends: %v", agent.sent)
 	}
 }
 
@@ -1214,7 +1214,7 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	const unknown = "unknown command: /nonsense · try /help"
 	for range 4 {
-		typeLine(t, a, "/nonsense")
+		a.note(unknown)
 	}
 	if n := notesSaying(a, unknown); n != 1 {
 		t.Fatalf("four presses left %d copies of %q in the transcript", n, unknown)
@@ -1223,7 +1223,7 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	// the repeat under different words, where it is news rather than a stutter —
 	// so this asks about the last entry and never about the whole transcript.
 	typeLine(t, a, "/cost")
-	typeLine(t, a, "/nonsense")
+	a.note(unknown)
 	if n := notesSaying(a, unknown); n != 2 {
 		t.Fatalf("the answer after a line of its own was swallowed: %d copies of %q", n, unknown)
 	}

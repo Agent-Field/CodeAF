@@ -40,6 +40,9 @@ type recall struct {
 	at     int
 	draft  []rune
 	cursor int
+	// pastes are the identities belonging to draft. History entries carry no
+	// in-memory paste documents, even when their literal text resembles a chip.
+	pastes []pasteChip
 }
 
 func (a *app) recalling() bool { return a.hist.active }
@@ -61,7 +64,9 @@ func (a *app) recallBack() bool {
 			at:     -1,
 			draft:  append([]rune(nil), a.input.value...),
 			cursor: a.input.cursor,
+			pastes: append([]pasteChip(nil), a.pastes...),
 		}
+		a.pastes = nil
 	}
 	if a.hist.at+1 >= len(a.hist.list) {
 		// The oldest entry stays under the caret rather than the walk falling
@@ -70,6 +75,7 @@ func (a *app) recallBack() bool {
 	}
 	a.hist.at++
 	a.input.setText(a.hist.list[a.hist.at])
+	a.pastes = nil
 	a.closeLists()
 	a.touch()
 	return true
@@ -86,6 +92,7 @@ func (a *app) recallForward() bool {
 	}
 	a.hist.at--
 	a.input.setText(a.hist.list[a.hist.at])
+	a.pastes = nil
 	a.closeLists()
 	a.touch()
 	return true
@@ -102,6 +109,7 @@ func (a *app) recallCancel() {
 	if a.input.cursor > len(a.input.value) {
 		a.input.cursor = len(a.input.value)
 	}
+	a.pastes = a.hist.pastes
 	a.hist = recall{}
 	a.closeLists()
 	a.touch()
@@ -110,7 +118,9 @@ func (a *app) recallCancel() {
 // endRecall drops the walk WITHOUT restoring the draft — the recalled line has
 // just been sent, so the draft it was holding is a sentence about a message
 // that is now in the transcript.
-func (a *app) endRecall() { a.hist = recall{} }
+func (a *app) endRecall() {
+	a.hist = recall{}
+}
 
 // recallList is the walk's list: this directory first, then everywhere, with
 // duplicates dropped so that a prompt typed in both places is one step and not

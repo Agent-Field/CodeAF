@@ -531,8 +531,8 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	a.record(textMessage("assistant", note+answer))
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
 	// The session may name itself off this exchange like any other: a
-	// conversation that opened with a photograph is still a conversation about
-	// something (title.go).
-	a.maybeTitle(ctx, hub)
+	// conversation that opened with a photograph is still about something. The
+	// call is post-turn and announces on the lifetime lane (title.go).
+	a.maybeTitle(ctx)
 	return true
 }
