@@ -1857,3 +1857,37 @@ of them is choosing a denominator that gives the answer one wants, and it is the
 one thing this rule exists to forbid. **No other arm is re-run and no constant
 is touched.** All three results — familiar 94.67, held out 97.33, and the
 tiebreaker — are recorded below whichever way it goes.
+
+#### The first tiebreaker was run under the rule above, and it is disclosed here
+
+`go run ./bench/lanelab/gosim -proof -store cold -pace shipped -mix stress
+-seeds-are 31,37,41`, at 150 requests per row per seed, returned **95.52% of 223
+thinking phases — PASS** under the rule as first written.
+
+**It is recorded rather than banked.** Before that number could be acted on, the
+rule was amended for a reason that is about the instrument and not about the
+result: at 223 phases **one phase is 0.45 points**, which is coarser than the
+margin being judged. A verdict taken at that resolution is a verdict about
+rounding. The amended protocol below is what decides, and this figure is
+reported beside it so that nobody has to wonder what the first run said.
+
+#### The amended rule — also written down before the run it decides
+
+1. **The same disputed arm** (`cold · shipped · stress`) on **the same never-used
+   seeds 31 / 37 / 41**, judged on those seeds alone. The trial count is raised
+   to **600 requests per row per seed** — four times the earlier size — so the
+   thinking row yields about **900 phases**, at which one phase is **0.11
+   points** rather than 0.45.
+2. The long-think proportion is reported **with a 95% Wilson confidence
+   interval**, not as a bare percentage.
+3. **Three outcomes, stated before the number exists:**
+   - **CI entirely ≥ 95%** — the arm passes, and the lane proceeds.
+   - **CI entirely < 95%** — the red is real, and the lane stops.
+   - **CI straddles 95%** — the honest finding is that **this arm sits at the
+     threshold and the gate needs restating**. That is neither a pass nor a
+     failure and it will not be called one; the lane stops and it goes back to
+     the owner.
+4. **One run. No best-of.** Whatever it says stands, and all four figures —
+   familiar 94.67%, held out 97.33%, the first tiebreaker 95.52%, and the
+   amended one — appear together wherever this arm is reported. **The tiebreaker
+   is disclosed and never folded into a green table.**
