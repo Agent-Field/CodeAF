@@ -18,6 +18,10 @@ func TestSearchAnswersTheQuestionsPeopleActuallyAsk(t *testing.T) {
 		{"why did you ask before cancelling", "steering-work", "confirm"},
 		{"how does the boost model work", "models", "boost"},
 		{"what is a charter", "standing-goals", "charter"},
+		// The ↻ line carries what ended the attempt, not only how much was
+		// picked up, and the page shows it that way.
+		{"why was my work picked up again", "surfaces",
+			"picked up again from 45 recorded turns — it was still working when it ran out of its time"},
 	} {
 		found := Search(probe.question, DefaultResults)
 		if len(found) == 0 {

@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -229,6 +230,24 @@ func quotedFacts(t *testing.T) []quotedFact {
 		fact: "how often everything standing is checked", owner: "standing.Interval",
 		value: minutesWord, others: notMinutesWord,
 		quotes: []quotedIn{{"keeping-an-eye", "Everything standing is checked every %s minutes."}},
+	}, {
+		// THE ↻ LINE'S WHY IS THE CODE'S WORD FOR THE BOUND, NOT THE PAGE'S.
+		// That line said only how many turns it picked up, and the page showed
+		// it that way; a reader learned what had ended the attempt from the ⏳
+		// above it, which is adjacency and not a promise. The line now carries
+		// the bound, read off the release reason, and the bound is named in
+		// exactly one place in the code — so a page still showing the old shape,
+		// or the old word for the bound, names itself here.
+		fact: "what a leaf that spent its budget ran out of", owner: "exec.RanOutSubject(exec.StopBudget)",
+		value: executor.RanOutSubject(executor.StopBudget),
+		others: []string{
+			executor.RanOutSubject(executor.StopTurnCap),
+			executor.RanOutSubject(executor.StopDeadline),
+			"its tokens",
+		},
+		quotes: []quotedIn{
+			{"adaptive-runs", "picked up again from 9 recorded turns — it was still working when it ran out of %s"},
+		},
 	}}
 	return append(facts, crewFacts(t)...)
 }

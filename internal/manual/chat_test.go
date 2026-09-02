@@ -38,6 +38,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the total at the end of aforge do include", "models-and-cost"},
 		{"why is the printed cost different from the call log", "models-and-cost"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
+		// The ↻ line, asked the way somebody meets it: they saw a piece of work
+		// go round again and want the sentence that says what ended it.
+		{"why was my work picked up again", "adaptive-runs"},
 		{"whose model context window is used over host", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},

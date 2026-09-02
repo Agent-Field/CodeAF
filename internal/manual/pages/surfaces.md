@@ -216,7 +216,7 @@ why. Four lines, and they are four different things:
 
 ```
   ⏳ Core engine                  — it was still working when it ran out of its 15m0s — 72 turns in
-  ↻ Core engine                  — picked up again from 45 recorded turns
+  ↻ Core engine                  — picked up again from 45 recorded turns — it was still working when it ran out of its time
   ✗ Core engine                  — picked up again — no sign of life for 24m3s …
   ↻ Core engine                  — resumed from 45 recorded turns, already holding styles.ts, grid-layout.ts
 ```
@@ -228,6 +228,11 @@ tokens. **Nothing failed**: it was still working, and what it reached is kept.
 back on the queue with its record, and the count is how much is waiting there
 for whoever takes it next. **This is progress, not a fault** — running out of
 room is the input the planner uses to decide whether the piece needs more of it.
+
+The rest of that line is **why** the piece went back — its time, its turns, its
+token budget with the figures, or a worker that stopped answering. It is on the
+line itself rather than only on the `⏳` above it, so one `↻` you scroll back to
+a day later still says what ended the attempt.
 
 `✗ picked up again` is the backstop, and it is the only one of the four that is
 a fault. Work is only taken off a worker that has shown **no sign of life** for

@@ -1720,10 +1720,13 @@ func openChildren(graph *store.Store) (map[string]bool, error) {
 // goes back on the queue" is only worth reading if the next claim is going to
 // pick up where this one stopped, and the turn count is the evidence that it
 // can. The headless stream prints it beside the node (see cmd/aforge's
-// narrateOne on store.EventNodeReleased).
+// narrateOne on store.EventNodeReleased), which says the count in its own words
+// and reads the rest of this sentence through [ReleaseWhy] — so the clause about
+// what survived is [recordedTail]'s, spelled in one place for both of the
+// endings that hand a record on.
 func exhaustedClaimReason(allowed time.Duration, recorded int) string {
-	return fmt.Sprintf("the worker did not come back within %s and was stopped — %s of its work is recorded, and the next one carries on from there",
-		allowed.Round(time.Second), pluralTurns(recorded))
+	return fmt.Sprintf("the worker did not come back within %s and was stopped",
+		allowed.Round(time.Second)) + recordedTail(recorded)
 }
 
 // pluralTurns spells a turn count in a person's words.

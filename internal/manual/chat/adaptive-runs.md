@@ -665,7 +665,7 @@ The wording you see on the work's own record when nothing in the review can buy 
 `everything still missing here has already had two rounds of work aimed straight at it, so
 this is handed over with it named rather than repaired`.
 
-## When a worker runs out of its tokens mid-work — ⏳ and what happens next
+## When a worker runs out of its tokens mid-work — ⏳, and the work is picked up again
 
 A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
 the budget is spent and given a few final calls to make what it was changing consistent
@@ -683,15 +683,18 @@ pass. Let me verify the dry-run tests specifically:") is not an account of anyth
 
 ```
   ↻ runner.go edits          — resumed from 9 recorded turns, already holding runner.go
-  ↻ runner.go edits          — picked up again from 9 recorded turns
+  ↻ runner.go edits          — picked up again from 9 recorded turns — it was still working when it ran out of its token budget (cost: 199131 of 176834 tokens of billed work)
 ```
 
 The first is a continuation planned for what is left; the second is the same node claimed
-again, carrying on from the turns it had already banked. Its record says why in the same
-words the ⏳ used — `it was still working when it ran out of its token budget (cost: 199131
-of 176834 tokens of billed work) — 9 turns of its work is recorded, and the next attempt
+again, carrying on from the turns it had already banked. The second **says why on its own
+line**, in the same words the ⏳ used, so it still reads as an account of something when
+you come back to it on its own rather than as a bare restart. Its record carries the whole
+sentence — `it was still working when it ran out of its token budget (cost: 199131 of
+176834 tokens of billed work) — 9 turns of its work is recorded, and the next attempt
 carries on from there` — so the bound that fired and the work that survived are named
-together, and the next claim starts from those turns rather than from nothing.
+together, and the next claim starts from those turns rather than from nothing. The turn
+count is said once on the line and once in the record, never twice in the same sentence.
 
 **A ⏳ followed by a ✓ with neither of those between them is a bug**, and it was one: a cut worker was ticked two
 seconds after its own ⏳ line, its siblings were briefed on truncated work, and the turn
