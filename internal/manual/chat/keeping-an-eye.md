@@ -548,7 +548,13 @@ program that is gone. Every launch checks for exactly that and quietly puts the
 timer back on the program you are actually running. You are not asked and nothing
 is said on screen; one line goes to `v3/standing.log` under your aforge home.
 
-## I have two copies of aforge — which one runs the background checks, and does AFORGE_HOME move the timer
+## I have two copies of aforge and my reminders fired twice, or stopped firing — which build runs the background checks, and does AFORGE_HOME move the timer
+
+There is one timer per login and it runs one build, so nothing ever fires twice
+from two copies — if a reminder arrived twice, it was not two timers. And if your
+reminders stopped firing after you installed a second aforge and removed the
+first, the timer was naming a program that is gone; the next launch of any build
+under that home puts it back.
 
 There is **one timer per login**, and it is a pair: the home it checks and the
 program it runs. Its definition carries both — `AFORGE_HOME` and the path to the

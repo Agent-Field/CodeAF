@@ -1213,6 +1213,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it run when my terminal is closed", "keeping-an-eye"},
 		{"turn off background checks", "keeping-an-eye"},
 		{"i have two copies of aforge, which one runs the background checks", "keeping-an-eye"},
+		{"two copies of aforge and my reminders fired twice", "keeping-an-eye"},
 		{"does AFORGE_HOME move the background timer", "keeping-an-eye"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types
