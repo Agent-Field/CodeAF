@@ -4,10 +4,20 @@ name: PR gate
 # times a day, much of it written by agents, and a gate that takes fifteen
 # minutes is a gate people learn to route around. So this one asks only the
 # questions whose answer is always the same on every machine and whose failure
-# always means somebody broke something: does the tree compile, does vet find a
-# real bug, and does the manual still know about the feature that just landed.
+# always means somebody broke something: does the tree compile, is it
+# formatted, does vet find a real bug, do the laws hold, and does the manual
+# still know about the feature that just landed.
 #
-# The whole suite is not here. It runs on the way into `staging`, and nightly
+# THE LAWS ARE HERE BECAUSE THEY WERE NOT. Until 2026-09-02 this gate's one
+# test step was `go test -run 'Manual'` over two packages — a filter nobody
+# remembered — and the endings ratchet in internal/session went red on dev
+# through two merged pull requests while every check here was green (#372).
+# A structural test decides in under a second and the same on every machine;
+# it belongs on the light gate by the light gate's own definition, and now
+# `make test-laws` finds every one of them without anybody keeping a list.
+#
+# The whole suite is not here. The packages a change touched run in full in the
+# second job below; everything else runs on the way into `staging`, and nightly
 # against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
 # in that place and what has to be true before it moves.
 on:
@@ -24,8 +34,13 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels its older run; a push to `dev` never
+# cancels another, because the group is the commit. Keyed on the ref, the
+# second merge inside twenty-five minutes cancelled the first merge's
+# `touched packages` run, and a cancelled run leaves no red — on exactly the
+# push the trigger above exists for.
 concurrency:
-  group: pr-gate-${{ github.ref }}
+  group: pr-gate-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -55,6 +70,12 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      # A file gofmt would rewrite is a file the next editor's save rewrites,
+      # and that diff lands in somebody else's pull request. Two files had
+      # drifted by the time anybody looked (#372).
+      - name: gofmt
+        run: make fmt-check
 
       # THE PACKED CORPORA ARE GENERATED FROM THE FOLDERS. The manuals are
       # ignored build products because committing one shared binary made every
@@ -130,3 +151,92 @@ jobs:
           set -euo pipefail
           go test ./internal/manual/
           go test -run 'Manual' ./internal/tui3/ ./internal/session/
+
+      # THE LAWS HOLD. Every test that reads the tree itself — the endings
+      # ratchet, the guard, the taxonomy, the known-red ratchet, the words the
+      # e2e suite waits for — found by what it does (scripts/laws.sh) and run as
+      # one target, about twenty seconds after the link. This is the step that
+      # would have stopped #279 at the door.
+      #
+      # TMPDIR IS SET ON THIS STEP AND NOT ON THE JOB. A test that binds a unix
+      # socket under t.TempDir() overflows sun_path on the runner's default
+      # path, so the tests get a short one; but set on the job it reaches
+      # setup-go's own `go env`, which runs before any step has created the
+      # directory, and the go command fails making its work dir. Two runs of
+      # this very pull request died that way.
+      - name: The laws hold
+        env:
+          TMPDIR: /tmp/aforge-ci
+        run: |
+          mkdir -p "$TMPDIR"
+          make test-laws
+
+  # THE PACKAGES THIS CHANGE TOUCHED, IN FULL. The laws catch a shape; this
+  # catches a behaviour, in the one place a change can have broken it. It is a
+  # job of its own so that the light gate's answer arrives in its few minutes
+  # while this one takes as long as the slowest touched package — internal/tui3
+  # is about eight minutes on this runner — and the two run side by side rather
+  # than one after the other.
+  #
+  # It reads the same ledger and the same timeout as `make test`, through
+  # `make test`, so a red here is a red on a clean laptop too. IT IS NEUTRAL
+  # TODAY: the test step may fail without the job failing, and a failure is
+  # written as a warning on the run and in its summary. That is because a red
+  # job on a merged pull request reads as a red dev to everyone who merges
+  # after it, and on the day this landed internal/tui3 carried three runner-
+  # only reds (#417, the TERM seam) that no change here caused. Once it has
+  # been green twice in a row, delete `continue-on-error` and the warning
+  # step, and it blocks like `check`.
+  # THE JOB'S OWN CEILING SITS ABOVE THE GO ONE. `make test` gives each
+  # package fifteen minutes so a hang panics with the package's name; a job
+  # killed by GitHub first names nothing. A wide change can touch the three
+  # heaviest packages at once, so this is three of those with room.
+  touched:
+    name: touched packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test the packages this change touched
+        id: touched
+        continue-on-error: true
+        env:
+          # A pull request diffs against its base; a push against what the
+          # branch was before it. A first push has no before, and diffs one
+          # commit.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TMPDIR: /tmp/aforge-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
+          dirs="$(git diff --name-only "$BASE" HEAD -- '*.go' | xargs -r -n1 dirname | sort -u)"
+          pkgs=""
+          for dir in $dirs; do
+            # A directory the change emptied has no package left to test.
+            if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
+          done
+          if [ -z "$pkgs" ]; then
+            echo 'No Go file changed; nothing to run.'
+            exit 0
+          fi
+          echo "touched:$pkgs"
+          # -p 1 for the reason ci-full.yml gives: this runner has been shut
+          # down under the link load of the heavy binaries twice, and a change
+          # touching tui3, session and cmd/aforge links all three at once.
+          make test TEST_FLAGS='-p 1' PKGS="$pkgs"
+
+      # THE RED IS SAID, NOT SWALLOWED. Neutral does not mean silent: a warning
+      # on the run and a line in its summary name the job and the log.
+      - name: Say so when it was red
+        if: steps.touched.outcome == 'failure'
+        run: |
+          echo "::warning title=touched packages red::a package this change touched fails its suite on the runner; read the job log. The job is neutral until it has been green twice in a row (ci.yml)."
+          echo '### touched packages: red' >> "$GITHUB_STEP_SUMMARY"
+          echo 'A package this change touched fails its suite on the runner. The job is neutral until it has been green twice in a row; read the log above.' >> "$GITHUB_STEP_SUMMARY"

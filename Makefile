@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed manual-pack-law furrow test test-packed-manual test-remote vet check size clean \
+.PHONY: all build debug demo-home embed manual-pack-law furrow test test-laws fmt-check test-packed-manual test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -94,8 +94,59 @@ build: furrow embed
 debug: furrow embed
 	go build -tags=$(MANUAL_TAG) -trimpath -ldflags="$(BUILD_STAMP)" -o $(BINARY) ./cmd/aforge
 
+# ── the known-red ledger, read once ─────────────────────────────────────────
+#
+# .github/known-red.txt is the debt: tests that fail on a clean tree, skipped
+# by name so that red still means something. IT IS READ HERE AND ONLY HERE.
+# `make test`, `make test-laws` and both workflows go through this one reading,
+# so "green locally" and "green in CI" are one fact. Before 2026-09-02 they were
+# not: this target was a bare `go test ./...` that could not pass on a clean
+# tree while the full run skipped the ledger, so `make check` — the ritual
+# CLAUDE.md sends everybody to — stopped at its second step for everyone, every
+# time (#372). An empty or absent ledger skips nothing, which is what lets the
+# burn-down end by deleting the file rather than by editing this.
+#
+# The count of entries is ratcheted by internal/ci: it may only go down.
+KNOWN_RED := $(shell grep -v -e '^\#' -e '^[[:space:]]*$$' .github/known-red.txt 2>/dev/null | paste -sd'|' -)
+TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
+
+# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. internal/tui3 is the slowest
+# package at about 485 seconds on a two-core runner or a loaded workstation;
+# ci-full's old 8m cut it off at the finish line and reported whichever test
+# happened to be running as though it had hung. Fifteen minutes is that number
+# with headroom, and a package that really hangs still names itself.
+#
+# THE NUMBER IS PROVISIONAL. Of tui3's 478 seconds, 362 are its harness
+# sleeping 150ms for every command that never returns (#399); once that lands
+# the package is near two minutes and this can come down. Lower it from a new
+# measurement, never raise it to fit a slow run.
+TEST_TIMEOUT := 15m
+TEST_FLAGS ?=
+PKGS ?= ./...
+
+# A whole-tree run takes the box's one suite lock (scripts/one-suite.sh says
+# why); a run of named packages does not.
+SUITE_LOCK := $(if $(filter ./...,$(PKGS)),./scripts/one-suite.sh)
+
 test:
-	go test ./...
+	$(SUITE_LOCK) go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) $(PKGS)
+
+# The laws alone — every test that reads the tree itself — in under half a
+# minute. This is what the pull-request gate runs on every change, and
+# scripts/laws.sh says how they are found without anybody keeping a list.
+test-laws:
+	./scripts/laws.sh
+
+# gofmt is not a preference here. A file gofmt would rewrite is a file the next
+# editor's save rewrites, and that diff lands in somebody else's pull request.
+fmt-check:
+	@dirs="$$(go list -f '{{.Dir}}' ./...)" || exit 1; \
+	test -n "$$dirs" || { echo 'go list found no packages'; exit 1; }; \
+	files="$$(printf '%s\n' "$$dirs" | tr '\n' '\0' | xargs -0 gofmt -l)" || exit 1; \
+	if test -n "$$files"; then \
+		printf '%s\n' 'gofmt would rewrite:' "$$files"; \
+		exit 1; \
+	fi
 
 # Exercise the source mode the shipped binary uses. Ordinary Go commands embed
 # the Markdown directly so a clean checkout compiles without generated files;
@@ -190,7 +241,7 @@ size: build
 
 # The end-of-change ritual in one word: prove it, then ship the binary, then
 # weigh it.
-check: vet test test-packed-manual size
+check: vet fmt-check test test-packed-manual size
 
 # ── the changelog ───────────────────────────────────────────────────────────
 #
