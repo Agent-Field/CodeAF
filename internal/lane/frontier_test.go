@@ -196,7 +196,7 @@ func TestATierSuffixReadsTheBareModelsLanes(t *testing.T) {
 	if got := len(l.Beliefs(tier)); got != 3 {
 		t.Fatalf("%s reads %d of %s's lanes", tier, got, bare)
 	}
-	choice := (&chooser{ledger: l}).Choose(Request{
+	choice := chooserOn(l).Choose(Request{
 		Model: tier, Visible: 600, Tools: true, QualityNeed: 0.9,
 		Horizon: 40, ValueOfTime: AttentionValue, Now: noon,
 	})

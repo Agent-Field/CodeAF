@@ -73,3 +73,36 @@ func StoreDir(store, kind string) string {
 	}
 	return filepath.Join(filepath.Dir(store), stem+"-"+kind)
 }
+
+// Contains reports whether path is the directory root or something under it.
+// It is here because "is this file inside that root" is the state root's own
+// question, and it is asked by the packages that refuse to touch the state of
+// whoever started a test binary — internal/lane's, today; internal/calllog
+// still carries a private copy of this from #352, and should adopt this one, so
+// that the same omission cannot be a defect in one place and not the other.
+//
+// It compares by path elements rather than by string prefix, so a sibling named
+// like the root — /state/root-2 beside /state/root — is not mistaken for a
+// child of it. An empty root contains nothing, which is what "the environment
+// named no root" has to mean.
+func Contains(root, path string) bool {
+	if root = strings.TrimSpace(root); root == "" {
+		return false
+	}
+	relative, err := filepath.Rel(absolute(root), absolute(path))
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+// absolute is filepath.Abs with the error swallowed: the caller wants two paths
+// it can compare, and a working directory that cannot be read is no reason to
+// answer the question wrongly in the permissive direction — an unresolvable
+// path stays as it is and fails the comparison.
+func absolute(path string) string {
+	if resolved, err := filepath.Abs(path); err == nil {
+		return resolved
+	}
+	return path
+}
