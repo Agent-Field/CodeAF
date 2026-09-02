@@ -979,6 +979,13 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 	if result.response != nil && strings.TrimSpace(result.response.Model) != "" {
 		model = strings.TrimSpace(result.response.Model)
 	}
+	// AND THEN UNDER THE LEDGER'S NAME FOR IT, which is this door's whole share
+	// of issue #289. A losing arm's sighting is filed from here and from nowhere
+	// else, so a raw served slug written straight in is a third spelling of one
+	// model beside the sheet's and the sighting side's — and the belief the
+	// chooser reads is then the empty one. [laneModel] is the same fold the
+	// ordinary sighting path applies.
+	model = laneModel(model)
 
 	for _, arm := range arms {
 		// THE ANSWER THAT WAS USED IS NOTED ONCE, BY THE ORDINARY PATH. Every

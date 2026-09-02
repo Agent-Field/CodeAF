@@ -596,15 +596,23 @@ func (c *Catalog) Identity(modelID string) string {
 //
 // It never waits, for [Catalog.Identity]'s reason and one more: this is read on
 // the send path as well as at launch, and a fold that could block would put a
-// fetch in front of a request. A catalog that has not warmed yet answers the id
-// as written, which is what every caller had before this existed.
+// fetch in front of a request.
+//
+// A CATALOG WITH NO ROWS YET ANSWERS NOTHING, and the empty string is that
+// answer rather than a fold to nothing. Saying "the id as written" would be a
+// lie a reader cannot tell from a fact, and the reader that matters memoises:
+// [lane.LedgerModel] remembers the first answer for the life of the process, so
+// a process that asked while the catalog was still in flight would key its
+// whole run on the alias — the split this fold exists to end, made permanent by
+// a guess. Nothing is the one answer a caller can act on correctly, by using
+// the name it already has and asking again.
 func (c *Catalog) Servable(modelID string) string {
 	// Lowercased as well as ~-stripped, exactly as Identity does it, so that the
 	// two folds agree about which spellings are one spelling.
 	id := strings.ToLower(normalizeID(modelID))
 	resolved := c.rowsNow()
 	if resolved == nil {
-		return id
+		return ""
 	}
 	model, ok := resolved.byID[id]
 	if !ok {

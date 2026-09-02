@@ -92,16 +92,27 @@ func TestServableFollowsTheAliasTargetRatherThanKnowingTheAnswer(t *testing.T) {
 	}
 }
 
-// Servable never waits. It is read on the launch path AND on the send path, and
-// a catalog still warming in the background is one more way of not knowing —
-// never a fetch in front of a request.
-func TestServableNeverWaitsOnAColdCatalog(t *testing.T) {
+// Servable never waits, and it never guesses either. It is read on the launch
+// path AND on the send path, so a catalog still warming in the background must
+// answer at once — and what it has to answer is NOTHING, because its reader
+// remembers first answers for the life of the process. "The id as written" from
+// a cold catalog is indistinguishable from "I looked and there is nothing to
+// move", and a reader that could not tell them apart would key a whole run on
+// the alias it asked one moment too early about.
+func TestAColdCatalogSaysNothingRatherThanGuessing(t *testing.T) {
 	unresolved := &Catalog{}
-	if got := unresolved.Servable("~deepseek/deepseek-v4-flash-latest"); got != "deepseek/deepseek-v4-flash-latest" {
-		t.Errorf("a cold catalog answered %q, want the normalised id as written", got)
+	if got := unresolved.Servable("~deepseek/deepseek-v4-flash-latest"); got != "" {
+		t.Errorf("a cold catalog answered %q, want nothing at all", got)
 	}
 	var absent *Catalog
-	if got := absent.Servable("deepseek/deepseek-v4-flash-latest"); got != "deepseek/deepseek-v4-flash-latest" {
+	if got := absent.Servable("deepseek/deepseek-v4-flash-latest"); got != "" {
 		t.Errorf("no catalog at all answered %q", got)
+	}
+	// A WARM CATALOG THAT DOES NOT CARRY THE MODEL IS A DIFFERENT ANSWER, and
+	// telling the two apart is the whole point: it has looked, and there is
+	// nothing to move, which is a fact worth remembering.
+	warm := deepseekCatalog(t, "deepseek/deepseek-v4-flash-0731")
+	if got := warm.Servable("nobody/nothing"); got != "nobody/nothing" {
+		t.Errorf("a warm catalog answered %q for a model it does not carry, want it verbatim", got)
 	}
 }

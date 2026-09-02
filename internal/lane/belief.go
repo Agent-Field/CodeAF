@@ -174,6 +174,25 @@ type spread struct {
 	Rate float64 `json:"rate,omitempty"`
 }
 
+// widest is two published spreads that turned out to be one lane's, which is
+// what re-keying a file written under three names for one model leaves behind.
+//
+// A ZERO IS AN ABSENCE AND NOT A NUMBER: only one of the spellings was ever the
+// one the endpoints page is published under, so at most one of them carries a
+// figure and the merge is "take whichever was published". Held wins a genuine
+// tie, and [ledger.spreads] writes the set sorted, so the two sides of a fold
+// meet in the same order in every process.
+func widest(held, other spread) spread {
+	held.ID = other.ID
+	if held.TTFT == 0 {
+		held.TTFT = other.TTFT
+	}
+	if held.Rate == 0 {
+		held.Rate = other.Rate
+	}
+	return held
+}
+
 // newLedger builds the live ledger. It is called from the registry and nowhere
 // else.
 func newLedger() *ledger {
@@ -286,9 +305,17 @@ func (l *ledger) rebuild(held storeState, records []record, skipped int) {
 	l.beliefs = map[ID]Belief{}
 	l.priors = map[ID]spread{}
 	for _, prior := range held.Priors {
-		l.priors[prior.ID] = prior
+		prior.ID = prior.ID.key()
+		l.priors[prior.ID] = widest(l.priors[prior.ID], prior)
 	}
 	l.wait, l.rate, l.think, l.judged = held.Wait, held.Rate, held.Think, held.Judged
+	// AND WHAT WAS WRITTEN UNDER ANOTHER SPELLING IS THIS MODEL'S TOO — see the
+	// note above [chains.refold]. The doors fold what this process learns; this
+	// is the one place that folds what it inherited.
+	l.wait.refold()
+	l.rate.refold()
+	l.think.refold()
+	l.judged.refold()
 	l.pace()
 	l.skipped += skipped
 	l.adopt(held.Beliefs)
@@ -320,7 +347,7 @@ func (l *ledger) migrate(held storeState) {
 		if belief.At.IsZero() {
 			continue
 		}
-		of := pairOf(belief.ID)
+		of := pairOf(belief.ID.key())
 		if belief.TTFT.Known() {
 			l.wait.fold(of, everyLevel, belief.TTFT.X, belief.TTFT.P, belief.At)
 		}
@@ -573,11 +600,20 @@ func (l *ledger) held() []Belief {
 
 // adopt folds a set of beliefs into memory by [fresher]. It is called with the
 // lock held.
+//
+// A ROW ALREADY ON DISK IS RE-KEYED AS IT IS READ, which is what makes the fold
+// general rather than forward-only. A file written by a process that could not
+// resolve the alias — an older build, or one that died before its catalog
+// landed — holds two or three rows for one model, and reading them as written
+// would carry that split forward for ever. Folded here they meet on one key and
+// [fresher] reconciles them, which is the same reconciliation two processes
+// writing at once already get.
 func (l *ledger) adopt(beliefs []Belief) {
 	for _, belief := range beliefs {
 		if belief.ID.Zero() {
 			continue
 		}
+		belief.ID = belief.ID.key()
 		held, have := l.beliefs[belief.ID]
 		if !have {
 			l.beliefs[belief.ID] = belief
@@ -627,10 +663,11 @@ func (l *ledger) Prime(row Row, k float64) {
 	if row.ID.Zero() {
 		return
 	}
-	// A TIER IS NOT A DEPLOYMENT — see [BareModel]. Every door of this ledger
-	// files a belief under the bare id, so that `model:high` and `model` are
-	// one set of machines rather than two ledgers, one of which is always empty.
-	row.ID = row.ID.bare()
+	// ONE MODEL, ONE NAME — see [ID.key]. Every door of this ledger files a
+	// belief under the same key, so that `model:high`, `model` and the alias the
+	// router resolves to `model` are one set of machines rather than three
+	// ledgers, two of which are always empty.
+	row.ID = row.ID.key()
 	if k < 1 {
 		k = 1
 	}
@@ -822,7 +859,7 @@ func (l *ledger) Note(s Sighting) {
 	if s.ID.Zero() || s.At.IsZero() {
 		return
 	}
-	s.ID = s.ID.bare()
+	s.ID = s.ID.key()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
@@ -909,7 +946,7 @@ func (l *ledger) NoteOutcome(o Outcome) {
 	if o.ID.Zero() {
 		return
 	}
-	o.ID = o.ID.bare()
+	o.ID = o.ID.key()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
@@ -1010,7 +1047,7 @@ func (l *ledger) Belief(id ID) (Belief, bool) {
 	if id.Zero() {
 		return Belief{}, false
 	}
-	id = id.bare()
+	id = id.key()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
@@ -1024,7 +1061,7 @@ func (l *ledger) Belief(id ID) (Belief, bool) {
 // list: a picker that reshuffled its rows between two redraws would be a
 // picker nobody could click.
 func (l *ledger) Beliefs(model string) []Belief {
-	model = BareModel(model)
+	model = LedgerModel(model)
 	if model == "" {
 		return nil
 	}
@@ -1075,7 +1112,7 @@ func (l *ledger) Draw(id ID) (first, gap float64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
-	prior := l.priors[id.bare()]
+	prior := l.priors[id.key()]
 	return drawSpread(prior.TTFT), drawSpread(prior.Rate)
 }
 
@@ -1094,7 +1131,7 @@ func (l *ledger) chainFor(of *chains, id ID, now time.Time) Chain {
 	if id.Zero() {
 		return Chain{}
 	}
-	id = id.bare()
+	id = id.key()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.restore()
@@ -1104,7 +1141,7 @@ func (l *ledger) chainFor(of *chains, id ID, now time.Time) Chain {
 // Think is the chain over ln SECONDS of a whole thinking phase for one model at
 // one effort rung.
 func (l *ledger) Think(model, rung string, now time.Time) Chain {
-	if BareModel(model) == "" {
+	if LedgerModel(model) == "" {
 		return Chain{}
 	}
 	l.mu.Lock()
@@ -1119,7 +1156,7 @@ func (l *ledger) Shifted(id ID) bool {
 	if id.Zero() {
 		return false
 	}
-	id = id.bare()
+	id = id.key()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.shifted[id] {
@@ -1138,7 +1175,7 @@ func (l *ledger) Shifted(id ID) bool {
 // first-token belief is what made a legitimate minute of deliberation look like
 // a stall.
 func (l *ledger) NoteThinking(model, rung string, took time.Duration, at time.Time) {
-	model = BareModel(model)
+	model = LedgerModel(model)
 	if model == "" || took <= 0 || at.IsZero() {
 		return
 	}

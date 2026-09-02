@@ -115,8 +115,22 @@ func BareModel(model string) string {
 	return trimmed[:index]
 }
 
-// bare is this id filed where its beliefs live. See [BareModel].
+// bare is this id with its tier suffix taken off. See [BareModel].
 func (id ID) bare() ID { return ID{Model: BareModel(id.Model), Lane: id.Lane} }
+
+// key is this id filed where its beliefs live, and it is the ONE normalisation
+// every door of the ledger applies.
+//
+// It is [ID.bare] and one layer more: a tier is not a deployment ([BareModel]),
+// and a floating alias is not a model ([LedgerModel]). Both are spellings of
+// one set of machines, and a ledger that filed them apart would hold two
+// accounts of one lane, one of which is always the empty one — which is exactly
+// what the model this build ships as its default had (issue #289).
+//
+// Doors that key a model without a lane — [ledger.Beliefs], [ledger.Think],
+// [ledger.NoteThinking] — call [LedgerModel] directly; this is the same fold
+// with a lane name carried through it untouched.
+func (id ID) key() ID { return ID{Model: LedgerModel(id.Model), Lane: id.Lane} }
 
 // Facts are what a lane IS, as opposed to how fast it has lately been.
 //

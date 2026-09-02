@@ -2,6 +2,7 @@ package lane
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -197,7 +198,7 @@ func modelOf(id ID) subject { return pairOf(id) }
 // is a property of the model and of the rung it was asked at, so there is no
 // lane term at all.
 func thoughtOf(model, rung string) subject {
-	model = BareModel(model)
+	model = LedgerModel(model)
 	return subject{LevelWorld: everywhere, LevelModel: model, LevelPair: model + "|" + rung}
 }
 
@@ -513,3 +514,101 @@ func borrow(prior Beta, parents ...Beta) Beta {
 	share := (prior.Mean()*mass + shown) / (mass + weight)
 	return Beta{A: share * mass, B: (1 - share) * mass}
 }
+
+// ── ONE MODEL, ONE NAME, IN WHAT WAS ALREADY WRITTEN DOWN ───────────────────
+//
+// The doors fold every id on the way in ([ID.key]), which settles what this
+// process learns. It does not settle what it INHERITS: a file written by a
+// build that could not resolve a floating alias, or by one that died before its
+// catalog landed, holds a level keyed on the alias and a level keyed on the id
+// the router served — one model's evidence in two heaps, neither of them the
+// one the next request will read.
+//
+// So the hierarchy is re-keyed once, where it is loaded, on the same rule the
+// doors use. It costs one pass over a few hundred keys on a build that has
+// nothing to move, which is every build after the first fold has been written
+// back.
+
+// refold re-keys every level that carries a model name, keeping the fresher
+// account where two spellings meet.
+func (c *chains) refold() {
+	c.Model = refolded(c.Model, LedgerModel, fresherNode)
+	c.Pair = refolded(c.Pair, foldedLeaf, fresherNode)
+	// A CUSUM SUM IS NOT ADDABLE. Two spellings' drift evidence is evidence
+	// about one leaf gathered twice over, and summing it would raise an alarm
+	// about a step neither half saw; the first in sorted order is kept, which
+	// is arbitrary and deterministic — and the next observation moves it anyway.
+	c.Drift = refolded(c.Drift, foldedLeaf, keepHeld[drift])
+	// The lane and world levels carry no model name: a provider is a provider
+	// under every spelling of every model it serves.
+}
+
+// refold re-keys the quality evidence held above a pair. The lane tally is a
+// provider's record across every model and is not a model's to move.
+func (t *tallies) refold() {
+	t.Model = refolded(t.Model, LedgerModel, fresherTally)
+}
+
+// foldedLeaf is one leaf key — "model|lane" for a timing chain, "model|rung"
+// for a thinking one — with its model half folded and the rest carried through.
+func foldedLeaf(leaf string) string {
+	model, rest, paired := strings.Cut(leaf, "|")
+	if !paired {
+		return LedgerModel(leaf)
+	}
+	return LedgerModel(model) + "|" + rest
+}
+
+// refolded is one level re-keyed, with pick settling what collides.
+//
+// IT WALKS THE KEYS IN ORDER, so that two processes reading the same file merge
+// the same pair in the same direction. And it allocates nothing at all when the
+// fold moves nothing, which is the steady state.
+func refolded[T any](held map[string]T, fold func(string) string, pick func(held, other T) T) map[string]T {
+	moved := false
+	for name := range held {
+		if fold(name) != name {
+			moved = true
+			break
+		}
+	}
+	if !moved {
+		return held
+	}
+	names := make([]string, 0, len(held))
+	for name := range held {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	folded := make(map[string]T, len(held))
+	for _, name := range names {
+		key := fold(name)
+		if seen, ok := folded[key]; ok {
+			folded[key] = pick(seen, held[name])
+			continue
+		}
+		folded[key] = held[name]
+	}
+	return folded
+}
+
+// fresherNode is the later of two components: a level moved this morning says
+// more about a machine than the same level moved last week.
+func fresherNode(held, other node) node {
+	if other.At.After(held.At) {
+		return other
+	}
+	return held
+}
+
+// fresherTally is the later of two quality records, for [fresherNode]'s reason.
+func fresherTally(held, other tally) tally {
+	if other.At.After(held.At) {
+		return other
+	}
+	return held
+}
+
+// keepHeld is the merge for evidence that cannot be combined: the one already
+// held stands.
+func keepHeld[T any](held, _ T) T { return held }

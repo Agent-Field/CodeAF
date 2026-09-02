@@ -31,6 +31,13 @@ import "sync"
 // would be a fetch in front of a request, which is the law this package opens
 // with.
 //
+// AN EMPTY ANSWER MEANS "I CANNOT SAY YET", and it is a required answer rather
+// than a rude one. The catalog behind this seam warms in the background, and a
+// fold that answered the id as written while it was still in flight would be
+// indistinguishable from a fold that had looked and found nothing to move —
+// which [LedgerModel] would then remember for the life of the process. A
+// spelling nobody can resolve yet is not a spelling anybody may file under.
+//
 // NON-BLOCKING IS NOT LOCK-FREE, and the difference is worth stating here
 // because a comment in this package once got it wrong the other way round.
 // [LedgerModel] takes an ordinary in-process mutex around its memo — one
@@ -74,6 +81,17 @@ func UseServable(resolve Servable) {
 // honestly give two answers. A ledger key that moved halfway through a run
 // would split a history inside one session rather than across two. First answer
 // wins.
+//
+// ONLY AN ANSWER IS REMEMBERED. A fold that cannot say yet ([Servable]) hands
+// back nothing, and nothing is used for this one call and forgotten — because
+// the alternative is the bug this file exists to end, made permanent: a process
+// that asked one moment before its catalog landed would key its entire run on
+// the alias and never fold again. So the cost of asking early is one unfolded
+// call, never a session.
+//
+// IT IS IDEMPOTENT, and it has to be: the same name reaches this from a config
+// slot, from a wire answer and from a row already on disk, and a key that moved
+// on the second application would re-split what the first folded together.
 func LedgerModel(model string) string {
 	bare := BareModel(model)
 	if bare == "" {
@@ -84,12 +102,19 @@ func LedgerModel(model string) string {
 	if folded, ok := servable.memo[bare]; ok {
 		return folded
 	}
-	folded := bare
-	if servable.resolve != nil {
-		if answer := BareModel(servable.resolve(bare)); answer != "" {
-			folded = answer
-		}
+	if servable.resolve == nil {
+		return remember(bare, bare)
 	}
+	answer := BareModel(servable.resolve(bare))
+	if answer == "" {
+		return bare
+	}
+	return remember(bare, answer)
+}
+
+// remember files one spelling's fold for the life of the process and hands it
+// back. It is called with the lock held.
+func remember(bare, folded string) string {
 	if servable.memo == nil {
 		servable.memo = make(map[string]string, 4)
 	}

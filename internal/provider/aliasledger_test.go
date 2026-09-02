@@ -26,13 +26,13 @@ import (
 // It asserts on the FILE rather than on a double, because the file is what the
 // next session opens.
 //
-// ITS TURN IS UNHEDGED, AND THAT IS A LIMIT WORTH NAMING. `internal/provider`
-// has a third writer of the ledger's model id — hedge.go's race carries
-// `config.Model` raw and its settle overwrites that with the answer's own
-// `model` field, neither of them through [laneModel] — so a RACED call can
-// still file a losing arm under a spelling nobody folded. That seam is
-// hedge.go's and the general fold's, not this one's, and staging it here would
-// assert something this change does not fix.
+// ITS TURN IS UNHEDGED, AND A RACED ONE IS THE TEST BELOW IT. `internal/provider`
+// had a third writer of the ledger's model id — hedge.go's settle overwrote the
+// spelling with the answer's own `model` field, not through [laneModel] — so a
+// raced call filed its losing arm under a spelling nobody folded.
+// [TestARacedArmIsFiledUnderTheOneNameTheLedgerKeys] is that door, staged on a
+// stalled lane, because a loser only teaches the ledger anything once it has
+// named itself.
 
 // storedLanes is every model name the belief file and its journal carry, read
 // back the way another process would read them.
@@ -99,13 +99,9 @@ func storedLanes(t *testing.T) []string {
 	return names
 }
 
-// TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames is issue #289.
-//
-// EXPECTED RED until internal/provider/lanes.go's laneModel folds too. That file
-// is frozen behind another change to the same seam, and this test is the honest
-// record of what is still broken: with only the beat and the catalog fixed, the
-// sheet lands under the servable id and the sighting still lands under the alias
-// — two keys in the file, and the belief the chooser reads is the empty one.
+// TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames is issue #289:
+// the sheet, the sighting and the file all name the model the router serves,
+// and the chooser therefore has something to rank.
 func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T) {
 	// The alias is spelled without OpenRouter's "~" marker for one reason that
 	// is worth writing down: [Client.isOpenRouter] reads `config.Model` RAW,
@@ -197,11 +193,20 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 
 	// AND WHAT A NEXT SESSION ACTUALLY OPENS, which is the claim the file is
 	// only evidence for: a registry built from scratch against the same home
-	// restores the state and replays the journal, and it must find this model
-	// under one name and nothing at all under the spelling nobody folded.
+	// restores the state and replays the journal, and asking it under EITHER
+	// spelling asks about one model. That is what one key means, and it is the
+	// difference between this and the quick win it grew out of: the alias no
+	// longer names an empty ledger, it names the same one.
 	lanes.Default().Reset()
-	if stale := lanes.Default().Ledger().Beliefs(alias); len(stale) != 0 {
-		t.Fatalf("a fresh session found %d lanes filed under %q, the id the router serves nothing under", len(stale), alias)
+	underAlias := lanes.Default().Ledger().Beliefs(alias)
+	underServed := lanes.Default().Ledger().Beliefs(servable)
+	if len(underAlias) != len(underServed) {
+		t.Fatalf("the alias answered %d lanes and the served id %d; one model, two ledgers", len(underAlias), len(underServed))
+	}
+	for i := range underAlias {
+		if underAlias[i].ID.Model != servable {
+			t.Fatalf("a lane asked for under the alias came back keyed on %q", underAlias[i].ID.Model)
+		}
 	}
 
 	// And the beliefs under it are worth having: the sheet has spoken about the
@@ -219,9 +224,19 @@ func TestTheShippedDefaultRoutesWithPriorsRatherThanUnderThreeNames(t *testing.T
 	// A hedge has somewhere to go. The frontier is the durable form of that
 	// question — it is the candidate set after the gate and the prune, and a
 	// second lane on it is a second lane a slow stream can be raced against.
-	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(alias, time.Now()))
+	now := time.Now()
+	choice := lanes.Default().Chooser().Choose(LaneTalkAsk(alias, now))
 	if len(choice.Frontier) < 2 {
 		t.Fatalf("the chooser ranked %d lanes for the shipped default, so no hedge could name an alternative", len(choice.Frontier))
+	}
+	// AND THE PLAN A WATCH IS BUILT WITH CAN NAME ONE. This is issue #289's
+	// third acceptance said in code: `verdict()` returns nothing while the
+	// alternative is empty, and it was empty because the identity the frontier
+	// was solved from held no sheet prior. It is not structural any more — it is
+	// the same fold, asked one layer up.
+	plan := lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: alias, Lane: lanes.HeadOf(choice)}, now), RoleFrom(context.Background()), now)
+	if len(plan.Alts) == 0 {
+		t.Fatal("the plan named no alternative, so a slow stream on the shipped default has nowhere to be raced to")
 	}
 }
 
@@ -233,4 +248,124 @@ func keysOf(set map[string]bool) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// TestARacedArmIsFiledUnderTheOneNameTheLedgerKeys is door 3 of issue #289.
+//
+// A LOSER IS ONLY EVER SEEN BY THE RACE. Every finished stream reaches the
+// ledger through the ordinary path, but the arm that was cancelled reaches it
+// from [hedgeRace.settle] and from nowhere else — and settle wrote the model as
+// the ANSWER spelled it, straight in, past the fold every other door applies.
+// So on the model this build ships as its default, the cheapest measurement
+// there is of the lane nobody chose was filed under a name no sheet and no
+// belief was ever keyed on.
+//
+// The ledger here is the rig's scripted one, which files what it is handed
+// without folding anything, so what is asserted is the DOOR and not the
+// ledger's own normalisation behind it.
+func TestARacedArmIsFiledUnderTheOneNameTheLedgerKeys(t *testing.T) {
+	const alias = "openrouter/flash-latest"
+	// The rig names its router after the id the alias resolves to, and the
+	// client below is pointed at the alias — the asymmetry a real install has.
+	rig := newLaneRig(t, "flash-0731",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
+			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
+			StallAfter: 30, StallFor: 200 * time.Millisecond,
+		}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	servable := rig.model
+	rig.believes("A", 2, 250)
+	// AND THE SAME BELIEF UNDER THE SPELLING THE RACE CARRIES. `raceFor` hands
+	// `config.Model` to the plan as the operator wrote it, and in a shipped
+	// build that is harmless because the ledger folds every id at its own door
+	// ([lane.ID.key]) — but this rig's ledger is a script that files exactly
+	// what it is handed, so the plan would find nothing to be surprised about
+	// and the race under test would never start.
+	rig.ledger.mu.Lock()
+	rig.ledger.beliefs[lanes.ID{Model: alias, Lane: "A"}] = rig.ledger.beliefs[lanes.ID{Model: servable, Lane: "A"}]
+	rig.ledger.mu.Unlock()
+	rig.server.Alias(alias, servable)
+	t.Cleanup(func() { lanes.UseServable(nil) })
+	lanes.UseServable(func(model string) string {
+		if strings.TrimPrefix(model, "~") == alias {
+			return servable
+		}
+		return model
+	})
+
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: rig.server.URL(), Model: alias})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(talking(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(servable, 12*time.Millisecond))
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if !report.Hedged() {
+		t.Fatal("the stalled lane was never raced, so the settle door was never opened")
+	}
+	// Both arms taught the ledger something — the winner by the ordinary path,
+	// the loser by settle — and that is what makes this test about the loser.
+	waitFor(t, func() bool { return len(rig.ledger.noted()) == 2 })
+	stalled, ok := rig.ledger.sightingFor("A")
+	if !ok {
+		t.Fatalf("the stalled lane taught the ledger nothing: %+v", rig.ledger.noted())
+	}
+	if stalled.ID.Model != servable {
+		t.Errorf("the losing arm was filed under %q, want the one name the ledger keys (%q)", stalled.ID.Model, servable)
+	}
+	for _, sighting := range rig.ledger.noted() {
+		if sighting.ID.Model != servable {
+			t.Errorf("a raced sighting reached the ledger as %q; one model, one name", sighting.ID.Model)
+		}
+	}
+}
+
+// TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes is door 4, at the
+// seam a surface really uses: [lanes.WantSheet] takes whatever a person picked,
+// and the router publishes an endpoints page only under the id it resolves to.
+func TestAPickerSpellingReachesTheBeatAsTheModelTheRouterServes(t *testing.T) {
+	const alias = "openrouter/flash-latest"
+	const servable = "openrouter/flash-0731"
+	forgetLanes(t)
+	t.Cleanup(func() { lanes.UseServable(nil) })
+	lanes.UseServable(func(model string) string {
+		if strings.TrimPrefix(model, "~") == alias {
+			return servable
+		}
+		return model
+	})
+	server := lanestub.New(servable,
+		lanestub.Lane{Name: "quicksilver", Profile: lanestub.Profile{
+			TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 40, Tools: true,
+			PriceIn: 0.000003, PriceOut: 0.000006}},
+		lanestub.Lane{Name: "brass", Profile: lanestub.Profile{
+			TTFT: 30 * time.Millisecond, Rate: 300, Tokens: 40, Tools: true,
+			PriceIn: 0.0000025, PriceOut: 0.000005}},
+	)
+	t.Cleanup(server.Close)
+	server.Alias(alias, servable)
+	if !lanes.WireSheet(server.URL(), "", sheetFetcher{}) {
+		t.Fatal("the sheet would not take a base to fetch from")
+	}
+
+	// One round of the beat over exactly what the picker asked for, which is
+	// what [lanes.Beat] does with the names [lanes.WantSheet] leaves behind.
+	lanes.WantSheet("~" + alias)
+	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	go lanes.Beat(ctx, lanes.Default().Sheet(), nil, 50*time.Millisecond)
+	waitFor(t, func() bool { return len(lanes.Default().Ledger().Beliefs(alias)) == 2 })
+
+	for _, belief := range lanes.Default().Ledger().Beliefs(alias) {
+		if belief.ID.Model != servable {
+			t.Fatalf("a row the picker's spelling fetched was primed under %q", belief.ID.Model)
+		}
+		if !belief.Facts.Known() {
+			t.Fatalf("the sheet was fetched under a page nobody publishes: %+v", belief)
+		}
+	}
 }
