@@ -1594,6 +1594,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// the gap says is missing, so the worker's own verdict is
 					// the accurate one and the review's is not.
 				}
+				// A RUN ENDS WHEN THE REQUEST IS SATISFIED, NOT WHEN THE PLAN
+				// RUNS OUT. This is the last thing asked before any money is
+				// spent on the gap: is the request, exactly as the person wrote
+				// it, satisfied by what is in hand? A yes ends the delivery here
+				// with a receipt saying so, and buys no repair, no remainder and
+				// no round. It is asked at this one seam and nowhere else, so
+				// its cost is one call in place of the leaf it replaces — see
+				// revision.RequestMet.
+				if !gate.Pass && ungrounded == "" && closed == "" && !revision.ConstraintFinding(gate) {
+					requestSettled(gateCtx, settings, planClient, graph, node, text, records, &gate, &evidence)
+				}
 				if !gate.Pass && ungrounded == "" && closed == "" {
 					// unmet is the judgement that still stands against whatever is
 					// about to be delivered: the second gate's when a revision ran
@@ -2683,6 +2694,54 @@ func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
 type artifactRecord interface {
 	add(paths ...string)
 	list() []string
+}
+
+// requestSettled asks the one question that can end a run — is the request,
+// exactly as the person wrote it, satisfied by what is in hand — and settles
+// the gate where the answer is yes.
+//
+// It is called at the single seam where the alternative is spending money: a
+// gate that has failed, whose finding survived both world-doors, and which is
+// about to buy a repair round. Everything downstream of that seam reads
+// gate.Pass, so a yes here means no repair, no remainder, no continuation and
+// no reservation on the delivery, without any of those readers learning that
+// this exists.
+//
+// A question that could not be asked or could not be read leaves the run
+// exactly where it was, buying the round it was going to buy. THE FAIL-OPEN
+// DIRECTION IS THE EXISTING PATH: the alternative is a delivery ended as
+// satisfied on the strength of a provider timeout.
+func requestSettled(ctx context.Context, settings config.Config, client *pool.Client,
+	graph *store.Store, node store.Node, deliverable string, records revision.Evidence,
+	gate *revision.Judgment, evidence *store.DeliveryGate,
+) {
+	// The grounds ride on the judgement, which is where the gate assembled them,
+	// and the node carries the same verbatim intent for a judgement built by a
+	// caller that predates them. One value, filled from one place, so this door
+	// and the extension door cannot come to disagree about what the request was.
+	grounds := gate.Grounds
+	if strings.TrimSpace(grounds.Intent) == "" {
+		grounds.Intent = node.Provenance.Intent
+	}
+	met, words, asked := revision.RequestMet(ctx, settings, client, node, grounds, deliverable, records)
+	if !asked {
+		return
+	}
+	// The answer travels on the judgement so the extension door reads it rather
+	// than paying for the same answer on the way to the same conclusion.
+	gate.RequestAsked = true
+	if !met {
+		// What it found absent is journaled BESIDE the gap and never inside it.
+		// The gap is the judge's finding and the repair round is briefed with it
+		// verbatim; a second reader's sentence folded into that string is a
+		// requirement nothing weighed against the person's own words, which is
+		// the laundering the admission rules exist to prevent.
+		evidence.Missing = words
+		return
+	}
+	gate.Pass, gate.Gaps, gate.Receipt = true, "", words
+	evidence.Pass, evidence.Gap, evidence.Receipt = true, "", words
+	recordOnNode(graph, node.ID, revision.RequestMetNotice(words), store.RoleSystem)
 }
 
 // jobArtifacts is what the run left behind, as one list, for a gate that is
@@ -6002,7 +6061,11 @@ func journalAcceptance(graph *store.Store, node store.Node, spec plan.Spec) {
 	points := make([]store.AcceptancePoint, 0, len(spec.Accept))
 	for _, point := range spec.Accept {
 		points = append(points, store.AcceptancePoint{
-			Behaviour: point.Behaviour, Quote: point.Quote,
+			// And WHICH KIND each point was read as, because that is what
+			// decides whether anything goes looking for a check for it, and an
+			// autopsy of a run whose coverage finding fired on nothing
+			// checkable has nothing else to read. See plan.Behaviours.
+			Behaviour: point.Behaviour, Quote: point.Quote, Kind: point.Kind,
 		})
 	}
 	if err := graph.RecordAcceptance(node.ID, store.Acceptance{Points: points}); err != nil {

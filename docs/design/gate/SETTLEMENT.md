@@ -772,3 +772,67 @@ error. A workspace reached through a symlink is not resolved — that is how the
 artifact record spells its paths, and two spellings of one place is drift this
 reading cannot afford. Only a real climb out of the root (`..`, `../…`) is
 outside it; `..config` at the root of somebody's tree is a file they keep there.
+---
+
+## Addendum, 2026-09-02: a run ends when the request is satisfied
+
+Everything above bounds a run negatively — rounds spent, nodes spliced, dollars
+burned, wall left, findings standing. Nothing in it ever asked whether the thing
+the person asked for is in hand. The headless door settles when every node is
+terminal; the growth governor judges the PLAN's own criterion; the gate names
+absences against a checklist. **"Done" was when the plan ran out.**
+
+The measured cost is #428: an errand satisfied by its first leaf at two minutes
+ran into its 700-second wall twice out of two, and a correct fix to a real issue
+was refused three times and delivered as `partial` over tests that were 6 of 6
+green.
+
+### The question, and the one place it is asked
+
+`revision.RequestMet` (internal/revision/satisfied.go). One model call on the
+gate's own client, with a static system prompt first for the cache: the verbatim
+request, the rules the person stated, the deliverable as produced, and the record
+of what the run changed. It answers `{"met": bool, "missing": "<quoted words>"}`
+against a schema.
+
+**It is asked at the moment a round would otherwise be bought, and nowhere
+else** — never per turn, never on the happy path — so its cost is bounded by the
+rounds it replaces. There are two doors:
+
+- `cmd/aforge/chat.go`, `requestSettled`, after both world-doors and before the
+  repair round. A yes sets `gate.Pass`, clears the gap, stamps
+  `revision.RequestMetWords` on the verdict, on `store.DeliveryGate.Receipt` and
+  on the node's own record. Every reader downstream turns on `gate.Pass`, so no
+  repair, no remainder, no continuation and no reservation follow.
+- `revision.ExtendForGap`, before `ReplanOverrunAs`, through `metExtension`. It
+  is for the callers that reach the extension without the gate's own caller; the
+  resident's resume path is a third door and is not wired here.
+
+`Judgment.RequestAsked` carries the answer between the two, so a gate told "no"
+at the first door does not pay for the same answer at the second.
+`revision.ConstraintFinding` is the one-line predicate that keeps the question
+away from a verdict whose gap is a stated rule being broken — a run that produced
+everything the request asked for in a way the request forbade has not met the
+request as stated.
+
+### The fail-open direction is the existing path
+
+`asked` is false wherever there was no answer to read — no client, a call that
+failed, a reply that could not be parsed — and the caller then buys the round it
+was going to buy. A yes that also names something missing is read as a no. The
+alternative to both is a delivery ended as satisfied on the strength of a
+provider timeout.
+
+### A receipt says why a run stopped, never whether it landed
+
+`store.DeliveryGate.Receipt` is the one positive field on that row and it is
+deliberately **not** read by `Whole()`. Two sentences, each stated once:
+`revision.RequestMetWords` — *the request was met as stated* — and
+`revision.CheckedNotMeasured` — *checked by tests, coverage not measured*, which
+a delivery earns where the coverage question had no measurement to answer from
+and the work's own checks ran and every one of them settled
+(`revision.checkedByItsOwnTests`). The second also clears `Unreadable`, because a
+run whose own checks ran and settled is not a run nothing checked — a person is
+never shown `partial` over green work, and never a silent pass either: the
+receipt says which of the two happened. The fallback reads the worker's
+STRUCTURED account and never the deliverable's prose about its own tests.

@@ -798,6 +798,36 @@ finding's last line is the score, `N of the M behaviours this request states are
 still exercised by nothing`, so a repair brief says what REMAINS rather than
 restating the list.
 
+**And three questions are now never asked, which is where the cost actually
+fell.** The mapping call is not bought at all for a checklist of ACTIONS
+(`plan.Behaviours`), for a run that changed no code (`revision.codeChanged`), or
+against a roster that could not be read (`revision.rosterSpeaks`). The errand
+that measured this spent two mapping calls carrying ~127k prompt tokens each —
+$0.022 — on a request whose whole instruction was to change no files, and then
+bought the rounds that ran it into a 700-second wall. See
+docs/design/gate/ACCEPTANCE.md, "What #428 proved".
+
+## What the request-met question costs
+
+**One model call, at the moment a round would otherwise be bought, and nowhere
+else.**
+
+| number | value | where |
+| --- | --- | --- |
+| when it is asked | **once per gate that is about to buy a repair or a remainder** | `cmd/aforge/chat.go requestSettled`, `revision.ExtendForGap` |
+| how many times per gate | **one** | `revision.Judgment.RequestAsked` |
+| the deliverable it carries | **24KB** | `revision.requestMetDeliverableBytes` |
+| the record it carries | **the gate's own evidence block** | `revision.Evidence.block` |
+
+THE BOUND IS THE ROUND IT REPLACES. A repair round is a whole leaf — a worker,
+its tools, its wall — and this is one structured call against a prompt whose
+static half and whose request half are fixed for the job's lifetime, so two
+rounds of one job share the entire prefix. It is asked at no other seam: not per
+turn, not per node, and never on a gate that passed. A run that would have bought
+no round pays nothing, and a run that would have bought four pays for at most as
+many as it reached. `Judgment.RequestAsked` is what stops the two doors paying
+twice for one answer on the way to one conclusion.
+
 **A pass over a suite nobody could read is not whole.** `store.DeliveryGate.
 Unreadable` says the project DECLARED a way of checking itself and this run could
 not read it, and `Whole()` spends it: the run settles partial, exit 2, with
