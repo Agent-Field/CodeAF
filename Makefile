@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed furrow test test-packed-manual test-remote vet check size clean \
+.PHONY: all build debug demo-home embed manual-pack-law furrow test test-packed-manual test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -21,16 +21,26 @@ BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DI
 MANUAL_TAG := aforge_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
-# the archive beside it is generated from it (internal/packed says why), so a
-# build that skipped this could ship yesterday's manual. The packer is a pure
-# function of the folder, so regenerating on every build rewrites identical
-# bytes and leaves the tree clean — cheaper to trust than a freshness check, and
-# the test beside each corpus asserts the same thing for `make test`.
+# the archive beside it is an IGNORED build product (internal/packed says why),
+# so a build that skipped generation could ship yesterday's manual. The law
+# below checks the index as well as .gitignore: an ignored file can still be
+# force-added, which turns every otherwise-independent manual edit into a binary
+# merge conflict.
 PACKED_PKGS = ./internal/manual
 
 all: build
 
-embed:
+manual-pack-law:
+	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		tracked=$$(git ls-files -- 'internal/manual/*.pack.gz'); \
+		if test -n "$$tracked"; then \
+			printf '%s\n' 'generated manual archives must not be tracked:' "$$tracked"; \
+			printf '%s\n' 'remove them from the index; make build regenerates ignored copies'; \
+			exit 1; \
+		fi; \
+	fi
+
+embed: manual-pack-law
 	go generate $(PACKED_PKGS)
 
 # ── the furrow that rides inside ────────────────────────────────────────────
