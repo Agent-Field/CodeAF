@@ -1098,6 +1098,17 @@ type app struct {
 	// never claims to — see [app.waitingWords] for what it is allowed to say.
 	awaited time.Time
 
+	// stopBy is when a turn the person STOPPED gets let go of whether or not the
+	// engine has finished with it: the deadline on the winding-down window, set
+	// at the keypress and cleared when the stream closes ([app.interruptTurn],
+	// [app.stopSweep]).
+	//
+	// It is the zero time whenever no stop is in flight, and it is the ONE fact
+	// this surface holds about the second stage — everything else about it is
+	// derived from the clock ([app.stopLeft]) or performed by the engine
+	// (session's abandon.go).
+	stopBy time.Time
+
 	// retrying says the request the clock above is timing is a SECOND ATTEMPT:
 	// the one before it was cut and asked again (session.EventRetrying).
 	//
@@ -3745,6 +3756,17 @@ func (a *app) paint() tea.Cmd {
 	// second and a half the first ctrl+c buys, and the sentence in the hint slot
 	// that has to leave the screen when it lapses.
 	a.quitSweep()
+	// AND A STOP'S OWN DEADLINE RUNS DOWN HERE, on the same terms as the two
+	// above and for the same reason: it is a window with an end, the countdown
+	// beside `stopping` has to be redrawn while it runs, and something has to be
+	// turning the clock that fires it. Past the bound it lets go of the turn
+	// whether the engine has or not (see the block below [app.windingDown]).
+	//
+	// WHAT IT RETURNS IS THE SETTLE'S OWN TWO COMMANDS, and they are folded into
+	// this frame's batch rather than dropped: a turn let go of at the bound is a
+	// turn that settled, and it is owed the repository probe and the fade ticks
+	// every other settled turn is owed.
+	kick = tea.Batch(kick, a.stopSweep())
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
@@ -3771,6 +3793,12 @@ func (a *app) paint() tea.Cmd {
 		// to quit" for a second and a half, and something has to be drawing the
 		// frame that takes it away again (quitarm.go).
 		a.quitArmed() ||
+		// AND A STOP BEING LET GO OF IS THE TENTH, and it is the third that turns
+		// with nothing on screen moving at all — a stopped turn draws nothing new
+		// by design (a.apply's own guard). The countdown beside `stopping` has to
+		// tick down and the deadline has to be able to fire, so the clock must
+		// keep turning for exactly as long as the window lasts and no longer.
+		a.stopBounded() ||
 		// A BROWSER SOMEBODY IS STANDING IN IS THE SIXTH, and it is the only one
 		// of them that can be the whole of what is happening: no turn is
 		// running while a person signs in, so without this the waiting line's
@@ -4472,6 +4500,12 @@ func (a *app) settle() tea.Cmd {
 	// here rather than at the next turn's start, so a session left idle for an
 	// hour cannot open its next turn holding an hour-old anchor.
 	a.awaited = time.Time{}
+	// AND THE STOP DEADLINE GOES WITH IT, by whichever of its two roads the turn
+	// arrived here on: the engine let go inside the window, or the window ran out
+	// and [app.stopSweep] let go for it. Either way there is nothing left to
+	// bound, and a deadline left standing would draw a countdown over the next
+	// turn.
+	a.stopBy = time.Time{}
 	// THESE TWO ARE MEMORY READS OVER A CONNECTION AND NOT ROUND TRIPS. They
 	// used to be the last two synchronous questions a turn's ending put on the
 	// wire — the spending and the weight, asked the instant EventTurnDone landed
@@ -6471,6 +6505,13 @@ func (a *app) interruptTurn() {
 	}
 	a.agent.Interrupt()
 	a.state = stateInterrupted
+	// AND THE STOP IS BOUNDED FROM THIS INSTANT. See the block below
+	// [app.windingDown]: the letting-go is the engine's and it takes as long as
+	// it takes, so the person's stop is given a deadline of its own and the
+	// surface says what it is while it runs down. It is measured from the KEY and
+	// not from the last event, because the key is the moment the person is
+	// certain of and the only one they are timing from.
+	a.stopBy = a.now().Add(stopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -6515,21 +6556,99 @@ func (a *app) interruptTurn() {
 	a.cutTurn(a.turn)
 }
 
+// ── THE SECOND STAGE, AND WHY IT IS A CLOCK RATHER THAN A KEY ───────────────
+//
+// The window above used to be UNBOUNDED, and this block used to argue that it
+// had to be. The argument was sound and it is kept below, because both halves of
+// it are still true and the second one is what dictated how this was built. What
+// changed is that the thing it said did not exist now does.
+//
+// WHAT THE ARGUMENT GOT RIGHT, FIRST HALF: THERE IS NO KEY LEFT. esc's grammar
+// in the conversation is read in a fixed order (input.go, rewind.go): a recall
+// walk takes it, then [app.escRewind] — where the first esc ARMS the rewind on
+// its way past and a second one inside [rewindArmWindow] OPENS it — and only
+// then [app.interrupt]. So every esc that lands within half a second of another
+// esc already belongs to rewind, and THE INTERRUPT IS NOT FOR SALE cuts the
+// other way just as hard. Putting a hard stop AFTER the window does not save it
+// either, because an esc past the window is a FIRST esc again, so the key would
+// mean "stop harder" or "open the rewind" depending on what the person did half
+// a second later — one keypress with two readings, which is the one thing this
+// keyboard cannot have. ctrl+c is spoken for on both sides of the same moment:
+// mid-turn it is the interrupt, and at rest — which is what winding down IS —
+// it is the quit arm (quitarm.go).
+//
+// THAT REMAINS TRUE, SO THE SECOND STAGE TAKES NO KEY AT ALL. It is a CLOCK,
+// started by the esc the person already pressed, and it needs no grammar because
+// it asks for no gesture. A person who wants a turn to stop has said so once;
+// making them say it twice, harder, into a surface that already heard them is
+// the exact experience issue #265 was filed about.
+//
+// WHAT THE ARGUMENT GOT RIGHT, SECOND HALF, AND WHY IT DICTATED THE ORDER OF
+// WORK: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A deadline whose
+// only act was to look away would be the worst possible thing to put under a
+// person's stop — a surface saying "detached" over a goroutine that keeps
+// spending. So the door was built from the bottom up before this clock was
+// wired to anything, in the order the old block itself named:
+//
+//   - the jobs registry's SIGTERM and SIGKILL graces take the call's context
+//     (session's jobs.go, [waitDoneUnder]);
+//   - bash's wait has a cancellation arm that hands back what the command had
+//     already written and lets the reaper finish behind it (internal/exec/bare);
+//   - the tool batch's `wg.Wait()` has a second stage of its own, cut by an
+//     abandon signal rather than by the turn's context, so an ordinary stop
+//     still gives every tool the seconds it needs to hand back what it did
+//     (session's loop.go and abandon.go's [waitBatch]);
+//   - and [session.Agent.Abandon] is the door onto all of them, which also cuts
+//     the turn's context a second time — aborting whatever HTTP is in flight,
+//     since every provider request is built on it — closes the turn's hub so
+//     this surface is genuinely free, and writes ONE journal line marking the
+//     turn abandoned with its last known spend.
+//
+// THE JOURNAL LINE IS THE POINT AND NOT THE DECORATION. A turn nobody waits for
+// is a turn that never writes the seal carrying its cost, so without that line a
+// turn let go of at the bound would be money spent with no record that anything
+// had been let go of. The money itself already reaches the machine's ledger per
+// call rather than per turn (session's usage_ledger.go), so the bill is not lost
+// — what would have been lost is the fact.
+//
+// WHAT A PERSON READS while the clock runs is [app.stoppingSegment]: the status
+// line says `stopping` as it always did, and beside it, how long until the
+// surface detaches. A silent countdown is not a stop anybody can trust, so the
+// bound is on the screen before it fires and never only after.
+
+// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
+// of the turn without it ([app.stopSweep]).
+//
+// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
+// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
+// graces any more: this change put the call's context on both of those, so a
+// stop ends them at once rather than waiting them out. What is left behind the
+// bound is the class this change cannot reach from outside — a wait that never
+// looks at its context at all, a command whose output a grandchild still holds,
+// anything a tool blocks on that was written before cancellation existed. Ten
+// seconds is chosen to sit far above every settle we can measure, so the
+// deadline fires only on that class and never on a turn that was about to end
+// tidily and hand back what it did.
+//
+// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
+// is the only moment the person is timing from.
+const stopGrace = 10 * time.Second
+
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's esc and the engine letting
 // go of the turn.
 //
-// IT IS A REAL WINDOW AND IT IS NOT SHORT. [session.Agent.Interrupt] cancels the
-// turn's context and returns at once, but the turn goroutine does not close its
+// IT IS A REAL WINDOW, THOUGH IT IS NO LONGER A LONG ONE FOR ORDINARY WORK.
+// [session.Agent.Interrupt] cancels the turn's context and returns at once, and
+// since this change the tool batch's wait and the jobs graces take that context
+// too, so the ordinary settle is now the time a cancelled call needs to unwind.
+// The window survives because the turn goroutine does not close its
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
-// the context until the tool batch it is inside has finished — `wg.Wait()` on
-// every call, with no escape for a cancelled context, which is deliberate and
-// documented there. Two ordinary calls outlast the cancel by seconds: a `bash`
-// whose command left a grandchild holding the output pipe waits the exec
-// package's own three-second `WaitDelay` before the pipes are forced shut, and a
-// `jobs` kill spends two seconds on a SIGTERM grace and two more on the SIGKILL
-// that follows without ever consulting the context. Three to four seconds of
-// "nothing appears to have happened" is what this window is worth avoiding.
+// the context until the tool batch it is inside has finished. What can still
+// outlast the cancel is the context-blind class — a wait that never looks at the
+// context it was given — and that is what the bound is for. [stopGrace] above
+// carries the argument in full; it is not repeated here, so that moving the
+// reasoning cannot leave two versions of it disagreeing.
 //
 // It is DERIVED and not stored, from the two facts that already exist: the state
 // word is only [stateInterrupted] because [app.interrupt] put it there, and the
@@ -6538,52 +6657,158 @@ func (a *app) interruptTurn() {
 // two.
 func (a *app) windingDown() bool { return a.state == stateInterrupted && a.stream != nil }
 
-// ── WHY THERE IS NO SECOND STAGE, AND WHAT WOULD HAVE TO EXIST FIRST ────────
+// abandonAgent is the second stage of a stop as this surface reaches it
+// (session's abandon.go). It is an optional assertion on the agent for
+// [stopAgent]'s reason exactly: a surface driven by something that has never
+// heard of abandoning a turn keeps every other thing it had, and says nothing
+// about a bound it cannot enforce.
+type abandonAgent interface {
+	// Abandon lets go of the in-flight turn and reports what it had spent. It
+	// answers false when there was nothing to let go of.
+	Abandon(reason session.AbandonReason) (session.Usage, bool)
+}
+
+// abandonDoor is the abandoning half of the agent under this surface, when it
+// has one.
+func (a *app) abandonDoor() (abandonAgent, bool) {
+	if a.agent == nil {
+		return nil, false
+	}
+	door, ok := a.agent.(abandonAgent)
+	return door, ok
+}
+
+// stopBounded reports whether the stop on screen has a deadline a person can
+// read and this surface can actually keep.
 //
-// The obvious next thing to build on top of the window above is a HARD STOP: a
-// key pressed while the surface is still winding down that ends the turn for
-// real rather than politely. It is not built, and it is not built for two
-// reasons, either of which would be enough on its own.
+// BOTH HALVES ARE REQUIRED, and the second is the design law rather than a
+// guard: a countdown drawn over an agent with no door behind it would be the
+// surface promising something it has no way to do, which is the one thing a stop
+// may never be.
+func (a *app) stopBounded() bool {
+	if !a.windingDown() || a.stopBy.IsZero() {
+		return false
+	}
+	_, ok := a.abandonDoor()
+	return ok
+}
+
+// stopLeft is how long the winding-down window has to run, rounded UP to the
+// second and never below one.
 //
-// THE FIRST IS THAT THERE IS NO KEY LEFT. esc's grammar in the conversation is
-// read in a fixed order (input.go, rewind.go): a recall walk takes it, then
-// [app.escRewind] — where the first esc ARMS the rewind on its way past and a
-// second one inside [rewindArmWindow] OPENS it — and only then [app.interrupt].
-// So every esc that lands within half a second of another esc already belongs to
-// rewind, and THE INTERRUPT IS NOT FOR SALE cuts the other way just as hard: a
-// hard stop inside the window would be taking the door rewind is behind. Putting
-// it AFTER the window does not save it either, because an esc past the window is
-// a FIRST esc again — it arms the rewind on its way past exactly as before — so
-// the key would mean "stop harder" or "open the rewind" depending on what the
-// person did half a second later, which is one keypress with two readings and
-// the one thing this keyboard cannot have. ctrl+c is spoken for on both sides of
-// the same moment: mid-turn it is the interrupt, and at rest — which is what
-// winding down IS, since [app.interrupt] leaves stateWorking on the spot — it is
-// the quit arm (quitarm.go). A third key, bound for a state that lasts three
-// seconds and occurs on a minority of stops, is furniture.
+// IT ROUNDS UP because this figure is a promise about the future and the person
+// reads it as one: a window with 400ms left that said "0s" would be a countdown
+// that reaches zero and then keeps standing, which is the same broken promise as
+// the unbounded window in miniature. It reaches zero exactly once — when the
+// sweep has already fired — and by then nothing is drawing it.
+func (a *app) stopLeft() time.Duration {
+	left := a.stopBy.Sub(a.now())
+	if left <= 0 {
+		return 0
+	}
+	return (left + time.Second - 1).Truncate(time.Second)
+}
+
+// stoppingSegment is the status line while a stop is being let go of: the word,
+// and — while the bound is real — when the surface will detach.
 //
-// THE SECOND REASON IS THE DECIDING ONE: there would be nothing behind it. A
-// CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, and the session exposes no
-// second door to stop with — [session.Agent.Interrupt] cancels the turn's
-// context and that context has ALREADY been cancelled by the time this window
-// opens, so calling it twice is calling it once. The waits that make the window
-// long are waits that do not look at the context at all: the tool loop's
-// unconditional `wg.Wait()`, `bash`'s three-second `WaitDelay` on a leaked pipe,
-// the `jobs` kill's two SIGTERM-and-SIGKILL graces. A key wired to any of those
-// would be a key that says "stopping harder" while the wait ends exactly when it
-// was always going to end — which is the worst thing this surface could put
-// under the key a person presses when they want something to stop.
+//	stopping                      no door behind the bound: the word alone
+//	stopping · detaching in 7s    the bound, on screen before it fires
 //
-// WHAT A PERSON ACTUALLY HAS is the program's own door, and it is already on the
-// screen and already learnable: ctrl+c twice quits ([landingKeysWord]), and
-// quitting takes the process and its children with it. Nothing smaller than that
-// can end a wait the engine does not check.
+// IT IS DIM THROUGHOUT, keeping [stoppingWord]'s own reasoning: winding down is
+// the quietest thing this surface does, nothing is wrong and nothing is wanted.
+// The countdown is dimmer still rather than accented, because it is not a thing
+// to act on — there is no key it is asking for — it is the surface stating its
+// own bound so the person can stop wondering whether the key landed.
+func (a *app) stoppingSegment() (string, string) {
+	if !a.stopBounded() {
+		return stoppingWord, a.pal.dim(stoppingWord)
+	}
+	left := stopDetachWord + itoa(int(a.stopLeft()/time.Second)) + "s"
+	return stoppingWord + " · " + left, a.pal.dim(stoppingWord + " · " + left)
+}
+
+// stopDetachWord is the promise the countdown is counting down to, in the word
+// the note at the deadline uses for the same act. One act, one name.
+const stopDetachWord = "detaching in "
+
+// stopSweep is the deadline firing: the window ran out and the turn is let go of
+// without the engine's agreement. It runs from [app.paint], on the clock that is
+// already turning, exactly as the rewind arm and the quit arm run down there —
+// a bound this short is not worth a timer of its own, and a bound driven by the
+// frame is a bound that cannot outlive the surface drawing it.
 //
-// SO THE ORDER OF WORK, if a second stage is ever wanted, is the engine first: a
-// context arm on the jobs registry's grace waits, a `ctx.Done()` case on bash's
-// wait that hands back what the call has accumulated and lets the reaper finish
-// behind it, and then a door on [session.Agent] to reach them by. A key comes
-// last, and it comes with something behind it.
+// NOTHING HAPPENS WHILE THE STOP IS ORDINARY. This is a clock read and a zero
+// check on every frame of a winding-down turn, and nothing at all on every other
+// frame this surface ever draws.
+func (a *app) stopSweep() tea.Cmd {
+	if !a.stopBounded() || a.now().Before(a.stopBy) {
+		return nil
+	}
+	return a.detachTurn()
+}
+
+// detachTurn is the whole of what the deadline does, and the order of it is the
+// argument.
+//
+// THE ENGINE IS ASKED FIRST. Freeing the screen before the waits had been ended
+// and the request aborted would be this surface looking away from a turn that
+// was still running and still spending, which is the failure the second stage
+// exists to prevent rather than to perform. The door ends the waits, cuts the
+// request, and writes the one line that says the turn was let go of with what it
+// had spent (session's abandon.go).
+//
+// THEN THE SURFACE LETS GO OF THE STREAM, by the same two acts every other
+// letting-go on this surface uses (detach.go): the channel is dropped and the
+// generation is bumped, so an event already in flight on it discards itself
+// rather than landing in a conversation that has moved on. The turn then settles
+// exactly as an ordinary stopped turn settles — the same sweep, the same marks,
+// the same receipt — because from here on it IS one.
+func (a *app) detachTurn() tea.Cmd {
+	door, ok := a.abandonDoor()
+	if !ok {
+		return nil
+	}
+	spend, letGo := door.Abandon(session.AbandonStopTimeout)
+	a.stopBy = time.Time{}
+	if !letGo {
+		// THERE WAS NOTHING LEFT TO DETACH. The engine let go between the last
+		// frame and this one, so the stream's own close is already on its way and
+		// it settles the turn as an ordinary stop. The surface stands down here
+		// rather than freeing anything: a note saying "detached" over a turn that
+		// ended by itself would be this surface claiming an act it did not
+		// perform, and dropping a stream that is about to close cleanly would
+		// throw away the turn's own last events for nothing.
+		return nil
+	}
+	a.stream = nil
+	a.gen++
+	// AND THE PERSON IS TOLD, in the conversation, in the words the countdown
+	// they were reading promised. A surface that detached silently would have
+	// spent ten seconds announcing a bound and then said nothing when it fired,
+	// which is a promise kept invisibly and therefore not kept.
+	a.note(stopDetachedNote(spend))
+	return a.settle()
+}
+
+// stopDetachedNote is the line the conversation keeps about a detached turn.
+//
+// IT NAMES THE MONEY WHEN THERE IS ANY, because what a person wants to know
+// about work nobody waited for is what it cost them, and it is the same figure
+// the journal line carries. It says nothing about a turn that spent nothing,
+// which is the emptiness law — a `$0.00` here would be the surface reporting a
+// measurement where it has only an absence.
+func stopDetachedNote(spend session.Usage) string {
+	if spend.CostUSD <= 0 {
+		return stopDetachedWord
+	}
+	return stopDetachedWord + " — it spent " + spendMoneyWord(spend.CostUSD)
+}
+
+// stopDetachedWord is what a detached turn is called, once, wherever it is
+// named. It is the person's own reading of what happened: they stopped it, the
+// engine did not let go inside the window, and the surface stopped waiting.
+const stopDetachedWord = "detached — the turn was let go of and nothing is waiting for it"
 
 // ── the paste bracket ───────────────────────────────────────────────────────
 //

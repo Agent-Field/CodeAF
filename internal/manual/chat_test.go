@@ -60,6 +60,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The switcher, asked in the words people bring to it: the gesture they
 		// already know from every other program, the thing they are looking for,
 		// and the two spellings of the key.
+		{"I pressed escape and it is still running", "keys"},
+		{"how long does stop take", "keys"},
+		{"what happens if it will not stop", "keys"},
 		{"alt tab between conversations", "keys"},
 		{"switch chats without pressing enter", "keys"},
 		{"ctrl+k switched me right away how do I stop that", "keys"},

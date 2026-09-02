@@ -2162,6 +2162,36 @@ type Agent struct {
 	// Submit that lands on the turn subscribes to it, so a steering caller gets
 	// a live channel of its own instead of a closed one.
 	hub *eventHub
+	// abandon is closed by [Agent.Abandon] and by nothing else. It is the SECOND
+	// STAGE OF A STOP: a cancellation reaches every wait that looks at a context,
+	// and this reaches the waits that were deliberately written not to — the tool
+	// batch's own wait above all (loop.go's [waitBatch]).
+	//
+	// It is a separate signal from the turn's context on purpose. The context is
+	// cut at the person's keypress and an ordinary settle takes three or four
+	// seconds after that, during which every tool is entitled to finish tidying
+	// up and hand back what it actually did. This closes only when that window
+	// has been spent, so nothing that would have ended on its own is cut short.
+	//
+	// Non-nil exactly while running, and it rides down into the turn on the turn's
+	// own context ([withAbandon]) so a wait anywhere below can see it without a
+	// lock or a reference to the agent.
+	abandon chan struct{}
+	// turnSeq names the turn that is running, and it exists so that an ABANDONED
+	// turn's goroutine cannot clean up after the turn that replaced it. The
+	// goroutine captures the number it was started with; [Agent.Abandon] bumps it
+	// on its way out, which is the session DISOWNING that turn; and the
+	// goroutine's own cleanup does nothing at all when the two no longer match.
+	// Without it an abandoned turn returning half an hour later would clear a
+	// live turn's cancel, close a live turn's hub, and close a `done` channel
+	// that has already been closed — the last of which is a panic.
+	turnSeq uint64
+	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
+	// on the same call that moves the session's meter and reset when a turn
+	// opens. It is the "last known spend" an abandoned turn is journaled with:
+	// the seal that would carry the figure is exactly what an abandoned turn
+	// never writes.
+	turnSpend Usage
 	// contextWindow is the window learned after construction — the catalog's
 	// figure for a model chosen with /model, which Config.ContextWindow cannot
 	// carry because the model was picked long after New. Zero means nobody has

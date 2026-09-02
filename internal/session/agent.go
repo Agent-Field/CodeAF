@@ -1186,6 +1186,22 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.hub = hub
 	turnCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
+	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
+	// the context because the waits that need it are several frames down inside
+	// tools that hold no reference to the agent; it is closed by nothing but
+	// [Agent.Abandon], so an ordinary turn never selects on anything.
+	gone := make(chan struct{})
+	a.abandon = gone
+	turnCtx = withAbandon(turnCtx, gone)
+	// AND THE TURN IS NUMBERED, so that a turn this session has DISOWNED cannot
+	// clean up after the turn that replaced it. See [Agent.Abandon]; the cleanup
+	// below is the only reader.
+	a.turnSeq++
+	seq := a.turnSeq
+	// A NEW TURN SPENDS NOTHING YET. The running total this resets is what an
+	// abandoned turn is journaled with, and carrying the last turn's figure into
+	// this one would put another turn's money on that line.
+	a.turnSpend = Usage{}
 	// done is how Close waits for this turn: closed under a.mu by the cleanup
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
@@ -1223,6 +1239,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
+			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
+			// every act below — drained the queues, cleared running, closed the
+			// hub and closed `done` — and the fields this would clear belong to
+			// whatever turn the session has started since. Doing them twice would
+			// take a live turn's cancel away, close a live turn's hub, and close a
+			// `done` channel that is already closed, which is a panic. The number
+			// is the whole test (abandon.go).
+			if a.turnSeq != seq {
+				a.mu.Unlock()
+				return
+			}
 			// Whatever is still queued was typed at this turn and belongs to
 			// the transcript. Draining it here — under the same lock that
 			// clears running, so no Submit can slip between — is what keeps a
@@ -1252,6 +1279,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			a.cancel = nil
 			a.hub = nil
 			a.done = nil
+			a.abandon = nil
 			close(done)
 			// The follow-up drain happens under the SAME lock that cleared
 			// running, for the reason the steering drain does: between the two

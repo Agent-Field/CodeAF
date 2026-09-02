@@ -798,7 +798,13 @@ func (r *jobRegistry) find(id int) *job {
 }
 
 // kill ends one job: SIGTERM to the process group, SIGKILL after the grace.
-func (r *jobRegistry) kill(id int) (string, bool) {
+//
+// IT TAKES THE CALL'S CONTEXT so that its two graces end when the turn does
+// ([waitDoneUnder]). The signals are sent either way — a job the person asked to
+// end is ended whatever else is happening — and what cancellation buys is the
+// four seconds this used to spend watching for an exit nobody was waiting for
+// any more.
+func (r *jobRegistry) kill(ctx context.Context, id int) (string, bool) {
 	target := r.find(id)
 	if target == nil {
 		return fmt.Sprintf("No job %d.", id), true
@@ -811,12 +817,12 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 		target.explicitStop()
 	}
 	target.signal(syscall.SIGTERM)
-	if !waitDone(target.done, jobTermGrace) {
+	if !waitDoneUnder(ctx, target.done, jobTermGrace) {
 		target.signal(syscall.SIGKILL)
 		// The second wait is bounded too: a process wedged in an
 		// uninterruptible sleep is not something a tool call can fix, and
 		// hanging the turn on it would be worse than reporting the SIGKILL.
-		waitDone(target.done, jobTermGrace)
+		waitDoneUnder(ctx, target.done, jobTermGrace)
 	}
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.
@@ -1146,11 +1152,33 @@ func waitExitCode(err error) int {
 
 // waitDone waits for a closed channel, reporting whether it closed in time.
 func waitDone(done <-chan struct{}, within time.Duration) bool {
+	return waitDoneUnder(context.Background(), done, within)
+}
+
+// waitDoneUnder is [waitDone] WITH THE CALLER'S CANCELLATION ON IT, and it is
+// the first rung of the second stage a stop now has (agent.go's
+// [Agent.Abandon]).
+//
+// THE GRACES ARE THE POINT. A kill spends two seconds waiting out a SIGTERM and
+// two more waiting out the SIGKILL behind it, and until this arm existed it
+// spent them whatever had happened outside — so a person who stopped the turn
+// stood through four seconds of a wait that had already been made pointless by
+// the cancellation. A grace is a courtesy extended to a process that might still
+// exit cleanly; it is not a promise to keep waiting after the reason for waiting
+// is gone.
+//
+// A CANCELLED WAIT REPORTS false, which is the same answer the timer gives, and
+// it is the honest one: the caller asked whether the process ended inside the
+// window and it did not. The escalation behind it — SIGKILL after the SIGTERM —
+// is exactly what a cut grace should hand to, and the reaper finishes behind us.
+func waitDoneUnder(ctx context.Context, done <-chan struct{}, within time.Duration) bool {
 	timer := time.NewTimer(within)
 	defer timer.Stop()
 	select {
 	case <-done:
 		return true
+	case <-ctx.Done():
+		return false
 	case <-timer.C:
 		return false
 	}

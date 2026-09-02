@@ -100,7 +100,7 @@ func TestAPythonPrintLoopIsReadableBeforeItExits(t *testing.T) {
 	if footer := agent.jobs.runningFooter(); !strings.Contains(footer, "· last: scored case ") {
 		t.Fatalf("the job's footer quotes nothing: %q", footer)
 	}
-	if _, isError := agent.jobs.kill(id); isError {
+	if _, isError := agent.jobs.kill(context.Background(), id); isError {
 		t.Fatal("could not stop the loop")
 	}
 }
@@ -129,7 +129,7 @@ func TestAPromotedCallCarriesTheOutputSoFar(t *testing.T) {
 	if !strings.Contains(answer, "plan: 120 cases") {
 		t.Fatalf("the promotion sentence withheld the output the command had already printed: %q", answer)
 	}
-	if _, isError := agent.jobs.kill(id); isError {
+	if _, isError := agent.jobs.kill(context.Background(), id); isError {
 		t.Fatal("could not stop the promoted job")
 	}
 }
@@ -172,7 +172,7 @@ func TestEveryToolResultCarriesTheStateOfEveryRunningJob(t *testing.T) {
 
 	// AND IT GOES AWAY WHEN THE WORK DOES. A footer that outlived its job would
 	// be the model told about a stream that no longer exists.
-	if _, isError := agent.jobs.kill(id); isError {
+	if _, isError := agent.jobs.kill(context.Background(), id); isError {
 		t.Fatal("could not stop the job")
 	}
 	after := agent.runToolsWarm(context.Background(), agent.newEpisode(), []ai.ToolCall{

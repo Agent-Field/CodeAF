@@ -114,6 +114,16 @@ func quotedFacts(t *testing.T) []quotedFact {
 	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
 
 	facts := []quotedFact{{
+		// THE STOP'S BOUND IS A NAMED CONSTANT AND THE PAGES QUOTE IT, so a
+		// ruling that moves the bound moves the manual in the same change
+		// rather than leaving two pages promising a window that is gone.
+		fact: "how long a stop waits before it detaches", owner: "tui3.stopGrace",
+		value: strconv.Itoa(sourceNumber(t, "../tui3/app.go", "stopGrace")),
+		quotes: []quotedIn{
+			{"keys", "bounded at %s seconds"},
+			{"screen", "bounded at %s seconds"},
+		},
+	}, {
 		fact: "how many models the crew is", owner: "config.ModelTiers", value: seats, others: notSeats,
 		quotes: []quotedIn{
 			{"commands", "the %s models aforge uses on its own behalf"},

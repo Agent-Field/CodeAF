@@ -618,7 +618,7 @@ words:
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
-| `stopping` | you pressed `esc` and the turn has not finished letting go yet | dim |
+| `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before aforge detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
@@ -643,11 +643,15 @@ nothing new is drawn — a reply the model was still speaking and a call it was 
 through asking for both stop where they were rather than landing under the `interrupted`
 line. The word becomes `interrupted` the moment the turn is actually over.
 
-**There is no second, harder stop, and there is no key to press.** `esc` again is the
-rewind's door (see the sessions and rewind page) and `ctrl+c` is the quit arm, so neither
-is free — and there would be nothing behind a third key anyway: the waits that make this
-window long are inside a tool that has already been told to stop. What you have if it
-will not let go is the program's own door, `ctrl+c` twice.
+**The second stop is a clock, not a key.** There is no key to press, and there does not
+need to be: `esc` again is the rewind's door (see the sessions and rewind page) and
+`ctrl+c` is the quit arm, so neither is free, and a stop you have to ask for twice is a
+stop that did not work the first time. So the window is bounded at 10 seconds from the
+key you already pressed. The status line counts it down — `stopping · detaching in 7s` —
+and at the bound aforge detaches: the waits inside the tool are ended, whatever request
+was still in flight is aborted, the conversation reads `detached — the turn was let go of
+and nothing is waiting for it`, and the turn is written to the journal as abandoned with
+what it had spent. You get the next prompt straight away.
 
 ## What the status line drops when it is narrow
 

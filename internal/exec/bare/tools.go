@@ -464,6 +464,28 @@ func newBashTool(cwd string) Tool {
 					}
 					return answer, isError, nil
 				}
+			case <-ctx.Done():
+				// THE CANCELLATION ENDS THE WAIT, AND THE REAPER FINISHES BEHIND
+				// US. [watchCancel] has already SIGKILLed the whole group by the
+				// time this arm can be taken, so the process is gone; what was
+				// still being waited for is `cmd.Wait`, and Wait does not return
+				// while ANY holder of the output pipe is alive — a grandchild
+				// that escaped the group (its own setsid, a daemon that
+				// re-parented) holds it until `WaitDelay` forces the pipes shut
+				// three seconds later. Three seconds is not long, and it was
+				// three seconds of a person's stop that the person could not end,
+				// which is the whole subject of issue #265.
+				//
+				// WHAT COMES BACK IS WHAT THE COMMAND HAD SAID SO FAR, which is
+				// why this arm can be taken at all: the output is accumulated as
+				// it arrives rather than read at the end, so a cut test runner
+				// still names every check it reached. The tail below reads
+				// `ctx.Err()` and spells it "Command aborted", exactly as it
+				// already did for a cancellation that arrived a moment earlier.
+				//
+				// The wait goroutine keeps running and both channels it writes to
+				// are buffered, so it parks on neither: it reaps the process and
+				// exits on its own. Nothing is leaked and nothing is waited for.
 			case <-call.promoted:
 				if timer != nil {
 					timer.Stop()
@@ -474,9 +496,12 @@ func newBashTool(cwd string) Tool {
 			if timer != nil {
 				timer.Stop()
 			}
-			acc.finish()
-			snapshot := acc.snapshot()
-			acc.closeTempFile()
+			// SEALED UNDER THE ACCUMULATOR'S OWN LOCK, because the writer may
+			// still be running. The three acts below used to be three unlocked
+			// calls, which was safe only while this function could not be reached
+			// before `cmd.Wait` returned — and the cancellation arm above is
+			// exactly a way to reach it while the pipes are still being copied.
+			snapshot := acc.sealed()
 			text := snapshot.content
 			if text == "" {
 				text = "(no output)"
@@ -952,6 +977,28 @@ func (a *outputAccumulator) append(data []byte) {
 	}
 }
 
+// sealed ends the accumulation and reports what it holds, under ONE hold of the
+// accumulator's own lock.
+//
+// IT IS THE ONLY DOOR ONTO THE THREE ACTS IT PERFORMS, and that is the point:
+// finishing, snapshotting and closing the spill file all read and write fields
+// that [outputAccumulator.Write] is writing from the exec package's own copier
+// goroutines, so performing them beside a live writer is a data race. The bash
+// tool can now return while that writer is still going (tools.go's cancellation
+// arm), so the lock is not a precaution — it is the thing that makes the arm
+// legal.
+func (a *outputAccumulator) sealed() accumulatorSnapshot {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.finish()
+	snapshot := a.snapshot()
+	a.closeTempFile()
+	return snapshot
+}
+
+// finish, snapshot and closeTempFile are the unlocked halves of [outputAccumulator.sealed]
+// and have no other caller: the lock is held for all three at once, so each of
+// them taking it again would deadlock.
 func (a *outputAccumulator) finish() {
 	if a.finished {
 		return
