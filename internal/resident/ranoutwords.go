@@ -1,6 +1,10 @@
 package resident
 
-import executor "github.com/Agent-Field/aforge-v2/internal/exec"
+import (
+	"strings"
+
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
+)
 
 // The two sentences a node gets when the leaf holding it ran out. They are in
 // one file because they are one account of one event told to two different
@@ -37,8 +41,7 @@ func meterAside(meter executor.Meter) string {
 // outOfRoomClaimReason is what a person reads when a leaf that ran out goes back
 // on the queue: what ran out, how far it got, and that its work is kept.
 func outOfRoomClaimReason(result ExecResult, recorded int) string {
-	return ranOutWords(result.Stop) + meterAside(result.Meter) + " — " +
-		pluralTurns(recorded) + " of its work is recorded, and the next attempt carries on from there"
+	return ranOutWords(result.Stop) + meterAside(result.Meter) + recordedTail(recorded)
 }
 
 // outOfRoomFailure is the same fact when there is no next attempt to hand it to,
@@ -52,4 +55,56 @@ func outOfRoomFailure(result ExecResult, recorded int) string {
 		tail = ", with none of its work recorded, so there was nothing for another attempt to carry on from"
 	}
 	return ranOutWords(result.Stop) + tail + meterAside(result.Meter)
+}
+
+// A RELEASE REASON THAT HANDS WORK ON ENDS WITH THE SAME CLAUSE, AND IT IS
+// SPELLED HERE ONCE.
+//
+// Two different endings put a claim back on the queue with a record behind it —
+// a leaf that ran out of its room, and a claim taken back from a worker that
+// stopped answering — and both sentences end by saying how much survived and
+// that the next claim starts from it. The headless stream then cuts that clause
+// back off, because the line it writes says the count in its own words and a
+// line that said it twice would read as two different numbers (see
+// [ReleaseWhy], and cmd/aforge's narrateOne on store.EventNodeReleased). A join
+// and a cut that each carried their own copy of the wording would drift apart on
+// the first edit, so there is one copy and the cut is derived from it.
+const (
+	// recordedSeam separates why the claim went back from what survived.
+	recordedSeam = " — "
+	// recordedSuffix is the rest of that clause, after the count.
+	recordedSuffix = " of its work is recorded, and the next attempt carries on from there"
+	// legacyRecordedSuffix is how one of the two endings spelled that same
+	// clause before they were joined. A STORE OUTLIVES THE BINARY THAT WROTE
+	// IT: a durable --db is replayed by whatever opens it next, and a reason
+	// this cut does not recognise comes back whole, which is the turn count on
+	// the line twice. Reading both spellings costs one comparison; only the
+	// first is ever written.
+	legacyRecordedSuffix = " of its work is recorded, and the next one carries on from there"
+)
+
+// recordedTail is the clause every release reason that hands work on ends with.
+func recordedTail(recorded int) string {
+	return recordedSeam + pluralTurns(recorded) + recordedSuffix
+}
+
+// ReleaseWhy is a release reason with [recordedTail] taken off: what stopped
+// the claim, and nothing about how much of its work survived.
+//
+// It exists so the headless ↻ line can name the bound that fired WITHOUT
+// repeating the turn count it has already said in its own words. A reason this
+// package did not compose — or one with no such clause — comes back whole,
+// which is the honest answer: the caller asked for the why, and the whole
+// sentence is the why.
+func ReleaseWhy(reason string) string {
+	for _, suffix := range [...]string{recordedSuffix, legacyRecordedSuffix} {
+		end := strings.Index(reason, suffix)
+		if end < 0 {
+			continue
+		}
+		if seam := strings.LastIndex(reason[:end], recordedSeam); seam >= 0 {
+			return strings.TrimSpace(reason[:seam])
+		}
+	}
+	return strings.TrimSpace(reason)
 }

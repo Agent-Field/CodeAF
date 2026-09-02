@@ -1398,9 +1398,16 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		// cannot disagree about how much was picked up. ✗ is kept for the
 		// release this mark was added for: a claim taken back over a worker that
 		// never answered, which hands on nothing.
+		//
+		// AND THE LINE CARRIES ITS OWN WHY. It said only the count for as long
+		// as the ⏳ that names the bound was directly above it, which is true of
+		// every release written today and is an ordering assumption rather than
+		// a guarantee — a person scrolling back to one ↻ read a bare restart.
+		// The why is the release's own reason, read and not re-worded
+		// (resident.ReleaseWhy takes off the clause about what survived, which
+		// this line has already said in its own words: one number, once).
 		if release.Recorded > 0 {
-			w.say("↻", nodeDisplay(node), fmt.Sprintf("picked up again from %s",
-				plural(release.Recorded, "recorded turn")))
+			w.say("↻", nodeDisplay(node), requeueWords(release.Recorded, release.Reason))
 			return true
 		}
 		w.say("✗", nodeDisplay(node), "picked up again — "+firstLine(release.Reason))
