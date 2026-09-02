@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
 
 // fakeRunner is the session lane, stood in for: it remembers what it was asked
@@ -613,7 +613,7 @@ func TestTickRefusesWhenAnotherAforgeHoldsTheLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	if err := unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := filelock.Lock(other, true, true); err != nil {
 		t.Fatalf("cannot hold the lock: %v", err)
 	}
 
@@ -625,7 +625,7 @@ func TestTickRefusesWhenAnotherAforgeHoldsTheLock(t *testing.T) {
 	}
 
 	// Released, the next pass runs.
-	if err := unix.Flock(int(other.Fd()), unix.LOCK_UN); err != nil {
+	if err := filelock.Unlock(other); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := newTicker(store, &fakeRunner{}, now).Tick(context.Background()); err != nil {
