@@ -66,10 +66,15 @@ func RenderWhole(sections []Section) string {
 	return renderSections(sections, 0, personSectionLabel)
 }
 
+// personSectionLabel is the heading a person reads over a section. It is a
+// Markdown heading because that is the one line shape the pages themselves can
+// never carry inside a body — see renderSections.
 func personSectionLabel(section Section) string {
 	return fmt.Sprintf("## %s · %s", section.Page, section.Title)
 }
 
+// modelSectionLabel is the bracketed label the model has always read, kept as
+// it is because the prompts and the tests around the belt tool quote it.
 func modelSectionLabel(section Section) string {
 	return fmt.Sprintf("[%s · %s]", section.Page, section.Title)
 }
