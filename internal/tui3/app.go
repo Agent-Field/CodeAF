@@ -865,7 +865,7 @@ type app struct {
 	// and treeCache is the tail-reading cache that makes re-reading it cheap
 	// (treespend.go). Both belong to this surface's own goroutine, which is
 	// [session.UsageCache]'s own condition for being used at all.
-	tree      session.TreeSpend
+	tree      session.Receipt
 	treeCache session.UsageCache
 	// spendRail is this conversation's own ceiling as the profile last read it,
 	// and railRead whether it has been read at all. The pair is held rather than
@@ -1135,6 +1135,11 @@ type app struct {
 	// terminal which TYPES a drop instead of pasting it lands the same chip
 	// (dropkeys.go).
 	drop dropFold
+	// wsl is the boot reading that gives every attachment door one answer to a
+	// Windows path. Detection and wsl.conf are read once when the process starts;
+	// keeping the result here lets tests state either machine without depending
+	// on the machine running them (attach.go).
+	wsl wslPaths
 
 	// shown is the last frame this surface declared and drawn says there is one.
 	// Bubble Tea calls [app.View] after EVERY message — the terminal WRITE is on
@@ -2110,6 +2115,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		linear:              opts.Linear,
 		tmux:                tmuxTerm(os.Getenv),
 		remote:              remoteLink(os.Getenv),
+		wsl:                 bootWSLPaths,
 		// THE CHORD SPELLING IS A BOOT FACT (chords.go). The platform decides
 		// whether the modifier is called `alt+` or `⌥`, and the environment names
 		// which emulator is running so the one option-as-meta line can name the
@@ -6915,7 +6921,7 @@ func (a *app) resetMeters() {
 	// the true figure while the row beside it printed the other one, which is
 	// the surface disagreeing with itself about the only number on it a person
 	// acts on.
-	a.tree = session.TreeSpend{}
+	a.tree = session.Receipt{}
 	// THE CACHE UNDER IT IS DELIBERATELY KEPT. It is not a figure about a
 	// conversation but a parse of a file — [session.UsageCache] holds the lines
 	// it has already read off the machine's one ledger and re-derives the tree

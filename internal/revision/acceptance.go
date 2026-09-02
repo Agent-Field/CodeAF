@@ -573,14 +573,45 @@ func MapChecks(ctx context.Context, settings config.Config, client *pool.Client,
 // nothing could be measured — and the caller then judges exactly as it did
 // before this existed.
 func Unexercised(points []plan.Point, mapping []store.ExercisedPoint, grounds Grounds) (judgment Judgment, ok bool) {
-	missing := groupUnexercised(points, mapping, grounds)
-	weak := groupUnasserted(points, mapping, grounds)
-	if len(missing) == 0 && len(weak) == 0 {
+	found := coverage{
+		missing: unexercisedPoints(mapping), weak: unassertedPoints(mapping),
+		missingLines: groupUnexercised(points, mapping, grounds),
+		weakLines:    groupUnasserted(points, mapping, grounds),
+	}
+	if len(found.missing) == 0 && len(found.weak) == 0 {
 		return Judgment{}, false
 	}
-	judgment = unexercisedFinding(missing, weak, len(points))
+	judgment = unexercisedFinding(found, len(points))
 	judgment.Exercises = mapping
 	return judgment, true
+}
+
+// unexercisedPoints is the finding one entry per acceptance point: every
+// behaviour of the checklist that no check exercises, in the order the points
+// were stated. See coverage for why this and not the grouping is the finding.
+func unexercisedPoints(mapping []store.ExercisedPoint) []string {
+	points := make([]string, 0, len(mapping))
+	for _, row := range mapping {
+		if behaviour := strings.TrimSpace(row.Point); behaviour != "" && strings.TrimSpace(row.Check) == "" {
+			points = append(points, behaviour)
+		}
+	}
+	return points
+}
+
+// unassertedPoints is the other half the same way: every behaviour a check
+// names and no assertion weighs, each carrying the observables nothing
+// asserted, which is the one fact that closes it.
+func unassertedPoints(mapping []store.ExercisedPoint) []string {
+	points := make([]string, 0, len(mapping))
+	for _, row := range mapping {
+		behaviour := strings.TrimSpace(row.Point)
+		if behaviour == "" || strings.TrimSpace(row.Check) == "" || len(row.Unasserted) == 0 {
+			continue
+		}
+		points = append(points, behaviour+observablesMark+strings.Join(namedObservables(row.Unasserted), ", "))
+	}
+	return points
 }
 
 // observablesMark separates a weakly-exercised behaviour from the observables
@@ -610,33 +641,71 @@ func citedBehaviours(entries []string) []string {
 	return cited
 }
 
-// unexercisedFinding is the finding itself, built from the grouped behaviours
-// and from nothing else.
+// coverage is the acceptance finding's two halves, each read twice.
+//
+// missing and weak are the finding ITSELF, one entry per acceptance point.
+// missingLines and weakLines are only how the brief SAYS it: the same
+// behaviours folded into the lines of the request they were read from, which is
+// the grouping a worker can act on one sentence at a time.
+//
+// THE TWO USED TO BE ONE, AND THE ONE WAS THE GROUPING. A one-line brief
+// collapsed six unexercised behaviours into a single entry, and the person was
+// told "1 behaviour the request states has no check" over six of them
+// (2026-09-01, deepseek-v4-flash). The count a person reads, the names a round
+// is bought for and the names that go SPENT are all the point count, because a
+// point is the thing a check is matched to and a request line is not. The
+// grouping keeps the one job it was built for and loses the three it had
+// silently taken on.
+type coverage struct {
+	missing, weak           []string
+	missingLines, weakLines []string
+}
+
+// coverageOf is a finding being rebuilt from lists that have already been
+// through the journal, where the request's own lines are no longer in hand. The
+// points are then all there is, and they say it themselves.
+func coverageOf(missing, weak []string) coverage {
+	return coverage{missing: missing, weak: weak, missingLines: missing, weakLines: weak}
+}
+
+// unexercisedFinding is the finding itself, built from the behaviours and from
+// nothing else.
 //
 // It is a function rather than four lines inside Unexercised because the finding
 // has to be REBUILDABLE. When the gate is already failing the coverage gap joins
 // the verdict as text, and when the judge's own citation is then refused the
 // measured half has to stand back up on its own — same words, same citations,
 // same bound. Two places that each wrote the sentence would be two sentences.
-func unexercisedFinding(missing, weak []string, stated int) Judgment {
-	named := missing
+func unexercisedFinding(found coverage, stated int) Judgment {
+	missing, weak := found.missing, found.weak
+	named := found.missingLines
 	if len(named) > regressionsNamed {
 		named = named[:regressionsNamed]
 	}
-	namedWeak := weak
+	namedWeak := found.weakLines
 	if len(namedWeak) > regressionsNamed {
 		namedWeak = namedWeak[:regressionsNamed]
 	}
 	var gap strings.Builder
 	if len(named) > 0 {
-		gap.WriteString("The request asks for behaviours that no check exercises. " +
-			"Nothing in this project's own verification would fail if each of these were " +
-			"absent or wrong, so nothing that has been run says whether the work does them:\n")
+		// THE COUNT LEADS, AND IT IS THE POINT COUNT. This is the gap's first
+		// line, which is the line the closing narration quotes back to a person
+		// on a run that is short of nothing else — so a sentence that opened
+		// with "The request asks for behaviours" handed them a reservation with
+		// no size on it at all.
+		verb := "have no check that exercises them"
+		if len(missing) == 1 {
+			verb = "has no check that exercises it"
+		}
+		fmt.Fprintf(&gap, "%s the request states %s. "+
+			"Nothing in this project's own verification would fail if each of these were "+
+			"absent or wrong, so nothing that has been run says whether the work does them:\n",
+			countedBehaviours(len(missing)), verb)
 		for _, point := range named {
 			gap.WriteString("no check exercises: " + point + "\n")
 		}
-		if len(missing) > len(named) {
-			fmt.Fprintf(&gap, "And %d more.\n", len(missing)-len(named))
+		if len(found.missingLines) > len(named) {
+			fmt.Fprintf(&gap, "And %d more.\n", len(found.missingLines)-len(named))
 		}
 	}
 	// AND THE SECOND HALF NAMES WHAT TO ASSERT ON. A round told only that a
@@ -658,8 +727,8 @@ func unexercisedFinding(missing, weak []string, stated int) Judgment {
 		for _, point := range namedWeak {
 			gap.WriteString("asserted by no check: " + point + "\n")
 		}
-		if len(weak) > len(namedWeak) {
-			fmt.Fprintf(&gap, "And %d more.\n", len(weak)-len(namedWeak))
+		if len(found.weakLines) > len(namedWeak) {
+			fmt.Fprintf(&gap, "And %d more.\n", len(found.weakLines)-len(namedWeak))
 		}
 	}
 	gap.WriteString("Write the check for each, and make it pass.")
@@ -673,6 +742,9 @@ func unexercisedFinding(missing, weak []string, stated int) Judgment {
 		fmt.Fprintf(&gap, " %d of the %s this request states still have no check that asserts them.",
 			len(missing)+len(weak), countedBehaviours(stated))
 	}
+	// The citations are the SENTENCE's, so they travel with the gap the person
+	// reads rather than beside it: one citation per thing the brief asks a
+	// worker to go and check. The finding's own lists below are the points.
 	cited := citedBehaviours(append(append([]string{}, named...), namedWeak...))
 	return Judgment{
 		Pass: false, Gaps: strings.TrimSpace(gap.String()), Quote: joinCitations(cited),
@@ -703,7 +775,7 @@ func countedBehaviours(stated int) string {
 // The mapping rides along because it is the evidence the finding is a conclusion
 // of, and the grounds because every door downstream weighs against the same ask.
 func (j Judgment) measuredHalf() Judgment {
-	rebuilt := unexercisedFinding(j.Unexercised, j.Unasserted, j.Stated)
+	rebuilt := unexercisedFinding(coverageOf(j.Unexercised, j.Unasserted), j.Stated)
 	rebuilt.Exercises, rebuilt.Grounds, rebuilt.Unmeasured = j.Exercises, j.Grounds, j.Unmeasured
 	return rebuilt
 }
@@ -793,10 +865,7 @@ func groupUnasserted(points []plan.Point, mapping []store.ExercisedPoint, ground
 	}
 	entries := make([]string, 0, len(order))
 	for _, line := range order {
-		named := observables[line]
-		if len(named) > observablesNamed {
-			named = named[:observablesNamed]
-		}
+		named := namedObservables(observables[line])
 		entry := strings.Join(grouped[line], "; ")
 		if len(named) > 0 {
 			entry += observablesMark + strings.Join(named, ", ")
@@ -804,6 +873,25 @@ func groupUnasserted(points []plan.Point, mapping []store.ExercisedPoint, ground
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// namedObservables is what one entry says out loud about what nothing asserted:
+// the identifiers, trimmed, deduplicated in the order they were read, and cut to
+// observablesNamed. A list past four names says the shape of the gap no better.
+func namedObservables(observables []string) []string {
+	named := make([]string, 0, len(observables))
+	seen := make(map[string]bool, len(observables))
+	for _, observable := range observables {
+		if observable = strings.TrimSpace(observable); observable == "" || seen[observable] {
+			continue
+		}
+		seen[observable] = true
+		named = append(named, observable)
+		if len(named) == observablesNamed {
+			break
+		}
+	}
+	return named
 }
 
 // requestLines is the person's own request, one whitespace-normalised entry per
@@ -981,7 +1069,7 @@ func settleAcceptance(ctx context.Context, settings config.Config, client *pool.
 		// here is precisely how ofetch s7's eighteen named behaviours turned
 		// into three rounds of prose about the deliverable's wording.
 		if open, weak, stated := UnexercisedFor(job); len(open) > 0 || len(weak) > 0 {
-			standing := unexercisedFinding(open, weak, stated)
+			standing := unexercisedFinding(coverageOf(open, weak), stated)
 			standing.Unmeasured, standing.Grounds = verdict.Unmeasured, grounds
 			standing.Unreadable = verdict.Unreadable
 			if verdict.Pass {

@@ -1820,21 +1820,13 @@ type Extension struct {
 	// inadmissible. See store.DeliveryGate.Unclosed for why the difference is
 	// the one the exit code reads.
 	Unclosed bool
-	// Overturned says the finding LOST to a reading of the world: the job's own
-	// coverage question, asked against the criterion it is judged on and
-	// everything that has landed, answered that nothing is left uncovered.
-	//
-	// Two readings of one job may not refuse each other in silence. The gate
-	// says the delivery is not whole; the coverage reading says there is
-	// nothing to add. ofetch s12 held both, resolved neither, and ended partial
-	// after 145 calls with the person told only "no more work could be started
-	// on it" — which is neither answer and reads as the machinery giving up.
-	// One of the two has to yield, and it is the gate's: coverage is a reading
-	// over the whole job's criterion and its landed work, the finding is a
-	// judgement about one file, and the more specific opinion does not outrank
-	// the broader measurement. See store.DeliveryGate.Overturned, whose whole
-	// meaning is a finding weighed against the world and lost.
-	Overturned bool
+	// AN EXTENSION CANNOT ACQUIT. There is no Overturned here and there must
+	// not be one: everything this function can learn is whether a round was
+	// bought, and a round nobody bought says nothing whatever about whether the
+	// finding was right. Only the two world-doors — AdmitGapArtifact and
+	// AdmitGapPresent, which read the disk and the delivered text — and a
+	// person may set store.DeliveryGate.Overturned. See coverageRefused for the
+	// run that shipped a dead behaviour on the reasoning this comment replaces.
 }
 
 // GapContinuationNotice is the whole of what a person sees when a judgement
@@ -1963,14 +1955,13 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		// rail has journaled the repair and is waiting on consent. Either way
 		// nothing new is running and the delivery has to say so.
 		//
-		// EXCEPT WHERE THE GOVERNOR THAT SPOKE CONTRADICTED THE FINDING. The
-		// cause is read from the journal rather than threaded back through four
-		// signatures, because the journal is where it is already written down
-		// and a fact carried twice is a fact that will differ.
-		if coverageOverturned(graph, base) {
-			extension.Overturned = true
-			extension.Refused = "the job's own reading of what it is judged on found nothing left uncovered, " +
-				"so the review's finding is what was wrong"
+		// AND THE COVERAGE GOVERNOR SAYS SO IN ITS OWN WORDS, STILL UNCLOSED.
+		// The cause is read from the journal rather than threaded back through
+		// four signatures, because the journal is where it is already written
+		// down and a fact carried twice is a fact that will differ.
+		if coverageRefused(graph, base) {
+			extension.Refused, extension.Unclosed = "the job's own reading of what it is "+
+				"judged on found nothing left to add, so nothing further was started", true
 			return extension
 		}
 		extension.Refused, extension.Unclosed = "no more work could be started on it", true
@@ -1980,21 +1971,27 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	return extension
 }
 
-// coverageOverturned reads the growth journal for the refusal that has just
-// happened and answers whether it was the coverage question.
+// coverageRefused reads the growth journal for the refusal that has just
+// happened and answers whether it was the coverage question, so the delivery
+// can say which governor declined in that governor's own terms.
 //
-// It is the one governor whose refusal CONTRADICTS the finding rather than
-// merely declining to fund it. Rounds, the ceiling, the wall and the rail all
-// say "not now" and leave the gap standing, which is exactly what Unclosed
-// means and what the exit code is for. Coverage says "there is nothing there",
-// about the same job, from the same world — and a run cannot hand over a
-// finding and a measurement that deny each other and call the result a
-// shortfall the person should act on.
+// A GOVERNOR MAY REFUSE A ROUND AND NEVER A FINDING. It used to set Overturned
+// here, on the reasoning that coverage is a broader measurement than one
+// review's finding and the broader one settles it. That reasoning was wrong at
+// the root: coverage is a MODEL'S READING OF THE JOB'S OWN ACCOUNT — the plan's
+// Done and the workers' own summaries — and the finding is a reading of the
+// world. A run answered "the job's own reading of what it is judged on found
+// nothing left uncovered, so the review's finding is what was wrong" over a
+// behaviour that was genuinely dead in the delivered tree, and shipped it
+// (2026-09-01, deepseek-v4-flash, a real issue as the brief). So a refusal here
+// leaves the gap exactly where the rounds cap, the wall and the rail leave it:
+// Unclosed, which is the field the exit code turns on. Overturned is reserved
+// for AdmitGapArtifact, AdmitGapPresent and a person — the three doors that
+// weigh a finding against the world.
 //
-// A journal that cannot be read answers false, which leaves the delivery
-// partial: the fail-safe direction is the one that does not manufacture a pass
-// out of a record nobody could open.
-func coverageOverturned(graph *store.Store, lineage string) bool {
+// A journal that cannot be read answers false, which costs only the more
+// particular sentence: the delivery is partial either way.
+func coverageRefused(graph *store.Store, lineage string) bool {
 	if graph == nil {
 		return false
 	}
@@ -2106,20 +2103,31 @@ func outOfWall(ctx context.Context, node store.Node) string {
 	return "there is not enough time left on the run to finish it"
 }
 
-// remainderPrompt asks the one question the overrun path used to assume
-// an answer to. Running out of budget while landing a finished result is
-// common — the executor grants a landing reserve for exactly that — so
-// exhaustion is treated as a fact about resources, never as evidence of
-// unfinished work. The judgment is against the leaf's own brief, not the
-// job's intent: a mid-graph leaf that inventoried a folder is done when the
-// inventory is done, even though the job it serves is not.
-const remainderPrompt = `A worker ran out of resources while working on one assignment and stopped. You decide whether anything is actually left to do.
+// remainderPrompt SIZES the remainder. It does not settle the node, and the
+// prompt no longer talks as though it might.
+//
+// It used to be shown the brief and the worker's last paragraph and nothing
+// else, and it was told in as many words that "exhaustion is not evidence of
+// incompleteness" — so a leaf cut off mid-edit with a red build was judged done
+// on its own closing sentence, "All 722 tests pass. Let me verify the dry-run
+// tests specifically:". It is now shown what it is judging: that the worker was
+// cut off, how far it got, the turns it took, the change it actually made, and
+// what the project's own checks said. Exhaustion is still not proof of an
+// unfinished result — a leaf often lands inside its reserve — but it is a fact
+// about the run, and a judge that is not told it is guessing.
+//
+// The judgment is against the leaf's own brief, not the job's intent: a
+// mid-graph leaf that inventoried a folder is done when the inventory is done,
+// even though the job it serves is not.
+const remainderPrompt = `A worker was stopped mid-assignment because it ran out of the room it was given. You size what is left, so the next worker can be aimed at it.
 
-You receive the assignment and what the worker had produced when it stopped. Judge exactly one question: does the produced result already fulfill the assignment? Running out of budget while landing a finished result is common — exhaustion is not evidence of incompleteness. Judge only the substance against the assignment.
+You receive the assignment, what the worker had produced when it stopped, how it was stopped, the change it actually made, and what the project's own checks said. Judge one question: what, if anything, of the ASSIGNMENT is not yet in the produced result?
+
+The worker's own account of itself is not evidence. "All tests pass" is a sentence, written by the worker that was cut off, about checks it wrote itself; the reading of the project's checks and the change itself are the evidence. Where the two disagree, the reading wins.
 
 Return exactly one JSON object, nothing else:
-{"done": true} when the assignment is fulfilled and a consumer could use this result as-is.
-{"done": false, "remaining": "<the unfinished work>"} only when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Work the assignment never asked for is never remaining work: do not prescribe verification, re-verification, or review of what already exists.`
+{"done": true} when every element of the assignment is present in the result and the evidence agrees.
+{"done": false, "remaining": "<the unfinished work>"} when you can name a specific element of the assignment that is absent or unfinished — concretely enough that a worker could finish from your words alone. Do not invent work the assignment never asked for.`
 
 var remainderSchema = json.RawMessage(`{
   "type": "object",
@@ -2137,6 +2145,19 @@ type Remainder struct {
 	Checked   bool
 }
 
+// RemainderVerify is what a continuation is aimed at when the judge found
+// nothing left to write.
+//
+// A CUT LEAF STILL GETS THE TURN ITS EXHAUSTION BOUGHT AWAY. The turn a leaf is
+// stopped on is the one where it would have run what it wrote and read the
+// result, and that is exactly where a run's fatal defect surfaces: the leaf that
+// prompted this was cut off one turn before running the binary, over a blocker
+// that was discarded at construction. So a "done" on a cut leaf buys one cheap
+// leaf that checks, rather than a tick. Where the judge was right it costs a
+// verification; where it was wrong it is the missing turn.
+const RemainderVerify = "The previous worker was stopped before it could check its own work. " +
+	"Run what it wrote, read the result, and fix only what that reveals. Do not start anything new."
+
 // judgeRemainder decides whether an exhausted leaf actually left work behind.
 // Failures fail toward "not done" with Checked false: the continuation still
 // runs, now bounded by the overrun governors, rather than a judge outage
@@ -2145,8 +2166,11 @@ type Remainder struct {
 // window-derived bound for one to move. What it does share with the other two is
 // the completion cap and the empty-reply retry, both of which are facts about
 // the reply rather than about the window.
-func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, produced, workerModel string) Remainder {
-	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
+func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store,
+	node store.Node, produced string, evidence Evidence, workerModel string,
+) Remainder {
+	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced +
+		remainderSubject(graph, node, evidence)
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	// "gate", not the routing class's own "audit": the class pools this call
@@ -2190,6 +2214,44 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 	return Remainder{Done: verdict.Done, Remaining: remaining, Checked: true}
+}
+
+// remainderSubject is what the remainder judgement is SHOWN besides the brief
+// and the words the worker left behind.
+//
+// Four facts, and none of them is the worker's account of itself: that it was
+// cut off and by what, the turns it actually took, the change it made, and what
+// the project's own checks said. Every one of them was already in the record and
+// none of them reached this call — which is how a leaf stopped mid-edit with
+// `undefined: logf` in its build was judged done on the sentence "All 722 tests
+// pass. Let me verify the dry-run tests specifically:".
+//
+// A fact that cannot be read renders NOTHING rather than an empty heading: a
+// judge told "the change:" followed by nothing reads it as a run that changed
+// nothing, which is the direction that acquits.
+func remainderSubject(graph *store.Store, node store.Node, evidence Evidence) string {
+	var body strings.Builder
+	if graph != nil {
+		if record, ok, err := graph.LeafExhaustedFor(node.ID); err == nil && ok {
+			body.WriteString("\nHOW IT STOPPED. It did not choose to stop: " +
+				strings.TrimSpace(record.Reason) + ".\n")
+			if record.Turns > 0 {
+				fmt.Fprintf(&body, "It had taken %d turns when it was stopped.\n", record.Turns)
+			}
+		}
+		// The run's own turns, oldest first, which is the only account of what
+		// the attempt did that the attempt did not write about itself.
+		if banked, turns := resident.BankedRun(graph, node.ID); turns > 0 && strings.TrimSpace(banked) != "" {
+			body.WriteString("\n" + banked + "\n")
+		}
+	}
+	if patch := evidence.patchBlock(ctxbudget.Budget{}); patch != "" {
+		body.WriteString("\n" + patch)
+	}
+	if reading := evidence.readingBlock(); reading != "" {
+		body.WriteString("\n" + reading)
+	}
+	return body.String()
 }
 
 // deliveryPartialBytes is what the partial handed to a judgement is bounded to

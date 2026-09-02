@@ -1,8 +1,12 @@
 package session
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // WHO IS ASKED ABOUT WORK NOBODY COULD CHECK.
@@ -160,15 +164,27 @@ func TestAnUnverifiedChildBubblesWhenItsParentSettles(t *testing.T) {
 	if len(agent.steering) != before+1 {
 		t.Fatalf("the person was handed %d notes, want one", len(agent.steering)-before)
 	}
+	// AND IT RE-ADDRESSES THE ROW RATHER THAN RE-DELIVERING IT (pending.go). The
+	// demand is on [Agent.PendingDecisions] and on every surface that draws it;
+	// what this note owes is one sentence saying whose question it is now.
 	note := agent.steering[len(agent.steering)-1].text()
 	for _, want := range []string{
-		orphanLead(parent),
-		"task " + itoa64(child.id) + " needs your look: Port the parser",
-		"tasks id " + itoa64(child.id) + " resolve " + TaskResolveVerbs(),
+		"task " + itoa64(parent.id) + " has finished",
+		"task " + itoa64(child.id) + ", Port the parser",
+		"waiting on you",
 	} {
 		if !strings.Contains(note, want) {
-			t.Fatalf("the bubbled note is missing %q:\n%s", want, note)
+			t.Fatalf("the re-addressed note is missing %q:\n%s", want, note)
 		}
+	}
+	// THE CHILD IS ON THE LIST BEFORE AND AFTER, which is what makes one sentence
+	// enough: the question never depended on this note to exist.
+	pending := agent.PendingDecisions()
+	if len(pending) != 1 || pending[0].Notice.ID != child.id {
+		t.Fatalf("PendingDecisions() = %+v, want the child that needs a look", pending)
+	}
+	if pending[0].Depth != 1 {
+		t.Fatalf("the child sits at depth %d, want one level down", pending[0].Depth)
 	}
 }
 
@@ -223,5 +239,107 @@ func TestHandingOneToTheModelLeavesTheNodeWhereItIs(t *testing.T) {
 	}
 	if err := agent.HandUnverifiedToModel(node.id); err == nil {
 		t.Fatal("a node somebody had already decided was handed over anyway")
+	}
+}
+
+// ── the checker's window, and what a person reads when it runs out (#268) ────
+
+// A TIMER MAY EXPIRE ONLY INTO "UNANSWERED".
+//
+// The measured run's journal read "no answer in 5m0s, so nothing was accepted"
+// about a part two levels down that no person was ever shown. Both halves of
+// that sentence were doing damage: a person reads the five minutes as THEIR five
+// minutes, missed, and "nothing was accepted" is a sentence about a decision
+// said by a clock that made none. What the clock knows is who could not answer
+// and how long they had (pending.go carries the law).
+//
+// The window is the seam a test moves ([Agent.auditWindowFor]); everything else
+// here is the real road — a real repository, the real audit, and a checker that
+// really does not answer.
+func TestACheckerThatRanOutSaysSoAndNeverSaysAccepted(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go with the greeting."),
+		},
+		// THE CHECKER NEVER ANSWERS. It waits on its own window and the window
+		// closes under it, which is exactly the shape the sentence is about.
+		audit: []step{
+			func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		// The test clock: a window a test can actually wait out.
+		config.auditWindow = 40 * time.Millisecond
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskUnverified {
+		t.Fatalf("state = %q, want it waiting on a person (report %q)", notice.State, notice.Report)
+	}
+	if !strings.Contains(notice.Report, "nobody could check it in") {
+		t.Fatalf("the report does not say who could not answer:\n%s", notice.Report)
+	}
+	// AND NEVER A WORD ABOUT A DECISION. "Accepted" is what a person says, or
+	// what the settle policy says on their behalf; a clock says neither.
+	for _, banned := range []string{"nothing was accepted", "no answer in"} {
+		if strings.Contains(notice.Report, banned) {
+			t.Fatalf("the report says %q about a window running out:\n%s", banned, notice.Report)
+		}
+	}
+	// AND IT IS ON THE ONE LIST, which is what makes it answerable at all.
+	pending := agent.PendingDecisions()
+	if len(pending) != 1 || pending[0].Notice.ID != node.id {
+		t.Fatalf("PendingDecisions() = %+v, want the node nobody could check", pending)
+	}
+	if pending[0].Waiting() != taskUnverifiedNews {
+		t.Fatalf("the row says it is %q, want the person's own words", pending[0].Waiting())
+	}
+}
+
+// AND IT LEAVES THE LIST ONLY ON A RESOLUTION. Accepting is the person's answer;
+// nothing else takes a decision off the list, and no clock ever does.
+func TestADecisionLeavesTheListOnlyWhenSomebodyAnswers(t *testing.T) {
+	agent, parent, child := unverifiedFamily(t)
+
+	if pending := agent.PendingDecisions(); len(pending) != 1 || pending[0].Notice.ID != child.id {
+		t.Fatalf("PendingDecisions() = %+v, want the child before its parent settles", pending)
+	}
+	// The parent settles. WHO is being asked changes; WHETHER anybody is does
+	// not, and the row is the same row.
+	parent.finish("the index is rebuilt", nil, "", mergeInPlace)
+	agent.graph().complete(parent, TaskDone)
+	agent.bubbleUnverifiedChildren(parent)
+	if pending := agent.PendingDecisions(); len(pending) != 1 || pending[0].Notice.ID != child.id {
+		t.Fatalf("PendingDecisions() = %+v, want the child still waiting after its parent settled", pending)
+	}
+
+	// The person answers. "Not right" is the answer used here because it needs no
+	// working copy to land — this fixture's child never had one — and the list is
+	// indifferent to WHICH answer was given: what takes a row off it is that
+	// somebody said something.
+	if err := agent.ResolveUnverified(child.id, TaskRefute, "it is not finished"); err != nil {
+		t.Fatalf("ResolveUnverified: %v", err)
+	}
+	if pending := agent.PendingDecisions(); len(pending) != 0 {
+		t.Fatalf("PendingDecisions() = %+v after somebody answered, want nothing", pending)
 	}
 }

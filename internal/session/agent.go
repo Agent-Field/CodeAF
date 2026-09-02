@@ -479,6 +479,21 @@ func sessionCacheKey(id string) string {
 }
 
 // Usage returns the session's accumulated usage.
+//
+// IT IS NOT A SECOND SET OF BOOKS. Every figure in it was put there by
+// [Agent.bank] — the one door a call's money goes through — and that same call
+// hands the machine's ledger its row (usage_ledger.go). So this and the ledger
+// are one total kept by one owner and a tail read of the file, never two
+// accumulators that can drift: the status line, the day's reading and the spend
+// place cannot disagree by construction (issue #269). It is a running total
+// rather than a scan of the file because a surface asks this on the frame clock
+// and a ledger with a year in it must not be walked per frame.
+//
+// The one place it is deliberately LARGER than this session's own ledger rows is
+// a fold: a child agent wrote its own calls down under its own id, and folding
+// its tally home moves these books and writes nothing there (the fold rule).
+// [UsageTree] is how a surface reads the family back out of the ledger without
+// counting the same call twice.
 func (a *Agent) Usage() Usage {
 	a.mu.Lock()
 	defer a.mu.Unlock()

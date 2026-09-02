@@ -1,5 +1,10 @@
 package session
 
+import (
+	"fmt"
+	"io"
+)
+
 // task_ledger.go is one law, said once, for every family that lands.
 //
 // ── THE LEDGER IS THE CONTRACT OF WHAT SHIPS; THE TREE IS ONLY THE MEDIUM ──
@@ -76,4 +81,70 @@ func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string
 // will land.
 func keepHome(node *TaskNode, tree taskTree, changed []string) (string, []string) {
 	return keptWork(tree, node.title(), absorbedLedger(node, changed))
+}
+
+// landFinished is THE ONE ENDING FOR WORK THAT HOLDS, and it is one function
+// because it was three.
+//
+// A node whose deliverable stands has the same three things left to do whoever
+// decided that: ask whether the ground moved under it, merge, and ask of the
+// outcome whether anything actually landed before it settles. That
+// sequence was written out three times — once on the ordinary finishing line,
+// once for a family whose verification is switched off, and once for a node the
+// counter stopped whose work was checked anyway ([Agent.landStopped]) — and each
+// copy had to remember the ground check, the conflict test and the ledger the
+// merge answers with. THE MEMORY IS EXACTLY WHAT FAILED: the checks the family
+// audit filed (#255, #256, #258) each had to be added to every copy, and the one
+// that was missed was the one nobody was looking at. Written once, a check added
+// here is a check every road home gets.
+//
+// ── THE TWO HALVES OF THE REPORT, AND WHY THEY ARE PARAMETERS ──
+//
+// Every road home composes the same report out of two sentences in a fixed
+// relationship: `head` is what leads, `tail` stands under it, and the merge's own
+// detail goes under both. On the ordinary line the node's own account leads and
+// what it was checked on stands under it; on a family with the check switched off
+// the sentence saying so leads and the node's account stands under it. The
+// composition never varies, only which sentence takes which place — so it is the
+// caller's answer, and the folding is stated here once.
+//
+// `note` is what the log line says about this particular road, and it is empty
+// for the ordinary one. The person's report never carries it: a threshold that
+// fired is machinery, and a reader of a card that says done has no use for it
+// ([Agent.landStopped] states the whole of that argument).
+func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, head, tail, note string, log io.Writer) TaskState {
+	// THE GROUND IS CHECKED WHEREVER WORK WOULD MERGE. The check that passed was
+	// run inside this node's own working copy, which is a copy of the world as it
+	// was when the node started — so it says nothing at all about a file another
+	// window has landed in since. That is the one question left before a merge,
+	// and taskground.go is where it is asked.
+	if shift := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
+	}
+	landed, merge, detail := landHome(node, tree, changed)
+	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
+	// AND THE ONE QUESTION EVERY ROAD ASKS OF THE OUTCOME: did the work get where
+	// the person can see it ([cameHome], task_land_unsaved.go)? A branch that
+	// would not merge and work that could not be committed at all are two reasons
+	// and one answer — nothing landed — and the MARK is carried through rather
+	// than made here, because the completion note and the row read it to tell the
+	// two apart. Testing for a conflict by hand is exactly how the second reason
+	// walked past all five of these roads (#255).
+	if !cameHome(merge) {
+		return a.landConflicted(node, tree, landed, withReport(head, tail), merge, detail, log)
+	}
+	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
+	// Everything downstream reads this report from the top: the settle card quotes
+	// its first sentence as what came of the work, the project's index keeps that
+	// same line as the row's outcome (task_index.go's taskOutcome), and the chat
+	// model reads it before writing the paragraph the person actually asked for.
+	// With the check's evidence in front, all three carried a verification command
+	// — "`git diff --cached --stat` shows staged new file …" — where what the work
+	// FOUND belonged, and a model handed proof-of-check as the headline grades the
+	// deliverable instead of delivering it (prompts/system.md's rule for the moment
+	// work lands). The evidence is still here, because a finished card is owed what
+	// was checked; it is simply not the news. The state says "done" — nothing here
+	// says it a second time in the harness's own vocabulary.
+	node.finish(withReport(head, withReport(tail, detail)), landed, tree.branch, merge)
+	return TaskDone
 }

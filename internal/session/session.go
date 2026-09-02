@@ -936,6 +936,14 @@ type Config struct {
 	// without a lock.
 	ApprovalPolicy *approval.Policy
 
+	// auditWindow overrides how long a second look at finished work gets, and it
+	// is UNEXPORTED AND FOR TESTS ONLY (pending.go's [Agent.auditWindowFor]). The
+	// product's answer is the door's own, which turns on whether there is a check
+	// to run and on nothing else; this exists so that a test can prove what a
+	// person reads when the window runs out without waiting five real minutes for
+	// it.
+	auditWindow time.Duration
+
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].
 	//
@@ -2063,7 +2071,12 @@ type Agent struct {
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
-	running      bool
+	// writes is THE RUNNING TURN'S account of what it has changed under the
+	// workspace, and the whole of the write seam's state (writeseam.go). It is
+	// minted at episode-init and read at the step boundary, and it is nil in a
+	// session that has never opened an episode.
+	writes  *writeMeter
+	running bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is

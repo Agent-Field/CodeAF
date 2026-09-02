@@ -1076,6 +1076,12 @@ func (a *app) raiseSettings() {
 	// The day's own figure, read once for the whole of this visit (see
 	// [app.spentTodayUSD]).
 	a.readDayCost()
+	// AND THIS CONVERSATION'S, off the same ledger and on the same beat, so the
+	// `this one` receipt is as fresh as the day above it and says the same
+	// number the status line's money segment does (settingspend.go's
+	// [app.spentThisSessionUSD], issue #269). It is a tail read
+	// ([session.UsageCache]) and it happens once per visit, never on a draw.
+	a.readTreeSpend()
 	a.sheet = sheet{
 		registry:     a.registry(),
 		profileDir:   a.profileDir,

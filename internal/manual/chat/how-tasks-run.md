@@ -398,6 +398,38 @@ files that changed on both sides:
 
 `finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
 
+**A landing never ends in a sentence that names nothing.** There is one shape of refusal
+where git will not start the merge at all — you have uncommitted changes in the very files
+it would write — and it puts the file list in the body of its message rather than on the
+first line. That used to be quoted straight into your report and stopped at the colon,
+naming no files. It now says which files it was about, whichever way git refused.
+
+## I had uncommitted work in the same files — what happens to it
+
+**Your own uncommitted work is carried, or the landing is refused. Never both.** A task is
+carved from your folder AS IT STANDS, uncommitted edits included, so when the task changes
+the same file you are part-way through changing there are two versions of your own work.
+
+What happens is one of two things, and you are told which:
+
+- **Carried.** Your changes are set aside, the branch merges, and your changes go back on
+  top of it. The report says so and names the files:
+  `your own uncommitted work in internal/auth/session.go was set aside while its branch merged, and put back afterwards`
+- **Refused.** When your changes cannot go back over the merge, nothing is left half-done:
+  your checkout goes back to exactly the commit and exactly the content it had, the branch
+  is kept, and the report names the files —
+  `its branch task/… did not merge cleanly and was kept: your own uncommitted work in internal/auth/session.go is in the same files, so your tree was left exactly as it was`
+
+Untracked files are the one thing that is never set aside: a file git has never seen cannot
+be put back over itself, so a clash with one is refused and named rather than moved.
+Nothing is ever left in a `git stash` for you to find later — every road out of a refusal
+ends with your work back in your tree.
+
+**And when the copy your task started from could not be lifted back off its branch**, the
+report says that too, in as many words:
+`its branch task/… still carries your own uncommitted work: the copy of it the task started from could not be taken back out`.
+That used to happen silently, and the merge then failed for a reason nothing could explain.
+
 The work is committed on that branch, so `git merge task/…` is a real offer whenever you are
 ready to reconcile the two versions. Nothing waiting on the task fails — it waits until you
 decide, exactly as with any other task that needs a look.
@@ -1407,10 +1439,14 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`no answer in 5m0s, so nothing was accepted`, `the checker answered neither way`. The time
-in that third one is the window the check actually had — `5m0s` when it had a command to
-run, `1m0s` when the work named no check and there was nothing for it to run. When two
-tries in a row got nothing, the first line is prefixed
+`nobody could check it in 5m0s`, `the checker answered neither way`. The time
+in that third one is the window **the check** had — `5m0s` when it had a command to
+run, `1m0s` when the work named no check and there was nothing for it to run. It is not
+your window and there is nothing you missed: **a question to you is never on a timer.**
+That sentence used to read `no answer in 5m0s, so nothing was accepted`, which said two
+things a clock is not entitled to say — that you had five minutes, and that a decision had
+been made. Nothing is accepted or refused by a window running out; the work waits for you,
+for as long as that takes. When two tries in a row got nothing, the first line is prefixed
 `asked twice and got no answer either time — `.
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it

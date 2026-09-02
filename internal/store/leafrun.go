@@ -1,6 +1,9 @@
 package store
 
 import (
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -154,6 +157,33 @@ func (s *Store) RecordLeafResumed(nodeID string, record LeafResumed) error {
 		return fmt.Errorf("record leaf resumption: %w: no recorded turns to resume from", ErrInvalid)
 	}
 	return s.appendLeafRun(nodeID, EventLeafResumed, record, "record leaf resumption")
+}
+
+// LeafExhaustedFor is the newest record of this node running out of room, or
+// that there is none.
+//
+// It exists because the fact has to be READ and not only written. The record was
+// journaled and then nothing ever opened it: the judgement that decided whether
+// an exhausted leaf had left work behind was shown the brief and the worker's
+// last paragraph, and was not told that the worker had been cut off at all. See
+// revision.JudgeRemainder.
+func (s *Store) LeafExhaustedFor(nodeID string) (LeafExhausted, bool, error) {
+	var payload string
+	err := s.db.QueryRow(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq DESC LIMIT 1`, strings.TrimSpace(nodeID), EventLeafExhausted).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return LeafExhausted{}, false, nil
+	}
+	if err != nil {
+		return LeafExhausted{}, false, fmt.Errorf("read leaf exhaustion: %w", err)
+	}
+	var record LeafExhausted
+	if err := json.Unmarshal([]byte(payload), &record); err != nil {
+		return LeafExhausted{}, false, fmt.Errorf("read leaf exhaustion: %w", err)
+	}
+	return record, true, nil
 }
 
 // appendLeafRun is the one append both share: no view, one write transaction,
