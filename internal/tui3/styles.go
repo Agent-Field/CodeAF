@@ -1433,15 +1433,140 @@ func (p palette) background(s string, width int, h hue) string {
 	if pad := width - ansi.StringWidth(s); pad > 0 {
 		s += strings.Repeat(" ", pad)
 	}
-	switch p.profile {
-	case tokens.TrueColor:
-		return "\x1b[48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" +
-			itoa(int(h.b)) + "m" + s + "\x1b[49m"
-	case tokens.ANSI256:
-		return "\x1b[48;5;" + itoa(int(h.idx)) + "m" + s + "\x1b[49m"
-	default:
+	ground := p.groundParams(h)
+	if ground == "" {
 		return s
 	}
+	return "\x1b[" + ground + "m" + holdGround(s, ground) + "\x1b[49m"
+}
+
+// groundParams is the background half of a ground step's sequence — the SGR
+// parameters with neither the escape nor the trailing "m" — and "" below the
+// 256 rung, where there is no ground to draw.
+func (p palette) groundParams(h hue) string {
+	switch p.profile {
+	case tokens.TrueColor:
+		return "48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" + itoa(int(h.b))
+	case tokens.ANSI256:
+		return "48;5;" + itoa(int(h.idx))
+	default:
+		return ""
+	}
+}
+
+// holdGround makes a ground step hold across text that paints its own.
+//
+// A GROUND STEP OWNS EVERY CELL IT COVERS. Wrapping already-painted text in one
+// background and one reset is only true of text that carries no background of
+// its own, and the transcript is full of text that does: an inline code span
+// sits on the surface's raised plane (prose's [codeSpan]), and it both SETS a
+// ground of its own and CLEARS it on the way out with "\x1b[49;39m". Nested
+// inside a selection, the first turned the span into a hole the selection
+// visibly skipped, and the second — the worse of the two — switched the ground
+// off for the whole REST of the row. A sweep across a line that opened with a
+// code span lit four cells of sixty-four and read as a selection that had not
+// happened (#294).
+//
+// So every background parameter inside the span is rewritten to this step's
+// own: an inner set becomes our ground, an inner clear becomes our ground, and
+// a full reset keeps its reset and re-lays our ground behind it. Inks and
+// attributes are untouched — a marked span keeps its syntax colour, its bold
+// and its italic, and only the plane under it is made one.
+//
+// THE SELECTION WINS OVER THE CHIP, and that is the ruling rather than an
+// accident of implementation: the mark step is the loudest rung of the ground
+// ladder, a raised plane inside it says "this cell is a different kind of
+// thing" exactly where the person is being told "these cells are the ones", and
+// every terminal's own selection replaces the background it sweeps over.
+//
+// Text with no escape in it is returned untouched and unallocated, which is
+// most of what this is handed.
+func holdGround(s, ground string) string {
+	if !strings.Contains(s, "\x1b[") {
+		return s
+	}
+	var b strings.Builder
+	last, i, changed := 0, 0, false
+	for {
+		k := strings.Index(s[i:], "\x1b[")
+		if k < 0 {
+			break
+		}
+		start := i + k
+		m := strings.IndexByte(s[start:], 'm')
+		if m < 0 {
+			break
+		}
+		end := start + m + 1
+		out, hit := reground(s[start+2:end-1], ground)
+		if hit {
+			if !changed {
+				b.Grow(len(s) + len(ground) + 8)
+				changed = true
+			}
+			b.WriteString(s[last:start])
+			b.WriteString("\x1b[")
+			b.WriteString(out)
+			b.WriteString("m")
+			last = end
+		}
+		i = end
+	}
+	if !changed {
+		return s
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// reground rewrites one SGR parameter list so it leaves ground standing, and
+// reports whether it had to. Every form the styler can emit is answered: the
+// two extended sets ("48;5;n" and "48;2;r;g;b"), the sixteen-colour ones (40-47
+// and 100-107), the background clear ("49"), and the full reset ("0", which the
+// terminal also spells as no parameters at all).
+func reground(params, ground string) (string, bool) {
+	if params == "" || params == "0" {
+		return "0;" + ground, true
+	}
+	fields := strings.Split(params, ";")
+	out := make([]string, 0, len(fields)+1)
+	hit := false
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		switch {
+		case f == "48":
+			// The colour that follows is this sequence's ground, and ours
+			// replaces it: step over however many parameters it spans.
+			if i+1 < len(fields) && fields[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(fields) && fields[i+1] == "2" {
+				i += 4
+			}
+			out, hit = append(out, ground), true
+		case f == "49", isANSIBackground(f):
+			out, hit = append(out, ground), true
+		case f == "0":
+			out, hit = append(out, "0", ground), true
+		default:
+			out = append(out, f)
+		}
+	}
+	if !hit {
+		return params, false
+	}
+	return strings.Join(out, ";"), true
+}
+
+// isANSIBackground reports whether one SGR parameter is a sixteen-colour
+// background: 40-47 for the first eight, 100-107 for the bright ones.
+func isANSIBackground(f string) bool {
+	switch len(f) {
+	case 2:
+		return f[0] == '4' && f[1] >= '0' && f[1] <= '7'
+	case 3:
+		return f[0] == '1' && f[1] == '0' && f[2] >= '0' && f[2] <= '7'
+	}
+	return false
 }
 
 // bold is the one attribute this file draws without a hue behind it: weight is

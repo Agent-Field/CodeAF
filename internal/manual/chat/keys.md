@@ -1988,6 +1988,13 @@ every click; only text is taken by a double-click.
 **A wide glyph is never split.** A sweep that starts or ends inside a CJK character
 or an emoji takes the whole glyph, and the highlight covers both of its cells.
 
+**The highlight covers inline code too.** A path, a flag or a filename written in
+`backticks` sits on its own raised background in an answer, and a selection sweeping
+over it **replaces** that background rather than leaving it showing through — the same
+thing your terminal does when you select coloured text. The code keeps its own colour;
+only the plane under it becomes the selection's. Every cell you swept wears the
+highlight, so a line with a path in it lights end to end and not in pieces.
+
 The sweep is drawn in **the same background copy mode's selection wears** — the strongest
 of the three this screen draws, a shade above the one under the pointer. It is the same
 claim ("these rows are what a copy would take"), so it is the same paint; it used to be
