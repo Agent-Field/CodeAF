@@ -475,6 +475,10 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 	// is not the same measurement, so the class the inner calls would name for
 	// themselves is overridden for the whole subtree.
 	ctx = provider.WithCallClass(ctx, provider.ClassPlanExpand)
+	// WHICH NODE IS BEING SPLIT. The class above already says these calls are an
+	// expansion rather than a top-level fan-out; the node says whose, which is
+	// the fact a person reading a run with several expansions in it needs.
+	ctx = provider.WithCallNode(ctx, callNodeKey(nodeID))
 
 	// A sub-decomposition is deliberately flat: one fan-out, no spine, no
 	// binding. Running a full staged build inside each node was the first

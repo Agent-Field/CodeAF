@@ -349,7 +349,7 @@ func (o *headlessOutcome) seated(seats config.Seats) {
 // what came of it. It reports nothing and decides no exit code — both belong to
 // doErrand, so that a failure anywhere in here reaches the caller through the
 // same door as an answer.
-func errandRun(request doRequest, seats config.Seats, started time.Time) (headlessOutcome, error) {
+func errandRun(request doRequest, seats config.Seats, started time.Time) (outcome headlessOutcome, err error) {
 	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
 		return headlessOutcome{}, err
 	}
@@ -357,11 +357,21 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	if err != nil {
 		return headlessOutcome{}, err
 	}
-	if ephemeral && !request.keep {
-		defer func() { _ = os.RemoveAll(home) }()
-	}
-	if ephemeral && request.keep {
-		fmt.Fprintf(request.stderr, "store kept at %s\n", home)
+	// Whether the private home outlives this run is decided at the END of it,
+	// where the answer is known, rather than here where it is not — see
+	// keepPrivateStore. The sentence naming the place is deferred with it for
+	// the same reason: a home that is about to be deleted has no location worth
+	// printing, and one that survives is only worth naming once there is a
+	// reason it did.
+	debugging := debugRecordOn(os.Getenv)
+	if ephemeral {
+		defer func() {
+			if !keepPrivateStore(request.keep, debugging, errandSucceeded(outcome, err)) {
+				_ = os.RemoveAll(home)
+				return
+			}
+			fmt.Fprintf(request.stderr, "record kept at %s\n", home)
+		}()
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return headlessOutcome{}, fmt.Errorf("create the store directory: %w", err)
@@ -460,7 +470,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 		// clock alone. See settlementWatch.forceJudgement.
 		watcher.closeOut = brain.runner.CloseOut
 	}
-	outcome, err := watcher.wait(ctx)
+	outcome, err = watcher.wait(ctx)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -654,10 +664,47 @@ func errandWorkspace(named string) (string, error) {
 	return here, nil
 }
 
+// keepPrivateStore decides whether the private home a headless run made
+// outlives the run that made it.
+//
+// A FAILURE KEEPS ITS OWN EVIDENCE WITHOUT BEING ASKED. A person discovers they
+// wanted the record only after the run went wrong, and under the older rule —
+// deleted on the way out, worked or not — that was always after it was gone;
+// the only cure was to have passed --keep before knowing there would be
+// anything to look at. So the home is deleted on a clean run and on nothing
+// else: asked for on purpose, kept while the debug switch is on, and kept after
+// any exit that was not a success.
+func keepPrivateStore(asked, debugging, succeeded bool) bool {
+	return asked || debugging || !succeeded
+}
+
+// errandSucceeded is the one reading of "this run worked": it reached an
+// outcome of its own, and that outcome leaves with the status a script reads as
+// nothing to say. A partial is not a success — something did not land, and why
+// it did not is exactly what a person comes back for.
+func errandSucceeded(outcome headlessOutcome, err error) bool {
+	return err == nil && outcome.status == 0
+}
+
+// debugRecordOn reports whether the debug switch is on for this run.
+//
+// It reads the variable directly rather than through the package that will own
+// the switch, because that package is landing beside this change and a run that
+// cannot keep its own record until the two meet is the exact hole this closes.
+// The spelling is the one the model-call log's own pins already use — set, and
+// not one of the three words that mean off — so a person who knows one of them
+// knows this one.
+func debugRecordOn(getenv func(string) string) bool {
+	value := strings.TrimSpace(getenv("AFORGE_DEBUG"))
+	return value != "" && value != "0" &&
+		!strings.EqualFold(value, "false") && !strings.EqualFold(value, "off")
+}
+
 // headlessStore decides where this errand lives. The default is a private home
-// that is deleted on the way out, because isolation is the point of a one-shot:
+// that is deleted on a clean run, because isolation is the point of a one-shot:
 // a task run this way must not inherit half a conversation's assumptions, and a
-// store that survives it is what `aforge chat` already is.
+// store that survives it is what `aforge chat` already is. What survives a run
+// that did NOT go cleanly is keepPrivateStore's answer, not this one's.
 func headlessStore(database string) (path, home string, ephemeral bool, err error) {
 	if database = strings.TrimSpace(database); database != "" {
 		path, err = expandHome(database)

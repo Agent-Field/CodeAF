@@ -605,6 +605,35 @@ because its wall could not hold another round of work says `partial — no time 
 another round of work` — which is a run choosing to stop while there is still time to
 check what it did, not a run that ran out of time.
 
+## My headless run failed — where is its record, where did the run go, can I look at it afterwards
+
+`aforge do` works in a private store of its own unless you point it somewhere durable with
+`--db`. What becomes of that store depends on how the run ended:
+
+- **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
+  which is the point of a one-shot.
+- **It did not** — exit 1, or the partial exit 2 above — and the store is **kept**, with no
+  flag and nothing decided in advance. The last thing the run writes on the error stream is
+  where it is:
+
+  ```
+  record kept at /var/folders/xy/T/aforge-do-3f81c2
+  ```
+
+That directory holds `graph.db`: the journal every worker wrote to, the plan as it stood,
+the deliverables, the receipts and the spend. Hand it back with `aforge do --db
+<that path>/graph.db "…"` to work in it again, and it is an ordinary directory otherwise —
+read it, copy it, delete it when you are done with it.
+
+Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
+`AFORGE_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
+as long as it is set. Neither is needed to keep a failure any more. This used to be the
+other way round — every run's store was deleted on the way out, worked or not — so a person
+discovered they wanted the record after the failure, which was after it was gone.
+
+A run pointed at `--db` never had a private store to keep: that store is yours and is left
+exactly where you put it, whatever the run did.
+
 ## When aforge decides there is nothing left to do — and when it may not
 
 Before buying more work, aforge asks whether everything the request is judged on is

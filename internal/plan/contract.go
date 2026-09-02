@@ -360,6 +360,10 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 		userMessage(target.String()),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanContract)
+	// WHICH NODE THIS CALL BELONGS TO. A contract is written for one node, and
+	// a fanned-out plan writes N of them at once; without the node the log has
+	// N identical rows and no way to say which method belongs to which job.
+	ctx = provider.WithCallNode(ctx, callNodeKey(node.ID))
 	var decoded struct {
 		Contract string `json:"contract"`
 	}

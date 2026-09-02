@@ -152,6 +152,12 @@ func Satisfied(ctx context.Context, client Completer, contextTokens int, criteri
 		return Satisfaction{}, Usage{}, nil
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanAudit)
+	// This pass shares the audit routing class — the two are the same kind of
+	// structured judgement and rating them apart would learn nothing — but they
+	// are not the same question, and a log that called both "audit" left the
+	// growth governor invisible. The tag is stated so the derived one, which is
+	// the class's last word, does not stand in for it.
+	ctx = provider.WithCallTag(ctx, "satisfied")
 	room := satisfiedBudget(contextTokens)
 	messages := []ai.Message{
 		systemMessage(satisfiedPrompt),
