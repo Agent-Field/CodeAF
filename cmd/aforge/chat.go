@@ -136,7 +136,7 @@ type brainOptions struct {
 // already been built.
 func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, error) {
 	brain := &chatBrain{window: w, session: session, wall: opts.wall}
-	path, database, graph := w.path, w.database, w.graph
+	path, graph := w.path, w.graph
 	newClient := opts.newClient
 	if newClient == nil {
 		newClient = newLiveClient
@@ -360,7 +360,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	var craftShelf resident.CraftShelf
 	craftDir := ""
 	if !opts.ephemeral {
-		if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(database), "craft")); craftErr == nil {
+		if craftRepo, craftErr := craft.Open(filepath.Join(filepath.Dir(path), "craft")); craftErr == nil {
 			craftRunner = resident.NewCraftRunner(graph, craftRepo, craftRepo.Dir())
 			craftShelf, craftDir = craftRepo, craftRepo.Dir()
 		} else {
@@ -1880,7 +1880,6 @@ type chatBrain struct {
 	background sync.WaitGroup
 	cancel     context.CancelFunc
 	runCancel  context.CancelFunc
-	runDone    chan struct{}
 	stopOnce   sync.Once
 	// plans and ledger are what stop needs to settle a bill the heartbeats
 	// never will: a plan that was rejected has no job to land, and a process
@@ -1931,7 +1930,6 @@ func (b *chatBrain) start() {
 		runCtx, runCancel = walled, func() { releaseWall(); release() }
 	}
 	b.cancel, b.runCancel = cancel, runCancel
-	b.runDone = make(chan struct{})
 	graph, session := b.window.graph, b.session
 
 	// The leaves' shell compressor fetches itself here if it is missing, off
@@ -1948,10 +1946,8 @@ func (b *chatBrain) start() {
 			})
 		})
 	})
-	go func() {
-		defer guard.Recover("chat/runner")
+	guard.Go("chat/runner", func() {
 		defer b.background.Done()
-		defer close(b.runDone)
 		// A dispatch loop that gives up is the quietest failure this process
 		// has: the reconciler keeps ticking, the board keeps rendering, and
 		// nothing is ever claimed again. It now takes ten consecutive failed
@@ -1961,7 +1957,7 @@ func (b *chatBrain) start() {
 			!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			log.Printf("note: the work dispatcher stopped claiming: %v", err)
 		}
-	}()
+	})
 	b.background.Add(1)
 	guard.Go("chat/consent", func() { defer b.background.Done(); b.consent.Serve(ctx) })
 }

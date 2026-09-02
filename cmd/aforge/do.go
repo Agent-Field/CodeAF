@@ -354,7 +354,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	}
 
 	session := headlessSessionID()
-	window, err := openChatWindow(path, path, session)
+	window, err := openChatWindow(path, session)
 	if err != nil {
 		return headlessOutcome{}, err
 	}

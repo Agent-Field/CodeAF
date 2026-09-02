@@ -28,12 +28,19 @@ import (
 // meant to die or the switch arm was meant to stay.
 //
 // The reachability is deliberately GENEROUS — a name mentioned anywhere in a
-// reachable body counts as called, receivers are not resolved, and shadowing is
-// ignored. A generous walk can only ever call a dead road live, never a live
-// road dead, so the gate fires on nothing but a genuine orphan and needs no
-// exception ledger. Package-level variable initialisers are roots alongside
-// `main`, because a function handed to a table is dispatched just as truly as
-// one named in the switch.
+// reachable body counts as called, receivers are not resolved, shadowing is
+// ignored, and one name reaches EVERY declaration that bears it, methods on
+// unrelated types included. Every one of those choices errs the same way: a
+// generous walk can call a dead road live, and it can never call a live road
+// dead. That is the property a gate needs — it fires on nothing but a genuine
+// orphan, so it needs no exception ledger beside it. Package-level variable
+// initialisers are roots alongside `main`, because a function handed to a table
+// is dispatched just as truly as one named in the switch.
+//
+// The generosity has one edge worth naming: `var _ = runSomething` would count,
+// so a road could in principle be kept alive by a reference that dispatches
+// nothing. That is a line a reviewer reads in a diff, which is the same bargain
+// `SIZE-BUDGET` and `.github/known-red.txt` make.
 func TestEveryCommandEntryIsReachableFromMain(t *testing.T) {
 	files, decls := parsePackageMain(t)
 
@@ -64,10 +71,15 @@ func TestEveryCommandEntryIsReachableFromMain(t *testing.T) {
 }
 
 // parsePackageMain reads every non-test source file of cmd/aforge and returns
-// the parsed files beside an index of the top-level functions in them. Methods
-// are indexed by their own name without their receiver: the walk below never
-// needs to know which type a call landed on, only whether the name was spoken.
-func parsePackageMain(t *testing.T) ([]*ast.File, map[string]*ast.FuncDecl) {
+// the parsed files beside an index of the top-level functions in them.
+//
+// A name maps to EVERY declaration that bears it. Methods are indexed by their
+// own name without their receiver — the walk below never needs to know which
+// type a call landed on, only whether the name was spoken — and this package
+// has several names on several types (`start`, `check`, `prime`, `close`). One
+// entry per name would keep whichever the parse saw last and lose the bodies of
+// the rest, which would leave the things only those bodies reach looking dead.
+func parsePackageMain(t *testing.T) ([]*ast.File, map[string][]*ast.FuncDecl) {
 	t.Helper()
 	names, err := filepath.Glob("*.go")
 	if err != nil {
@@ -75,7 +87,7 @@ func parsePackageMain(t *testing.T) ([]*ast.File, map[string]*ast.FuncDecl) {
 	}
 	fset := token.NewFileSet()
 	var files []*ast.File
-	decls := map[string]*ast.FuncDecl{}
+	decls := map[string][]*ast.FuncDecl{}
 	for _, name := range names {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
@@ -94,7 +106,7 @@ func parsePackageMain(t *testing.T) ([]*ast.File, map[string]*ast.FuncDecl) {
 			if !ok || fn.Body == nil {
 				continue
 			}
-			decls[fn.Name.Name] = fn
+			decls[fn.Name.Name] = append(decls[fn.Name.Name], fn)
 		}
 	}
 	if len(files) == 0 {
@@ -105,7 +117,7 @@ func parsePackageMain(t *testing.T) ([]*ast.File, map[string]*ast.FuncDecl) {
 
 // reachableFromMain walks out from `main` and from every package-level variable
 // initialiser, marking each declared name spoken along the way.
-func reachableFromMain(files []*ast.File, decls map[string]*ast.FuncDecl) map[string]bool {
+func reachableFromMain(files []*ast.File, decls map[string][]*ast.FuncDecl) map[string]bool {
 	reached := map[string]bool{}
 	var queue []string
 
@@ -126,14 +138,18 @@ func reachableFromMain(files []*ast.File, decls map[string]*ast.FuncDecl) map[st
 			visit(gen)
 		}
 	}
-	if main, ok := decls["main"]; ok {
+	if mains, ok := decls["main"]; ok {
 		reached["main"] = true
-		visit(main.Body)
+		for _, main := range mains {
+			visit(main.Body)
+		}
 	}
 	for len(queue) > 0 {
 		name := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
-		visit(decls[name].Body)
+		for _, fn := range decls[name] {
+			visit(fn.Body)
+		}
 	}
 	return reached
 }

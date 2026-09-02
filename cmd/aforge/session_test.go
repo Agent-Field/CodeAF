@@ -117,7 +117,7 @@ func TestChatSessionStartsFreshOnlyWhenAsked(t *testing.T) {
 // is what a relaunch is.
 func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")
-	first, err := openChatWindow(path, path, "")
+	first, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
 	}
 	first.close()
 
-	second, err := openChatWindow(path, path, "")
+	second, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestALaunchReapsTheRoomsThatPiledUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	window, err := openChatWindow(path, path, "")
+	window, err := openChatWindow(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}

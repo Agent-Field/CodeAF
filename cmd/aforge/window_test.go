@@ -9,7 +9,7 @@ import (
 // test owns and closes behind itself.
 func testWindow(t *testing.T, root string) *chatWindow {
 	t.Helper()
-	window, err := openChatWindow(filepath.Join(root, "graph.db"), filepath.Join(root, "graph.db"), "new")
+	window, err := openChatWindow(filepath.Join(root, "graph.db"), "new")
 	if err != nil {
 		t.Fatal(err)
 	}
