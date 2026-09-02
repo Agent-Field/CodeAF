@@ -335,8 +335,14 @@ func rung(bit relaxSet) relaxStep {
 // line and does not inflate the attempt counter the person is reading.
 func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model string) []relaxStep {
 	var plan []relaxStep
-	if prefs := c.providerPreferences(model, knobs, request); prefs != nil &&
-		(prefs.RequireParameters != nil || len(prefs.Ignore) > 0 || prefs.MaxPrice != nil) {
+	// THE RUNG IS OFFERED FOR WHAT IS ACTUALLY ON THE WIRE, which is the
+	// preference object the encoder builds and not the one half of it: a rescue
+	// demands its lane through [hedgePreference] AFTER the ledger's own
+	// preferences are assembled, so a plan built from the ledger's half alone
+	// could not see the narrowest filter this process sends. A pinned request
+	// therefore had no first rung at all and climbed straight to "removed
+	// reasoning", still pinned to the machine that had refused it (issue #266).
+	if c.wirePreferences(model, knobs, request).narrowing() {
 		plan = append(plan, rung(relaxEndpointFilter))
 	}
 	if c.resolveEffort(model, knobs.effort) != EffortNone {

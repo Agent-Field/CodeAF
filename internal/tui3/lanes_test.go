@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // ── A LEDGER THIS TEST WROTE ────────────────────────────────────────────────
@@ -850,5 +851,72 @@ func TestALaneServingBadRepliesSaysSoOnItsRow(t *testing.T) {
 	unjudged.Quality = lane.Beta{}
 	if poorlyServing(unjudged, now) {
 		t.Fatal("a lane nobody has judged was drawn as a bad one")
+	}
+}
+
+// ── THE SCREEN SAYS WHAT THE WIRE SAID ──────────────────────────────────────
+
+// A REFUSAL IS NOT SLOWNESS, and for a whole measured run this line said it was:
+// a 404 meaning `your request's provider.only preference permits only:
+// coreweave` was drawn as `· slow · trying nextbit…`, which is a sentence about
+// a wait (issue #266). The word is carried on the news from the layer that read
+// the refusal and never decided here.
+func TestARefusedLaneIsDrawnRefusedAndNotSlow(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
+	})
+	if got := a.laneRider(); got != " · refused · trying coreweave…" {
+		t.Fatalf("a refusal in flight reads %q", got)
+	}
+
+	// AND A LANE THAT WAS MERELY LATE STILL READS SLOW. The two words are the
+	// two facts, and neither is a default for the other.
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueSlow,
+	})
+	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+		t.Fatalf("a slow lane reads %q", got)
+	}
+	// A rescue posted before anything classified it keeps the sentence it has
+	// always had.
+	PostLaneNews(LaneNews{Model: flash, Lane: "Cloudflare", Alt: "CoreWeave", Role: lane.RoleTalk, Trying: true})
+	if got := a.laneRider(); got != " · slow · trying coreweave…" {
+		t.Fatalf("an unclassified rescue reads %q", got)
+	}
+}
+
+// AND A PROMISE THAT HAS STOPPED BEING TRUE IS TAKEN BACK. `trying coreweave…`
+// is a claim about the present tense; nothing withdrew it when coreweave itself
+// was refused, so it sat on the status line until a ten-minute window aged it
+// out, describing a request that had already failed.
+func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Trying: true, Reason: provider.RescueRefused,
+	})
+	if got := a.laneRider(); !strings.Contains(got, "trying coreweave…") {
+		t.Fatalf("the claim was never made: %q", got)
+	}
+
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRefused,
+	})
+	got := a.laneRider()
+	if strings.Contains(got, "trying") {
+		t.Fatalf("a rescue that failed is still promised: %q", got)
+	}
+	if got != " · coreweave refused" {
+		t.Fatalf("the retraction reads %q, want the fact that is left", got)
 	}
 }

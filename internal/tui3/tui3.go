@@ -984,6 +984,8 @@ func Run(ctx context.Context, opts Options) error {
 			Rate:   news.Rate,
 			Hedged: news.Hedged,
 			Trying: news.Trying,
+			Reason: news.Reason,
+			Failed: news.Failed,
 			Role:   news.Role,
 			At:     news.At,
 		})
