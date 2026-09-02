@@ -354,7 +354,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (headle
 	}
 
 	session := headlessSessionID()
-	window, err := openChatWindow(path, path, session)
+	window, err := openChatWindow(path, session)
 	if err != nil {
 		return headlessOutcome{}, err
 	}
@@ -514,7 +514,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 		return nil, nil, nil, err
 	}
 	brain, err := buildBrain(window, session, brainOptions{
-		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
+		ephemeral: ephemeral, workspaceRoot: workspaceRoot,
 		sharedWorkspace: true,
 		model:           request.model, planModel: request.planModel,
 		seats:   &seats,

@@ -42,7 +42,7 @@ var mediaSlotsMovedToTheProfile = map[string]bool{
 
 // The other half of the completeness gate: a preference that persists beside
 // the graph has to be reachable from the settings sheet, or be exempted here in
-// writing. Adding a field to chatPrefs without registering the row that fronts
+// writing. Adding a field to command.Prefs without registering the row that fronts
 // it fails here.
 func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 	// The seams are supplied because the question is about THIS surface's
@@ -61,17 +61,17 @@ func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 			fronted[row.PrefsField] = row.Key
 		}
 	}
-	prefs := reflect.TypeOf(chatPrefs{})
+	prefs := reflect.TypeOf(command.Prefs{})
 	exempt := 0
 	for index := 0; index < prefs.NumField(); index++ {
 		field := prefs.Field(index)
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
 		if name == "" {
-			t.Fatalf("chatPrefs.%s has no json name to register against", field.Name)
+			t.Fatalf("command.Prefs.%s has no json name to register against", field.Name)
 		}
 		if reason := notASettingsRow[name]; reason != "" {
 			if _, fronted := fronted[name]; fronted {
-				t.Fatalf("chatPrefs.%s is both exempted (%s) and fronted by a row", field.Name, reason)
+				t.Fatalf("command.Prefs.%s is both exempted (%s) and fronted by a row", field.Name, reason)
 			}
 			exempt++
 			continue
@@ -81,17 +81,17 @@ func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 			// else now, so it carries no PrefsField. The gate that matters is
 			// still enforced: the slot has a settings row.
 			if _, ok := registry.Row(config.ModelSettingKey(strings.TrimSuffix(name, "_model"))); !ok {
-				t.Fatalf("chatPrefs.%s moved to the profile but has no settings row", field.Name)
+				t.Fatalf("command.Prefs.%s moved to the profile but has no settings row", field.Name)
 			}
 			exempt++
 			continue
 		}
 		if _, ok := fronted[name]; !ok {
-			t.Fatalf("chatPrefs.%s (%q) is not fronted by any settings row", field.Name, name)
+			t.Fatalf("command.Prefs.%s (%q) is not fronted by any settings row", field.Name, name)
 		}
 	}
 	if len(fronted)+exempt != prefs.NumField() {
-		t.Fatalf("settings front %d prefs fields and %d are exempt, chatPrefs has %d",
+		t.Fatalf("settings front %d prefs fields and %d are exempt, command.Prefs has %d",
 			len(fronted), exempt, prefs.NumField())
 	}
 }

@@ -372,38 +372,6 @@ func TestErrandWorkspaceDefaultsToTheCurrentDirectory(t *testing.T) {
 	}
 }
 
-// A chat window is the other half of the same seam and must not have moved.
-// One thread hosts many unrelated jobs, so each still gets its own directory
-// under the store's workspace; only an errand shares one.
-func TestChatKeepsItsPerJobWorkspaceLayout(t *testing.T) {
-	script := newScriptedBrain(t)
-	defer script.close()
-	root := t.TempDir()
-	window := testWindow(t, root)
-	brain, err := buildBrain(window, "s1", brainOptions{newClient: script.client})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(brain.closeAll)
-	if brain.workspaceRoot != homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace") {
-		t.Fatalf("chat workspace root = %q, want the store's own", brain.workspaceRoot)
-	}
-	// The commander resolves a node to its own job directory beneath that root,
-	// which is the layout the whole chat surface reads through.
-	if err := window.graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "job", Brief: "produce the artifact", Stage: 0},
-	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
-		t.Fatal(err)
-	}
-	jobDir := filepath.Join(brain.workspaceRoot, "job")
-	if err := os.MkdirAll(jobDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if got, ok := brain.commander.WorkspacePath("job"); !ok || got != jobDir {
-		t.Fatalf("chat job workspace = (%q, %v), want (%q, true)", got, ok, jobDir)
-	}
-}
-
 // stderr is the only window a person has into a headless run, and it was
 // shut. Every line it printed hung off a node changing status, a node's first
 // status is Pending, and Pending is skipped — so a run whose leaf was never
@@ -772,46 +740,6 @@ func TestAFailedErrandWithoutJSONStillJustReturnsTheError(t *testing.T) {
 	}
 	if strings.TrimSpace(stdout.String()) != "" {
 		t.Fatalf("stdout carried something on a run that failed: %q", stdout.String())
-	}
-}
-
-// The factoring itself: one construction, two shapes. A chat window still gets
-// every piece it ever had, and headless differs by exactly the conversational
-// half — no head, no commander, no stream, no arrival brief — over an
-// identically wired reconciler, runner and consent desk.
-func TestBuildBrainSeparatesTheConversationFromTheWork(t *testing.T) {
-	script := newScriptedBrain(t)
-	defer script.close()
-
-	for _, shape := range []struct {
-		name     string
-		headless bool
-	}{{"chat", false}, {"headless", true}} {
-		t.Run(shape.name, func(t *testing.T) {
-			window := testWindow(t, t.TempDir())
-			brain, err := buildBrain(window, "s1", brainOptions{
-				headless: shape.headless, ephemeral: shape.headless, newClient: script.client,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(brain.closeAll)
-			// The work half is the same object either way. This is the whole
-			// claim the headless mode rests on.
-			if brain.reconciler == nil || brain.runner == nil || brain.consent == nil {
-				t.Fatal("the working half is incomplete")
-			}
-			if shape.headless {
-				if brain.serveHead != nil || brain.commander != nil ||
-					brain.streamEvents != nil || brain.deliverBrief != nil {
-					t.Fatal("a headless brain carries a conversation it cannot have")
-				}
-				return
-			}
-			if brain.serveHead == nil || brain.commander == nil || brain.streamEvents == nil {
-				t.Fatal("a chat brain lost part of its conversation to the factoring")
-			}
-		})
 	}
 }
 

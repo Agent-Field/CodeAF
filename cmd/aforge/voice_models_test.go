@@ -37,7 +37,7 @@ func TestVoiceModelDiscoveryFiltersTranscriptionOutput(t *testing.T) {
 	})
 	commander := command.New(command.Options{
 		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
-		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Prefs:    command.Prefs{VoiceModel: config.DefaultVoiceModel},
 		Models:   models,
 	})
 	got := commander.CatalogFor("voice")
@@ -67,7 +67,7 @@ func TestVoiceModelCatalogUsesStaleCacheOfflineAndHasDefaultFallback(t *testing.
 	commander := command.New(command.Options{
 		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
 		PrefsDir: directory,
-		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Prefs:    command.Prefs{VoiceModel: config.DefaultVoiceModel},
 		Models:   models,
 	})
 	if got := commander.CatalogFor("voice"); len(got) != 1 || got[0].Slug != "cached/asr" {
@@ -82,7 +82,7 @@ func TestVoiceModelCatalogUsesStaleCacheOfflineAndHasDefaultFallback(t *testing.
 	emptyCommander := command.New(command.Options{
 		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
 		PrefsDir: t.TempDir(),
-		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Prefs:    command.Prefs{VoiceModel: config.DefaultVoiceModel},
 		Models:   emptyModels,
 	})
 	if got := emptyCommander.CatalogFor("voice"); len(got) != 1 || got[0].Slug != config.DefaultVoiceModel {
@@ -95,7 +95,7 @@ func TestVoiceModelChoicePersistsInChatConfig(t *testing.T) {
 	commander := command.New(command.Options{
 		Settings: config.Config{VoiceModel: config.DefaultVoiceModel},
 		PrefsDir: directory,
-		Prefs:    chatPrefs{VoiceModel: config.DefaultVoiceModel},
+		Prefs:    command.Prefs{VoiceModel: config.DefaultVoiceModel},
 	})
 	if err := commander.SetModel("voice", "acme/asr"); err != nil {
 		t.Fatal(err)

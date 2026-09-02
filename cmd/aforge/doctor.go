@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
-	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -241,33 +240,6 @@ func detailSuffix(detail string) string {
 		return ""
 	}
 	return " (" + clip(detail, 120) + ")"
-}
-
-// standingWatchCharterCap bounds what one grounding read names. A person with
-// more standing charters than this has a policy rather than a watch list, and
-// the count above the lines still says how many there are.
-const standingWatchCharterCap = 8
-
-// watchGrounding is the head's standing read: doctor's own calm status block,
-// plus what each active charter actually watches for.
-//
-// The block alone said "3 active charters" and stopped. Everything the question
-// is about — the invariant, the cadence — was one store read away and rendered
-// in full three surfaces over, so the head could report a number and nothing a
-// person would recognise as an answer. The lines are the /standing lines
-// verbatim, because two renderings of one thing eventually disagree.
-func watchGrounding(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64) string {
-	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
-	if err != nil {
-		return "standing watch status unavailable: " + err.Error()
-	}
-	grounding := strings.TrimSpace(formatDoctor(snapshot))
-	lines, err := command.CharterLines(graph, standingWatchCharterCap)
-	if err != nil || len(lines) == 0 {
-		return grounding
-	}
-	return grounding + "\n\nactive charters (id · cadence · what it watches for):\n" +
-		strings.Join(lines, "\n")
 }
 
 // residentLockFor is the lock guarding one store, asked of the package that
