@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // ── THE SHEET: A PRIOR NOBODY HAD TO PAY FOR ────────────────────────────────
@@ -850,9 +848,17 @@ func (s *sheet) cachePath(model string) string {
 // It is keyed on the ledger's name for the model, so that a sheet fetched under
 // the alias and a sheet fetched under the served id are one file rather than
 // two accounts of one endpoints page.
+//
+// The fallback resolves through [stateFile], so a test binary that was handed a
+// home rather than choosing one gets no cache at all rather than the sheet of
+// whoever started the run: a chooser built with a fake ledger used to be
+// answered out of a person's own cached lanes (#475). "" is already "there is
+// nothing there" to both readers of this path. See undertest.go.
 func cachePathIn(dir, model string) string {
 	if strings.TrimSpace(dir) == "" {
-		dir = home.Join("v3", "lanes")
+		if dir = stateFile("v3", "lanes"); dir == "" {
+			return ""
+		}
 	}
 	return filepath.Join(dir, url.PathEscape(LedgerModel(model))+".json")
 }
@@ -887,6 +893,12 @@ func readCache(path string) ([]Row, map[ID]string, time.Time, error) {
 // half-written is worse than no cache: the reader of it is a cold process
 // deciding where to send its first request.
 func writeCache(path, model string, rows []Row, tags map[ID]string, at time.Time) error {
+	// A sheet with nowhere to sleep is not a failed refresh: the rows are in
+	// memory and this process will use them. Only a test binary reaches this,
+	// and only for the cache it was never entitled to write (undertest.go).
+	if path == "" {
+		return nil
+	}
 	cached := cachedSheet{Model: model, At: at, Lanes: make([]cachedRow, 0, len(rows))}
 	for _, row := range rows {
 		cached.Lanes = append(cached.Lanes, cachedRow{Row: row, Tag: tags[row.ID]})

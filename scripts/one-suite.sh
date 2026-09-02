@@ -71,12 +71,42 @@ fi
 printf '%s\n' "$$" >"$lock/pid"
 date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 
+# AND THE SUITE RUNS ON A MACHINE THAT HAS NEVER DONE ANYTHING.
+#
+# A test binary inherits the AFORGE_HOME of whoever started it, so a full run on
+# a box that has ever routed a real request reads that person's state and
+# reports it as the tree's behaviour: `internal/lane`'s empty-ledger test went
+# red for good on this box the first time a run wrote a sheet into
+# `~/.aforge/v3/lanes` (#475), and the same shape had already cost the call log
+# 356 rows of invented traffic (#286). The packages carry their own gates now;
+# this is the belt outside them, and it costs a directory. It is exported for
+# the WHOLE run — the state root and the profile root, which is the second one a
+# child inherits without asking — and it is empty, so a suite that passes here
+# passes for the same reason it passes on a machine nobody has used.
+state="$(mktemp -d "${TMPDIR:-/tmp}/aforge-suite-home.XXXXXX")"
+mkdir -p "$state/state" "$state/profile"
+export AFORGE_HOME="$state/state" AFORGE_PROFILE_DIR="$state/profile"
+
+# AND NOTHING IN IT IS CACHED. `go test` answers a package it has already run
+# with the same inputs out of its cache, which turns a suite into a report about
+# an earlier tree: a red that was fixed still reads red, and a red that was
+# manufactured by load reads as a finding. The caller may say otherwise; only a
+# caller that said nothing gets the count.
+suite=("$@")
+if [ "${suite[0]:-}" = go ] && [ "${suite[1]:-}" = test ]; then
+	counted=
+	for arg in "${suite[@]}"; do
+		case "$arg" in -count | -count=* | --count | --count=*) counted=yes ;; esac
+	done
+	[ -n "$counted" ] || suite=(go test -count=1 "${suite[@]:2}")
+fi
+
 # THE SCRIPT STAYS ALIVE AS THE HOLDER. An exec would make the holder's command
 # line the suite's own, and the check above would read its lock as stale; so
 # the suite runs as a child, a stop reaches it, and the lock goes when it ends.
-"$@" &
+"${suite[@]}" &
 child=$!
-trap 'rm -rf "$lock"' EXIT
+trap 'rm -rf "$lock" "$state"' EXIT
 trap 'kill -INT "$child" 2>/dev/null || true' INT
 trap 'kill -TERM "$child" 2>/dev/null || true' TERM
 # AND THE WAIT OUTLIVES THE SIGNAL. A trapped signal returns from `wait` at
