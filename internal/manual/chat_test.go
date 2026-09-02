@@ -914,6 +914,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
+		// A crew older than the worker class: the run says `inherited` and the
+		// person asks about the word, or about the model they never picked.
+		{"why does my run say inherited", "models-and-cost"},
+		{"my crew was set before the work seat existed", "models-and-cost"},
 		// The onboarding wave: the five seats. /crew and /model became two dials
 		// a person can see as two — the confirm line names the model it left
 		// alone, bare /crew opens with seat one, and the status line carries
