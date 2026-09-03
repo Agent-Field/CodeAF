@@ -17,17 +17,16 @@ name: PR gate
 # `make test-laws` finds every one of them without anybody keeping a list.
 #
 # The whole suite is not here. The packages a change touched run in full in the
-# second job below — but only on pushes to `dev` (and manual dispatch), not on
-# pull requests; everything else runs on the way into `staging`, and nightly
-# against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
-# in that place and what has to be true before it moves.
+# second job below, on every pull request, and `check` — the one name a person
+# and a ruleset look at — is green only when both are; everything else runs on
+# the way into `staging`, and nightly against `dev` — see ci-full.yml.
+# docs/rules/ci.md says why the line is drawn in that place.
 on:
   pull_request:
     branches:
       - dev
   # Also on the push, because a merge of two individually-green branches can
-  # still be red, and the merge is exactly the moment nobody is watching. The
-  # `touched packages` job only runs here (and on dispatch) — see its `if:`.
+  # still be red, and the merge is exactly the moment nobody is watching.
   push:
     branches:
       - dev
@@ -46,11 +45,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The name of this job is the name of the required status check in
-  # .github/rulesets/dev.json. Renaming it silently un-protects the branch, so
-  # the two move together or not at all.
-  check:
-    name: check
+  # THE LIGHT HALF: the questions that answer in a few minutes. It is not the
+  # required name — `check`, at the bottom, is — so that the light answer can
+  # arrive early while the touched packages are still running beside it.
+  light:
+    name: light gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -181,28 +180,23 @@ jobs:
   # than one after the other.
   #
   # It reads the same ledger and the same timeout as `make test`, through
-  # `make test`, so a red here is a red on a clean laptop too. IT IS NEUTRAL
-  # TODAY: the test step may fail without the job failing, and a failure is
-  # written as a warning on the run and in its summary. That is because a red
-  # job on a merged pull request reads as a red dev to everyone who merges
-  # after it, and on the day this landed internal/tui3 carried three runner-
-  # only reds (#417, the TERM seam) that no change here caused. Once it has
-  # been green twice in a row, delete `continue-on-error` and the warning
-  # step, and it blocks like `check`.
+  # `make test`, so a red here is a red on a clean laptop too. AND IT BLOCKS.
+  # It was neutral for a day and then, for a day, off pull requests altogether
+  # (#499); in that day #523 merged red on cmd/aforge with `check` green, the
+  # way #437, #439 and #483 had before the job existed. A red that reaches
+  # nobody before the merge is the whole story of this file, so the owner's
+  # ruling is that this runs on every pull request and `check` needs it.
   # THE JOB'S OWN CEILING SITS ABOVE THE GO ONE. `make test` gives each
   # package fifteen minutes so a hang panics with the package's name; a job
   # killed by GitHub first names nothing. A wide change can touch the three
   # heaviest packages at once, so this is three of those with room.
   #
-  # THIS JOB DOES NOT RUN ON PULL REQUESTS. It never blocked a merge
-  # (`continue-on-error`, and only `check` is required), but it still burned
-  # up to ~15 minutes per PR — most agent changes touch internal/tui3 — and
-  # the nightly ledger shows its per-PR red signal is not being acted on, so
-  # it was cost without consequence. It still runs on every push to `dev`
-  # (and on manual dispatch), which is where its result is actually read.
+  #
+  # A change with no Go file and no module file in it — docs, a bench record,
+  # a manual page — runs nothing here and is green in a minute. A change to
+  # go.mod or go.sum touches every package and runs the whole tree.
   touched:
     name: touched packages
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -214,8 +208,6 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test the packages this change touched
-        id: touched
-        continue-on-error: true
         env:
           # A pull request diffs against its base; a push against what the
           # branch was before it. A first push has no before, and diffs one
@@ -226,27 +218,61 @@ jobs:
           set -euo pipefail
           mkdir -p "$TMPDIR"
           case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
-          dirs="$(git diff --name-only "$BASE" HEAD -- '*.go' | xargs -r -n1 dirname | sort -u)"
-          pkgs=""
-          for dir in $dirs; do
-            # A directory the change emptied has no package left to test.
-            if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
-          done
+          changed="$(git diff --name-only "$BASE" HEAD -- '*.go' go.mod go.sum)"
+          if printf '%s\n' "$changed" | grep -qxE 'go\.(mod|sum)'; then
+            # A module change reaches every package; the tree is the touched set.
+            pkgs="./..."
+          else
+            dirs="$(printf '%s\n' "$changed" | grep '\.go$' | xargs -r -n1 dirname | sort -u)"
+            pkgs=""
+            for dir in $dirs; do
+              # A directory the change emptied has no package left to test.
+              if ls "$dir"/*.go >/dev/null 2>&1; then pkgs="$pkgs ./$dir"; fi
+            done
+          fi
           if [ -z "$pkgs" ]; then
-            echo 'No Go file changed; nothing to run.'
+            echo 'No Go file and no module file changed; nothing to run.'
             exit 0
           fi
           echo "touched:$pkgs"
           # -p 1 for the reason ci-full.yml gives: this runner has been shut
           # down under the link load of the heavy binaries twice, and a change
           # touching tui3, session and cmd/aforge links all three at once.
-          make test TEST_FLAGS='-p 1' PKGS="$pkgs"
+          # -count=1 so a cached pass never stands in for a run.
+          make test TEST_FLAGS='-count=1 -p 1' PKGS="$pkgs"
 
-      # THE RED IS SAID, NOT SWALLOWED. Neutral does not mean silent: a warning
-      # on the run and a line in its summary name the job and the log.
-      - name: Say so when it was red
-        if: steps.touched.outcome == 'failure'
+  # ONE NAME FOR THE TWO. The name of this job is the name of the required
+  # status check in .github/rulesets/dev.json and the name every landing script
+  # and every person reads. Renaming it silently un-protects the branch, so the
+  # two move together or not at all. It is green only when the light gate and
+  # the touched packages both are — the same shape `full tests` and `cross
+  # build` use in ci-full.yml for a matrix a rule cannot spell.
+  check:
+    name: check
+    needs: [light, touched]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Both halves passed
         run: |
-          echo "::warning title=touched packages red::a package this change touched fails its suite on the runner; read the job log. The job is neutral until it has been green twice in a row (ci.yml)."
-          echo '### touched packages: red' >> "$GITHUB_STEP_SUMMARY"
-          echo 'A package this change touched fails its suite on the runner. The job is neutral until it has been green twice in a row; read the log above.' >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          echo "light gate: ${{ needs.light.result }}; touched packages: ${{ needs.touched.result }}"
+          [ "${{ needs.light.result }}" = "success" ] && [ "${{ needs.touched.result }}" = "success" ]
+
+  # ONE NAME FOR THE TWO. The name of this job is the name of the required
+  # status check in .github/rulesets/dev.json and the name every landing script
+  # and every person reads. Renaming it silently un-protects the branch, so the
+  # two move together or not at all. It is green only when the light gate and
+  # the touched packages both are — the same shape `full tests` and `cross
+  # build` use in ci-full.yml for a matrix a rule cannot spell.
+  check:
+    name: check
+    needs: [light, touched]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Both halves passed
+        run: |
+          set -euo pipefail
+          echo "light gate: ${{ needs.light.result }}; touched packages: ${{ needs.touched.result }}"
+          [ "${{ needs.light.result }}" = "success" ] && [ "${{ needs.touched.result }}" = "success" ]
