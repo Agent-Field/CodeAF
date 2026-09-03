@@ -45,11 +45,12 @@ func TestTheAnswersFirstLineIsNeverACaption(t *testing.T) {
 	}
 }
 
-func TestASingleCallGetsNoCaption(t *testing.T) {
+func TestASingleCallStillGetsACaption(t *testing.T) {
 	es := captionFixture()
 	es = append(es[:3], es[4:]...)
-	if got := captionsOf(es, 0); len(got) != 0 {
-		t.Fatalf("single call got captions: %#v", got)
+	got := captionsOf(es, 0)
+	if len(got) != 1 || got[0].text == "" {
+		t.Fatalf("single call lost its caption: %#v", got)
 	}
 }
 
@@ -123,6 +124,56 @@ func TestTheChipOpensToTheOutlineAndNotTheMachinery(t *testing.T) {
 	}
 	if strings.Contains(page, "read") || strings.Contains(page, "bash") {
 		t.Fatalf("outline exposed machinery:\n%s", page)
+	}
+}
+
+func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
+	base := time.Unix(100, 0)
+	es := []entry{
+		{kind: entryUser, text: "go", turn: 1},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK,
+			detail: toolDetail{Args: `{"path":"a.go"}`}, began: base, ended: base.Add(time.Second)},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK,
+			detail: toolDetail{Args: `{"path":"b.go"}`}, began: base, ended: base.Add(2 * time.Second)},
+		// Second step begins after the first batch finished — sequential, not parallel.
+		{kind: entryTool, tool: "edit", turn: 1, status: toolRunning,
+			detail: toolDetail{Args: `{"path":"c.go"}`}, began: base.Add(3 * time.Second)},
+	}
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = es
+	a.turn = 1
+	a.state = stateWorking
+	page := strings.Join(plainRows(a), "\n")
+	if !strings.Contains(page, "reading 2 files") {
+		t.Fatalf("past caption missing:\n%s", page)
+	}
+	if !strings.Contains(page, "editing") {
+		t.Fatalf("frontier caption missing:\n%s", page)
+	}
+	if !strings.Contains(page, "c.go") {
+		t.Fatalf("frontier tools not open:\n%s", page)
+	}
+	for _, line := range strings.Split(page, "\n") {
+		if (strings.Contains(line, "a.go") || strings.Contains(line, "b.go")) &&
+			(strings.Contains(line, "read") || strings.Contains(line, "▶")) {
+			t.Fatalf("past tools still open:\n%s", page)
+		}
+	}
+}
+
+func TestOpeningACaptionUnderTheChipShowsItsCalls(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries, a.workMode = foldFixture(), config.WorkFold
+	a.toggleLatestWorkfold()
+	stampHierarchy(a.entries, deriveWorkfolds(a.entries, 0))
+	caps := deriveCaptions(a.entries, 0)
+	if len(caps) == 0 {
+		t.Fatal("no captions to open")
+	}
+	a.toggleCap(caps[0].start)
+	page := strings.Join(plainRows(a), "\n")
+	if !strings.Contains(page, "read") && !strings.Contains(page, "bash") {
+		t.Fatalf("opened caption hid its calls:\n%s", page)
 	}
 }
 

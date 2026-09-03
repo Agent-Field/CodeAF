@@ -377,31 +377,31 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
-			// THE FIRST EXPANSION IS THE OUTLINE. A chip no longer falls through
-			// into every call it hid; each caption is one further door onto only
-			// the calls of that step.
+			// OPEN IS THE OUTLINE: every finished step as a caption line. A click
+			// (or enter) on a caption opens only that step's calls — so the page
+			// stays a stack of what happened, not a dump of every tool again.
 			drewCaption := false
 			for _, c := range d.captions {
-				if c.start < f.start || c.start >= f.answer {
+				toolsFrom, toolsTo := captionTools(c, es)
+				if toolsFrom < f.start || toolsFrom >= f.answer {
 					continue
 				}
 				drewCaption = true
-				capOpen := d.capOpen[c.start]
+				capOpen := a.captionCallsOpen(d, c)
 				out = append(out, a.captionRow(c, false, capOpen, width))
 				if capOpen {
-					from, to := captionTools(c, es)
-					for at := from; at < to; at++ {
-						out = append(out, a.toolRows(d, at, at == to-1, width)...)
+					for at := toolsFrom; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
 					}
 				}
 			}
 			if drewCaption {
 				i = f.answer - 1
-				wasCluster, wasBlock, wasUser = true, false, false
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 				continue
 			}
-			// A fold with no captions predates this outline and keeps its old
-			// expansion. Hiding it behind an empty outline would drop history.
+			// A fold with no captions keeps the old expansion so history is never
+			// behind an empty outline.
 			wasUser = false
 		}
 		if e.turn != walk.turn {
@@ -424,21 +424,23 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				gap()
 			}
 			if c, ok := captionAt(d.captions, i); ok {
-				// PAST STEPS ON A RUNNING TURN COLLAPSE TO THE SENTENCE. The live
-				// frontier, a settled turn, and anything the reader opened keep
-				// their calls; the window still trims them the way clusterRows did.
-				past := e.turn == d.runningTurn && !captionFrontier(c, d.captions, es, e.turn)
-				open := d.capOpen[c.start] || d.unfolded[e.turn] || !past
+				open := a.captionCallsOpen(d, c)
 				out = append(out, a.captionRow(c, c.ended.IsZero(), open, width))
+				toolsFrom, toolsTo := captionTools(c, es)
 				if open {
-					start := i
-					if window := a.foldWindow(d); end-start > window && !d.unfolded[e.turn] {
-						start = end - window
+					start := toolsFrom
+					if window := a.foldWindow(d); toolsTo-start > window && !d.unfolded[e.turn] {
+						start = toolsTo - window
 					}
-					for at := start; at < end; at++ {
-						out = append(out, a.toolRows(d, at, at == end-1, width)...)
+					for at := start; at < toolsTo; at++ {
+						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
 					}
 				}
+				// Advance only past THIS step. Using the whole consecutive tool
+				// run would let a shut past caption swallow the live frontier.
+				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				i = toolsTo - 1
+				continue
 			} else {
 				out = a.clusterRows(d, out, i, end, width)
 			}

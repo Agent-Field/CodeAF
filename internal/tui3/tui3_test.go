@@ -992,7 +992,8 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	}
 }
 
-// Past three calls the older ones fold into one line, and ctrl+o opens them.
+// Past three calls the older ones fold into one line under their caption, and
+// ctrl+o opens them.
 func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	var events []session.Event
 	for _, name := range []string{"a.go", "b.go", "c.go", "d.go", "e.go"} {
@@ -1002,6 +1003,17 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{events}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "read them all")
+
+	// One parallel step: the five reads share a caption. Sequential clocks from
+	// the harness would otherwise mint five captions of one call each.
+	base := time.Unix(100, 0)
+	for i := range a.entries {
+		if a.entries[i].kind != entryTool {
+			continue
+		}
+		a.entries[i].began = base
+		a.entries[i].ended = base.Add(time.Second)
+	}
 
 	list := plainRows(a)
 	page := strings.Join(list, "\n")

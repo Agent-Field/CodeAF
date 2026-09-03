@@ -14,8 +14,9 @@ func foldFixture() []entry {
 		{kind: entryUser, text: "do it", turn: 1, began: base},
 		{kind: entryThinking, text: "checking", turn: 1, began: base, ended: base.Add(6 * time.Second), settled: true},
 		{kind: entryAssistant, text: "I will inspect it.", turn: 1, settled: true},
+		// Overlapping clocks — one parallel step under one caption.
 		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(8 * time.Second)},
-		{kind: entryTool, tool: "bash", turn: 1, status: toolOK, began: base.Add(8 * time.Second), ended: base.Add(10 * time.Second)},
+		{kind: entryTool, tool: "bash", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(10 * time.Second)},
 		{kind: entryAssistant, text: "Done.", turn: 1, settled: true},
 	}
 }

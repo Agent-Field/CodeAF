@@ -46,18 +46,19 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 		}
 		to := from + 1
 		for to < len(es) && es[to].kind == entryTool && es[to].turn == es[from].turn {
+			prev, next := es[to-1], es[to]
+			// PARALLEL CALLS SHARE A CAPTION; SEQUENTIAL ONES DO NOT. A call that
+			// began at or after its predecessor finished is the next step of the
+			// outline (caption 1, then caption 2), even when no prose sits between.
+			if !prev.ended.IsZero() && !next.began.IsZero() && !next.began.Before(prev.ended) {
+				break
+			}
 			to++
 		}
 
-		live := false
-		for i := from; i < to; i++ {
-			live = live || es[i].status.live()
-		}
-		if to-from < 2 && !live {
-			from = to
-			continue
-		}
-
+		// EVERY BATCH GETS A HEADING. Skipping finished singleton calls left the
+		// common turn — one read, then one edit — looking exactly like it did
+		// before captions existed, and the chip then had no outline to open onto.
 		head := -1
 		for i := from - 1; i >= 0 && es[i].turn == es[from].turn; i-- {
 			if es[i].kind == entryTool || groupBreaks(&es[i]) {
@@ -80,8 +81,10 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 			c.source = captionMade
 			c.text = composeCaption(es, from, to)
 		}
+		live := false
 		for i := from; i < to; i++ {
 			e := es[i]
+			live = live || e.status.live()
 			if c.began.IsZero() || (!e.began.IsZero() && e.began.Before(c.began)) {
 				c.began = e.began
 			}
