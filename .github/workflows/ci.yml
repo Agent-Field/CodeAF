@@ -17,7 +17,8 @@ name: PR gate
 # `make test-laws` finds every one of them without anybody keeping a list.
 #
 # The whole suite is not here. The packages a change touched run in full in the
-# second job below; everything else runs on the way into `staging`, and nightly
+# second job below — but only on pushes to `dev` (and manual dispatch), not on
+# pull requests; everything else runs on the way into `staging`, and nightly
 # against `dev` — see ci-full.yml. docs/rules/ci.md says why the line is drawn
 # in that place and what has to be true before it moves.
 on:
@@ -25,7 +26,8 @@ on:
     branches:
       - dev
   # Also on the push, because a merge of two individually-green branches can
-  # still be red, and the merge is exactly the moment nobody is watching.
+  # still be red, and the merge is exactly the moment nobody is watching. The
+  # `touched packages` job only runs here (and on dispatch) — see its `if:`.
   push:
     branches:
       - dev
@@ -191,8 +193,16 @@ jobs:
   # package fifteen minutes so a hang panics with the package's name; a job
   # killed by GitHub first names nothing. A wide change can touch the three
   # heaviest packages at once, so this is three of those with room.
+  #
+  # THIS JOB DOES NOT RUN ON PULL REQUESTS. It never blocked a merge
+  # (`continue-on-error`, and only `check` is required), but it still burned
+  # up to ~15 minutes per PR — most agent changes touch internal/tui3 — and
+  # the nightly ledger shows its per-PR red signal is not being acted on, so
+  # it was cost without consequence. It still runs on every push to `dev`
+  # (and on manual dispatch), which is where its result is actually read.
   touched:
     name: touched packages
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
