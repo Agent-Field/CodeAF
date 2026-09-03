@@ -788,6 +788,39 @@ func TestAFileWrittenBackToWhatItWasIsNotMade(t *testing.T) {
 	if !agent.remainsFor("fixed", readerLine{}).Made {
 		t.Fatal("a file the session created was not counted as work it made")
 	}
+
+	// AND A WRITE THROUGH A LINK INSIDE THE TREE IS A WRITE TO WHAT IT POINTS AT.
+	// The ledger's digest is taken through the link (os.Stat and os.Open follow
+	// one), so the reading has to resolve the path too — an Lstat here answered
+	// "not a regular file" and never counted the work at all.
+	linked := t.TempDir()
+	target := filepath.Join(linked, "real.py")
+	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the link's target: %v", err)
+	}
+	link := filepath.Join(linked, "linked.py")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("this filesystem has no symlinks: %v", err)
+	}
+	through, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = linked
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	linkBefore := fileDigest(link)
+	if err := os.WriteFile(link, []byte("def real(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing through the link: %v", err)
+	}
+	through.rememberChange(fileChange{path: link, shown: "linked.py", created: false, before: linkBefore})
+	if !through.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a write through a link inside the tree was not counted as work the session made")
+	}
+	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
+		t.Fatalf("putting the link's target back: %v", err)
+	}
+	if through.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a link whose target was written back counted as work the session made")
+	}
 }
 
 // A STASH HOLDS WORK THAT IS NOT IN THE TREE, AND THE READING SAYS SO — BUT
@@ -936,6 +969,84 @@ func TestTheGroundLaddersOwnStashIsNotWorkLeftLyingAbout(t *testing.T) {
 	if got := agent.stashedWork(); got != 1 {
 		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
 	}
+
+	// AND A SUBJECT THAT MERELY MENTIONS THE SENTENCE IS STILL COUNTED. Somebody
+	// writing about what aforge did is describing their own work, and swallowing
+	// it would be this reading going quiet about the entry it exists to name.
+	if out, err := git(tree, "stash", "pop"); err != nil {
+		t.Fatalf("git stash pop: %v (%s)", err, out)
+	}
+	if out, err := git(tree, "stash", "push", "-m",
+		"before I ask "+groundStashMessage("the parser")); err != nil {
+		t.Fatalf("the person's own git stash push: %v (%s)", err, out)
+	}
+	if got := agent.stashedWork(); got != 1 {
+		t.Fatalf("a person's stash that quotes the ladder's sentence counted as %d, want 1", got)
+	}
+	for _, subject := range []string{
+		"On main: " + groundStashMessage("task/fix-a-1"),
+		"On (no branch): " + groundStashMessage("task/fix-a-1"),
+	} {
+		if !isGroundStash(subject) {
+			t.Fatalf("the ladder's own entry was not recognised: %q", subject)
+		}
+	}
+	for _, subject := range []string{
+		"WIP on main: 6f67812 " + groundStashMessage("task/fix-a-1"),
+		"On main: before I ask " + groundStashMessage("the parser"),
+		"On main: fixing the parser",
+	} {
+		if isGroundStash(subject) {
+			t.Fatalf("a person's own entry was taken for the ladder's: %q", subject)
+		}
+	}
+}
+
+// A STASH READING THAT COULD NOT BE TAKEN IS NOT AN EMPTY STASH.
+//
+// The two answer the same empty list and mean opposite things. Collapsed into
+// one value, a before-reading over a directory that was not a repository yet, or
+// on a machine with no git, marked the baseline as taken — and every entry the
+// run found afterwards counted as its own doing.
+func TestAStashReadingThatCouldNotBeTakenIsNotAnEmptyStash(t *testing.T) {
+	tree := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the suite passes")
+
+	// The before-reading is taken over a directory that is not a repository, so
+	// there was nothing to read and the flag stays down.
+	agent.openBaseline(context.Background())
+	agent.mu.Lock()
+	read := agent.stashBeforeRead
+	agent.mu.Unlock()
+	if read {
+		t.Fatal("a reading that could not be taken was recorded as having happened")
+	}
+
+	// And now the tree becomes a repository with a stash in it. Nobody knows
+	// whether this run put it there, so nobody says it did.
+	revertRepo(t, tree)
+	project := filepath.Join(tree, "_make.py")
+	if err := os.WriteFile(project, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatalf("writing the project's file: %v", err)
+	}
+	revertCommit(t, tree, "the project as it was")
+	if err := os.WriteFile(project, []byte("def make(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("editing the project's file: %v", err)
+	}
+	if out, err := git(tree, "stash"); err != nil {
+		t.Fatalf("git stash: %v (%s)", err, out)
+	}
+	if got, read := stashList(tree); !read || len(got) != 1 {
+		t.Fatalf("the tree now holds read=%v with %d entries, want one that reads", read, len(got))
+	}
+	if got := agent.stashedWork(); got != 0 {
+		t.Fatalf("a run with no before-reading counted %d stash entries as its own", got)
+	}
 }
 
 // AND A WORKSPACE THAT IS NOT A REPOSITORY SAYS NOTHING ABOUT STASHES. There is
@@ -951,11 +1062,11 @@ func TestANonRepositoryWorkspaceSaysNothingAboutStashes(t *testing.T) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 	})
-	if got := stashList(tree); len(got) != 0 {
-		t.Fatalf("a directory that is no repository listed %d stash entries", len(got))
+	if got, read := stashList(tree); read || len(got) != 0 {
+		t.Fatalf("a directory that is no repository answered read=%v with %d entries", read, len(got))
 	}
-	if got := stashList(""); len(got) != 0 {
-		t.Fatalf("a session with no deliverable tree listed %d stash entries", len(got))
+	if got, read := stashList(""); read || len(got) != 0 {
+		t.Fatalf("a session with no deliverable tree answered read=%v with %d entries", read, len(got))
 	}
 	agent.openBaseline(context.Background())
 

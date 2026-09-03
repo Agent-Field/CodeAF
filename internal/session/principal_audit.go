@@ -382,11 +382,19 @@ func (a *Agent) changedInDeliverable() bool {
 		if !underTree(tree, change.path) {
 			continue
 		}
-		info, err := os.Lstat(change.path)
+		// AND THE PATH IS RESOLVED BEFORE IT IS READ, because the ledger's own
+		// digest was taken through any link there is: os.Stat and os.Open follow
+		// one, so a write through an in-tree symlink to an in-tree regular file
+		// has a perfectly good before-digest, and an Lstat here rejected it as
+		// "not a regular file" and never counted it. CONTAINMENT IS STILL
+		// UNAFFECTED: [underTree] canonicalises both sides, so a link under the
+		// workspace pointing OUT of it was already excluded above.
+		resolved := canonicalPath(change.path)
+		info, err := os.Stat(resolved)
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		if fileDigest(change.path) == change.before {
+		if fileDigest(resolved) == change.before {
 			continue
 		}
 		return true
@@ -403,25 +411,33 @@ type stashEntry struct {
 	subject string
 }
 
-// stashList is the deliverable tree's stash, whole.
+// stashList is the deliverable tree's stash, whole, and WHETHER IT WAS READ AT
+// ALL.
 //
-// NOT A REPOSITORY, OR NO GIT AT ALL, IS AN EMPTY LIST AND SAYS NOTHING. `git
-// stash list` outside a working tree is an error and so is a git that is not
-// installed, and neither is evidence about anybody's work: the honest answer is
-// silence, not a sentence about a stash nobody has.
+// THE SECOND ANSWER IS NOT A FORMALITY. A reading that failed and a repository
+// with no stash in it are the same empty list, and they mean opposite things: an
+// empty list from a tree that answered is knowledge, and an empty list from a
+// git that is not installed, a directory that is not a repository yet, or a call
+// that fell over is the absence of it. Collapsed into one value, a failed
+// BEFORE-reading marked the baseline as taken and every entry the run later
+// found counted as its own ([Agent.readStashBefore]).
+//
+// NOT A REPOSITORY, OR NO GIT AT ALL, IS THEREFORE `nil, false` AND SAYS
+// NOTHING: neither is evidence about anybody's work, and the honest answer is
+// silence rather than a sentence about a stash nobody has.
 //
 // THE FORMAT IS ASKED FOR RATHER THAN PARSED OUT OF THE DEFAULT LINE, which
 // spells the message after a colon inside a subject that already holds one
 // (`stash@{0}: On main: fixing it`). A tab cannot appear in a sha and does not
 // survive into a stash subject, so it is the one separator that cannot be
 // mistaken for content.
-func stashList(tree string) []stashEntry {
+func stashList(tree string) ([]stashEntry, bool) {
 	if strings.TrimSpace(tree) == "" {
-		return nil
+		return nil, false
 	}
 	out, err := git(tree, "stash", "list", "--format=%H%x09%s")
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var entries []stashEntry
 	for _, line := range strings.Split(out, "\n") {
@@ -431,7 +447,7 @@ func stashList(tree string) []stashEntry {
 		sha, subject, _ := strings.Cut(line, "\t")
 		entries = append(entries, stashEntry{sha: strings.TrimSpace(sha), subject: subject})
 	}
-	return entries
+	return entries, true
 }
 
 // readStashBefore photographs the stash the tree ALREADY HELD, at the same
@@ -445,8 +461,15 @@ func stashList(tree string) []stashEntry {
 // own first `git stash`, which is the one entry it exists to be able to
 // subtract.
 func (a *Agent) readStashBefore() {
-	held := make(map[string]bool, 2)
-	for _, entry := range stashList(a.deliverableTree()) {
+	entries, read := stashList(a.deliverableTree())
+	if !read {
+		// A READING THAT DID NOT HAPPEN IS NOT AN EMPTY STASH. Leaving the flag
+		// down is what makes the terminal reading say nothing at all, rather
+		// than treat everything it finds later as this run's own doing.
+		return
+	}
+	held := make(map[string]bool, len(entries))
+	for _, entry := range entries {
 		held[entry.sha] = true
 	}
 	a.mu.Lock()
@@ -491,8 +514,12 @@ func (a *Agent) stashedWork() int {
 	if !read {
 		return 0
 	}
+	found, read := stashList(a.deliverableTree())
+	if !read {
+		return 0
+	}
 	entries := 0
-	for _, entry := range stashList(a.deliverableTree()) {
+	for _, entry := range found {
 		if before[entry.sha] || isGroundStash(entry.subject) {
 			continue
 		}
@@ -501,12 +528,30 @@ func (a *Agent) stashedWork() int {
 	return entries
 }
 
-// isGroundStash says an entry is one the ground ladder pushed for a landing, by
-// the message it was pushed with. The branch name is the TAIL of that message
-// and is not known here, so what is matched is the head of it — the one part
-// [groundStashMessage] spells the same way every time.
+// isGroundStash says an entry is one the ground ladder pushed for a landing.
+//
+// IT IS THE SHAPE OF THE SUBJECT AND NOT THE WORDS ANYWHERE IN IT. A person
+// whose own stash message happens to quote the sentence — "before I ask aforge:
+// your own work, set aside to land the parser" — is describing their own work,
+// and swallowing it would be this reading going quiet about exactly the entry it
+// exists to name. So the match is anchored:
+//
+//   - `git stash push -m <message>` writes the subject `On <branch>: <message>`,
+//     and `On (no branch): <message>` on a detached head. Measured against git
+//     rather than assumed. A ref name cannot contain a colon, so the first `: `
+//     ends the lead-in.
+//   - What follows it has to BEGIN with [groundStashMessage]'s invariant head —
+//     the constant reused, never copied, so a respelling cannot make this
+//     quietly stop matching. The branch name is that message's tail and is not
+//     known here.
+//   - A plain `git stash` writes `WIP on <branch>: <sha> <subject>`, which does
+//     not open with `On ` and is therefore never stripped and never matched.
 func isGroundStash(subject string) bool {
-	return strings.Contains(subject, groundStashMessage(""))
+	subject = strings.TrimSpace(subject)
+	if lead, rest, found := strings.Cut(subject, ": "); found && strings.HasPrefix(lead, "On ") {
+		subject = rest
+	}
+	return strings.HasPrefix(subject, groundStashMessage(""))
 }
 
 // reconciliation is what the sweep found: what belongs to the answer, and what

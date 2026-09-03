@@ -121,6 +121,60 @@ func TestTheLedgerTellsCreatedFromModified(t *testing.T) {
 	}
 }
 
+// TWO WRITES TO ONE PATH KEEP THE DIGEST FROM BEFORE THE FIRST OF THEM.
+//
+// A batch's calls run in parallel, so two writes to one path are two pre-actions
+// racing. The measurement is taken inside [fileLedger.note], under the ledger's
+// own lock and only on the first sighting, so the second call cannot record what
+// the first one left behind however the two interleave — and the "before" the
+// terminal reading compares against is the content the TURN opened on rather
+// than the content the previous call wrote.
+func TestTwoWritesToOnePathKeepTheDigestFromBeforeTheFirst(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
+	path := filepath.Join(workspace, "_make.py")
+	if err := os.WriteFile(path, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opened := fileDigest(path)
+	episode := agent.newEpisode()
+
+	// The interleaving that has to hold: the first call is sighted and writes,
+	// and only THEN is the second call sighted — so its own stat would see the
+	// first call's output.
+	touchThrough(t, episode, workspace, revertWriteCall("c1", "_make.py"), "def make(): return 1\n")
+	touchThrough(t, episode, workspace, revertWriteCall("c2", "_make.py"), "def make(): return 2\n")
+
+	changes := episode.changes.list()
+	if len(changes) != 1 {
+		t.Fatalf("the ledger holds %d changes for one path, want 1 (%+v)", len(changes), changes)
+	}
+	if changes[0].before != opened {
+		t.Fatalf("the before-digest is %q, want the content the turn opened on (%q)", changes[0].before, opened)
+	}
+	if changes[0].created {
+		t.Fatalf("a file the project already had was recorded as created: %+v", changes[0])
+	}
+	// AND THE SECOND SIGHTING CHANGES NOTHING, whichever order it arrives in: a
+	// note taken after both writes still finds the path known and returns.
+	episode.changes.note(path)
+	if again := episode.changes.list(); again[0].before != opened {
+		t.Fatalf("a later sighting overwrote the before-digest: %q", again[0].before)
+	}
+
+	// AND THE WORK IS STILL IN THE TREE, so the session made something; put the
+	// file back and it has not.
+	agent.rememberChange(changes[0])
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("two edits that left the file different were not counted as work the session made")
+	}
+	if err := os.WriteFile(path, []byte("def make(): ...\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a file written back to what the turn opened on counted as work the session made")
+	}
+}
+
 // A mutation that FAILED changed nothing, so the ledger holds nothing — a
 // revert that restored a file no call ever wrote would be the recovery move
 // causing the damage.
@@ -242,12 +296,14 @@ func TestRevertLeavesAnUntrackedModifiedFileAlone(t *testing.T) {
 func TestRevertNeverTouchesAnythingOutsideTheWorkspace(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
 	outside := filepath.Join(t.TempDir(), "elsewhere.md")
+
+	// The two hooks in the order a turn runs them, with the write in between:
+	// the pre-action sighting is what makes this a file the turn CREATED.
+	episode := agent.newEpisode()
+	episode.changes.note(outside)
 	if err := os.WriteFile(outside, []byte("not ours\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	episode := agent.newEpisode()
-	episode.changes.note(outside, false, "") // as if this turn created it
 	episode.changes.touched(outside, outside)
 
 	outcome := agent.revert(episode.offerFor())
