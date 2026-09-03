@@ -424,7 +424,11 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	// where a `y` would go is a question nobody can answer. So the candidate set
 	// is computed exactly as it is for any other call and sent to nobody: it is
 	// what [control.Plan] points an offer at, and the wire still asks for `Only`.
-	pin := CurrentLanePin()
+	// THE ROW AND WHAT THE WIRE SAID ABOUT IT ARE READ TOGETHER, in one lock
+	// (lanepin.go's [lanePinFor]). Asked as two questions, a pin that moved
+	// between them sent one request demanding the machine the person had just
+	// stopped asking for.
+	pin, retired := lanePinFor(model)
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
 	}
@@ -436,7 +440,19 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	ask := c.laneRequest(model, knobs, request, lambda)
 	c.rememberAsk(ask)
 	choice := lanes.Default().Chooser().Choose(ask)
-	if named := pin.pinned(); named != "" && !pin.Borrow {
+	named := pin.pinned()
+	// AND A PIN THE WIRE HAS ALREADY REFUSED FOR THIS MODEL READS AS `auto`
+	// FROM HERE ON (lanepin.go's retirement block, issue #456). The row on disk
+	// is untouched and still applies to every other model; what is dropped is
+	// the DEMAND, because the router has said this pairing is impossible and
+	// sending it again buys a 404 round trip a turn to be told so once more.
+	// Emptying the name here rather than returning early is what makes it
+	// exactly `auto`: neither the strict branch below nor the borrowable one
+	// runs, so what goes out is the choice the belief made and nothing else.
+	if retired {
+		named = ""
+	}
+	if named != "" && !pin.Borrow {
 		// The candidate set survives and the ranking does not: see above.
 		return lanes.Choice{Only: []string{named}, Frontier: choice.Frontier}, true
 	}
@@ -444,7 +460,7 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	// the belief's own ranking rather than replacing it: the named machine is
 	// asked first, fallbacks stay on, and the Alt the chooser named is left
 	// where it is so a rescue has somewhere to go when the pin stalls.
-	if named := pin.pinned(); named != "" {
+	if named != "" {
 		choice.Order = append([]string{named}, withoutEndpoint(choice.Order, named)...)
 	}
 	return choice, !choice.Empty()

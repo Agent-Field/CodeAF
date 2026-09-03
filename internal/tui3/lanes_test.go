@@ -960,3 +960,27 @@ func TestTheTryingLineIsRetractedWhenTheRescueItNamedFails(t *testing.T) {
 		t.Fatalf("the retraction reads %q, want the fact that is left", got)
 	}
 }
+
+// AND A PIN THE WIRE HAS REFUSED SAYS WHAT HAPPENS NEXT (issue #456). It is the
+// one sentence on this line that is about a person's own row rather than about
+// the answer in front of them, so it is written out whole and it names the
+// machine the way they spelled it when they pinned it.
+//
+// The words are the transport's ([provider.RetiredPinLine]) so that this row
+// and the note the same fact leaves in the conversation cannot come to
+// disagree — the conversation's copy is the one a person really reads, because
+// this row is outranked by the phase clock while the request is in flight.
+func TestARetiredPinSaysWhereTheRequestsGoNow(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.state = stateWorking
+
+	PostLaneNews(LaneNews{
+		Model: flash, Lane: "Cloudflare", Alt: "CoreWeave",
+		Role: lane.RoleTalk, Failed: true, Reason: provider.RescueRetired,
+	})
+	want := " · CoreWeave cannot serve this model; routing on auto for this model until you pin again"
+	if got := a.laneRider(); got != want {
+		t.Fatalf("a retired pin reads %q, want %q", got, want)
+	}
+}
