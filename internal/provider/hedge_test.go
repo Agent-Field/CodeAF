@@ -98,6 +98,24 @@ var rigLanes sync.Map
 // `openrouter/…` because the transport only sends a routing preference to
 // something it believes is a router, and a loopback address is not one.
 func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneRig {
+	return newLaneRigWithPrice(t, name, nil, lanesOffered...)
+}
+
+// newPricedLaneRig is the same shipped-wire rig with the list price that put
+// the measured 0.825/2.475 dollars-per-million ceiling on the request.
+func newPricedLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneRig {
+	t.Helper()
+	return newLaneRigWithPrice(t, name, func(string) (float64, float64, bool) {
+		return 0.66e-6, 1.98e-6, true
+	}, lanesOffered...)
+}
+
+func newLaneRigWithPrice(
+	t *testing.T,
+	name string,
+	modelPrice func(string) (prompt, completion float64, known bool),
+	lanesOffered ...lanestub.Lane,
+) *laneRig {
 	t.Helper()
 	// NO TEST WRITES THE REAL HOME. The registry's own store is under it, and a
 	// suite that saved its scripted beliefs into somebody's ledger would be a
@@ -107,7 +125,9 @@ func newLaneRig(t *testing.T, name string, lanesOffered ...lanestub.Lane) *laneR
 	server := lanestub.New(model, lanesOffered...)
 	t.Cleanup(server.Close)
 
-	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model})
+	client, err := NewClient(Config{
+		APIKey: "test-key", BaseURL: server.URL(), Model: model, ModelPrice: modelPrice,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

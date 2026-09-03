@@ -941,18 +941,29 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 	r.observer(event)
 }
 
-// hasUntriedLane reports whether the frontier still holds a gate-passing lane
-// this request has not been sent to, and there is room to send one.
-func (r *hedgeRace) hasUntriedLane() bool {
+// canWalk reports whether the walk's next claim will start another request.
+//
+// IT READS THE SAME LANE THE WALK WILL CLAIM. A name in the frontier is not a
+// walk when the wire has since struck that lane, the arm cap is full, or the
+// purse will refuse its estimated cost. Affordable is only a reading here;
+// [hedgeRace.walk] still reserves the spend through [lanes.Budget.Allow] at the
+// moment it starts the arm.
+//
+// THE WALK DELIBERATELY IGNORES r.refused. A refusal to fund a hedge against
+// slowness does not deny the rescue owed after a lane actually fails, which is
+// the same `past=true` rule [hedgeRace.claim] applies.
+func (r *hedgeRace) canWalk() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.winner >= 0 || len(r.arms) >= maxArms {
 		return false
 	}
 	for _, alt := range r.plan.Alts {
-		if lane := strings.TrimSpace(alt.Lane); lane != "" && !r.tried[strings.ToLower(lane)] {
-			return true
+		lane := strings.TrimSpace(alt.Lane)
+		if lane == "" || r.tried[strings.ToLower(lane)] || !lanes.Serves(r.model, lane) {
+			continue
 		}
+		return r.budget.Affordable(waitNow(), r.estimateLocked(lane, r.expected))
 	}
 	return false
 }

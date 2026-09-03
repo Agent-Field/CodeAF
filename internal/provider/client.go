@@ -497,9 +497,10 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// Relaxing here would answer a question nobody asked (tools taken off a
 	// request that only needed a different endpoint) while an endpoint that
 	// would have taken it whole sat untried. So while the race still has a
-	// gate-passing lane to walk to, the refusal is handed back and the walk
-	// takes the next machine (hedge.go's walk); the ladder runs on the LAST arm,
-	// where the evidence really is about the request rather than the endpoint.
+	// serving lane that the purse will fund, the refusal is handed back and the
+	// walk takes that machine (hedge.go's walk); the ladder runs on the LAST arm
+	// the purse will fund — or on the primary when it will fund none — where the
+	// evidence really is about the request rather than the endpoint.
 	// That is rungs two and three of the ladder in docs/ARCHITECTURE.md, in the
 	// order they are written down.
 	if streamWatchFrom(ctx).canWalk() {
