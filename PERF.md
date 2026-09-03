@@ -1701,8 +1701,18 @@ could be checked.
 | `spent()` vs the grant | uncached prompt + cached at `cachedTokenWeightPercent` (10, the provider's own discount) + completion — **what the job pays** | **yes** |
 | `maxTurnBackstop` (400) | iterations | **yes** |
 | the no-progress guard | repeated calls, a stagnant window, `noProgressTurnFloor` (60) | **yes** |
+| mutation-free recon pace | `noProgressReconTurns` consecutive tool-calling turns with no workspace mutation | no — asks for the result |
+| mutation-free recon escalation | `2 × noProgressReconTurns` consecutive tool-calling turns with no workspace mutation | **yes — concludes through the existing grace; never kills immediately** |
+| `wallPaceAt` | the elapsed share of this leaf's own wall | no — one live clock reading before the landing reserve |
 | `rawCeiling` (3 × grant) | Σ over turns of prompt + completion, undiscounted | no — wrap-up warning only |
 | `reuseCeiling` (working set × fill × reuse = 240,000) | Σ over turns of prompt sent | no — wrap-up warning only |
+
+Both a magnitude bound and a novelty bound missed the measured leaf that spent its whole
+45-minute wall reading: its 156 distinct shell results stayed below the turn floor while
+each fresh hash reset the stagnant reading. Mutation-free recon adds the missing question
+— not how much material passed or whether it was new, but whether any of those tool-calling
+turns changed the workspace — while the early wall reading tells the leaf what the clock
+will otherwise only enforce near the end.
 
 **The two cumulative bounds were retired as stops, and the arithmetic is why.**
 Σ over turns of the prompt is `turns × mean-context` wearing a token name: a
