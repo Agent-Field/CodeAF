@@ -1611,10 +1611,11 @@ Three different figures of time, and never two of them at once.
 
 **Count-up (running)** — the age beside the spinner: `12s`, `1m 4s`, `12m 30s`. Spaced
 (`1m 5s`, not `1m05s`) because it is read while it moves. Nothing is drawn under 1
-second.
+second, and a rung whose remainder is zero is dropped rather than padded — `6m`, never
+`6m 0s`.
 
 **Countdown (a bounded call)** — only `bash`, and only a foreground `bash`, is bounded.
-More than 10 seconds out, the bound is stated beside the age as `1m 12s / 2m 0s`, dim.
+More than 10 seconds out, the bound is stated beside the age as `1m 12s / 2m`, dim.
 Within **10s** the remainder replaces the bound: `1m 52s · 8s left` in the warn hue.
 Within **5s** the remainder goes to the bad hue. Only the remainder is tinted; the age
 stays dim. It rounds up, and a passed bound says `0s left` rather than a negative

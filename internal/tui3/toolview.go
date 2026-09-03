@@ -1248,7 +1248,7 @@ const countUpFloor = time.Second
 
 // ── THE COUNTDOWN ───────────────────────────────────────────────────────────
 //
-//	⠿ bash  go test ./...        1m 12s / 2m 0s     the bound, stated
+//	⠿ bash  go test ./...        1m 12s / 2m         the bound, stated
 //	⠿ bash  go test ./...        1m 52s · 8s left   inside ten seconds, warned
 //	⠿ bash  go test ./...        1m 56s · 4s left   inside five, in the failure hue
 //
@@ -1258,7 +1258,7 @@ const countUpFloor = time.Second
 // rather than hopefully. Up to there the bound is a fact and reads like one, in
 // the same dim as the age beside it. Inside them the row stops stating the
 // bound and starts counting what is left of it, because "8s left" is the
-// sentence and "1m 52s / 2m 0s" is arithmetic the person has to do themselves.
+// sentence and "1m 52s / 2m" is arithmetic the person has to do themselves.
 //
 // The colour is the escalation and it is two steps, not a gradient: warn while
 // the call can still land, [hueBad] under five seconds because by then it very
@@ -1391,6 +1391,15 @@ func (a *app) toolLimit(e *entry) time.Duration {
 // it. The parts are SPACED ("1m 5s", not "1m05s") because this figure is read
 // while it moves — it is the one number on the surface that changes under the
 // eye — and a padded run of digits reads as one number rather than as two.
+//
+// A RUNG WHOSE REMAINDER IS ZERO IS DROPPED RATHER THAN PADDED: `6m`, never
+// `6m 0s`. The zero carries no information and it costs four cells on a page
+// where every other figure obeys the emptiness law — a task's record card read
+// `done · landed 1h ago · ran 6m 0s` beside a row that had just said `42m`, so
+// the same clock changed grain across one keypress
+// (docs/design/polish/audit-tasks.md row 17). It is the law
+// [reltime.Elapsed] already states for the settled figure, said here for the
+// live one; `4m 30s` is untouched.
 func countUpWord(d time.Duration) string {
 	if d < countUpFloor {
 		return ""
@@ -1399,10 +1408,19 @@ func countUpWord(d time.Duration) string {
 	case d < time.Minute:
 		return itoa(int(d/time.Second)) + "s"
 	case d < time.Hour:
-		return itoa(int(d/time.Minute)) + "m " + itoa(int(d%time.Minute/time.Second)) + "s"
+		return countUpRungs(int(d/time.Minute), "m", int(d%time.Minute/time.Second), "s")
 	default:
-		return itoa(int(d/time.Hour)) + "h " + itoa(int(d%time.Hour/time.Minute)) + "m"
+		return countUpRungs(int(d/time.Hour), "h", int(d%time.Hour/time.Minute), "m")
 	}
+}
+
+// countUpRungs is the two-rung spelling, with a zero second rung dropped.
+func countUpRungs(big int, bigUnit string, small int, smallUnit string) string {
+	out := itoa(big) + bigUnit
+	if small == 0 {
+		return out
+	}
+	return out + " " + itoa(small) + smallUnit
 }
 
 // ── THE PARAMETER HIERARCHY ─────────────────────────────────────────────────

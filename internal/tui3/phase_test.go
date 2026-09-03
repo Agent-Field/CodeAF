@@ -138,6 +138,15 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		news: PhaseNews{Phase: provider.PhaseTakingStock, Since: ago(14 * time.Second)},
 		want: "taking stock · 14s",
 	}} {
+		// EACH ROW IS ITS OWN WAIT. This table specifies how ONE phase is
+		// SPELLED, and the desk deliberately carries a wait's start across
+		// every phase of it — so without this reset the retry rung inherited
+		// the instant of whichever row ran before it and read `trying again ·
+		// 6s` for a four-second retry. The continuity it was accidentally
+		// testing is real and has its own test
+		// ([TestThePhaseClockNeverCountsBackwardsAcrossOneWait]); a table that
+		// means to check spelling must not silently check something else.
+		forgetPhases()
 		news := c.news
 		news.Model, news.Role = phaseModel, lane.RoleTalk
 		news.At = now
@@ -188,6 +197,13 @@ func TestAStalledStreamCountsTowardsTheRescueAndThenNamesIt(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	a := phaseApp(t, now)
 	since := now.Add(-3100 * time.Millisecond)
+
+	// THE RIDER ONLY SPEAKS WHEN THE PULSE DOES NOT. The phase belongs to the
+	// pulse while the pulse is on the frame, because that is where the answer
+	// is about to appear and so where the eye already is; the rider takes it up
+	// the moment the pulse is gone. This test is about the WORDS of a stall, at
+	// the one place they are drawn, so it puts an answer on the frame first.
+	answerArriving(a)
 
 	PostPhaseNews(PhaseNews{
 		Phase: provider.PhaseFirstWord, Since: since, Deadline: since.Add(4400 * time.Millisecond),
@@ -272,7 +288,7 @@ func TestAStageThatKeepsSayingItselfIsNeverDropped(t *testing.T) {
 	if !ok {
 		t.Fatal("a stage said again a second ago was dropped as stale")
 	}
-	if got := phaseWords(live, now); got != "checking · 15m 0s" {
+	if got := phaseWords(live, now); got != "checking · 15m" {
 		t.Fatalf("the stage reads %q, want the whole quarter of an hour it has run", got)
 	}
 }

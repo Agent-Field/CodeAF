@@ -465,7 +465,9 @@ func TestEnterOnAnEarlierConversationsTaskGoesInsideIt(t *testing.T) {
 		t.Fatalf("enter did not go inside: open=%v inside=%v", a.at(pageTasks), a.taskSheet.detailOn)
 	}
 	card := taskSheetText(a)
-	for _, want := range []string{"Port the parser", "done", "it came home clean", taskCardKeys} {
+	// taskCardKeysHeld and not taskCardKeys: the head's corner is saying the way
+	// out on a frame this wide, so the foot does not say it again.
+	for _, want := range []string{"Port the parser", "done", "it came home clean", taskCardKeysHeld} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, card)
 		}

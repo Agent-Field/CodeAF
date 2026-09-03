@@ -408,3 +408,58 @@ canonical-equivalence normalization and not a rewrite: it preserves the accent,
 where today's behaviour deletes it. The other answer is upstream. Either way the
 row is not `home.go:4769` and no amount of work in `internal/tui3`'s words layer
 will move it.
+
+
+---
+
+## fixed — the third pass
+
+Frames prefixed `t5-` were captured from `bin/aforge` in a real terminal on
+socket `polish-t5`, against a demo home freshly seeded by `cmd/aforge-demo-home`.
+Both changes below were REVERTED and their tests watched to fail before the fix
+went back.
+
+**The job page's foot rides under its last row, and names the way out only where
+the head does not.** Both halves are `audit-tasks.md` rows 5 and 15, and they
+land on this page as much as on the record card: a job whose log is eight lines
+long drew twenty-seven blank rows under it with the rule and the keys pinned to
+the bottom of the terminal, and `esc back` was on the frame twice. A log long
+enough to SCROLL still fills the frame, because there the bottom of the frame is
+where the content ends.
+files: `internal/tui3/jobpage.go` (`jobPageTitleLine` answers the head line and
+whether it had room for its right corner; `jobPageFootKeys` takes that answer;
+the pad loop is `min(room, len(body))`), `internal/tui3/taskrecord.go`
+tests: `TestAPageWithNoComposerPutsItsFootUnderTheLastRowItDrew`,
+`TestAPageWhoseBodyScrollsStillFillsTheFrame`
+(`internal/tui3/pagefoot_test.go`),
+`TestTheJobPageAndTheRecordCardNameTheWayOutOnceOnEveryFrame` and
+`TestBothPagesDrawTheWayOutInTheHeadOrOnTheFootAndNeverBoth`
+(`internal/tui3/hintwhole_test.go` — the rewrite of
+`TestTheJobPageAndTheRecordCardKeepTheWayOutOnANarrowFoot`, which is not deleted
+and whose narrow case is not weakened).
+before: `frames/t5-jobpage-before.{160x50,120x40,80x24,60x30}.txt` ·
+after: the same names with `-after`.
+
+**Row 11 — the tasks place's foot over a parked row: CLOSED AS NOT A DEFECT, and
+here is the evidence.** The row says `enter` opens a room that is not there and
+`→ stop it` acts on nobody. Both are false of the code as it stands, and the
+frames say so:
+
+- **`stop it` is real on a parked node.** `tasksPlace.verbs` (`place_tasks.go`)
+  names the verb only where `stopTaskTarget` answers AND `stopDoors` answers, and
+  cancelling a QUEUED node is a door the engine has. On the seeded home, `→` over
+  `○ Write the change entry and open the pull request against dev` draws the strip
+  `s stop it` — captured — and `s` cancels it.
+- **`enter` opens a room that has something in it.** The same row's `enter` opens
+  the node's room, which draws its header, its kin line (`part of: Fold the
+  settled work on the task page`) and the guard sentence `nothing on this page yet
+  — it fills in as the task works`. That is not "a header and nothing under it";
+  it is the emptiness law answered with the one honest thing there is to say.
+- And the foot is already conditional: `tasksPlace.hint` names `enter open its
+  room` only where `taskSheetNodeFor` finds the node and falls back to
+  `enter go inside it` otherwise.
+
+What the row actually asks for — a verb that UNPARKS — has no seam behind it, and
+a capability that cannot work is absent rather than broken. The second pass above
+reached the same conclusion from the source; this pass reached it from the frames
+as well, so the row is closed rather than left.

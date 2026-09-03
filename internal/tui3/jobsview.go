@@ -44,6 +44,10 @@ const (
 	// can read without watching the digits move. How long it ran lives on the
 	// page ([jobPageEnding]).
 	jobsDoneWord = "done"
+	// jobRowIndent is the two cells every row of this section sits behind, and
+	// the overflow count sits behind them too so it lines up under the rows it
+	// is counting rather than under the head that opened them.
+	jobRowIndent = "  "
 )
 
 // jobSectionRows is the jobs section as the column draws it.
@@ -174,7 +178,7 @@ func jobSectionHead(live, settled []session.JobNotice, open bool, now time.Time,
 // distinguishable, and then the clock or the ending.
 func jobRowLine(job session.JobNotice, now time.Time, width int, pal palette) string {
 	meta := jobRightWord(job, now)
-	indent := "  "
+	indent := jobRowIndent
 	room := width - ansi.StringWidth(indent)
 	if meta != "" && room-ansi.StringWidth(meta)-1 < railTitleFloor {
 		// KEEP THE HANDLE even when the status will not fit: a row that lost
@@ -203,11 +207,18 @@ func jobRowLine(job session.JobNotice, now time.Time, width int, pal palette) st
 }
 
 // jobEarlierLine is the remainder the column could not fit, counted rather than
-// dropped. It is not a fold and it opens nothing: there is no second fold
-// level on this section.
+// dropped. It is not a fold and it opens nothing: there is no second fold level
+// on this section.
+//
+// SO IT WEARS NO FOLD MARK. It carried a `▸` under a section whose head is also
+// a `▸`, which invited a keypress that does nothing — the one state this surface
+// is not allowed to be in — and the doc comment above said in so many words that
+// it opens nothing while the line drew the mark that promises it does
+// (docs/design/polish/audit-tasks.md row 16). The count sits at the ROWS' own
+// indent, under the rows it counts, so the head's `▸` means exactly one thing on
+// this section.
 func jobEarlierLine(n, width int, pal palette) string {
-	text := "  " + jobFoldMark(false, pal) + " " + itoa(n) + " " + jobsEarlierWord
-	return pal.dim(fit(text, width))
+	return pal.dim(fit(jobRowIndent+itoa(n)+" "+jobsEarlierWord, width))
 }
 
 // jobRightWord is the figure on the right of a job row. It always carries the
@@ -221,21 +232,36 @@ func jobEarlierLine(n, width int, pal palette) string {
 //	3 · stopped
 func jobRightWord(job session.JobNotice, now time.Time) string {
 	id := itoa(job.ID)
-	var status string
-	switch job.State {
-	case session.JobFailed:
-		status = jobsExitedWord + " " + itoa(job.ExitCode)
-	case session.JobStopped:
-		status = jobsStoppedWord
-	case session.JobDone:
-		status = jobsDoneWord
-	default:
+	status := jobStateWord(job)
+	if status == "" {
 		status = jobClock(job, now)
 	}
 	if status == "" {
 		return id
 	}
 	return id + railSep + status
+}
+
+// jobStateWord is how a job ENDED, in the words above, or "" for one that has
+// not — a running job has a clock and no ending yet.
+//
+// IT IS THE ONE ANSWER THE COLUMN AND THE PAGE BOTH READ. The page used to
+// render `strings.TrimSpace(string(job.State))`, which is the engine's own enum
+// with nothing between it and the screen, so the same failed job read `3 ·
+// exited 1` in the column and `job 3 · failed · exit 1` on the page one keypress
+// away — two words for one fact, and a new [session.JobState] would have leaked
+// its spelling onto a person's screen the day it was added
+// (docs/design/polish/audit-tasks.md row 11).
+func jobStateWord(job session.JobNotice) string {
+	switch job.State {
+	case session.JobFailed:
+		return jobsExitedWord + " " + itoa(job.ExitCode)
+	case session.JobStopped:
+		return jobsStoppedWord
+	case session.JobDone:
+		return jobsDoneWord
+	}
+	return ""
 }
 
 // jobClock is how long this job has been running, or ran, in the column's

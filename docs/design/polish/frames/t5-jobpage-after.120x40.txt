@@ -1,0 +1,40 @@
+ make check                                                                                                    esc back
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ job 3 · exited 0 · ran 49s
+
+ go vet ./...
+ # github.com/Agent-Field/aforge-v2/internal/tui3
+ internal/tui3/tasksplace.go:722:14: fmt.Sprintf format %d has arg label of wrong type string
+ make: *** [Makefile:41: vet] Error 1
+ exit status 1
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/t5home/.aforge/v3/projects/-tmp…
+ c copy path · m puts it in your message · ↑↓ scroll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

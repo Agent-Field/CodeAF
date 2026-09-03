@@ -1272,8 +1272,8 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 		which   string
 	}{
 		{
-			at: 20 * time.Second, want: "20s / 1m 0s",
-			wantInk: a.pal.dim("20s / 1m 0s"), which: "the bound, stated in dim",
+			at: 20 * time.Second, want: "20s / 1m",
+			wantInk: a.pal.dim("20s / 1m"), which: "the bound, stated in dim",
 		},
 		{
 			at: 51 * time.Second, want: "51s · 9s left",

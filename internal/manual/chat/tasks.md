@@ -1272,8 +1272,11 @@ The clock appears **only when exactly one job is running**, because then there i
 duration to name. Past that the count is the news.
 
 **Expanded**, every running job draws (oldest first), then finished ones fill whatever
-room is left, newest first, and the remainder is counted on a `▸ N earlier` line rather
-than dropped. That remainder line is a count, not a door: it opens nothing.
+room is left, newest first, and the remainder is counted on an `N earlier` line rather
+than dropped. That remainder line is a count, not a door: it opens nothing, and it wears
+**no fold mark** for exactly that reason — it used to read `▸ 4 earlier` under a section
+whose head is also a `▸`, which invited a keypress that did nothing. It sits at the rows'
+own indent, under the rows it is counting.
 
 **Zero jobs draws nothing at all** — no label, no empty row, no `0 jobs`. A conversation
 that has started none looks as it did before jobs had a section.
@@ -1326,7 +1329,13 @@ the clock or how it ended.** The number is the handle — the same `3` in `job 3
 A running job's figure is the clock (`4m12s`). A clean finish reads `done` — how
 long it ran is on the page, not restated here, because a frozen clock and a
 ticking one are the same shape at a glance. A non-zero exit reads `exited 1`. A
-job somebody ended reads `stopped`. Under a second there is no clock on a
+job somebody ended reads `stopped`.
+
+**The page says the same word the row does.** Open the row and its first line reads
+`job 3 · exited 1 · ran 49s`, `job 3 · done · ran 12s`, `job 3 · stopped · ran 51m 12s` —
+one function behind both, so the section you pressed enter in and the page that opened
+cannot say two things about one job. The page used to print the engine's own name for the
+state (`failed`) and then repeat the code behind it (`exit 1`); it does neither now. Under a second there is no clock on a
 running row — `0s` on a row that has just begun would be a figure that has to be
 read to learn nothing — and the number still stands alone.
 
@@ -1391,8 +1400,14 @@ body — so the number is always visible in the head. The old feet
 
 The keys, quoted:
 
-- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
-- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+- running: `x stop it · c copy path · m puts it in your message · ↑↓ scroll`
+- settled: `c copy path · m puts it in your message · ↑↓ scroll`
+
+**The way out is not on those feet, because the head is already saying it.** `esc back`
+sits in the head's right corner, and a page that named the same instruction twice was
+spending two of its words repeating itself. Where a long name takes the whole head line
+there is no corner left, and the foot takes the way out back — last, so a narrow frame
+spends it last: `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back`.
 
 `c` copies the log path; the confirmation begins `copied `. `m` drops the name, the
 handle, the ending, and the last few log lines into your message box underneath, then
@@ -2093,7 +2108,7 @@ door — they are the ones above, reshaped:
   — a room, or the record card — which is what a click already did at every width.
 - **The roster's foot** is a `‹ back` band in place of the key legend
   `enter open its room · type to filter`. Tap it to go back to the conversation.
-- **The record card's foot.** `esc back · ↑↓ scroll · m puts it in your message` is a
+- **The record card's foot.** `m puts it in your message · ↑↓ scroll` is a
   sentence about keys; under 60 columns the two things a thumb can do become bands instead —
   `‹ back` and `m puts it in your message`. Tap either, or press the key it names. The
   scroll is the screen itself.
@@ -2111,7 +2126,7 @@ What opens is a full-screen card over the same page, with the list still underne
 ```
  Fix the nil-map crash                                              esc back
  ─────────────────────────────────────────────────────────────────────────────
- done · landed 3h ago · ran 4m12s
+ done · landed 3h ago · ran 4m 12s
 
  Added the guard and the regression test; the parser suite passes.
 
@@ -2126,8 +2141,14 @@ What opens is a full-screen card over the same page, with the list still underne
  Added a nil check in parseRow before the map write, and a regression test that
  fails without it. The parser suite passes: 84 tests, 0 failures.
  ─────────────────────────────────────────────────────────────────────────────
- esc back · ↑↓ scroll · m puts it in your message
+ m puts it in your message · ↑↓ scroll
 ```
+
+**The rule and the keys sit under the last row the card drew**, not at the bottom of the
+terminal, and `esc back` is said once, in the head's right corner. This page has no
+composer under it, so a foot pinned to the bottom of a fifty-row frame under a six-line
+card was a foot pinned for nobody. A card long enough to scroll fills the frame and its
+foot is where it always was.
 
 Top to bottom: the title; the state it came home in, when it landed and how long it ran;
 the outcome sentence; the conversation it came out of; what it ran on and what it spent;

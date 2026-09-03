@@ -175,20 +175,16 @@ The numbers below are SPELLED AS WORDS on purpose: `scripts/ledger.py`
 reads `Row <digit>` anywhere under `## fixed` as a closure, and every row in
 this list is one that is NOT closed.
 
-- **Row five** (the blank rows under the list and the page) — the shared filler is
-  `pages.go`, held by another lane.
-- **Row eleven** (`jobPageEnding` prints the engine's enum) and **row sixteen** (the jobs
-  overflow line wears a fold mark) — `jobsview.go`/`jobpage.go`, not this lane's
-  files.
 - **Row thirteen** (the shut fold's count moves to the LEFT of the mark) — **half
-  done**. The count is now a sentence and leads the tail, so the mark and the
-  count read as one claim about the row rather than as a fact among the facts.
-  Drawing it *inside* the family column (`▸ 3 ✓ Count the tabs…`) was left alone:
-  that column is exactly two cells on every row of the page, and widening it on
-  the rows that fold would leave every glyph on the page ragged. That is a design
-  call the audit's fix shape does not settle.
-- **Rows 15 and 17** (`esc back` named twice; `6m 0s` spends four cells on a
-  zero) — sev: low, and outside the brief for this pass.
+  done**, and the other half is CLOSED AS A DESIGN CALL by the second pass below.
+  The count is now a sentence and leads the tail, so the mark and the count read
+  as one claim about the row rather than as a fact among the facts. Drawing it
+  *inside* the family column (`▸ 3 ✓ Count the tabs…`) was left alone: that column
+  is exactly two cells on every row of the page, and widening it on the rows that
+  fold would leave every glyph on the page ragged — or, widened everywhere, would
+  take two cells off every name on the page, which is exactly what row 1 was
+  fixed to stop. The audit's fix shape does not settle that, and it is settled
+  here: the count stays a sentence at the head of the tail.
 
 ### The manual, in the same change
 
@@ -196,3 +192,123 @@ this list is one that is NOT closed.
 the fold's count (its `## ` heading included, with the old `+3 under` spelling
 kept in the body so somebody searching for what they used to see still lands on
 the page), the card's source line and the `landed`/`stopped` verb.
+
+---
+
+## fixed — the second pass
+
+The `t5-` frames were captured from `bin/aforge` in a real terminal on socket
+`polish-t5`, against a demo home freshly seeded by `cmd/aforge-demo-home` (the
+room fixture, three background jobs, the 101-character title). **Every fix below
+was REVERTED and its test watched to fail before the fix went back**, and the
+revert used is named on each row.
+
+**Row 5 — a page with no composer ends where its content ends.** The task
+record card drew a six-line card and then padded to the bottom of the terminal,
+so at 160x50 the rule was on row 48 and `esc back` on row 49 for a page that had
+ended at line 11. `taskCardFrame` and `jobPageFrame` now draw
+`min(room, len(body))` body rows and let the rule and the key sheet ride under
+the last one. **A page that SCROLLS keeps its pinned foot** — there the bottom of
+the frame is where the content ends — so the pad is gone and nothing else is.
+files: `internal/tui3/taskrecord.go`, `internal/tui3/jobpage.go`
+tests: `TestAPageWithNoComposerPutsItsFootUnderTheLastRowItDrew` and
+`TestAPageWhoseBodyScrollsStillFillsTheFrame`
+(`internal/tui3/pagefoot_test.go`)
+reverted: the pad loop was put back on each page in turn — the first test prints
+the whole frame with its forty blank rows; and the second was watched to fail
+against the OVER-application (every body line drawn, the frame's own trim keeping
+the tail), which drew a scrolling log starting at line 182 instead of at the top.
+before: `frames/t5-taskpage-before.{160x50,120x40,80x24,60x30}.txt`,
+`t5-jobpage-before.{160x50,120x40,80x24,60x30}.txt` ·
+after: the same names with `-after`.
+
+**The tasks LIST half of row 5 is CLOSED AS NOT A DEFECT, and this is the
+reason.** The list is a PLACE: it has a composer and a place strip at fixed rows
+underneath it, and `composerlayer.go` states that the composer does not move.
+Blank space between a short list and the rule there is not padding to nowhere —
+it is the room the composer is standing on, and ten pieces of work in a fifty-row
+frame is ten pieces of work. This product is deliberately calm and that emptiness
+is honest. The two `t5-tasklist-{before,after}` sets at all four widths are
+byte-identical apart from one row's age ticking from `42m` to `1h` between
+captures, which is the point: nothing on the list moved, and nothing should.
+
+**Row 15 — `esc back` is named once per frame, and always once.** Two laws met
+here and were read as a conflict: the way out is the LAST clause of a key row,
+because `hintFit` keeps its final clause to the last cell there is (audit-jobs's
+hint rows); and the way out was drawn TWICE on every frame, once in the head's
+right corner and once at the end of the foot. **The resolution is that the foot
+carries the way out only where the head does not.** `taskCardTitleLine` and
+`jobPageTitleLine` now answer the head line AND whether it had room for its right
+corner, and `taskCardFootKeys`/`jobPageFootKeys` take that answer — so the head's
+corner and the foot's clause cannot both be on, or both be off, on one frame. The
+head loses its corner where a long title fills the line, and there the foot takes
+the way out back, last, exactly where the earlier law wants it.
+The held sheets order their clauses one way differently from the full ones —
+`m puts it in your message · ↑↓ scroll` rather than the reverse — because
+`hintFit` protects whatever is LAST and slices it if it will not fit whole, and a
+twenty-five-cell mention left at the end would be the clause a narrow foot cut.
+The scroll is both the clause worth keeping and the cheapest to keep.
+files: `internal/tui3/taskrecord.go`, `internal/tui3/jobpage.go`
+tests: `TestTheJobPageAndTheRecordCardNameTheWayOutOnceOnEveryFrame` — the
+rewrite of `TestTheJobPageAndTheRecordCardKeepTheWayOutOnANarrowFoot`, onto the
+new law and with the narrow case kept rather than weakened — and
+`TestBothPagesDrawTheWayOutInTheHeadOrOnTheFootAndNeverBoth`, which counts the
+rows of a real frame (`internal/tui3/hintwhole_test.go`)
+reverted: three ways, each watched to fail — the foot always naming it (two rows
+say `esc back`), the foot never naming it (a 101-character title at 80 columns
+leaves the page with no way off at all), and the same on the job page.
+before: `frames/t5-taskpage-before.120x40.txt` (`esc back` on row 1 and row 30) ·
+after: `t5-taskpage-after.120x40.txt` (`m puts it in your message · ↑↓ scroll`).
+
+**Row 17 — the clock does not spend four cells on a zero.** `countUpWord` drops
+a rung whose remainder is zero: `6m`, never `6m 0s`; `4m 30s` and `1m 5s` are
+untouched. It is the rule `internal/tui2/reltime`'s `Elapsed` already states for
+the settled figure, said here for the live one, so the surface has one grain of
+clock rather than two. Every reading that moves is an exact minute or an exact
+hour: the bound on a bash row (`20s / 1m`), the phase clock (`checking · 15m`),
+the room header (`12m`) and the record card (`ran 6m`).
+files: `internal/tui3/toolview.go`, and the two expectations that quoted the old
+spelling (`bundle_test.go`, `phase_test.go`)
+tests: `TestACountUpDropsARungWhoseRemainderIsZero` and
+`TestATaskThatRanAWholeNumberOfMinutesSaysSoOnItsCard`
+(`internal/tui3/clockgrain_test.go`)
+reverted: the old two-rung spelling — `a duration of 1m0s is spelled "1m 0s"` and
+`the card's clock line is "done · ran 6m 0s"`.
+before: `frames/t5-taskpage-before.160x50.txt` (`done · landed 43m ago · ran 6m 0s`) ·
+after: `t5-taskpage-after.160x50.txt` (`done · landed 1h ago · ran 6m`).
+
+**Row 11 — the job page says the column's word and never the engine's enum.**
+`jobRightWord`'s switch is factored into `jobStateWord(job)`, and `jobPageEnding`
+calls it. The same failed job now reads `3 · exited 0` in the column and
+`job 3 · exited 0 · ran 49s` on its page. The page's separate `exit N` clause is
+gone with it: `exited 1` already carries the code.
+files: `internal/tui3/jobsview.go`, `internal/tui3/jobpage.go`
+test: `TestTheJobsColumnAndItsPageSayOneWordAboutHowAJobEnded`
+(`internal/tui3/jobwords_test.go`)
+reverted: `the page for a failed job says "failed · exit 1 · ran 32s" and the
+column beside it says "exited 1" — one job, one word`.
+before: `frames/t5-jobpage-before.120x40.txt` (`job 3 · failed · ran 49s` under a
+column row reading `make check   3 · exited 0`) ·
+after: `t5-jobpage-after.120x40.txt` (`job 3 · exited 0 · ran 49s`).
+
+**Row 16 — the jobs overflow line wears no mark it cannot open.**
+`jobEarlierLine` draws `4 earlier` with no `▸` in front of it, at the rows' own
+indent (`jobRowIndent`, now one constant the rows and the count share) so it sits
+under what it counts. The section's head keeps the only fold mark on it.
+files: `internal/tui3/jobsview.go`
+test: `TestTheJobsOverflowCountWearsNoMarkItCannotOpen`
+(`internal/tui3/jobwords_test.go`), which walks the ASCII palette too
+reverted: `the overflow line is "  ▸ 4 earlier" and it wears the fold mark "▸",
+which opens nothing`.
+frames: none — the demo home seeds three jobs and the section fits all three, so
+there is no overflow line to capture. `TestAJobsSectionCountsTheRemainderOnAnEarlierLine`
+is the frame for it.
+
+### The manual, in the same change
+
+`internal/manual/chat/tasks.md` (the overflow line, both job feet, the record
+card's foot and the fact that it rides up, the page's ending word, `ran 4m 12s`),
+`internal/manual/chat/reading-a-task-page.md` (both key rows and the page's
+ending), `internal/manual/chat/keys.md` (the card's foot) and
+`internal/manual/chat/screen.md` (the count-up's zero rung, and the bound's
+`2m`).
