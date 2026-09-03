@@ -522,6 +522,48 @@ about that reading is your work: nothing of aforge's is written into your reposi
 into the task's copy of it. Only a conversation with no folder at all falls back to
 `<workspace>/.aforge-v3/`.
 
+## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
+
+No, to all three, and a task is now TOLD so rather than left to find out by
+calling a tool that is not there. Four things a conversation can do are absent
+from a worker's belt, and its instructions say what to do instead:
+
+- **Change a setting.** `settings` and `change_setting` are off inside a task. A
+  worker runs in a copy of its own with nobody watching, and a permanent change
+  to your machine that no transcript ever showed you is exactly what it must not
+  be able to make. A task asked to change a preference says it cannot from a
+  task and points you at `/settings`; it is told never to edit a config file instead.
+- **Look up an earlier conversation.** `search_conversations` reads the index in
+  the memory store, and a task is handed no store, so what was said in other
+  conversations cannot be looked up from inside one. A worker answers out of the
+  brief it was given.
+- **Start a watch.** `watch` delivers its news into a conversation and a task has
+  none. A worker waits with an ordinary foreground `bash` call.
+- **See the work that already ran** — but only at the bottom of the tree. A task
+  keeps `tasks` and `propose_task` while it may still hand pieces out; a piece
+  that was handed out by a piece is standing on the floor and has neither. Its
+  instructions tell it that the record of earlier work is not reachable from
+  where it stands, and to say so plainly when you refer to something it cannot
+  see, rather than inventing it.
+
+And **it cannot design or offer a saved shape of work.** `build_harness` and
+`list_harnesses` want a store to write the page into, a runner, and somebody
+watching who can answer the card; `propose_subharness` and `list_subharnesses`
+want a saved program on this machine and that same watcher. A worker has none of
+it, so those verbs are off its belt and the paragraphs explaining what a recipe
+and a saved program ARE do not ride in its instructions either — it is not shown
+a road it cannot take.
+
+None of these is a refusal you will see as an error. **A capability a worker
+cannot have is absent from its belt rather than present and failing**, and its
+instructions are composed to match the belt it was actually given — so it is
+never told to call a verb it does not have. **The exception is a hand.** A hand
+is this mind copied inside one turn, and it opens on the caller's own
+transcript, system page and all, because that shared prefix is the whole reason
+forking is cheap — so what a hand reads about tools is its caller's and not its
+own. Giving a hand its own tail, naming the nine tools that are actually its,
+is the change tracked as #434b.
+
 ## How a task is told to spend its time — the measure, a zero, and not remaking what exists
 
 Beyond the tools, a task is given three working habits in its instructions. They are
