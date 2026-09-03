@@ -816,7 +816,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// every-node-work at depth 0. A chain the ruler put past one worker's reach
 	// is not a chain of sittings, and folding one back would hand out exactly the
 	// node the division was bought to avoid.
-	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
+	if collapsed := collapseAtomicChain(graph, named); collapsed != 0 {
 		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
 		emitProgress(progress, "steps", "1", "")
 		return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
@@ -921,7 +921,7 @@ func withinOneWorker(ctx context.Context, client Completer, graph *Graph, node N
 // the spine's coin: one work node, the goal as its brief, the first link's
 // title. It returns how many nodes were folded, zero when the shape is
 // anything else.
-func collapseAtomicChain(graph *Graph) int {
+func collapseAtomicChain(graph *Graph, named Measurement) int {
 	var chain []*Node
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
@@ -968,9 +968,16 @@ func collapseAtomicChain(graph *Graph) int {
 	// defect of issue #480 arriving by a third road. It needs no such reading
 	// either: every link in this shape is sized atomic, and a link the
 	// measurement had ruled beyond reach was corrected to oversized by that same
-	// pass and would have failed the shape test above. Nothing measurable folds
-	// exactly as it always did. See reach.go.
-	if graph.reach().Measure(graph.Goal).Exceeds() {
+	// pass and would have failed the shape test above.
+	//
+	// AND IT IS HANDED THE MEASUREMENT RATHER THAN TAKING ONE. This runs after
+	// sizing and expansion, and workers write into the workspace while a build
+	// is still going; a reading taken here would be a second, later answer about
+	// the same goal, disagreeing with the one frozen onto the graph and stated
+	// in every prompt this build sent. There is one measurement per build, taken
+	// before the first call. Nothing measurable folds exactly as it always did.
+	// See Graph.Named and reach.go.
+	if named.Exceeds() {
 		return 0
 	}
 

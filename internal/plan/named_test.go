@@ -136,12 +136,27 @@ func TestAChainWhoseMaterialExceedsOneWorkerIsNotFoldedIntoOneSitting(t *testing
 			Size: SizeAtomic, Sources: []string{"block-b.txt"}, Needs: []int{1}})
 		return graph
 	}
+	// The measurement is the one the build froze at its start and never a
+	// reading taken here: the fold runs after sizing and expansion, and a second
+	// reading of a workspace workers are writing into would be a later, different
+	// answer about the same goal than the one every prompt of the build carried.
+	measured := ReachFor(dir, 0).Measure("work block-a.txt then block-b.txt")
+
 	// 48 KB of named material against a 32 KB reach: two sittings, never one.
-	if folded := collapseAtomicChain(chain(dir)); folded != 0 {
+	if folded := collapseAtomicChain(chain(dir), measured); folded != 0 {
 		t.Fatalf("a chain naming 48 KB was folded into one sitting of %d nodes", folded)
 	}
 	// The same chain with nothing weighed folds exactly as it always did.
-	if folded := collapseAtomicChain(chain("")); folded != 2 {
+	if folded := collapseAtomicChain(chain(""), Measurement{}); folded != 2 {
 		t.Fatalf("an unmeasured atomic chain folded %d nodes, want 2", folded)
+	}
+	// And the guard reads what it was handed and never the disk: a workspace
+	// that has grown since the build started cannot move a verdict the prompts
+	// of this build were already written against.
+	if err := os.WriteFile(filepath.Join(dir, "block-a.txt"), make([]byte, 1<<20), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if folded := collapseAtomicChain(chain(dir), Measurement{}); folded != 2 {
+		t.Fatalf("the fold took a second reading of the disk and folded %d nodes, want 2", folded)
 	}
 }
