@@ -1850,10 +1850,61 @@ func (n *TaskNode) title() string {
 // account of the job written by a model that heard another one, and a worker
 // holding both can tell when they have come apart.
 func (n *TaskNode) instruction() string {
+	// THE ZERO COPY IS THE DOCUMENT AS IT HAS ALWAYS BEEN, byte for byte, and
+	// that is what every reader here is for. [TaskNode.instruction] has seven
+	// readers that are NOT the worker — the proposal card, the checkpoint, the
+	// ground ladder, the auditor's packet, [declaredChecks] (which resolves
+	// against the clean restore, a third directory that is neither the source
+	// nor the worker's copy), the naming and sizing readers, and the progress
+	// reader — and binding this one body would silently move all of them.
+	return n.instructionOn(taskTree{})
+}
+
+// instructionOn is [TaskNode.instruction] with the worker's own copy said
+// outright, in the idiom this package already uses for exactly this shape
+// ([Agent.newTaskAgentOn] beside [Agent.newTaskAgent], [prepareTaskTreeOn]
+// beside [prepareTaskTree]): the same thing, with the world it happens in
+// spelled rather than assumed.
+//
+// IT HAS TWO CALLERS AND THEY ARE THE TWO MOMENTS A WORKER IS SPOKEN TO — the
+// opening request in [Agent.workTaskNode] and every repair round
+// ([repairInstruction]). Both already hold the tree, so neither has to guess.
+// Anything that is not a worker keeps [TaskNode.instruction] and keeps the
+// addresses the parent wrote.
+//
+// WHICH MODES BIND IS DECIDED BY [taskCopyFor], not here.
+func (n *TaskNode) instructionOn(tree taskTree) string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance,
-		expectsSection(n.spec.expects), n.spec.origin)
+		expectsSection(n.spec.expects), n.spec.origin, taskCopyFor(tree))
+}
+
+// taskCopyFor is the tree read as a MAP: the folder the work is about onto the
+// folder the work happens in.
+//
+// ONLY A DIRECTORY THAT IS GENUINELY A COPY OF ITS GROUND BINDS. A worktree is
+// a checkout of the ground at its HEAD and a mirror is the ground's bytes copied
+// in, so in both of them every path under the ground has an exact counterpart
+// and the map is total. IN PLACE and FOLDER have ground == dir, so the map is
+// the identity and [taskCopy.real] says so.
+//
+// A REFERENCE MUST NOT BIND, AND THAT IS A LAW RATHER THAN AN OMISSION. It is
+// the one mode whose folder is deliberately NOT a copy of its ground
+// ([TaskModeReference]): the node was given an empty directory of its own
+// precisely so the ground stays material it may only READ, and rewriting the
+// ground's addresses into that folder would point a worker at files that were
+// never put there.
+func taskCopyFor(tree taskTree) taskCopy {
+	switch tree.mode {
+	case TaskModeWorktree, TaskModeMirror:
+		// AND THE TWO FOLDERS ARE SPELLED ONE WAY, by the constructor rather
+		// than here: a tree's fields are whatever resolved them, and
+		// [newTaskCopy] is where a folder becomes the one spelling everything
+		// downstream reads.
+		return newTaskCopy(tree.ground, tree.dir)
+	}
+	return taskCopy{}
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -3912,7 +3963,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		}
 
 		var wrote []string
-		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instruction(), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
+		// AND THE CONTRACT IS BOUND TO THE COPY IT IS ABOUT TO BE ASKED IN. This
+		// is one of the two moments a worker is spoken to, and the tree is right
+		// here ([TaskNode.instructionOn]).
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instructionOn(tree), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.
