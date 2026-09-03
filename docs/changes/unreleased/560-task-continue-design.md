@@ -38,10 +38,12 @@ rather than limits it states: a finished task's tree is not lost but landed, so 
 follow-up cuts a fresh working copy from the commit its work landed at; and a
 clean headless run keeps its `graph.db` and drops its `graph-scratch/`, swept by
 age, so a task id is an address that can still be looked up. The headless shape
-is derived against `docs/design/polish/COMMANDS.md` (`ui/polish-v0`, PR #518) —
-its nouns make the argument a task id rather than a path, its §4 gives `--dir`,
-and its §5 puts the record path on stderr and gives the exit ladder a
-continuation reads.
+is derived against `docs/design/polish/COMMANDS.md`, which landed as #518 while
+this page was being written: its nouns make the argument a task id rather than a
+path, its §5 exit ladder and result envelope are now `cmd/aforge/envelope.go`,
+and its `running-from-the-terminal.md` is where the flag gets documented. This
+change adds the `--continue <id>` row to that page's own flag table, so the
+vocabulary page and this design cannot drift.
 
 The corpus half is filed separately as issue #562: `how-tasks-run.md:2033`
 already tells a person to say `continue task 7`, which is a defect today

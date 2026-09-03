@@ -3,9 +3,10 @@
 *2026-09-03, written against `dev @ 7ea37cab2`. Status: design → build. Lives at
 `docs/design/task-continue/DESIGN.md`. Every `file.go:line` was verified at that
 commit. `internal/tui3/place_tasks.go:1064-1079` is the sentence this page
-replaces. §E is derived against `docs/design/polish/COMMANDS.md` on
-`ui/polish-v0` (PR #518), which is the terminal's vocabulary law and lands on
-`dev` the same day as this page.*
+replaces. §E is derived against `docs/design/polish/COMMANDS.md`,
+the terminal's vocabulary law, which landed as #518 (`dev @ c3de2711a`) while
+this page was being written; §E cites the code that shipped with it, and this
+change adds `--continue` to that page's own flag table so the two agree.*
 
 ## The one sentence
 
@@ -332,9 +333,10 @@ confidence the record does not support.
 
 ## E. The same door, headless
 
-Derived against `docs/design/polish/COMMANDS.md` (branch `ui/polish-v0`, PR #518,
-landing on `dev` today), which is the terminal's vocabulary law. Four of its rules
-decide the shape, and none of them is negotiable here.
+Derived against `docs/design/polish/COMMANDS.md`, the terminal's vocabulary law,
+which landed as #518 (`dev @ c3de2711a`). Four of its rules decide the shape, and
+none of them is negotiable here. All four are now code as well as design, so the
+citations below are to what the binary does.
 
 **Its §3 makes `a task` a noun and gives it an address.** *"a **task** — one piece
 of work you handed over — `aforge do "<task>"`, `aforge tasks <id>`"*. And its §7
@@ -359,16 +361,19 @@ aforge do --continue <id> --db <store>          # carry one of them on
 That is one flag doing one job, and it is why the record must survive a clean run:
 an id nothing can look up is not an address.
 
-**Its §4 fixes the rest of the spelling.** The directory is `--dir`, not `-w`
-(rename 4, single letters kept as hidden aliases); the wall is `--timeout` taking a
-duration; the token wall is `--token-budget` and never `--budget`, because *budget
-is a word about money in this product*. `--continue` needs no new concept in that
-table — it is a verb's argument, not a wall.
+**Its §4 fixes the rest of the spelling**, and it shipped: the directory is
+`--dir` with `-w` kept as a hidden shorthand (`cmd/aforge/do.go:208-209`); the wall
+is `--timeout` taking a duration; the token wall is `--token-budget` and never
+`--budget`, because *budget is a word about money in this product*. `--continue`
+introduces no new concept there — it is a verb's argument, not a wall — but it is
+a concept with a spelling, and **this change adds its row to that table**, because
+one spelling per concept is only true if the concept is in the one place the
+spellings live.
 
 **Its §5 puts the record path on stderr.** *"stdout carries the answer and nothing
 else… anything a person reads about the run — the models line, progress, a
 warning, a question, the path a record was kept at — goes to stderr"*, and it names
-`aforge do` as the standard the others should follow. So the closing lines that
+`aforge do` as the standard the others already followed. So the closing lines that
 make a continuation findable are stderr lines, beside `record kept at %s`:
 
 ```
@@ -379,20 +384,24 @@ and on a run that finished, the same sentence — because after this design a cl
 run keeps its record too, and the only difference a person sees is that there is
 nothing wrong to look at.
 
-**Its §5 exit ladder is five codes, and a continuation reads them.** `0` done ·
-`1` could not be run at all · `2` ran and did not finish · `3` a limit you set
-stopped it · `4` needs an answer from you and nobody was there. A continuation is
-worth offering after `2`, `3` and `4`, and is a follow-up after `0`; after `1`
-there is nothing to continue and the line is absent. The reason is not read off the
-code but off the envelope's `stop` field, which §5 says is *"where a script should
-have been reading it all along"*.
+**Its §5 exit ladder is five rungs, and a continuation reads them.** They are
+constants now — `exitDone`, `exitCannotRun`, `exitIncomplete`, `exitLimit`,
+`exitUnanswered` (`cmd/aforge/envelope.go:48-76`) — with the ladder's own comment
+saying the numbers are *"ordered by how much the caller has to do about it"*. A
+continuation is worth offering after `2`, `3` and `4`, is a follow-up after `0`,
+and is absent after `1`, whose doc comment is explicit that nothing was attempted
+and nothing was spent. **Which of the three it is comes off `stop`, never off the
+number** — the one vocabulary at `envelope.go:79-97`, where `stopPrice` and
+`stopQuestion` are exactly the two endings a continuation answers by carrying the
+person's approval or their answer in its own words.
 
-**Its §5 result envelope is one shape across `do`, `exec` and `run`**, and
-`settled` becomes `ok`. A continuation adds **no field**: it reports `ok`, `stop`,
-`answer`, `files`, `spend_usd`, `tokens`, `seconds`, `model` and `steps` exactly as
-a first run does, because it *is* a run of the same task. The guarantee that a
-field is never removed and never changes meaning within a release is what makes
-that the right answer rather than the lazy one.
+**Its §5 result envelope is one shape across `do`, `exec` and `run`**, and it
+shipped: `ok`, `stop`, `answer`, `files`, `error`, `spend_usd`, `tokens`,
+`seconds`, `model`, `steps` (`cmd/aforge/envelope.go:262-292`), with `settled`
+gone. A continuation adds **no field** — it reports exactly those, because it *is*
+a run of the same task. The guarantee that a field is never removed and never
+changes meaning within a release is what makes that the right answer rather than
+the lazy one.
 
 ### What the record is, and what it costs
 
@@ -421,14 +430,15 @@ to have passed `--keep` before knowing there would be anything to look at."*
 the same facts is a second thing to keep true, and the transcript rows it would
 drop are the ones `bank.go:96` calls the field that makes a restart a resumption.
 
-### One thing the terminal owes the manual
+### Where the terminal's half of the manual goes
 
-`COMMANDS.md` §8 asks for `internal/manual/chat/running-from-the-terminal.md` and
-for the build gate to extend over `knownCommands` (`cmd/aforge/usage.go:285`), so a
-verb without a page fails the build the way a slash command already does. If that
-page exists by the time M4 lands, `--continue` is documented there; if it does not,
-M4 does not mint it, and the headless shape goes into the sections §J already
-names. **A milestone does not create a page another wave is designing.**
+`internal/manual/chat/running-from-the-terminal.md` exists — #518 wrote it, against
+its own §8 — so **M4 documents `--continue` in that page's existing sections and
+mints no heading of its own.** The same wave extended the build gate over
+`knownCommands` (`cmd/aforge/usage.go`), so a terminal verb without a page fails the
+build the way a slash command already does; `--continue` is a flag rather than a
+verb and is not caught by that gate, which is a reason to write it into the page
+deliberately rather than a reason it does not matter.
 
 ---
 
@@ -579,7 +589,10 @@ at all.
 | `internal/tui3/tasksettle.go` | `c continue` in the keychip grammar for an ended task |
 | `internal/tui3/taskcommand.go`, `commands.go` | `/continue`, and its row in the command table |
 | `cmd/aforge/do.go` | `--continue <id>`, resolved through the same lookup `aforge tasks <id>` uses and scoped by `--db`; `keepPrivateStore` splits into *keep the record* (always) and *keep the scratch* (asked, tracing, or the run went wrong); `recordsKeptFor` and the sweep on launch; the stderr line naming the command |
-| `cmd/aforge/tasks.go` (`why.go` until #518's rename 2) | a continued task reads as one task with more than one attempt, not as two rows |
+| `cmd/aforge/tasks.go` | a continued task reads as one task with more than one attempt, not as two rows |
+| `cmd/aforge/envelope.go` | no new field; the continuation's ending maps onto the existing rungs and the existing `stop` words |
+| `docs/design/polish/COMMANDS.md` §4 | the `--continue <id>` row — added by this change, so the vocabulary page and this one cannot drift |
+| `internal/manual/chat/running-from-the-terminal.md` | `--continue` in its existing sections |
 | `internal/session/prompts/system.md` | the model is told the verb exists, since it will otherwise deny having it |
 | `internal/manual/chat/` | §J |
 
@@ -698,9 +711,6 @@ re-plan the issue, exits `0`, and `aforge tasks` shows one task with two attempt
 rather than two tasks. Run the same recipe again **without** killing the provider:
 the run exits `0`, its record is still there, and `aforge do --continue <id> "also
 add a --quiet flag"` is a follow-up rather than a repeat.
-
-*(`--dir` and the exit ladder are `docs/design/polish/COMMANDS.md` §4 and §5; until
-#518 lands, `-w` and `0/1/2` are what the binary answers to.)*
 
 *Owner's forensics, may be gone by the time you read this:* none. This
 replication is deliberately self-contained, because #185's was not.
