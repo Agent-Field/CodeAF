@@ -25,6 +25,7 @@ import (
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
+	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
@@ -1640,17 +1641,17 @@ func (w *settlementWatch) narrateOne(event store.Event, node store.Node, nodes [
 		// speaks for a gate that ANSWERED, and this row is the one where none
 		// did.
 		//
-		// AND THIS IS THE PLACE THE SENTENCE IS SAID, WHICH IS WHY IT TAKES THE
-		// FLAG. The event arrives here first — a run somebody is watching sees
-		// it the moment the gate gives up, beside the work it is about — and
-		// sayStanding at the end is the FALLBACK for a run whose stream nobody
-		// read: a wall, a `--json` caller, a poll that settled before this event
-		// was ever narrated. One reservation, said once, wherever it is first
-		// reachable; saying it in both places printed the identical line twice
-		// on every ordinary watched run.
+		// THIS LINE REPORTS THE EVENT, AND IT IS NOT THE RUN'S VERDICT. What is
+		// true at this moment is that the gate gave up on this node; what the
+		// run ends up handing over is not settled here and may still change —
+		// another round, another node, a wall. So it says the event in the
+		// stream's own register and takes NO closing flag: the sentence about
+		// what was delivered belongs to sayStanding, at the end, where the
+		// answer is, and FAILSAFE clause 3 says that is the line that may not be
+		// missing. A person's last visible line is never a bare ✓ over
+		// something the run believes nothing checked.
 		if gate.Unjudged {
-			w.saidStanding = true
-			w.note(unjudgedWords(gate), "")
+			w.note(unreachedStreamWords(gate), "")
 			return true
 		}
 		verdict, detail := gateWords(gate)
@@ -2344,6 +2345,31 @@ func unjudgedWords(gate store.DeliveryGate) string {
 	return said
 }
 
+// unreachedStreamWords is the same event as it happens, in the register the rest
+// of this stream reports gate rows in.
+//
+// It is a different line from unjudgedWords above because the two answer
+// different questions at different moments. This one says WHAT JUST HAPPENED —
+// the gate gave up on this node — while the run is still going and nothing about
+// what will be handed over is settled. unjudgedWords says WHAT WAS DELIVERED,
+// once there is a delivery to say it about.
+//
+// The record's note opens with the gate as its subject, because the closing line
+// needs a whole sentence to stand on its own; this line's subject is already
+// `gate:`, so the same words are folded into it rather than said twice. The
+// reason clauses after the ` · ` — how it was asked, the provider's own sentence
+// — are kept whole: they are the whole of what a person watching can act on.
+func unreachedStreamWords(gate store.DeliveryGate) string {
+	reason := firstLine(strings.TrimSpace(gate.Refused))
+	if rest := strings.TrimPrefix(reason, revision.GateUnreached); rest != reason {
+		return "gate: could not be reached" + rest
+	}
+	// The other note a gate can leave with no verdict behind it — it answered
+	// and named no gap — keeps its own words, with the subject folded out the
+	// same way so that the line does not name the gate twice.
+	return "gate: " + strings.TrimPrefix(reason, "the gate ")
+}
+
 // sayStanding writes the one line that tells a person watching WHY the run is
 // short, at the end, where the answer is.
 //
@@ -2382,6 +2408,17 @@ func (w *settlementWatch) sayStanding(node store.Node) {
 	// gateStanding would print "partial — the gate could not be reached", which
 	// tells a person the gate said something; it said nothing, and what they
 	// need to know is that the answer above them is unchecked.
+	//
+	// AND THIS IS THE ONE PLACE IT IS SAID, because this is the only one of the
+	// two that may be the last thing a person reads. The stream reported the
+	// event as it happened, in its own register (unreachedStreamWords), and a
+	// run that ended after it would otherwise close on a ✓ over a delivery
+	// nothing checked — five headless runs of ninety minutes ended exactly that
+	// way, with what the run believed it had not done sitting in the journal
+	// (FAILSAFE clause 3). The exit code is the contract every pipeline reads
+	// and it is the one thing a person at a terminal cannot see, so the
+	// reservation is stated here, last, whether or not the stream said anything
+	// earlier.
 	if gate.Unjudged {
 		w.saidStanding = true
 		w.note(unjudgedWords(gate), "")

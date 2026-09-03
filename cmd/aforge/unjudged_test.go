@@ -154,13 +154,15 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 		t.Fatalf("a gate nobody reached was called a refusal:\n%s", said)
 	}
 
-	// AND THE TWO PLACES IT COULD BE SAID FROM SAY IT BETWEEN THEM ONCE.
+	// AND THE TWO PLACES IT COULD BE SAID FROM SAY IT BETWEEN THEM ONCE, WITH
+	// THE CLOSING LINE LAST.
 	//
-	// The poll above reached the sentence through the closing reservation,
-	// which is the fallback; a watched run reaches the event first and says it
-	// there. Both arms are driven here, in that order, because the duplication
-	// they can produce is invisible to any test that only ever exercises one of
-	// them — the run above prints the line exactly once whichever arm is broken.
+	// The poll above reached the sentence through the closing reservation; a
+	// watched run also narrates the gate's event on the way past. Both arms are
+	// driven here, in the order a watched run drives them, because neither the
+	// duplication nor the ordering is visible to a test that only ever exercises
+	// one of them — the run above prints the line exactly once whichever arm is
+	// broken.
 	watched, watcher, door := narrationFixture(t)
 	if err := watched.RecordDeliveryGate("task-1",
 		deliveryGateOf(revision.Judgment{Pass: true, Unjudged: unreachedNote})); err != nil {
@@ -174,6 +176,19 @@ func TestARunNothingJudgedEndsUncheckedAndSaysSoOnTheDoorAndInTheJson(t *testing
 	watcher.sayStanding(watchedNodes[0])
 	if got := strings.Count(door.String(), sentence); got != 1 {
 		t.Fatalf("the event and the closing line said it %d times between them, want once:\n%s", got, door)
+	}
+	// FAILSAFE CLAUSE 3: the reservation is the LAST thing read, never a line
+	// the run happens to have printed earlier and then buried under a ✓.
+	if last := lastDoorLine(door.String()); !strings.HasPrefix(last, sentence) {
+		t.Fatalf("the last thing the watched run said is %q, want the unchecked sentence:\n%s", last, door)
+	}
+	// The event's own line reports the event, and it names the right actor:
+	// nobody refused anything here, the judgement never arrived.
+	if !strings.Contains(door.String(), "gate: could not be reached · asked twice") {
+		t.Fatalf("the stream never reported the gate giving up, in its own register:\n%s", door)
+	}
+	if strings.Contains(door.String(), "gate: refused") {
+		t.Fatalf("a gate nobody reached was called a refusal:\n%s", door)
 	}
 
 	// AND `--json` CARRIES IT, because the caller this is for is a machine.
