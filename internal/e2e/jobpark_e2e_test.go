@@ -481,9 +481,32 @@ func findJobEnding(t *testing.T, entries []session.DisplayEntry, after, jobID in
 			return at
 		}
 	}
-	t.Fatalf("job %d's ending never reached the worker: nothing after entry %d carries %q",
-		jobID, after, jobEndingLead)
+	// AND THE FAILURE CARRIES WHAT THE WORKER DID INSTEAD. This is the road the
+	// unfixed engine takes — asked for a step it had no answer to, the worker
+	// polls until the loop guard nudges it and then ends its turn while the
+	// command is still running, so the ending arrives at nobody. A bare "no
+	// ending" would be true and would send whoever reads it back to the log for
+	// the half that says why, so the calls that filled the gap are named here.
+	t.Fatalf("job %d's ending never reached the worker: nothing after entry %d carries %q.\nWhat the worker did instead:\n    %s",
+		jobID, after, jobEndingLead, strings.Join(callsAfter(entries, after), "\n    "))
 	return 0
+}
+
+// callsAfter is every named tool call from one point on, for a failure that has
+// to say what happened rather than only what did not.
+func callsAfter(entries []session.DisplayEntry, after int) []string {
+	var out []string
+	for at := after + 1; at < len(entries); at++ {
+		entry := entries[at]
+		if entry.Role != "tool" || strings.TrimSpace(entry.Tool) == "" {
+			continue
+		}
+		out = append(out, fmt.Sprintf("[%d] %s %s → %s", at, entry.Tool, shorten(entry.Args, 120), shorten(entry.Output, 160)))
+	}
+	if len(out) == 0 {
+		return []string{"(no call at all)"}
+	}
+	return out
 }
 
 // isJobPolling answers whether one call is the worker going to look at the
