@@ -269,6 +269,11 @@ type Ask struct {
 	Order        []string
 	Only         []string
 	Ignore       []string
+	// MaxPrice is the router's price ceiling in dollars per million tokens.
+	MaxPrice *struct {
+		Prompt     float64
+		Completion float64
+	}
 	// At is when the request arrived, on the wall clock and never the scripted
 	// one: it is what a test measures a GAP with — how long a run sat between
 	// two requests — and a gap measured on a clock the stub itself advances
@@ -659,10 +664,14 @@ type wireAsk struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Provider *struct {
-		Sort   string   `json:"sort"`
-		Order  []string `json:"order"`
-		Only   []string `json:"only"`
-		Ignore []string `json:"ignore"`
+		Sort     string   `json:"sort"`
+		Order    []string `json:"order"`
+		Only     []string `json:"only"`
+		Ignore   []string `json:"ignore"`
+		MaxPrice *struct {
+			Prompt     float64 `json:"prompt"`
+			Completion float64 `json:"completion"`
+		} `json:"max_price"`
 	} `json:"provider"`
 }
 
@@ -682,6 +691,12 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	if ask.Provider != nil {
 		record.Sort = ask.Provider.Sort
 		record.Order, record.Only, record.Ignore = ask.Provider.Order, ask.Provider.Only, ask.Provider.Ignore
+		if ask.Provider.MaxPrice != nil {
+			record.MaxPrice = &struct {
+				Prompt     float64
+				Completion float64
+			}{Prompt: ask.Provider.MaxPrice.Prompt, Completion: ask.Provider.MaxPrice.Completion}
+		}
 	}
 
 	s.mu.Lock()
@@ -710,7 +725,7 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	clock := s.clock
 	s.mu.Unlock()
 
-	lane, found := pick(lanes, record)
+	lane, serving, found := pick(lanes, record)
 	if !found {
 		// A DEMAND THAT NAMED NOBODY THE ROUTER SERVES GETS THE ROUTER'S OWN
 		// SENTENCE ABOUT IT, which is a different refusal from an empty set
@@ -725,13 +740,19 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 				s.requests[canonical(lanes, demanded)]++
 			}
 			s.mu.Unlock()
-			writeError(w, http.StatusNotFound, permitsOnly(served, lanes, record.Only), "")
+			writeError(w, http.StatusNotFound, permitsOnly(served, serving, record.Only), "")
 			return
 		}
-		// The router's own words when a preference has emptied the set. It is
-		// the shape the endpoint-refusal ladder in `internal/provider` reads,
-		// so a relaxation test gets the real thing.
-		writeError(w, http.StatusNotFound, "No endpoints found matching your data policy", "")
+		// The router's own words when a ceiling and the account policy have
+		// emptied the set. It is the shape the endpoint-refusal ladder in
+		// `internal/provider` reads, so a relaxation test gets the real thing.
+		// Other empty preferences keep the generic sentence this stub already
+		// used: they did not pass through the measured price-policy funnel.
+		if record.MaxPrice != nil && len(serving) == 0 {
+			writeError(w, http.StatusNotFound, dataPolicyRefusal, "")
+		} else {
+			writeError(w, http.StatusNotFound, "No endpoints found matching your data policy", "")
+		}
 		return
 	}
 
@@ -760,19 +781,28 @@ func (s *Server) serveCompletion(w http.ResponseWriter, r *http.Request) {
 	s.serveStream(w, r, clock, id, named, ask, lane, record)
 }
 
-// pick is the preference honoured: `only` is a demand, `ignore` is a veto, and
-// `order` is a ranking among whatever survives both. With no preference at all
-// the first lane declared answers, which is what makes a test's scripted order
-// mean something.
+// pick is the preference honoured: the price ceiling is applied first, `only`
+// is a demand, `ignore` is a veto, and `order` is a ranking among whatever
+// survives. With no preference at all the first lane declared answers, which
+// is what makes a test's scripted order mean something. The returned serving
+// set is the post-ceiling set the router names when a demand matches nothing.
 //
 // A [Lane.SheetOnly] lane is not here at all: the completion endpoint has never
 // heard of it, whatever the endpoints page says.
-func pick(lanes []Lane, ask Ask) (Lane, bool) {
-	allowed := make([]Lane, 0, len(lanes))
+func pick(lanes []Lane, ask Ask) (Lane, []Lane, bool) {
+	serving := make([]Lane, 0, len(lanes))
 	for _, lane := range lanes {
 		if lane.SheetOnly {
 			continue
 		}
+		if ask.MaxPrice != nil &&
+			(lane.PriceIn*1_000_000 > ask.MaxPrice.Prompt || lane.PriceOut*1_000_000 > ask.MaxPrice.Completion) {
+			continue
+		}
+		serving = append(serving, lane)
+	}
+	allowed := make([]Lane, 0, len(serving))
+	for _, lane := range serving {
 		if len(ask.Only) > 0 && !names(ask.Only, lane.Name) {
 			continue
 		}
@@ -782,17 +812,25 @@ func pick(lanes []Lane, ask Ask) (Lane, bool) {
 		allowed = append(allowed, lane)
 	}
 	if len(allowed) == 0 {
-		return Lane{}, false
+		return Lane{}, serving, false
 	}
 	for _, wanted := range ask.Order {
 		for _, lane := range allowed {
 			if equalName(lane.Name, wanted) {
-				return lane, true
+				return lane, serving, true
 			}
 		}
 	}
-	return allowed[0], true
+	return allowed[0], serving, true
 }
+
+// dataPolicyRefusal is the router's real account-policy refusal after its price
+// filter has left only an endpoint the account excludes. The exact words are
+// kept here because provider's recovery must be proved against what a person
+// actually sees, while the classifier itself continues to use structure.
+const dataPolicyRefusal = "0 endpoints out of 1 requested are available matching your guardrail restrictions and data policy. " +
+	"We removed them for the following reasons (an endpoint may have matched multiple reasons):\n" +
+	"Paid model training violation (account settings): 1 endpoint excluded; configurable at https://openrouter.ai/settings/privacy"
 
 // permitsOnly is the router's real sentence when `provider.only` named nothing
 // the router will serve this model from, copied from the body a live run

@@ -2026,6 +2026,23 @@ Setting **routing** yourself overrides all of that everywhere: `latency` asks fo
 
 With `routing: off` there is nothing measured, so there is no lane to choose, no sheet of them to open under a model row, and no speed guard.
 
+## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
+
+This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
+then excluded that endpoint under your OpenRouter account's privacy setting because its
+provider may train on prompts. It does not mean the model disappeared or that your prompt
+was rejected.
+
+aforge drops the cap and asks the same model again on the same turn. The attempt line says
+`dropped the price ceiling and relaxed the endpoint filter`. A rescue request or a request
+pinned to one lane never carries the cap, because that lane has already passed aforge's
+price choice. Once a capped request to this model is refused, the cap stays off that model
+for the rest of this session, including the next rescue.
+
+You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
+another model, or pin a lane that serves this model. Pinning chooses the provider for this
+conversation; it does not change your OpenRouter privacy setting.
+
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 
 One model id is served by a dozen different endpoints, and they are not alike: on one
