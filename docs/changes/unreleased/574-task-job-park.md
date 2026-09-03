@@ -10,6 +10,7 @@ invalidates:
   - "`jobRegistry.adopt` and `Agent.adoptRunningBashAs` took a `quiet ...bool` variadic. They take an `adoption{quiet, owed}` value, because the road a takeover came down is now two facts and a second bare bool would have said nothing about which was which."
   - "A job's ending was always reduced to its headline on the way to the model (`jobNote`'s `firstLine`). An OWED ending now travels WHOLE — the exit line, the command's last lines and the path to the full log — because the wait was taken so that this ending could be the next thing the work read, and a headline is the reading the wait was taken INSTEAD of. Every other job note is byte-for-byte what it was; the general trim is #573."
   - "`childRun.park`'s rule that the clock is pushed by exactly the parked time was the rule for waiting. It is the rule for waiting on somebody ELSE'S work. A node waiting on a command it started is waiting on its own, so that park pushes no clock, and no single wait may outlast the whole allowance the run was given."
+  - "Telling the model not to poll was thought to be the other half of the answer, alongside the ending arriving by event. It is not, and a real model on clean dev showed why: asked for a step it had no answer to, it called `jobs list` four times, took the loop guard's `[stuck]` nudge on a perfectly healthy run, answered `Apologies — I'll wait. No more calls.` — and then ENDED ITS TURN to wait, which is the one thing a worker cannot do. There was no turn left for the ending to arrive in, so the node settled done at 53 seconds with the suite fifteen seconds from finishing, reporting on a command it never saw the end of. The guard was never needed to kill that run; the wrong question was enough on its own."
   - "A run that polled a live job and was stopped as circling was a finding about the worker. `internal/session/looped.go` and `childRun.count` are unchanged and still are — but the manufactured polling they were reading is gone, so a task no longer kills a passing test run at 4m35s to report that it went in circles."
 ---
 
@@ -25,3 +26,9 @@ on the process's state, which is the law `task_child_run.go` already states for 
 part's report: the release rides in the same locked step as the note's append,
 exactly as a person's steered line already does, so there is no instant in which
 the ending is queued and the waiter has not been woken for it.
+
+And a worker that WORKS OUT the right answer still cannot act on it. Told by the
+loop guard to stop repeating itself, the model on clean dev said it would wait —
+and waited by ending its turn, because ending the turn is the only way a model
+has of doing nothing. A worker has no next turn to be woken into. The waiting had
+to become something the runner does, not something the model is asked to do.
