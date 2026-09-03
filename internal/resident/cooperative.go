@@ -56,8 +56,13 @@ func SplitCooperatively(ctx context.Context, graph *store.Store, node store.Node
 	if strings.TrimSpace(growth.Goal) == "" {
 		growth.Goal = CooperativeGoal(node, request, partial)
 	}
-	return ReplanOverrunAs(ctx, graph, node, partial, "", artifacts,
+	// The refusal cause is dropped here and nowhere else. A cooperative division
+	// is a leaf that is still running asking for help, not a leaf handing back
+	// what it could not finish, so there is no ending for a governor's sentence
+	// to become; zero spliced is the whole of what this caller can act on.
+	spliced, sink, _, err := ReplanOverrunAs(ctx, graph, node, partial, "", artifacts,
 		dailyBudgetUSD, growth, divide)
+	return spliced, sink, err
 }
 
 // CooperativeGoal phrases the division brief.

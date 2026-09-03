@@ -323,11 +323,14 @@ func TestThePolishVerdictIsWeighedAgainstWhatTheRepairMoved(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(line), "revision.RepairClosed(") {
 		t.Errorf("the settlement decides for itself whether a repair closed the gate:\n\t%s", line)
 	}
-	// And the stamp it is weighed against is taken twice, on either side of the
-	// round: one call is a stamp nothing is compared to.
-	if strings.Count(body, "revision.TreeStamp(") != 2 {
-		t.Errorf("the tree is stamped %d times; a repair is judged on the difference between two",
-			strings.Count(body, "revision.TreeStamp("))
+	// And every stamp has a partner, because a stamp nothing is compared to
+	// settles nothing. There are two pairs: the repair round is judged on the
+	// difference across itself, and the LEAF is judged on the difference across
+	// its whole attempt — the tree as the worker was handed it against the tree
+	// at the moment the gate would be asked, which is what says a job that has
+	// stopped moving pays for no gate and no repair (#386).
+	if stamps := strings.Count(body, "revision.TreeStamp("); stamps != 4 {
+		t.Errorf("the tree is stamped %d times; each reading is half of a before-and-after", stamps)
 	}
 }
 

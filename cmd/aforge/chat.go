@@ -799,9 +799,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// store said whether a claim had resumed or started over, which is why it
 		// took a transcript autopsy to find out. Now the row says so and the
 		// headless stream reads it (store.EventLeafResumed).
+		// carriedFiles is what an earlier attempt at this same leaf left on disk,
+		// kept because it is half of the reading below: the tree this attempt is
+		// starting from is the job's record plus whatever the attempt before it
+		// wrote, and a before-and-after that forgot the second half would read a
+		// resumed leaf's inherited files as this attempt's own work.
+		var carriedFiles []string
 		if node.Attempt > 0 {
 			if bank, recorded := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
 				inputs = append(inputs, bank.Input())
+				carriedFiles = bank.Artifacts
 				if recorded > 0 {
 					if resumeErr := graph.RecordLeafResumed(node.ID, store.LeafResumed{
 						Turns: recorded, Files: bank.Artifacts,
@@ -817,6 +824,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				}
 			}
 		}
+		// THE WORLD AS THIS LEAF FOUND IT, read once, here, before the worker is
+		// given anything to do. It is the earlier half of the only honest answer
+		// to "did this attempt change anything" — the later half is taken where
+		// the delivery gate is asked, and two equal stamps are an attempt that
+		// moved nothing at all. Reading it any later reads a tree the worker has
+		// already been in. See revision.TreeStamp and nothingChanged.
+		startedWorldAs := revision.TreeStamp(jobArtifacts(opts.produced, carriedFiles))
 		task := exec.Task{
 			Reflex:     isReflex,
 			Fold:       fold,
@@ -1157,6 +1171,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// leave its prose in front of the answer. See composeDelivery.
 		var notes []string
 		continuing := false
+		// WHAT THE JOB CONCLUDED ABOUT CARRYING ON, as opposed to what stopped
+		// this leaf. It is set only by the two governors that read the world —
+		// nothing changed twice over, or the remaining work came back word for
+		// word the same — and it is the growth verdict's own cause word, which
+		// the scheduler on the other side of this seam turns into an ending. See
+		// resident.GrowthStopped and resident.ExecResult.RefusedGrowth.
+		refusedGrowth := ""
 		// Resource exhaustion is invisible: it grows the graph and the final
 		// assembled deliverable reaches the gate. Semantic failure stays honest
 		// and still lands with the evidence from the failing leaf.
@@ -1217,10 +1238,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// from here worked on this path and on none of the others, and
 			// the textual run of 2026-08-29 spliced fourteen cold children
 			// on `reason: gap` to prove it. See resident.LineageBank.
-			spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
+			spliced, _, refused, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
 				settings.DailyBudgetUSD,
 				resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
 				replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
+			// The refusal was posted and journaled here for a long time and read
+			// by nothing that decides. It travels now, from the one call that
+			// learned it, so the scheduler stops paying for a job this leaf's
+			// own machinery has already concluded is going nowhere.
+			if _, stopped := resident.GrowthStopped(refused); stopped {
+				refusedGrowth = refused
+			}
 			if replanErr == nil && spliced > 0 {
 				continuing = true
 				notes = append(notes, "["+continuationMessage(spliced)+"]")
@@ -1300,7 +1328,37 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// looping impossible rather than merely capped, so the old sentence is
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
-		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
+		gating := len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing)
+		// ONCE THE HARNESS HAS CONCLUDED NOTHING IS CHANGING, IT STOPS SPENDING
+		// ON THAT JOB: NO GATE ON A TREE WITH NO DIFF, NO REPAIR ROUND ON A TREE
+		// WITH NO DIFF, NO RESUME.
+		//
+		// A leaf that ran out having written and altered nothing has produced
+		// nothing for a judge to read and nothing for a repair to build on, and
+		// both of those are bought with a model call: one measured run paid two
+		// gate calls of ~114K tokens whose refusal described work that did not
+		// exist, then a full twenty-turn repair round against that refusal, on a
+		// tree that was byte-for-byte the tree the leaf had started from. What
+		// the person is owed instead is the fact, once — which the governor has
+		// usually already said in its own words. See resident.GrowthStopped.
+		if gating && nothingChanged(outcome, startedWorldAs,
+			revision.TreeStamp(jobArtifacts(opts.produced, absolute))) {
+			gating = false
+			handover := unchangedHandoverWords(refusedGrowth)
+			notes = append(notes, handover)
+			// AND AN UNASKED GATE IS NEVER RECORDED AS A PASS. The row says a
+			// judgement was declined and why, and it leaves the delivery
+			// Unclosed, which is the field the exit code turns on — a run that
+			// changed nothing is a run that handed over less than it promised,
+			// and the ledger a battery reads must not be able to mistake this
+			// for work that was checked. See store.DeliveryGate.Unclosed.
+			if gateErr := graph.RecordDeliveryGate(node.ID, store.DeliveryGate{
+				Refused: handover, Unclosed: true,
+			}); gateErr != nil {
+				log.Printf("note: could not journal the unasked gate on %s: %v", node.ID, gateErr)
+			}
+		}
+		if gating {
 			records := gateEvidence(node, task.Spec, outcome,
 				jobArtifacts(opts.produced, absolute), true, jobDir)
 			// Whatever the gate's own call has to be repaired to get an answer is
@@ -1716,6 +1774,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Quotes, evidence.Mechanical = extension.Citations, extension.Mechanical
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
+						// The same verdict from the same governor, reached down
+						// the gate's road instead of the exhaustion's. One field
+						// carries both because the fact is one fact: the job has
+						// concluded that carrying on changes nothing.
+						if _, stopped := resident.GrowthStopped(extension.Cause); stopped {
+							refusedGrowth = extension.Cause
+						}
 						// A GOVERNOR REFUSING A ROUND NEVER TOUCHES Overturned.
 						// The extension can only report what it bought, and a
 						// round nobody bought says nothing about whether the
@@ -1815,6 +1880,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			}
 		}
 		result := leafSpend(spent, spentShape, workerModel, banker.banked(), outcome, continuing || extended)
+		// AND THE GOVERNOR'S VERDICT CROSSES THE SEAM WITH THE MONEY. It is set
+		// here rather than inside leafSpend because the other two endings that
+		// build a result — a paused or cancelled leaf, and a failed one — return
+		// above the block that can learn it, and a parameter they could only
+		// ever pass empty is a parameter that teaches a reader nothing.
+		result.RefusedGrowth = refusedGrowth
 		result.Summary = text
 		result.Promote = promoted
 		result.ServiceRequests = outcome.ServiceRequests
@@ -3272,6 +3343,45 @@ func humanFailure(node store.Node, err error, artifacts []string, withheld strin
 // with a paragraph has said the useful part first; the paragraph is whole, one
 // line down.
 const failureCauseBytes = 300
+
+// nothingChanged reports that this leaf ran out of room and left the world
+// exactly as it found it: the same files, the same sizes, the same modification
+// times, stamped before the worker was given anything to do and again where the
+// deliverable would be judged.
+//
+// It is the tree and not the account that is read, because the account is the
+// thing in doubt — a worker cut off mid-sentence writes a summary of what it was
+// going to do — and it is an equality on a stamp rather than a count of
+// artifacts because a round that wrote nothing and a round that rewrote a file
+// to the same bytes are the same event as far as anything downstream is
+// concerned. An empty record on both sides compares equal, which is the honest
+// reading: a leaf that ran out with nothing on disk has nothing to show anyone.
+//
+// A leaf that finished, or that changed anything at all, is not this and takes
+// every path it always took.
+func nothingChanged(outcome *exec.Outcome, startedWorldAs, standsWorldAs string) bool {
+	return leafRanOutOfRoom(outcome) && startedWorldAs == standsWorldAs
+}
+
+// unchangedHandover is what a person reads when a leaf ran out having changed
+// nothing and no governor has spoken — the first such round, or one refused for
+// a cap. It states the observation and not the rule, the way the governor's own
+// sentences do.
+const unchangedHandover = "nothing here was written or altered while this ran, so it is handed over as it stands"
+
+// unchangedHandoverWords is the sentence the delivery carries when the gate was
+// not asked. It PREFERS THE GOVERNOR'S OWN WORDS: that sentence has already been
+// printed on the stream and written to the record by the time this is composed,
+// and a second wording of one event leaves a person working out whether two
+// things happened. What is added is the half the governor cannot know — that
+// nothing further was bought off the back of it.
+func unchangedHandoverWords(refusedGrowth string) string {
+	words := unchangedHandover
+	if governor, stopped := resident.GrowthStopped(refusedGrowth); stopped {
+		words = governor
+	}
+	return words + ". Nothing further was started."
+}
 
 // shouldGate keeps the delivery ceremony off the reflex rung. A promoted
 // partial is evidence for the compiled job, not a deliverable to review.

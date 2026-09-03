@@ -2809,7 +2809,14 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		revealedGap = true
 		outcome += "\n\n" + redirect
 	}
-	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass && r.gateVerdictSurvived(node, gate) {
+	// A GATE THAT NAMED NO GAP CAUGHT NO MISSING ELEMENT, so there is nothing
+	// here to distil from. A gate the harness declined to ask — a job that
+	// stopped changing anything — records the refusal that stood in for the
+	// judgement and no gap at all (see store.RecordDeliveryGate), and handing
+	// the block below such a row would tell the distiller that the gate caught
+	// this missing element: and then stop.
+	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass &&
+		strings.TrimSpace(gate.Gap) != "" && r.gateVerdictSurvived(node, gate) {
 		revealedGap = true
 		ending := "The one polish pass did not close it."
 		if gate.PolishClosed {

@@ -1993,3 +1993,54 @@ requeue: the leaf never released its claim, so nothing above it observes an
 ending it did not have. And no close on a leaf that was cancelled, paused,
 faulted, promoted or split — none of those is a leaf being asked to deliver
 anything.
+
+
+## A twenty-seventh failure, 2026-09-02: the standstill nothing acted on
+
+*The three-block reading run, replicated from #386; the benchmark on #252.*
+
+The detector was right, on time, and in the right words. A leaf read a
+3,500-line file to its budget, was resumed, ran out again, and the growth
+governor refused the next round with `cause: standstill` — `carrying on has
+stopped changing anything — twice over now, nothing was written or altered — so
+this is handed over as it stands`. It said so on the stream and wrote it to the
+journal. Then the run paid two delivery-gate calls of ~114K tokens whose refusal
+described work that did not exist, ran a full twenty-turn repair round of the
+same leaf against that refusal, re-judged it, printed the standstill sentence
+again, and resumed the same leaf from its recorded turns a third time.
+
+The order in the kept store is the whole autopsy: `leaf_exhausted → job_growth
+(refused, cause standstill) → delivery_gate → node_released (recorded N) →
+leaf_resumed`. Nothing between the refusal and the next claim ever saw it. The
+verdict reached the stream and the journal, which are the two places that decide
+nothing; the leaf's result crossed to the scheduler carrying `it ran out` and
+`nothing is continuing it`, and both of those are equally true of the very first
+fruitless round — so the requeue arm, which asks the attempt count and whether
+any turns were banked, put the job back on the queue.
+
+> **A DETECTOR NOBODY ACTS ON IS A LOG LINE. What the harness concludes about
+> carrying on has to reach the thing that pays for carrying on — on the result,
+> as a value, not in a row somebody may later read.**
+
+So the governor's cause word rides out on the leaf's result and the scheduler
+ends the node with the governor's own sentence. And the two purchases that come
+BEFORE the scheduler are stopped by a measurement rather than by the verdict: the
+record is stamped as the leaf starts and again where the gate would be asked, and
+an equal pair buys no gate and no repair, because a leaf that wrote and altered
+nothing has produced nothing for a judge to read and nothing for a repair to
+build on. Both readings keep clause 5's floor exactly as it is — the first
+fruitless round is never refused, and neither of these re-derives that from a
+diff.
+
+The gate that is not asked is still journaled, carrying the handover sentence and
+`unclosed`, never a pass: an unasked check must not be readable afterwards as a
+check that passed (clause 4).
+
+### The sibling ruling
+
+A delivery gate that **passed** settles the node, even where the leaf ran out of
+room getting there. Running out is a statement about resources; a gate pass is a
+reading of the work against the words the person used, and "is this done" is the
+work's question. This does not reopen the s4 defect: what is still refused is a
+remainder judge's claim of doneness, shown the brief and the worker's own last
+sentence and nothing else. A claim about the work is not a reading of it.
