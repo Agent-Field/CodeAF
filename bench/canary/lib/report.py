@@ -30,7 +30,7 @@ import subprocess
 COLUMNS = ["run", "sha", "id", "door", "anchor", "pass", "wall_s", "cost_usd", "ttft_ms",
            "changed_files", "f2p_passed", "f2p_failed", "suite_passed", "suite_failed", "load", "reason",
            "door_verdict", "tests_verdict", "source", "tier", "gate_rounds", "task_done_s", "done_to_wall_s",
-           "mark_fails", "carry_ons", "steward_last"]
+           "mark_fails", "carry_ons", "steward_last", "asked_s"]
 
 
 def cells(run_dirs):
@@ -65,6 +65,7 @@ def row(meta, cell):
         "mark_fails": cell.get("mark_fails") if cell.get("mark_fails") is not None else "",
         "carry_ons": cell.get("carry_ons") if cell.get("carry_ons") is not None else "",
         "steward_last": cell.get("steward_last") if cell.get("steward_last") is not None else "",
+        "asked_s": cell.get("asked_s") if cell.get("asked_s") is not None else "",
     }
     # Missing measurements stay empty everywhere. In particular, older chat
     # rows may carry an explicit null gate count, which must not print `None`.

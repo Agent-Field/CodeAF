@@ -126,10 +126,10 @@ def door_verdict():
     if not door:
         return ""
     ended = door.get("ended", "")
-    if ended != "self":
-        return ended.replace(" (killed)", "").replace(" ", "")
     if door.get("blocked_on"):
         return "asked"
+    if ended != "self":
+        return ended.replace(" (killed)", "").replace(" ", "")
     if door.get("exit", 0) != 0:
         return "partial"
     return "ok"
@@ -150,10 +150,10 @@ def tests_verdict():
 reason = ""
 if setup != "ok":
     reason = setup
-elif door.get("ended") != "self":
-    reason = "%s · %s" % (door.get("ended", "no door record"), tests)
 elif door.get("blocked_on"):
     reason = "asked: " + door["blocked_on"][:120]
+elif door.get("ended") != "self":
+    reason = "%s · %s" % (door.get("ended", "no door record"), tests)
 elif door.get("exit", 0) != 0:
     reason = "exit %s · %s" % (door["exit"], tests)
 elif not f2p:
@@ -180,7 +180,8 @@ cell = {
     # small one. A pool written before these existed means neither.
     "source": entry.get("source") or "fresh", "tier": entry.get("tier") or "small",
     "wall_s": door.get("wall_s"), "cost_usd": door.get("cost_usd"), "ttft_ms": door.get("ttft_ms"),
-    "task_done_s": door.get("task_done_s"), "done_to_wall_s": door.get("done_to_wall_s"),
+    "task_done_s": door.get("task_done_s"), "asked_s": door.get("asked_s"),
+    "done_to_wall_s": door.get("done_to_wall_s"),
     "mark_fails": mark_fails, "carry_ons": carry_ons, "steward_last": steward_last,
     "calls": door.get("calls"), "changed_files": judge.get("changed_files"),
     "f2p": judge.get("f2p"), "suite": judge.get("suite"), "regressed": judge.get("regressed"),
