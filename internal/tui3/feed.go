@@ -117,6 +117,14 @@ type feedHooks struct {
 	// transcript whose durations came from the wall clock could not be asserted
 	// on at all.
 	now func() time.Time
+	// snap says this view draws a burst WHOLE rather than letting the live edge
+	// walk it in (reveal.go). It is the screen-reader tier and nothing else —
+	// both surfaces install [app.linear] — and it is a hook rather than a field
+	// read here because the reducer knows nothing about how it is drawn, which
+	// is the whole of what it is for. A nil hook paces, which is the right
+	// default for a reducer nobody has told: an edge that walks is the ordinary
+	// surface, and holding bytes back is never what a screen reader wants.
+	snap func() bool
 	// follow keeps the view at the growing edge when the transcript grows, for
 	// the view's own definition of "at the edge" ([app.follow] honours the stick).
 	follow func()
@@ -173,6 +181,15 @@ func (f *feed) now() time.Time {
 	return time.Now()
 }
 
+// snap is the view's answer to "draw it whole", or false where no view said.
+// See [feedHooks.snap] for why the default is to pace.
+func (f *feed) snap() bool {
+	if f.hooks.snap != nil {
+		return f.hooks.snap()
+	}
+	return false
+}
+
 // follow tells the view the transcript grew at its end.
 func (f *feed) follow() {
 	if f.hooks.follow != nil {
@@ -200,13 +217,27 @@ func (f *feed) touch() {
 //
 // An event this reducer has nothing to say about falls through and writes
 // nothing, deliberately: the caller has already decided what else it means.
+// lump says the text this event carries is one the WIRE buffered rather than one
+// it wrote, and only the caller can answer it: a folded run of short deltas is
+// not a lump however long the fold is, and the fold happens on the far side of
+// this call (app.go's [waitEvent], reveal.go's header). It is carried as a
+// parameter for that reason and read exactly once, in the two cases below.
 func (f *feed) ingest(ev session.Event) {
+	f.ingestStream(ev, isLump(len(ev.Text)))
+}
+
+// ingestStream is [feed.ingest] told whether the text it carries is a lump.
+// Only a lane that FOLDS can answer that — app.go's [waitEvent] joins the run of
+// short deltas that piled up behind a frame, and a fold of short deltas is not a
+// lump however long the fold is (reveal.go). Every other lane delivers one wire
+// event at a time and comes through [feed.ingest], which reads the length.
+func (f *feed) ingestStream(ev session.Event, lump bool) {
 	switch ev.Kind {
 	case session.EventTextDelta:
-		f.say(ev.Text)
+		f.sayStream(ev.Text, lump)
 
 	case session.EventReasoning:
-		f.reason(ev.Text)
+		f.reasonStream(ev.Text, lump)
 
 	case session.EventTaskReplyTags:
 		f.takeReplyTags(ev.TaskReplyTags)
@@ -854,7 +885,12 @@ func (f *feed) collapseThought() {
 // the answer above it into narration, which is drawn plain (hierarchy.go). The
 // words belonged to the paragraph above them the whole time, which is [feed.said]'s
 // law read from the other end — a page is the only record anybody reads back.
-func (f *feed) say(text string) {
+func (f *feed) say(text string) { f.sayStream(text, false) }
+
+// sayStream is [feed.say] told whether the burst is a lump the live edge should
+// walk. The bare form is text handed over WHOLE, with no wire behind it that
+// could have lumped it, so it paces nothing.
+func (f *feed) sayStream(text string, lump bool) {
 	if text == "" {
 		return
 	}
@@ -873,6 +909,11 @@ func (f *feed) say(text string) {
 	}
 	e := &f.entries[f.live]
 	e.text += text
+	// AND THE LIVE EDGE OPENS OR EXTENDS HERE, on the bytes that were just
+	// appended and nowhere else (reveal.go). It is in the reducer rather than in
+	// a view because both surfaces stream into these blocks and a second spelling
+	// would be a second answer to "how much of this is drawn".
+	e.catchReveal(len(text), lump, f.snap())
 	e.stale = true
 	f.follow()
 }
@@ -913,7 +954,7 @@ func (f *feed) growSettledAnswer(text string) {
 			break
 		}
 		e.text += text
-		e.settled, e.stale = true, true
+		settleBlock(e)
 		f.follow()
 		f.touch()
 		return
@@ -937,7 +978,10 @@ func (f *feed) growSettledAnswer(text string) {
 // stale and lets the frame clock decide when a flood becomes a frame. The one
 // exception is the block's first delta, which appends an ENTRY: a structural
 // change the layout has to see.
-func (f *feed) reason(text string) {
+func (f *feed) reason(text string) { f.reasonStream(text, false) }
+
+// reasonStream is [feed.reason] on [feed.sayStream]'s terms.
+func (f *feed) reasonStream(text string, lump bool) {
 	if text == "" {
 		return
 	}
@@ -961,6 +1005,9 @@ func (f *feed) reason(text string) {
 	}
 	e := &f.entries[f.think]
 	e.text += text
+	// The reasoning block walks its edge on the conversation's own terms
+	// ([feed.say] says why this lives in the reducer).
+	e.catchReveal(len(text), lump, f.snap())
 	e.ended = f.now()
 	e.stale = true
 	f.follow()
@@ -1007,7 +1054,9 @@ func (f *feed) said(e entry) {
 	live := f.live
 	f.entries = append(f.entries, e)
 	if live < 0 || live >= len(f.entries)-1 || f.entries[live].kind != entryAssistant {
-		f.live = -1
+		// The pointer named nothing that is still growing, so it is let go
+		// through the one door rather than by hand (livestate.go).
+		abandonLive(f.entries, &f.live)
 		return
 	}
 	f.live = live
@@ -1104,17 +1153,16 @@ func (f *feed) retry(ev session.Event) {
 // middle would move every index after it, and the forming rows, the selection
 // and the thought marker are all held by index.
 func (f *feed) dropLive() {
-	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
-		f.live = -1
+	at := f.live
+	if e := abandonLive(f.entries, &f.live); e == nil || e.kind != entryAssistant {
 		return
 	}
-	if f.live == len(f.entries)-1 {
-		f.entries = f.entries[:f.live]
+	if at == len(f.entries)-1 {
+		f.entries = f.entries[:at]
 	} else {
-		f.entries[f.live].text = ""
-		f.entries[f.live].stale = true
+		f.entries[at].text = ""
+		f.entries[at].stale = true
 	}
-	f.live = -1
 	f.touch()
 }
 

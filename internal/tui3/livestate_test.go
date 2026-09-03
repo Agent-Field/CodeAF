@@ -136,7 +136,7 @@ func TestARoomsBlockSnapsWhenItStopsBeingLive(t *testing.T) {
 		name string
 		shut func(a *app)
 	}{
-		{"the page's block is closed", func(a *app) { a.roomCloseLive() }},
+		{"the page's block is closed", func(a *app) { a.room.closeLive() }},
 		{"something lands under it", func(a *app) {
 			a.roomAppend(entry{kind: entryNote, text: "a note", turn: a.room.turn})
 		}},
@@ -145,7 +145,7 @@ func TestARoomsBlockSnapsWhenItStopsBeingLive(t *testing.T) {
 			a, _, _ := roomApp(t)
 			clickRail(t, a, 0)
 			slot, _ := revealClock(a)
-			a.roomSay(revealLump, true)
+			a.room.sayStream(revealLump, true)
 			if a.room.live < 0 {
 				t.Fatal("the lump did not open a live block on the page")
 			}

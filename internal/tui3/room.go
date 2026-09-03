@@ -491,8 +491,11 @@ func (a *app) roomFeedHooks(r *taskRoom) feedHooks {
 		}
 		a.touch()
 	}
+	// snap is the conversation's own answer: a node's page paces its live edge
+	// exactly as the transcript does, and stops for the same reader (reveal.go).
 	return feedHooks{
 		now: a.now, follow: grew, touch: grew,
+		snap:   func() bool { return a.linear },
 		closed: func(*entry, session.Event) { a.tallyNode(r.id, r.entries) },
 	}
 }

@@ -4033,6 +4033,11 @@ func (a *app) feedHooks(l lens) feedHooks {
 		now:    a.now,
 		follow: a.follow,
 		touch:  a.touch,
+		// THE SCREEN-READER TIER DRAWS EVERY BURST WHOLE. It is the only reason
+		// this hook exists, and both surfaces answer it the same way (reveal.go).
+		// It is one of THE PAGE's and not one of the card's: every surface with a
+		// screen owes the reducer an answer to it, so it sits above the lens gate.
+		snap: func() bool { return a.linear },
 		closed: func(e *entry, ev session.Event) {
 			a.learnBackground(e, ev.Output)
 			// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS
@@ -4187,7 +4192,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	// gate to keep in step — and a gate is exactly what this was: a second
 	// spelling of the kinds feed.go handles, which a new event wired in the
 	// reducer would pass tests and the task room and never reach the chat.
-	a.ingest(ev)
+	a.ingestStream(ev, lump)
 	switch ev.Kind {
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
