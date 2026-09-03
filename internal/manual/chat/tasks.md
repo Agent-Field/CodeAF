@@ -3596,8 +3596,12 @@ either does the work land as it stands, and the landing says so, under the task'
 account of what it did:
 
 ```
-taken as it stands: nobody could check it in 5m0s, and the run is unattended
+taken as it stands: one call ran 2m30s without answering and was abandoned · the window closed before a second, and the run is unattended
 ```
+
+The first half of that line is whatever became of the check — a call that hung and was cut,
+a checker that would not start, a reply that said neither way — so it names what happened
+rather than claiming nobody could check the work.
 
 The task then reads `finished`, its branch merges like any other, and that sentence is the
 whole of what was different about it. You can still say "actually that one isn't finished"

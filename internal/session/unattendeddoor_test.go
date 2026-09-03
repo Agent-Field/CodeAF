@@ -763,13 +763,19 @@ func TestAWindowTooSmallToAskInSaysTheWindowClosed(t *testing.T) {
 	}
 }
 
-// AND A WINDOW THAT CLOSES IS DECIDED BY THE POSTURE, WHICHEVER POSTURE IT IS.
+// AND A WINDOW ONE STALL CLOSED IS DECIDED BY THE POSTURE, WHICHEVER POSTURE IT
+// IS.
 //
 // Same fixture, twice. On a run somebody left going with a ceiling there is
 // nobody to hand the question to, so the work is taken as it stands and the
 // landing says what it did and why. On every other run the card stands exactly
 // as it did: the work needs somebody's look, and it waits for them.
-func TestAWindowThatClosedIsDecidedByThePosture(t *testing.T) {
+//
+// AND WHAT IT SAYS IT DID IS WHAT HAPPENED. Both checkers were asked and both
+// held their stream until they were cut, so the sentence the work is taken as it
+// stands on names the stall — never "nobody could check it", which is the one
+// account of this evening that is not true.
+func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 	for _, unattended := range []bool{true, false} {
 		name := "watched"
 		if unattended {
@@ -836,10 +842,18 @@ func TestAWindowThatClosedIsDecidedByThePosture(t *testing.T) {
 			// THE LANDING SAYS WHAT IT DID AND WHY, in the words a person reads:
 			// the checker's own account of what became of it, and the fact that
 			// there was nobody to ask.
-			for _, want := range []string{takenAsItStandsLead, "nobody could check it in", takenAsItStandsTail} {
+			for _, want := range []string{
+				takenAsItStandsLead,
+				"without answering and was abandoned",
+				checkerWindowClosed,
+				takenAsItStandsTail,
+			} {
 				if !strings.Contains(notice.Report, want) {
 					t.Fatalf("the landing is missing %q:\n%s", want, notice.Report)
 				}
+			}
+			if strings.Contains(notice.Report, "nobody could check it in") {
+				t.Fatalf("the landing says nobody was asked, and two checkers were:\n%s", notice.Report)
 			}
 			if strings.Contains(notice.Report, needsLookLead) {
 				t.Fatalf("an unattended run still asks somebody who is not there:\n%s", notice.Report)

@@ -662,6 +662,12 @@ func (v auditVerdict) report() string {
 // that says UNANSWERED (pending.go states the law), so this says who could not
 // answer and how long they had, and stops there. Whether the work is accepted is
 // still entirely open, and still entirely the person's.
+//
+// AND IT IS SAID ONLY WHERE IT IS TRUE: no call stalled and the window ran out
+// on its own — a window too small to bound a call in, or a pair of attempts that
+// answered without hanging and left nothing behind them. A call that WAS asked
+// and held its whole bound is said to have stalled, with the window's closing as
+// a clause on the end of it ([checkerStalled], [auditVerdict.andTheWindowClosed]).
 func checkerRanOut(window time.Duration) string {
 	return "nobody could check it in " + window.String()
 }
@@ -678,8 +684,9 @@ func checkerStalled(bound time.Duration) string {
 	return "one call ran " + bound.String() + " without answering and was abandoned"
 }
 
-// checkerWindowClosed is what a person reads BESIDE the first attempt's own
-// account when there was no time left to ask again.
+// checkerWindowClosed is what a person reads BESIDE A CALL'S OWN ACCOUNT when
+// the window closed on it — on the call that was cut by the window itself, and
+// on a first attempt there was no time left to ask again after.
 //
 // It is a second clause rather than a second sentence, and it is never a
 // replacement: the landing has to say both what was asked and why it was not
@@ -1039,16 +1046,26 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own window with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		// AND THE TWO CLOCKS ARE TOLD APART, because they are opposite news. A
-		// call cut at its own share while the window still has room is a stalled
-		// stream and the check is asked again inside what is left; a window that
-		// has closed is the whole of this node's checking over, and there is
-		// nothing left to ask with.
+		// AND THE TWO CLOCKS ARE TOLD APART, because they decide different things.
+		// A call cut while the window still has room leaves something to ask
+		// with, and the check is asked again inside what is left; a window that
+		// has closed is the whole of this node's checking over.
+		//
+		// WHAT NEITHER OF THEM CHANGES IS THE SENTENCE. A CALL THAT STALLED IS
+		// SAID TO HAVE STALLED, whichever clock ran out second: this one was
+		// asked, held the stream for its whole bound and answered nothing, and
+		// "nobody could check it in 5m0s" over the top of that is the harness
+		// telling a person nobody was asked. So the window's closing is a clause
+		// on the end of the call's own account, exactly as it is one rung up
+		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
+		// the case it is true of: no call stalled, and the window simply ran out.
+		stalled := noVerdict(checkerStalled(bound), said)
 		if pace.left(time.Now()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
-			return noVerdict(checkerStalled(bound), said), true
+			return stalled, true
 		}
-		return noVerdict(checkerRanOut(pace.window), said), false
+		fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
+		return stalled.andTheWindowClosed(), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor

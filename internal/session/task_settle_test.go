@@ -253,10 +253,17 @@ func TestHandingOneToTheModelLeavesTheNodeWhereItIs(t *testing.T) {
 // said by a clock that made none. What the clock knows is who could not answer
 // and how long they had (pending.go carries the law).
 //
+// AND WHAT THE CLOCK KNOWS HERE IS THAT A CALL STALLED. Both attempts were made
+// and both held their stream until they were cut, so the sentence names that —
+// a call that ran and answered nothing, with the window's closing as a clause on
+// the end of it. "Nobody could check it in 40ms" over the top of two calls that
+// were asked would be the harness telling a person nobody was asked, which is
+// the same fault in a different clause.
+//
 // The window is the seam a test moves ([Agent.auditWindowFor]); everything else
 // here is the real road — a real repository, the real audit, and a checker that
 // really does not answer.
-func TestACheckerThatRanOutSaysSoAndNeverSaysAccepted(t *testing.T) {
+func TestAStalledCheckerIsNamedAsAStallEvenWhenItSpentTheWindow(t *testing.T) {
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())
 
@@ -303,12 +310,17 @@ func TestACheckerThatRanOutSaysSoAndNeverSaysAccepted(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, want it waiting on a person (report %q)", notice.State, notice.Report)
 	}
-	if !strings.Contains(notice.Report, "nobody could check it in") {
-		t.Fatalf("the report does not say who could not answer:\n%s", notice.Report)
+	if !strings.Contains(notice.Report, "without answering and was abandoned") {
+		t.Fatalf("the report does not say what actually happened to the calls:\n%s", notice.Report)
+	}
+	if !strings.Contains(notice.Report, checkerWindowClosed) {
+		t.Fatalf("the report never says the window closed:\n%s", notice.Report)
 	}
 	// AND NEVER A WORD ABOUT A DECISION. "Accepted" is what a person says, or
-	// what the settle policy says on their behalf; a clock says neither.
-	for _, banned := range []string{"nothing was accepted", "no answer in"} {
+	// what the settle policy says on their behalf; a clock says neither. Nor may
+	// it say nobody could check the work, which is a sentence about a check
+	// nobody was asked for — and two checkers were asked here.
+	for _, banned := range []string{"nothing was accepted", "no answer in", "nobody could check it in"} {
 		if strings.Contains(notice.Report, banned) {
 			t.Fatalf("the report says %q about a window running out:\n%s", banned, notice.Report)
 		}

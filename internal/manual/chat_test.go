@@ -452,6 +452,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why am I asked twice about a task that could not be brought home", "tasks"},
 		{"checked on the second try", "how-tasks-run"},
 		{"one call ran without answering and was abandoned", "how-tasks-run"},
+		{"the window closed before a second", "how-tasks-run"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},

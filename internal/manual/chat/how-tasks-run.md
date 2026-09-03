@@ -1522,8 +1522,11 @@ is kept, and that anything waiting on it waits until somebody decides.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
-`nobody could check it in 5m0s`, `the checker answered neither way`. The time
-in that third one is the window **the check** had — `5m0s` when it had a command to
+`one call ran 2m30s without answering and was abandoned`,
+`nobody could check it in 5m0s`, `the checker answered neither way`. A call that was
+asked and hung is always named as that — the sentence about nobody being able to check
+is kept for the case it is true of, where the window was too small for a call to be made
+at all. The time in it is the window **the check** had — `5m0s` when it had a command to
 run, `1m0s` when the work named no check and there was nothing for it to run. It is not
 your window and there is nothing you missed: **a question to you is never on a timer.**
 That sentence used to read `no answer in 5m0s, so nothing was accepted`, which said two
@@ -1557,8 +1560,13 @@ there is nobody to ask, and the work is taken as it stands. The landing says so 
 why, under the task's own account of what it did:
 
 ```
-taken as it stands: nobody could check it in 5m0s, and the run is unattended
+taken as it stands: one call ran 2m30s without answering and was abandoned · the window closed before a second, and the run is unattended
 ```
+
+The first part of that is the checker's own account of what became of it, whatever it was —
+a call that hung and was cut, a checker that would not start, a reply that said neither way
+— so the sentence names what actually happened rather than asserting nobody could check the
+work.
 
 The task then reads `finished` and its branch merges like any other. This happens only on a
 run with a budget — a `--yolo` run without one, a headless `--once`, and a task inside
