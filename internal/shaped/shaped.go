@@ -256,6 +256,30 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 		break
 	}
 
+	// QUOTATION-ONLY REPAIR. When the caller's contract refused the answer
+	// because of a missing or wrong quotation field, ask for the missing
+	// quotation alone over the answer already held, merge the reply, and
+	// decode. This is a targeted repair that avoids re-buying the whole
+	// verdict when the only thing wrong is a field the model can fill in
+	// one short call. The gate reads the refusal note, not the JSON shape:
+	// only a quotation-rule failure triggers this path.
+	if field := findQuotationField(joined, why(refused)); field != "" {
+		again, err := client.CompleteWithMessages(ctx, quotationRepair(ask, joined, why(refused)), ask.request(ceiling)...)
+		if err != nil {
+			return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
+		}
+		merged := mergeQuote(joined, text(again), field)
+		if provider.DecodeJSONObject(merged, into) == nil {
+			note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairReasked,
+				Round: 1, Spent: spent, Ceiling: ceiling, Note: why(refused)})
+			return withText(again, merged), nil
+		}
+		// The merge did not produce a valid answer — fall through to the
+		// normal re-ask with the merged text as what is carried forward.
+		joined = merged
+		response = again
+	}
+
 	// NOTHING TO CONTINUE. Either no object was ever begun — prose, or a whole
 	// ceiling spent deliberating — or the continuation could not close one. One
 	// re-ask, carrying the contract and the model's own offending words, at the
@@ -264,7 +288,7 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 	// which is now written once, here).
 	note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairReasked,
 		Round: 1, Spent: spent, Ceiling: ceiling, Note: why(refused)})
-	again, err := client.CompleteWithMessages(ctx, reask(ask, joined), ask.request(doubled(spent, ceiling))...)
+	again, err := client.CompleteWithMessages(ctx, reask(ask, joined, why(refused)), ask.request(doubled(spent, ceiling))...)
 	if err != nil {
 		return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
 	}
@@ -346,12 +370,69 @@ Continue from exactly where it stops. Emit ONLY the characters that come next in
 
 If continuing is not possible, reply with the whole object again, complete and shorter, and nothing else.`
 
+// findQuotationField returns the name of the JSON field that should carry the
+// quotation, or "" when the refusal note is not about a quotation rule. It
+// reads the caller's own words for why the answer was refused and returns the
+// field name only when the refusal is about a missing or empty quotation — the
+// one case that can be repaired with a targeted re-ask over the answer already
+// held. Every other refusal falls through to the ordinary re-ask.
+func findQuotationField(answer string, note string) string {
+	if note == "" {
+		return ""
+	}
+	lower := strings.ToLower(note)
+	if !strings.Contains(lower, "quote") && !strings.Contains(lower, "quotation") {
+		return ""
+	}
+	// "quote" is the field name every caller in this codebase uses for the
+	// quotation field, and the tag that quoteDestination carries.
+	return "quote"
+}
+
+// mergeQuote sets the named field of a valid JSON object to the reply text.
+// It is the join step of a quotation repair: the original holds every field
+// but the quotation, and the reply is the missing quotation itself.
+func mergeQuote(original, quote, fieldName string) string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(original), &raw); err != nil {
+		return original
+	}
+	quote = strings.TrimSpace(quote)
+	// Accept the reply as a JSON string or as plain text.
+	if json.Unmarshal([]byte(quote), new(string)) != nil {
+		quote = fmt.Sprintf("%q", quote)
+	}
+	raw[fieldName] = json.RawMessage(quote)
+	merged, _ := json.Marshal(raw)
+	return string(merged)
+}
+
+// quotationRepair asks for the missing quotation alone, over the answer already
+// held. It names the rule the first answer broke and carries the existing answer
+// so the model can fill in the one missing field without re-generating the rest.
+func quotationRepair(ask Ask, answer string, note string) []ai.Message {
+	contract := "Your reply was valid JSON, but it broke this rule: " + note
+	contract += "\n\nThis is your answer:\n" + clip(answer, offendingQuoteBytes)
+	contract += "\n\nReply with ONLY the missing quotation — the text that should go in the quote field. No JSON wrapper, no explanation, just the quotation itself."
+	messages := make([]ai.Message, 0, len(ask.Messages)+1)
+	messages = append(messages, ask.Messages...)
+	return append(messages, ai.Message{Role: "user",
+		Content: []ai.ContentPart{{Type: "text", Text: contract}}})
+}
+
 // reask is the one retry for an answer that was not an object at all. It quotes
 // the offending reply back, because a model told only "that was not JSON" has no
 // idea which part of what it said was the problem, and because a reply it can
 // see is a reply it can correct rather than regenerate.
-func reask(ask Ask, offending string) []ai.Message {
+//
+// THE NOTE NAMES THE BROKEN RULE. It is the why of the failure, interpolated
+// from the caller's contract rather than duplicated here — a different rule
+// produces a different note, and the prompt carries whichever one applies.
+func reask(ask Ask, offending string, note string) []ai.Message {
 	contract := "Your reply could not be read as the JSON object this asked for."
+	if note != "" {
+		contract += " The rule it broke: " + note
+	}
 	if quoted := strings.TrimSpace(offending); quoted != "" {
 		contract += "\n\nThis is what you sent:\n" + clip(quoted, offendingQuoteBytes)
 	}

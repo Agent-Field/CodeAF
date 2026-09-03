@@ -107,9 +107,11 @@ func Prose(ctx context.Context, client Completer, ask Ask, answered string) (str
 // of what it said was the problem — and it asks for the SUBSTANCE rather than
 // for a reformatting, because an object whose one field is a description of
 // work still has to become the work's account before anybody can read it.
+//
 func reshape(ask Ask, offending string) []ai.Message {
 	contract := "Your answer came back as a data object. This ask wanted the answer itself, " +
-		"in your own plain words, written for the person who asked for the work.\n\nThis is what you sent:\n" +
+		"in your own plain words, written for the person who asked for the work."
+	contract += "\n\nThis is what you sent:\n" +
 		clip(strings.TrimSpace(offending), offendingQuoteBytes) +
 		"\n\nAnswer again, in the shape that was asked for: plain prose, no JSON, no code fence, no field names. " +
 		"Say what was done, what it was checked against and what came back. " +
