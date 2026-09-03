@@ -100,6 +100,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed escape and it is still running", "keys"},
 		{"how long does stop take", "keys"},
 		{"what happens if it will not stop", "keys"},
+		{"what happens if I kill the aforge process", "keys"},
+		{"I closed the terminal window while a task was running", "keys"},
+		{"does kill -INT stop my tasks", "keys"},
 		// A machine that refused the work, asked in the word the screen puts on
 		// the row: the provider named in the refusal, the model nothing will
 		// serve, and why that word is not the one for slow.

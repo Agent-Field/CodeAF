@@ -450,6 +450,11 @@ drops the second, and a quiet single conversation reads exactly `ctrl+c again to
 one on screen.** There is no way to ask an agent you are not drawing what shells it has
 promoted, so the line is short of a fact there rather than guessing at one.
 
+## Quitting from a running answer, picker, or panel — why ctrl+c stopped the turn instead
+
+The ordinary quit gesture is `ctrl+c` twice within **1.5 seconds**, but where the first
+press lands changes what it does.
+
 **Mid-turn it is still only the interrupt.** While an answer is streaming, `ctrl+c` is
 the same key `esc` is: it stops the turn and does **not** arm the door. So the two-tap
 people make mid-turn — press it again, harder — stops the model once and then arms;
@@ -459,6 +464,8 @@ you would have to press a third time to leave.
 and paste bracket — leaving is never modal. Pressing it with the model picker or the
 settings panel up does not close them: it arms the door underneath, the hint slot
 shows `ctrl+c again to quit`, and the second press leaves with the panel still up.
+
+## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
 **What quitting does.** Your unsent draft is written to disk first, with any message
 still waiting for an answer folded in underneath it, then the turn is interrupted and
@@ -473,12 +480,13 @@ disk when you switched away from them.
   with the previous one forward when this terminal is holding another. It leaves only when
   that was the last one. `ctrl+c` twice is the key that closes everything. `/exit` and `/q`
   are the same command.
-- A real signal — `kill -INT`, `kill -TERM`, or `^C` on a terminal that is not in raw
-  mode — also leaves at once, through the same clean exit: draft written, session
-  closed, status 0. Only the keystroke asks twice.
+- A real signal — `kill -INT`, `kill -TERM`, `kill -HUP`, a closed terminal window,
+  or `^C` on a terminal that is not in raw mode — also leaves through the same clean
+  exit: draft written, session closed, status 0. Only the keystroke asks twice. A second
+  signal ends the process at once with status `128 + the signal's number`. The screen is
+  handed back on a bounded best effort first; if that could not finish, the terminal may
+  need `reset` afterwards.
 - The 1.5-second window cannot be changed.
-- Closing the terminal window is not a quit aforge sees; the draft written 300ms after
-  you stopped typing is what survives that.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
@@ -489,6 +497,10 @@ start in the session afterwards: `this session has closed; nothing new starts in
 
 Background jobs go the same way, a moment later. What a task wrote is on its branch and
 stays there; a stop is an interruption and never a finding about the work.
+
+An interrupt from outside — including a closed terminal window — stops the session's work
+the same way. A headless `aforge chat --once` leaves by that road too: the turn stops, the
+session closes, and the process exits cleanly.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
