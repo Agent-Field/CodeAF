@@ -1650,15 +1650,17 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 	return chain.FallbackModels(model)
 }
 
-// Close ends the session: an in-flight turn is cancelled and waited for,
-// background jobs are terminated, then the session file is flushed and closed.
+// Close ends the session: an in-flight turn is cancelled and waited for, the
+// running nodes of this session's graph are cut and waited for, background jobs
+// are terminated, then the session file is flushed and closed.
 //
-// The three steps are sequential, not concurrent. The turn's wait is first
-// because a running turn is what still owes the journal messages; the jobs come
-// after because a turn cancelled mid-tool-call may still be the thing that
-// started the job being killed; the file closes last because both of the above
-// can still write to it. Nothing here races the existing grace — the job round
-// EXTENDS it, adding at most one more jobShutdownGrace to a quit.
+// The steps are sequential, not concurrent. The turn's wait is first because a
+// running turn is what still owes the journal messages; the graph's nodes and
+// then the jobs come after, because a turn cancelled mid-tool-call may still be
+// the thing that started the work being ended; the file closes last because
+// every one of those can still write to it. Each round EXTENDS the quit rather
+// than racing it: at most one jobShutdownGrace for the graph and one for the
+// jobs, and both are graces a straggler spends alone.
 //
 // The wait is the point. A turn cancelled at Close still has messages to
 // journal — the partial reply it kept, the steering it drained — and closing
@@ -1669,10 +1671,36 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	if a.closed {
+		// A SECOND CLOSE WAITS FOR THE FIRST, AND DOES NOT ANSWER OVER THE TOP
+		// OF IT. `closed` is set below before anything is cut, so returning here
+		// on the strength of it used to tell a second caller that the session
+		// had closed while its turn, its nodes and its jobs were all still
+		// running — the same false sentence, one layer up, that this quit exists
+		// to make true.
+		//
+		// The wait needs no bound of its own: the caller it is waiting for is
+		// itself bounded, by the turn's grace and then one [jobShutdownGrace]
+		// each for the graph and the jobs. A nil channel means a session that
+		// was closed before this field existed in it — impossible now that both
+		// are written under this lock, and answered by returning rather than by
+		// blocking forever.
+		waitOn := a.closeDone
 		a.mu.Unlock()
+		if waitOn != nil {
+			<-waitOn
+		}
 		return nil
 	}
 	a.closed = true
+	if a.closeDone == nil {
+		a.closeDone = make(chan struct{})
+	}
+	// AS THE LAST ACT, past every round below and past the file's own close: a
+	// deferred close runs after `return file.Close()` has evaluated, so a caller
+	// released by it is released by a session that has finished leaving. Every
+	// road out of this function goes through it, which is the reason it is a
+	// defer and not a line at the end.
+	defer close(a.closeDone)
 	// No memory pass outlives the session. The cancel is what stops one waiting
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
@@ -1697,8 +1725,11 @@ func (a *Agent) Close() error {
 	a.wakeLanes = nil
 	// And an adaptive run: it holds a context of its own precisely because its
 	// turn ended, so this is the only thing that can reach it (orchestrate.go).
-	// A harness being designed needs nothing here — it is a task now, and the
-	// job round below cuts it with every other node (harness_task.go).
+	// A harness being designed is a task now, so what ends it is the graph's own
+	// stop below, beside every other node (harness_task.go) — for years the line
+	// here said the job round would cut it, and that sentence was the false
+	// belief issue #381 was made of: the round walks a registry a node only
+	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
@@ -1725,6 +1756,19 @@ func (a *Agent) Close() error {
 		case <-timer.C:
 		}
 		timer.Stop()
+	}
+
+	// THE GRAPH STOPS BEFORE THE JOBS ROUND, and it is a stop of its own because
+	// a node is not reachable as a job until its goroutine has put it in the
+	// registry: it cancels every node this session is running and waits, bounded
+	// by the same grace, for their goroutines to return (task_run.go's
+	// [TaskGraph.stopAll]). It shares that grace rather than adding a number,
+	// and it is deliberately NOT [Agent.Abandon], which is one turn's bounded
+	// stop at a person's escape and never touches a node. Only the session that
+	// OWNS the graph does this — `tasks` was read above precisely so that a
+	// worker's close cannot reach into its parent's.
+	if tasks != nil {
+		tasks.stopAll(jobShutdownGrace)
 	}
 
 	// A background job's lifetime is the session's: cancelling the turn above

@@ -138,6 +138,12 @@ func (a *Agent) cancelTask(id uint64) (string, error) {
 // moves, `done` closes, the checkpoint is written, and NO SLOT IS HANDED BACK,
 // because a node that never ran never took one and a decrement here would be
 // this node quietly raising the concurrency cap for everybody else.
+//
+// AND A RUNNING NODE NOBODY HAS TAKEN UP YET IS DROPPED IN THIS FUNCTION TOO,
+// for the same reason the queued one is — no runner holds it, so no landing is
+// coming to settle it. That node DID take a slot, at the moment the frontier
+// marked it running, and this is the one road out of it that has to hand the
+// slot back by hand ([TaskGraph.handBackSlotLocked]).
 func (g *TaskGraph) stop(id uint64) (string, error) {
 	g.mu.Lock()
 	node := g.nodes[id]
@@ -160,15 +166,33 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 	case node.state == TaskRunning:
 		node.stopped = true
 		cut = node.cancel
-		// A RUNNING NODE ALWAYS HAS A HANDLE — [Agent.runTaskNode] sets it before
-		// the first line of work, and a node restored from a checkpoint is turned
-		// into a failed one before the graph ever holds it (task_store.go's
-		// interrupt). If one somehow has none, nothing is ever going to settle it,
-		// so it settles HERE: a card promising "stopping" over work that nothing
-		// is doing is the one answer this must not give.
-		dropped = cut == nil
+		// A RUNNING NODE NOBODY HAS TAKEN UP SETTLES HERE. The frontier marks a
+		// node running and gives it its handle one hold of the lock before its
+		// goroutine exists, so "running" is true for a moment before anything is
+		// running it (task_run.go's [TaskGraph.runFrontier]); what says a runner
+		// is there to land this node is the claim it takes as it starts
+		// ([TaskNode.claimRun], and [TaskNode.setCancel] for a caller standing in
+		// for one). Without one, nothing is ever going to settle this node, and a
+		// card promising "stopping" over work nothing is doing is the one answer
+		// this must not give.
+		//
+		// THE CONTEXT IS CUT ON THIS ROAD TOO, below, which is what keeps the
+		// settle and the run from both happening: a goroutine on its way to this
+		// node finds it already ended and returns without opening anything.
+		dropped = !node.claimed
 		if dropped {
 			node.state, node.report, node.held = TaskFailed, taskStoppedWord, ""
+			// AND THE SLOT COMES BACK HERE, because nothing else is going to
+			// bring it. This node took one when the frontier marked it running
+			// (task_run.go's [TaskGraph.runFrontier]). The runner that would
+			// normally hand it back on its way out cannot: the goroutine on its
+			// way to this node does call [TaskGraph.handBackLane], but that
+			// parks a node only while it is still RUNNING, and the line above
+			// has just failed it. A slot held by a node nobody is running is
+			// the person's task.parallel cap quietly shrinking by one for the
+			// rest of the session — which is the same fault, in the other
+			// direction, as the decrement the queued road refuses.
+			g.handBackSlotLocked(node)
 			line = "stopped " + name
 			break
 		}
@@ -206,6 +230,14 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 	g.mu.Unlock()
 
 	if dropped {
+		// A NODE SETTLED HERE IS CUT HERE. A queued node has no context to cut
+		// and this does nothing; a running node that nobody had taken up has one,
+		// and cutting it is what stops the goroutine on its way to it from
+		// running work this stop has already ended (task_run.go's
+		// [TaskNode.claimRun] is the other half of the same seam).
+		if cut != nil {
+			cut()
+		}
 		close(node.done)
 		g.checkpoint()
 		g.announce(node)

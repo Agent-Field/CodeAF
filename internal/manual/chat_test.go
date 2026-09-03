@@ -1108,6 +1108,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I close aforge", "keys"},
 		{"ctrl+c didn't quit", "keys"},
 		{"why doesn't ctrl+c close it", "keys"},
+		{"if I quit aforge while a task is splitting into child work does it all stop", "keys"},
 
 		// The sixteenth wave: the reply that came apart. A real conversation on
 		// 2026-08-20 watched deepseek-v4-pro collapse twice at 150k tokens —

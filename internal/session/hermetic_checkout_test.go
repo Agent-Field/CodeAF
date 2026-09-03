@@ -32,6 +32,10 @@ import (
 // one this suite can reach without being told where anything is. A test that
 // makes a repository of its own in a t.TempDir() is invisible to it, which is
 // right: that repository is the test's, and the suite may do as it likes there.
+//
+// It cannot see a content change to a file that was already dirty before the
+// run — hashing the whole checkout each run costs more than it is worth — and
+// the incident's shape, new commits and new files, is what it catches.
 
 // checkout is what the tree looked like at a moment: the commit it stood on,
 // and the paths git considered dirty or unknown.
