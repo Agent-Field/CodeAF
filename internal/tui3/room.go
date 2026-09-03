@@ -1507,7 +1507,13 @@ func (a *app) roomHint() string {
 		// printed on the foot as well — but the foot is at the far end of a page
 		// somebody is reading, and this slot is the one place on the frame a
 		// person looks for the next keystroke (tasksettle.go).
-		return roomSettleHint
+		//
+		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
+		// all ([app.legend]), so the full sentence — four cells too long at sixty
+		// columns — left the narrowest terminal naming none of the keys that
+		// answer the question it was standing on. [roomSettleHintAt] is the
+		// ranked prefix of it that fits.
+		return a.settleHintAt(a.width, "")
 	}
 	return ""
 }
@@ -2038,7 +2044,17 @@ func (a *app) roomHeadWord(width int) string {
 		// true and nothing else is, which is exactly what gets said.
 		return fit(name, room)
 	}
-	name = fit(name, room)
+	// LAW 1, AND IT NOW HAS SOMETHING TO SPEND. The name arrives WHOLE — the
+	// engine's own title for the work, uncut ([taskTitleOf]; until this wave it
+	// was cut to three words before any width was known, so this header at a
+	// hundred and sixty columns named the work no better than a twenty-four-cell
+	// rail row did) — and the identity takes every cell it asks for before a fact
+	// gets one. A name that had to be CUT takes the whole line: an ellipsis in it
+	// has already spent the one thing the row was drawn to say, and a spend
+	// figure beside it would be a second loss.
+	if ansi.StringWidth(name) > room {
+		return fit(name, room)
+	}
 	tail := rowTail(a.roomHeadFacts(node), room-ansi.StringWidth(name)-len(rowSep))
 	if tail == "" {
 		return name
@@ -2179,6 +2195,20 @@ func (a *app) roomEntries() []entry {
 // family would take the transcript a person opened the room to read.
 const roomKinRowCap = 3
 
+// roomKinNameFloor is the least of a relative's name worth drawing. Under it
+// the name is an ellipsis with a letter in front of it, so the row keeps that
+// many cells and lets [railWrap] take the overflow onto the next row rather
+// than drawing a fragment.
+const roomKinNameFloor = 8
+
+// roomKinName is one relative's name in the cells this row can spare it.
+func roomKinName(name string, room int) string {
+	if room < roomKinNameFloor {
+		room = roomKinNameFloor
+	}
+	return fit(name, room)
+}
+
 // roomKinRows is the pinned header's second region: WHERE THIS NODE SITS IN ITS
 // FAMILY, in at most [roomKinRowCap] dim rows under the accent line.
 //
@@ -2223,6 +2253,13 @@ func (a *app) roomKinRows(width int) []string {
 		return nil
 	}
 	kids, byKey := a.railKin()
+	// THE ROWS ARE A BUDGET AND THE NAMES ARE FITTED TO IT. These lines are dim
+	// telemetry with a hard cap of [roomKinRowCap] rows, so a relative's name
+	// that arrives whole (taskident.go's [taskTitleOf]) is cut HERE, where the
+	// width is known — the alternative is what a name spilled over the cap
+	// actually looks like: the block wrapping to three rows and the last one
+	// ending on a bare `—` with the state word cut off the bottom of it.
+	inner := width - ansi.StringWidth(roomKinIndent)
 	var lines []string
 	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
 	// task_contract.go states that difference in those words, and this line is
@@ -2232,7 +2269,7 @@ func (a *app) roomKinRows(width int) []string {
 	// already applies at the other end of the family: "part of: 7" has told a
 	// person nothing.
 	if up := byKey[node.ParentID()]; up != nil && up != node {
-		lines = append(lines, roomKinUnderWord+up.title)
+		lines = append(lines, roomKinUnderWord+roomKinName(up.title, inner-ansi.StringWidth(roomKinUnderWord)))
 	}
 	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
 	// everywhere else on the surface. The order is [app.railKin]'s, which is the
@@ -2240,8 +2277,18 @@ func (a *app) roomKinRows(width int) []string {
 	// because any other moves a row a person is watching for a reason they
 	// cannot see.
 	var spawned []string
-	for _, kid := range kids[stripKey(node)] {
-		spawned = append(spawned, kid.title+roomKinStateSep+a.roomKinWord(kid))
+	// Each piece gets an EQUAL SHARE of what is left after the lead and the
+	// separators between them, less its own state word: the names are the
+	// identities on this line and the state words the facts, and a share is what
+	// keeps one long name from spending the row a sibling was going to use.
+	if pieces := kids[stripKey(node)]; len(pieces) > 0 {
+		room := inner - ansi.StringWidth(roomKinSpawnedWord) -
+			(len(pieces)-1)*ansi.StringWidth(railSep)
+		for _, kid := range pieces {
+			word := a.roomKinWord(kid)
+			share := room/len(pieces) - ansi.StringWidth(roomKinStateSep) - ansi.StringWidth(word)
+			spawned = append(spawned, roomKinName(kid.title, share)+roomKinStateSep+word)
+		}
 	}
 	if len(spawned) > 0 {
 		lines = append(lines, roomKinSpawnedWord+strings.Join(spawned, railSep))
@@ -2254,7 +2301,6 @@ func (a *app) roomKinRows(width int) []string {
 	if len(lines) == 0 {
 		return nil
 	}
-	inner := width - ansi.StringWidth(roomKinIndent)
 	out := make([]string, 0, roomKinRowCap)
 	for _, line := range lines {
 		// THE SENTENCE WRAPS ON ITS SPACES and is cut at the cap, exactly as the
@@ -2520,10 +2566,24 @@ func (a *app) roomChip() string {
 	// queued glyph — which would draw a run that is spending money as work that
 	// has not started.
 	if a.room.orch != nil {
-		return a.orchHeadMark() + " " + a.room.title
+		return a.orchHeadMark() + " " + fit(a.room.title, roomChipCap)
 	}
-	return a.roomMark(a.roomNode()) + " " + a.room.title
+	return a.roomMark(a.roomNode()) + " " + fit(a.room.title, roomChipCap)
 }
+
+// roomChipCap is how much of the node's name the status row's cluster may
+// spend, and it is the composer segment's own figure ([roomLeadCap], which is
+// the strip chip's) for the same reason: past it the cluster stops identifying
+// the work and starts being a sentence.
+//
+// IT IS A CAP AND NOT A FIT, because this caller has no width to fit against —
+// [app.identityParts] asks for the cluster and the ladder above it then decides
+// what the row can afford (render.go). A name that arrived WHOLE (taskident.go's
+// [taskTitleOf] stopped cutting on 2026-09-03) and was handed to that ladder
+// uncut cost the whole status row: at a hundred and twenty columns a
+// hundred-and-one-cell cluster left the ladder nothing to give up but the
+// cluster itself, and the line came out as the single word `idle`.
+const roomChipCap = roomLeadCap
 
 // roomModelLead is the word in front of a node's model wherever the status line
 // says one, and the space after it is part of it. See [app.roomModelWord].

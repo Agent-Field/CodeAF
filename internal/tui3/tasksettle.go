@@ -24,7 +24,7 @@ import (
 //
 // So the card asks, and the card is answered:
 //
-//	? ◆ Port the parser · needs your look 6m40s · 2 files · branch kept · task/parser
+//	? ◆ Port the parser · needs your look · 6m40s · 2 files · branch kept · task/parser
 //	  "finished, but needs your look — nobody could say whether it holds" · spawned 14:02
 //	  finished, but nobody has checked it — your call
 //	  [a] accept · [l] look again · [n] not right · [d] decide these for me
@@ -116,6 +116,17 @@ const (
 	settleAlwaysKey    = "[d]"
 	settleAlwaysWord   = " decide these for me"
 	settleGap          = " · "
+	// settleHidWord is what the row says when it could not fit the fourth
+	// choice: the count, in this surface's own grammar for a fold that hid
+	// something (`▸ +1`, `holds 3 more`, `▸ N earlier`).
+	//
+	// A NARROW ROW MAY DROP AN ANSWER; IT MAY NOT DROP IT SILENTLY. At sixty
+	// columns the row ended after `[n] not right` with nothing to say that `[d]`
+	// was still a key that worked, so the narrowest terminal was the one where a
+	// person parked on a decision was told least about how to answer it — and
+	// told nothing about being told less. It is dim and answers to no press: it
+	// is a count and not a fourth chip.
+	settleHidWord = " · +1"
 )
 
 // The receipts. Each says what the person did, in their own voice, because the
@@ -242,7 +253,7 @@ func (a *app) settleRows(out []row, card *taskDone, entry, width, indent int) []
 	for _, part := range parts {
 		answer, key := settleAnswerOf(part), isSettleKey(part)
 		switch {
-		case part == settleGap:
+		case part == settleGap, part == settleHidWord:
 			line += a.pal.dim(part)
 		case answer == hot && key:
 			line += a.pal.bold(a.pal.accent(part))
@@ -286,7 +297,15 @@ func settleParts(width int) []string {
 	if ansi.StringWidth(strings.Join(full, "")) <= width {
 		return full
 	}
-	return full[:8]
+	three := append([]string(nil), full[:8]...)
+	// AND THE ROW SAYS WHAT IT DROPPED, where there are two cells for saying so
+	// ([settleHidWord]). Where there are not, the count goes the way the choice
+	// did — a row that ran past its own edge to report a fold would be a worse
+	// failure than the fold.
+	if ansi.StringWidth(strings.Join(three, ""))+ansi.StringWidth(settleHidWord) <= width {
+		return append(three, settleHidWord)
+	}
+	return three
 }
 
 // settleSpans is the pressable columns of the drawn row: each key AND the word
@@ -445,6 +464,59 @@ func settleAnswerFor(key string) (settleAnswer, bool) {
 // preference, and never esc — the legend's left end already carries that key
 // for as long as a room is open.
 const roomSettleHint = "a accept · l look again · n not right"
+
+// roomSettleHints is that line as a LADDER, longest first, for the slot that is
+// offered a line and either fits it whole or drops it entirely (rowfit.go's
+// [rowShort] states that shape; render.go's [app.legend] is the slot).
+//
+// WHY IT NEEDED ONE. At sixty columns the whole sentence is four cells too long
+// for what the legend has left beside `room · esc/←← main`, so the slot went
+// EMPTY — and the frame where a person is most parked on a decision was the one
+// frame that named none of the keys that answer it. Every rung below is a
+// RANKED PREFIX of the one above it, which is [rowfit.go]'s law 3 said about a
+// sentence: what a narrow frame shows is the top of what a wide one shows, in
+// the same order, with a count of what went rather than a silence.
+//
+// The answers are ranked in the order the card ranks them — take it, look at it
+// again, send it back — because that is the order a person decides in, and the
+// count is spelled the way the answers row itself spells one ([settleHidWord]).
+var roomSettleHints = []string{
+	roomSettleHint,
+	"a accept · l look again · +1",
+	"a accept · +2",
+}
+
+// settleHintAt is the longest rung the legend can actually draw at this width,
+// beside whatever left label this frame is wearing.
+//
+// IT ASKS THE LEGEND'S OWN ARITHMETIC rather than a second copy of it: the left
+// label comes from [app.legendLeft] and a line fits when its two labels and the
+// border's own cells do ([app.legendLine]). A rung measured wrong here would be
+// a rung the legend silently threw away, which is the defect being fixed one
+// rung further down.
+//
+// tail is what the caller hangs off the end of every rung — the roster's own
+// hold hint adds ` · esc`, because out there `esc` gives the column back and
+// nothing else on the frame says so (taskeffort.go's [app.railHoldHintWord]);
+// the room's slot adds nothing, because the legend's left end is already
+// carrying that key. It is the last thing given up: a frame too narrow for even
+// the first answer keeps the way out and drops the answers.
+func (a *app) settleHintAt(width int, tail string) string {
+	for _, say := range roomSettleHints {
+		full := say + tail
+		left, _ := a.legendLeft(width, legendRoom(width, full))
+		if ansi.StringWidth(left)+ansi.StringWidth(full)+legendFurniture <= width {
+			return full
+		}
+	}
+	return strings.TrimPrefix(tail, railSep)
+}
+
+// legendFurniture is what [app.legendLine] spends on a line with a label at
+// both ends before either label starts: `─ ` and one space after the left, one
+// space before the right and ` ─` after it, and the one fill cell that line
+// refuses to draw without.
+const legendFurniture = 7
 
 // doneEntryFor is the index of the LATEST landed card for one node, or -1. The
 // latest, because the engine lands a node more than once — once needing a look,

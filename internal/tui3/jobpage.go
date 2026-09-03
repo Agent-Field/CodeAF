@@ -35,16 +35,21 @@ const (
 	// card's own spelling ([taskCardBackWord]): the list is underneath, and a
 	// page that promised to close would be lying about the next keystroke.
 	jobPageBackWord = taskCardBackWord
-	// jobPageKeysOver is the foot on a job that has ended: the way out, the
-	// scroll, the path, and the mention. It matches [taskCardKeys]'s spelling
-	// and separator exactly, and adds the one verb a job has that a record
-	// card does not — copying the log's path.
-	jobPageKeysOver = "esc back · ↑↓ scroll · c copy path · m puts it in your message"
+	// jobPageKeysOver is the foot on a job that has ended: the scroll, the path,
+	// the mention, and the way out. It matches [taskCardKeys]'s spelling, its
+	// separator and its ORDER exactly — the way out last, because [hintFit]
+	// keeps the final clause to the last cell there is and spends the ones in
+	// front of it first — and adds the one verb a job has that a record card
+	// does not, copying the log's path.
+	jobPageKeysOver = "↑↓ scroll · c copy path · m puts it in your message · " + jobPageBackWord
 	// jobPageKeysRun is that foot while the process is still going. `x stop it`
 	// is [stopRaiseKey] and [stopActWord] in this surface's legend grammar; a
 	// job that has already ended draws [jobPageKeysOver] instead, rather than a
-	// key that would refuse.
-	jobPageKeysRun = "esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message"
+	// key that would refuse. It is the FIRST clause of the four because stopping
+	// something that is still running is the one thing on this page a person
+	// cannot recover by any other route — and it is the last of them to be
+	// dropped before the way out.
+	jobPageKeysRun = "x stop it · ↑↓ scroll · c copy path · m puts it in your message · " + jobPageBackWord
 	// jobPageHostedWord is what the body says when the log is on the ENGINE's
 	// machine. An empty body would read as a job that has not written yet; the
 	// file is sitting perfectly well on the other disk.
@@ -383,7 +388,7 @@ func (a *app) jobPageFrame(width, height int) ([]string, []jobPageHit, int, int)
 	if !job.Over() {
 		keys = jobPageKeysRun
 	}
-	add(" "+paintHint(fit(keys, width-2), pal, pal.dim), jobPageHitFoot)
+	add(" "+paintHint(hintFit(keys, width-2), pal, pal.dim), jobPageHitFoot)
 
 	if len(lines) > height && height > 1 {
 		lines = append(lines[:1], lines[len(lines)-(height-1):]...)

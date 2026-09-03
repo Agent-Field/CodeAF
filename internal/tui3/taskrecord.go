@@ -54,9 +54,18 @@ const (
 	// underneath, and a card that promised to close would be lying about the
 	// next keystroke — the same honesty [tasksClearFilterWord] keeps.
 	taskCardBackWord = "esc back"
-	// taskCardKeys is the foot: the way out, the scroll, and the one gesture
-	// this card carries that the row it came from used to.
-	taskCardKeys = "esc back · ↑↓ scroll · m puts it in your message"
+	// taskCardKeys is the foot: the scroll, the one gesture this card carries
+	// that the row it came from used to, and the way out.
+	//
+	// THE WAY OUT IS LAST BECAUSE IT IS SPENT LAST. This line is fitted by
+	// [hintFit], which keeps its final clause to the last cell there is and
+	// drops the clauses in front of it working backwards — so a foot with `esc
+	// back` at the head was a foot that gave the way out away FIRST, and a
+	// sixty-cell card ended up offering `m puts it in your message` and no way
+	// off the page. Every other key sheet on this surface already ends on its
+	// esc (`↑↓ pick · enter use it · esc back`, `filter · ↑↓ · enter open · esc
+	// cancel`); this one now does too.
+	taskCardKeys = "↑↓ scroll · m puts it in your message · " + taskCardBackWord
 	// taskCardTailHead heads the report. "what it said at the end" and not
 	// "final assistant message": the node is a thing that did some work and then
 	// said how it went, and that is the sentence a person came here to read.
@@ -452,7 +461,7 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+paintHint(fit(taskCardKeys, width-2), pal, pal.dim), taskCardHitFoot)
+		add(" "+paintHint(hintFit(taskCardKeys, width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what

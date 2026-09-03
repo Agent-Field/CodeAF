@@ -190,3 +190,123 @@ flag, and the emptiness law covers only the genuinely undated.
   `<title> is parked — `. What the row actually asks for is a verb that UNPARKS,
   and there is no seam behind one: a capability that cannot work is absent, not
   broken, so it is not invented here.
+
+**Row 4 — a task's identity was cut to three words before any width was known.**
+The cut is gone from the source and lives at every drawing site, which is where
+the width is.
+Files: `internal/tui3/taskident.go` (`taskTitleOf` answers the engine's own title
+WHOLE — groomed onto one line, without the sentence's closing punctuation — and
+`wholeName` is `firstWords` with no cap; `taskTitleWords` stays as the engine's
+figure and is no longer a ruler this surface applies), `internal/tui3/room.go`
+(the header states law 1 outright: a name that cannot fit the line ALONE takes
+the whole line and no fact is drawn beside it; `roomChip` caps the status row's
+cluster at `roomChipCap` = the composer segment's own `roomLeadCap`; the kin
+block fits each relative's name to an equal share of the row it is charged to,
+`roomKinName`).
+Tests: `TestAWideRoomNamesTheWorkBetterThanANarrowRail`,
+`TestTwoTasksSharingTheirFirstWordsAreToldApartInTheirRooms`,
+`TestARoomTooNarrowForTheNameDrawsNoFactsBesideIt`,
+`TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget`
+(`internal/tui3/roomname_test.go`), and
+`TestTheNameCapIsTheEnginesOwnFigure` /
+`TestARowDrawnUnderASentenceTakesTheShortNameWhenItArrives`
+(`internal/tui3/taskview_test.go`) were rewritten onto the new law rather than
+around it.
+Manual: `internal/manual/chat/tasks.md` — the focus-header section.
+Before: `docs/design/polish/frames/seed-room.160x50.txt` —
+`? main ▸ Cut every list · needs your look · 12m 0s · $0.52 · 7 tool calls ·
+anthropic/claude-opus-4.1`.
+After: `docs/design/polish/frames/room-after.160x50.txt` —
+`? main ▸ Cut every list on the task surface over to the shared row fitter so a
+name is never cut to nine cells · needs your look · 12m 0s · $0.52 · 7 calls`,
+with `room-after.120x40.txt`, `room-after.80x24.txt` and `room-after.60x30.txt`
+showing the name taking more of the line as the facts give way, and the column
+beside it still drawing `? Cut every list on the task surface over to the sh… #3`
+— the cut moved, it did not vanish.
+**Two neighbours it broke and closed in the same change**, both found on the
+frames rather than in a test: the status row's cluster was handed the whole
+hundred-and-one-cell name and left the ladder in `render.go` nothing to give up
+but the cluster itself, so at 120 the line came out as the single word `idle`
+(hence `roomChipCap`); and the kin block, wrapping an uncut child name, spilled
+its three-row cap and ended on a bare `—` with the state word cut off the bottom
+(hence the per-name share).
+
+**Row 5 — the landed card fused its state word into its clock.**
+Files: `internal/tui3/taskdone.go` (`doneTail` joins the span with ` · ` like
+every other fact on the row; the doc-comment cards and `tasksettle.go`'s were
+respelled with it).
+Test: `TestALandedCardSeparatesItsStateWordFromItsClock`
+(`internal/tui3/donewords_test.go`).
+Manual: `internal/manual/chat/tasks.md` — the landing-card section.
+Before: `docs/design/polish/frames/seed-talk.120x40.txt` —
+`? □ Cut every list · needs your look 12m00s · 4 files · merged`.
+After: `docs/design/polish/frames/talk-after.120x40.txt` —
+`? □ Cut every list on the task surface over… · needs your look · 12m00s · 4
+files · merged`.
+
+**Row 6 — the word for when the work began was `spawned`.**
+Files: `internal/tui3/taskdone.go` (`doneSpawnWord` → `doneStartWord =
+"started "`, and the card's own field `spawned` → `started`).
+Test: `TestALandedCardSaysStartedAndNeverSpawned`
+(`internal/tui3/donewords_test.go`), which also pins the other half: a card that
+knows no start draws no stamp, which is row 2's fix seen from the card.
+Manual: `internal/manual/chat/tasks.md` — the landing-card section.
+The FIGURE half of row 6 was already closed by row 2 (`taskNode.spawnedAt`
+answers the zero time for a restored node), so this change is the word.
+
+**Row 10 — at 60 columns the room told a person least about the decision it was
+standing on.** Both halves.
+Files: `internal/tui3/tasksettle.go` (`settleHidWord = " · +1"`, and
+`settleParts` ends the row in it when the fourth choice will not fit — and drops
+the count rather than an answer when even that will not; `roomSettleHints` is the
+foot's line as a ranked-prefix ladder and `app.settleHintAt` picks the longest
+rung the legend can actually draw, measured through `legendLeft`/`legendRoom`
+rather than a second copy of that arithmetic), `internal/tui3/room.go`
+(`roomHint` asks the ladder), `internal/tui3/taskeffort.go` (one line:
+`railHoldHintWord` asks the same ladder with ` · esc` as its tail — that foot,
+and not `roomHint`, is the one on the captured frames, because the roster is
+holding the keyboard there).
+Tests: `TestANarrowAnswersRowCountsTheChoiceItDropped`,
+`TestTheDroppedChoicesCountAnswersToNoPress`,
+`TestARoomAskingForYourLookNamesItsAnswersAtEveryWidth`,
+`TestASixtyColumnRoomDrawsTheAnswersOnItsFoot`
+(`internal/tui3/settlenarrow_test.go`).
+Manual: `internal/manual/chat/tasks.md` — the answers row and the room's hint.
+Before: `docs/design/polish/frames/seed-room.60x30.txt` — the foot's right side
+empty, the body reading `[a] accept · [l] look again · [n] not right`.
+After: `docs/design/polish/frames/room-after.60x30.txt` —
+`─ room · esc/←← main ──────── a accept · l look again · +1 ─` on the foot and
+`[a] accept · [l] look again · [n] not right · +1` in the body, against the same
+frame at 80 and 160 where both rows are whole. With the ROSTER holding the
+keyboard the same ladder runs with `· esc` on the end of every rung
+(`a accept · l look again · +1 · esc` at sixty), which is the foot the `seed-`
+frames were taken on.
+
+**The two hints still cut by character.** `jobpage.go:386` and
+`taskrecord.go:455` painted their key rows through a plain `fit`, and both are
+now on `hintFit`. The way out moved to the END of both feet, because that fitter
+keeps its last clause to the last cell there is and spends the ones in front of
+it first — so `esc back` at the head was the way out being given away FIRST.
+`x stop it` leads the running job's foot: it is the one verb on that page a
+person cannot reach anywhere else.
+Files: `internal/tui3/jobpage.go`, `internal/tui3/taskrecord.go`,
+`internal/tui3/narrow_test.go` (`hintsStillCutByCharacter` is now empty — the
+ledger only shrinks, and the law's second half fails if a fixed file is left in
+it).
+Tests: `TestTheJobPageAndTheRecordCardKeepTheWayOutOnANarrowFoot`,
+`TestARunningJobsFootKeepsStopLongestOfItsFourKeys`
+(`internal/tui3/hintwhole_test.go`).
+Manual: `internal/manual/chat/reading-a-task-page.md` — both key rows are quoted
+there and both were respelled.
+After: `docs/design/polish/frames/jobpage-hint-after.60x30.txt`
+(`↑↓ scroll · c copy path · esc back`) and `jobpage-hint-after.120x40.txt`
+(all four), `taskcard-hint-after.60x30.txt`
+(`↑↓ scroll · m puts it in your message · esc back`) and
+`taskcard-hint-after.40x24.txt` (the phone lane's bar).
+
+### Not done by this lane, and why
+
+- **Rows 7, 8 and 12** need `place_home.go` / `homeband_work.go`, `home.go`, and
+  `render.go` / `phase.go` — files other lanes hold.
+- **Row 11** is left for the reason the section above already gives: what it asks
+  for is a verb that UNPARKS, and there is no seam behind one.

@@ -160,15 +160,19 @@ With no prompt written out, it reads the prompt from whatever is piped in.
 
 | flag | what it does |
 | --- | --- |
-| `-w <dir>` | the directory it works in |
+| `--dir <dir>` | the directory it works in (`-w` is the shorthand, and keeps working) |
 | `--system <text>` | the working method for the worker |
-| `--turns <n>` | a runaway backstop on how many times it goes round its loop |
-| `--budget <n>` | the token budget for the whole run |
-| `--timeout <seconds>` | a hard wall in seconds; unset, it is scaled from the token budget |
+| `--max-turns <n>` | a runaway backstop on how many times it goes round its loop |
+| `--token-budget <n>` | the token budget for the whole run |
+| `--timeout <duration>` | a hard wall, `15m` or `2h` or a bare number of seconds; unset, it is scaled from the token budget |
 | `--json` | print a machine-readable result instead of the plain text |
-| `-o <file>` | write that same result to a file as well |
+| `--out <file>` | write that same result to a file as well (`-o` is the shorthand) |
 | `--model <slug>` | the work model |
-| `--plan-model <slug>` | taken and ignored |
+| `--plan-model <slug>` | taken, and it says on stderr that `exec` does not plan |
+
+`--turns` and `--budget` are the old spellings of `--max-turns` and `--token-budget`. They
+still work for one release and each says so once on stderr: *budget* is a word about money
+everywhere else in this product, so a token count wearing it read as dollars.
 
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,

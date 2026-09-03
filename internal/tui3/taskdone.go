@@ -18,8 +18,8 @@ import (
 // person delegated ten minutes ago, it is the only place the outcome is ever
 // stated, and it was drawn quieter than the tool call that read a file.
 //
-//	✓ ◆ Fix nil-map crash · done 4m12s · 3 files
-//	  "the guard is in and the regression test passes" · spawned 14:02 · ctrl+o output
+//	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
+//	  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
 //
 // TWO ROWS, AND THE SECOND IS THE ONE THAT PAYS. The head is what happened; the
 // muted line under it is what came of it, in the node's own first sentence,
@@ -62,12 +62,12 @@ type taskDone struct {
 	// bool would be this surface reporting a verdict nobody gave. A card is
 	// never both — failed stays false here.
 	unverified bool
-	// span is the node's own age at its final state, and spawned/landed are the
+	// span is the node's own age at its final state, and started/landed are the
 	// two ends of it in wall-clock — kept because "how long" and "when" are
 	// different questions and the second one is what a person matches against
 	// their own memory of the afternoon.
 	span              time.Duration
-	spawned, landed   time.Time
+	started, landed   time.Time
 	outcome, report   string
 	changed           []string
 	added, removed    int
@@ -138,7 +138,15 @@ const (
 	// ([taskUnverifiedWord]): one vocabulary for one state, so a person who read
 	// "needs your look" on the column does not have to learn a second name for it
 	// in the transcript.
-	doneSpawnWord = "spawned "
+	//
+	// doneStartWord IS THE WORD FOR WHEN THE WORK BEGAN, and it said `spawned`
+	// until this wave. That is the machinery's own verb for starting a process,
+	// which this house bans in anything a person reads — the same rule that took
+	// `worktree` off [doneBranchLabel] eight lines below, on 2026-09-01. `started`
+	// is what a person calls it, and the stamp beside it is the node's own start
+	// or nothing at all ([taskNode.spawnedAt] answers the zero time for a node
+	// restored out of a checkpoint, and the emptiness law draws nothing for one).
+	doneStartWord = "started "
 	// doneFileSuffix and doneFilesSuffix are the changed-file count. Singular
 	// and plural are both spelled because "1 files" is the surface being sloppy
 	// in the one row a person reads to decide whether to look.
@@ -195,7 +203,7 @@ func (a *app) landedCard(node *taskNode) {
 		ending:     node.ending,
 		unverified: node.state == session.TaskUnverified,
 		span:       node.elapsed,
-		spawned:    node.spawnedAt(),
+		started:    node.spawnedAt(),
 		landed:     a.now(),
 		outcome:    strings.TrimSpace(firstLine(node.report)),
 		report:     strings.TrimSpace(node.report),
@@ -328,9 +336,9 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 
 // doneHead is the row a person reads at a glance:
 //
-//	✓ ◆ Fix nil-map crash · done 4m12s · 3 files (+42 −7)
-//	✗ ▲ Mix audio · failed 2m03s · stopped — branch kept · task/mix
-//	? ● Port the parser · needs your look 6m40s · 2 files · branch kept · task/parser
+//	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files (+42 −7)
+//	✗ ▲ Mix audio · failed · 2m03s · stopped — branch kept · task/mix
+//	? ● Port the parser · needs your look · 6m40s · 2 files · branch kept · task/parser
 //
 // The state mark is the rail's own (task.go's [app.railGlyph] draws the same
 // three), the identity is the one cell that never changes, and everything after
@@ -387,8 +395,16 @@ func (a *app) doneTail(card *taskDone) string {
 		verb = taskUnverifiedWord
 	}
 	tail := " · " + verb
+	// ONE SEPARATOR MEANS ONE THING ON THIS ROW. The span used to be joined to
+	// the state word with a bare space while every other fact on the same row was
+	// joined with ` · `, so the card read `? □ Cut every list · needs your look
+	// 12m00s · 4 files · merged` — in which `needs your look` and `12m00s` are two
+	// separate facts fused into one phrase, and the state word, which is the
+	// reason the card is asking for a hand at all, reads as part of a duration.
+	// The list on the roster was fixed the same way and for the same reason
+	// (audit-tasks.md's row 4).
 	if word := taskSpanWord(card.span); card.span > 0 {
-		tail += " " + word
+		tail += " · " + word
 	}
 	if files := doneFilesWord(len(card.changed), card.added, card.removed); files != "" {
 		tail += " · " + files
@@ -447,7 +463,7 @@ func doneFilesWord(files, added, removed int) string {
 // doneUnder is the muted line: what the work came to, when it started, and the
 // key that opens the rest.
 //
-//	"the guard is in and the regression test passes" · spawned 14:02 · ctrl+o output
+//	"the guard is in and the regression test passes" · started 14:02 · ctrl+o output
 //
 // The outcome is QUOTED because it is the node's own sentence and not this
 // surface's — the same reason the report's first line is kept verbatim in the
@@ -456,8 +472,8 @@ func doneFilesWord(files, added, removed int) string {
 // is better than an empty pair of quotes claiming it said nothing.
 func (a *app) doneUnder(card *taskDone, width int) string {
 	tail := ""
-	if !card.spawned.IsZero() {
-		tail += " · " + doneSpawnWord + card.spawned.Format("15:04")
+	if !card.started.IsZero() {
+		tail += " · " + doneStartWord + card.started.Format("15:04")
 	}
 	if a.doneHasDetail(card) && !card.open {
 		tail += " · " + doneOutputKey
@@ -555,8 +571,8 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 	if card.cost > 0 {
 		say(fit(doneCostLabel+dollars(card.cost), room))
 	}
-	if !card.spawned.IsZero() && !card.landed.IsZero() {
-		say(fit(doneSpanLabel+card.spawned.Format("15:04")+" → "+card.landed.Format("15:04"), room))
+	if !card.started.IsZero() && !card.landed.IsZero() {
+		say(fit(doneSpanLabel+card.started.Format("15:04")+" → "+card.landed.Format("15:04"), room))
 	}
 	if card.acceptance != "" {
 		say(capField(wrap(doneAcceptLabel+card.acceptance, room))...)
@@ -592,7 +608,7 @@ func capField(lines []string) []string {
 //	  ◆ Fix nil-map crash · 4m12s · 3 files
 //	  ▲ Collect sources · 1m02s
 //	  ● Mix audio · 4m00s
-//	  "the mix is level and the stems are kept" · spawned 14:02 · ctrl+o output
+//	  "the mix is level and the stems are kept" · started 14:02 · ctrl+o output
 //
 // THE OUTCOME IS THE MOST RECENT ONE'S, AND ONLY ITS. Three quoted sentences
 // stacked under a header is the thing this rollup exists to stop being; the
@@ -649,8 +665,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		count++
 		failed = failed || card.failed
 		unverified = unverified || card.unverified
-		if !card.spawned.IsZero() && (first.IsZero() || card.spawned.Before(first)) {
-			first = card.spawned
+		if !card.started.IsZero() && (first.IsZero() || card.started.Before(first)) {
+			first = card.started
 		}
 		if card.landed.After(last) {
 			last = card.landed

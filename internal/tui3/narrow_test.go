@@ -312,10 +312,10 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 	// and sixty a segment would be a fix that made the common case worse.
 	for _, width := range []int{80, 120, 160} {
 		line := plain(a.pulseLine(width, a.pal))
-		for _, want := range []string{product, "12 want you", "4 moving", "$123.45 / $500.00", clock} {
+		for _, want := range []string{product, "12 want you", "4 moving", "$123.45 / " + railFigure(500), clock} {
 			if !strings.Contains(line, want) {
 				t.Fatalf("at %d columns the top line drew\n\t%q\nand lost %q; there is room for all of it:\n\t%q",
-					width, line, want, " "+product+"   12 want you · 4 moving · $123.45 / $500.00 · "+clock)
+					width, line, want, " "+product+"   12 want you · 4 moving · $123.45 / "+railFigure(500)+" · "+clock)
 			}
 		}
 	}
@@ -326,9 +326,9 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 		width int
 		want  string
 	}{
-		{160, " " + product + "   12 want you · 4 moving · $123.45 / $500.00 · " + clock},
-		{60, " " + product + "   12 want you · 4 moving · $123.45 / $500.00"},
-		{50, " " + product + "   12 want you · 4 moving · $123.45"},
+		{160, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
+		{60, " " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
+		{47, " " + product + "   12 want you · 4 moving · $123.45"},
 		{40, " " + product + "   12 want you · 4 moving"},
 		{30, " " + product + "   12 want you"},
 		{16, " " + product},
@@ -365,11 +365,11 @@ func TestANarrowTopLineNeverSaysTheDayCostNothing(t *testing.T) {
 		switch {
 		case strings.Contains(line, "$0.00"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nover a day that spent $123.45; a dropped segment may not become a zero", width, line)
-		case strings.Contains(line, "$500.00") && !strings.Contains(line, "$123.45"):
+		case strings.Contains(line, railFigure(500)) && !strings.Contains(line, "$123.45"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nwith the allowance and no spend in front of it", width, line)
 		case strings.Contains(line, "$") && !strings.Contains(line, "$123.45"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nwith a figure that is not the day's own", width, line)
-		case strings.Contains(line, "/") && !strings.Contains(line, "$500.00"):
+		case strings.Contains(line, "/") && !strings.Contains(line, railFigure(500)):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nwith the fraction's slash and no bound behind it", width, line)
 		case strings.Contains(line, glyphMore):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nwith a segment cut in half; it drops them whole", width, line)

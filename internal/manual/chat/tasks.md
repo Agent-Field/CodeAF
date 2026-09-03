@@ -1041,12 +1041,23 @@ Every landing writes a card into the conversation, with a blank row on each side
 the task's row on the roster.
 
 ```
-✓ ◆ Fix nil-map crash · done 4m12s · 3 files
-  "the guard is in and the regression test passes" · spawned 14:02 · ctrl+o output
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
+  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
 ```
 
 The head is what happened. The muted line under it is what came of it, in the task's own
 first sentence, quoted because they are its words and not aforge's.
+
+**Every fact on the head is joined by ` · `, the state word included.** It used to read
+`done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
+them was properly separated — so on a card asking for a hand, `needs your look 12m00s`
+made the reason it was asking read as part of a duration.
+
+**`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
+until 2026-09-03, which is the machinery's own verb for launching a process and not a word
+anybody reads on a screen here. Where nothing knows when the work started — a task
+replayed out of a checkpoint, which keeps how long it ran and not when it began — the
+stamp is **absent** rather than invented.
 
 - **`done`** — a tick, muted. It is settled work on the roster.
 - **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
@@ -2300,6 +2311,24 @@ clock, the spend, the model and — where you have set one — how hard this tas
 think, as `thinking high`. Each is dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
 
+**The name on it is the task's whole name, and the facts behind it are what a narrow
+frame gives up.** Until 2026-09-03 a task's name was cut to three words the moment it
+arrived, before any width was known, so a room opened at a hundred and sixty columns
+named the work no better than the twenty-four-cell column did: a family of six pieces
+that all began with a verb and a plural noun came out as `Cut every list`, `Fold the
+settled`, `Move the tab`. The name now reaches every row whole and each row decides what
+it can afford — the header keeps the name first and drops facts off the end as the
+terminal narrows, and only a name that cannot fit the line **alone** is cut, in which
+case it takes the whole line and no fact is drawn beside it.
+
+**And the hint slot under a room asking for your look shortens rather than vanishing.**
+At sixty columns `a accept · l look again · n not right` is a few cells too long for what
+the foot has left beside `room · esc/←← main`, and the slot used to go empty — so the
+narrowest terminal was the one that named none of the keys answering the question it was
+standing on. It now reads `a accept · l look again · +1`, and `a accept · +2` narrower
+still: the same answers in the same order, with a count of the ones that did not fit. All
+three letters keep working whether or not they are printed.
+
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
 on a standing item, bound here to the task whose page you are standing in; the keys page
@@ -3369,6 +3398,15 @@ Every one of the four is a key **and** a click. The keys work on the **selected*
 to it with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
 into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
+
+**On a narrow terminal the row drops `[d]` and says so.** The three answers are the
+question and the fourth is a preference, so the preference is what goes first — and the
+row then ends in a dim `· +1`, the same count every other fold on this surface draws
+(`▸ +1`, `holds 3 more`). `[d]` still works unprinted. It reads:
+
+```
+[a] accept · [l] look again · [n] not right · +1
+```
 
 **The task's room asks the same question** at the foot of its page, and in there the four
 keys need no selection — see *How do I approve a task* below. Room and card are one

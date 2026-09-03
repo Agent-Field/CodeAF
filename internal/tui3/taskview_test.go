@@ -1180,19 +1180,26 @@ func TestARowDrawnUnderASentenceTakesTheShortNameWhenItArrives(t *testing.T) {
 	if node == nil {
 		t.Fatal("the update admitted no node")
 	}
-	// Until the name lands the row is the front of the sentence, which is exactly
-	// what it was before — the fallback, and never a placeholder word.
-	if node.title != "read /Users/me/src and" {
-		t.Fatalf("the row is drawn as %q before the name lands", node.title)
+	// Until the name lands the row is that sentence, which is exactly what it was
+	// before — the fallback, and never a placeholder word. It reaches the surface
+	// WHOLE and the column cuts it to the cells the column has, which is the law
+	// [taskTitleOf] moved back to the drawing sites on 2026-09-03: a name cut
+	// before any width is known makes a wide room say no more than a narrow rail.
+	if node.title != sentence {
+		t.Fatalf("the row is drawn as %q before the name lands, and the node should carry the door's own sentence whole: %q",
+			node.title, sentence)
+	}
+	if row, ok := railRowFor(a, a.viewHeight(), "read /Users/me/src"); !ok || strings.Contains(row, sentence) {
+		t.Fatalf("the column drew %q, and it is meant to fit the sentence to its own width", row)
 	}
 
 	a.taskUpdate(update(4, "parser recon", session.TaskRunning, session.TaskNotice{}))
 	if node.title != "parser recon" {
 		t.Fatalf("the row is called %q, want the short name", node.title)
 	}
-	// AND IT IS ON THE COLUMN WHOLE. The engine asks for as many words as this
-	// surface draws ([taskTitleWords] is session.TaskNameWords), so a name that
-	// was made to fit the column is never cut to fit it.
+	// AND IT IS ON THE COLUMN WHOLE. The engine asks for as many words as the
+	// column has cells for ([taskTitleWords] is session.TaskNameWords), so a name
+	// that was made to fit the column is never cut to fit it.
 	if !strings.Contains(rosterText(a, a.viewHeight()), "parser recon") {
 		t.Fatalf("the column does not carry the whole name:\n%s", rosterText(a, a.viewHeight()))
 	}
@@ -1204,7 +1211,14 @@ func TestARowDrawnUnderASentenceTakesTheShortNameWhenItArrives(t *testing.T) {
 // leaves the column half empty.
 func TestTheNameCapIsTheEnginesOwnFigure(t *testing.T) {
 	if taskTitleWords != session.TaskNameWords {
-		t.Fatalf("the column cuts to %d words and the namer asks for %d",
+		t.Fatalf("the column is sized for %d words and the namer asks for %d",
 			taskTitleWords, session.TaskNameWords)
+	}
+	// AND THIS SURFACE DOES NOT CUT A SECOND TIME. The figure is the engine's;
+	// what arrives short arrived that way, and what arrives long is cut by the
+	// row that has to draw it and by nothing earlier ([taskTitleOf]).
+	const long = "Cut every list on the task surface over to the shared row fitter"
+	if got := taskTitleOf(long, "", 4); got != long {
+		t.Fatalf("the surface cut a name to %q before any width was known; it should carry %q", got, long)
 	}
 }

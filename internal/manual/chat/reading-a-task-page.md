@@ -225,8 +225,16 @@ be short of the ending.
 
 The keys, quoted:
 
-- running: `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message`
-- settled: `esc back · ↑↓ scroll · c copy path · m puts it in your message`
+- running: `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back`
+- settled: `↑↓ scroll · c copy path · m puts it in your message · esc back`
+
+The way out is the **last** clause on both, and that is on purpose: a narrow terminal
+fits these feet by dropping WHOLE clauses — never half of one — working backwards from
+the end, and `esc back` is kept to the last cell there is. So at sixty columns the
+running foot reads `x stop it · ↑↓ scroll · c copy path · esc back` and the settled one
+`↑↓ scroll · c copy path · esc back`; `m` is gone off the line and still works. `x` is
+first on the running foot because stopping something is the one thing on that page you
+cannot do from anywhere else.
 
 `x` stops a running job (the tasks page has the confirmation). `m` drops the name, the
 handle, the ending, and the last few log lines into your message box underneath, then
@@ -284,10 +292,10 @@ two cannot disagree.
 
 What each foot means now:
 
-- `esc back · ↑↓ scroll · x stop it · c copy path · m puts it in your message` — a
+- `x stop it · ↑↓ scroll · c copy path · m puts it in your message · esc back` — a
   background job that is still running. The lines above it are its log and they are still
   arriving. `x` stops it.
-- `esc back · ↑↓ scroll · c copy path · m puts it in your message` — a background job that
+- `↑↓ scroll · c copy path · m puts it in your message · esc back` — a background job that
   has ended. Nothing more is coming; scroll up to read what it wrote.
 - `this task has finished — say it to main` — a **task** that is over, whatever kind it
   was. Nothing more is coming; scroll up to read what it did. Where the task has a parent
