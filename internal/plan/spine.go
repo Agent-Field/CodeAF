@@ -53,9 +53,12 @@ at least one:
 2. Worker isolation: the later stage needs a different workspace, harness, or
    set of skills than the earlier one — a setup change that cannot happen
    inside one agent's turn loop.
-3. Context-window pressure: the work is too large for one worker to hold in
-   its context at once, and splitting it into stages keeps each worker's
-   context bounded.
+3. Context-window pressure, which is measured for you and never estimated by
+   you. Where the material the goal names is larger than one worker holds, you
+   are told so below in as many words, with both figures. Told that, treat it
+   as a gate: lay the work out so that each stage's worker carries its own
+   share of the material and not all of it. Not told it, context pressure is
+   not a reason for a stage — do not guess at the size of anything.
 
 A single agent working through its own files in sequence meets none of these.
 The sequence is inside the worker, not between workers, and serialising it
@@ -172,11 +175,19 @@ type SpineChoice struct {
 // do not feed each other are one stage, and one request written over what the
 // others produce is the second. Nothing here decides which; the block says what
 // was asked and the model reads it. Empty leaves the prompt exactly as it was.
-func Spine(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int) (*SpineChoice, Usage, error) {
-	return spineWithProgress(ctx, client, goal, terrain, asked, samples, nil)
+// The measurement of what the goal names is the third thing handed in, and it
+// is the only one of the three the spine is not asked to judge. Gate 3 above
+// used to ask this call whether the work was too large for one worker to hold —
+// a question about a number lying on the disk, put to a model that cannot see
+// it. Now the number is read and stated, and where it says the named material
+// is larger than one worker's reach a sample answering "one stage" is set aside
+// before the vote rather than argued with inside it. See reach.go and
+// admissible.
+func Spine(ctx context.Context, client Completer, goal, terrain string, asked []string, named Measurement, samples int) (*SpineChoice, Usage, error) {
+	return spineWithProgress(ctx, client, goal, terrain, asked, named, samples, nil)
 }
 
-func spineWithProgress(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int, progress Progress) (*SpineChoice, Usage, error) {
+func spineWithProgress(ctx context.Context, client Completer, goal, terrain string, asked []string, named Measurement, samples int, progress Progress) (*SpineChoice, Usage, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
 		return nil, Usage{}, errors.New("goal is required")
@@ -212,7 +223,7 @@ func spineWithProgress(ctx context.Context, client Completer, goal, terrain stri
 					}
 				}
 			}()
-			stages, usage, err := spineOnce(ctx, client, goal, terrain, asked)
+			stages, usage, err := spineOnce(ctx, client, goal, terrain, asked, named)
 			results[index] = result{stages: stages, usage: usage, err: err}
 			landed = true
 			if progress != nil && samples > 1 {
@@ -255,7 +266,10 @@ func spineWithProgress(ctx context.Context, client Completer, goal, terrain stri
 		candidates[index] = levelled(candidate)
 		choice.Spread = append(choice.Spread, len(candidates[index]))
 	}
-	choice.Stages = medoid(candidates)
+	// The spread above is what the samples said, all of them, and it stays that
+	// way: what the measurement narrows is the field the medoid chooses from,
+	// never the record of what was drawn.
+	choice.Stages = medoid(admissible(candidates, named))
 	sort.Ints(choice.Drawn)
 	sort.Ints(choice.Spread)
 	choice.Agreed = choice.Spread[0] == choice.Spread[len(choice.Spread)-1]
@@ -332,11 +346,11 @@ func vocabulary(stages []Stage) map[string]bool {
 	return words
 }
 
-func spineOnce(ctx context.Context, client Completer, goal, terrain string, asked []string) ([]Stage, *ai.Usage, error) {
+func spineOnce(ctx context.Context, client Completer, goal, terrain string, asked []string, named Measurement) ([]Stage, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanSpine)
 	messages := []ai.Message{
 		systemMessage(spinePrompt),
-		userMessage(goalBlock(goal, terrain, asked)),
+		userMessage(goalBlock(goal, terrain, asked, named.Line())),
 	}
 	var decoded struct {
 		Stages []Stage `json:"stages"`

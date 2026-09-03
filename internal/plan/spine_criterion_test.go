@@ -49,7 +49,7 @@ func TestSequentialGoalPlansOneStage(t *testing.T) {
 	}}
 
 	choice, _, err := spineWithProgress(context.Background(), client,
-		"read config.yaml and write the module that uses its settings", "", nil, 1, nil)
+		"read config.yaml and write the module that uses its settings", "", nil, Measurement{}, 1, nil)
 	if err != nil {
 		t.Fatalf("spine: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestParallelGoalPlansMultiStage(t *testing.T) {
 	}}
 
 	choice, _, err := spineWithProgress(context.Background(), client,
-		"compare three vendors", "", nil, 1, nil)
+		"compare three vendors", "", nil, Measurement{}, 1, nil)
 	if err != nil {
 		t.Fatalf("spine: %v", err)
 	}

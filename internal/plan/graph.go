@@ -370,11 +370,24 @@ type Graph struct {
 	// here so that the material a node names can be weighed. See reach.go: the
 	// sizing pass runs against the document rather than against the options, so
 	// a graph that lost the directory would have no way to check a verdict
-	// against the material the node it sized actually names.
+	// against the material the node it sized actually names — and no way to
+	// state the goal's own measurement in the prompt every pass shares.
 	//
 	// Empty is a run with no workspace, which measures nothing and changes no
-	// verdict anywhere.
+	// verdict and no prompt byte anywhere.
 	Workspace string `json:"workspace,omitempty"`
+
+	// Named is the frozen measurement of what this GOAL names by name, weighed
+	// against what one worker holds and rendered once at build start. It is the
+	// whole-plan reading and never a node's: a node's own verdict is
+	// Node.BeyondReach above, computed where its siblings are visible.
+	//
+	// It is frozen for the reason the terrain beside it is: it joins the prefix
+	// every pass shares, and workers write into the workspace while passes are
+	// still running, so a figure re-read mid-build would move the prefix under
+	// calls in flight and leave two of them planning against two different
+	// readings of the same disk.
+	Named string `json:"named,omitempty"`
 
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`

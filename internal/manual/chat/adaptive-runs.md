@@ -112,6 +112,28 @@ has. A scope written in words no arithmetic reaches is not weighed at all, and t
 is left to the planner's own judgment. So lanes that each own one block of one big file
 are not refused for the size of the file.
 
+## Why it broke my job into stages, or planned it in full instead of just doing it
+
+The same measurement that can refuse a node is also stated to the planner before it draws
+anything. When the run has a folder (`-w`), the files the **goal itself** names by name are
+weighed against how much one worker holds at once, and the figure goes into the planner's
+brief as a fact — `MEASURED — the material this goal names by name is 2 files, 165.4 KB in
+all. One worker holds 32.0 KB of material at a time, so what is named is 5.2 times what one
+worker can hold.` Context pressure is the one reason for a stage the planner is no longer
+asked to guess at: told that sentence, it must lay the work out so each stage's worker
+carries its own share; not told it, it may not invent a size for anything.
+
+Two shortcuts are bound by the same reading. A goal that names more than one worker holds is
+never handed whole to a single worker — the plan that says "one stage, just do it" is set
+aside while any plan with stages is on the table, and a short chain of one-sitting steps is
+not folded back into one. When work is picked up again after a worker ran out of room, the
+replan is **planned in full** rather than handed straight back to one fresh worker, which is
+the same exhaustion bought twice.
+
+None of this happens without a folder to weigh in. A run with no `-w`, or a goal that names
+no file that exists, is not treated as small — it is treated as unmeasured, and every one of
+these passes behaves exactly as it did before any of it was read.
+
 ## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
