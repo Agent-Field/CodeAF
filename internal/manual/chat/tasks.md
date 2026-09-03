@@ -2505,7 +2505,8 @@ wrote goes behind its own `▸ worked` chip, and every paragraph stays standing.
 
 `ctrl+e` over an empty box opens the newest chip onto its caption outline, a click opens
 any of them, scrolling up at the top of the page opens the one nearest the top, and
-`ui.work = open` opens them all. A caption is one line per step; click or select one to
+`ui.work = open` opens them all. A caption is a short status line per step (about
+5 to 10 words; wraps on a narrow window); click or select one to
 open its tool rows one level further. **What the task is doing right now keeps its caption
 standing**, and neither your instruction, your corrections, any call that failed, any
 question it asked you, nor the report at the end folds away.

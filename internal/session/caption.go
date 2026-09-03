@@ -25,11 +25,16 @@ func init() { roles.Register(roles.RoleCaption, roles.TierLow) }
 
 // captionSystem is character only. A cheap model reads the end of the user
 // message as the thing to do, so [captionPrompt] goes there and goes last.
-const captionSystem = "You name the discrete step a working session is on right now."
+const captionSystem = "You write short status lines a person can glance at while work runs."
 
-const captionPrompt = "Name this step in one line under 60 characters, present tense, " +
-	"lowercase, no first person. A step is a checklist item (like \"listing github " +
-	"issues\"), not reasoning and not tool names. Answer with the line only."
+// captionPrompt asks for a checklist step: what is happening and where, short
+// enough to read mid-turn without studying the tool rows.
+const captionPrompt = "Write one short status line for a person watching this work. " +
+	"5 to 10 words. Present tense, lowercase, no first person. " +
+	"Say what is happening and where (path, repo, host, or topic) when you know it. " +
+	"This is a checklist step, not reasoning and not tool names. " +
+	"Examples: listing open github issues · reading the caption renderer · ranking bugs by quality. " +
+	"Answer with the line only."
 
 const (
 	// captionDwell is short on purpose: long enough that an instant batch pays
@@ -43,8 +48,13 @@ const (
 	// captionClip keeps the narrator on the tail of the work. A caption is about
 	// what is happening now, not a digest of the whole conversation.
 	captionClip = 1500
-	// captionLimit is both the prompt's promise and the surface's column guard.
-	captionLimit = 60
+	// captionWordMax is the person-facing length. Longer lines stop being a
+	// glance and start being a paragraph; the surface wraps instead of cutting
+	// with an ellipsis, so the budget is words, not characters with a mark.
+	captionWordMax = 10
+	// captionCharMax is only a safety bound for a single runaway token. It never
+	// appends an ellipsis — the drawing path wraps.
+	captionCharMax = 72
 )
 
 // maybeCaption asks for one line about the batch in flight. It is called only
@@ -134,9 +144,9 @@ func captionTail(transcript string) string {
 	return strings.TrimSpace(transcript[start:])
 }
 
-// cleanCaption takes exactly one plain sentence and refuses an instruction
-// echo. The shared opener and echo hands are the ones the cheap namers already
-// use for the same failure.
+// cleanCaption takes exactly one plain status line and refuses an instruction
+// echo. It keeps at most captionWordMax words and never appends an ellipsis —
+// a long word is hard-cut; the surface wraps the rest.
 func cleanCaption(raw string) string {
 	line := stripMarkup(strings.TrimSpace(firstLine(raw)))
 	line = stripOpener(line)
@@ -145,5 +155,24 @@ func cleanCaption(raw string) string {
 	if line == "" || namesTheInstruction(line) {
 		return ""
 	}
-	return strings.TrimSpace(clip(line, captionLimit))
+	return shortCaption(line)
+}
+
+// shortCaption is the person-facing length of a step title: enough to say what
+// and where, short enough to glance. Words beyond the budget drop; there is no
+// ellipsis mark, because the drawing path wraps instead of truncating.
+func shortCaption(line string) string {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) == 0 {
+		return ""
+	}
+	if len(fields) > captionWordMax {
+		fields = fields[:captionWordMax]
+	}
+	out := strings.Join(fields, " ")
+	runes := []rune(out)
+	if len(runes) > captionCharMax {
+		out = string(runes[:captionCharMax])
+	}
+	return strings.TrimSpace(out)
 }

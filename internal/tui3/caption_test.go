@@ -115,6 +115,38 @@ func TestConsecutiveHeadsWithNoWorkBetweenThemMerge(t *testing.T) {
 	}
 }
 
+func TestACaptionStaysUnderTenWords(t *testing.T) {
+	long := "checking where the fold is minted across every possible layout path carefully today"
+	got := shortCaption(long)
+	if got != "checking where the fold is minted across every possible layout" {
+		t.Fatalf("shortCaption = %q", got)
+	}
+	if strings.Contains(got, "…") || strings.Contains(got, "...") {
+		t.Fatalf("shortCaption used an ellipsis: %q", got)
+	}
+}
+
+func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	c := caption{text: "listing open github issues for quality", start: 1, calls: 2, began: time.Unix(100, 0), ended: time.Unix(102, 0)}
+	rows := a.captionRows(c, false, false, 28)
+	if len(rows) < 2 {
+		t.Fatalf("expected a wrap on a narrow frame, got %d rows: %#v", len(rows), rows)
+	}
+	var body strings.Builder
+	for _, r := range rows {
+		body.WriteString(plain(r.text))
+		body.WriteByte('\n')
+	}
+	page := body.String()
+	if strings.Contains(page, "…") || strings.Contains(page, "...") {
+		t.Fatalf("wrapped caption used an ellipsis:\n%s", page)
+	}
+	if !strings.Contains(page, "listing") || !strings.Contains(page, "quality") {
+		t.Fatalf("wrapped caption lost words:\n%s", page)
+	}
+}
+
 func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}

@@ -84,7 +84,7 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 		// the tools, and the cheap narrator may overwrite it while the batch runs.
 		if c.text == "" {
 			c.source = captionMade
-			c.text = composeCaption(es, from, to)
+			c.text = shortCaption(composeCaption(es, from, to))
 		}
 		live := false
 		for i := from; i < to; i++ {
@@ -119,7 +119,29 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 
 func captionWords(text string) string {
 	line := strings.TrimSpace(firstLine(text))
-	return strings.TrimSpace(strings.TrimRight(line, ".!?,;:"))
+	line = strings.TrimSpace(strings.TrimRight(line, ".!?,;:"))
+	return shortCaption(line)
+}
+
+// shortCaption keeps a glanceable step title. Same budget as session.cleanCaption:
+// at most ten words, no ellipsis — the row wraps when the window is narrow.
+const captionWordMax = 10
+const captionCharMax = 72
+
+func shortCaption(line string) string {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) == 0 {
+		return ""
+	}
+	if len(fields) > captionWordMax {
+		fields = fields[:captionWordMax]
+	}
+	out := strings.Join(fields, " ")
+	runes := []rune(out)
+	if len(runes) > captionCharMax {
+		out = string(runes[:captionCharMax])
+	}
+	return strings.TrimSpace(out)
 }
 
 // composeCaption is the deterministic floor beneath a model-supplied heading.
@@ -334,10 +356,7 @@ func clipRunes(s string, n int) string {
 	if len(runes) <= n {
 		return s
 	}
-	if n <= 1 {
-		return string(runes[:n])
-	}
-	return string(runes[:n-1]) + "…"
+	return string(runes[:n])
 }
 
 func captionVerb(tool string) string {
@@ -406,10 +425,7 @@ func captionPlural(n int, one string) string {
 
 // captionLine is the stable plain spelling used by tests and narrow fallbacks.
 func captionLine(c caption, live bool, open bool) string {
-	left := c.text
-	if c.source != captionSaid && c.told != "" {
-		left = captionWords(c.told)
-	}
+	left := shortCaption(captionText(c))
 	tail := strconv.Itoa(c.calls) + " " + captionPlural(c.calls, "call")
 	if live && c.ended.IsZero() {
 		tail = ""
@@ -422,6 +438,13 @@ func captionLine(c caption, live bool, open bool) string {
 		return mark + left
 	}
 	return mark + left + " · " + tail
+}
+
+func captionText(c caption) string {
+	if c.source != captionSaid && c.told != "" {
+		return captionWords(c.told)
+	}
+	return shortCaption(c.text)
 }
 
 const shimmerPeriod = 36
@@ -454,19 +477,15 @@ func (a *app) shimmer(text string) string {
 	return b.String()
 }
 
-func (a *app) captionRow(c caption, live, open bool, width int) row {
+// captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A
+// person-facing caption is short (5–10 words), and on a narrow frame those
+// words still show in full across lines rather than ending in `…`.
+func (a *app) captionRows(c caption, live, open bool, width int) []row {
 	mark := a.linearMark("▾ ", "v ")
 	if !open {
 		mark = a.linearMark("▸ ", "> ")
 	}
-	left := c.text
-	if c.source != captionSaid && c.told != "" {
-		left = captionWords(c.told)
-	}
-	painted := a.pal.narr(left)
-	if live && !open {
-		painted = a.shimmer(left)
-	}
+	left := captionText(c)
 	tail := strconv.Itoa(c.calls) + " " + captionPlural(c.calls, "call")
 	if live && c.ended.IsZero() {
 		tail = ""
@@ -475,14 +494,57 @@ func (a *app) captionRow(c caption, live, open bool, width int) row {
 		}
 	}
 	room := width - workIndentCols(width)
-	used := ansi.StringWidth(mark) + ansi.StringWidth(left)
-	if tail == "" || used+1+ansi.StringWidth(tail) > room {
-		return row{text: a.pal.dim(mark) + painted, entry: c.start, hit: hitCaption, turn: c.start}
+	markW := ansi.StringWidth(mark)
+	bodyW := room - markW
+	if bodyW < 8 {
+		bodyW = 8
 	}
-	return row{
-		text:  a.pal.dim(mark) + painted + strings.Repeat(" ", room-used-ansi.StringWidth(tail)) + a.pal.dim(tail),
-		entry: c.start, hit: hitCaption, turn: c.start,
+	wrapW := bodyW
+	tailOnFirst := false
+	if tail != "" {
+		need := 1 + ansi.StringWidth(tail)
+		if bodyW-need >= 12 {
+			wrapW = bodyW - need
+			tailOnFirst = true
+		}
 	}
+	lines := wrap(left, wrapW)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	out := make([]row, 0, len(lines))
+	for i, line := range lines {
+		lead := mark
+		if i > 0 {
+			lead = strings.Repeat(" ", markW)
+		}
+		painted := a.pal.narr(line)
+		if live && !open && i == 0 {
+			painted = a.shimmer(line)
+		}
+		text := a.pal.dim(lead) + painted
+		showTail := tail != "" && ((tailOnFirst && i == 0) || (!tailOnFirst && i == len(lines)-1))
+		if showTail {
+			used := ansi.StringWidth(lead) + ansi.StringWidth(line)
+			pad := room - used - ansi.StringWidth(tail)
+			if pad < 1 {
+				pad = 1
+			}
+			text += strings.Repeat(" ", pad) + a.pal.dim(tail)
+		}
+		out = append(out, row{text: text, entry: c.start, hit: hitCaption, turn: c.start})
+	}
+	return out
+}
+
+// captionRow is the single-row form tests still call; live drawing uses
+// [captionRows] so a narrow frame wraps instead of clipping.
+func (a *app) captionRow(c caption, live, open bool, width int) row {
+	rows := a.captionRows(c, live, open, width)
+	if len(rows) == 0 {
+		return row{entry: c.start, hit: hitCaption, turn: c.start}
+	}
+	return rows[0]
 }
 
 func captionAt(captions []caption, at int) (caption, bool) {

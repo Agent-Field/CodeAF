@@ -73,6 +73,13 @@ func TestANarratorAnswerThatIsTheInstructionIsRefused(t *testing.T) {
 	if got := cleanCaption("Caption: checking where the fold is minted"); got != "checking where the fold is minted" {
 		t.Fatalf("an ordinary caption cleaned to %q", got)
 	}
+	long := "checking where the fold is minted across every possible layout path carefully today"
+	if got := cleanCaption(long); got != "checking where the fold is minted across every possible layout" {
+		t.Fatalf("cleanCaption kept too many words: %q", got)
+	}
+	if strings.Contains(cleanCaption(long), "…") {
+		t.Fatal("cleanCaption appended an ellipsis")
+	}
 }
 
 func TestTheNarratorInstructionComesLast(t *testing.T) {

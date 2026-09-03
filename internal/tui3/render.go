@@ -388,7 +388,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				drewCaption = true
 				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRow(c, false, capOpen, width))
+				out = append(out, a.captionRows(c, false, capOpen, width)...)
 				if capOpen {
 					for at := toolsFrom; at < toolsTo; at++ {
 						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
@@ -425,7 +425,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			if c, ok := captionAt(d.captions, i); ok {
 				open := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRow(c, c.ended.IsZero(), open, width))
+				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				if open {
 					start := toolsFrom
