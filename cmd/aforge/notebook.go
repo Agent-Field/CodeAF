@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -24,10 +23,9 @@ func runNotebook(args []string) error {
 }
 
 func runNotebookTo(args []string, output io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("notebook", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("notebook")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	path, err := expandHome(strings.TrimSpace(*database))

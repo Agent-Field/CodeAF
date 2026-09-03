@@ -43,7 +43,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -71,7 +70,7 @@ var _ remote.WrappedAgent = (*session.Agent)(nil)
 // other end of the wire — the host this surface talks to — and a plain
 // runEngine would read as the thing that runs work in this process.
 func runRemoteEngine(args []string) error {
-	flags := flag.NewFlagSet("engine", flag.ContinueOnError)
+	flags := commandFlags("engine")
 	workspace := flags.String("workspace", "", "directory to work in; relative paths are relative to the home directory, empty is the home directory")
 	file := flags.String("session", "", "session transcript to open; empty opens this workspace's most recent")
 	// --daemon is this process BEING the host rather than talking to one. It is
@@ -85,7 +84,7 @@ func runRemoteEngine(args []string) error {
 	// refusal below sends them to it: something older is holding this
 	// workspace and has to be let go of before a current build can hold it.
 	stop := flags.Bool("stop", false, "stop whatever is holding this workspace's conversations on this machine")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -179,7 +178,7 @@ type headlessOutcome struct {
 }
 
 func runDo(args []string) error {
-	flags := flag.NewFlagSet("do", flag.ContinueOnError)
+	flags := commandFlags("do")
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
@@ -201,7 +200,7 @@ func runDo(args []string) error {
 	debug := flags.Bool("debug", false,
 		"keep the full record of this errand — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything

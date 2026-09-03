@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -19,11 +18,10 @@ func runCompetence(args []string) error {
 }
 
 func runCompetenceTo(args []string, output io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("competence", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("competence")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	modelFlag := flags.String("model", "", "working model whose profile buckets to include")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

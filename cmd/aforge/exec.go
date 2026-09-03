@@ -29,7 +29,7 @@ type execEnvelope struct {
 }
 
 func runExec(args []string) error {
-	flags := flag.NewFlagSet("exec", flag.ContinueOnError)
+	flags := commandFlags("exec")
 	workspace := flags.String("w", ".", "workspace directory")
 	system := flags.String("system", "", "working method for the agent")
 	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
@@ -44,7 +44,7 @@ func runExec(args []string) error {
 	debug := flags.Bool("debug", false,
 		"keep the full record of this run — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything

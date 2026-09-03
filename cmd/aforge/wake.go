@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -83,11 +82,10 @@ func runWake(args []string) error {
 }
 
 func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
-	flags := flag.NewFlagSet("wake", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("wake")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
 	maxSeconds := flags.Int("max-seconds", defaultWakeMaxSeconds, "maximum resident pass duration")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

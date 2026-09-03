@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"flag"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,19 +81,33 @@ func TestExecutorForAlwaysResolvesToSomething(t *testing.T) {
 // program that had stopped taking the flag while still advertising it would be
 // telling everybody to type something that fails.
 func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
-	err := runDo([]string{"--subharness", "linear", "fix the failing test"})
-	if err == nil {
+	// THE SENTENCE NAMING WHAT WAS TYPED IS ON STDERR, not in the returned
+	// error. A door that names its own exit code has already written what it
+	// has to say to the right stream (usage.go, and the switch in [execute]),
+	// which is what stopped `error: flag provided but not defined` from being
+	// printed twice. So this reads the stream a person reads.
+	screen := func(t *testing.T, run func() error) (int, string) {
+		t.Helper()
+		_, errs := captureUsage(t)
+		return exitCodeOf(run()), errs.String()
+	}
+
+	code, said := screen(t, func() error {
+		return runDo([]string{"--subharness", "linear", "fix the failing test"})
+	})
+	if code == 0 {
 		t.Fatal("do accepted --subharness")
 	}
-	if !strings.Contains(err.Error(), "flag provided but not defined") {
-		t.Fatalf("do answered %q, want the flag package's own not-defined error", err)
+	if !strings.Contains(said, "flag provided but not defined") {
+		t.Fatalf("do answered %q, want the flag package's own not-defined error", said)
 	}
-	if !errors.Is(err, flag.ErrHelp) && !strings.Contains(err.Error(), "subharness") {
-		t.Fatalf("the error does not name what was typed: %q", err)
+	if !strings.Contains(said, "subharness") {
+		t.Fatalf("the refusal does not name what was typed: %q", said)
 	}
-	if err := runExecute([]string{"--subharness", "linear", "graph.json"}); err == nil ||
-		!strings.Contains(err.Error(), "flag provided but not defined") {
-		t.Fatalf("run answered %v, want the flag package's own not-defined error", err)
+	if code, said := screen(t, func() error {
+		return runExecute([]string{"--subharness", "linear", "graph.json"})
+	}); code == 0 || !strings.Contains(said, "flag provided but not defined") {
+		t.Fatalf("run left with %d saying %q, want the flag package's own not-defined error", code, said)
 	}
 
 	for _, banned := range []string{"--subharness", "Workers:"} {
@@ -113,7 +125,10 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 	// subharness` with nothing after it answers with its own usage line, which
 	// is proof the word routed to runSubharnessCommand rather than to the graph
 	// runner.
-	err = runExecute([]string{"subharness"})
+	// This one still reads the returned error: it is a positional refusal from
+	// the door's own grammar, not a flag error, so it never goes through the
+	// seam that moves the sentence to stderr.
+	err := runExecute([]string{"subharness"})
 	if err == nil || !strings.Contains(err.Error(), "aforge run subharness <name>") {
 		t.Fatalf("`run subharness` answered %v, want the saved-program usage", err)
 	}
