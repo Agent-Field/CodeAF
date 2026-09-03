@@ -167,7 +167,10 @@ func (c *Client) heldEndpoint(lineage, model string, ignored []string) string {
 //	           will want back, and including a fallback the router chose when the
 //	           pinned endpoint could not take us
 func (c *Client) noteEndpointAffinity(ctx context.Context, model, served string, usage *ai.Usage) string {
-	if c.pins == nil || !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A BELIEF SITE (#433). An affinity pin is held against the endpoint that
+	// NAMED itself in an answer, so it is the same fact about the same base as
+	// the preference gate, learned from the same evidence.
+	if c.pins == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return ""
 	}
 	lineage := CacheKeyFrom(ctx)

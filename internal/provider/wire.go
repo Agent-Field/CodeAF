@@ -393,6 +393,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// of it for a while, could not see the demand a rescue adds, and offered a
 	// pinned request no first rung at all (issue #266).
 	wire.Provider = c.wirePreferences(model, knobs, &scrubbed)
+	// AND WHETHER THE ASK WAS REALLY MADE IS RECORDED WHERE IT IS REALLY
+	// WRITTEN. A base answers the #433 question with what comes back from a
+	// request that carried a preference, and the widened retry that follows a
+	// refusal carries none — so this is set at the one line that puts the
+	// object on the bytes, true or false, and nowhere earlier (prefcarry.go).
+	c.prefWentOut(wire.Provider != nil)
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = &ceiling

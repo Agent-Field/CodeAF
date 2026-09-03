@@ -129,6 +129,16 @@ func stubbedRouter(t *testing.T) (*Client, *lanestub.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// AND THE RIG STATES WHAT THIS STUB IS. A shipped build learns that a base
+	// carries a routing preference from the base itself — the endpoints page the
+	// beat fetches, or the lane an answer names (issue #433) — and neither has
+	// happened here: no beat runs in a test, and the belief below is SCRIPTED
+	// rather than measured. This stub publishes an endpoints page and names its
+	// lane on every answer, so it does carry one; saying so is stating a fact
+	// about the fixture, not turning a law off. A rig that left it unsaid would
+	// send no `provider` object at all until something was pinned, which is
+	// exactly right for a plain endpoint and wrong for a router.
+	lanes.HeardPrefsCarried(server.URL())
 	// Its own strike ledger: the shared one is process-wide, and a lane another
 	// test in this package taught it about would arrive here as an order nobody
 	// in this test asked for.

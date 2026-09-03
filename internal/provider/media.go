@@ -360,7 +360,7 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 	}
 	if authenticated {
 		request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-		// Unconditional rather than gated on isOpenRouter: every endpoint this
+		// Unconditional rather than gated on the router hint: every endpoint this
 		// client speaks to is a router media endpoint, and an attribution header
 		// is inert anywhere it is not read.
 		ApplyAttribution(request.Header)

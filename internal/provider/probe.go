@@ -134,11 +134,15 @@ func (c *Client) streamClient() *http.Client {
 // now" — the λ of the design, which only a surface can know. Nil is "always",
 // which is the right reading for a headless run that probes at all.
 //
-// IT REFUSES A CLIENT THAT IS NOT TALKING TO A ROUTER. `provider.only` is a
-// router's dialect and a probe without it measures whatever endpoint happened
-// to answer, which is a number worse than none.
+// IT REFUSES A CLIENT WHOSE BASE WILL NOT CARRY A DEMAND. A probe's whole body
+// is a `provider.only`, and a probe without it measures whatever endpoint
+// happened to answer, which is a number worse than none. Since issue #433 that
+// is the base's own answer and never its hostname: a base nobody has asked is
+// wired, because the asking is the sending — and nothing is ever bought there
+// until a lane exists to name, which is the real floor ([Client.ProbeLanes]
+// reads the frontier and an empty one buys nothing).
 func InstallLaneProber(c *Client, waiting lanes.ProbeGate) bool {
-	if c == nil || !c.isOpenRouter() {
+	if c == nil || !c.carriesPreferences() {
 		return false
 	}
 	gate := func(model string) bool {
@@ -228,7 +232,11 @@ func probeBody(model, lane string) []byte {
 // it eventually passes is this client's — its routing row, its rate limiter,
 // its base URL — and because a build with no router wired has no probe to buy.
 func (c *Client) ProbeLanes(ctx context.Context, model string) {
-	if c == nil || !c.isOpenRouter() {
+	// A DECISION SITE (#433), under [InstallLaneProber]'s gate word for word: a
+	// probe IS a request whose whole body is a `provider.only`, so a base that
+	// has said it will not carry one has nothing to buy. The frontier below is
+	// the other floor: a base with no lanes names none, and none are probed.
+	if c == nil || !c.carriesPreferences() {
 		return
 	}
 	model = strings.TrimSpace(model)

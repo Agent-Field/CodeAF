@@ -1748,6 +1748,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is asked as somebody reads it on the screen and wants to know what it
 		// costs them.
 		{"I pinned a provider and it says it cannot serve this model, what happens now", "lanes"},
+		// And the base that will not carry the pin at all, which is the #433
+		// question in the words somebody on a proxy actually types.
+		{"I pinned a lane but I am on a proxy, does the pin still work", "lanes"},
 		{"what does via cloudflare mean on the status line", "lanes"},
 		// The offer, from the side the page owns: what the answer NO would be.
 		// The key itself is the keys page's, because that is where somebody

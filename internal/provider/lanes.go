@@ -335,7 +335,9 @@ func tokensIn(text string) int { return len(text) / charsPerToken }
 // from another's, so the pin keeps its place until the belief is proven against
 // it.
 func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callKnobs, request *ai.Request, pinned string) {
-	if prefs == nil || request == nil || !c.isOpenRouter() {
+	// A DECISION SITE (#433): whether the belief's ranking reaches the wire is
+	// what this base answered about carrying a preference, never its hostname.
+	if prefs == nil || request == nil || !c.carriesPreferences() {
 		return
 	}
 	choice, made := c.laneChoiceFor(knobs, model, request)
@@ -473,7 +475,10 @@ func (c *Client) withLaneChoice(ctx context.Context, request *ai.Request) contex
 	if _, made := laneChoiceFromContext(ctx); made {
 		return ctx
 	}
-	if request == nil || !c.isOpenRouter() {
+	// A DECISION SITE (#433), and it is the wire's own gate said again: the
+	// watch must be looking at the choice the request really carried, so the
+	// two are gated on the same answer.
+	if request == nil || !c.carriesPreferences() {
 		return ctx
 	}
 	choice, made := c.laneChoiceFor(knobsFrom(ctx), c.modelFor(request), request)
@@ -544,7 +549,14 @@ func (c *Client) askFor(model string) laneAsk {
 func (c *Client) noteLane(model, served string, ttft time.Duration, tokens int, generation, gap time.Duration, cached int) {
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
-	if !c.isOpenRouter() || model == "" || served == "" {
+	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
+	// folded in is a fact about a NAMED LANE, and lane names only come back
+	// from a base that speaks the router's dialect — which is the same base
+	// that carries a preference, learned from the same evidence. Keying it on
+	// the sheet's `serves` instead would be a second answer to one question,
+	// free to disagree with the first. The attribution law below it is the real
+	// floor either way: an answer that named no lane teaches nothing.
+	if !c.carriesPreferences() || model == "" || served == "" {
 		return
 	}
 	id := lanes.ID{Model: model, Lane: served}
@@ -722,7 +734,7 @@ func sheetNotFound(status string, payload []byte) error {
 // path is unchanged in behaviour and pays not one extra round trip.
 //
 // IT IS THE BASE URL AND NEVER THE MODEL ID, which is where it parts company
-// with [Client.isOpenRouter]. That one is also true of a client whose model is
+// with [Client.shippedRouterHint]. That one is also true of a client whose model is
 // spelled `openrouter/...` behind somebody's own gateway, and it is right to
 // be: the ledger still learns from what that gateway serves. But the sheet is
 // fetched FROM THE BASE URL, so the base is the thing a hint can be about.
@@ -803,7 +815,14 @@ func (c *Client) noteLaneOutcome(model, served, reason string, accepted bool) {
 	}
 	served = strings.TrimSpace(served)
 	model = laneModel(model)
-	if !c.isOpenRouter() || model == "" || served == "" {
+	// A BELIEF SITE (#433), keyed on the same answer the wire is: what is being
+	// folded in is a fact about a NAMED LANE, and lane names only come back
+	// from a base that speaks the router's dialect — which is the same base
+	// that carries a preference, learned from the same evidence. Keying it on
+	// the sheet's `serves` instead would be a second answer to one question,
+	// free to disagree with the first. The attribution law below it is the real
+	// floor either way: an answer that named no lane teaches nothing.
+	if !c.carriesPreferences() || model == "" || served == "" {
 		return
 	}
 	lanes.Default().Ledger().NoteOutcome(lanes.Outcome{

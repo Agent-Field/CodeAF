@@ -82,7 +82,10 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// for no steering. An empty list is a real state rather than a missing one:
 	// the act is then [control.Report], which is the only honest thing to say
 	// when there is nowhere better to go, and the ceiling still applies.
-	if !c.isOpenRouter() || c.routing() == RoutingOff {
+	// A DECISION SITE (#433). An alternative is a machine a SECOND REQUEST
+	// would demand with `provider.only`, so "could not be demanded" is the
+	// base's own answer about carrying a preference and not its hostname.
+	if !c.carriesPreferences() || c.routing() == RoutingOff {
 		plan.Alts = nil
 	}
 	return plan
