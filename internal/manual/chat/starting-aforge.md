@@ -283,8 +283,10 @@ says so plainly, so nothing goes off to fix it by accident:
 1 check was already failing before this work and is not counted: tox -e py
 ```
 
-A session you are sitting in front of runs none of this: your tree is in front of you, and
-nothing is checked or decided on your behalf.
+This section describes the session's own end-of-reply reading, which runs only when you
+leave a session working with a budget. A task's checker takes its separate before-reading
+whether you are watching or away; **The check says my tests fail but they were already
+failing** in *How tasks run* explains that task reading and its limits.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 

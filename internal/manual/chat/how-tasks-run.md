@@ -1334,6 +1334,36 @@ How the restore is built depends on your workspace:
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
 
+## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
+
+Before a task's work is checked, aforge runs the task's named checks on the **base commit
+its copy was cut from**. That is the before-reading: it says which checks were already red
+before the task began. The check of what would ship is then compared with it. A check that
+was already failing and is still failing is not this task's to answer for; an acceptance
+that says the suite passes is met when everything this task could have broken is green and
+the rest is exactly as it was found. A check that was passing before the task and is red
+after it **is** this task's.
+
+The checker is told that distinction before it reads which commands it may run. If the base
+was clean, it is told every check was passing before the work began, so any red it finds is
+the task's. If a command could not start, changed the tree while it ran, or lay beyond the
+five-minute reading window, it counts neither way and is not named: aforge does not guess
+whose failure it is. A reading nobody could take produces no claim about earlier failures
+at all.
+
+The base reading is taken once per commit and shared by every task part cut from that same
+commit. The second reading is needed only when the base had red to subtract. This happens
+whether you are watching the session or left it running. Where a task works over a plain
+folder rather than a repository, there is no base commit to read, so nothing is subtracted
+and nothing about earlier red is claimed.
+
+When old red remains under work that finishes, its report keeps the checker's own evidence
+first and then says exactly:
+
+```
+1 check was already failing before this work and is not counted: go test ./...
+```
+
 ## What the checker is shown of what the task already ran
 
 The checker is also handed the **last few tool results of the task's own worker** — up to

@@ -386,6 +386,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does the check run", "how-tasks-run"},
 		{"why did my task fail on a file it says it created", "how-tasks-run"},
 		{"does the checker see the files my task installed", "how-tasks-run"},
+		{"the check said my tests fail but they were already failing before the task", "how-tasks-run"},
 		// Written from a real run: the worker's last line scrolled past and then
 		// the card said nothing for minutes while a check and a round ran, and
 		// the person watching concluded the work had hung.
