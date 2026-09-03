@@ -1062,6 +1062,10 @@ func newRepositoryGround(t *testing.T) string {
 	}
 	gitAt(t, dir, "add", ".keep")
 	gitAt(t, dir, "commit", "--quiet", "-m", "the material")
+	// THIS FIXTURE EXERCISES THE ORDINARY MERGE ROAD. Git's default may be main
+	// or master, both of which are protected, so it chooses an ordinary branch
+	// explicitly rather than letting machine configuration change the scenario.
+	gitAt(t, dir, "checkout", "--quiet", "-b", "work")
 	return dir
 }
 
