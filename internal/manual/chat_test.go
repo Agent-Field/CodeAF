@@ -1642,6 +1642,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+		// The wave that gave /status a second form. Each of these is asked by
+		// somebody who wants the session's facts for a PROGRAM rather than for
+		// their own eyes — the plain wish, the flag met in the command list, and
+		// the reason they want it — and the page they must reach is the one that
+		// says what the object carries and what it leaves out.
+		{"can I get the status as json", "commands"},
+		{"what does /status --json print", "commands"},
+		{"print the status line facts as json for a script", "commands"},
+		{"is there a machine-readable status", "commands"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

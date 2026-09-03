@@ -583,9 +583,9 @@ session holds right now.
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
 reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `search`, `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
-`approvals`, `state` — then `tasks`, `place`, `keys`, and last `file`. Labels are padded
-into two aligned columns.
+words — `search`, `background`, `changes`, `spend`, `context`, `compacts at`, `cache`,
+`rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `keeping watch`,
+`place`, `keys`, and last `build` and `file`. Labels are padded into two aligned columns.
 
 The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
 the three classes:
@@ -610,11 +610,40 @@ machine.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
-`/status --json` prints the same facts as **one JSON object** instead of aligned
-columns. The labels are the keys, the values are strings, and the keys come in
-the same order the text form prints them — `session`, `model`, `spend`, `context`,
-`file` and the rest. The whole note is that object followed by a single newline,
-with nothing around it, so the JSON is valid as-is.
+## /status --json — status as JSON, machine-readable status for a script
+
+`/status --json` prints the same facts as **one JSON object** on one line, instead of
+aligned columns. The labels are the keys, the values are strings, and the keys come in
+the same order `/status` prints them — `session`, `model`, `crew`, `spend`, `context`,
+`place`, `build`, `file` and the rest of the list above. Both forms are built from one
+list inside aforge, so they cannot disagree about a fact.
+
+```
+{"session":"lab","model":"openrouter/deepseek-v4-flash","spend":"$0.31","file":"/tmp/lab/.aforge/sessions/2026-08-17T09-15-02.json"}
+```
+
+`--json` is spelled exactly that way, and it is the only argument `/status` takes. Any
+other argument is ignored and the text form prints — `/status --JSON`, `/status json`
+and `/status --json --pretty` all print the aligned columns. The command's other words
+take the flag too: `/info --json` and `/context --json` print the object.
+
+What the object does **not** carry:
+
+- **A fact this session does not have is not a key.** There is no `null`, no `""` and no
+  `0`: a session that has spent nothing has no `spend` key, one whose window nobody named
+  has no `context` key, one not saved to disk has no `file` key. That is the same silence
+  the aligned form keeps — and it means the object cannot tell you "unknown" apart from
+  "absent".
+- **Every value is a string**, the words the status line itself draws: `"spend":"$0.31"`,
+  not `0.31`, and `"context":"12.4k/128k · 10%"`, not a number and a percentage. There is
+  no nesting, no schema, no version and no timestamp.
+- **It is not the whole session.** It is what the status line knows — no message history,
+  no task list beyond the `tasks` count, no settings.
+
+It prints **into the conversation**, as a note like every other one — there is nothing to
+pipe it into and it is not written to a file. That also means it is wrapped to the width
+of your terminal, so text copied off the screen carries the line breaks the frame put in
+and the note's leading `· `; strip those before feeding it to a parser.
 
 ## /cost — what this conversation has spent
 
