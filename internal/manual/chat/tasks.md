@@ -709,11 +709,16 @@ already owns it. A measured run read a broken reply three times in fifteen secon
 thinking-tier call each time, and re-opened a reply that could not move. See *Models,
 crews and what things cost* for what the error line says now.
 
-**And if nobody can be reached, the reply just ends.** No second model configured, a reader
-that faults, a reader that takes too long: each of those ends the reply as it would have
-ended before this existed.
+**With no second model set, nobody is asked at all.** The reader is a crew job, so an install
+with no thinking-tier model configured has none — and rather than call, fail in two
+milliseconds and write a failed reading into the session file on every round, aforge does not
+ask, and notes the absence once. A reader that faults or takes too long is different: the call
+was made and it came back with nothing, and the reply then ends as it would have ended before
+any of this existed. In an unattended run with a budget the decision carries on without a
+reader either way, on what came home and what the checks said — see *Leaving it running on its
+own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say "carried on 3 times", it turned my wait into a task
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render, a forked hand — while any of those is
@@ -748,15 +753,18 @@ written for.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
-new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen:
+new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen —
+with what was actually read in the middle of it:
 
 ```
-carried on 3 times and it is still not finished · stopping here rather than carrying on again
+carried on 3 times · the last reading showed: the checks have not landed · stopping here rather than carrying on again
 ```
 
-**You are being told the truth when you read that.** aforge asks before it says it, so the
-reply really is unfinished — it is simply yours to pick up now rather than aforge's to push a
-fourth time. There is no number to raise and no setting that turns it off.
+**The line quotes a reading and never asserts a conclusion.** What sits after `the last
+reading showed:` is what the reader said, or — in an unattended run — the list of things that
+came home unfinished and the checks that did not pass. The line used to say "and it is still
+not finished", which was a claim about your work that nothing had taken a reading of. There is
+no number to raise and no setting that turns it off.
 
 **Three carry-ons can never reach the running-long point by themselves.** That point stands at
 forty rounds and carrying on can add three, so a reply that gets handed to a task got there on

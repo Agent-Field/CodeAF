@@ -190,12 +190,16 @@ func TestATurnWithNothingRunningOfItsOwnIsStillCarriedOn(t *testing.T) {
 // register the other notes on this road use.
 func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 	var remainsAsks atomic.Int64
+	// What the reader says every time, kept as one string because the note the
+	// person is shown at the cap now QUOTES IT — the line names what was read
+	// rather than asserting that the ask is unfinished (#468).
+	const readerSays = "the checks have not landed and neither pull request is merged"
 	// Past the first rung so the reader is armed, and a reader that never says
 	// the ask is finished — the exact shape the measured conversation was in.
 	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1),
 		"still waiting on the checks; nothing actionable until then", func() string {
 			remainsAsks.Add(1)
-			return "the checks have not landed and neither pull request is merged"
+			return readerSays
 		})}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -214,10 +218,10 @@ func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
 	if got := strings.Count(transcriptText(agent), checkpointCarryOnLead); got != checkpointCarryOnCap {
 		t.Errorf("%d continuations were written into the turn, want %d", got, checkpointCarryOnCap)
 	}
-	// AND THE PERSON IS TOLD ONCE, WHICH IS THE HONEST HALF: the ask really is
-	// still unfinished, and the harness is going to stop pushing rather than
-	// push again.
-	if got := saidHowOften(notices, checkpointCarriedOnNote()); got != 1 {
+	// AND THE PERSON IS TOLD ONCE, IN WORDS THAT SAY WHAT WAS SEEN: the line
+	// quotes the reading that came back every time and promises the harness will
+	// stop pushing rather than push again.
+	if got := saidHowOften(notices, checkpointCarriedOnNote([]string{readerSays})); got != 1 {
 		t.Errorf("the ceiling on carrying on said its line %d times, want once; notices were %q", got, notices)
 	}
 	// AND THE READER IS SPENT ONE MORE TIME THAN THE CAP AND NOT TWENTY. The cap

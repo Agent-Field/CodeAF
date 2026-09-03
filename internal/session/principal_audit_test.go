@@ -197,9 +197,8 @@ func TestTheLandingsShownAreThisSessionsSettledWork(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	landOne(agent, TaskDone, "port the parser", "done")
 	landOne(agent, TaskFailed, "wire the handlers", "incomplete — no route for PATCH")
-	landOne(agent, TaskRunning, "write the tests", "")
 
-	landings, landed := agent.landings()
+	landings, landed, _ := agent.landings()
 	if !landed || len(landings) != 2 {
 		t.Fatalf("the settled work is not what was read: landed=%v %+v", landed, landings)
 	}
@@ -213,12 +212,64 @@ func TestTheLandingsShownAreThisSessionsSettledWork(t *testing.T) {
 
 // AND A SESSION WITH NOTHING SETTLED HAS FINISHED NOTHING, whatever it is
 // running.
+//
+// The node is really admitted and really started — the fixture below holds a
+// stubbed runner inside its own work — because what is under test is a session
+// with work IN FLIGHT, and a node placed in the graph with nobody behind it is
+// not that.
 func TestASessionWithOnlyRunningWorkHasFinishedNothing(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	landOne(agent, TaskRunning, "write the tests", "")
-	if _, landed := agent.landings(); landed {
+	holdOneRunning(t, agent, "write the tests")
+	if _, landed, _ := agent.landings(); landed {
 		t.Fatal("work still running was counted as finished")
 	}
+}
+
+// WORK THAT IS MOVING IS ANSWERED APART FROM WORK THAT LANDED.
+//
+// A graph holding one finished unit and one still going used to read exactly like
+// a graph holding one finished unit — the unsettled node was dropped on the way
+// out and nothing downstream could tell (#468).
+func TestWorkThatIsMovingIsAnsweredApartFromWhatLanded(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	// THE ADMITTED NODE GOES IN FIRST. A real admission takes the graph's next
+	// reserved id and [landOne] places at the end of the order it can see, so
+	// the other way round the placement would land on top of the running node.
+	holdOneRunning(t, agent, "write the tests")
+	landOne(agent, TaskDone, "port the parser", "done")
+
+	landings, landed, flight := agent.landings()
+	if !landed || len(landings) != 1 {
+		t.Fatalf("the settled work is not what was read: landed=%v %+v", landed, landings)
+	}
+	if len(flight.moving) != 1 || flight.moving[0] != "write the tests" {
+		t.Fatalf("the work still going was not carried out of the graph: %+v", flight)
+	}
+	if len(flight.stuck) != 0 {
+		t.Fatalf("work that is moving was called stuck: %+v", flight)
+	}
+}
+
+// holdOneRunning admits one node and HOLDS IT RUNNING for the length of the test.
+//
+// It is a real admission through the graph's own frontier, with a stubbed runner
+// standing in for the worker (task_test.go's [stubbedGraph]), so the node is in
+// exactly the state a started unit of work is in: TaskRunning, with somebody
+// inside its run. The hold is released before the session is closed, which the
+// cleanup order gives us for nothing: cleanups run last-registered-first, and the
+// session's own close was registered when it was built.
+func holdOneRunning(t *testing.T, agent *Agent, title string) uint64 {
+	t.Helper()
+	started := make(chan uint64, 1)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		started <- node.id
+		<-release
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: title, brief: "b", acceptance: "a"})
+	return waitStarted(t, started)
 }
 
 // THE ONE FACT THAT CANNOT BE RE-DERIVED SURVIVES A RESUME.
@@ -384,5 +435,151 @@ func TestTheSessionAlsoChecksWhatItsWorkersRan(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the session does not check what its own worker ran: %v", agent.sessionChecks())
+	}
+}
+
+// ── #468: A CHECK IS A COMMAND, NEVER A PATH ────────────────────────────────
+
+// A SPAN THAT CANNOT BE INVOKED IS NOT A FAILING CHECK, IT IS NOT A CHECK.
+//
+// Prose names a source file in backticks as readily as it names a build, and the
+// harvest used to admit any backticked span the tree happened to hold — then run
+// it under a shell. A file with no executable bit and no line saying what starts
+// it exits 126 every time, so the session reported "does not pass" about it on
+// every round of a whole evening and could never finish. A file the tree can
+// really start is opened the way the FILE says it opens, which is the same fact a
+// node's own door already reads off it (task_checks.go's [fileFacts]).
+func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
+	tree := t.TempDir()
+	// The file the acceptance quotes: it is there, and nothing about it says that
+	// starting it is a thing that happens.
+	if err := os.WriteFile(filepath.Join(tree, "version.py"), []byte("VERSION = \"1.0\"\n"), 0o644); err != nil {
+		t.Fatalf("writing the source file: %v", err)
+	}
+	// And one that does say: its first line names the program that runs it.
+	script := filepath.Join(tree, "checks.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("writing the script: %v", err)
+	}
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("bump the version")
+	steward.setAcceptance("`version.py` reads 1.1 and `checks.sh` passes")
+
+	checks := agent.sessionChecks()
+	for _, check := range checks {
+		if strings.Contains(check, "version.py") {
+			t.Fatalf("a file nothing can start was harvested as a check: %v", checks)
+		}
+	}
+	want := "sh " + shellQuoted(script)
+	if !containsWord(checks, want) {
+		t.Fatalf("the script was not opened the way its own first line says:\n got %v\nwant %q", checks, want)
+	}
+	// AND THE WHOLE ROAD ENDS AT DONE. The one unit of work finished, the one
+	// check that can be run passes, and there is no permanent failure left over
+	// from a span nobody could ever have typed.
+	landOne(agent, TaskDone, "bump the version", "")
+	got := agent.decideRemains(context.Background(), "", "The version is bumped.")
+	if got.Verb != DecideDone {
+		t.Fatalf("a finished ask was carried on: %+v", got)
+	}
+	if strings.Contains(got.Brief, "does not pass") {
+		t.Fatalf("something that never ran was reported as not passing:\n%s", got.Brief)
+	}
+}
+
+// ── #468: RUNNING MEANS IN FLIGHT ───────────────────────────────────────────
+
+// WORK QUEUED BEHIND WORK THAT SETTLED SHORT IS STUCK, NOT MOVING.
+//
+// An unverified prerequisite deliberately does not cascade: its dependent stays
+// queued, waiting on a person to resolve it (task_run.go's
+// [TaskGraph.readinessLocked]). In an unattended run there is no person, so that
+// node waits for ever — and counted as work in flight it held the floor under
+// carrying on open on every single turn, which is a session that can never stop.
+func TestQueuedBehindWorkThatSettledShortIsStuckAndNotMoving(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("nobody could say whether the port holds", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	first := graph.reserve()
+	second := graph.reserve()
+	graph.admit(first, taskSpec{title: "port the parser", brief: "b", acceptance: "a"})
+	graph.admit(second, taskSpec{title: "wire the handlers", brief: "b", acceptance: "a",
+		dependsOn: []uint64{first}})
+	waitDoneNode(t, graph.node(first))
+
+	_, _, flight := agent.landings()
+	if len(flight.moving) != 0 {
+		t.Fatalf("work that will never start was called moving: %+v", flight)
+	}
+	if len(flight.stuck) != 1 {
+		t.Fatalf("the work that will not start was not said at all: %+v", flight)
+	}
+	if want := "wire the handlers is waiting on port the parser, which needs your look"; flight.stuck[0] != want {
+		t.Fatalf("the stuck work does not say what it waits on:\n got %q\nwant %q", flight.stuck[0], want)
+	}
+
+	// AND WHAT IS STUCK IS PART OF WHAT IS LEFT, so the same reading twice
+	// running is a standstill and the run stops — which is the whole defect.
+	remains := agent.remainsFor("That completes the port.", "")
+	steward := agent.steward()
+	if got := steward.Decide(remains); got.Verb != DecideCarryOn {
+		t.Fatalf("an ask with work that will not start was not carried on: %+v", got)
+	}
+	got := steward.Decide(remains)
+	if got.Verb != DecideStop {
+		t.Fatalf("a run that cannot get anywhere carried on again: %+v", got)
+	}
+	if !strings.Contains(got.Reason, "wire the handlers is waiting on port the parser") {
+		t.Fatalf("the stop does not name what is stuck: %q", got.Reason)
+	}
+}
+
+// AND THE SAME READING OF A FAILED PREREQUISITE, WHICH IS THE RACED WINDOW.
+//
+// The frontier fails the dependent of a failed node rather than leaving it queued
+// (task_test.go's TestFrontierFailsDependentsOfAFailedNode), so this shape lives
+// only in the moment between the landing and the cascade — and a stopped turn can
+// be read inside it. The graph is built by hand for that reason: what is under
+// test is the READING, and the frontier would have taken the shape away.
+func TestQueuedBehindWorkThatDidNotFinishIsStuckToo(t *testing.T) {
+	graph := newTaskGraph()
+	graph.nodes[1] = &TaskNode{graph: graph, id: 1, spec: taskSpec{title: "port the parser"}, state: TaskFailed}
+	// The edges live on the NODE and not on the spec — [TaskGraph.admit] copies
+	// them across on the way in — and this graph never went through that door.
+	graph.nodes[2] = &TaskNode{graph: graph, id: 2, state: TaskQueued,
+		dependsOn: []uint64{1}, spec: taskSpec{title: "wire the handlers"}}
+	graph.order = []uint64{1, 2}
+
+	graph.mu.Lock()
+	flight := graph.flightLocked()
+	graph.mu.Unlock()
+
+	if len(flight.moving) != 0 {
+		t.Fatalf("work behind a failure was called moving: %+v", flight)
+	}
+	if want := "wire the handlers is waiting on port the parser, which did not finish"; len(flight.stuck) != 1 ||
+		flight.stuck[0] != want {
+		t.Fatalf("the stuck work does not say what it waits on:\n got %+v\nwant %q", flight.stuck, want)
+	}
+	// AND WORK QUEUED BEHIND WORK THAT IS MOVING IS MOVING, which is the other
+	// half of the same rule: it has a turn coming.
+	graph.mu.Lock()
+	graph.nodes[1].state = TaskRunning
+	flight = graph.flightLocked()
+	graph.mu.Unlock()
+	if len(flight.stuck) != 0 || len(flight.moving) != 2 {
+		t.Fatalf("work queued behind something that is moving was called stuck: %+v", flight)
 	}
 }

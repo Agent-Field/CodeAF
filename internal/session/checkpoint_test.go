@@ -3288,3 +3288,87 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 			last.Role, messageText(last))
 	}
 }
+
+// ── #468: A READER THAT CANNOT WORK IS ABSENT, NOT FAILING ──────────────────
+
+// A SESSION WITH NO SECOND MODEL ASKS NOBODY, AND SAYS SO ONCE.
+//
+// [roles.RoleMarkReader] answers to the crew alone, so a profile with no
+// mastermind resolves to nothing at all. Every mark and every end-of-turn reading
+// still made the call, failed in under two milliseconds and journaled itself as a
+// mark that FAILED — a row that reads exactly like a mastermind that was there
+// and could not be reached, written on every round of an evening. The decision
+// carries on without it, on the work.
+func TestAMarkReaderWithNoModelIsAbsentRatherThanFailing(t *testing.T) {
+	dir := t.TempDir()
+	transcript := filepath.Join(dir, "transcript.jsonl")
+	// NO ROLES SOURCE AT ALL, which is the install this is about: no pin, no
+	// tier, and a crew-only caller passes no floor of its own.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = dir
+		c.SessionFile = transcript
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	workedTurn(agent, "port the parser and wire the handlers", 3)
+
+	for round := 1; round <= 3; round++ {
+		read := agent.readMark(context.Background())
+		if read.asked {
+			t.Fatalf("round %d: a session with no second model still paid for a reading", round)
+		}
+		agent.journalMarkRead(read, round, 10, checkpointDecisionContinue)
+		if line := agent.readRemains(context.Background()); line != "" {
+			t.Fatalf("round %d: a reader that is not there answered %q", round, line)
+		}
+	}
+
+	marks := journaledMarks(t, transcript)
+	if len(marks) != 1 {
+		t.Fatalf("the absence was written down %d times, want once: %+v", len(marks), marks)
+	}
+	if marks[0].Decision != checkpointDecisionNoReader {
+		t.Fatalf("the journal calls a missing reader %q, want %q", marks[0].Decision, checkpointDecisionNoReader)
+	}
+
+	// AND THE DECISION STILL RUNS, ON WHAT LANDED. This is the half that was lost:
+	// with no reader there was no line, and the road read that silence as a
+	// finished ask.
+	landOne(agent, TaskFailed, "wire the handlers", "incomplete — no route for PATCH")
+	got := agent.decideRemains(context.Background(), agent.readRemains(context.Background()), "That completes the port.")
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("work that did not finish ended the run: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "wire the handlers did not finish") {
+		t.Fatalf("the brief does not name the unfinished work:\n%s", got.Brief)
+	}
+}
+
+// ── #468: THE NOTE SAYS WHAT WAS OBSERVED ───────────────────────────────────
+
+// THE ONE LINE A PERSON READS AT THE CAP NAMES WHAT THE READING SHOWED.
+//
+// It used to assert "it is still not finished" as a FACT, on a road whose only
+// observation was the same unmet set three times over. The claim was nobody's
+// reading; the items are.
+func TestTheCarriedOnNoteSaysWhatWasObserved(t *testing.T) {
+	decision := budgetLeft(t).Decide(Remains{
+		Acceptance: "every handler answers",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
+		Checks:     []CheckRun{{Command: "go build ./...", Passed: false}},
+	})
+	note := checkpointCarriedOnNote(decision.Observed)
+	if !strings.Contains(note, "wire the handlers did not finish") ||
+		!strings.Contains(note, "go build ./... does not pass") {
+		t.Fatalf("the note does not name what was read:\n%s", note)
+	}
+	if strings.Contains(note, "it is still not finished") {
+		t.Fatalf("the note still asserts a conclusion nobody read:\n%s", note)
+	}
+	// AND WITH NOTHING OBSERVED IT SAYS THAT, rather than inventing a reason on
+	// the reading's behalf.
+	if bare := checkpointCarriedOnNote(nil); !strings.Contains(bare, "nothing was read back") {
+		t.Fatalf("a note with no observation behind it invented one:\n%s", bare)
+	}
+}
