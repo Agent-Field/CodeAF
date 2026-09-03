@@ -1,0 +1,17 @@
+---
+kind: fixed
+title: a task's landing time is a fact of the record now, and not a subtraction anybody performs
+pr: 608
+surface: [chat, engine]
+invalidates:
+  - "A task's checkpoint carried `elapsed_ms` and NO instant at all — not when the work began, not when it landed — so every reader that wanted a moment invented one. The record carries `startedAt` and `endedAt` now. They are added and omitted when zero, so `taskFileVersion` is still 1, a checkpoint written before them decodes with neither and resumes exactly as it always did, and a node with nothing to stamp writes the same bytes it always wrote."
+  - "`(*TaskNode).indexEntryLocked` stamped every settled node's row `EndedAt = time.Now()` — the instant somebody READ the row — so a conversation reopened this morning filed last Tuesday's work under today, and the graph's own rows always sorted to the top of the project's index. It reads the node's recorded landing instant now, and where the record carries none it leaves the row's stamp ZERO rather than substituting the reading's clock. A structural test on the pull-request gate names any other place in `internal/session` that stamps a row's `EndedAt` with `time.Now`, and refuses one in the row builder at all."
+  - "A restored task was dated in the FUTURE and then vanished: the surface dated it by when the window opened plus how long the work ran, and the tasks place's own date window read that as tomorrow and did not draw the row. #518 stopped the arithmetic and left those rows undated; they carry the record's real landing time now. A task that landed at 23:28 says 23:28 whether you look at it at 23:30 or the following week, it sits under the day it actually landed on, and only a task whose record genuinely never carried a landing time draws no age at all."
+  - "`TaskNotice` carried `Elapsed` and no moment at all, so its only `time.Time` was `Deadline`, a proposal field. It carries `StartedAt` and `EndedAt` beside `Elapsed` now, and the chat reads both: the row's age, the completion card's `started 14:02`, and that card's `ran · 14:02 → 14:14`. The second end of that span used to be the surface's own clock, which would have drawn yesterday's landing as the moment the conversation was reopened."
+  - "`(*TaskNode).runStart` said its window was \"measured back from now, which lands LATER than the truth\" because a rehydrated node had no start to read. It reads the recorded start now; the backwards guess is the fallback for an older record and nothing else."
+  - "The rule that a landed node's age is FROZEN was written out three times — in the checkpoint, in the index row and in the notice — and each copy tested `elapsed == 0 && started != zero`, which was safe only because a restored node had no start. One `ageLocked` holds it now: a settled node answers the frozen age its record carries, and only unsettled work consults the moving clock. Without that a restored start would have had finished work ageing on disk."
+---
+
+The surface half of this landed in #518 and could only make the chat honest — it
+stopped doing the arithmetic and drew nothing where the record had no stamp. This
+is the record itself, which is the half that could make it right.
