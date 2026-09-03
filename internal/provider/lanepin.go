@@ -74,22 +74,46 @@ func SetLanePin(pin LanePin) {
 	lanePinMu.Lock()
 	defer lanePinMu.Unlock()
 	// A ROW THAT CHANGED FORGETS EVERY REFUSAL THIS RUN COLLECTED, and a row
-	// RESTATED forgets nothing. See the retirement block at the foot of this
-	// file: a person naming a machine is them stating the instruction afresh,
-	// and a build that answered "no, the router said no an hour ago" would be
-	// arguing with somebody who has just told it to try again.
+	// RESTATED forgets nothing (the retirement block at the foot of this file).
 	//
-	// THE SECOND HALF OF THAT SENTENCE IS THE ONE THAT WAS MEASURED. This
-	// setter is not only the picker: it is also every place that RESOLVES the
-	// row — the door at launch, and the standing ticker, which rebuilds a whole
-	// posture every five minutes for as long as the window lives
-	// (cmd/aforge's v3StandingTicker). An experiment build that cleared here
-	// unconditionally therefore forgot the refusal every five minutes and paid
-	// the identical 404 again: one at launch, one at 16:30:02, one at 16:35:00,
-	// in one process, in one measured run. Nobody had touched the row.
+	// THIS SETTER IS A RESOLVER'S ENTRANCE AND NOT A PERSON'S, which is the
+	// whole reason it can afford that rule. It is called by every place that
+	// READS the row and hands the answer down — the door at launch, and the
+	// standing ticker, which rebuilds a whole posture every five minutes for as
+	// long as the window lives (cmd/aforge's v3StandingTicker). An experiment
+	// build that forgot here unconditionally therefore forgot what the wire had
+	// said every five minutes and paid the identical 404 again: one at launch,
+	// one at 16:30:02, one at 16:35:00, in one process, in one measured run,
+	// with nobody having touched the row.
+	//
+	// A PERSON'S OWN ACT COMES IN THROUGH [RepinLane] INSTEAD, and it forgets
+	// whatever the row says, because somebody choosing a machine in the picker
+	// is them saying "try again" — and they may well choose the SAME machine,
+	// which is a row that did not change and an instruction that did.
 	if pin != lanePin {
 		retiredPins = map[string]struct{}{}
+		retiredPinLines = nil
 	}
+	lanePin = pin
+}
+
+// RepinLane is [SetLanePin] as A PERSON'S ACT: the picker, `/model @cloudflare`,
+// the `lane` row in the settings panel — anywhere somebody has just said, in
+// their own words, which machine they want.
+//
+// IT FORGETS EVERY REFUSAL WHATEVER THE ROW SAYS, and that is the whole
+// difference from the setter above. Re-choosing the SAME lane is a row that did
+// not change and an instruction that did, and it is the exact keystroke the
+// manual promises works: "pinning again puts it straight back". A build that
+// compared rows here would answer a person who had just re-pinned coreweave
+// with silence, and go on routing their model on auto — which is the sentence
+// on their screen made into a lie.
+func RepinLane(pin LanePin) {
+	pin.Lane = strings.TrimSpace(pin.Lane)
+	lanePinMu.Lock()
+	defer lanePinMu.Unlock()
+	retiredPins = map[string]struct{}{}
+	retiredPinLines = nil
 	lanePin = pin
 }
 
@@ -190,7 +214,14 @@ var retiredPinLines []string
 // spellings of one model, and a pair written under one and read under the other
 // would rebuild that disagreement one layer down.
 func retiredPinKey(lane, model string) string {
-	return strings.ToLower(strings.TrimSpace(lane)) + "\x00" + laneModel(model)
+	return retiredPinKeyFor(lane, laneModel(model))
+}
+
+// retiredPinKeyFor is that key for a caller that has already folded the model —
+// which is every caller that has to build the key while holding [lanePinMu],
+// because the fold is the half that reaches into another package.
+func retiredPinKeyFor(lane, folded string) string {
+	return strings.ToLower(strings.TrimSpace(lane)) + "\x00" + folded
 }
 
 // retirePin writes one terminal refusal of a person's own pin down, and answers
@@ -210,10 +241,11 @@ func retirePin(lane, model string) bool {
 	if lane == "" || model == "" {
 		return false
 	}
-	// The key is folded OUTSIDE the lock: [laneModel] reaches into the ledger's
-	// own normaliser, and calling a neighbouring package while holding this
-	// file's lock is how a deadlock is built by somebody else's later edit.
-	key := retiredPinKey(lane, model)
+	// The key and the sentence are both built OUTSIDE the lock: [laneModel]
+	// reaches into the ledger's own normaliser, and calling a neighbouring
+	// package while holding this file's lock is how a deadlock is built by
+	// somebody else's later edit.
+	key, line := retiredPinKey(lane, model), retiredPinLine(lane)
 	lanePinMu.Lock()
 	defer lanePinMu.Unlock()
 	if lanePin.Borrow || !strings.EqualFold(lanePin.pinned(), lane) {
@@ -223,6 +255,12 @@ func retirePin(lane, model string) bool {
 		return false
 	}
 	retiredPins[key] = struct{}{}
+	// AND THE SENTENCE IS QUEUED IN THE SAME CRITICAL SECTION THAT DECIDED IT.
+	// One lock, one decision, one line: queued afterwards, a [RepinLane] or a
+	// [SetLanePin] landing in between would empty the queue and this append
+	// would put a sentence about the OLD pin back on it — a person told their
+	// new machine cannot serve a model it was never asked about.
+	retiredPinLines = append(retiredPinLines, line)
 	return true
 }
 
@@ -237,6 +275,31 @@ func pinRetired(lane, model string) bool {
 	defer lanePinMu.RUnlock()
 	_, retired := retiredPins[key]
 	return retired
+}
+
+// lanePinFor is the pin in force AND whether it has been refused for this
+// model, read together.
+//
+// TOGETHER IS THE POINT AND IT IS THE WHOLE REASON THIS EXISTS. Asked as two
+// questions, a pin that moved between them let one request go out demanding the
+// machine the person had just stopped asking for — the row read under the first
+// lock and the retirement under the second belonging to two different rows. The
+// pair is one fact about one moment (lanes.go's [Client.laneChoiceFor]).
+func lanePinFor(model string) (LanePin, bool) {
+	// THE MODEL IS FOLDED BEFORE THE LOCK IS TAKEN and the lane half of the key
+	// is read under it, which is what makes this one read rather than two:
+	// [laneModel] reaches into the ledger's own normaliser and must not be
+	// called while this file's lock is held, and it does not depend on the pin,
+	// so it can be done first.
+	folded := laneModel(model)
+	lanePinMu.RLock()
+	defer lanePinMu.RUnlock()
+	named := lanePin.pinned()
+	if named == "" {
+		return lanePin, false
+	}
+	_, retired := retiredPins[retiredPinKeyFor(named, folded)]
+	return lanePin, retired
 }
 
 // forgetRetiredPins empties the set and anything parked. It is for tests, which
@@ -294,17 +357,15 @@ func retiredPinLine(lane string) string {
 // are two GRAINS of it rather than two claims: the rider is what the status
 // line shows while the answer is still coming, and the parked line is the one
 // that stays in the conversation afterwards — which is the one that was
-// missing. [retirePin] answers whether this call is the one that retired the
-// pairing, so a run that collects the same refusal twice says nothing the
-// second time.
+// missing. [retirePin] both answers whether this call is the one that retired
+// the pairing AND queues the sentence, in the one critical section, so a run
+// that collects the same refusal twice says nothing the second time and a pin
+// that moves underneath this cannot leave a stale sentence behind it.
 func retirePinnedLane(ctx context.Context, model string, refusal laneRefusal) bool {
 	if !refusal.Terminal || !retirePin(refusal.Lane, model) {
 		return false
 	}
 	HedgeReportFrom(ctx).tell(RescueNews{Alt: refusal.Lane, Reason: RescueRetired, Failed: true})
-	lanePinMu.Lock()
-	retiredPinLines = append(retiredPinLines, retiredPinLine(refusal.Lane))
-	lanePinMu.Unlock()
 	tellRetiredPins(ctx)
 	return true
 }

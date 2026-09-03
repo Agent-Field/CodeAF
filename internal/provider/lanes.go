@@ -424,7 +424,11 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	// where a `y` would go is a question nobody can answer. So the candidate set
 	// is computed exactly as it is for any other call and sent to nobody: it is
 	// what [control.Plan] points an offer at, and the wire still asks for `Only`.
-	pin := CurrentLanePin()
+	// THE ROW AND WHAT THE WIRE SAID ABOUT IT ARE READ TOGETHER, in one lock
+	// (lanepin.go's [lanePinFor]). Asked as two questions, a pin that moved
+	// between them sent one request demanding the machine the person had just
+	// stopped asking for.
+	pin, retired := lanePinFor(model)
 	if pin.OpenRouter {
 		return lanes.Choice{}, false
 	}
@@ -445,7 +449,7 @@ func (c *Client) laneChoiceFor(knobs callKnobs, model string, request *ai.Reques
 	// Emptying the name here rather than returning early is what makes it
 	// exactly `auto`: neither the strict branch below nor the borrowable one
 	// runs, so what goes out is the choice the belief made and nothing else.
-	if named != "" && pinRetired(named, model) {
+	if retired {
 		named = ""
 	}
 	if named != "" && !pin.Borrow {

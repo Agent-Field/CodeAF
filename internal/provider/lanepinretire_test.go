@@ -164,10 +164,11 @@ func TestARefusedPinIsRetiredForThatModelAndSaidOnce(t *testing.T) {
 		t.Fatalf("the retirement reads %+v, want the pinned machine, failed", retired[0])
 	}
 
-	// 6. AND PINNING SOMEWHERE ELSE CLEARS IT. A person naming a machine is
-	//    them stating the instruction afresh, and the demand goes back out.
-	SetLanePin(LanePin{Lane: "Harbor"})
-	SetLanePin(LanePin{Lane: "Ghost"})
+	// 6. AND PINNING AGAIN CLEARS IT — the SAME machine, which is the keystroke
+	//    the sentence a person just read promises works. A person naming a
+	//    machine is them stating the instruction afresh, and the demand goes
+	//    back out.
+	RepinLane(LanePin{Lane: "Ghost"})
 	choice, made = rig.client.laneChoiceFor(callKnobs{}, rig.model,
 		&ai.Request{Model: rig.model, Messages: userMessages("hello")})
 	if !made || len(choice.Only) != 1 || !strings.EqualFold(choice.Only[0], "Ghost") {
@@ -283,10 +284,44 @@ func TestTheRowRestatedKeepsTheRetirementAndTheRowChangedForgetsIt(t *testing.T)
 		t.Fatal("restating the row somebody never touched forgot what the wire said")
 	}
 
-	// And the person, at the picker, naming somewhere else.
+	// And a resolver handing down a row that really did move.
 	SetLanePin(LanePin{Lane: "Harbor"})
 	if pinRetired("Ghost", model) {
-		t.Fatal("a person changing the row did not clear the refusal it collected")
+		t.Fatal("a row that changed did not clear the refusal the old one collected")
+	}
+}
+
+// AND A PERSON PINNING THE MACHINE THEY ALREADY PINNED PUTS IT BACK, which is
+// the exact keystroke the sentence they have just read promises works: "until
+// you pin again".
+//
+// IT IS THE ONE CASE THE ROW CANNOT ANSWER. Re-choosing coreweave in the picker
+// writes a row identical to the one already in force, so a rule that compared
+// rows would answer a person who had just re-pinned with silence and go on
+// routing their model on auto — the sentence on their screen made into a lie.
+// The two entrances are the difference: [SetLanePin] is a resolver reading the
+// row (the door, the standing ticker), [RepinLane] is somebody's own act.
+func TestAPersonPinningTheSameLaneAgainPutsItBack(t *testing.T) {
+	forgotten(t)
+	pinned(t, LanePin{Lane: "Ghost"})
+	model := "openrouter/repinned"
+	if !retirePin("Ghost", model) {
+		t.Fatal("the refusal did not retire the pin")
+	}
+
+	// The resolver, first, so that the two are told apart on the SAME row.
+	SetLanePin(LanePin{Lane: "Ghost"})
+	if !pinRetired("Ghost", model) {
+		t.Fatal("a resolver restating the row forgot what the wire said")
+	}
+
+	// And then the person, choosing the machine they already had.
+	RepinLane(LanePin{Lane: "Ghost"})
+	if pinRetired("Ghost", model) {
+		t.Fatal("a person pinning the same lane again did not put it back")
+	}
+	if pin := CurrentLanePin(); pin.Lane != "Ghost" {
+		t.Fatalf("the row now reads %+v, want the machine they named", pin)
 	}
 }
 

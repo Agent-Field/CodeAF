@@ -1023,20 +1023,29 @@ func (a *app) setLaneRouterOnly(model string) {
 // far machine's own launch resolved its own row. It is [app.hosted] and not an
 // empty profile path for the reason stated over [app.pinLane] — an empty path
 // is the ordinary launch, not the absence of one.
+//
+// AND IT IS THE PERSON'S OWN ENTRANCE AND NOT THE RESOLVERS'
+// ([provider.RepinLane], not [provider.SetLanePin]). Every path that reaches
+// here is somebody's act — enter on a lane in the picker, `/model @cloudflare`,
+// `/model auto`, the `lane` row in the settings panel — so a refusal the wire
+// collected earlier is forgotten whatever the row now says, INCLUDING when they
+// have chosen the machine they had already chosen. Re-picking coreweave is a
+// row that did not change and an instruction that did, and "pinning again puts
+// it straight back" is what the manual promises them (issue #456).
 func (a *app) laneRowChanged() {
 	if a.hosted() {
 		return
 	}
 	slot := laneSlotFor(a.model)
 	if name, pinned := config.LanePinned(a.profileDir, slot); pinned {
-		provider.SetLanePin(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
+		provider.RepinLane(provider.LanePin{Lane: name, Borrow: config.LaneBorrowAt(a.profileDir, slot)})
 		return
 	}
 	if strings.EqualFold(config.LaneAt(a.profileDir, slot), config.LaneOpenRouter) {
-		provider.SetLanePin(provider.LanePin{OpenRouter: true})
+		provider.RepinLane(provider.LanePin{OpenRouter: true})
 		return
 	}
-	provider.SetLanePin(provider.LanePin{})
+	provider.RepinLane(provider.LanePin{})
 }
 
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────
