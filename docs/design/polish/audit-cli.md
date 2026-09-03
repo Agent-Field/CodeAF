@@ -510,3 +510,37 @@ fails on the wording, and putting ONLY the rung back fails with `rebuild came
 back with a plain error rather than a rung of the ladder`. One sibling
 assertion in `rebuild_test.go` pinned the word `cancelled` and was rewritten
 with the reason beside it.
+
+## fixed — two the full suite found that no audit had
+
+Both were invisible to every pass in this wave because both need a LONG PATH to
+appear, and nobody's home directory is long. The suite ran under a deep
+temporary directory and they fell out at once.
+
+**A flag's default path folded the help page mid-word.** `--db` and `--debug`
+interpolate a path, and a path is one word of whatever length the machine makes
+it — a hundred and sixty-six cells into an eighty-column terminal on six of the
+per-command pages. `wrapAt` breaks at spaces, so the one word it could not help
+with was the one word this page cannot control. It breaks a token AT THE COLUMN
+now when the token is wider than the column, which is the rule a sibling lane
+settled for prose in the same wave: there is no horizontal scroll anywhere in
+this product, so an over-wide line is not a line a reader can recover. Files:
+`cmd/aforge/usage.go` (`breakLong`). Verified by reverting: six pages go back
+over a hundred cells.
+
+**A path stopped being a link because of how wide the window was.** The chain
+that reassembles a path the wrap broke was bounded by how many ROWS it spanned —
+and how many rows a path takes is a fact about the FRAME, not about the path:
+the same name is three rows at 160 columns and ten at 28. So the bound was
+loosest exactly where paths are shortest, and tightest exactly where the narrow
+frame the pass exists for needed it most. A generated file a few directories
+deep was clickable at 55 columns and not at 28. Measured in cells the bound says
+what it means, and it is `pathWordMax`, this file's already-written-down answer
+to how long a name can be. Files: `internal/tui3/pathlink.go`. Test:
+`TestWhetherAPathIsALinkDoesNotDependOnHowWideTheWindowIs`, which asserts the
+invariant rather than the mechanism — ONE path, EVERY width from 24 to 200 —
+because no row bound can pass that at every width, there being always a narrower
+frame. **My first draft of that test passed against the very bound it names**,
+because a short temporary directory left the path inside eight rows even at 24
+columns: the same accident that let the defect live. The path is built deep by
+construction now, and the reason is written beside it.

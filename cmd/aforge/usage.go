@@ -259,16 +259,50 @@ func wrapAt(text string, width int) []string {
 	if len(words) == 0 {
 		return nil
 	}
-	lines := []string{words[0]}
+	lines := breakLong(words[0], width)
 	for _, word := range words[1:] {
 		last := len(lines) - 1
 		if ansi.StringWidth(lines[last])+1+ansi.StringWidth(word) > width {
-			lines = append(lines, word)
+			lines = append(lines, breakLong(word, width)...)
 			continue
 		}
 		lines[last] += " " + word
 	}
 	return lines
+}
+
+// breakLong cuts a single word that is WIDER THAN THE WHOLE COLUMN into pieces
+// that fit it.
+//
+// A wrapper that only breaks at spaces cannot help here, and this page has a
+// word no wrapper could have anticipated: several flags interpolate a DEFAULT
+// PATH, and a path is one word of whatever length the machine makes it. Under a
+// deep home directory `--db` and `--debug` drew a hundred and sixty-six cells
+// into an eighty-column terminal, and the terminal folded them mid-word — the
+// exact defect this function was written to prevent, arriving through the one
+// door it could not see.
+//
+// It is the rule a sibling lane settled for prose, applied here: a token is left
+// whole while it fits, and broken AT THE COLUMN when it cannot, because there is
+// no horizontal scroll anywhere in this product and an over-wide line is not a
+// line a reader can recover.
+func breakLong(word string, width int) []string {
+	if width < 1 || ansi.StringWidth(word) <= width {
+		return []string{word}
+	}
+	var pieces []string
+	for ansi.StringWidth(word) > width {
+		head := ansi.Truncate(word, width, "")
+		if head == "" {
+			break
+		}
+		pieces = append(pieces, head)
+		word = word[len(head):]
+	}
+	if word != "" {
+		pieces = append(pieces, word)
+	}
+	return pieces
 }
 
 // longerCommands are the spellings that begin with another command's whole name
