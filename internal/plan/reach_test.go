@@ -574,6 +574,62 @@ func TestASiblingWhoseScopeCannotBeWeighedStillNamesTheFile(t *testing.T) {
 	}
 }
 
+// A CHILD MINTED BY AN EXPANSION IS WEIGHED LIKE ANY OTHER NODE. The sub-graph
+// an expansion plans into is a graph like the outer one, and it carries the
+// terrain and the prices for exactly this reason; without the workspace and the
+// window beside them its sizing pass measured nothing, so every child came back
+// with an uncomputed verdict and both seams read it as within reach. A node
+// minted one level down, alone over a whole over-large file, is the #384 leaf
+// arriving by a different road.
+func TestAChildMintedByAnExpansionIsWeighedToo(t *testing.T) {
+	dir, register := registerWorkspace(t)
+	graph := &Graph{Goal: "settle the register", NextID: 1, Workspace: dir,
+		Stages: []Stage{{Title: "Settle", Summary: "settle the register"}}}
+	graph.Add(Node{Kind: KindWork, Stage: 1, Title: "The register", Size: SizeOversized,
+		Summary: "settle the register", Parts: []string{"the register", "the note"},
+		Sources: []string{"register.txt", "CONVENTIONS.md"}})
+
+	client := &stubClient{reply: func(system, _ string) string {
+		switch {
+		case strings.Contains(system, "You list the parts of one stage"):
+			return `{"parts":[` +
+				`{"title":"Rewrite the register","summary":"rewrite every record of the register",` +
+				`"sources":["register.txt"]},` +
+				`{"title":"Restate the ruling","summary":"restate the date ruling",` +
+				`"sources":["CONVENTIONS.md: lines 2-4"]}]}`
+		case strings.Contains(system, "You judge whether each node is the right size"):
+			return `{"sizes":[{"node":1,"size":"atomic"},{"node":2,"size":"atomic"}]}`
+		}
+		return ""
+	}}
+	sub, _, err := ExpandOne(context.Background(), client, graph, 1,
+		Options{MaxDepth: 2, Workspace: dir, NodeBudget: 60}, ClaimContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub == nil {
+		t.Fatal("the expansion produced no sub-graph")
+	}
+	// The sub-graph is measurable at all, which is the whole of the fix.
+	if sub.Workspace != dir {
+		t.Fatalf("the expansion planned into a graph with workspace %q, want %q", sub.Workspace, dir)
+	}
+	child := sub.Node(1)
+	if child == nil || child.Title != "Rewrite the register" {
+		t.Fatalf("the expansion minted %+v", sub.Nodes)
+	}
+	// And the child alone over the whole register is corrected exactly as the
+	// leaf that named it one level up would have been.
+	if !child.BeyondReach || child.Size != SizeOversized || child.Undivided != RefusalBeyondReach {
+		t.Fatalf("a child alone over a %d-byte register came back %q/%q/%v",
+			register, child.Size, child.Undivided, child.BeyondReach)
+	}
+	// Its sibling scopes three lines and is nowhere near the window.
+	if other := sub.Node(2); other == nil || other.BeyondReach || other.Size != SizeAtomic {
+		t.Fatalf("the sibling came back %+v", other)
+	}
+}
+
 // A sibling is a sibling. A division is drawn in one place, so its lanes sit
 // beside each other under one parent; a node in another subtree — or a node's
 // own children — may not vouch for a leaf that owns a whole file by itself.
@@ -651,24 +707,98 @@ func TestASplitIsNotRefusedBeyondReachWhenTheLaneShareFits(t *testing.T) {
 		t.Fatalf("a lane whose share fits answered %+v", verdict)
 	}
 
-	// And the arithmetic still discharges the burden where the node really does
-	// name more than one worker holds.
-	whole := workspaceNaming(t, "corpus.txt", 269_000)
-	beyond := &Node{Kind: KindWork, Size: SizeAtomic, Parts: []string{"block A", "block B"},
-		Sources: []string{"corpus.txt"}}
-	if got := JudgeSplit(beyond, Options{MaxDepth: 2, Workspace: whole}); !got.Divide {
+	// And the arithmetic still discharges the burden where the sizing pass
+	// carried its verdict this far — the node says so, this pass reads it.
+	beyond := &Node{Kind: KindWork, Size: SizeAtomic, BeyondReach: true,
+		Parts: []string{"block A", "block B"}, Sources: []string{"corpus.txt"}}
+	if got := JudgeSplit(beyond, options); !got.Divide {
 		t.Fatalf("the measurement did not discharge the null hypothesis: %+v", got)
 	}
 	// Nothing could be named to divide it into, so it is handed over whole —
 	// and the journal says which of the two refusals it was, because the two
 	// call for different repairs.
-	unnamed := &Node{Kind: KindWork, Size: SizeAtomic, Sources: []string{"corpus.txt"}}
-	if got := JudgeSplit(unnamed, Options{MaxDepth: 2, Workspace: whole}); got.Divide || got.Reason != RefusalBeyondReach {
+	unnamed := &Node{Kind: KindWork, Size: SizeAtomic, BeyondReach: true,
+		Sources: []string{"corpus.txt"}}
+	if got := JudgeSplit(unnamed, options); got.Divide || got.Reason != RefusalBeyondReach {
 		t.Fatalf("an undividable node beyond reach was refused with %+v", got)
 	}
-	// The rollback: with no workspace every branch answers as it always did.
-	if got := JudgeSplit(beyond, Options{MaxDepth: 2}); got.Divide || got.Reason != RefusalWithinReach {
+	// The rollback: a node nothing was ever measured about — it names nothing
+	// that exists — answers as it always did.
+	unmeasured := &Node{Kind: KindWork, Size: SizeAtomic, Parts: []string{"block A", "block B"},
+		Sources: []string{"the team's decision"}}
+	if got := JudgeSplit(unmeasured, options); got.Divide || got.Reason != RefusalWithinReach {
 		t.Fatalf("an unmeasured atomic node answered %+v", got)
+	}
+}
+
+// ONE VERDICT, READ AT BOTH SEAMS. The sizing correction weighs a node against
+// its siblings; the split judgment sees one node and the options and cannot see
+// a sibling at all. While it measured for itself the two disagreed on exactly
+// the nodes the exemption exists for: measured at the plan door, fixture A's
+// three lanes came out `size=atomic` AND carrying `its named material exceeds
+// what one worker holds` on the same draw — spared by the correction, refused
+// by the expansion pass a moment later. A lane's share of that register really
+// is about 48 KB against a 32 KB window; the law spares it because it is a lane
+// of a division, and that clause has to reach both readers.
+func TestTheTwoSeamsReadOneVerdict(t *testing.T) {
+	dir, register := registerWorkspace(t)
+	graph := laneGraph(dir)
+	// The share really does exceed the window — this is not a lane that was
+	// spared by measuring small.
+	if got := ReachFor(dir, 0).Measure(graph.Node(2).Sources...); !got.Exceeds() {
+		t.Fatalf("a lane over one block of a %d-byte register measured %+v", register, got)
+	}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"}, {Node: 2, Size: "atomic"}, {Node: 3, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	options := Options{MaxDepth: 2, Workspace: dir, NodeBudget: 60}
+	for _, id := range []int{1, 2, 3} {
+		node := graph.Node(id)
+		if node.Size != SizeAtomic || node.Undivided != "" {
+			t.Fatalf("the correction left lane %d %q/%q", id, node.Size, node.Undivided)
+		}
+		if node.BeyondReach {
+			t.Fatalf("lane %d was recorded beyond reach after being spared", id)
+		}
+		if got := JudgeSplit(node, options); got.Reason == RefusalBeyondReach {
+			t.Fatalf("the split judgment refused lane %d as beyond reach: %+v", id, got)
+		}
+		// It is left whole for the reason it was left whole before any of this
+		// existed: nobody named two pieces for it.
+		if got := JudgeSplit(node, options); got.Divide || got.Reason != RefusalUnnamed {
+			t.Fatalf("lane %d answered %+v", id, got)
+		}
+	}
+	// And the whole expansion pass writes nothing else onto them.
+	selectForExpansion(graph, options)
+	for _, id := range []int{1, 2, 3} {
+		if got := graph.Node(id).Undivided; got != RefusalUnnamed {
+			t.Fatalf("expansion journaled %q on lane %d", got, id)
+		}
+	}
+
+	// The single node alone over the whole register is refused at both seams,
+	// which is the guarantee from issue #384 read twice.
+	alone := &Graph{Goal: "the register", NextID: 1, Workspace: dir}
+	alone.Add(Node{Kind: KindWork, Stage: 1, Title: "The register",
+		Summary: "rewrite the whole register", Sources: []string{"register.txt"}})
+	if _, err := sizeApply(alone, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	node := alone.Node(1)
+	if node.Size != SizeOversized || node.Undivided != RefusalBeyondReach || !node.BeyondReach {
+		t.Fatalf("a node alone over the register was left %q/%q/%v", node.Size, node.Undivided, node.BeyondReach)
+	}
+	if got := JudgeSplit(node, Options{MaxDepth: 2, Workspace: dir}); !got.Divide {
+		t.Fatalf("an oversized node alone over the register answered %+v", got)
+	}
+	node.Size = SizeAtomic
+	if got := JudgeSplit(node, Options{MaxDepth: 2, Workspace: dir}); got.Divide || got.Reason != RefusalBeyondReach {
+		t.Fatalf("a node alone over the register answered %+v", got)
 	}
 }
 

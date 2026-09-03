@@ -375,17 +375,25 @@ func JudgeSplit(node *Node, options Options) SplitVerdict {
 	// of what admitsEnumeratedPieces adds to the reading: a remainder's list is
 	// one worker's assignment, so a remainder is admitted on the ruler's size
 	// and on nothing else.
-	// The measurement, taken before any of the judgments below are weighed. The
-	// node names the material it must touch; where that material has been
-	// weighed and is larger than what one worker holds, the null hypothesis is
-	// discharged by arithmetic rather than by opinion — it is not a claim that
-	// dividing would be nicer, it is the observation that not dividing cannot
-	// work. What is weighed is the material the node will READ: a source that
-	// scopes a region of a file contributes that region and not the file, so a
-	// lane over one block of a big register is not refused here for the size of
-	// the register. Nothing measurable leaves every branch below byte for byte
-	// as it was. See reach.go.
-	beyondReach := options.reach().Measure(node.Sources...).Exceeds()
+	// The measurement, decided before any of the judgments below are weighed —
+	// and READ, never retaken. The node names the material it must touch; where
+	// that material has been weighed and is larger than what one worker holds,
+	// the null hypothesis is discharged by arithmetic rather than by opinion: it
+	// is not a claim that dividing would be nicer, it is the observation that
+	// not dividing cannot work.
+	//
+	// IT IS THE SIZING PASS'S VERDICT AND NOT A SECOND OPINION ABOUT THE SAME
+	// DISK. Measuring here looks free and is not: this function sees one node
+	// and the options, and the law it is applying has a clause about the node's
+	// SIBLINGS — a lane of a division is spared even though its share is larger
+	// than one worker's window. Taking the measure again here re-derived half
+	// the law and reached the opposite verdict on exactly the nodes the clause
+	// exists for: three lanes over one register, spared by the correction and
+	// left atomic, were journaled "its named material exceeds what one worker
+	// holds" by this pass a moment later, on the same draw. So the verdict is
+	// computed once, where the siblings are visible, and stored. See
+	// correctBeyondReach and Node.BeyondReach in reach.go.
+	beyondReach := node.BeyondReach
 	enumerated := admitsEnumeratedPieces(node, options)
 	if len(node.Parts) < 2 && node.Size != SizeOversized && !enumerated {
 		// Still whole, and now for the more serious of the two reasons: nobody
@@ -586,8 +594,16 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 		// invoice would be the one place in the system that still weighs a
 		// division against nothing.
 		Invoice: graph.Invoice,
-		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
-		NextID:  1,
+		// The workspace and the window travel for the same reason, and it is
+		// the sharper case: the sizing pass inside this expansion checks its
+		// verdicts against the material each NEW node names, and a sub-graph
+		// that lost them would be the one place in the system that mints a leaf
+		// and hands it over unweighed. A child spliced back carrying an
+		// uncomputed verdict is a child both seams then read as within reach.
+		Workspace:     graph.Workspace,
+		ContextTokens: graph.ContextTokens,
+		Stages:        []Stage{{Title: node.Title, Summary: node.Summary}},
+		NextID:        1,
 	}
 	// AN OVERSIZED NODE WITH NO SIMULTANEOUS PIECES NAMED IS EVIDENCE OF A
 	// SEQUENCE, NOT A REASON TO LEAVE IT WHOLE. The ruler has already been asked

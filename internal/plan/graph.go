@@ -107,6 +107,31 @@ type Node struct {
 	// does not repeat. Empty means no split was ever considered for this node.
 	Undivided string `json:"undivided,omitempty"`
 
+	// BeyondReach is the measurement's finished verdict on this node: the
+	// material it will read is larger than one worker's window AND it is not a
+	// lane of a division. It is a stored answer rather than a question each
+	// reader asks for itself, and THAT IS THE POINT — see correctBeyondReach,
+	// which is the one place that computes it.
+	//
+	// It is here because two seams act on the same fact and only one of them
+	// can see the graph. The sizing correction weighs a node's material against
+	// its siblings'; the split judgment reads one node and the options and
+	// cannot see a sibling at all. While the split judgment measured for itself
+	// it reached the opposite verdict on exactly the nodes the exemption exists
+	// for: three lanes over one register were spared by the correction, sized
+	// atomic, and then journaled "its named material exceeds what one worker
+	// holds" by the expansion pass a moment later. THE TWO SEAMS MAY NEVER
+	// DISAGREE, so there is one verdict and both read it.
+	//
+	// False is every graph that was never measured — no workspace, nothing
+	// named, nothing weighed — which is every prompt byte and every branch
+	// exactly as they were before any of this existed. A graph written to disk
+	// before this field existed reads back false and behaves that way too, and
+	// a node the sizing pass never reached (frozen: already running, already
+	// done) keeps whatever it carried, because it is not a candidate for
+	// division any more.
+	BeyondReach bool `json:"beyond_reach,omitempty"`
+
 	Needs []int  `json:"needs"`
 	Size  Size   `json:"size,omitempty"`
 	State State  `json:"state"`

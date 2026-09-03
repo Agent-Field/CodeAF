@@ -284,6 +284,10 @@ type Options struct {
 	// goal and of every node name files, and this is where they are looked up.
 	// See reach.go.
 	//
+	// It is read exactly once, onto the graph at build start, because the pass
+	// that weighs a node's material against its siblings' runs off the document
+	// and not off these options. See Graph.Workspace and reach.go.
+	//
 	// Empty measures nothing and changes no verdict — a caller with no
 	// workspace plans exactly as it always did.
 	Workspace string
@@ -428,12 +432,6 @@ type Options struct {
 	// one-shot `aforge plan` path and every caller with no store to journal to.
 	Journal BriefJournal
 }
-
-// reach is what one worker holds, and where the names in this goal are weighed.
-// It is derived rather than stored so that the window and the workspace have
-// exactly one reading between the build and the passes that run off the
-// document afterwards. See reach.go.
-func (o Options) reach() Reach { return ReachFor(o.Workspace, o.ContextTokens) }
 
 // buildLevels is how many expansion levels this build runs. It never exceeds
 // MaxDepth, because MaxDepth is the ceiling on the shape and BuildDepth is only

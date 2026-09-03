@@ -739,13 +739,18 @@ func correctBeyondReach(graph *Graph) {
 	}
 	for index := range graph.Nodes {
 		node := &graph.Nodes[index]
-		if node.Kind != KindWork || node.Size == SizeOversized || node.State.Frozen() {
+		if node.Kind != KindWork || node.State.Frozen() {
 			continue
 		}
-		if !reach.weigh(named[index]).Exceeds() {
-			continue
-		}
-		if node.Size == SizeAtomic && isALaneOfADivision(named[index], siblingsNaming[node.Parent], reach) {
+		// THE VERDICT IS WRITTEN DOWN BEFORE IT IS ACTED ON, and it is written
+		// for every node rather than only for the ones being corrected. The
+		// expansion pass asks the same question about the same node a moment
+		// later and cannot see a sibling from where it stands, so what it reads
+		// has to be this answer and not a second reading of the disk. See
+		// Node.BeyondReach.
+		node.BeyondReach = reach.weigh(named[index]).Exceeds() &&
+			!(node.Size == SizeAtomic && isALaneOfADivision(named[index], siblingsNaming[node.Parent], reach))
+		if !node.BeyondReach || node.Size == SizeOversized {
 			continue
 		}
 		node.Size = SizeOversized
