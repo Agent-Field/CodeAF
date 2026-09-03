@@ -72,6 +72,13 @@ type LaneNews struct {
 	// [provider.RescueSlow] or [provider.RescueRefused]. Empty is a rescue
 	// nobody classified, which a surface reads as slow.
 	//
+	// AND ONE WORD THAT IS NOT ABOUT A RESCUE AT ALL. [provider.RescueRetired]
+	// is a person's own pin, refused by the router for this model and stood
+	// down until they pin again (issue #456). It rides this seam because it is
+	// the same KIND of sentence — something about the machine behind this
+	// answer changed while you were waiting — and the fact also reaches the
+	// conversation as a note of its own, which is the copy that stays.
+	//
 	// IT IS CARRIED AND NEVER DECIDED HERE. The word a person reads has to be
 	// the word the ledger acted on, and a second opinion formed at this seam is
 	// how a status line ends up disagreeing with the routing it is describing.
