@@ -89,13 +89,18 @@ const (
 // IT NAMES NO COMMAND OF ITS OWN. A list this file knew would be the constant
 // task_checks.go was written to replace, and it would be wrong in exactly the
 // places this build is meant to be general: the work says how it is checked.
+//
+// AND EVERY ONE OF THEM COMES BACK AS A COMMAND RATHER THAN AS A SPAN OF PROSE
+// ([invocableChecks]). What is harvested here is run under a shell, so a check
+// that names a file has to be opened the way that FILE opens — which is the fact
+// a node's own door already computes and this harvest used to throw away.
 func (a *Agent) sessionChecks() []string {
 	principal := a.who()
 	// The deliverable tree is where [Agent.runSessionChecks] will start every one
 	// of these, so it is the directory a declared check has to be runnable in —
 	// the same tree, asked the same question, as the one the checks are run in.
 	tree := a.deliverableTree()
-	checks := declaredChecks(principal.Ask()+"\n"+principal.Acceptance(), tree)
+	checks := invocableChecks(tree, declaredChecks(principal.Ask()+"\n"+principal.Acceptance(), tree))
 	graph := a.tasker()
 	if graph == nil {
 		return trimChecks(checks)
@@ -114,9 +119,33 @@ func (a *Agent) sessionChecks() []string {
 		if !node.stateNow().settled() {
 			continue
 		}
-		checks = appendChecks(checks, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks)
+		checks = appendChecks(checks,
+			invocableChecks(tree, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks))
 	}
 	return trimChecks(checks)
+}
+
+// invocableChecks turns one source's declared spans into the commands that
+// actually START them, and DROPS THE ONES NOTHING CAN START.
+//
+// THE READING IS [checkCommand]'S AND NOT A SECOND ONE. A node's auditor is told
+// how to open a file check off the very same facts (task_checks.go), so a session
+// and its nodes cannot come to disagree about what running a check means — which
+// is the law the whole of [Agent.sessionChecks] is built on.
+//
+// A SPAN THAT CANNOT BE INVOKED IS NOT A FAILING CHECK, IT IS NOT A CHECK. It is
+// dropped here rather than run and reported, because "does not pass" is a
+// sentence about something that RAN, and a span that never could run would repeat
+// that sentence for the life of the session ([Remains.unmet] re-reads the same
+// list at the end of every turn).
+func invocableChecks(tree string, checks []string) []string {
+	out := make([]string, 0, len(checks))
+	for _, check := range checks {
+		if command := checkCommand(tree, check); command != "" {
+			out = append(out, command)
+		}
+	}
+	return out
 }
 
 // trimChecks bounds the list and drops what a check cannot be. The vouching is

@@ -265,17 +265,28 @@ const (
 )
 
 // Decision is what a principal answered.
+//
+// Observed is WHAT THE ANSWER WAS TAKEN ON, in the same words a person reads —
+// the items a reading actually showed. It rides beside the brief because the
+// brief is addressed to the MODEL and is written to be worked from, while the one
+// line a person is shown when carrying on stops ([checkpointCarriedOnNote]) has
+// to say what was seen and nothing else. A note that had only the brief to go on
+// asserted "it is still not finished" as a fact, which is a claim nobody took a
+// reading of (#468).
 type Decision struct {
-	Verb   DecisionVerb
-	Brief  string
-	Reason string
+	Verb     DecisionVerb
+	Brief    string
+	Reason   string
+	Observed []string
 }
 
 // carryOn, done and stop are the three constructors, so no caller in this
 // package assembles a Decision field by field and forgets one.
-func carryOn(brief string) Decision { return Decision{Verb: DecideCarryOn, Brief: brief} }
-func done() Decision                { return Decision{Verb: DecideDone} }
-func stop(reason string) Decision   { return Decision{Verb: DecideStop, Reason: reason} }
+func carryOn(brief string, observed ...string) Decision {
+	return Decision{Verb: DecideCarryOn, Brief: brief, Observed: observed}
+}
+func done() Decision              { return Decision{Verb: DecideDone} }
+func stop(reason string) Decision { return Decision{Verb: DecideStop, Reason: reason} }
 
 // ── THE PERSON ──────────────────────────────────────────────────────────────
 
@@ -320,7 +331,11 @@ func (p *Person) Report(Landing) string { return "" }
 // Nothing else a person could be shown is consulted, because nothing else was.
 func (p *Person) Decide(r Remains) Decision {
 	if line := strings.TrimSpace(r.Reader); line != "" {
-		return carryOn(line)
+		// THE OBSERVATION IS THE LINE ITSELF, which is not an addition to what a
+		// person's session decides: the reader's line is the whole of what was
+		// read here, and saying so is what lets the one note a person ever sees
+		// on this road quote what was seen rather than assert a conclusion.
+		return carryOn(line, line)
 	}
 	return done()
 }
@@ -387,6 +402,23 @@ type Steward struct {
 	// hole in it.
 	failures map[string]int
 	stopped  string
+
+	// carriedUnmet and carriedBrief are THE LAST CARRY-ON THIS STEWARD MINTED,
+	// and they are the whole of the standstill floor ([Steward.Decide]).
+	//
+	// THEY LIVE HERE BECAUSE THE LOOP THEY BOUND IS LONGER THAN A TURN. The
+	// per-turn ceiling on carrying on (checkpoint.go's [checkpointCarryOnCap])
+	// counts on a meter the turn owns, and every other way out of a turn builds a
+	// fresh one — so a session whose task landings kept waking new turns was
+	// bounded by a counter that reset before it could ever fire, and the measured
+	// run repeated one byte-identical brief until its wall ran out (#468). A
+	// floor kept on the principal cannot be restarted by a new turn, which is the
+	// only place it means anything.
+	//
+	// They are empty until the first carry-on, so a session's FIRST identical
+	// pair of readings is a carry-on and its second is the stop.
+	carriedUnmet string
+	carriedBrief string
 }
 
 // NewSteward builds the principal of an unattended session.
@@ -531,22 +563,33 @@ func stewardReason(landing Landing) string {
 
 // Decide is the end of a turn, answered on the absent person's behalf.
 //
-// THE ORDER IS THE POLICY, and each rung is cheaper than the one under it:
+// THE ORDER IS THE POLICY, and it is an order over EVIDENCE:
 //
 //  1. A GUARD THAT HAS FIRED OUTRANKS EVERYTHING. Once the same failure has come
 //     home [stewardRepeats] times the session is over, whatever a reader says.
 //  2. AN EXHAUSTED BUDGET STOPS, and it stops with a report rather than with
 //     silence — a run that spent its hours and said nothing is a run nobody can
 //     learn from.
-//  3. A READER WITH SOMETHING TO SAY CARRIES ON, exactly as an attended session
-//     does. This is the common case and it costs nothing extra.
-//  4. AND THEN THE ONE THING A PERSON WOULD HAVE DONE AND THE ENGINE NEVER DID:
-//     look at the work. A reader reading the ask as met is a reading of the
-//     TRANSCRIPT, and a transcript is what the session said about itself. If a
-//     unit of work did not finish, or a declared check does not pass, or nothing
-//     has been finished at all, then the ask is not met however confidently the
-//     conversation ended, and the session carries on with the gap as its brief.
-//  5. Only with nothing left unmet is it done.
+//  3. WHAT LANDED AND WHAT RAN COME BEFORE ANY READER'S LINE. This is the rung
+//     that moved, and it is the whole of #468. A reader's line is a reading of the
+//     TRANSCRIPT — what the session said about itself — while a settled landing
+//     and a check that ran are readings of the work. So the unmet set is taken
+//     first, and a session whose units of work are done and whose checks all
+//     passed is FINISHED, however much a reader still has to say about it. The
+//     measured run had a task merged home with twenty-two checks green, and was
+//     carried on past it for the rest of its wall on a line somebody's sidecar
+//     wrote about the transcript.
+//  4. WITH SOMETHING GENUINELY LEFT, THE READER'S OWN WORDS ARE THE BRIEF where
+//     there are any: the unmet set says THAT work remains and the reader is
+//     usually more specific about WHAT, and a brief is read by a model that has to
+//     act on it.
+//  5. AND THE SAME THING TWICE RUNNING IS A STANDSTILL, not a third go
+//     ([Steward.standstill]).
+//
+// THE FROZEN DONE-CONDITION IS NEVER EVIDENCE HERE. It is written before any work
+// happens, out of the ask alone, and it reaches the decision only as the context a
+// brief opens with ([stewardBrief]) — a sentence the session wrote for itself is
+// not a reading of anything.
 func (s *Steward) Decide(r Remains) Decision {
 	s.mu.Lock()
 	stopped := s.stopped
@@ -557,13 +600,61 @@ func (s *Steward) Decide(r Remains) Decision {
 	if spent, why := s.Budget().Exhausted(); spent {
 		return stop(why)
 	}
-	if line := strings.TrimSpace(r.Reader); line != "" {
-		return carryOn(line)
+	unmet := r.unmet()
+	if len(unmet) == 0 {
+		return done()
 	}
-	if unmet := r.unmet(); len(unmet) > 0 {
-		return carryOn(stewardBrief(r, unmet))
+	brief := strings.TrimSpace(r.Reader)
+	if brief == "" {
+		brief = stewardBrief(r, unmet)
 	}
-	return done()
+	if halted := s.standstill(unmet, brief); halted != "" {
+		return stop(halted)
+	}
+	return carryOn(brief, unmet...)
+}
+
+// standstill is the floor under carrying on: it answers a REASON TO STOP when
+// this steward is about to say what it said last time, and "" when something has
+// moved.
+//
+// A STANDSTILL IS A STOP AND NOT A CARRY-ON. The evidence that a run is getting
+// somewhere is that what is left CHANGES; a session that reaches the end of a turn
+// with the same unmet set and writes the same brief has learned nothing from the
+// turn it just spent, and every further round is the same money against the same
+// wall. The measured run wrote one byte-identical brief four times in a hundred
+// seconds and then wrote it until its hours were up (#468).
+//
+// BOTH READINGS ARE COMPARED, because either one standing still is the same
+// event: the unmet set is what the work and the checks showed, and the brief is
+// what a reader added on top of it. A change in either is progress enough to go
+// again.
+//
+// AND IT SETS [Steward.stopped], SO IT HOLDS. A floor that only answered this one
+// call would be re-asked by the next turn with a fresh meter under it, which is
+// exactly the counter that was already there and could not fire.
+func (s *Steward) standstill(unmet []string, brief string) string {
+	seen := strings.Join(unmet, "; ")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.carriedUnmet != seen || s.carriedBrief != brief {
+		s.carriedUnmet, s.carriedBrief = seen, brief
+		return ""
+	}
+	s.stopped = stewardStandstillReason(unmet)
+	return s.stopped
+}
+
+// stewardStandstillReason is what a standstill says, in the register every stop
+// on this road wears: an observation, and then what is being done about it.
+//
+// IT NAMES WHAT IS STILL LEFT and it says the run stopped RATHER THAN REPEAT
+// ITSELF, which are the two things a person coming back to a stopped session
+// needs — the second one because a run that went quiet on its own is otherwise
+// indistinguishable from one that crashed.
+func stewardStandstillReason(unmet []string) string {
+	return "nothing moved since the last look and what is left is the same — " +
+		strings.Join(unmet, "; ") + " · saying it again would not change it"
 }
 
 // stewardBrief writes what is left to do out of what is unmet. It names the

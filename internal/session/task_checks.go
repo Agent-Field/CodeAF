@@ -519,6 +519,65 @@ func declaredChecks(text, ground string) []string {
 	return out
 }
 
+// checkCommand answers HOW A DECLARED CHECK IS INVOKED where the checker is
+// going to stand, or "" when it cannot be invoked at all.
+//
+// A CHECK IS A COMMAND AND NEVER A PATH, which is the law this function is. The
+// door a node's own auditor gets already knows the difference: it reads the file
+// itself ([fileFacts]) and writes down which spellings START it, so a model is
+// told `<the interpreter> <the file>` rather than left guessing
+// ([auditDoor.spelling]). Whoever runs a check under a shell needs the same fact
+// and used to be given only the span the prose held — so a session that harvested
+// a bare `src/version.py` out of its own acceptance ran `bash -c src/version.py`,
+// collected exit 126 from a file with no executable bit, and reported "does not
+// pass" about it on every round of a whole evening (#468).
+//
+// THREE ANSWERS, AND EVERY ONE OF THEM IS A FACT RATHER THAN A LIST:
+//
+//   - THE FIRST WORD IS A PROGRAM THE SHELL WOULD FIND ([onThePath]): the span is
+//     already a command and stands exactly as the work wrote it.
+//   - THE SPAN NAMES A FILE AND THE WORK NAMED THE PROGRAM TOO — two words, a
+//     launcher and its file — so it stands as written for the same reason: the
+//     work is the one citizen entitled to say how its own check is run.
+//   - THE SPAN IS THE FILE ALONE: it is opened the way the file itself says it
+//     opens, by its executable bit or by the interpreter its first line names, and
+//     the RESOLVED path is what goes into the command, because a bare word with no
+//     directory in it would send the shell looking down PATH for a file sitting in
+//     the tree.
+//
+// AND A FILE THAT SAYS NEITHER IS NOT A CHECK. It is data the prose happened to
+// backtick, there is no way to run it, and "does not pass" is a sentence about a
+// check that RAN — so this answers "" and the caller drops it rather than
+// carrying a permanent failure for the life of the session.
+func checkCommand(ground, check string) string {
+	fields := strings.Fields(check)
+	if len(fields) == 0 {
+		return ""
+	}
+	if onThePath(fields[0]) {
+		return check
+	}
+	files := fileChecksIn(ground, check)
+	if len(files) == 0 {
+		return ""
+	}
+	if len(fields) > 1 {
+		return check
+	}
+	// A WILDCARD THE WORK WROTE RESOLVES TO WHATEVER IT MATCHES, and the first
+	// match that can be started is the check. The alternative — running every
+	// match — would turn one declared check into eight processes nobody declared.
+	for _, file := range files {
+		switch {
+		case file.runnable:
+			return file.path
+		case file.interpreter != "":
+			return file.interpreter + " " + file.path
+		}
+	}
+	return ""
+}
+
 // runnableHere is the question the third measured failure at the top of this
 // file put to source (a): COULD THE CHECKER ACTUALLY RUN THIS WHERE IT IS BEING
 // PUT? A word that is neither a program nor a file is not a check, however
