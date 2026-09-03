@@ -1011,6 +1011,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did one task turn into several workers", "tasks"},
 		{"can a task divide its own work when it turns out to be too big", "tasks"},
 		{"what decides whether work gets split", "tasks"},
+		// And the pin the width floor moved onto. On 2026-09-02 a designed
+		// experiment took that floor out of the default, so the two questions
+		// people now bring are the one asked by somebody who WANTS the splitting
+		// ("can I make it always split the work") and the one asked by somebody
+		// who did not expect it ("why did it split my task into parts") — the
+		// second of which nobody asked while a floor was refusing most of them.
+		{"can I make it always split the work", "tasks"},
+		{"why did it split my task into parts", "tasks"},
 		// And the refusal a person meets in the transcript rather than in a
 		// design: the split did not happen because two of the parts wanted the
 		// same file. The words are the ones they read there.
