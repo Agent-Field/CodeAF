@@ -69,8 +69,9 @@ func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
 		}
 	}
 	// The rail is spelled from the constant that owns it, so raising the shipped
-	// default is one edit and not two.
-	wantRail := fmt.Sprintf("today's spend: $0.00 of $%.2f daily rail", config.DefaultDailyBudgetUSD)
+	// default is one edit and not two. A day that has cost nothing says nothing
+	// about what it cost — the emptiness law — so the rail stands alone.
+	wantRail := fmt.Sprintf("daily rail: $%.2f", config.DefaultDailyBudgetUSD)
 	if !strings.Contains(rendered, wantRail) {
 		t.Fatalf("notebook omitted daily rail: %q", rendered)
 	}

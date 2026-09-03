@@ -1,0 +1,13 @@
+=== aforge doctor --help -> exit 1 ; 0 lines
+=== aforge logs --help -> exit 1 ; 0 lines
+=== aforge models --help -> exit 0 ; 2 lines
+=== aforge manual --help -> exit 0 ; 39 lines
+=== aforge show --help -> exit 1 ; 0 lines
+=== aforge cache --help -> exit 1 ; 0 lines
+=== aforge devices --help -> exit 1 ; 0 lines
+=== aforge notebook --help -> exit 1 ; 0 lines
+=== aforge why --help -> exit 1 ; 0 lines
+=== aforge rebuild --help -> exit 1 ; 0 lines
+=== aforge wake --help -> exit 1 ; 0 lines
+=== aforge competence --help -> exit 1 ; 0 lines
+=== aforge hlep -> exit 1 ; 128 lines

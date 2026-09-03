@@ -16,7 +16,6 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +36,11 @@ func runCacheWith(args []string, input io.Reader, output io.Writer) error {
 	case "clean":
 		return cleanCache(args[1:], input, output)
 	default:
+		// `aforge cache --help` reaches here rather than a flag set, because
+		// the reading form parses nothing at all (usage.go).
+		if askedForHelp(args) {
+			return commandHelp("cache")
+		}
 		return fmt.Errorf("usage: aforge cache [clean [--yes]]")
 	}
 }
@@ -56,10 +60,9 @@ func showCache(output io.Writer) error {
 }
 
 func cleanCache(args []string, input io.Reader, output io.Writer) error {
-	flags := flag.NewFlagSet("cache clean", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("cache clean")
 	yes := flags.Bool("yes", false, "skip the typed confirmation")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

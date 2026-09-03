@@ -26,10 +26,20 @@ type execEnvelope struct {
 	Artifacts []string        `json:"artifacts"`
 	Turns     int             `json:"turns"`
 	ElapsedMS int64           `json:"elapsed_ms"`
+	// Error is why the run did not work, in the same words a person would have
+	// read on stderr. It is empty on every run that produced an answer.
+	//
+	// It is here because a failure envelope without it says `"stop":"error"`
+	// and nothing else, so a script reading exec's stdout could learn THAT the
+	// run failed and never WHY — the model id was rejected, the key was
+	// missing, the wall arrived — with the only copy of the sentence on a
+	// stream it was not reading. `do --json` shipped this field for exactly
+	// that reason (headlessOutcome.Error, do.go); exec never got it.
+	Error string `json:"error,omitempty"`
 }
 
 func runExec(args []string) error {
-	flags := flag.NewFlagSet("exec", flag.ContinueOnError)
+	flags := commandFlags("exec")
 	workspace := flags.String("w", ".", "workspace directory")
 	system := flags.String("system", "", "working method for the agent")
 	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
@@ -44,7 +54,7 @@ func runExec(args []string) error {
 	debug := flags.Bool("debug", false,
 		"keep the full record of this run — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
@@ -67,7 +77,7 @@ func runExec(args []string) error {
 	if err := applyContextLaw(*contextFill, *completionReserve); err != nil {
 		return err
 	}
-	prompt, err := readText(flags.Args())
+	prompt, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
@@ -120,10 +130,13 @@ func runExec(args []string) error {
 		outcome = &exec.Outcome{Stop: exec.StopError, Artifacts: []string{}}
 	}
 	if runErr != nil {
-		fmt.Fprintln(os.Stderr, "error:", runErr)
+		// The same sentence the envelope carries, and the same one either way:
+		// a caller reading stderr and a caller reading --json must not be told
+		// two different things about one failure (plainwords.go).
+		fmt.Fprintln(os.Stderr, "error:", execFailureWords(runErr))
 	}
 
-	envelope := buildExecEnvelope(outcome)
+	envelope := buildExecEnvelope(outcome, runErr)
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return err
@@ -240,7 +253,10 @@ func execExitCode(stop exec.StopReason, text string) int {
 	}
 }
 
-func buildExecEnvelope(outcome *exec.Outcome) execEnvelope {
+// buildExecEnvelope is the ONE PLACE the machine contract is built, so the
+// object written to --json, the object written to -o and the sentence printed
+// on stderr cannot drift apart.
+func buildExecEnvelope(outcome *exec.Outcome, runErr error) execEnvelope {
 	if outcome == nil {
 		outcome = &exec.Outcome{Stop: exec.StopError}
 	}
@@ -253,7 +269,20 @@ func buildExecEnvelope(outcome *exec.Outcome) execEnvelope {
 		Artifacts: artifacts,
 		Turns:     outcome.Turns,
 		ElapsedMS: outcome.Elapsed.Milliseconds(),
+		Error:     execFailureWords(runErr),
 	}
+}
+
+// execFailureWords is one failure said once, in words a person can act on.
+//
+// exec runs a single leaf, so the node id every error inside it is wrapped with
+// is machinery here — there is only ever the one node, and naming it in front
+// of the cause pushes the cause off the front of the line.
+func execFailureWords(runErr error) string {
+	if runErr == nil {
+		return ""
+	}
+	return plainWords(strings.TrimPrefix(strings.TrimSpace(runErr.Error()), "node "+execNodeKey+": "))
 }
 
 // execNodeKey names the single leaf `aforge exec` runs. It is spelled once so

@@ -134,3 +134,33 @@ func TestARunSaysWhichOfTheTwoEndingsItGot(t *testing.T) {
 		t.Fatal("a watcher with no signal to read called an ordinary wall a stop")
 	}
 }
+
+// A RUN THAT NEVER STARTED KEEPS NO RECORD AND NAMES NO FOLDER.
+//
+// `record kept at <path>` used to print for runs that fell over at the door: it
+// stood directly above `permission denied` and above the missing-key sentence,
+// pointing somebody at an empty folder on the exact line where they were
+// already looking for the cause.
+func TestARunThatNeverStartedKeepsNoRecord(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(homepkg.EnvVar, root)
+	t.Setenv("AFORGE_PROFILE_DIR", root)
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	var out, errs strings.Builder
+	err := doErrand(doRequest{task: "count the lines", stdout: &out, stderr: &errs})
+	if err == nil {
+		t.Fatal("a run with no key reported success")
+	}
+	if strings.Contains(errs.String(), "record kept at") {
+		t.Fatalf("a run that never started pointed the reader at a folder:\n%s", errs.String())
+	}
+	runs, readErr := os.ReadDir(filepath.Join(root, "runs"))
+	if readErr != nil && !os.IsNotExist(readErr) {
+		t.Fatal(readErr)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("a run that never started left %d folder(s) under runs/", len(runs))
+	}
+}

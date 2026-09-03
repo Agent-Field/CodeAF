@@ -2273,7 +2273,7 @@ func moneyValue(value float64) string {
 	return formatDollars(value)
 }
 
-// spentFigure is how a SPEND is written, which is not how a LIMIT is written.
+// SpentFigure is how a SPEND is written, which is not how a LIMIT is written.
 //
 // A limit is a figure somebody typed and [formatDollars] writes it back the
 // shortest way that is still the same number — right for a config file and right
@@ -2283,7 +2283,17 @@ func moneyValue(value float64) string {
 // twenty-two digits of float noise where a person wanted to read a price. So a
 // spend is cents, and four decimals under a cent — the same ladder the surface's
 // own money word uses, so the receipt and the figure beside it agree.
-func spentFigure(usd float64) string {
+//
+// AND A SPEND OF NOTHING SAYS NOTHING. The emptiness law lives here rather than
+// at each caller so there is one answer to "how is a spend written" and not two:
+// `$0.00` and `$0.0000` are claims nobody earned, and a headless footer that
+// ended `0s · 0 nodes · $0.0000` made three of them on the one line a person
+// reads to find out what happened. It is exported for the doors outside this
+// package — the headless footer, doctor, the notebook — for the same reason.
+func SpentFigure(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
 	if usd < 0.01 {
 		return fmt.Sprintf("$%.4f", usd)
 	}
@@ -2305,7 +2315,7 @@ func (s *Settings) spentTodayReceipt() string {
 	if !counted || spent <= 0 {
 		return ""
 	}
-	return spentFigure(spent) + " today"
+	return SpentFigure(spent) + " today"
 }
 
 // spentThisSessionReceipt is the conversation ceiling's own receipt: what THIS
@@ -2323,7 +2333,7 @@ func (s *Settings) spentThisSessionReceipt() string {
 	if !counted || spent <= 0 {
 		return ""
 	}
-	return "this one " + spentFigure(spent)
+	return "this one " + SpentFigure(spent)
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -24,10 +23,9 @@ func runNotebook(args []string) error {
 }
 
 func runNotebookTo(args []string, output io.Writer, now time.Time) error {
-	flags := flag.NewFlagSet("notebook", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("notebook")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	path, err := expandHome(strings.TrimSpace(*database))
@@ -118,11 +116,20 @@ func writeNotebook(output io.Writer, graph *store.Store, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	// THE EMPTINESS LAW. A day that has cost nothing says nothing about what it
+	// cost: the rail is a figure somebody chose and is printed, and `$0.00 of
+	// $500.00` is a measurement nobody made ([config.SpentFigure]).
 	fmt.Fprintln(output)
-	if rail.Unlimited {
-		fmt.Fprintf(output, "today's spend: $%.2f; daily rail unlimited\n", rail.Spend)
-	} else {
-		fmt.Fprintf(output, "today's spend: $%.2f of $%.2f daily rail\n", rail.Spend, rail.Ceiling)
+	spent := config.SpentFigure(rail.Spend)
+	switch {
+	case rail.Unlimited && spent == "":
+		fmt.Fprintln(output, "daily rail: unlimited")
+	case rail.Unlimited:
+		fmt.Fprintf(output, "today's spend: %s; daily rail unlimited\n", spent)
+	case spent == "":
+		fmt.Fprintf(output, "daily rail: $%.2f\n", rail.Ceiling)
+	default:
+		fmt.Fprintf(output, "today's spend: %s of $%.2f daily rail\n", spent, rail.Ceiling)
 	}
 	if len(aliases) > 0 {
 		fmt.Fprintln(output)

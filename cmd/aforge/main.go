@@ -108,8 +108,20 @@ func execute() (code int) {
 		// before handing this back — so the screen is already the user's again
 		// and the only thing missing is the sentence.
 		return reportFault(os.Stderr, err.Error(), nil)
+	case errors.Is(err, config.ErrNoAPIKey):
+		// THE MOST COMMON FIRST-RUN FAILURE, said once and with the remedy, at
+		// the ONE exit every command leaves through. `do` used to say this and
+		// then repeat itself in machine form on the next line, while `exec`,
+		// `plan`, `models` and `run` said only the machine half — so four
+		// callers out of five were told the cause and not what to do about it.
+		fmt.Fprintln(os.Stderr, "aforge needs a model to work with.")
+		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		return 1
 	default:
-		fmt.Fprintln(os.Stderr, "error:", err)
+		// And every other failure passes the one rule about what a person may
+		// be shown: the cause, what to do about it, and no wrapped Go chain
+		// (plainwords.go).
+		fmt.Fprintln(os.Stderr, "error:", plainWords(err.Error()))
 		return 1
 	}
 }
@@ -209,7 +221,7 @@ func run() error {
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", os.Args[1], usageText)
+		return unknownCommand(os.Args[1])
 	}
 }
 
@@ -223,6 +235,10 @@ var usageText = `aforge — build and revise task graphs
   aforge                 open the chat surface, resuming your last conversation
   aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
               [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
+              [--no-host] [--debug]
+                         --no-host opens the conversation in this process instead of attaching
+                         to this workspace's session host; --debug keeps the whole record of the
+                         run — call bodies, tool calls, the choices made — under the state root
                          --session names a transcript FILE to resume, not an id and not
                          the word "new": a path that does not exist yet is a new
                          conversation written there, and no --session at all resumes
@@ -235,7 +251,7 @@ var usageText = `aforge — build and revise task graphs
   aforge devices [revoke [--all] <name>]
                          list the devices paired with this machine, and stop one
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
-                       [--context-fill 60] [--completion-reserve 65536]
+                       [--context-fill 60] [--completion-reserve 65536] [--debug]
                          do one task and exit — the same living brain the chat runs, with nobody watching
                          the task is run verbatim: what you type is the goal, and what it has to assume it declares
                          exit 0 the whole of it stands · 1 nothing usable · 2 partial: the wall came first,
@@ -247,8 +263,11 @@ var usageText = `aforge — build and revise task graphs
                          exactly as written. Kept for reading, editing, and inspecting a plan by hand.
   aforge exec ["<prompt>"] [-w dir] [--system text] [--turns N] [--budget N] [--timeout seconds]
                          [--model slug] [--plan-model slug] [--context-fill N] [--completion-reserve N]
-                         [--json] [-o file]
+                         [--json] [-o file] [--debug]
                          run one linear worker with no resident planning graph
+                         exit 0 it answered · 2 the token budget ran out · 3 the turn cap came first
+                         · 4 the wall came first · 5 it could not be run at all · 6 it stopped with
+                         nothing to say. --json carries the same reason in its error field.
   aforge run subharness <name> --input <file.json|-> [-w dir] [--model slug] [--journal path]
                          run one subharness as a program, with nobody watching: typed input in,
                          its account and its typed output on stdout, everything else on stderr
@@ -359,7 +378,7 @@ func usage() error {
 }
 
 func runPlan(args []string) error {
-	flags := flag.NewFlagSet("plan", flag.ContinueOnError)
+	flags := commandFlags("plan")
 	output := flags.String("o", "", "write the graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	briefs := flags.Bool("brief", false, "write a self-contained instruction for every leaf")
@@ -371,10 +390,10 @@ func runPlan(args []string) error {
 	// the person naming the goal also names the material it is about — which is
 	// exactly when the material is worth looking at.
 	workspace := flags.String("w", "", "directory holding the material this goal is about, read once to ground the plan")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
-	goal, err := readText(flags.Args())
+	goal, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
@@ -470,13 +489,13 @@ func runPlan(args []string) error {
 // actually missing is not the picture but the difference between that picture
 // and the workspace now, and a delta is a different thing from a snapshot.
 func runRevise(args []string) error {
-	flags := flag.NewFlagSet("revise", flag.ContinueOnError)
+	flags := commandFlags("revise")
 	output := flags.String("o", "", "write the revised graph as JSON to this file")
 	asJSON := flags.Bool("json", false, "print the graph as JSON instead of a table")
 	done := flags.String("done", "", "mark these node ids finished before revising")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", "model that revises the plan, when different from the work model ("+planLadderHelp+")")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	rest := flags.Args()
@@ -539,6 +558,9 @@ func runRevise(args []string) error {
 }
 
 func runShow(args []string) error {
+	if askedForHelp(args) {
+		return commandHelp("show")
+	}
 	if len(args) < 1 {
 		return fmt.Errorf("usage: aforge show <graph.json>")
 	}
@@ -585,29 +607,41 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // person who typed `aforge do` with nothing after it used to get a process
 // silently reading their keyboard forever, which reads exactly like a program
 // that has crashed. They get the usage instead.
-func readText(args []string) (string, error) {
+// The command's name is carried in so the miss can answer with THAT command's
+// one line. It used to answer with the whole table — a hundred and twenty-seven
+// lines, the environment included — for the sake of one missing quoted string,
+// and the one line that mattered scrolled off the top of the terminal.
+func readText(name string, args []string) (string, error) {
 	if len(args) == 1 && args[0] == "-" {
-		return readPipedText()
+		return readPipedText(name)
 	}
 	if len(args) > 0 {
 		return strings.TrimSpace(strings.Join(args, " ")), nil
 	}
 	if stdinIsTerminal(os.Stdin) {
-		return "", fmt.Errorf("no goal given\n\n%s", usageText)
+		return "", noGoalGiven(name)
 	}
-	return readPipedText()
+	return readPipedText(name)
 }
 
-func readPipedText() (string, error) {
+func readPipedText(name string) (string, error) {
 	piped, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
 	}
 	text := strings.TrimSpace(string(piped))
 	if text == "" {
-		return "", fmt.Errorf("no goal given\n\n%s", usageText)
+		return "", noGoalGiven(name)
 	}
 	return text, nil
+}
+
+func noGoalGiven(name string) error {
+	shape := usageForCommand(name)
+	if shape == "" {
+		return fmt.Errorf("no goal given\n\nrun `aforge --help` for every command.")
+	}
+	return fmt.Errorf("no goal given\n\n%s\n\nrun `aforge --help` for every command.", shape)
 }
 
 // reorder moves flags ahead of positional arguments. Go's flag package stops

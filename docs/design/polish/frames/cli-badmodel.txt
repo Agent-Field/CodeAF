@@ -1,0 +1,13 @@
+=== do --model nosuch/model
+models: work nosuch/model-xyz (--model) · plan follows the work model (default)
+record kept at /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/runs/aforge-do-66719627
+I couldn't apply that request: splice failed: compile request: compile intent: API error (400): nosuch/model-xyz is not a valid model ID
+
+0s · 0 nodes · $0.0000
+-- exit 1
+
+=== exec --model nosuch
+models: work nosuch/model-xyz (--model)
+error: node task-1: API error (400): nosuch/model-xyz is not a valid model ID
+
+-- exit 5

@@ -122,7 +122,10 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 	text := output.String()
 	for _, want := range []string{
 		path + " · not created", "this terminal while open", "not installed",
-		"$0.00 today · rail unlimited", "0 active charters · 0 pending questions",
+		// A machine that has spent nothing and holds nothing standing says so
+		// by leaving those figures out: the rail is the only claim here that
+		// anybody made (the emptiness law, emptiness_test.go).
+		"rail unlimited",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)

@@ -118,6 +118,11 @@ mid-flight — and last one footer line:
 4m12s · 6 nodes · $0.0731
 ```
 
+**A part of that line that is zero is left out.** A run that spent nothing ends without a
+figure, a run with no nodes says nothing about nodes, and a run that never got started has
+no footer at all — `0s · 0 nodes · $0.0000` would be three claims nobody earned, printed
+directly under the sentence saying it did not run.
+
 **Everything else goes to the error stream**: the `models:` line it opens with, a row per
 piece of work as it starts and as it lands, and, when half a minute passes with nothing to
 report, a line like `still waiting: 1 task pending, 1 running · last call <model> 40s ago —
@@ -168,7 +173,15 @@ With no prompt written out, it reads the prompt from whatever is piped in.
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
 and the machine-readable result says which — it carries the worker's text, the reason it
-stopped, what it used, and the files it made.
+stopped, what it used, and the files it made. **A run that failed also carries `error`**:
+the reason in the same words a person would read on the error stream, so a script reading
+only standard output can learn why and not just that.
+
+**Its exit code is a six-rung ladder**, and it is written in `aforge --help` beside the
+command: `0` it answered · `2` the token budget ran out · `3` the turn cap came first ·
+`4` the wall came first · `5` it could not be run at all · `6` it stopped with nothing to
+say. `5` is the one to watch for — a bad model id or a missing key lands there, and it is
+not a crash.
 
 `--plan-model` is accepted only so that every command you can run without the screen takes
 the same flags. `exec` plans nothing, so naming it changes nothing.
@@ -612,6 +625,11 @@ check what it did, not a run that ran out of time.
 
 - **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
   which is the point of a one-shot.
+- **It fell over at the door** — no API key, a `-w` directory that cannot be made, a store
+  that will not open — and there is nothing to keep: the folder goes and no path is printed.
+  Nothing ever ran, so a `record kept at` line would only point you at an empty directory on
+  the one line where you are already looking for the cause. `--keep` and `--debug` still
+  keep it, because those asked for it by name.
 - **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
   and the store is **kept**, with no flag and nothing decided in advance. The last thing the
   run writes on the error stream is where it is:

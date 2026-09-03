@@ -23,6 +23,9 @@ import (
 // observations behind it and one with three hundred are different claims, and
 // the table is the only place that difference can be seen.
 func runModels(args []string) error {
+	if askedForHelp(args) {
+		return commandHelp("models")
+	}
 	settings, err := config.Load()
 	if err != nil {
 		return err

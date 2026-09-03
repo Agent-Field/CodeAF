@@ -1,0 +1,10 @@
+=== logs --json --tail 2 (stdout only)
+{"ts":"2026-09-02T23:10:17.180-04:00","id":"a610c466","phase":"start","tag":"leaf","node":"task-2","model":"~deepseek/deepseek-v4-flash-latest","effort":"off","max_tokens":65536,"messages":2,"tools":8,"stream":true,"attempt":1,"deadline_ms":30000,"lane":"DeepInfra"}
+{"ts":"2026-09-02T23:10:17.216-04:00","id":"a610c466","tag":"leaf","node":"task-2","model":"~deepseek/deepseek-v4-flash-latest","effort":"off","max_tokens":65536,"messages":2,"tools":8,"stream":true,"attempt":1,"status":404,"ms":36,"deadline_ms":30000,"lane":"DeepInfra","error":"API error (404): All providers have been ignored. To change your default ignored providers, visit: https://openrouter.ai/settings/privacy"}
+-- exit 0
+
+=== logs --json stdout piped through python json check
+lines: 2 non-json: 0
+
+=== plan --json (no model call? probably calls)
+=== show --json?

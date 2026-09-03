@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -63,10 +62,9 @@ func runDoctor(args []string) error {
 // runDoctorWith is doctor with its one outside reading injectable: the standing
 // watch.
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
-	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("doctor")
 	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -201,19 +199,37 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		snapshot.Now.Sub(snapshot.Watch.LastWake) > 3*watchdog.Interval {
 		watch += " · checks look stalled"
 	}
-	spend := fmt.Sprintf("$%.2f today · rail $%.2f", snapshot.Spend, snapshot.Rail)
+	// THE EMPTINESS LAW ON THE ONE PAGE PEOPLE OPEN WHEN NOTHING WORKS. A
+	// machine that has not spent anything today has not measured zero — it has
+	// not measured — and `$0.00 today` beside a rail reads as a machine that
+	// counted. The rail itself is a figure somebody chose, so it stays.
+	rail := fmt.Sprintf("rail $%.2f", snapshot.Rail)
 	if snapshot.RailUnlimited {
-		spend = fmt.Sprintf("$%.2f today · rail unlimited", snapshot.Spend)
+		rail = "rail unlimited"
 	}
-	standing := fmt.Sprintf("%d active %s · %d pending %s",
-		snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter"),
-		snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question"))
-	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
+	spend := rail
+	if today := config.SpentFigure(snapshot.Spend); today != "" {
+		spend = today + " today · " + rail
+	}
+	// The same law on the counts beside it: no charters and no questions is
+	// nothing to say, not two zeros.
+	var standingParts []string
+	if snapshot.ActiveCharters > 0 {
+		standingParts = append(standingParts, fmt.Sprintf("%d active %s",
+			snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter")))
+	}
+	if snapshot.PendingQuestions > 0 {
+		standingParts = append(standingParts, fmt.Sprintf("%d pending %s",
+			snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question")))
+	}
+	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
 		"brain", brain,
 		"resident", snapshot.Resident,
 		"standing watch", watch,
-		"spend", spend,
-		"standing", standing)
+		"spend", spend)
+	if standing := strings.Join(standingParts, " · "); standing != "" {
+		block += fmt.Sprintf("%-16s %s\n", "standing", standing)
+	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
 	}

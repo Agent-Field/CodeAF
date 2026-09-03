@@ -1,0 +1,15 @@
+{
+  "deliverable": "All providers have been ignored.\n\nnode task-2: API error (404): All providers have been ignored. To change your default ignored providers, visit: https://openrouter.ai/settings/privacy",
+  "artifacts": [],
+  "spend": 0.00024062999999999998,
+  "spend_work": 0,
+  "spend_overhead": 0.00024062999999999998,
+  "nodes": 1,
+  "seconds": 175.25418679,
+  "settled": true,
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "plan_model": "",
+  "model_source": "default",
+  "plan_model_source": "default",
+  "subharness": "linear"
+}

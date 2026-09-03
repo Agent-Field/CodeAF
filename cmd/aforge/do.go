@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -179,7 +178,7 @@ type headlessOutcome struct {
 }
 
 func runDo(args []string) error {
-	flags := flag.NewFlagSet("do", flag.ContinueOnError)
+	flags := commandFlags("do")
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
@@ -201,7 +200,7 @@ func runDo(args []string) error {
 	debug := flags.Bool("debug", false,
 		"keep the full record of this errand — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
@@ -214,7 +213,7 @@ func runDo(args []string) error {
 	}
 	ctx := openDebugRecord("do", *model, *workspace)
 	defer trace.Announce(ctx, os.Stderr)
-	task, err := readText(flags.Args())
+	task, err := readText(flags.Name(), flags.Args())
 	if err != nil {
 		return err
 	}
@@ -332,8 +331,12 @@ func failedErrand(err error, started time.Time) headlessOutcome {
 	return headlessOutcome{
 		Artifacts: []string{},
 		Seconds:   time.Since(started).Seconds(),
-		Error:     err.Error(),
-		status:    exitFailed,
+		// The same sentence a person would have read on stderr, held to the
+		// same rule: the cause and what to do about it, and no wrapped Go
+		// chain (plainwords.go). A caller reading --json and a caller reading
+		// the error stream must not be told two different things.
+		Error:  plainWords(err.Error()),
+		status: exitFailed,
 	}
 }
 
@@ -367,9 +370,22 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// printing, and one that survives is only worth naming once there is a
 	// reason it did.
 	debugging := trace.Enabled()
+	// AND A RECORD IS ANNOUNCED ONLY FOR A RUN THAT WAS ADMITTED — one whose ask
+	// reached the journal. `record kept at <path>` used to print for runs that
+	// never started at all: it stood directly above `permission denied` and
+	// above the missing-key sentence, pointing somebody at an empty folder on
+	// the exact line where they were already looking for the cause. A run that
+	// got no further than its own door has nothing to keep, so the folder goes
+	// and the line does not print — unless the person asked for it by name with
+	// --keep or --debug, where an empty store is still the thing they asked for.
+	admitted := false
 	if ephemeral {
 		defer func() {
 			if !keepPrivateStore(request.keep, debugging, errandSucceeded(outcome, err)) {
+				_ = os.RemoveAll(home)
+				return
+			}
+			if !admitted && !request.keep && !debugging {
 				_ = os.RemoveAll(home)
 				return
 			}
@@ -412,7 +428,6 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	if err != nil {
 		return headlessOutcome{}, err
 	}
-
 	// A refused price is recorded rather than returned, because the desk is
 	// consulted deep inside a worker goroutine and the answer has to reach the
 	// watcher above it.
@@ -437,6 +452,12 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	// THE RUN IS ADMITTED HERE and not a line earlier. Everything above is the
+	// door — the store, the journal row, the key — and a run that fell over at
+	// the door left a folder with nothing in it. From here something is
+	// actually working, so whatever happens next is worth keeping and worth
+	// naming.
+	admitted = true
 	if deferredTo != nil {
 		if err := awaitResidentPickup(graph, command.Seq, deferredTo, path,
 			request.residentWaitOrDefault(), request.stderr); err != nil {
@@ -1070,6 +1091,10 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 // refusalWords is what a rejected command has to say for itself. The receipt
 // the reconciler posted is the real answer — a compiler question, a charter
 // awaiting ratification — and the command's own result is the summary of it.
+//
+// Whatever it is, it goes through [plainWords] on the way out. A refusal that
+// happened deep in the stack arrives here as everything that wrapped it, and
+// this is the last door before a person reads it (plainwords.go).
 func (w *settlementWatch) refusalWords(command store.Command) string {
 	words := strings.TrimSpace(command.Result)
 	messages, err := w.graph.Messages(w.session, 0, 50)
@@ -1077,14 +1102,14 @@ func (w *settlementWatch) refusalWords(command store.Command) string {
 		for index := len(messages) - 1; index >= 0; index-- {
 			message := messages[index]
 			if message.CommandSeq == command.Seq && strings.TrimSpace(message.Body) != "" {
-				return strings.TrimSpace(message.Body)
+				return plainWords(strings.TrimSpace(message.Body))
 			}
 		}
 	}
 	if words == "" {
 		words = "the request was not turned into work"
 	}
-	return words
+	return plainWords(words)
 }
 
 // blockingQuestion is the card this errand is standing behind, if any.
@@ -2433,7 +2458,13 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 	if body := strings.TrimSpace(outcome.Deliverable); body != "" {
 		fmt.Fprintln(request.stdout, body)
 	}
-	fmt.Fprintln(request.stdout)
+	footer := errandFooter(outcome)
+	// The blank line is a SEPARATOR, and a separator with nothing under it is
+	// one more thing the emptiness law does not allow: a run that spent nothing,
+	// touched no files and learned nothing ends at its last real line.
+	if len(outcome.Artifacts) > 0 || len(outcome.Learned) > 0 || footer != "" {
+		fmt.Fprintln(request.stdout)
+	}
 	if len(outcome.Artifacts) > 0 {
 		fmt.Fprintln(request.stdout, "files:")
 		for _, path := range outcome.Artifacts {
@@ -2446,10 +2477,34 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 			fmt.Fprintln(request.stdout, "  "+line)
 		}
 	}
-	fmt.Fprintf(request.stdout, "%s · %s · $%.4f\n",
-		time.Duration(outcome.Seconds*float64(time.Second)).Round(time.Second),
-		plural(outcome.Nodes, "node"), outcome.Spend)
+	if footer != "" {
+		fmt.Fprintln(request.stdout, footer)
+	}
 	return errandStatus(outcome)
+}
+
+// errandFooter is the last line of a headless run, and it draws only what is
+// true.
+//
+// THE EMPTINESS LAW. A run that never got started ended `0s · 0 nodes ·
+// $0.0000` — three claims nobody earned, on the one line a person reads to find
+// out what happened, directly under the sentence saying it did not run. Zero
+// time, zero nodes and zero spend are each simply absent, and a run that really
+// was that cheap draws the parts of it that are true. The spend is written by
+// the one helper that owns how a spend is written ([config.SpentFigure]), which
+// is also where the law for a zero one lives.
+func errandFooter(outcome headlessOutcome) string {
+	var parts []string
+	if elapsed := time.Duration(outcome.Seconds * float64(time.Second)).Round(time.Second); elapsed > 0 {
+		parts = append(parts, elapsed.String())
+	}
+	if outcome.Nodes > 0 {
+		parts = append(parts, plural(outcome.Nodes, "node"))
+	}
+	if spent := config.SpentFigure(outcome.Spend); spent != "" {
+		parts = append(parts, spent)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // sayBlocked is the loud half. A run that ended on a question wrote nothing to

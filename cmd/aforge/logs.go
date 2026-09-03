@@ -21,7 +21,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -67,8 +66,7 @@ func runLogs(args []string) error {
 // the log is, and what time it is — the second because an in-flight call's age
 // is measured against now, and a test cannot wait three minutes to see it.
 func runLogsWith(args []string, output io.Writer, path string, now func() time.Time) error {
-	flags := flag.NewFlagSet("logs", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
+	flags := commandFlags("logs")
 	tail := flags.Int("tail", defaultLogTail, "how many calls to show")
 	follow := flags.Bool("follow", false, "keep printing calls as they happen")
 	pathOnly := flags.Bool("path", false, "print where the log is and nothing else")
@@ -80,7 +78,7 @@ func runLogsWith(args []string, output io.Writer, path string, now func() time.T
 	flags.StringVar(&filter.model, "model", "", "only calls asking for this model")
 	flags.StringVar(&filter.node, "node", "", "only calls belonging to this node")
 	flags.StringVar(&filter.call, "call", "", "only this call id, both of its rows")
-	if err := flags.Parse(reorder(flags, args)); err != nil {
+	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {

@@ -64,3 +64,58 @@ do. The usage list is grouped by what a person is trying to do, not alphabetical
 24. The `--json` object is described only in a repository design document — docs/HEADLESS.md, and cmd/aforge/do.go:110-176 in comments — nothing compiled into the binary describes the fields, and `internal/manual/chat/` has no page about `aforge do`, `--json`, or the exit codes, so the manual the binary carries cannot answer the most common headless question — add a headless page to the corpus, or name the field list in the `do` flag help — sev: low — evidence: `grep -rln 'spend_overhead\|blocked_on' internal/manual/` returns nothing
 
 25. Two query commands report a miss as a success — cmd/aforge/why.go (`bogus-node-id has no transcript…`, exit 0) and logs.go (`no row in this log carries a run id yet`, exit 0) — a script asking whether a node or a run exists cannot tell "not found" from "found and empty" without parsing prose; `notebook retract 999` gets this right with a non-zero exit — sev: low — evidence: docs/design/polish/frames/cli-errors.txt
+
+---
+
+## fixed
+
+Landed on `ui/polish-v0`. Every row below was verified by re-running the command in
+its evidence column against a rebuilt `bin/aforge` and saving the output beside the old
+capture. `go build ./...` is clean; `go vet ./cmd/aforge/ ./internal/config/` is clean.
+
+| row | files changed | test | before → after |
+| --- | --- | --- | --- |
+| 1 | new `cmd/aforge/usage.go` (the one seam); `cache.go`, `chatv3.go`, `chatv3_at.go`, `competence.go`, `do.go`, `doctor.go`, `engine.go`, `exec.go`, `logs.go`, `main.go`, `notebook.go`, `rebuild.go`, `run.go`, `services.go`, `subharness_run.go`, `wake.go`, `why.go` — all eighteen flag sets now go through `commandFlags` + `parseCommandFlags` | `TestAskingForHelpIsNotAFailure` | `cli-help-exitcodes.txt` → `cli-help-exitcodes-after.txt` |
+| 2 | same seam — `flag.ErrHelp` is intercepted before the `error:` line, usage goes to stdout, exit 0 | `TestAskingForHelpIsNotAFailure` | `cli-subcommand-help.txt` → `cli-subcommand-help-after.txt` |
+| 3 | new `cmd/aforge/plainwords.go`; `do.go` (`refusalWords`, `failedErrand`), `exec.go` (`execFailureWords`), `main.go` (the default arm of `execute`) | `TestNoGoErrorChainReachesAPerson`, `TestAnUnrecognisedCauseIsSaidPlainlyAndNothingIsInvented`, `TestPlainWordsKeepsWhatAPersonCanActOn`, `TestAChainOfNothingButVerbsIsStillSaid` | `cli-badmodel.txt` → `cli-badmodel-after.txt` |
+| 4 | `exec.go` — `execEnvelope.Error`, `buildExecEnvelope(outcome, runErr)` built once; `exec_test.go` call sites | `TestExecJSONSaysWhyTheRunFailed` | `cli-json-failure.txt` → `cli-json-failure-after.txt` |
+| 5 | `do.go` (`errandFooter`, and the separator that no longer prints over nothing); `internal/config/settings.go` — `spentFigure` exported as `SpentFigure` with the emptiness law inside it, so there is one answer to "how is a spend written" | `TestTheHeadlessFooterLeavesOutWhatIsZero`, `TestTheFooterWritesASpendTheWayEverythingElseDoes` | `cli-badmodel.txt` → `cli-badmodel-after.txt` |
+| 6 | `main.go` — the exec block of `usageText` carries the six-rung ladder, and every per-command help is a reading of that block | `TestExecsExitLadderIsWrittenWhereACallerLooks` | `cli-subcommand-help-after.txt` |
+| 8 | `usage.go` (`unknownCommand`, `nearestCommand`, `editDistance`), `main.go` dispatch | `TestAMisspelledCommandNamesTheNearestOne` | `cli-unknown-and-version.txt` → `cli-unknown-and-version-after.txt` |
+| 9 | `main.go` (`readText`/`readPipedText` carry the command name, `noGoalGiven`), `do.go`, `exec.go`, `brief_test.go` | `TestAMissingGoalShowsTheCommandAndNotTheWholeTable` | `cli-errors.txt` → `cli-errors-after.txt` |
+| 10 | `usage.go` (`askedForHelp`, `commandHelp`), `main.go` (`runShow`), `models.go`, `cache.go` | `TestProbingAFlaglessCommandWithHelpIsNotAnError` | `cli-subcommand-help-2.txt` → `cli-errors-after.txt` |
+| 11 | the seam — the flag package's own output is discarded in one place and the refusal is printed once, with the command's usage under it | `TestABadFlagIsRefusedOnceAndOnStderr` | `cli-errors.txt` → `cli-errors-after.txt` |
+| 13 | `main.go` (`execute` answers `config.ErrNoAPIKey` at the one exit), `chat.go` (the duplicate pair removed), `plainwords.go` (the same remedy on the `--json` path) | `TestAMissingKeyIsAnsweredOnceWithTheRemedy` | `cli-nokey.txt` → `cli-nokey-after.txt` |
+| 15 | `doctor.go` (spend and standing rows), `notebook.go` (the rail line), both through `config.SpentFigure`; `doctor_test.go` and `notebook_test.go` updated where they pinned the zeros | `TestDoctorDoesNotPrintAZeroItNeverMeasured`, `TestTheNotebookDoesNotPrintAZeroSpend` | `cli-readonly-commands.txt` → `cli-readonly-commands-after.txt` |
+| 16 | `do.go` — the record is announced only for a run that was admitted (the brain built), and the empty folder is removed | `TestARunThatNeverStartedKeepsNoRecord` | `cli-nokey.txt` → `cli-nokey-after.txt` |
+| 18 | `main.go` — `--debug` and `--no-host` are in `usageText` on the commands that take them | `TestTheUsageNamesEveryFlagAPersonCanType` | `cli-subcommand-help-after.txt` |
+| 23 | `usage.go` (`flagRows`) — two dashes for a word, one for a single letter, which is exactly what the table already spells | `TestEveryFlagIsSpelledTheWayTheUsageSpellsIt` | `cli-subcommand-help-after.txt` |
+
+The manual was updated in the same change, as the manual law requires:
+`internal/manual/chat/commands.md` gains two sections — `--help` on any command and what a
+mistyped command answers — and `internal/manual/chat/adaptive-runs.md` now says that a zero
+part of the headless footer is left out, that a run which fell over at the door keeps no
+record, and that `exec --json` carries `error` alongside its six-rung exit ladder.
+
+### skipped, and why
+
+- **7** (`aforge --help` wraps mid-word at 80 columns) — re-laying the whole 127-line block
+  is a typographic pass over text this wave is also editing; it wants doing on its own so
+  the diff is readable.
+- **12** (filesystem failures reach the person as wrapped syscall text) — `plainWords` now
+  keeps the actionable half of those chains, but the row asks for the message to name *which
+  flag* was wrong (`-w names /nope/dir, which does not exist`). That needs a per-site
+  decision at six doors about which flag owns which path, which is a design call this lane
+  cannot make from the audit.
+- **14** (doctor says nothing about a missing key) — needs a new reading in `internal/config`
+  that reports whether a key is configured *and where it came from* (environment, profile
+  file). Designing that seam is not something the audit settles.
+- **17** (a bad subharness name reported as an empty input) — the comment at
+  `subharness_run.go:70` says the ordering is deliberate; changing it is a call for whoever
+  owns that ordering.
+- **19** (`rebuild`'s storage vocabulary and its prompt) — needs somebody to decide what
+  `aforge rebuild` discards *in plain words*, which is a product sentence, not a mechanical
+  fix.
+- **20** (`--tail notanumber` says `parse error`) — wants a `flag.Value` with a sentence on
+  each numeric flag across `logs` and `exec`; worth doing, but it is its own small pass.
+- **21, 22, 24, 25** — all `sev: low`, and outside the brief for this lane.

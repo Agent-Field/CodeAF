@@ -1,0 +1,21 @@
+=== exec --json against a model that does not exist (stdout only)
+{"text":"","stop":"error","usage":{"calls":0,"prompt_tokens":0,"completion_tokens":0,"cached_tokens":0,"cost":0},"artifacts":[],"turns":0,"elapsed_ms":234,"error":"nosuch/model-xyz is not a valid model ID\nrun `aforge models` to see the ids this key can reach, or pass --model with one of them."}
+-- exit 5
+
+=== do --json against the same (stdout only)
+{
+  "deliverable": "I couldn't apply that request: nosuch/model-xyz is not a valid model ID\nrun `aforge models` to see the ids this key can reach, or pass --model with one of them.",
+  "artifacts": [],
+  "spend": 0,
+  "spend_work": 0,
+  "spend_overhead": 0,
+  "nodes": 0,
+  "seconds": 0.248488832,
+  "settled": true,
+  "model": "nosuch/model-xyz",
+  "plan_model": "",
+  "model_source": "--model",
+  "plan_model_source": "default",
+  "subharness": "linear"
+}
+-- exit 1

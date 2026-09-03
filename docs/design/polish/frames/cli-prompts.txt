@@ -1,0 +1,16 @@
+=== cache clean with stdin closed
+the cache is already empty — nothing to delete.
+-- exit 0
+
+=== rebuild with stdin closed
+Rebuild every materialized view in /tmp/claude-1001/-home-santosh-af-dev/2418657d-8173-4e64-b3ec-73decce3d3d5/scratchpad/demohome/.aforge/graph.db from the event journal?
+The journal itself is untouched; everything derived from it is discarded and replayed. [y/N] error: rebuild cancelled
+-- exit ?
+
+=== did-you-mean check: aforge lgos
+error: unknown command "lgos"
+
+
+=== aforge d
+error: unknown command "d"
+
