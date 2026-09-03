@@ -94,7 +94,7 @@ func TestTheSpineReadsItsOwnNeedsBeforeTheVote(t *testing.T) {
 			`{"title":"slug","summary":"the slug tool","needs":[]}` +
 			`]}`
 	}}
-	choice, _, err := spineWithProgress(context.Background(), client, "build three independent tools", "", nil, 3, nil)
+	choice, _, err := spineWithProgress(context.Background(), client, "build three independent tools", "", nil, Measurement{}, 3, nil)
 	if err != nil {
 		t.Fatalf("spine: %v", err)
 	}
