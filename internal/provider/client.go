@@ -427,6 +427,10 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 // sendRecovered is sendShaped's two recovery passes — the repairable 400s and
 // the endpoint-refusal ladder — with nothing said about pins.
 func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	// The moment the call really left, kept because the ONE recovery below that
+	// answers a refusal by sending a different request has to write the refused
+	// one down first (calllog.go's logNow, and [Client.widenPastTheRetiredPin]).
+	began := logNow()
 	response, err := c.sendRepaired(ctx, request, knobs, stream)
 	if err != nil {
 		return c.recoverFromPacing(ctx, request, knobs, stream, err)
@@ -442,6 +446,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		response.Body = rewound(peek, response.Body)
 		return response, nil
 	}
+	status := response.StatusCode
 	response.Body.Close()
 	// THE REFUSAL IS CLASSIFIED ONCE, HERE, AND ACTED ON BEFORE EITHER RECOVERY
 	// RUNS. This line is the fork EVERY routing refusal passes through — the
@@ -457,7 +462,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// turn chose it again. "This machine refused this model" is true whatever
 	// the recovery below does with the request, and it is recorded at the seam
 	// where it is known.
-	refusal := c.refusalObject(request, knobs, apiError(response.StatusCode, peek))
+	refusal := c.refusalObject(request, knobs, apiError(status, peek))
 	c.strikeRefusal(model, refusal)
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
@@ -474,7 +479,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// nothing underneath it — which is how the reported turn died with the
 	// person's brief unanswered and the router's own sentence on the screen.
 	if retirePinnedLane(ctx, model, refusal) {
-		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, peek)
+		return c.widenPastTheRetiredPin(ctx, request, knobs, stream, began, status, peek)
 	}
 	// THE LANE IS TRIED BEFORE THE REQUEST IS RELAXED. A refusal is a fact
 	// about the MACHINE that made it — one endpoint behind a model drops tool

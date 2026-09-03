@@ -571,8 +571,23 @@ func (c *Client) widenPastTheRetiredPin(
 	request *ai.Request,
 	knobs callKnobs,
 	stream bool,
+	began time.Time,
+	status int,
 	first []byte,
 ) (*http.Response, error) {
+	// THE REFUSED CALL GETS ITS OWN ROW BEFORE THE WIDER ONE GOES OUT, exactly
+	// as a repaired 400 does (client.go's [Client.sendRepaired]). "The call
+	// that went out first was refused and the one that came back was a
+	// different request" is precisely the fact a log holding only the answer
+	// cannot tell anybody — and a start row left with nothing under it is the
+	// one state this log exists to make impossible. It is also the row a person
+	// reading the ledger counts to check that the 404 was paid ONCE.
+	c.record(recordFacts{
+		ctx: ctx, request: request, knobs: knobs, stream: stream,
+		attempt: c.attemptsSoFar(knobs), began: began,
+		status: status, err: apiError(status, first),
+		responseBody: first,
+	})
 	widened := knobs
 	widened.relaxed |= relaxEndpointFilter
 	response, payload, err := c.attemptShaped(ctx, request, widened, stream)
