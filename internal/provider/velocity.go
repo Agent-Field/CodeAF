@@ -452,71 +452,111 @@ func (p *providerPrefs) narrowing() bool {
 // ([hedgePreference]). So the law is asked once, of what is about to go out,
 // rather than three times of three halves.
 //
-// A DEMAND OUTRANKS A VETO. `only` names the machines this request may use and
-// `allow_fallbacks: false` forbids every other, so a veto naming one of them is
-// not a preference among alternatives — it is the request refusing itself, and
-// the router answers before it asks any endpoint. The veto is advisory by
-// construction and the demand is not, so the veto yields. It is the rule
-// lanes.go already applies to a belief's own refusals, which will not refuse a
-// lane the same object has just ordered first; it simply never reached `only`.
+// IT IS ONE RULE OVER TWO DENOMINATORS, and naming them is the whole of it.
+// WITH A DEMAND, the set is exactly what `only` names: `allow_fallbacks: false`
+// forbids every other machine, so vetoes covering those names leave the router
+// nothing, and it says so before asking any endpoint. WITHOUT ONE, the set is
+// the router's whole roster, of which this process knows only the lanes it has
+// timed. Either way the question is the same — is anything in the set still
+// servable — and so is the answer when nothing is: the lane whose cooldown
+// expires soonest is released. It is the one the ledger was about to forgive
+// anyway, so it is the smallest departure from the ledger's own verdict, and
+// every lane it is still surer about stays refused. A COVERED SET RELEASES ONE
+// LANE AND NEVER THE LIST: a demand naming two machines with one of them vetoed
+// is already servable through the other, and nothing is owed to the first.
 //
-// AND WITH NO DEMAND, THE VETOES MAY NOT COVER A SET THE ROUTER HAS ALREADY
-// SAID THEY EMPTY. When they would, the lane whose cooldown expires soonest is
-// released: it is the one the ledger was about to forgive anyway, so it is the
-// smallest departure from the ledger's own verdict, and every lane it is still
-// surer about stays refused. Nothing is lost by releasing it, because a
-// covering ignore earns a refusal whose first rung takes the whole list off
-// ([relaxedPreferences]) — the request reaches that same lane either way, one
-// round trip and one error row nobody can act on later.
-//
-// THAT CLAUSE WAITS FOR EVIDENCE AND MAY NOT COUNT INSTEAD, which is the part
-// that is easy to get wrong and was. This process cannot know how many machines
-// serve a model: it holds only the lanes it has timed, so "the vetoes cover
-// everything I know" is routinely TRUE of a healthy ledger doing its job — one
-// refusing lane written out of a set of five, and the router picks one of the
-// four this process has never seen. Releasing on that arithmetic would send
-// every request straight back to the machine that had just refused it. So the
-// clause turns on [velocityLedger.coveringIgnoreRefused]: the router is the
-// only authority on the size of the set, it says so in a sentence, and it is
-// asked once per model.
+// THE SECOND DENOMINATOR WAITS FOR EVIDENCE AND MAY NOT COUNT INSTEAD, which is
+// the part that is easy to get wrong and was. This process cannot know how many
+// machines serve a model, so "the vetoes cover everything I know" is routinely
+// TRUE of a healthy ledger doing its job — one refusing lane written out of a
+// set of five, and the router picks one of the four this process has never
+// seen. Releasing on that arithmetic would send every request straight back to
+// the machine that had just refused it, which is the measured failure a whole
+// rule in [velocityLedger.preferences] exists to prevent. So it turns on
+// [velocityLedger.coveringIgnoreRefused]: the router is the only authority on
+// the size of the set, it says so in a sentence, and it is asked once per model.
+// A demand needs no such evidence, because a demand IS the set.
 func (l *velocityLedger) keepTheSetServable(model string, prefs *providerPrefs) {
 	if prefs == nil || len(prefs.Ignore) == 0 {
 		return
 	}
-	// The demand needs no ledger to be honoured, so it is answered before the
-	// ledger is even asked to exist.
-	if len(prefs.Only) > 0 {
-		for _, demanded := range prefs.Only {
-			prefs.Ignore = withoutEndpoint(prefs.Ignore, demanded)
-		}
-		prefs.dropEmptyIgnore()
-		return
-	}
-	if !l.coveringIgnoreRefused(model) {
-		return
-	}
-	key := normalizeModel(model)
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	var release *lane
-	for name, entry := range l.lanes[key] {
-		if !namesEndpoint(prefs.Ignore, name) {
-			// Something this process knows is still servable, so the vetoes have
-			// narrowed the set rather than emptied it, which is their whole job.
+	set := prefs.Only
+	if len(set) == 0 {
+		if !l.coveringIgnoreRefused(model) {
 			return
 		}
-		// Ties break on the order the lanes were first seen, so that which lane
-		// comes back is a fact about the ledger rather than about map iteration.
-		if release == nil || entry.ignoredUntil.Before(release.ignoredUntil) ||
-			(entry.ignoredUntil.Equal(release.ignoredUntil) && entry.seen < release.seen) {
-			release = entry
-		}
+		set = l.lanesKnown(model)
 	}
-	if release == nil {
+	if len(set) == 0 {
 		return
 	}
-	prefs.Ignore = withoutEndpoint(prefs.Ignore, release.provider)
+	for _, name := range set {
+		if !namesEndpoint(prefs.Ignore, name) {
+			// Something in the set is still servable, so the vetoes have narrowed
+			// it rather than emptied it, which is their whole job.
+			return
+		}
+	}
+	release := l.nearestForgiveness(model, set)
+	if release == "" {
+		return
+	}
+	prefs.Ignore = withoutEndpoint(prefs.Ignore, release)
 	prefs.dropEmptyIgnore()
+}
+
+// lanesKnown is every endpoint this process has timed for a model, in the order
+// it first saw them.
+func (l *velocityLedger) lanesKnown(model string) []string {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	held := l.lanes[normalizeModel(model)]
+	ranked := make([]*lane, 0, len(held))
+	for _, entry := range held {
+		ranked = append(ranked, entry)
+	}
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].seen < ranked[j].seen })
+	names := make([]string, 0, len(ranked))
+	for _, entry := range ranked {
+		names = append(names, entry.provider)
+	}
+	return names
+}
+
+// nearestForgiveness is the name in `set` whose refusal expires soonest — the
+// lane the ledger is closest to taking back on its own.
+//
+// A LANE THE LEDGER HAS NEVER TIMED IS NOT NEAREST ANYTHING. It carries no
+// cooldown to be near the end of, so it sorts behind every lane that does, and
+// the order `set` arrived in breaks the rest: which lane comes back must be a
+// fact about the ledger rather than about map iteration.
+func (l *velocityLedger) nearestForgiveness(model string, set []string) string {
+	if len(set) == 0 {
+		return ""
+	}
+	if l == nil {
+		return set[0]
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	held := l.lanes[normalizeModel(model)]
+	release, soonest := "", time.Time{}
+	for _, name := range set {
+		entry := held[name]
+		if entry == nil {
+			continue
+		}
+		if release == "" || entry.ignoredUntil.Before(soonest) {
+			release, soonest = name, entry.ignoredUntil
+		}
+	}
+	if release == "" {
+		return set[0]
+	}
+	return release
 }
 
 // dropEmptyIgnore keeps an emptied list ABSENT rather than present and empty,

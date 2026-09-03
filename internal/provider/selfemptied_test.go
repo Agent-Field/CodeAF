@@ -210,3 +210,60 @@ func TestADemandedLaneIsStillStruckForARefusalItGave(t *testing.T) {
 		t.Fatalf("refusal = %#v, want the demanded machine named", refusal)
 	}
 }
+
+// A DEMAND NAMING TWO MACHINES WITH ONE OF THEM VETOED IS ALREADY SERVABLE, and
+// nothing is owed to the vetoed one. The law releases a lane only when the whole
+// set is covered, so a veto that still leaves the demand somewhere to land
+// stands exactly as the ledger wrote it.
+func TestADemandWithASpareMachineKeepsTheVetoOnTheOther(t *testing.T) {
+	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
+	const model = "vendor/fast-model"
+	client.velocity.brisk(model, "alpha")
+	client.velocity.brisk(model, "beta")
+	client.velocity.pace(model, "beta", time.Minute)
+
+	knobs := callKnobs{
+		intent:     IntentInteractive,
+		laneChoice: &lanes.Choice{Only: []string{"alpha", "beta"}},
+	}
+	prefs := client.wirePreferences(model, knobs, &ai.Request{})
+	if prefs == nil || !equalStrings(prefs.Ignore, []string{"beta"}) {
+		t.Fatalf("ignore = %#v, want the struck machine still refused while the other serves the demand", prefs)
+	}
+}
+
+// AND A DEMAND THE VETOES COVER ENTIRELY RELEASES ONE MACHINE, not the list.
+func TestACoveredDemandReleasesOneMachineAndKeepsTheRest(t *testing.T) {
+	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
+	const model = "vendor/fast-model"
+	client.velocity.brisk(model, "alpha")
+	client.velocity.brisk(model, "beta")
+	client.velocity.pace(model, "alpha", 4*time.Minute)
+	client.velocity.pace(model, "beta", time.Minute)
+
+	knobs := callKnobs{
+		intent:     IntentInteractive,
+		laneChoice: &lanes.Choice{Only: []string{"alpha", "beta"}},
+	}
+	prefs := client.wirePreferences(model, knobs, &ai.Request{})
+	if prefs == nil || !equalStrings(prefs.Ignore, []string{"alpha"}) {
+		t.Fatalf("ignore = %#v, want the machine nearest forgiveness released and the other kept", prefs)
+	}
+}
+
+// AND THE MEMO IS NOT TAKEN FROM SOMEBODY ELSE'S LIST. The same sentence is
+// what the router says when the ignored providers on an ACCOUNT empty the set;
+// a request that carried no veto of ours proves nothing about ours.
+func TestARefusalOnARequestWithNoVetoOfOursTeachesNothing(t *testing.T) {
+	client, _ := routedClient(t, RoutingLatency, answered(plainAnswer))
+	const model = "vendor/fast-model"
+	client.velocity.brisk(model, "alpha")
+
+	knobs := callKnobs{intent: IntentInteractive}
+	if client.carriedIgnore(model, knobs, &ai.Request{}) {
+		t.Fatal("a request with a healthy ledger carried a veto")
+	}
+	if client.velocity.coveringIgnoreRefused(model) {
+		t.Fatal("the memo was taken before anything was refused")
+	}
+}

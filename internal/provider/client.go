@@ -511,7 +511,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// in this sentence. It is written here, once, and read on every later encode
 	// ([velocityLedger.keepTheSetServable]), so the second request for this
 	// model is shaped right rather than paying the same instant refusal again.
-	if c.velocity != nil && ignoredEverything(peek) {
+	if c.velocity != nil && ignoredEverything(peek) && c.carriedIgnore(model, knobs, request) {
 		c.velocity.refuseCoveringIgnore(model)
 	}
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
