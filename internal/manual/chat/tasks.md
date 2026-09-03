@@ -103,6 +103,27 @@ up, or lost.
 The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
 a turn. It runs on the `shaper` role, which follows the careful-work model.
 
+## Why my task says brief kept as you wrote it — the line under a started task, my brief was not shaped
+
+`brief kept as you wrote it` is one dim line aforge prints under `single task 12 started ·
+…` when the shaping call was made and did not come back. It says exactly what it says: the
+worker was handed the sentence you typed, word for word, with the plain done-condition
+`Complete the brief and report the result and checks run.` and no shaped document around it.
+
+It is not an error, and no part of your request was dropped. The task is running, it has
+its name, and it sits on the roster like every other one. What it does not have is the
+longer document described under *Why my task's brief is longer than what I typed* — so the
+room shows your own sentence, and a worker alone with a short brief settles fewer of the
+things a shaped brief would have settled in advance. If you were relying on that pass to
+spell out the format or the done-condition, say it yourself and start the work again.
+
+You see the line only when a shaper genuinely ran and was cut — the 25-second wait ran out,
+or the call failed. The other ways shaping does not happen stay silent, because in those
+no call was made that could be cut: a `shaper` role with no model resolved for it, and an
+answer that came back whole but could not be parsed, both admit the task on your words and
+say no such line. **An ordinary start is silent here**, which is how you can trust the line
+when it does appear.
+
 ## Does aforge change my task, or rewrite what I asked for?
 
 No. The shaping pass adds around your words; it never replaces them.

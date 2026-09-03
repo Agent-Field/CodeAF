@@ -944,6 +944,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the wait itself: it used to sit there dead, so the words somebody
 		// says while looking at it have to reach the page that says it is alive.
 		{"is it stuck on shaping the brief", "tasks"},
+		// And the shaping call that was cut: the one dim line under the started
+		// row is the whole of what a person has to go on, so they type it back
+		// verbatim, or they describe what they noticed — a task that started on
+		// their own sentence with nothing added to it.
+		{"why does my task say brief kept as you wrote it", "tasks"},
+		{"my brief was not shaped", "tasks"},
 		// The proposal's own forming card is a different block from `/task`'s
 		// shaping line. Its still head mark is deliberate; the row below must move.
 		{"the proposal card is frozen", "tasks"},

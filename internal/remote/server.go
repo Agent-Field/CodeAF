@@ -1319,7 +1319,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return json.Marshal(TaskPending{IDs: ids})
 	case MethodTaskStart:
 		door, ok := agent.(interface {
-			StartTask(context.Context, string) (uint64, string, error)
+			StartTask(context.Context, string) (uint64, string, string, error)
 		})
 		if !ok {
 			return nil, errors.New("engine: this session has no task door")
@@ -1328,11 +1328,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		id, title, err := door.StartTask(context.Background(), args.Brief)
+		id, title, note, err := door.StartTask(context.Background(), args.Brief)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(TaskStarted{ID: id, Title: title})
+		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
 	case MethodPlannerStart:
 		door, ok := agent.(interface {
 			StartPlannerRun(context.Context, string, string) (string, string, error)

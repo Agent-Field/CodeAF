@@ -102,18 +102,31 @@ const (
 // and it is what the tests recognise "the shaper did not run" by.
 const taskPersonAcceptance = "Complete the brief and report the result and checks run."
 
+// TaskShapeFallbackNote is the one dim line the surface carries on the started
+// row when a shaper ran and was cut. VOCABULARY LAW: no machinery words — not
+// "cut", not "timeout", not "window". What the person needs to know is that
+// what the worker got is what they typed, and nothing more than that.
+const TaskShapeFallbackNote = "brief kept as you wrote it"
+
 // taskShapeRepair is the second and last thing said to a shaper that answered
 // with something other than the object. It is [Agent.judgeDecomposable]'s move,
 // and it restates the schema rather than only complaining, so a model that
 // forgot the shape is told the shape.
 const taskShapeRepair = `Repair the answer. Return only the exact JSON object required: {"title":"...","brief":"...","acceptance":"...","where":"..."}`
 
-// shapedBrief is the wire form of the answer.
+// shapedBrief is the wire form of the answer. FellBack is NOT part of that
+// wire form: it is set in [Agent.shapeBrief] when a shaper was actually
+// invoked and came back cut — an error off the call, the deadline among them —
+// and never by anything a model wrote. It is what StartTask reads to tell the
+// surface the one honest line about it; every other failure path (no shaper
+// configured, an empty request, an answer that arrived whole but did not
+// parse) stays the documented silent pass-through.
 type shapedBrief struct {
 	Title      string `json:"title"`
 	Brief      string `json:"brief"`
 	Acceptance string `json:"acceptance"`
 	Where      string `json:"where"`
+	FellBack   bool   `json:"-"`
 }
 
 // unshaped is what a caller is handed when no shaper ran: the person's own
@@ -191,7 +204,17 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 			provider.WithRole(watchedShapeContext(ctx, watch), lane.RoleAuxiliary), messages,
 			ai.WithModel(call.Model), ai.WithMaxTokens(taskShapeTokens))
 		if callErr != nil || response == nil {
-			return unshaped(request)
+			// A SHAPER THAT RAN AND WAS CUT IS NOT THE SILENT PASS-THROUGH. The
+			// no-shaper paths above are the documented absence of the capability
+			// and say nothing; but here a call the person never asked for was
+			// made, ran, and did not finish — the deadline among the reasons — so
+			// the brief is their own words AND the surface is told one honest
+			// line about it. A shaper that answered whole and failed to parse is
+			// below, and is not a cut.
+			fellBack := callErr != nil
+			shaped := unshaped(request)
+			shaped.FellBack = fellBack
+			return shaped
 		}
 		// The person pays for it out of the same pocket the title and the
 		// guardian come out of, and no turn asked for it.

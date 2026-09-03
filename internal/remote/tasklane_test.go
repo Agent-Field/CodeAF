@@ -135,7 +135,7 @@ func TestAHandStartedTaskReachesTheHostedRail(t *testing.T) {
 	t.Cleanup(stop)
 	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
 
-	id, _, err := loop.Client.Agent().StartTask(context.Background(), "write hello into /tmp/room-proof.txt")
+	id, _, _, err := loop.Client.Agent().StartTask(context.Background(), "write hello into /tmp/room-proof.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

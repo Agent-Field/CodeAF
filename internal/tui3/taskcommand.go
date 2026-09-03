@@ -20,7 +20,7 @@ import (
 // the verb is not in this surface's vocabulary — a door listed here that no
 // command opens is an invitation to open it again.
 type taskCommandAgent interface {
-	StartTask(context.Context, string) (uint64, string, error)
+	StartTask(context.Context, string) (uint64, string, string, error)
 	JudgeDecomposable(context.Context, string) (bool, []string, string)
 }
 
@@ -47,6 +47,10 @@ type taskSizedMsg struct {
 type taskStartedMsg struct {
 	kind, id, title string
 	err             error
+	// note is the engine's fallback line — "brief kept as you wrote it" —
+	// carried only when the shaper was invoked and came back cut. Empty is
+	// every ordinary start, and the absence law draws nothing for it.
+	note string
 	// wait is [taskSizedMsg.wait], for the same reason and on the same terms.
 	wait uint64
 }
@@ -200,8 +204,8 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea
 				}
 			}
 		})
-		id, title, err := door.StartTask(watched, brief)
-		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err, seq}
+		id, title, note, err := door.StartTask(watched, brief)
+		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err, note, seq}
 	})
 }
 

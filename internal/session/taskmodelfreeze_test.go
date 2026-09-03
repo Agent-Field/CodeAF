@@ -25,7 +25,7 @@ import (
 // on how long the queue was.
 func TestAPersonsTaskFreezesItsModelAtAdmission(t *testing.T) {
 	agent, ran := shapeAgent(t, &scriptedCompleter{})
-	id, _, err := agent.StartTask(t.Context(), "tidy the loader")
+	id, _, _, err := agent.StartTask(t.Context(), "tidy the loader")
 	if err != nil {
 		t.Fatalf("StartTask: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestAPersonsTaskTakesTheConfiguredTaskModel(t *testing.T) {
 	agent.config.TaskModel = "cheap/worker-2"
 	agent.mu.Unlock()
 
-	id, _, err := agent.StartTask(t.Context(), "tidy the loader")
+	id, _, _, err := agent.StartTask(t.Context(), "tidy the loader")
 	if err != nil {
 		t.Fatalf("StartTask: %v", err)
 	}
