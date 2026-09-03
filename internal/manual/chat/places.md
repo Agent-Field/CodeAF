@@ -376,6 +376,10 @@ where the full text and where it was learned live, `e fix the wording`, `f forge
 
 The foot follows the row: `enter ask me about it · e fix the wording · f forget it` on a
 line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shelf heading.
+**On a machine that has remembered nothing there are no shelves, so none of those keys is
+named** — the foot is `tab next place · esc` and nothing else, and the body's last line says
+what to do instead: `nothing learned yet — say "remember that …" and the first line lands
+here`.
 
 `delete` also forgets the line under the cursor.
 
@@ -401,11 +405,23 @@ opens the Spending tab of `/settings`, which is the one editor for every money l
 any row of the page opens a verb strip with one letter on it, `b the limits`, which opens the
 same tab; `b` works there because the strip naming it is drawn, and everywhere else on this
 surface a bare letter belongs to the message box, which is why `/budget` is the keyboard
-door. `/cost` (also `/usage`, `/tokens`, `/spend`) still prints **this conversation's**
+door. `/cost` (also `/usage`, `/tokens`) still prints **this conversation's**
 figures into the conversation — a different question from this place's, which is the whole
 machine.
 
-With nothing spent inside the window, the place says what it is for and nothing else.
+**`/spend` is the typed door onto this place.** It used to be an alias of `/cost`, so the
+one word most people guess for "what has this cost" printed one conversation's bill and
+never mentioned the machine-wide ledger. It opens the place now.
+
+**The foot names the keys this place has**, and it is built from the row under the cursor:
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc`.
+Where the head row is too narrow to draw its own arrows the window clause is dropped, and
+over an empty ledger only the way out is named.
+
+With nothing spent inside the window, the place says what it is for and then says which
+kind of empty it is: `nothing spent yet — the first model call writes a line here.`
+Without that sentence a machine that has spent nothing looks exactly like a ledger that
+could not be read, because the emptiness law keeps every `$0.00` off the page.
 
 ## search — finding anything said or run
 
@@ -417,9 +433,19 @@ Nothing is indexed behind your back — this reads the record that was already b
 read happens after the box has been quiet for a moment, never on the keystroke, so typing
 never waits on a search.
 
-`enter` opens the conversation the matching turn was said in. Above the results, a legend
-counts the projects the matches came from. Twelve conversations are shown and the rest fold
-into one line.
+`enter` opens the conversation the matching turn was said in, and **the foot says so**:
+`enter opens it at that turn · ↑↓ pick · type to search · esc clears the words · tab next
+place`. With nothing typed there is no row to stand on, so the foot drops to `type to
+search · esc clears the words · tab next place` — `enter` is not named where it does
+nothing. (This foot used to be the router's own default, which said `enter talk about it`
+and was wrong in both states.) Above the results, a legend counts the projects the matches
+came from. Twelve conversations are shown and the rest fold into one line.
+
+**`/search` is the typed door onto this place**, beside `alt+6`, `tab` and the tab bar. It
+takes no argument: the place is a box, and typing in it searches.
+
+With nothing typed the place says what it is for, and the last of its four lines says what
+to type: `type words you remember — "the docker error", a person's name, a filename`.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,

@@ -399,9 +399,14 @@ func (a *app) welcomePress(slot int) tea.Cmd {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The wordmark, three rows of it, one entry per letter of [product]. It is
-// drawn from box-drawing characters rather than from a figlet font because a
-// figlet 'openaf' is nine rows of hash marks and this surface owns two: the
+// The wordmark, three rows of it, and it MUST HOLD A LETTERFORM FOR EVERY LETTER
+// OF [product] — [wordmarkRows] skips a letter it has never heard of, so a
+// missing glyph is not a build error, it is a word with a hole in it on the
+// first screen of a fresh install (TestTheWordmarkCanSpellTheProductsWholeName
+// is what holds the two together).
+//
+// It is drawn from box-drawing characters rather than from a figlet font because
+// a figlet wordmark is nine rows of hash marks and this surface owns two: the
 // letterform here is the same vocabulary the rail and the rules are drawn in,
 // which is the whole reason it reads as part of the surface rather than as
 // something pasted onto it.
@@ -412,6 +417,11 @@ var wordmarkGlyphs = map[rune][3]string{
 	'n': {"┌─┐", "│ │", "│ │"},
 	'a': {"┌─┐", "├─┤", "└─┘"},
 	'f': {"┌─ ", "├─ ", "│  "},
+	// The shoulder alone, on the stem every other ascender here is drawn with.
+	'r': {"┌─┐", "│  ", "│  "},
+	// The bowl of an `a` with the tail under it, which is the one letter of this
+	// name that hangs below the line.
+	'g': {"┌─┐", "└─┤", "└─┘"},
 }
 
 // wordmarkRows is the wordmark as three unpainted rows, and the column each

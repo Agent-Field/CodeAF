@@ -631,9 +631,21 @@ func (a *app) setupRailWord(at int) string {
 func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	pal := a.pal
 	s := &a.setup
-	// The block is as wide as a sentence is comfortable to read, and narrower
-	// on a window that has less: the same ceiling a note wraps at.
-	inner := min(width-4, setupWidth)
+	// ── ONE RULE, ONE MEASURE, FOR THE TWO SCREENS THE WORDMARK IS DRAWN ON ───
+	//
+	// This block and the greeting that replaces it are the ONLY two screens that
+	// draw the wordmark, and they used to be laid out by two different rules:
+	// this one took an exact half of a sixty-four-cell measure of its own, the
+	// greeting takes two fifths of the slack over [welcomeUnitWidth]. At 160x50
+	// that put the setup's wordmark at row 18 column 49 and the identical
+	// letterform, one keypress later, at row 17 column 43 — a six-column jump on
+	// the one object that is supposed to say "this is still the same program".
+	//
+	// So the measure and the lift are the greeting's, named from its own
+	// constants rather than copied: `welcomeUnitWidth` for the width the block is
+	// centred on, and [welcomeAbove] for how much of the slack goes over it.
+	// [setupWidth] is gone with the second rule it was the only user of.
+	inner := min(width-4, welcomeUnitWidth)
 	if inner < 20 {
 		inner = max(width-2, 1)
 	}
@@ -644,15 +656,29 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	pad := strings.Repeat(" ", lead)
 
 	body := make([]string, 0, 24)
+	// soft marks the rows this block CAN DO WITHOUT, row for row with body.
+	//
+	// A SHORT WINDOW GIVES UP ROWS FROM THE MIDDLE AND NEVER FROM THE FOOT. The
+	// block used to be centred and then cut at `height`, so a twelve-row split
+	// pane drew the wordmark, the question and four lines of prose and stopped:
+	// no `›` box, no `enter connects in browser · paste a key · esc not now`,
+	// and therefore no visible way off a screen that looked like an install that
+	// had hung. The prose is what a person can be without; the box they type
+	// into and the line naming the way out are not. It is the same law
+	// [homeBands] keeps for a card — the bands go, the title stays.
+	soft := make([]bool, 0, 24)
 	caretRow, caretX := -1, 0
-	add := func(line string) { body = append(body, line) }
+	add := func(line string) { body, soft = append(body, line), append(soft, false) }
+	// addSoft adds a row that a window too short for the whole block gives up,
+	// last one first.
+	addSoft := func(line string) { body, soft = append(body, line), append(soft, true) }
 
 	// The wordmark, at rest and muted: the same letterforms the welcome box
 	// draws, so the screen after this one reads as the same place.
 	for _, row := range wordmarkRows(pal.ascii) {
-		add(pal.muted(row))
+		addSoft(pal.muted(row))
 	}
-	add("")
+	addSoft("")
 	add(pal.dim(setupTitle(s)))
 	add("")
 
@@ -662,12 +688,12 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		case s.authStarting:
 			add(pal.ink("connecting openrouter"))
 			for _, line := range wrap(setupConnectStartingWord, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 		case s.authFlow != nil:
 			add(pal.ink("finish connecting openrouter"))
 			for _, line := range wrap(setupConnectWaitingWord, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 			if s.authLink != "" {
 				add("")
@@ -684,7 +710,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			}
 			add(pal.ink(heading))
 			for _, line := range wrap(word, inner) {
-				add(pal.dim(line))
+				addSoft(pal.dim(line))
 			}
 			add(pal.dim("or get a key at ") + pal.ink(linkify(setupKeyURL, setupKeyURL)))
 			add("")
@@ -696,7 +722,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	case setupCrew:
 		add(pal.ink("the crew"))
 		for _, line := range wrap(setupCrewWord, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 		add("")
 		for _, line := range s.crew.rows(inner, s.crew.height(), pal, -1, a) {
@@ -707,7 +733,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		// with, in the same words, written through the same registry rows.
 		add(pal.ink(setupRailsTitle))
 		for _, line := range wrap(setupRailsWord, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 		add("")
 		for at, rail := range setupRails {
@@ -735,9 +761,9 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 				}
 			}
 		}
-		add("")
+		addSoft("")
 		for _, line := range wrap(setupRailsRest, inner) {
-			add(pal.dim(line))
+			addSoft(pal.dim(line))
 		}
 	}
 	if s.refusal != "" {
@@ -749,9 +775,15 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	}
 	add(pal.dim(a.setupKeysWord()))
 
-	// Centred vertically, and never past the top: a window shorter than the
-	// block shows the head of it, which is where the question is.
-	top := (height - len(body)) / 2
+	// A SHADE ABOVE THE MIDDLE, WHICH IS WHERE A CENTRED THING LOOKS CENTRED, and
+	// it is the greeting's own arithmetic rather than a second copy of it
+	// ([welcomeAbove] states why two fifths and not a half). Never past the top:
+	// a window shorter than the block shows the head of it, which is where the
+	// question is.
+	// AND WHAT WILL NOT FIT IS GIVEN UP BEFORE THE BLOCK IS PLACED, out of its
+	// middle, so that the two rows a person acts on are still on the screen.
+	body, caretRow = setupTrim(body, soft, caretRow, height)
+	top := welcomeAbove(len(body), height-len(body))
 	if top < 0 {
 		top = 0
 	}
@@ -765,16 +797,56 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
-	if len(lines) > height {
-		lines = lines[:height]
+	caretY := top + caretRow
+	if over := len(lines) - height; over > 0 {
+		// THE LAST RESORT TAKES THE HEAD AND NOT THE FOOT. Every soft row has
+		// already gone and the block is still taller than the window, so what is
+		// left is the question, the box and the keys — and of those three the
+		// one a person can do without is the one at the top.
+		lines = lines[over:]
+		caretY -= over
 	}
 	a.caret = caretRow >= 0
-	return lines, lead + caretX, top + caretRow
+	return lines, lead + caretX, caretY
 }
 
-// setupWidth is the block's ceiling in cells. Sixty-four is a sentence's width
-// on this surface — the same figure a note stops wrapping at.
-const setupWidth = 64
+// setupTrim gives the window back the rows it does not have, taking them from
+// the block's MIDDLE — the prose and the wordmark, last one first — and never
+// from its foot, where the box and the keys line are.
+//
+// The caret rides the trim: it is a row of this block and not a number about the
+// screen, so a line dropped above it moves it up with everything else.
+func setupTrim(body []string, soft []bool, caret, height int) ([]string, int) {
+	over := len(body) - height
+	if over <= 0 {
+		return body, caret
+	}
+	drop := make(map[int]bool, over)
+	for at := len(body) - 1; at >= 0 && over > 0; at-- {
+		if !soft[at] || at == caret {
+			continue
+		}
+		drop[at] = true
+		over--
+	}
+	out := make([]string, 0, len(body))
+	moved := caret
+	for at, line := range body {
+		if drop[at] {
+			if caret >= 0 && at < caret {
+				moved--
+			}
+			continue
+		}
+		out = append(out, line)
+	}
+	return out, moved
+}
+
+// THERE IS NO setupWidth ANY MORE. It was sixty-four — a sentence's comfortable
+// width — and it was the second of the two measures that made the wordmark jump
+// six columns between this screen and the greeting. [welcomeUnitWidth] is the
+// one measure now, and [app.setupFrame] says why.
 
 // setupLead is the mark in front of the box, the same one the cursor wears on
 // every list here.
@@ -792,26 +864,32 @@ func setupTitle(s *setupFlow) string {
 // The three questions' own sentences. Each is one calm line about what the
 // answer does — the person's real question here is about money and about
 // which model is which, and both are answered before anything is asked.
+//
+// AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
+// LITERAL. The wordmark three rows above this prose is drawn from that same
+// constant, and when the two were spelled separately the first screen anybody
+// ever sees said `openaf` in the letterforms and `aforge` in the sentence under
+// them.
 const (
-	setupKeyWord = "aforge talks to models through openrouter, on your key and your card. " +
+	setupKeyWord = product + " talks to models through openrouter, on your key and your card. " +
 		"nothing is sent until you do."
 	setupKeyURL      = "https://openrouter.ai/settings/keys"
 	setupConnectWord = "sign in once in your browser. openrouter makes a key for this profile; " +
-		"aforge stores it on this machine. no prompt is sent and no model is called."
+		product + " stores it on this machine. no prompt is sent and no model is called."
 	setupConnectStartingWord = "opening a private return address on this machine…"
 	setupConnectWaitingWord  = "finish signing in in your browser. this page will continue when openrouter sends you back."
 	// THE CREW STEP SAYS WHAT IT IS NOT. People conflate the crew with the model
 	// they talk to, and /crew's own confirmation already has to say the same
 	// thing after the fact (crew.go's applyCrew). Here it is said before.
-	setupCrewWord = "these five are the models aforge uses on its own behalf — the work " +
+	setupCrewWord = "these five are the models " + product + " uses on its own behalf — the work " +
 		"inside every task, planning, checking, reading every turn. the model you talk to is a separate choice, " +
 		"made with /model."
 	// THE RAILS SCREEN'S OWN WORDS. `none` is offered in the header on purpose:
 	// no limits is a choice a person should SEE, rather than a trick they learn
 	// later from a `0` that reads as its own opposite.
-	setupRailsTitle = "what may aforge spend?"
+	setupRailsTitle = "what may " + product + " spend?"
 	setupRailsWord  = "enter keeps a default · type a number · none means no limit"
-	setupRailsRest  = "the rest — a task, a standing run, aforge's own practice — start with " +
+	setupRailsRest  = "the rest — a task, a standing run, " + product + "'s own practice — start with " +
 		"a small limit or none. change any of them later with /budget."
 )
 
@@ -850,7 +928,7 @@ func setupBudgetWord(registry *config.Settings) string {
 	if row, ok := registry.Row(config.KeyDailyBudget); ok && strings.TrimSpace(row.Hint) != "" {
 		return strings.ToLower(row.Hint[:1]) + row.Hint[1:]
 	}
-	return "what aforge may spend on your work in a day."
+	return "what " + product + " may spend on your work in a day."
 }
 
 // setupKeysWord is the foot: what enter does RIGHT NOW, and that esc leaves.

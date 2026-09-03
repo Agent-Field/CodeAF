@@ -93,3 +93,91 @@ bad-key refusal and the screen after `esc`. Help doors: `?`, `/`, `/ma`, `/help`
 `/manual <page>`, `/manual <miss>`, `/manual <question>`, `/nosuchthing`, and the map over
 search. Demo home: search resting, with words, with no hit, and the spend place with a
 ledger behind it.
+
+---
+
+## fixed
+
+Fix lane, on `ui/polish-v0`. Frame paths are relative to `docs/design/polish/frames/`;
+every `-after` frame has a `.ans` twin and the `-before` reading is the frame the row
+above already names.
+
+**Row 1 — the search place's foot is its own** · `internal/tui3/pages.go` (the `hint`
+default deleted from `placeBase`, so a place without one no longer compiles),
+`internal/tui3/place_search.go` (`placeSearch.hint`, in two states: `searchHitHint` over a
+result and `searchAskHint` where there is no row to stand on) · tests
+`TestEveryPlaceSaysItsOwnKeys`, `TestTheSearchFootNamesTheKeyThatOpensAHit` · before
+`help-empty-search.{160x50,120x40,80x24}.txt` → after
+`help-empty-search-after.{160x50,120x40,80x24,60x30}.txt`
+
+**Row 2 — the spend place's foot is its own** · `internal/tui3/place_spend.go`
+(`placeSpend.hint`, built from the row under the cursor and from whether the window
+control is drawn at this width) · test `TestTheSpendFootNamesTheKeysAPersonWouldPress` ·
+before `help-empty-spend.{160x50,80x24}.txt` → after
+`help-empty-spend-after.{160x50,120x40,80x24,60x30}.txt`
+
+**Row 3 — hints drop whole hints** · `internal/tui3/pages.go` (`hintFit`, and both draw
+sites routed through it instead of `fit`) · the rank: everything from `tab next place`
+onward is protected, and what is dropped is taken from the clause nearest that tail
+working backwards, so the composer's own line loses `alt+. for the map` first and
+`enter talk about it` last · test `TestAHintDropsWholeClausesAndKeepsTheWayOut` · before
+`help-empty-search.80x24.txt` (`… · alt+. for the map · t…`) → after
+`help-empty-search-after.80x24.txt`
+
+**Row 4 — /help names the way into the places** · `internal/tui3/commands.go` (three rows
+under the `tab` row, spelled through `chords.say`), `internal/tui3/pages.go`
+(`placeWordList`, read off `placeOrder` so the sheet cannot drift from the bar) ·
+`internal/manual/chat/commands.md` · test `TestTheKeySheetNamesTheWayToEveryPlace` ·
+before `help-help-output.{160x50,80x24}.txt` → after
+`help-help-output-after.{160x50,80x24}.txt`
+
+**Row 5 — /search exists and /spend opens the spend place** · `internal/tui3/commands.go`
+(two rows added; `spend` taken off `/cost`'s alias list and `/cost`'s own row now says
+which question it answers), `internal/tui3/app.go` (`case "search"` and `case "spend"`
+beside `case "home"`), `internal/manual/chat/commands.md`, `internal/manual/chat/places.md`,
+`internal/manual/chat/models-and-cost.md`; `internal/tui3/statusnote_test.go`'s alias table
+updated, since it pinned the behaviour this row changes · test
+`TestSearchAndSpendHaveTypedDoorsOfTheirOwn` · after `help-search-door-after.160x50.txt`,
+`help-spend-door-after.160x50.txt`
+
+**Row 6, 9, 10 — an empty place says what to do next, in a verb** ·
+`internal/tui3/searchplace.go` (`searchExampleWord`, a fourth teaching line),
+`internal/tui3/place_spend.go` (`spendTeachEmptyWord` on the end of `spendTeach`),
+`internal/tui3/memoryplace.go` (`memoryEmptyWord`, drawn only where the page is bare —
+`memoryReading.bare`), `internal/tui3/place_memory.go` (`memoryBareHint`: a page with no
+shelves promises no shelf keys) · `internal/manual/chat/places.md` · test
+`TestAnEmptyPlaceSaysWhatToDoNext` · before `help-empty-search.160x50.txt`,
+`help-empty-spend.160x50.txt`, `help-empty-memory.160x50.txt` → after
+`help-empty-search-after.160x50.txt`, `help-empty-spend-after.160x50.txt`,
+`help-empty-memory-after.160x50.txt`
+
+**Row 8 — the palette fills the frame and says what is hidden** ·
+`internal/tui3/commands.go` (`menuRows` is a floor rather than a ceiling; `menu.height`
+takes the room as a number, `menu.fit` counts rows and lines, `menu.rows` reserves the
+fold line before laying rows into what is left), `internal/tui3/palette.go` (the room is
+measured once, before any list is asked what it wants, and handed in) ·
+`internal/manual/chat/commands.md` · test
+`TestThePaletteFillsTheFrameAndSaysWhatIsHidden` · before
+`help-slash-palette.{160x50,80x24}.txt` (8 rows of 52, no fold) → after
+`help-slash-palette-after.{160x50,120x40,80x24,60x30}.txt` (44 rows and `▸ 9 more` at
+160x50)
+
+**Row 15 — the wordmark does not move when setup ends** · `internal/tui3/firstrun.go`
+(`welcomeUnitWidth` for the measure and `welcomeAbove` for the lift; `setupWidth` deleted
+with the second rule it was the only user of) · test
+`TestTheWordmarkDoesNotMoveWhenSetupEnds`, which asserts the column at 160x50, 120x40,
+80x24 and 60x30 · before `help-firstrun.{160x50,120x40,80x24,60x30}.txt` (column 49 at
+160x50) → after `help-firstrun-after.{160x50,120x40,80x24,60x30}.txt` (column 43, which is
+the greeting's)
+
+### Not this lane
+
+Rows 7, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22 and 23 were outside the brief and are
+untouched. Two of them are worth a note for whoever takes them:
+
+- **Row 19** is now half done. Memory's teaching-state foot is fixed here (row 9's other
+  half); tasks' and standing's are not, and both live in files this lane was told not to
+  edit.
+- **Row 3's fitter is general.** `hintFit` is the one door every foot on a place goes
+  through, so a row that adds a clause to any place's hint gets the ladder for free —
+  and a clause that must never be dropped goes after `tab next place`, not before it.

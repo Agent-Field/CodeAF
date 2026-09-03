@@ -466,3 +466,34 @@ func (placeSearch) wheel(a *app, delta int) bool {
 // key is this place's own reading of a key the router did not take
 // (pages.go's [place] states the split).
 func (placeSearch) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.searchKey(msg) }
+
+// The two feet this place has, and they are two because `enter` means two
+// different things here — which is exactly the fault this place used to have
+// while it had no foot at all.
+//
+// THE ROUTER'S DEFAULT SAID `enter talk about it` OVER BOTH OF THEM, six rows
+// under this place's own body saying `enter opens the conversation at the
+// matching turn.` — and the manual sided with the body (places.md's search
+// section). With results up, `enter` opens the hit ([placeSearch.enter]); with
+// an empty box `placeTalk` returns nil and the key does nothing at all. Neither
+// state was the one the foot named.
+const (
+	// searchHitHint is the foot standing on a result: what enter opens, how to
+	// move between them, and that the box is still a search box.
+	searchHitHint = "enter opens it at that turn · ↑↓ pick · type to search · esc clears the words"
+	// searchAskHint is the foot with nothing to stand on — the teaching page and
+	// a search that found nothing. NOTHING IS NAMED THAT IS NOT BOUND, so
+	// `enter` and `↑↓` are simply absent rather than promised over an empty
+	// body (place_standing.go's hint holds the same argument at more length).
+	searchAskHint = "type to search · esc clears the words"
+)
+
+// hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR (pages.go's
+// [place.hint]) — and on the teaching page and the no-hit line there is no row,
+// so the foot says only the two things that are true there.
+func (placeSearch) hint(a *app) string {
+	if _, ok := a.search.reading.at(a.search.cursor); ok {
+		return searchHitHint
+	}
+	return searchAskHint
+}

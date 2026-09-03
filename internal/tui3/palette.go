@@ -1752,6 +1752,14 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 // see to that — so this is a switch and not a sum.
 func (a *app) overlayHeight() int {
 	width, height := a.size()
+	// THE ROOM IS MEASURED BEFORE ANY LIST IS ASKED WHAT IT WANTS, because one of
+	// them wants to know: the command list shows as many commands as the frame
+	// can hold and says how many are left over ([menu.height]), which it cannot
+	// decide from a want it has not been told the size of. Every other list still
+	// answers with its own figure and meets the same clamp at the foot of this
+	// function — the number is one number either way.
+	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
+		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
 	var want int
 	switch {
 	case a.pick.open:
@@ -1777,7 +1785,7 @@ func (a *app) overlayHeight() int {
 	case a.subPage.open:
 		want = a.subPage.height(width)
 	case a.menu.open:
-		want = a.menu.height(width)
+		want = a.menu.height(width, room)
 	case a.comp.open:
 		want = a.comp.height(width)
 	default:
@@ -1789,8 +1797,7 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight(); want > room {
+	if want > room {
 		want = room
 	}
 	if want < 0 {

@@ -281,9 +281,25 @@ func (placeBase) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // that each forget ([app.compose]).
 func (placeBase) box(a *app) *editor { return &a.compose }
 
-// hint is the router's own line, named here rather than in six place files so
-// that a hint and the router can never disagree about which keys exist.
-func (placeBase) hint(a *app) string { return placeHintWords }
+// ── THERE IS NO DEFAULT hint, AND THAT IS THE WHOLE POINT ───────────────────
+//
+// [placeBase] used to answer `hint` with [placeHintWords], and it made a place
+// that had never written a foot draw a sentence about SOMEBODY ELSE'S keys. The
+// search place said `enter talk about it` six rows under its own body saying
+// `enter opens the conversation at the matching turn.`, and the spend place hid
+// `enter`, `→ b the limits` and its shift-arrow window behind the same line —
+// two rooms lying with one borrowed sentence, and neither of them a compile
+// error, a test failure or anything a reader of either file would notice.
+//
+// So `hint` joins `id`, `word` and `cursorAt` as a method [placeBase] does NOT
+// carry: a place with no foot of its own does not build. `TestEveryPlaceSaysItsOwnKeys`
+// reads this file back with go/ast and says the same thing a second time, so
+// that a default quietly restored here is caught by a name rather than by
+// somebody eventually reading a frame.
+//
+// [placeHintWords] survives as the CONVERSATION's composer foot — the line the
+// design fixes for a frame with no place standing on it — and is nobody's
+// fallback.
 
 // placeRegistry is every place, by id, filled by each `place_<word>.go`'s `init`
 // exactly as `registerHomeBand` fills the bands. A place added later is a file
@@ -317,6 +333,23 @@ func registerPlace(p place) {
 
 // pages is the tab bar's order, read from the registry's order table.
 func pages() []page { return placeOrder }
+
+// placeWordList is the seven words in the bar's own order, for the one sentence
+// on the key sheet that has to say which digit is which (commands.go).
+//
+// IT IS READ OFF [placeOrder] AND NOT TYPED OUT, because a hand-written list on
+// the help sheet is a second answer to what `alt+3` opens — and the day a place
+// is added or the order changes, the sheet is the last thing anybody would think
+// to edit. One source of truth (CLAUDE.md's design laws).
+func placeWordList() string {
+	words := make([]string, 0, len(placeOrder))
+	for _, id := range placeOrder {
+		if pl, ok := placeRegistry[id]; ok {
+			words = append(words, pl.word())
+		}
+	}
+	return strings.Join(words, " ")
+}
 
 // placeFor is the place one id names, and nil for the conversation or for an id
 // nothing answers to. It is THE registry lookup, and every question this file
@@ -1086,7 +1119,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// out drawn as a target; the layer has taken the keyboard and has a way out
 		// of its own, and two feet arguing about what `esc` does is worse at every
 		// width than one foot naming the keys that are live.
-		add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
+		add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -1097,7 +1130,7 @@ func placeFrameWithBar(a *app, width, height int,
 		if msg, ok := a.placeMsgLine(width); ok {
 			add(msg, nil)
 		} else {
-			add(" "+paintHint(fit(a.placeHint(), width-2), pal, pal.dim), nil)
+			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
 		}
 	}
 
@@ -1320,10 +1353,71 @@ func placeTailed(hint string) string {
 	if strings.Contains(hint, placeHintTail) {
 		return hint
 	}
+	// A PLACE WITH NOTHING TO SAY BUT THE WAY OUT — a bare memory page, an
+	// untouched ledger — says only `esc`, and the router's clause then goes IN
+	// FRONT of it rather than behind. Appending would draw `esc · tab next
+	// place`, which puts the way out first: the one position this line's whole
+	// law says it never takes.
+	if hint == "esc" || strings.HasPrefix(hint, "esc ") {
+		return placeHintTail + " · " + hint
+	}
 	if at := strings.LastIndex(hint, " · esc"); at >= 0 {
 		return hint[:at] + " · " + placeHintTail + hint[at:]
 	}
 	return hint + " · " + placeHintTail
+}
+
+// ── FITTING THE FOOT: WHOLE HINTS, NEVER HALF OF ONE ────────────────────────
+//
+// hintFit is the foot cut to room cells BY DROPPING CLAUSES, and it is
+// [rowfit.go]'s ranked-prefix law (law 3) applied to a sentence instead of to a
+// row of facts: what a narrow frame shows is a subset of what a wide one shows,
+// chosen by rank, and never a clause with its end sliced off.
+//
+// WHAT IT REPLACES. The foot used to be handed to `fit`, which is a character
+// ruler with no idea what a clause is, so at eighty columns the composer's own
+// line came out as `… · alt+. for the map · t…` — an ellipsis where `tab next
+// place` had been, on the commonest terminal size there is. A key sheet that
+// loses the way out is worse than a key sheet with one fewer key on it.
+//
+// THE RANK, AND WHY IT IS SPELLED THIS WAY ROUND. The last clause is the way
+// out — `tab next place`, and `esc` after it where a place adds one — and it is
+// kept to the last cell there is. Everything from [placeHintTail] onward is
+// therefore protected, and what is dropped is taken from the clause NEAREST
+// that protected tail, working backwards: on the composer's own line that is
+// `alt+. for the map` first, then `alt+enter send it off as a task`, leaving
+// `enter talk about it · tab next place`. The head clause — what `enter` does
+// on the row you are standing on — is the last thing to go, because it is the
+// only clause on the line about the thing under the cursor.
+//
+// It is pure and deterministic: the same sentence at the same width is the same
+// string, which is what lets a test paste a foot.
+func hintFit(hint string, room int) string {
+	if room <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(hint) <= room {
+		return hint
+	}
+	parts := strings.Split(hint, railSep)
+	// keep is the index of the FIRST protected clause: the way out, and
+	// everything after it. A foot with no `tab next place` in it — the map's
+	// line, a layer's own foot — protects its last clause, which on every one of
+	// them is `esc close` or `esc`.
+	keep := len(parts) - 1
+	for at, part := range parts {
+		if strings.Contains(part, placeHintTail) {
+			keep = at
+			break
+		}
+	}
+	for keep > 0 && ansi.StringWidth(strings.Join(parts, railSep)) > room {
+		parts = append(parts[:keep-1], parts[keep:]...)
+		keep--
+	}
+	// A FRAME TOO NARROW FOR THE WAY OUT ALONE is the one case left, and there is
+	// nothing to drop that would help: the tail is cut, exactly as it always was.
+	return fit(strings.Join(parts, railSep), room)
 }
 
 // placeMsgLine is the one refusal line this place has to say, drawn instead of

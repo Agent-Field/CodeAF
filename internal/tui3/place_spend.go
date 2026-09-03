@@ -498,9 +498,22 @@ func (placeSpend) tick(a *app, now time.Time) bool {
 // cannot work is absent rather than broken (CLAUDE.md), and a page that draws
 // the furniture of a feature it does not have looks like a bug rather than like
 // a plan. Every sentence here is true today.
+// AND THE LAST SENTENCE SAYS WHAT IS TRUE OF THIS MACHINE RIGHT NOW, in a verb,
+// the way the tasks place ends its own teaching with `no tasks yet — /task
+// <brief> starts one` ([tasksTeach]). Three sentences about what a ledger is,
+// drawn over a ledger that is empty, leave a person unable to tell "nothing has
+// been spent" from "the ledger could not be read" — and the emptiness law, which
+// is why no `$0.00` appears anywhere above, is exactly what makes those two
+// silences look identical. So the page says which one it is.
 const spendTeach = "What this machine has cost, by the day, by the model, and by what it was for. " +
 	"Every model call writes a line, so the figures here are the bill and not an estimate. " +
-	"There is nothing to set here — the allowance is edited on the status line that shows it."
+	"There is nothing to set here — the allowance is edited on the status line that shows it. " +
+	spendTeachEmptyWord
+
+// spendTeachEmptyWord is that last sentence, named because it is the one clause
+// of [spendTeach] a test asserts by itself and the one a person is actually
+// looking for.
+const spendTeachEmptyWord = "nothing spent yet — the first model call writes a line here."
 
 // body is the ledger, or — on a machine that has spent nothing inside the window
 // it is showing — the three sentences saying what this place is for.
@@ -598,6 +611,51 @@ func (placeSpend) verbs(a *app) []verb {
 	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
 		return a.openSpending(spendTodayKey)
 	}}}
+}
+
+// The clauses this place's foot is built from. They are constants because the
+// manual quotes them and because two of them are the two keys a person standing
+// on a row of this page would actually press.
+//
+// THE ROUTER'S DEFAULT USED TO SAY THIS PLACE'S FOOT FOR IT, and it named none
+// of the four key classes here: `enter` on a row, `→` with one verb on it,
+// the `▸ 14 more` fold and the shift-arrow window. What it said instead was
+// `enter talk about it · alt+enter send it off as a task`, so the one key that
+// WAS written down meant something else (pages.go says why [placeBase] no
+// longer carries a `hint` at all).
+const (
+	spendEnterWord  = "enter opens what spent it"
+	spendVerbLead   = "→ "
+	spendWindowWord = "shift+←→ move the days"
+)
+
+// hint is the foot, assembled from the clauses that are TRUE of the row under
+// the cursor and of the window this frame is drawing.
+//
+// The shift arrows are named only where they are BOUND: the window control
+// draws its own arrows on the head row and stands down on a frame too narrow to
+// hold them ([app.spendWindowKey] asks [placeWindowFits] the same question), and
+// a foot promising them under a head that is not drawing them would be this
+// surface advertising a key that does nothing.
+func (placeSpend) hint(a *app) string {
+	var parts []string
+	if a.spendStopAt(a.spend.cursor).ok {
+		parts = append(parts, spendEnterWord)
+		for _, v := range (placeSpend{}).verbs(a) {
+			parts = append(parts, spendVerbLead+v.word)
+		}
+	}
+	width, _ := a.size()
+	if arrows, _ := placeWindowFits(width, spendHeadWords(a.spend.reading.totals), a.spend.win); arrows {
+		parts = append(parts, spendWindowWord)
+	}
+	if len(parts) == 0 {
+		// A PAGE WITH NOTHING ON IT STILL HAS A WAY OUT, and that is all it has.
+		// [placeTailed] adds `tab next place`, so this is `esc` alone rather than
+		// a foot naming three keys over an empty ledger.
+		return "esc"
+	}
+	return strings.Join(parts, railSep) + railSep + "esc"
 }
 
 func (placeSpend) press(a *app, y int) bool {

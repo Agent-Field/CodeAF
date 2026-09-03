@@ -242,11 +242,25 @@ func (r searchReading) at(i int) (searchHit, bool) {
 	return r.hits[at], true
 }
 
+// searchExampleWord is the LAST line of the teaching page, and it is the only
+// one of the four with a verb in it.
+//
+// AN EMPTY PLACE MUST SAY WHAT TO DO NEXT. The three sentences above it are
+// declarative — what search reads, which box does what, what enter opens — and
+// a person who has just walked in wants to know what to type, not what the
+// index is. The tasks place one `tab` away ends its own teaching with `no tasks
+// yet — /task <brief> starts one` ([tasksTeach]), and this is that shape: the
+// asker's own words, and three examples of the kinds of thing that work, because
+// "search your conversations" does not tell anybody whether a filename is a
+// searchable thing here.
+const searchExampleWord = `type words you remember — "the docker error", a person's name, a filename`
+
 func searchTeach(pal palette) []string {
 	return []string{
 		pal.dim("search reads every message in every conversation on this machine."),
 		pal.dim("typing here searches; typing on home starts something."),
 		pal.dim("enter opens the conversation at the matching turn."),
+		pal.dim(searchExampleWord),
 	}
 }
 

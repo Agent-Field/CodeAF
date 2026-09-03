@@ -119,6 +119,22 @@ var commands = []command{
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
 	{name: "home", desc: "every project and conversation on this machine"},
+	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
+	// does. /home, /memory, /standing, /history and /settings each open a place
+	// from the box; search and spend were reachable only by `alt+6`, `alt+5`,
+	// `tab`, the tab bar, or typing a word on home — every one of which has to be
+	// learned somewhere else first.
+	//
+	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
+	// an alias of /cost, so the one word a person guesses for "what has this cost
+	// me" printed THIS CONVERSATION's bill and never said the machine-wide place
+	// existed. The two answer different questions — /cost is this conversation,
+	// spend is every window, task and standing run on the machine — and the word
+	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
+	// own row which question it is answering, so nobody who typed either word
+	// lands nowhere.
+	{name: "search", desc: "everything said on this machine · alt+6"},
+	{name: "spend", desc: "what this machine has cost, by the day · alt+5"},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do
@@ -280,7 +296,11 @@ var commands = []command{
 	// lines it prints: somebody who wanted the money and typed the general word
 	// still gets their answer, while the reverse is not true.
 	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
-	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE ROW NAMES WHOSE BILL IT IS, because the other one is now a command of
+	// its own two rows up: /cost is THIS CONVERSATION and /spend is the machine.
+	// The word `spend` used to be an alias here and pointed the one guess a
+	// person makes at the wrong reading.
+	{name: "cost", desc: "what this conversation has spent · /spend is the whole machine", alias: []string{"usage", "tokens"}},
 	// AND DIRECTLY UNDER WHAT IT HAS SPENT, WHAT IT MAY. /cost is the reading and
 	// this is the editor, and they sit together because a person who has just
 	// read a figure is the person deciding whether it is too high (budget.go).
@@ -557,12 +577,28 @@ func (c command) typed() string {
 	return "/" + c.name + " " + c.args
 }
 
-// menuRows is how many command rows fit at once. The table has grown past it,
-// so it is now a real ceiling and the list scrolls under the cursor — which is
-// the trade taken on purpose: eight rows of commands over the conversation is
-// already half a short terminal, and a list that grew with the table would take
-// the screen every time a command was added. The ALIASES cost nothing here,
-// because an alias is a word on a row and never a row of its own.
+// menuRows is THE FLOOR: the least this list ever shows, whatever the frame.
+//
+// ── IT WAS A CEILING AND THAT WAS THE DEFECT ────────────────────────────────
+//
+// Eight was a bare constant and the only number the list knew, so a fifty-row
+// terminal drew eight commands of fifty-two under thirty-six blank rows, said
+// nothing about the other forty-four, and put both /help and /manual below the
+// fold. `/` is the one door the greeting advertises — `/ shows commands` — and
+// what it showed a person on a cold start was /model through /compact and a
+// stop. The stated reason for the ceiling, that eight rows over the conversation
+// is already half a short terminal, is true at twenty-four rows and simply false
+// at fifty.
+//
+// So the number is the FLOOR now and the frame is the ceiling: the list takes
+// what the room the frame hands it will hold, and never fewer than these eight
+// even on a short terminal, where [app.overlayHeight]'s own clamp is what keeps
+// the status line and a row of conversation alive. WHERE ROWS ARE STILL HIDDEN
+// THE LIST SAYS HOW MANY, in the `▸ 44 more` line every other list on this
+// surface draws (searchplace.go, the spend place's fold).
+//
+// The ALIASES cost nothing here, because an alias is a word on a row and never a
+// row of its own.
 const menuRows = 8
 
 // menu is the command list's whole state. The zero value is closed.
@@ -721,16 +757,49 @@ func (m *menu) choice() (command, bool) {
 // NONE: the draft under it is a perfectly good "/nonsense" that enter will
 // answer, and an overlay saying "no match" over a line that is about to get a
 // better answer is two answers to one question.
-func (m *menu) height(width int) int {
+// THE ROOM IS HANDED IN AS A NUMBER and the list stays pure. What is above this
+// line ranks and filters commands and has never known how tall a terminal is;
+// what the frame knows is how many rows are left once the status line, the box
+// and a row of conversation have taken theirs ([app.overlayHeight] does that
+// arithmetic once, for every list). So the frame passes the figure and this
+// decides what to do with it, rather than either of them guessing at the other.
+func (m *menu) height(width, room int) int {
 	if !m.open {
 		return 0
 	}
 	// The ceiling is in LINES, so at [tierPhone] the list holds four commands
 	// with what they do written under them instead of eight rows that all say
 	// "/settings   open the settings pa…" (palette.go).
-	return overlayWindow(width, m.top, len(m.hits), menuRows, func(at int) string {
-		return commands[m.hits[at]].note()
-	})
+	ceiling := menuRows
+	if room > ceiling {
+		ceiling = room
+	}
+	shown, lines := m.fit(width, ceiling)
+	if m.top+shown >= len(m.hits) || ceiling <= 1 {
+		return lines
+	}
+	// SOMETHING IS HIDDEN, SO ONE LINE OF THE CEILING IS THE FOLD'S. It is
+	// counted here rather than added on top, because the frame subtracts this
+	// figure from the conversation before the rows are drawn: a list that came
+	// back a line longer than it promised would push the status line off.
+	_, lines = m.fit(width, ceiling-1)
+	return lines + 1
+}
+
+// fit is how many ROWS and how many LINES this list draws from [menu.top] inside
+// a ceiling of screen lines. Two numbers rather than one because the fold has to
+// know how many commands were left over, and at [tierPhone] a row is two lines —
+// so a count of lines cannot answer that on its own.
+func (m *menu) fit(width, ceiling int) (rows, lines int) {
+	for at := m.top; at < len(m.hits) && lines < ceiling; at++ {
+		take := overlayItemLines(width, commands[m.hits[at]].note())
+		if lines+take > ceiling {
+			break
+		}
+		lines += take
+		rows++
+	}
+	return rows, lines
 }
 
 func (m *menu) rows(width, n int, pal palette, hover int) []string {
@@ -738,14 +807,29 @@ func (m *menu) rows(width, n int, pal palette, hover int) []string {
 		return nil
 	}
 	m.follow(overlayItems(n, width))
-	fill := newOverlayFill(width, n, pal, hover)
+	// The fold's line is taken off the room BEFORE the rows are laid into it, so
+	// what is said about the remainder is true of the rows actually drawn. A fold
+	// appended after the fact would be counting a row that is on the screen.
+	room := n
+	if shown, _ := m.fit(width, n); m.top+shown < len(m.hits) && n > 1 {
+		room = n - 1
+		m.follow(overlayItems(room, width))
+	}
+	fill := newOverlayFill(width, room, pal, hover)
+	past := m.top
 	for at := m.top; at < len(m.hits) && fill.room(); at++ {
 		c := commands[m.hits[at]]
 		if !fill.add(at, c.typed(), c.menuNote(width), at == m.cursor, false) {
 			break
 		}
+		past = at + 1
 	}
 	lines, _ := fill.done()
+	if hidden := len(m.hits) - past; hidden > 0 && room < n {
+		// The two cells in front of it are [overlayLead]'s own, so the count hangs
+		// under the commands rather than out in the margin beside them.
+		lines = append(lines, pal.dim(fit("  "+foldLine(hidden, ""), width)))
+	}
 	return lines
 }
 
@@ -884,6 +968,21 @@ func helpText(file string, chords chordSpelling) string {
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
 		"tab            go back to the last conversation, with an empty box",
+		// ── THE SEVEN PLACES, WHICH THIS SHEET USED TO NAME NO WAY INTO ───────
+		//
+		// This block lists every chord a person can press, and until this wave it
+		// held not one of `alt+1`…`alt+7`, `alt+.` or `tab`'s meaning on a place —
+		// so somebody who typed /help from a cold start finished it without
+		// learning that the places exist. The map (`alt+.`) is the surface's own
+		// chord list and was reachable only from inside a place you already had to
+		// know how to open, which is a help sheet behind the thing it explains.
+		//
+		// The three rows are spelled through [chordSpelling.say] like the
+		// `alt+enter` row above them, so a Mac reads `⌥1…⌥7` and a Linux box reads
+		// what is authored here — one substitution, one door (chords.go).
+		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
+		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
+		"               on a place, tab is the next place · esc comes back",
 		// THE CHORD IS SPELLED FOR THIS TERMINAL AND THEN PADDED, in that order.
 		// On a Mac `alt+enter` is drawn `⌥enter` — three cells narrower — and a
 		// literal padded to the ASCII spelling would put this one row's sentence

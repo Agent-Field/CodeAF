@@ -25,6 +25,11 @@ const (
 	// for a hint is "what the row under the cursor can be asked for".
 	memoryShelfHint = "enter open a shelf · type to filter · alt+s walk the shelves"
 	memoryEditHint  = "edit memory · enter save · esc cancel"
+	// AND A PAGE WITH NOTHING ON IT HAS ONLY A WAY OUT. [placeTailed] adds `tab
+	// next place` in front of the `esc`, so this is the whole of the foot on a
+	// machine that has remembered nothing — three keys fewer than the shelf line
+	// and none of them a promise the body cannot keep.
+	memoryBareHint = "esc"
 )
 
 // The words this place's own doors are spelled in, once.
@@ -847,6 +852,16 @@ func (placeMemory) note(a *app, width int) []string {
 func (placeMemory) hint(a *app) string {
 	if a.mem.edit != nil {
 		return memoryEditHint
+	}
+	// A PAGE WITH NO SHELVES ON IT PROMISES NO SHELF KEYS. The fall-through at
+	// the foot of this function is [memoryShelfHint], which is right whenever
+	// there are shelves and was drawn over a bare page too — so a machine that
+	// has remembered nothing read `enter open a shelf · type to filter · alt+s
+	// walk the shelves` under a body with nothing to open, nothing to filter and
+	// no shelves to walk. What is true there is the way out and the sentence the
+	// body already gave ([memoryEmptyWord]).
+	if a.mem.reading.bare() {
+		return memoryBareHint
 	}
 	if _, ok := a.mem.shelfUnder(); ok {
 		return memoryShelfHint

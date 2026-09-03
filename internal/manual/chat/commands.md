@@ -26,7 +26,13 @@ Moving in it:
 - esc closes the list and seals that word: it does not come back on the next letter you
   type. Start another word and it opens again. The text you typed stays.
 
-Eight rows show at once and the list scrolls under the cursor. At phone width fewer rows
+**The list shows as many rows as the frame can hold, and never fewer than eight.** Eight
+used to be a ceiling as well as a floor, so a fifty-row terminal drew eight commands under
+thirty-six blank rows and both `/help` and `/manual` were below the fold. It is only the
+floor now: on a tall terminal the whole table is on the screen at once, on a short one the
+list is clamped so the status line and a row of conversation survive, and the list scrolls
+under the cursor either way. **Where rows are still hidden the list says how many**, in the
+same `▸ 25 more` line the search place and the spend place draw. At phone width fewer rows
 show, each with its description on its own line. Rows highlight under the mouse pointer,
 but a click does not run a row — this list has no mouse commit.
 
@@ -208,7 +214,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
-| `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
+| `/search` | — | — | opens the search place — everything said on this machine (also `alt+6`) |
+| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+5`) |
+| `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
@@ -231,12 +239,24 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 `/help` (or `/?`) prints the whole command table into the conversation, name column
 aligned, each row with its alias tail. The first line is the product's own name,
-`openaf` — the one place on this surface it names itself.
+`aforge` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
 `ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
+
+**It also names the way into the seven places**, which it did not for a long while — three
+rows, directly under the `tab` row:
+
+```
+alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+.          on a place: what else is here · every key that place has, drawn
+               on a place, tab is the next place · esc comes back
+```
+
+On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the moment of
+drawing, and the words are the same.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
 has a file**. Over `--host` the path is written `machine:/path`.
@@ -455,7 +475,7 @@ exists — `/export` never overwrites.
 
 `/export` writes markdown meant to be read by a person who was not there.
 
-The document opens with `# <session name>`. Under it, `## you` and `## openaf` headings
+The document opens with `# <session name>`. Under it, `## you` and `## aforge` headings
 appear only when the speaker changes, so a run of turns from one side is not chopped up.
 
 Your text and the model's text are kept verbatim as markdown.
@@ -609,10 +629,27 @@ machine.
 
 Over `--host` the `place` and `file` values are written in full as `machine:/path`.
 
+## /search and /spend — the typed doors onto those two places
+
+`/search` opens the **search place** — everything that has been said on this machine,
+found by the words you remember of it. It is the same place `alt+6` opens and the same
+place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
+searches.
+
+`/spend` opens the **spend place** — what this machine has cost, by the day, by the model
+and by what it was for. It is the same place `alt+5` opens.
+
+**`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
+questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
+spend place is *the whole machine* — every window, every task and every standing run,
+including a session opened from another machine over `--host` whose calls are still made
+here. The word `spend` belongs to the bigger reading, so the one guess most people make
+now lands on the place. `/cost` keeps `/usage` and `/tokens`.
+
 ## /cost — what this conversation has spent
 
-`/cost` (or `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and
-on what, into the conversation.
+`/cost` (or `/usage`, `/tokens`) prints what this conversation has spent, and
+on what, into the conversation. For the whole machine's ledger, ask `/spend`.
 
 It draws up to seven aligned lines:
 
@@ -1704,3 +1741,42 @@ aforge does not do that" is a fact about aforge, not a broken command.
 
 The manual describes **this** conversation surface. It has no pages about anything else,
 and it will not answer out of what the model remembers about other programs.
+
+## aforge --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
+
+`aforge --help` prints every command, what each is for, and the environment table under
+them. **Any single command answers for itself the same way:**
+
+```
+aforge do --help
+aforge logs --help
+aforge exec --help
+```
+
+Each one prints that command's own line — the shape it is called with, and what its exit
+codes mean where it has any — then its flags, one to a line, with what each does and what
+it defaults to. It goes to **standard output** and the command **exits 0**: asking for help
+is not a failure, so `aforge do --help` inside a Makefile or a health check reads as a
+command that worked. `-h` says the same thing.
+
+A flag that does not exist is the other answer: the refusal said once, then that same usage,
+both on the **error stream**, and a non-zero exit.
+
+Flags are written with two dashes for a word and one for a single letter — `--json`,
+`--timeout`, `-w`, `-o`. Either spelling is accepted whichever way you type it.
+
+## A command name I typed wrong, and a command I gave nothing to
+
+A word aforge does not have is answered with the nearest one it does:
+
+```
+there is no `aforge lgos`. did you mean `aforge logs`?
+run `aforge --help` for every command
+```
+
+Two lines, not the whole book — the command list and the environment table are behind
+`aforge --help`, where you can read them without the answer scrolling off the top.
+
+`aforge do` and `aforge plan` with nothing after them say `no goal given` and print **that
+command's** line, not every command's. Pipe the task in instead if it is long:
+`echo "the task" | aforge do`.

@@ -1273,8 +1273,10 @@ arrives.
 
 ## What has this conversation cost me — /cost, how much this chat has cost, and why the same conversation suddenly costs more
 
-`/cost` (also `/usage`, `/tokens`, `/spend`) prints what this conversation has spent, and on
-what, into the conversation. Up to eight aligned lines:
+`/cost` (also `/usage`, `/tokens`) prints what this conversation has spent, and on
+what, into the conversation. `/spend` is a different command and opens the **spend place**,
+which is the whole machine's ledger rather than this conversation's — it was an alias of
+`/cost` until the polish wave and is not one now. Up to eight aligned lines:
 
 | Line | What it is |
 |---|---|
