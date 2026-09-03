@@ -394,7 +394,7 @@ whole; it never has to strip anything out of it.
 | Field | Contract |
 | --- | --- |
 | `text` | The deliverable, whole. Empty is possible and is what exit `6` is about. |
-| `stop` | Why the loop ended, in the executor's own vocabulary: `done`, `budget`, `turn-cap`, `deadline`, `error`, `empty`, `overrun`, `promote`, `paused`, `cancelled`. The exit code is the verdict; this is the reason. |
+| `stop` | Why the loop ended, in the executor's own vocabulary: `done`, `budget`, `turn-cap`, `deadline`, `error`, `empty`, `overrun`, `promote`, `paused`, `cancelled`, `stuck-timeout`. The exit code is the verdict; this is the reason. |
 | `usage` | Calls made and tokens moved, with `cached_tokens` counting prompt tokens served from the provider's cache and `cost` in dollars. Always present. |
 | `artifacts` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. |
 | `turns` | Iterations of the tool loop. |
@@ -416,7 +416,7 @@ caller can keep stdout for the prose and still get the machine record.
 
 `5` is the catch-all, and that is deliberate: **every stop reason without a code
 of its own falls through to it** — `error`, `empty`, `overrun`, `promote`,
-`paused`, `cancelled`, and any reason added later. A run that failed outright
+`paused`, `cancelled`, `stuck-timeout`, and any reason added later. A run that failed outright
 exits `5` whatever `stop` says, with the provider's own sentence on stderr.
 
 Two rows are easy to confuse and are not the same fact. Exit `6` is
