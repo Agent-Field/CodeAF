@@ -105,6 +105,20 @@ const (
 	custodyHeldWorkDecision = "dropped:work-already-out"
 )
 
+// custodyWriteSeam is the door a turn that has written past its allowance takes
+// (internal/session's checkpointSeamWrite), and it is the door the incident took.
+// Every ending now writes one row naming its seam; a row with no seam on it was
+// written before that existed. Respelled for custodyRemainderHead's reason.
+const custodyWriteSeam = "write"
+
+// custodyCeilingSeam and custodyMarkSeam are the other two doors, here so that a
+// failure can say which one a run actually took rather than only that it was not
+// the expected one.
+const (
+	custodyCeilingSeam = "ceiling"
+	custodyMarkSeam    = "mark"
+)
+
 // TestNoWorkerIsBriefedToOwnThePiecesThisConversationIsHolding is the field
 // replication of #567.
 //
@@ -374,6 +388,45 @@ func (r *custodyRun) assertCustody(t *testing.T) {
 			"but the transcript the next turn opens on carries no %q block, so nobody will ever do it",
 			shorten(kept, 200), custodyRemainderHead)
 	}
+
+	// ── AND HOWEVER THE TURN ENDED, THE FILE HAS ONE ROW SAYING SO ──
+	//
+	// THIS IS THE THING THE FIRST RUNS OF THIS TEST COULD NOT SEE. The ending row
+	// used to be written by the CEILING alone, and this incident goes through the
+	// WRITE SEAM — so every run finished with an empty list of them while the
+	// refusal had plainly happened, and the only evidence left was the ladder. The
+	// row now belongs to the ending rather than to the clock that noticed it.
+	//
+	// The turn either moved or declined and both write one; what is asserted is
+	// that SOMETHING was written and that it names the door it came through, since
+	// a row that cannot say which seam took it is a row from before this existed.
+	t.Logf("CUSTODY endings: %+v", r.ceilings)
+	if len(r.ceilings) == 0 {
+		t.Errorf("the turn ended — %d tasks admitted, declined=%v — and the file holds no row "+
+			"saying how, so nothing outside this test could ever tell the two apart",
+			len(admitted), declined)
+	}
+	for _, ending := range r.ceilings {
+		if ending.Seam == "" {
+			t.Errorf("an ending row names no seam: %+v", ending)
+		}
+	}
+	// AND THE DECLINE CARRIES ITS REASON ON THE SAME LINE AS ITS WORD, because an
+	// autopsy greps the decision and should not then have to go hunting through a
+	// ladder that may not even have a rung to blame.
+	if row, found := r.endingForHeldWork(); found {
+		if row.Seam != custodyWriteSeam {
+			t.Errorf("the decline was taken at seam %q; this incident goes through %q "+
+				"(the other two doors are %q and %q)",
+				row.Seam, custodyWriteSeam, custodyMarkSeam, custodyCeilingSeam)
+		}
+		if !strings.Contains(row.Reason, custodyHeldWorkReason) {
+			t.Errorf("the decline gives its reason as %q, want %q", row.Reason, custodyHeldWorkReason)
+		}
+		if row.TaskID != 0 {
+			t.Errorf("a row that started nothing names task %d", row.TaskID)
+		}
+	}
 }
 
 // ── readers ─────────────────────────────────────────────────────────────────
@@ -436,12 +489,19 @@ func (r *custodyRun) blankedForHeldWork() bool {
 // declinedForHeldWork reports the ceiling that started nothing at all because
 // everything it could have carried was about work already out.
 func (r *custodyRun) declinedForHeldWork() bool {
+	_, found := r.endingForHeldWork()
+	return found
+}
+
+// endingForHeldWork is that row itself, for the assertions that read the seam it
+// was taken at and the reason it gives.
+func (r *custodyRun) endingForHeldWork() (custodyCeiling, bool) {
 	for _, ceiling := range r.ceilings {
 		if ceiling.Decision == custodyHeldWorkDecision {
-			return true
+			return ceiling, true
 		}
 	}
-	return false
+	return custodyCeiling{}, false
 }
 
 func (r *custodyRun) pieceLog() string {
@@ -747,7 +807,9 @@ type (
 		Used    bool   `json:"used"`
 	}
 	custodyCeiling struct {
+		Seam     string `json:"seam"`
 		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
 		TaskID   uint64 `json:"taskId"`
 		Carry    string `json:"carry"`
 	}

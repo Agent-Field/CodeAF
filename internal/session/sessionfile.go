@@ -571,9 +571,33 @@ type journalMark struct {
 // on the person's bare sentence — and until this field the file could not tell
 // them apart. The [journalCarry] lines directly above say WHY it was that rung;
 // this is the one-word answer a bench can count.
+//
+// ── AND SEAM IS WHICH DOOR TOOK THE ENDING ──
+//
+// THE NAME OF THIS RECORD IS OLDER THAN WHAT IT RECORDS. It was the CEILING's
+// line, because the ceiling was the only door that wrote one — so a handover the
+// MARK road or the WRITE SEAM declined left no decision word in the file at all,
+// and the real-model runs behind #567 all ended with an empty list of these while
+// the refusal had plainly happened. The row now belongs to the ending rather than
+// to the clock that noticed, and Seam says which of the three it was: `mark` for a
+// drawing with parts in it, `write` for a turn past its write allowance, `ceiling`
+// for the last rung of the ladder.
+//
+// A ROW WITH NO SEAM ON IT WAS WRITTEN BEFORE THIS EXISTED, and it is a ceiling by
+// construction, because the ceiling was the only writer. An old file still reads.
+//
+// Reason is the reason WHERE THERE IS ONE and is empty everywhere else, which is
+// the emptiness law and is most of the time: `dropped:no-brief` has the whole
+// [journalCarry] ladder above it saying why each rung produced nothing, and
+// `dropped:nothing-left` has no reason to give — two minds agreed the work was
+// done. `dropped:work-already-out` carries one, because the decision word alone
+// does not say what was already out, and an autopsy grepping the word should get
+// the why in the same line (checkpoint.go's carryHeldWork).
 type journalCeiling struct {
 	Rounds   int    `json:"rounds,omitempty"`
+	Seam     string `json:"seam,omitempty"`
 	Decision string `json:"decision,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 	TaskID   uint64 `json:"taskId,omitempty"`
 	Carry    string `json:"carry,omitempty"`
 }

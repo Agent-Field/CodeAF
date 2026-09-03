@@ -557,7 +557,85 @@ func TestAHandoverStartsNothingWhenEveryRungIsAboutWorkAlreadyOut(t *testing.T) 
 			if !strings.Contains(last.Kept, custodyHeldPart) {
 				t.Errorf("the file recorded what stayed as %q, want the coordination half", last.Kept)
 			}
+
+			// AND THE ENDING HAS A ROW OF ITS OWN, AT THE SEAM THAT TOOK IT.
+			//
+			// This road is the WRITE SEAM, which used to write no ending row at all —
+			// only the ceiling did — so a refusal that plainly happened left no
+			// decision word anywhere in the file. One row, one ending, and the reason
+			// on the same line as the word, because an autopsy greps the word.
+			ceilings := journaledCeilings(t, path)
+			if len(ceilings) != 1 {
+				t.Fatalf("the ending wrote %d rows, want exactly one: %+v", len(ceilings), ceilings)
+			}
+			ending := ceilings[0]
+			if ending.Decision != checkpointCeilingHeldWork {
+				t.Errorf("the ending reads %q, want %q", ending.Decision, checkpointCeilingHeldWork)
+			}
+			if ending.Seam != checkpointSeamWrite {
+				t.Errorf("the ending was taken at seam %q, want %q", ending.Seam, checkpointSeamWrite)
+			}
+			if ending.Reason != carryHeldWork {
+				t.Errorf("the ending gives its reason as %q, want %q", ending.Reason, carryHeldWork)
+			}
+			// AND NOTHING WAS ADMITTED, so the row names no node and no rung: the
+			// emptiness law, on the line a person's autopsy reads.
+			if ending.TaskID != 0 || ending.Carry != "" {
+				t.Errorf("a row that started nothing names task %d and rung %q",
+					ending.TaskID, ending.Carry)
+			}
 		})
+	}
+}
+
+// AND A HANDOVER THAT MOVED WRITES ITS ROW AT THE SAME SEAM.
+//
+// The refusal is not a special case: EVERY ending this function has writes one
+// row, at the door that took it. This is the other arm — the same write seam, a
+// conversation holding nothing, a task actually admitted — and before the row
+// moved out of the ceiling it wrote nothing at all here, which is why a real run
+// could refuse and convert and leave the file looking identical either way.
+func TestEveryEndingWritesOneRowAtTheSeamThatTookIt(t *testing.T) {
+	const asked = "tidy up the local edit"
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: writingSteps(12, custodyMixedSketch, custodyDraft)}
+	agent := custodyAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	stubbedGraph(agent, custodyRunner(t))
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 1 {
+		t.Fatalf("the ending wrote %d rows, want exactly one: %+v", len(ceilings), ceilings)
+	}
+	ending := ceilings[0]
+	if ending.Decision != checkpointCeilingMoved {
+		t.Fatalf("the ending reads %q, want %q", ending.Decision, checkpointCeilingMoved)
+	}
+	if ending.Seam != checkpointSeamWrite {
+		t.Errorf("the ending was taken at seam %q, want %q", ending.Seam, checkpointSeamWrite)
+	}
+	if ending.TaskID == 0 {
+		t.Error("a row that says the work moved names no node")
+	}
+	// AND A MOVE HAS NO REASON TO GIVE. The ladder's own lines say which rung
+	// supplied the brief and why the ones above it did not.
+	if ending.Reason != "" {
+		t.Errorf("a move gave a reason: %q", ending.Reason)
+	}
+	if ending.Carry == "" {
+		t.Error("a row that says the work moved names no rung of the ladder")
+	}
+	// AND THE THREE SEAMS ARE THREE WORDS, because a door spelled the same as
+	// another door is a door nothing can tell apart afterwards.
+	if checkpointSeamMark == checkpointSeamWrite || checkpointSeamWrite == checkpointSeamCeiling ||
+		checkpointSeamMark == checkpointSeamCeiling {
+		t.Error("two of the three seams are spelled alike")
 	}
 }
 

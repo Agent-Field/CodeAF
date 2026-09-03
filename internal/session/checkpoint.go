@@ -1613,6 +1613,23 @@ const (
 	checkpointCeilingHeldWork = "dropped:work-already-out"
 )
 
+// THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
+//
+// The row used to be written by the CEILING alone, which was true to its name and
+// false to the file: a handover the mark road or the write seam declined wrote no
+// decision word anywhere, and the real-model runs behind #567 all ended with no
+// ending row at all while the refusal had plainly happened. So the row is written
+// where the ending is DECIDED ([Agent.handOverRunningTurn]) and not by the clock
+// that noticed, and these say which of the three doors it came through.
+//
+// A ROW WITH NO SEAM PREDATES THIS and is a ceiling by construction, because the
+// ceiling was the only writer (sessionfile.go's [journalCeiling]).
+const (
+	checkpointSeamMark    = "mark"
+	checkpointSeamWrite   = "write"
+	checkpointSeamCeiling = "ceiling"
+)
+
 // ── the carry ladder ────────────────────────────────────────────────────────
 //
 // THE LAW: A FALLBACK THAT CHANGES WHAT A WORKER IS STARTED ON IS AN EVENT, NOT
@@ -2288,7 +2305,7 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 		}
 		a.journalMarkRead(read, mark, rounds, checkpointDecisionSplit)
 		return a.handOverRunningTurn(ctx, hub, turn, started, model,
-			checkpointSplitNote, meter.raced, read, taken).moved
+			checkpointSplitNote, checkpointSeamMark, rounds, meter.raced, read, taken).moved
 	}
 	// THE CEILING'S OWN READ IS JOURNALED AS A CARRY-ON, because that is what it
 	// did: it decided nothing, and the ceiling line written a moment later is
@@ -2970,11 +2987,12 @@ func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 // round it fired on and what it decided (sessionfile.go's [journalCeiling]).
 func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) bool {
 	verdict.Wide = true
-	over := a.handOverRunningTurn(ctx, hub, turn, started, model, checkpointCeilingNote, verdict, read, taken)
-	a.file.appendCeiling(journalCeiling{
-		Rounds: rounds, Decision: over.decision, TaskID: over.taskID, Carry: over.carry,
-	})
-	return over.moved
+	// AND THE ROW IS NOT WRITTEN HERE ANY MORE. It is written by the function
+	// below, on every way out it has, because the ending is decided there and the
+	// two other doors into it were leaving the file silent — see the seam
+	// constants above. This road's remaining job on that line is nothing.
+	return a.handOverRunningTurn(ctx, hub, turn, started, model,
+		checkpointCeilingNote, checkpointSeamCeiling, rounds, verdict, read, taken).moved
 }
 
 // handOverRunningTurn ENDS A TURN THAT IS STILL RUNNING and moves what is left
@@ -3040,7 +3058,30 @@ func (a *Agent) checkpointCeiling(ctx context.Context, hub *eventHub, turn *Usag
 // written before the turn began — the race's own, from the request alone — would
 // be the one thing on the table that knows least, which is why it is dropped
 // where the other two fields of that verdict are kept.
-func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line string, verdict routeVerdict, read checkpointRead, taken *Decision) checkpointHandover {
+func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model, line, seam string, rounds int, verdict routeVerdict, read checkpointRead, taken *Decision) (over checkpointHandover) {
+	// ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
+	//
+	// IT IS A DEFER BECAUSE THERE ARE SEVERAL WAYS OUT of this function and the
+	// file has to hold exactly one row for whichever it was — moved, the three
+	// declines, and the two endings a goal owner takes below. A row written at
+	// each `return` instead would be one law copied at every exit, and the way
+	// that fails is silently: somebody adds a way out and the file simply does not
+	// mention it, which is precisely how the mark road and the write seam came to
+	// write nothing at all (sessionfile.go's [journalCeiling]).
+	//
+	// AND IT IS REGISTERED ABOVE THE GOAL OWNER'S OWN READING, so a run stopped or
+	// finished at this seam is written down as an ending like any other. The
+	// steward's `decided` row says what it decided; this one says what became of
+	// the turn (#513, #567).
+	//
+	// AND THE CEILING NO LONGER WRITES ITS OWN ([Agent.checkpointCeiling]), so
+	// there is one writer and no road can produce two rows for one ending.
+	defer func() {
+		a.file.appendCeiling(journalCeiling{
+			Rounds: rounds, Seam: seam, Decision: over.decision,
+			Reason: over.reason, TaskID: over.taskID, Carry: over.carry,
+		})
+	}()
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the
 	// name, the phase clock and the two model calls below, because the whole
@@ -3279,7 +3320,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	bareAskOnADividedDrawing := carried == carryRungAsk && strings.TrimSpace(read.ownRemainder) != ""
 	if saysHeldWork || bareAskOnADividedDrawing {
 		hub.send(Event{Kind: EventNotice, Text: checkpointHeldWholeNote})
-		return checkpointHandover{decision: checkpointCeilingHeldWork}
+		// AND THE ROW SAYS WHY. `dropped:work-already-out` names the ending; the
+		// rung's own word for it names what was already out, and the two belong on
+		// one line so that a grep for the decision does not send somebody hunting
+		// for the reason in a ladder that may not even have one.
+		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
 	verdict.Work = true
 	verdict.Goal = sketch.head(goal)
@@ -3397,6 +3442,12 @@ type checkpointHandover struct {
 	// that both read `moved` are not the same event when one of them carried the
 	// person's bare sentence (see the carry ladder above).
 	carry string
+	// reason is why, WHERE THE DECISION WORD DOES NOT ALREADY SAY IT. It is empty
+	// on nearly every ending — the ladder's own lines say why a brief could not be
+	// written, and a turn two minds agreed was finished has no reason to give — and
+	// carries one where an autopsy grepping the word would otherwise be left
+	// looking (sessionfile.go's [journalCeiling]).
+	reason string
 }
 
 // endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the
