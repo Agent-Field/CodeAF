@@ -343,7 +343,7 @@ clear by hand.
 the second is refused its writes and told which task to wait for. When the first lands, the
 second gets the directory.
 
-## What a finished task brings home, and what it leaves behind
+## What a finished task brings home, and what it leaves behind — where does the finished work end up
 
 A task lands **the files it wrote** — every path it handed to its `write` or `edit` hand,
 plus anything its own report names on a `files:` line. Nothing else is committed and
