@@ -59,8 +59,6 @@ const (
 	// hoverFold is the "N earlier tool calls" line, which belongs to a turn
 	// rather than to an entry.
 	hoverFold
-	// hoverCaption is one step heading, keyed by its start in this page's list.
-	hoverCaption
 	// hoverWorkFold is the "▸ worked …" chip, which belongs to a chip's own key
 	// (workfold.go's [workfold.key]) rather than to a turn.
 	//
@@ -468,8 +466,6 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{}
 		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
-		case r.hit == hitCaption:
-			return hoverAt{kind: hoverCaption, turn: r.turn}
 		case r.hit == hitWorkFold:
 			return hoverAt{kind: hoverWorkFold, turn: r.turn}
 		case r.hit == hitBrief:

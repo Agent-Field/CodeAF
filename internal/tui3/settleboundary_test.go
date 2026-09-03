@@ -219,11 +219,7 @@ func TestNarrationKeepsItsPlainVoiceUnderTheFix(t *testing.T) {
 		t.Fatal("the answer the turn ended on was demoted")
 	}
 	got := a.assistantRows(1, &a.entries[1], a.width)
-	text := a.entries[1].text
-	if a.entries[1].capCut > 0 && a.entries[1].capCut <= len(text) {
-		text = text[a.entries[1].capCut:]
-	}
-	want := a.workingProse(text, a.width)
+	want := a.workingProse(a.entries[1].text, a.width)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("narration is not drawn as narration:\n got %q\nwant %q", got, want)
 	}

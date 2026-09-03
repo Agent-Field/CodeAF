@@ -344,7 +344,7 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 	Register(Role("commit"), TierLow)
 
 	want := []Role{
-		Role("advisor"), RoleCaption, Role("commit"), RoleCompaction,
+		Role("advisor"), Role("commit"), RoleCompaction,
 		RoleDesigner, RolePlanner, RoleReflex, RoleRouter, RoleTitle, RoleWorker,
 	}
 	for range 5 { // map order varies per iteration; the answer must not
@@ -365,7 +365,6 @@ func TestDefaultAssignment(t *testing.T) {
 	// balance: one careful call deciding what happens, many cheap ones doing it.
 	for role, want := range map[Role]Tier{
 		RoleTitle:      TierLow,
-		RoleCaption:    TierLow,
 		RoleCompaction: TierHigh,
 		// The two masterminds. They were on the high tier beside the compaction
 		// summary, which made one figure answer two different bills.

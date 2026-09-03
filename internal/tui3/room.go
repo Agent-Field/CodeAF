@@ -234,7 +234,6 @@ type taskRoom struct {
 	// (render.go's [deck]).
 	unfolded map[int]bool
 	workOpen map[int]bool
-	capOpen  map[int]bool
 	lane     <-chan session.Event
 	// stop LEAVES that lane, and is nil for an agent that offers no way out of
 	// one. A room a person walked out of while the conversation goes on running
@@ -314,7 +313,7 @@ func (r *taskRoom) deck() deck {
 	// each turn, the session's clock does not run over a node's turns, and a
 	// folded cluster keeps a screenful of calls instead of three.
 	return deck{
-		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, capOpen: r.capOpen,
+		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen,
 		lens: overseerLens, runningTurn: running,
 	}
 }
@@ -454,7 +453,6 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 	r := &taskRoom{
 		id: id, title: title, gen: a.roomGen,
 		unfolded: map[int]bool{},
-		capOpen:  map[int]bool{},
 		stick:    true,
 		dirty:    true,
 	}
@@ -2951,15 +2949,6 @@ func (a *app) roomFoldDoor(r row) func() {
 	switch r.hit {
 	case hitFold:
 		return func() { a.unfold(r.turn) }
-	case hitCaption:
-		if a.room == nil || r.entry < 0 || r.entry >= len(a.room.entries) {
-			return nil
-		}
-		turn := a.room.entries[r.entry].turn
-		if a.room.unfolded[turn] {
-			return nil
-		}
-		return func() { a.unfold(turn) }
 	case hitWorkFold:
 		// A CHIP ALREADY SHOWING ITS WORK IS NOT A DOOR — whether the reader
 		// opened it or `ui.work = open` did (render.go's [app.deckRows]).

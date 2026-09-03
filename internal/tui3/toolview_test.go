@@ -566,8 +566,6 @@ func TestTheRailTeesThenClosesAndTheExpansionContinuesIt(t *testing.T) {
 		call("read", `{"path":"b.go"}`, "two"),
 		call("read", `{"path":"c.go"}`, "three"),
 	)
-	overlapToolClocks(a)
-	openFirstCaption(t, a)
 	list := plainRows(a)
 	var marked []string
 	for _, r := range list {

@@ -73,22 +73,14 @@ func TestAFinishedRoomFoldsSettledPhasesAndLeavesTheProseStanding(t *testing.T) 
 	page := roomText(a)
 
 	for _, want := range []string{
+		"Reading the site first.",
+		"I have the aesthetic. Generating both.",
 		"Both rendered at the wrong size.",
 		"Here is the honest state of the deliverables.",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("a fold hid what the node SAID (%q):\n%s", want, page)
 		}
-	}
-	// Narration that tools followed is now the caption under each chip — open
-	// the newest chip to read it back as the outline.
-	if !a.toggleLatestWorkfold() {
-		t.Fatal("no chip to open for the narration check")
-	}
-	opened := roomText(a)
-	if !strings.Contains(opened, "Reading the site first") &&
-		!strings.Contains(opened, "I have the aesthetic") {
-		t.Fatalf("opened chips lost their narration captions:\n%s", opened)
 	}
 	if strings.Contains(page, "index.html") || strings.Contains(page, "generate_image") {
 		t.Fatalf("the settled calls are still on the page:\n%s", page)
@@ -136,8 +128,8 @@ func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
 	if !strings.Contains(page, "▸ worked") {
 		t.Fatalf("a running node's settled phases did not fold:\n%s", page)
 	}
-	if !strings.Contains(page, "Still working.") {
-		t.Fatalf("the room lost its live edge:\n%s", page)
+	if !strings.Contains(page, "Reading the site first.") || !strings.Contains(page, "Still working.") {
+		t.Fatalf("the room lost either its history or its live edge:\n%s", page)
 	}
 	// THE LIVE CALL IS ON THE PAGE. It arrived after the last settled paragraph,
 	// so no chip may cover it.
@@ -286,7 +278,6 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 	if !a.toggleLatestWorkfold() {
 		t.Fatal("ctrl+e found no chip to open")
 	}
-	openFirstCaption(t, a)
 	if page := roomText(a); !strings.Contains(page, "generate_image") {
 		t.Fatalf("ctrl+e did not open the newest chip:\n%s", page)
 	}
@@ -296,7 +287,6 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 	b := openWorked(t)
 	b.room.offset, b.room.stick = 0, false
 	b.roomScroll(-1)
-	openFirstCaption(t, b)
 	if page := roomText(b); !strings.Contains(page, "index.html") {
 		t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
 	}
@@ -315,22 +305,12 @@ func TestTheWorkSettingOpensARoomsChipsToo(t *testing.T) {
 		a.touch()
 		drive(t, a, roomClosedMsg{gen: a.room.gen})
 		page := roomText(a)
-		if mode == config.WorkFold {
-			if strings.Contains(page, "generate_image") {
-				t.Fatalf("ui.work=%s drew the wrong page:\n%s", mode, page)
-			}
-		} else {
-			// WorkOpen opens chips onto the caption outline; tools stay one
-			// expand further.
-			openFirstCaption(t, a)
-			page = roomText(a)
-			if !strings.Contains(page, "generate_image") && !strings.Contains(page, "index.html") {
-				t.Fatalf("ui.work=%s drew no work under open chips:\n%s", mode, page)
-			}
+		if hidden := !strings.Contains(page, "generate_image"); hidden != (mode == config.WorkFold) {
+			t.Fatalf("ui.work=%s drew the wrong page:\n%s", mode, page)
 		}
 		// THE CHIP STAYS EITHER WAY. It is the door and the receipt, and a page
 		// that removed it when the work was open would leave no way back.
-		if !strings.Contains(page, "▸ worked") && !strings.Contains(page, "▾ worked") {
+		if !strings.Contains(page, "▸ worked") {
 			t.Fatalf("ui.work=%s lost the chip:\n%s", mode, page)
 		}
 		a.closeRoom()

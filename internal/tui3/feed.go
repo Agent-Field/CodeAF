@@ -284,22 +284,6 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 	case session.EventToolFailed:
 		f.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
 
-	case session.EventCaption:
-		// The narrator speaks about the open step rather than minting a transcript
-		// block. Keeping the override on that step's newest call lets both pages
-		// derive the same caption from the same entry list.
-		for i := len(f.entries) - 1; i >= 0; i-- {
-			e := &f.entries[i]
-			if e.turn != f.turn {
-				break
-			}
-			if e.kind == entryTool {
-				e.caption = strings.TrimSpace(ev.Text)
-				f.touch()
-				break
-			}
-		}
-
 	case session.EventCompacting:
 		f.openCompaction(firstNonEmpty(ev.Hint, "compacting"))
 
