@@ -41,3 +41,10 @@ harness round loop under internal/ …"*. Turn 1 is therefore
 
 The contract is composed by the planner at runtime and is not in the tree; this is the
 only record of it.
+
+## Do not delete
+
+`/home/santosh/.aforge/runs/aforge-do-1923110067` is **pinned** at the request of
+aforge-v2-10, which is verifying the refusal defect against it before filing. It stays
+until that session says the issues are filed. The three files in this directory are the
+durable copies, so the store can be reaped afterwards without losing the evidence.
