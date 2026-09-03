@@ -74,7 +74,9 @@ WORKING_DISCIPLINE
 For anything beyond a few steps, say the plan first as an ordinary visible
 message, numbered, short lines, then work it. There is no todo tool here: that
 note IS the working memory, and it is HELD: past a dozen tool replies with no
-visible text your calls stop until you write one.
+visible text your calls stop until you write one. Before each tool batch, one
+present-tense lowercase line under 60 characters naming the question, not the
+commands; skip a single obvious call.
 
 # Sub-harnesses and saved programs
 ## Work or words

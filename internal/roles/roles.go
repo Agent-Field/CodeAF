@@ -189,6 +189,14 @@ const (
 	// name costs a glance at a column and nothing downstream is decided from it.
 	// Registered from internal/session/jobname.go, which owns the call.
 	RoleJobName Role = "jobname"
+	// RoleCaption writes the line over work that has gone quiet: a batch
+	// that has run past captionDwell with nothing new on screen, and a
+	// person watching a spinner with no way to tell a wedged call from a
+	// slow one. LOW, for the title's reason — a wrong caption costs a
+	// glance, the rows beneath it are the truth, and nothing downstream is
+	// decided from it. Registered from internal/session/caption.go, which
+	// owns the call.
+	RoleCaption Role = "caption"
 	// RoleShaper turns the words somebody typed after /task into the brief the
 	// worker is actually handed: it reads one request and writes the paragraphs
 	// and the done-condition around it. It sits HIGH for the auditor's reason
@@ -325,6 +333,7 @@ func known(tier Tier) bool {
 // is three unrelated lines nobody reads together.
 var DefaultAssignment = map[Role]Tier{
 	RoleTitle:      TierLow,
+	RoleCaption:    TierLow,
 	RoleCompaction: TierHigh,
 	RolePlanner:    TierMastermind,
 	RoleDesigner:   TierMastermind,
@@ -396,6 +405,7 @@ var roleDescriptions = map[Role]string{
 	RoleShaper:        "the brief a task you started yourself is given",
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
+	RoleCaption:       "the line over work that has gone quiet",
 }
 
 var (

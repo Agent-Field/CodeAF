@@ -1004,11 +1004,15 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 	runTurn(t, a, agent, "read them all")
 
 	list := plainRows(a)
-	if !strings.Contains(strings.Join(list, "\n"), "↳ 2 earlier tool calls · ctrl+o") {
-		t.Fatalf("the fold line is missing:\n%s", strings.Join(list, "\n"))
+	page := strings.Join(list, "\n")
+	if !strings.Contains(page, "reading 5 files") {
+		t.Fatalf("the caption is missing:\n%s", page)
+	}
+	if strings.Contains(page, "earlier tool calls") {
+		t.Fatalf("the old fold line survived under a caption:\n%s", page)
 	}
 	if n := countTools(a); n != toolWindow {
-		t.Fatalf("%d tool lines are visible, want %d:\n%s", n, toolWindow, strings.Join(list, "\n"))
+		t.Fatalf("%d tool lines are visible, want %d:\n%s", n, toolWindow, page)
 	}
 	if strings.Contains(strings.Join(list, "\n"), "a.go") {
 		t.Fatalf("a folded call is still on screen:\n%s", strings.Join(list, "\n"))

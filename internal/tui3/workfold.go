@@ -442,6 +442,15 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 	if word := tookWord(f.thought); word != "" {
 		parts = append(parts, "thought "+word)
 	}
+	steps := 0
+	for _, c := range d.captions {
+		if c.start >= f.start && c.start < f.answer {
+			steps++
+		}
+	}
+	if steps > 1 {
+		parts = append(parts, itoa(steps)+" steps")
+	}
 	if f.tools > 0 {
 		// ONE SPELLING OF THIS NUMBER, and it is timestamps.go's
 		// ([toolCallWord]) — the receipt six rows under this chip counts the same
@@ -474,7 +483,7 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 	if r.text == "" {
 		return false
 	}
-	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitTool || r.hit == hitMore {
+	if r.hit == hitWorkFold || r.hit == hitFold || r.hit == hitCaption || r.hit == hitTool || r.hit == hitMore {
 		return true
 	}
 	return workEntry(es, folds, r.entry)
@@ -540,4 +549,48 @@ func (a *app) setWorkOpen(d deck, key int, open bool) {
 		a.room.dirty = true
 	}
 	a.touch()
+}
+
+// toggleCap opens or closes the calls under one outline heading.
+func (a *app) toggleCap(key int) {
+	d := a.bodyDeck()
+	a.setCapOpen(d, key, !d.capOpen[key])
+}
+
+// setCapOpen writes caption expansion state onto the page whose list supplied
+// the key. A turn number from another page has no meaning here.
+func (a *app) setCapOpen(d deck, key int, open bool) {
+	if d.capOpen == nil {
+		d.capOpen = make(map[int]bool)
+		if a.room != nil {
+			a.room.capOpen = d.capOpen
+		} else {
+			a.capOpen = d.capOpen
+		}
+	}
+	d.capOpen[key] = open
+	if a.room != nil {
+		a.room.dirty = true
+	}
+	a.touch()
+}
+
+// toggleLatestCaption toggles the newest caption in the visible turn.
+func (a *app) toggleLatestCaption() bool {
+	d := a.bodyDeck()
+	folds := a.deckFolds(d)
+	stampHierarchy(d.entries, folds)
+	captions := deriveCaptions(d.entries, d.runningTurn)
+	turn := a.bodyTurn()
+	key, found := 0, false
+	for _, c := range captions {
+		if c.start < len(d.entries) && d.entries[c.start].turn == turn {
+			key, found = c.start, true
+		}
+	}
+	if !found {
+		return false
+	}
+	a.setCapOpen(d, key, !d.capOpen[key])
+	return true
 }

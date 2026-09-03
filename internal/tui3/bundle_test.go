@@ -4538,7 +4538,7 @@ func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
 		}})
 	}
 	page := roomText(a)
-	if !strings.Contains(page, "earlier tool call") {
+	if !strings.Contains(page, "reading") && !strings.Contains(page, "earlier tool call") {
 		t.Fatalf("a screenful and one more of calls on a page did not fold:\n%s", page)
 	}
 	if strings.Contains(page, "read a.go") {

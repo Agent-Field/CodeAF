@@ -1,11 +1,11 @@
 # Reading a task's page — what is on this task page, what folds, and a page that looks stuck
 
 A task's page is the whole of what the task did, drawn with the conversation's own
-blocks: its instruction, its prose, its tool calls, and its report. It is built for the
-visit people actually make — a glance to see whether the work is going right, and a
-correction if it is not — so the settled work is folded and the machinery is one gesture
-away. This page is about what is folded, how to open it, and what to do when the page
-seems empty or stuck at the top.
+blocks: its instruction, its prose, its captions, its tool calls, and its report. It is
+built for the visit people actually make — a glance to see whether the work is going
+right, and a correction if it is not — so settled work opens first to an outline of
+caption sentences and the machinery is one expand further. This page is about what is
+folded, how to open it, and what to do when the page seems empty or stuck at the top.
 
 ## What is on this task page — everything a task's page shows, in order
 
@@ -17,7 +17,7 @@ been going, what it has cost and how many calls it has made.
 
 Nothing here is thrown away — what is folded is one keypress from open.
 
-## Why most of the work is hidden on a task page — the `▸ worked` chips, and `ctrl+e` to open them
+## Why most of the work is hidden on a task page — the `▸ worked` chips, the caption outline, and `ctrl+e`
 
 **This is the answer to "my task page is hiding most of the work", "where did the tool
 calls go", "why can I not see what the task did", and "what are these little grey lines".**
@@ -31,10 +31,10 @@ that stretch collapses to one dim chip:
 ```
 
 The figures are counted from the rows the chip covers — how long that stretch took, the
-thinking time when there was any, and the real call count. Nothing on a chip is a summary
-of the work; a summary can be wrong and a count cannot.
+thinking time when there was any, the number of captioned steps, and the real call count.
+The chip is still counted fact, not a summary.
 
-**Three ways to open one**, and any of them works on a page that has already finished:
+**Three ways open the outline**, and any of them works on a page that has already finished:
 
 - **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
 - **click** the chip.
@@ -45,6 +45,28 @@ of the work; a summary can be wrong and a count cannot.
   than stopping dead.
 
 An opened chip stays open, and the chip line stays with it so you can close it again.
+Under it is one caption per step: the short line the model said before that batch, the
+plain floor made from the calls when it said nothing, or — after a long silence — a line
+from the dwell narrator. Click a caption, select it and press `enter`, or use `ctrl+o` on
+the live caption to open the tool rows under that one step. The outline is the account;
+the rows are one expand further.
+
+**A caption can be wrong.** It is a heading about what the step is trying to settle, not
+proof of what ran or what came back. The tool rows beneath it are the truth. Open the
+caption whenever its words and the work appear to disagree.
+
+## What is that line — caption, why did it collapse, and how do I see what it did
+
+The one-line sentence over a batch is its **caption**. A collapsed stack of those
+sentences is the **outline**. It says what each step is trying to find out rather than
+repeating commands the rows already name. A live caption may shimmer while its rows are
+folded; opening it stops the shimmer and shows the running calls.
+
+Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
+Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
+caption** to see what it did. Press the same gesture again to fold those rows. A caption
+keeps the present-tense words it was born with after the work ends, so an old outline may
+say `checking the parser` rather than rewriting history to `checked the parser`.
 
 **Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
 in a task's page exactly as in the conversation.
@@ -56,9 +78,10 @@ before it, and so does the report at the end. So the page reads as the story of 
 with the machinery filed, rather than as a scroll of calls you have to read to find out
 what happened.
 
-**What the task is doing right now never folds.** Everything after the last paragraph it
-wrote is the live edge, and that keeps as many of the newest calls as your window is tall
-— you came to watch, so there is nothing hidden from you there.
+**What the task is doing right now keeps its caption standing.** Its tool rows may fold
+under that live line; `ctrl+o` or a click opens them. A long live run that has no caption
+yet still uses the older overflow fallback described below, so silence never removes the
+door to its calls.
 
 **These never fold either**, wherever they are on the page: your instruction, every
 correction you typed into the running work, every call that failed, and every question the
@@ -72,10 +95,10 @@ hiding the work between the question and its answer. A task's page folds **by ph
 instead, because a task is one long question and folding it by turn would put the whole
 page behind one chip.
 
-## See earlier tool calls in one long run — the `↳` line, scroll up or `ctrl+o`
+## See earlier tool calls in one long run with no caption yet — the `↳` fallback, scroll up or `ctrl+o`
 
-When one stretch of a task's page has made more calls than fit, the page shows a screenful
-of the newest ones above a dim line reading:
+When one live stretch has no caption yet and has made more calls than fit, the page keeps
+the old fallback: a screenful of the newest ones above a dim line reading:
 
 ```
 ↳ 87 earlier tool calls · scroll up or ctrl+o
@@ -87,15 +110,16 @@ page follows the task again as it works — and the opened calls stay open. A ta
 keeps its own fold state, separate from the conversation's; `ctrl+o` inside a task never
 folds or unfolds anything in the conversation you left behind.
 
-`ctrl+o` and `ctrl+e` are different keys here: `ctrl+o` opens this run of calls, and the
-long instruction at the top of the page; `ctrl+e` opens a `▸ worked` chip.
+`ctrl+o` and `ctrl+e` are different keys here: `ctrl+o` opens the live caption's rows,
+this no-caption fallback run, or the long instruction at the top of the page; `ctrl+e`
+opens a `▸ worked` chip onto its caption outline.
 
 **How many calls the page keeps on screen**: as many as your window is tall, and never
 fewer than three. The number is taken from the window at the moment the page is drawn, so
 resizing the terminal, growing the draft by a line, or the task roster changing its width
-all re-fit it. Only the overflow folds. The conversation keeps exactly the last **3** calls
-of a turn above a line reading `N earlier tool calls · ctrl+o`, and scrolling the
-conversation never opens a fold — `ctrl+o` or a click does.
+all re-fit it. Only the overflow folds. The conversation keeps exactly the last **3**
+calls in the no-caption fallback above a line reading `N earlier tool calls · ctrl+o`,
+and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
 
 ## What the line at the top of a task's page tells you
 

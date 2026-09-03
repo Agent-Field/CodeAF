@@ -41,12 +41,12 @@ func TestWorkIndentReclassifiesAndDropsAtPhoneFloor(t *testing.T) {
 	a.workMode = config.WorkOpen
 	a.touch()
 	wide := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(wide, "  I will inspect it.") || !strings.Contains(wide, "\nDone.") {
+	if !strings.Contains(wide, "  ▾ I will inspect it") || !strings.Contains(wide, "\nDone.") {
 		t.Fatalf("intermediate/trailing classification is wrong:\n%s", wide)
 	}
 	a.width = 59
 	a.touch()
-	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "  I will inspect it.") {
+	if got := strings.Join(plainRows(a), "\n"); strings.Contains(got, "  ▾ I will inspect it") {
 		t.Fatalf("phone tier kept the work gutter:\n%s", got)
 	}
 }

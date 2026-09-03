@@ -509,6 +509,17 @@ const (
 	// log and an exit code, and none of those is what a task row is drawn from,
 	// so it is published as what it is and the clauses go away.
 	EventJobUpdate
+	// EventCaption carries one line ABOUT WORK THAT HAS GONE QUIET
+	// (caption.go): a batch that has run past captionDwell with nothing new
+	// on screen, and a person watching a spinner with no way to tell a
+	// wedged call from a slow one. Text is the line. It is news about the
+	// open step, never a new block of its own — the surface keys it onto
+	// the caption already drawn for that batch.
+	//
+	// A SURFACE THAT IGNORES THIS KIND IS UNCHANGED: the deterministic
+	// composite already stands in the caption slot, and this event only
+	// replaces that floor when a cheap model had something better to say.
+	EventCaption
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its

@@ -61,6 +61,7 @@ package session
 
 import (
 	"context"
+	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -298,6 +299,12 @@ type episode struct {
 	// hold a model to: which of them are holding, and how many submissions each
 	// has held (processrule.go).
 	rules *ruleWatch
+
+	// captionN is the number of dwell-narrator calls this turn has spent. It is
+	// guarded separately because a narrator runs beside the tool wait, while
+	// the rest of the episode is advanced on the turn loop's one goroutine.
+	captionMu sync.Mutex
+	captionN  int
 }
 
 // newEpisode builds one turn's control plane and runs `episode-init`.
