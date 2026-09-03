@@ -312,3 +312,78 @@ card's foot and the fact that it rides up, the page's ending word, `ran 4m 12s`)
 ending), `internal/manual/chat/keys.md` (the card's foot) and
 `internal/manual/chat/screen.md` (the count-up's zero rung, and the bound's
 `2m`).
+
+---
+
+## fixed — the count and the rows
+
+The `km-` frames were captured from `bin/aforge` in a real terminal on socket
+`polish-km`, against a demo home freshly seeded by `cmd/aforge-demo-home`. The
+fix was REVERTED and its test watched to fail before it went back.
+
+**Row 13 — the count and the rows it counts agree on one frame, and the
+reconciliation is on the heading between them.**
+
+**THE RULING: the foot's number is the truthful one and it does not move.** The
+foot said `5 done today` over a section drawing two rows, and the two were right —
+three of the five were workers folded under a root. The five is what belongs
+there. That line is what the PLACE is holding (`place_tasks.go`'s
+`tasksPlace.note` says so in those words), it is the per-section split of the
+head's own `16 pieces of work`, and a tally counting drawn rows would trade this
+disagreement for a larger one with the head one line above it — and would change
+under somebody opening a fold, which is a fact about the screen and not about the
+work. A number a person reports as a defect is bad; a number that moves when you
+press a key is worse.
+
+So what was missing was not a different number but the sentence between the two.
+`tasksSectionHead` puts it on the section's own heading — `done today · 2 of 5
+shown` — which stands directly over the rows it is counting, where the eye is when
+it counts them. Open the fold and the numbers agree by themselves and the clause
+goes, which is the emptiness law's answer to a fact that has stopped being one.
+
+**Why not on the foot, and why not in the family column.** Both were tried. The
+foot is FITTED rather than wrapped and already carries every section at once — 67
+cells with five sections on it — and a clause there came out at sixty columns as
+`… · 5 done today, 2 s…`, a figure with its end cut off, which is the one thing
+`rowfit.go`'s law forbids anywhere on this surface. That frame was captured before
+it was thrown away. The family column is the earlier lane's account above and it
+still holds: two cells on every row, and widening it costs the names that the
+name-first fix was made to reclaim. The heading has a whole row to itself at every
+width and costs nothing.
+
+files: `internal/tui3/tasksplace.go` (`tasksSectionHead`, `tasksReading.shown`;
+`tasksReading.tally` is unchanged in what it counts and gained the note saying why)
+tests: `TestTheTasksCountAndTheRowsUnderItAgreeOnOneFrame`,
+`TestTheSectionHeadCountsTheRowsItActuallyDraws`,
+`TestASectionWithNothingFoldedAwaySaysNothingExtra`,
+`TestTheTasksFootFitsTheNarrowestFrameWholeWithAFoldOnThePage`
+(`internal/tui3/tallyrows_test.go`). The second is the one that matters for
+drift: it asserts `shown` against the rows `tasksReading.lay` really produces, at
+both fold states, rather than against the same arithmetic written out twice. The
+first refuses to run on a fixture that draws every row it holds.
+reverted: the heading back to `tasksSectionWord(section)` — `the foot says "5 done
+today" over a section drawing 2 rows of 5, and its heading reads / done today /
+want / done today · 2 of 5 shown`.
+before: `frames/km-tasks-before.{160x50,120x40,80x24,60x30}.txt` — `needs your
+look` and `done today` bare, over one row and two, with the foot reading
+`4 needs your look · 2 parked · 5 done today · 5 earlier` ·
+after: `km-tasks-after.*` — `needs your look · 1 of 4 shown` and `done today ·
+2 of 5 shown`, the same foot untouched and whole at all four widths. The frames
+are byte-identical apart from those two headings and the clock.
+
+### The manual, and what this lane could not write
+
+`internal/manual/chat/` is another lane's this wave, so **two pages are now out of
+date and the edits are spelled out here rather than made**:
+
+- `internal/manual/chat/tasks.md`, the paragraph beginning **"Nothing is folded
+  away."** — that sentence predates the family fold and is simply false now; and
+  the line under it, "one dim line counting what is on the page", describes the
+  foot as counting rows when it counts WORK. The true statement is: the foot
+  counts the work the window holds, section by section; where a fold is holding
+  rows back the section's own heading says so — `done today · 2 of 5 shown` — and
+  `→` opens the family.
+- `internal/manual/chat/screen.md` — a fenced block's lines wrap at every width
+  (already documented by an earlier lane), and now a URL or a path too long for
+  the reading measure is left whole on a row of its own up to the width of the
+  column, and only broken when it is longer than the column itself.

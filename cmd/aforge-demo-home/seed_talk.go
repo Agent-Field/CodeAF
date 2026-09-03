@@ -86,6 +86,45 @@ var demoConversations = []demoTalk{
 		turns: []demoTurn{
 			{"the japanese pricing page wraps in the middle of a word — 全角の幅が合っていない", "The column was counting runes where it should count cells, so every full-width character was costing one instead of two. Counting cells fixes the wrap and the ellipsis together."},
 			{"and the emoji in the header? 🌏", "Same fault, same fix — it is two cells wide and was budgeted as one."},
+			// THE FOUR SEQUENCES A RUNE COUNT GETS WRONG, one per line, with a
+			// plain ASCII line above them to read the rail against. A ZWJ family
+			// and a VS16 heart are the two this surface has actually been wrong
+			// about — the rail bends on exactly those rows — and the flag and the
+			// CJK run are the controls that must stay straight. Nothing in the
+			// stock fixture drew any of them, so the polish audit had to seed its
+			// own home by hand and the frames could not be reproduced.
+			{"AAAA plain ascii control line for the rail\n" +
+				"BBBB \U0001F469‍\U0001F469‍\U0001F467‍\U0001F466 one zwj family sequence\n" +
+				"CCCC ❤️ ❤️ two hearts with vs16\n" +
+				"DDDD \U0001F1EF\U0001F1F5\U0001F1EF\U0001F1F5 two regional-indicator flags\n" +
+				"EEEE 日本語日本語 full-width cells\n" +
+				"FFFF café naïve combining marks",
+				"Every one of those is a grapheme cluster whose cell count and rune count disagree, which is the " +
+					"whole point of the line above it."},
+			// AND A QUESTION LONG ENOUGH TO FILL THE COLUMN. A person's own words
+			// are the one block on this surface that regularly reaches the right
+			// edge of the conversation, because they are wrapped to the column and
+			// not to a reading measure — so this is the block the divider gets
+			// touched by, and nothing in the stock fixture was long enough to show
+			// it.
+			//
+			// AND ITS LENGTH IS TUNED, which is the only thing about this fixture
+			// that is not ordinary English: it wraps to a row of exactly the
+			// column at 120 AND at 160, the two widths that lend the rail a
+			// column, so the frame shows the collision rather than nearly showing
+			// it. Re-word it and the rows go slack.
+			{"the pricing table and the plan cards do not agree about the annual discount whenever the currency " +
+				"is not the dollar, and I would like you to find out which of the two reads the wrong field " +
+				"before either of us touches the copy",
+				"The cards read the discount off the plan and the table recomputes it from the two prices, so a rounded " +
+					"conversion moves one and not the other."},
+			// AND ONE UNBREAKABLE TOKEN OF EACH KIND, past the reading measure and
+			// inside a wide column: a link is copied rather than read along, and a
+			// link broken in half is a link that does not work.
+			{"where are the streaming docs, and where is the journal?",
+				"The call is https://openrouter.ai/docs/api-reference/streaming?model=deepseek/deepseek-v4-flash-latest&stream=true " +
+					"and the journal for this one is /home/dev/.aforge/v3/projects/-home-dev-work-aforge-v2-checkout/e918879eb00988c5/transcript.jsonl — " +
+					"both of those are one token to a reader."},
 		},
 	},
 	{

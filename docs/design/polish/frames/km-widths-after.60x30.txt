@@ -1,0 +1,30 @@
+
+› the pricing table and the plan cards do not agree about
+  the annual discount whenever the currency is not the
+  dollar, and I would like you to find out which of the two
+  reads the wrong field before either of us touches the
+  copy
+
+The cards read the discount off the plan and the table
+recomputes it from the two prices, so a rounded conversion
+moves one and not the other.
+
+› where are the streaming docs, and where is the journal?
+
+The call is
+https://openrouter.ai/docs/api-reference/streaming?model=dee
+pseek/deepseek-v4-flash-latest&stream=true and the journal
+for this one is
+/home/dev/.aforge/v3/projects/-home-dev-work-aforge-v2-check
+out/e918879eb00988c5/transcript.jsonl — both of those are
+one token to a reader.
+
+  · resumed · 国際化とレイアウト幅 🌏 the café pricing page
+  · esc interrupts · ctrl+c twice quits · ? for help
+
+──────────── space space home · ctrl+k switch · / commands ─
+
+                                                      ⠿ high
+ ›
+国際化とレイアウト幅 🌏 the café pricing page · deepseek-v4…
+                 crew balanced ·    $0.39 · 5.6k/1.3M · idle

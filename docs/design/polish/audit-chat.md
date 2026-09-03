@@ -307,3 +307,179 @@ Tests: `TestAQuotedPassageIsMarkedWithAMarginAndNotWithARule`,
 Reverted: the first prints the quote drawn as
 `│ a quoted sentence long enough that it has to wrap` and says it drew no gutter;
 the second names `"│"` as the spawn tree's trunk.
+
+---
+
+## fixed — the width, the gutter, the link and the bill
+
+Frames prefixed `km-` were captured from `bin/aforge` in a real terminal on socket
+`polish-km`, against a demo home freshly seeded by `cmd/aforge-demo-home` — the
+seeder gained the fixture these rows need, so every frame below is reproducible
+from a clean checkout rather than from a home somebody built by hand. **Every fix
+was REVERTED and its test watched to fail before the fix went back**, and the
+revert used is named on each row. Two tests did NOT discriminate on their first
+draft and are named as such; both were rewritten until they did.
+
+**A note on how the widths were MEASURED, because the audit's own numbers for row
+13 are wrong and this is why.** `tmux capture-pane` writes one entry per grid
+CELL, so a wide glyph is one character in the text and two columns on the screen,
+and a padding cell comes back as a space. Counting `│`'s rune index in the
+captured text therefore says nothing about the column it is drawn in — it is off
+by the number of wide and zero-width runes in front of it, which is exactly the
+thing being measured. The readings below come from tmux itself:
+`copy-mode` + `search-forward "│"` + `#{copy_cursor_x}`, which is the grid
+column. On that reading the flags row bends and the ZWJ row does not — the
+opposite of what row 13 says.
+
+**Row 12 — a person's own words keep the divider's cell.** `railJoin` pads a
+conversation row out to `bodyWidth` and writes the seam in the very next column,
+so a body row measuring the column exactly ends with its last letter against the
+rule. A person's message is the block this happens to, because it is wrapped to
+the COLUMN while the model's prose is wrapped to `prose.DefaultMeasure`, several
+cells short of it. `userRailGutter` is that one cell, and `userBodyCols` is the
+one function both ends of the fold ask for it — the paint, and the door that
+counts the rows the paint would make.
+files: `internal/tui3/render.go` (`userRailGutter`, `userBodyCols`),
+`internal/tui3/brieffold.go` (one call, the twin `userLead`'s own note names)
+tests: `TestAPersonsWrappedWordsNeverTouchTheRail`,
+`TestTheBriefFoldCountsTheLinesThePaintActuallyMakes`
+(`internal/tui3/usergutter_test.go`) — the first walks a ZWJ family, a VS16
+heart, a regional-indicator flag, full-width CJK and a combining acute at five
+widths and asserts in DISPLAY CELLS, never by slicing `[]rune`
+reverted: the paint back on `width-userLeadCols` — `a zwj family at 100 columns:
+row 1 of the message is 76 cells wide in a 76-cell column, so it ends against the
+rail with no gutter`. **The second test did not discriminate on its first
+draft**: it compared the door against an arithmetic it wrote out itself, and it
+passed with the fold reverted and the paint fixed. It now takes the painted rows
+from the renderer, and skips any width at which the extra cell does not change
+the row count — with the fold alone reverted it prints `the paint makes 5 rows of
+the message and shows 3 of them, so the door hides 2 — and it says 1`.
+before: `frames/km-widths-before.160x50.txt` (a user row of 130 cells with the
+rail at 130) and `.120x40.txt` (90 against 90) ·
+after: `km-widths-after.160x50.txt` (124) and `.120x40.txt` (89), `.80x24`,
+`.60x30` unchanged in shape.
+
+**Row 17 — a link is copied, not read along.** The measure is the length a
+SENTENCE is read at, and `wrapper.commit` broke every over-long word at it. That
+did two wrong things at once: it broke a token that must not be broken, and it
+broke it EARLY — at 160 columns the answer column is 130 cells and the measure is
+88, so a link that would have fitted whole came out as `…&st` / `ream=true…` with
+forty columns of the frame standing empty. The wrapper now carries two widths:
+the measure every row of prose is wrapped to, and the COLUMN, which is the
+ceiling an unbreakable token may take before it is broken.
+files: `internal/tui2/prose/wrap.go` (`wrapper.ceiling`),
+`internal/tui2/prose/render.go`, `internal/tui2/prose/prose.go`,
+`internal/tui2/prose/doc.go`
+tests: `TestALinkTooLongForTheMeasureTakesTheWholeColumnBeforeItBreaks`,
+`TestOnlyTheUnbreakableTokenPassesTheReadingMeasure`,
+`TestATokenLongerThanTheColumnIsStillBrokenAtTheColumn`
+(`internal/tui2/prose/unbroken_test.go`); each case refuses to run unless it
+discriminates — a width no wider than the measure, or a token the measure already
+fits, is a `t.Fatalf` and not a pass
+reverted: the ceiling back to the measure — the first prints the link split at
+`…&st` / `ream=true`, and the third prints `the first piece is 88 cells in a
+100-cell column`. The middle one is the guard against OVER-application and was
+watched to fail against `newWrapper(figureWidth, figureWidth, …)`, which puts
+ordinary prose on 152-cell rows.
+before: `frames/km-widths-before.160x50.txt` (the link cut at 88 with the rail at
+130) · after: `km-widths-after.160x50.txt` — the link whole at 102 cells and the
+path whole at 97.
+**And what it does NOT do:** where the token is longer than the column it now
+breaks AT the column, flush against the divider (`km-widths-after.120x40.txt`,
+90 cells against a rail at 90). That is where every fence, table and blockquote
+on this surface already breaks; giving the whole conversation body the divider's
+cell — row 12's gutter generalised — is a follow-up for whoever owns
+`app.bodyWidth`.
+
+**Row 16 — the bill reserves the room it is going to need.** THE `$0.00`
+EXCEPTION IS UNTOUCHED AND NOT RE-LITIGATED: it is still this line's one
+sanctioned zero, and this is the same idea carried one step further. The
+exception held the segment's PRESENCE still and let its WIDTH move, so one turn
+walked `$0.00` (five cells) → `<$0.0001` (eight) → `$0.0052` (seven) → `$0.01`
+(five) and shoved everything beside it two and three columns each way. `costCell`
+right-aligns the figure inside the room its own spellings need — the sub-cent
+floor's eight cells, asked of `subCent` rather than counted a second time, and
+more only when the bill has genuinely grown past it. Nothing new is drawn and
+nothing stands in for anything unknown.
+files: `internal/tui3/render.go` (`costFloorCells`, `costCell`, `splitReserve`,
+`paintPart`, `paintParts`)
+tests: `TestTheMoneySegmentReservesTheRoomItWillNeedAndNeverShovesTheCluster`,
+`TestTheBillIsRightAlignedInTheRoomItsOwnSpellingsNeed`
+(`internal/tui3/costcell_test.go`)
+reverted: `add(segCost, dollars(…))` — the row test prints `the money segment ran
+from column 140 to column 148 at $0.000000 and from column 137 to column 148 at
+$0.000004, so the row moved around it`, with both rows underneath it; and
+`costCell` reduced to `dollars` makes the unit test print `$0.000000 draws as
+"$0.00", 5 cells, in a segment reserving 8`. **The row test did not discriminate
+on its first draft**: the telemetry cluster is flushed RIGHT, so a widening
+segment pushes everything to its LEFT and the state word at the end never moves —
+watching only the right-hand end passed against the reverted fix. It asserts both
+edges now, and says so in its own comment.
+**Two things the reservation broke and how they were put right.** The padding was
+painted INSIDE the figure's span at first, and
+`TestTelemetryFadesWithAgeSoStaleNumbersStopCompeting` and
+`TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse` read exactly that span
+— `"…\x1b[38;5;243m   $0.10\x1b[39m…"` where they wanted `dim("$0.10")`. The room
+is space: it has no ink, and it is not part of what the age ramp, the pointer or
+the bound are talking about, so `splitReserve` takes it off in the paint and the
+width arithmetic above still sees every cell of it. And the reservation cost
+allocations on a hot path — `TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw`
+went to 224 against a ceiling of 220. **The ceiling did not move.** `paintParts`
+was appending with `+=` — a fresh string per segment and per join, four a segment
+— and re-painting the same three-cell separator for every one of them; it builds
+through two `strings.Builder`s sized from the width the caller is about to
+measure, with one separator for the row. The scroll is back to **218**, which is
+the figure it stood at before this lane touched anything.
+three tests moved onto the new law rather than being weakened:
+`TestTheFourSpendSurfacesRenderOneFigure` and
+`TestTheMoneySegmentCarriesWhatTheRunningWorkIsSpending` compare the FIGURE
+(`splitReserve`) instead of the segment, and
+`TestTheWideStatusRowIsByteForByteWhatItWas` carries the new literal — the same
+length, the same segments, three cells moved from the gap to the other side of
+the crew word.
+
+### NOT FIXED — row 13, and the one measure behind it
+
+**The measure is right and the layer under it is on a different one, and the fix
+is one token in `internal/tui3/task.go`, which this lane does not hold.**
+
+`ansi.StringWidth` is `ansi.GraphemeWidth.StringWidth`. Everything in
+`internal/tui3` lays out with it, `app.railJoin` pads the conversation row to
+`bodyWidth` with it — and the renderer underneath composes its cell grid with
+`ansi.WcWidth`, ultraviolet's default, which it only leaves for grapheme widths
+if the terminal answers mode 2027. tmux answers no. The two disagree on exactly
+two things, and they are the two the frame bends on:
+
+| | `ansi.StringWidth` | `ansi.WcWidth` | tmux 3.4 draws |
+| --- | --- | --- | --- |
+| `❤️` (VS16) | 2 | **1** | 2 |
+| `🇯🇵` (flag) | 2 | **1** | 2 |
+| `👩‍👩‍👧‍👦` (ZWJ) | 2 | 2 | 4 |
+| `🎉`, `日`, `é` | 2, 2, 1 | 2, 2, 1 | 2, 2, 1 |
+
+`ansi.StringWidth(row) - ansi.WcWidth.StringWidth(row)` predicts the bend
+EXACTLY, on every row of the fixture and at every width: the rail sits at grid
+column 91 on every row of `km-widths-before.120x40` except the two-heart row and
+the two-flag row, which sit at 89. It is not the ZWJ sequence and it is not four
+cells; the audit's row was read off rune indexes in a capture, which is the one
+reading that cannot answer this.
+
+**Proved, not argued.** `railJoin`'s `ansi.StringWidth(text)` was changed to
+`ansi.WcWidth.StringWidth(text)`, the binary rebuilt, and the rail measured again
+through tmux's own copy-mode cursor: **column 91 on all twenty rows**, the heart
+and flag rows included. The patch was then reverted and `task.go` is byte-clean.
+That is the whole change — one selector, and the doc comment above it, which
+already says the right thing about why the measure matters and names the wrong
+function.
+
+Whoever takes it should know that the same substitution belongs everywhere in the
+package that `ansi.StringWidth` decides a layout, `render.go`'s own `wrap` and
+`fitWidth` included — the rail is only where the disagreement is visible as a
+bent line. A named test wants the sequences in the table above and must assert by
+display cell.
+
+**And the fixture is now in the tree.** `cmd/aforge-demo-home/seed_talk.go` seeds
+a ZWJ family, a VS16 pair, a flag pair, a CJK run and a combining acute one to a
+line under a plain ASCII control line, plus an unbreakable link and path and a
+question tuned to fill the column at 120 AND at 160. `frames/km-widths-*` are
+captured from it.

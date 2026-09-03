@@ -470,7 +470,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 			continue
 		}
 		add(tasksLineAir, "")
-		add(tasksLineWord, tasksSectionWord(section))
+		add(tasksLineWord, tasksSectionHead(section, len(items), r.shown(items)))
 		// THE SECTION IS DRAWN AS FAMILIES AND NOT AS A FLAT LIST. A run that
 		// split into eight workers used to arrive as eight peers of everything
 		// else on the page, which buried the six other things this machine did
@@ -739,6 +739,17 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 //
 // THE EMPTINESS LAW HOLDS HERE TOO. A section with nothing in it is not counted
 // as zero — it is not mentioned — and the line is empty when the page is.
+//
+// AND IT COUNTS THE WORK AND NEVER THE ROWS. It read `7 done today` over a
+// section drawing four rows once, and the four were right — three of the seven
+// were workers folded under a root — but the SEVEN is the number that belongs
+// here: this line is what the PLACE is holding (place_tasks.go's
+// [tasksPlace.note] says so), it is the per-section split of the head's own
+// `10 pieces of work`, and 7 + 3 is that ten. A tally counting drawn rows would
+// trade this disagreement for a larger one with the head, and would change under
+// somebody opening a fold, which is a fact about the screen and not about the
+// work. What reconciles the two is [tasksSectionHead], on the heading standing
+// between them.
 func (r tasksReading) tally() string {
 	var segs []string
 	for _, section := range tasksSectionOrder {
@@ -747,6 +758,62 @@ func (r tasksReading) tally() string {
 		}
 	}
 	return strings.Join(segs, railSep)
+}
+
+// shown is how many rows of work one section actually draws: its roots, and the
+// workers under the roots somebody has opened.
+//
+// IT ASKS THE SAME SPLITTER THE PAGE IS BUILT WITH ([tasksFamilies]) AND READS
+// THE SAME FOLD STATE ([tasksReading.open]), so the count and the rows cannot
+// be made to disagree by a change to either — which is the whole point of the
+// clause it feeds. [TestTheSectionHeadCountsTheRowsItActuallyDraws] pins it
+// against the rows [tasksReading.lay] really produces rather than against this
+// arithmetic said twice.
+func (r tasksReading) shown(items []tasksItem) int {
+	roots, kids := tasksFamilies(items)
+	n := len(roots)
+	for _, item := range roots {
+		family := tasksFamilyOf(item.entry)
+		if r.open[family] {
+			n += len(kids[family])
+		}
+	}
+	return n
+}
+
+// tasksSectionHead is the heading over one section: its word, and — only where a
+// fold is holding rows back — how much of what the foot counts is on the page.
+//
+// THE COUNT AND THE ROWS MEET HERE, which is the one place between them. The foot
+// says `5 done today` because five pieces of work landed today
+// ([tasksReading.tally]); the section draws two rows because three of the five
+// are workers folded under a root. A person reads the foot, counts the rows and
+// finds a defect — and the only thing on the frame reconciling the two used to be
+// a clause in the middle of one row's tail.
+//
+// IT IS ON THE HEADING AND NOT ON THE FOOT, and that is a decision about width.
+// The foot is one dim line holding every section at once, already 67 cells with
+// five sections on it, and it is FITTED rather than wrapped — a clause added
+// there came out as `… · 5 done today, 2 s…` at sixty columns, which is a figure
+// with its end cut off, the one thing rowfit.go's law forbids anywhere on this
+// surface. The heading has a whole row to itself at every width, and it stands
+// directly over the rows it is counting, which is where the eye is when it
+// counts them.
+//
+// AND IT IS ON THE HEADING AND NOT IN THE FAMILY COLUMN. That column is exactly
+// two cells on every row of the page; widening it on the rows that fold would
+// leave every glyph ragged, and widening it everywhere would take two cells off
+// every name — which is exactly what the name-first fix was made to stop.
+//
+// NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the numbers agree
+// by themselves, and the clause goes: the emptiness law applied to a fact that
+// has stopped being one.
+func tasksSectionHead(section tasksSection, held, shown int) string {
+	word := tasksSectionWord(section)
+	if shown >= held {
+		return word
+	}
+	return word + railSep + itoa(shown) + " of " + itoa(held) + " shown"
 }
 
 func tasksSectionWord(section tasksSection) string {

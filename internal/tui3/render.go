@@ -726,6 +726,39 @@ const userLead = "  "
 // userLeadCols is what that lead costs, in cells.
 const userLeadCols = len(userLead)
 
+// userRailGutter is the RAIL'S OWN CELL, kept clear of the person's words.
+//
+// [app.railJoin] pads a conversation row out to [app.bodyWidth] and then writes
+// the seam in the very next column, so a body row that measures the column
+// exactly ends one cell from the divider — and a person's own message is the one
+// block on this surface that regularly fills its column, because it is wrapped
+// to the column and not to a reading measure the way the model's prose is
+// (markdown.go hands prose [prose.DefaultMeasure]). At 120 columns a wrapped
+// question read `…and tell me│`, with the words touching the rule while the rows
+// above and below it stood clear.
+//
+// ONE CELL IS THE WHOLE FIX and it is deliberately not two: the gutter belongs
+// to the divider, not to the paragraph, and every cell taken here is a cell off
+// the measure at sixty columns, where the same block is the thing that has least
+// room to give. It is charged at every width because the frame is the column
+// either way — under [railSlimFloor] the cell kept clear is the terminal's own
+// edge, which is the same collision with a different rule drawn through it.
+const userRailGutter = 1
+
+// userBodyCols is the column a person's own words are wrapped into: the lead
+// they are drawn under and the divider's cell, both taken off.
+//
+// IT IS A FUNCTION BECAUSE TWO PLACES ASK IT AND THEY MAY NEVER DISAGREE — the
+// paint here, and the fold that counts the lines the paint would make
+// (brieffold.go's [briefFoldHidden]). A literal in two files is the drift
+// [userLead]'s own note was written about.
+func userBodyCols(width int) int {
+	if room := width - userLeadCols - userRailGutter; room > 0 {
+		return room
+	}
+	return 1
+}
+
 // pictureMarkerMask holds one basename out of the generic path pass. A marker
 // deliberately shows only the basename, while its door must retain the full
 // attachment path; letting the generic pass resolve the visible name loses
@@ -871,11 +904,11 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		pictures := make([][]string, len(e.pictures))
 		pictureDrawn := make([]bool, len(e.pictures))
 		for i, path := range e.pictures {
-			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, width-userLeadCols, cap)
+			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
 		}
-		pictureDoors := a.pathLinks && a.pal.paintsPictures() && width-userLeadCols >= pictureColsMin && cap > 0
+		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
 		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
-		body := wrap(marked, width-userLeadCols)
+		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
 		}
@@ -2158,6 +2191,56 @@ func modelBase(id string) string {
 	return id
 }
 
+// costFloorCells is the widest the bill can be written while it is still under
+// a cent: settingspend.go's floor spelling, `<$0.0001`, asked of the function
+// that prints it rather than counted here — one source of truth for a width two
+// files would otherwise both know.
+var costFloorCells = ansi.StringWidth(subCent(0))
+
+// costCell is the bill with the room it is going to need already under it.
+//
+// THE LAW THIS EXTENDS IS THE ONE THIS LINE ALREADY HAS. The live status row
+// keeps `$0.00` rather than drawing nothing — the emptiness law's one sanctioned
+// exception (app.go's [dollars]) — and the whole reason is that the segments to
+// the right of the bill must not jump sideways while a person is reading them.
+// The exception held the segment's PRESENCE still and let its WIDTH move, so one
+// turn walked `$0.00` (five cells) → `<$0.0001` (eight) → `$0.0052` (seven) →
+// `$0.01` (five) and shoved the context meter, the watch count and the state
+// word two and three columns each way inside a few seconds.
+//
+// SO THE FIGURE IS RIGHT-ALIGNED IN THE ROOM ITS OWN SPELLINGS NEED, and no
+// second exception is invented for it: nothing is drawn that was not drawn
+// before, no zero stands in for an unknown, and `$0.00` is still the only zero
+// on the line. The reservation is a pure function of the amount and it cannot
+// shrink as a session spends, because the two things it is the larger of never
+// shrink either — the sub-cent floor is a constant, and the two-place spelling
+// only widens as the bill climbs a decade. A bill that reaches $9,999.99 takes
+// its ninth cell once and keeps it.
+func costCell(usd float64) string {
+	word := dollars(usd)
+	room := costFloorCells
+	if cells := ansi.StringWidth(word); cells > room {
+		room = cells
+	}
+	if pad := room - ansi.StringWidth(word); pad > 0 {
+		return strings.Repeat(" ", pad) + word
+	}
+	return word
+}
+
+// splitReserve takes [costCell]'s reservation off the front of a segment: the
+// room, which is space, and the figure, which is the only part of it anything
+// paints. The width arithmetic above still reads the whole string — the
+// reservation is real cells and every measurement of the row has to see them —
+// so the split happens at the last possible moment, in the paint.
+func splitReserve(text string) (room, figure string) {
+	at := 0
+	for at < len(text) && text[at] == ' ' {
+		at++
+	}
+	return text[:at], text[at:]
+}
+
 // telemetry assembles the right cluster IN ORDER, and the order is the question
 // each segment answers about the run:
 //
@@ -2200,7 +2283,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// work this conversation started is spending its money, and a segment that
 	// waited for each task to close said `$2.53` for two hours over a family
 	// burning $51.05 (treespend.go's [app.spendShown]).
-	add(segCost, dollars(a.spendDrawn()))
+	add(segCost, costCell(a.spendDrawn()))
 	if context, _ := a.contextSegment(); context != "" {
 		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
 			context += " " + spark
@@ -2377,16 +2460,31 @@ func hudWidth(parts []hudPart) int {
 // every width decision above is made from: measuring a painted string is
 // measuring escape sequences.
 func (a *app) paintParts(parts []hudPart) (string, string) {
-	var painted, plain string
+	if len(parts) == 0 {
+		return "", ""
+	}
+	// TWO BUILDERS AND ONE SEPARATOR, because this runs on every frame and the
+	// row it builds is the only thing on a scrolling screen that is rebuilt from
+	// nothing each time. Appending with `+=` allocated a fresh string per segment
+	// AND per join — four a segment — and painted the same three-cell separator
+	// over and over; the separator is one value for the whole row, and each
+	// builder is sized once from the plain width the caller is about to measure
+	// anyway. [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]
+	// is the law this is written against.
+	sep := a.pal.dim(" · ")
+	var painted, plain strings.Builder
+	room := hudWidth(parts)
+	plain.Grow(room)
+	painted.Grow(room + len(sep)*len(parts))
 	for i, part := range parts {
 		if i > 0 {
-			painted += a.pal.dim(" · ")
-			plain += " · "
+			painted.WriteString(sep)
+			plain.WriteString(" · ")
 		}
-		painted += a.paintPart(part)
-		plain += part.text
+		painted.WriteString(a.paintPart(part))
+		plain.WriteString(part.text)
 	}
-	return painted, plain
+	return painted.String(), plain.String()
 }
 
 // paintPart is where the hue budget is spent, and the order of these branches
@@ -2423,13 +2521,23 @@ func (a *app) paintPart(part hudPart) string {
 		// not wear the failure hue. The pointer outranks the warning, because
 		// while somebody is about to press it the fact worth saying is that it
 		// opens.
+		//
+		// AND THE ROOM THE SEGMENT RESERVES IS NOT PAINTED WITH THE FIGURE.
+		// [costCell] holds this segment's width still by putting the room it will
+		// need in front of the figure, and the room is SPACE — it has no ink and
+		// it is not part of what the age ramp, the pointer or the bound are
+		// talking about. Painting it into the same span would make the segment's
+		// paint depend on how much money had been spent, which is what the ramp
+		// exists to say something else about (bundle_test.go's fade and hue tests
+		// read exactly this span, and they are the ones that named it).
+		room, figure := splitReserve(part.text)
 		switch {
 		case a.hoveringMoney():
-			return a.pal.accent(part.text)
+			return room + a.pal.accent(figure)
 		case a.moneyNearRail():
-			return a.pal.warn(part.text)
+			return room + a.pal.warn(figure)
 		}
-		return a.fadeSeg(part.kind, part.text)
+		return room + a.fadeSeg(part.kind, figure)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.

@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 08:31Z_
+_2026-09-03 08:41Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -22,12 +22,12 @@ _2026-09-03 08:31Z_
 - `K9`    med  CLOSED This surface's own notices are indistinguishable from a bullet list the model wrote
 - `K10`   med  CLOSED Below seventy columns the legend is a bare rule with nothing written on it
 - `K11`   med  CLOSED Lines inside a code fence are truncated with `…` and there is no way to see the rest
-- `K12`   low  open   The wrapped rows of a person's message run flush into the sidebar rail with no gutter
-- `K13`   low  open   A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
+- `K12`   low  CLOSED The wrapped rows of a person's message run flush into the sidebar rail with no gutter
+- `K13`   low  CLOSED A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
 - `K14`   low  CLOSED One turn counts its tool calls in two words six rows apart
 - `K15`   low  CLOSED A blockquote's gutter bar is the same glyph as the conversation's own right-hand divider
-- `K16`   low  open   The money segment changes width mid-turn and shoves the whole right cluster sideways
-- `K17`   low  open   A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
+- `K16`   low  CLOSED The money segment changes width mid-turn and shoves the whole right cluster sideways
+- `K17`   low  CLOSED A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
 
 ## cli — [audit-cli.md](audit-cli.md)
 
@@ -209,7 +209,7 @@ _2026-09-03 08:31Z_
 - `T10`   med  CLOSED A task's own page never says which conversation or project it came out of
 - `T11`   med  CLOSED The job page prints the engine's raw state enum, and spells the exit code differently from the column that opened it
 - `T12`   med  CLOSED Every child of an opened family repeats its parent's conversation title, on the rows where names are already being cut
-- `T13`   med  open   The foot counts seven pieces of work under "done today" and the section shows four rows
+- `T13`   med  CLOSED The foot counts seven pieces of work under "done today" and the section shows four rows
 - `T14`   low  CLOSED Row order changes between launches for reasons that have nothing to do with the work
 - `T15`   low  CLOSED `esc back` is named twice on every frame of the task page
 - `T16`   low  CLOSED The jobs section's overflow line wears a fold mark on something that does not fold

@@ -84,8 +84,11 @@ func TestTheMoneySegmentCarriesWhatTheRunningWorkIsSpending(t *testing.T) {
 	for _, part := range a.telemetry(a.width) {
 		if part.kind == segCost {
 			money++
-			if part.text != dollars(53.58) {
-				t.Fatalf("the money segment reads %q, want the tree's total", part.text)
+			// The reservation the live line holds the segment's width with is
+			// room and not a figure (render.go's [costCell]), so the FIGURE is
+			// what is compared.
+			if _, figure := splitReserve(part.text); figure != dollars(53.58) {
+				t.Fatalf("the money segment reads %q, want the tree's total", figure)
 			}
 		}
 	}
