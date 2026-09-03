@@ -2073,7 +2073,11 @@ the uptime because `no tools` changes the answer you get. `←` or `tab` closes 
 again.
 
 `enter` on a lane **pins** it: every request for this conversation goes to that lane
-and nowhere else. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
+and nowhere else — unless the router says that lane cannot serve that model at all, which
+is the one thing that ends a pin without you. It says so once, in the conversation
+(`coreweave cannot serve this model; routing on auto for this model until you pin again`),
+routes that one model on auto for the rest of the run, and leaves your row and every other
+model alone. *Lanes → Pinning one lane yourself* has the whole of it. `enter` on `auto` un-pins. `enter` on `openrouter` asks for no lane
 at all and lets the router balance on price. If the lanes were open under a model you are
 not talking to, `enter` switches to that model as well — choosing a lane under a name
 means you want that name served from there.
@@ -2254,7 +2258,7 @@ Settings → Providers has two rows under **routing**:
 | Value | What it does |
 |---|---|
 | `auto` | aforge picks the fastest lane each answer |
-| `pinned: cloudflare` | every request goes to that lane and nowhere else |
+| `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
 | `openrouter` | no lane is asked for; the router balances on price |
 
