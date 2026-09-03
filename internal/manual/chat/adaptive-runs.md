@@ -797,6 +797,25 @@ The wording you see on the work's own record when nothing in the review can buy 
 `everything still missing here has already had two rounds of work aimed straight at it, so
 this is handed over with it named rather than repaired`.
 
+## When a worker says it is done and never ran the check — a done that names nothing it ran
+
+A worker's account names the shell commands that worker issued itself, under
+`What the work ran itself:`, in the order it ran them. They are kept apart from the reading
+aforge takes of the finished tree: a command the worker ran is a fact about what it did,
+and its output was never read as proof that a check passed. The list is bounded, and where
+its beginning was left out it says how many earlier commands are in the run's own record.
+
+Where the work changed files and no check was run on the finished tree, the account says
+exactly `no check was run on the finished tree`, and the same words are the one clause the
+plan carries for that node. It does not leave the block out: a deliverable naming no check
+otherwise reads exactly like one whose checks had nothing to report, which is the same
+claim with the evidence taken out of it.
+
+A red that aforge's own reading finds on the finished tree does not stop there either when
+the worker had already been told to land and so was never asked to settle it. The finding
+is handed to whoever picks the work up, so the next worker starts from what the reading
+found rather than paying to discover it again.
+
 ## When a worker runs out of its tokens mid-work — ⏳, and the work is picked up again
 
 A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
