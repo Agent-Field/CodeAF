@@ -1,0 +1,40 @@
+  @path          complete a file · a picture attaches                                     │ + /task
+  ctrl+c         twice quits everything · mid-turn one press interrupts, like esc         │
+  tab            go back to the last conversation, with an empty box                      │ standing
+  alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory   │ ◦ the morning sweep
+  spend search settings                                                                   │ ? CI on master
+  alt+.          on a place: what else is here · every key that place has, drawn          │ ◦ the public API
+                 on a place, tab is the next place · esc comes back                       │ + /standing
+  alt+enter      open a line · enter sends                                                │
+  ctrl+enter     keep this true · a standing order's card, never work done once           │
+  ctrl+r         over a draft: spell it out · what it means · enter adds it to yours      │
+  ctrl+o         expand this turn's tool calls · click one to open it · in a task,        │
+  scroll up does too                                                                      │
+  ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks              │
+  ctrl+s         drag to select with your mouse · any key ends it                         │
+  enter          mid-answer: stops the current reply and steers these words in            │
+  super+enter    mid-answer: waits above the box · → sends a waiting one                  │
+  ctrl+q         hand this to the session now, to run after the current turn              │
+  ctrl+e         open the model's thinking, streaming or finished                         │
+  ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves           │
+  ctrl+.         every task this project has run · /history · type to filter              │
+  ctrl+g         close the roster's column, or bring it back · remembered                 │
+  ctrl+l         back to the latest · the chip above the box says so too                  │
+  ctrl+k         switch conversations · tap it like alt+tab · esc goes back               │
+                 → reaches every other one on this machine · ctrl+w closes one            │
+  → ←            over an empty box: into a running task, and back out                     │
+  ← ←            out of a task room · the conversation, at the live edge                  │
+  space space    over an empty box: home · /home · esc comes back                         │
+  ctrl+w         delete the word behind the caret · ctrl+u the line                       │
+  ctrl+,         settings                                                                 │
+  d              in /permissions: drop the line under the cursor · press it twice         │
+  p s n          in /standing: pause one · stop it · not here                             │
+  ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere                │
+  session · ~/.aforge/v3/projects/-tmp-claude-1001--home-santosh-af-dev-2418657d-8173-    │ ctrl+. earlier
+  4e64-b3ec-73decce3d3d5-scratchpad-demohome-aforge-v2/b531a33df5787095/transcript.jsonl  │ ❯ ctrl+g hide
+
+─ master* ────────────────────────────────────────────────────────────── space space home · ctrl+k switch · / commands ─
+
+                                                                                                                  ⠿ high
+ ›
+aforge-v2 · deepseek-v4-flash-latest                    crew balanced · ◦ keeping an eye on 3 · $0.00 · 5.3k/1.3M · idle

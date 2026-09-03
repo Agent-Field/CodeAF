@@ -1,28 +1,28 @@
- aforge                                                                                                                1 want you · $123.45 / $500 · thu 2:38am
+ aforge                                                                                                                  1 want you · $0.13 / $500 · thu 2:45am
   home   tasks   standing   memory   spend   search   settings
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-17 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones    Aforge-v2 Tui Porting
-? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 3h    …cratchpad/demohome/aforge-v2 · here
-○ Aforge-v2 Tui Porting                                                                                   aforge-v2 here
-○ Wrapping Torture                                                                                          aforge-v2 3h
-○ About Something You Remember: Deploys on Fridays                                                          aforge-v2 3h    spent $0.01 · 42.2k tokens
-○ Notakey                                                                                                   aforge-v2 3h    last active 3h · thinking high
-○ Why the Frame Jumps                                                                                       aforge-v2 3h
-○ The Certificate Rotation                                                                                      infra 3h
-○ The Tab Bar's Counts                                                                                      aforge-v2 3h    → verbs: put it away, new chat here,
-○ Emoji Widths                                                                                              aforge-v2 3h             open folder, copy path
-○ Porting the Picker                                                                                        aforge-v2 3h
-○ Long Question                                                                                             aforge-v2 3h
-○ Pricing Research                                                                                       pricing-site 6h
-○ Standing Up the Watches                                                                                   aforge-v2 8h
-○ The Annual Toggle                                                                                      pricing-site 8h
-○ Reading the Ledger                                                                                        aforge-v2 1d
+13 chats · what wants you first                                       alt+g group by project · alt+q hide the quiet ones    Sweeping the Frame Budget
+? tell me when CI goes red on master       aforge-v2 asks: May I re-run the typecheck job to see whether it is flaky? 6m    …cratchpad/roomhome/aforge-v2 · here
+○ Sweeping the Frame Budget                                                                               aforge-v2 here
+○ Porting the Picker                                                                                        aforge-v2 8m
+○ The Certificate Rotation                                                                                     infra 26m    work
+○ The Tab Bar's Counts                                                                                     aforge-v2 46m    ? Cut every list on the task … $0.52
+○ 国際化とレイアウト幅 🌏 the Cafe Pricing Page                                                          pricing-site 1h      ? needs your look · The four list…
+○ Why the Frame Jumps                                                                                       aforge-v2 3h      4 files
+○ Pricing Research                                                                                       pricing-site 3h    ✗ Rebuild the frame budget report
+○ Standing Up the Watches                                                                                   aforge-v2 5h                                 $0.04
+○ The Annual Toggle                                                                                      pricing-site 5h      ✗ failed · The sweep it re-runs n…
+○ Reading the Ledger                                                                                        aforge-v2 1d    ✓ Measure the frame budget in… $0.21
 ○ What the Discount Means                                                                                pricing-site 1d
 ○ The Backup Window                                                                                             infra 2d
-○ Rotating the Deploy Key                                                                                       infra 4d
+○ Rotating the Deploy Key                                                                                       infra 4d    touched 5 files · spent $1.84
+                                                                                                                            191k tokens · last active 7m
+                                                                                                                            thinking high
 
 
+                                                                                                                            → verbs: put it away, new chat here,
+                                                                                                                                     open folder, copy path
 
 
 

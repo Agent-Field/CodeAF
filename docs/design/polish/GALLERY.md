@@ -169,6 +169,29 @@ Either a surface no lane has reached, or one the audit found already right.
 - `home-grouped` — [120x40](frames/home-grouped.120x40.txt)
 - `home-open` — [120x40](frames/home-open.120x40.txt)
 - `jobs-home` — [120x40](frames/jobs-home.120x40.txt)
+- `keep-fold-open` — [80x24](frames/keep-fold-open.80x24.txt)
+- `keep-fold-open2` — [80x24](frames/keep-fold-open2.80x24.txt)
+- `keep-foldopen` — [80x24](frames/keep-foldopen.80x24.txt)
+- `keep-help` — [80x24](frames/keep-help.80x24.txt)
+- `keep-home` — [160x50](frames/keep-home.160x50.txt) · [120x40](frames/keep-home.120x40.txt) · [80x24](frames/keep-home.80x24.txt) · [60x30](frames/keep-home.60x30.txt)
+- `keep-home-recheck` — [60x30](frames/keep-home-recheck.60x30.txt)
+- `keep-manual` — [80x24](frames/keep-manual.80x24.txt)
+- `keep-memory` — [80x24](frames/keep-memory.80x24.txt)
+- `keep-palette` — [80x24](frames/keep-palette.80x24.txt)
+- `keep-probe12` — [80x24](frames/keep-probe12.80x24.txt)
+- `keep-probe13` — [80x24](frames/keep-probe13.80x24.txt)
+- `keep-probe14` — [80x24](frames/keep-probe14.80x24.txt)
+- `keep-pulse-28` — no standard size
+- `keep-pulse-34` — no standard size
+- `keep-pulse-40` — no standard size
+- `keep-pulse-48` — no standard size
+- `keep-pulse-56` — no standard size
+- `keep-search` — [80x24](frames/keep-search.80x24.txt)
+- `keep-spend` — [80x24](frames/keep-spend.80x24.txt)
+- `keep-taskpage` — [60x30](frames/keep-taskpage.60x30.txt)
+- `keep-taskpage-recheck` — [60x30](frames/keep-taskpage-recheck.60x30.txt)
+- `keep-tasks` — [60x30](frames/keep-tasks.60x30.txt)
+- `keep-unknown` — [80x24](frames/keep-unknown.80x24.txt)
 - `main-home` — [120x40](frames/main-home.120x40.txt) · [60x30](frames/main-home.60x30.txt)
 - `memory` — [120x40](frames/memory.120x40.txt)
 - `money-after-home` — [120x40](frames/money-after-home.120x40.txt)
@@ -215,3 +238,4 @@ Either a surface no lane has reached, or one the audit found already right.
 - `spend` — [120x40](frames/spend.120x40.txt)
 - `standing` — [120x40](frames/standing.120x40.txt)
 - `tasks` — [120x40](frames/tasks.120x40.txt)
+- `verify-home` — [60x30](frames/verify-home.60x30.txt)

@@ -163,3 +163,112 @@ test: `TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct` (`internal/tui3/chat
 - **15 (the blockquote bar is the dock's glyph)** — `internal/tui2/tokens/code.go`.
 - **Rows twelve, thirteen, sixteen and seventeen** — `sev: low`, and this lane stopped at the med rows. 16 is
   `internal/tui3/app.go:7617` and is a one-line change for whoever takes it.
+
+---
+
+## fixed — the second pass
+
+Frames prefixed `chat2-` were captured from `bin/aforge` in a real terminal on
+socket `polish-chat2`, against the same demo home (and, for the home card, a
+freshly seeded one carrying the room fixture). Every fix below was REVERTED and
+its test watched to fail before the fix was put back.
+
+**Row 8 — the clock in the phase line runs backwards.** IT IS THE READING, not
+the drawing. `now.Sub(news.Since)` is faithful; what is wrong is `Since`. Every
+posting layer is honest about the stage it announces — `phaseClock.enter`
+(`internal/provider/phase.go`) sets `p.since = now` on each phase change, and a
+retry builds a whole NEW clock for its attempt — but a person reads one number
+and it is "how long have I been waiting", so a phase change halved it while they
+watched. The surface now carries the wait's own instant across every phase of
+one wait and hands it to both drawing sites, at the one door every phase comes
+through.
+files: `internal/tui3/phase.go` (`phaseDesk.waits`, `phaseWaiting`,
+`PostPhaseNews`)
+tests: `TestThePhaseClockNeverCountsBackwardsAcrossOneWait`,
+`TestWorkInProgressKeepsItsOwnClockAndDoesNotInheritTheWait`
+(`internal/tui3/phase_test.go`)
+reverted: the test reproduces the audit's own frame verbatim —
+`all lanes slow · still waiting · 10s` nineteen seconds into the wait.
+A stage of WORK keeps its own clock: `running go test · 41s` is about the test.
+
+**Row 7 — the phase words are drawn twice.** DECIDED: **the pulse owns the phase
+while it is on the frame; the rider takes it up the moment the pulse is not.**
+The pulse is where the answer is about to appear, so it is where the eye already
+is; and the status line has a whole cluster of telemetry behind the phase on its
+own drop ladder (row 6) which the second copy was spending. No state of a turn
+is left without a phase: the instant an answer streams, a call spins or the turn
+ends, the rider has it.
+The two tests the earlier lane declined for did NOT pin the doubling — one pins
+the PULSE's own ranking (phase > wait > silence), the other is a pure-function
+test of `rowLed(phaseFields(...))`, and both still pass unchanged. What did
+break were four tests that read `servedRider()`/`identityParts()` from a fixture
+with the pulse showing; they are rewritten onto the new law with the reason in
+their comments, through one named helper (`answerArriving`) that says what state
+the rider owns the phase in.
+files: `internal/tui3/render.go` (`app.ellipsisShowing`,
+`app.pulseHoldsThePhase`, `servedRiderAt`), `internal/manual/chat/screen.md`
+tests: `TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice`
+(`internal/tui3/phase_test.go`); rewritten:
+`TestTheRidersSpellingGoesBeforeTheBillOnTheStatusLine`
+(`internal/tui3/liverate_test.go`),
+`TestTheIdentityClusterShortensItsRiderRatherThanBeingClipped`,
+`TestAHiddenRolesPhaseNeverTouchesTheClock`,
+`TestAnotherWindowsWorkNeverTakesThisRow` (`internal/tui3/phase_test.go`)
+reverted: the test prints both rows saying `paced · retry in 2s`, which is the
+audit's frame.
+after: `frames/chat2-phase-after.120x40.txt` — the pulse says
+`··· connecting · 0.3s` and the status line carries its whole cluster,
+`crew balanced · 2 open · ◦ keeping an eye on 3 · <$0.0001 · 5.3k/200k · 3% ·
+⠙ working · 1s`, with no phase on it. `frames/chat2-phase-served-after.120x40.txt`
+is the other half of the law: the answer is arriving, the pulse is gone, and the
+rider has the words.
+
+**Row 11 — a fence's lines are truncated with no door.** DECIDED: **wrap, at
+every width**, through the machinery the phone tier already had. prose/code.go
+truncates and says why — "a caller that can scroll should do the cropping" — and
+the second half of that sentence is the premise: THERE IS NO HORIZONTAL SCROLL
+ANYWHERE ON THIS SURFACE, at 160 columns any more than at 44. A door
+(`▸ N long lines · ctrl+e`) was the alternative and it is worse: a line of code
+in an answer somebody is reading is the thing they came for, not something to
+hide behind a key. It was also worse than the audit had it — at 80 columns the
+tail simply stopped, with no ellipsis anywhere on the row.
+`phoneMarkdown` is now `segmentedMarkdown` with one flag: fences are re-laid-out
+at every width, tables only at the phone tier (a grid that CAN be a grid should
+stay one).
+files: `internal/tui3/markdown.go` (`segmentedMarkdown`, `renderMarkdownWithCode`),
+`internal/tui3/copymode.go` (`copyCodeRow`, `copyRails` — a wrapped row broke the
+run `a` selects, and `↳ ` would have reached the clipboard),
+`internal/manual/chat/screen.md`
+tests: `TestALineOfCodeIsWrappedRatherThanCutAtEveryWidth`,
+`TestAWrappedCodeRowIsMarkedAndAnUnwrappedOneIsNot`,
+`TestCopyModeTakesAWrappedFenceWholeAndPastesNoMarkers`
+(`internal/tui3/markdownwrap_test.go`)
+reverted: all three fail; the first prints the 80-column row losing `-=`.
+before: `frames/chat-md.120x40.txt` · after: `frames/chat2-md-after.120x40.txt`
+(`↳ ▏ } }` under a 116-cell Go line), `.160x50` (whole, unchanged),
+`.80x34` and `.60x40` (two continuation rows each, nothing lost) —
+`.80x24`/`.60x30` are the same conversation at the audit's own heights, where the
+fence sits below the fold.
+
+**Row 14 — `1 tool call` versus `1 tool`.** It was THREE spellings, not two: the
+rewind sheet said `N tools` as well. One function now spells it, and the noun is
+the CALL because that is what is counted — a turn that ran `bash` four times made
+four calls and used one tool.
+files: `internal/tui3/timestamps.go` (`toolCallWord`),
+`internal/tui3/workfold.go`, `internal/tui3/rewindsheet.go`,
+`internal/manual/chat/screen.md`, `internal/manual/chat/sessions-and-rewind.md`
+test: `TestOneTurnCountsItsToolCallsInOneWord` (`internal/tui3/workfold_test.go`)
+reverted (one site only, which is the real defect): the failure prints
+`▸ worked 47s · thought 6.0s · 2 tool calls · ctrl+e` over
+`· 19:01 · 47s · 2 tools ·`.
+
+### not fixed, and why
+
+- **Row 12, 13, 15, 16, 17** — untouched by this lane. 15 (the blockquote bar) is
+  `internal/tui2/tokens/code.go` and costs five sites in a component library the
+  **resident** also draws with (`glyph.go`'s ASCII/nerdfont table, `code_test.go`
+  pinning the byte it shares with the spawn tree, `glyphvocab_test.go`'s
+  description, `prose/render.go`, `prose_test.go`). Changing a shared glyph for
+  one surface's sake is a decision for whoever owns that library. The audit's own
+  alternative — give the DOCK something else — is inside `internal/tui3` and is
+  the cheaper half if anyone wants it.

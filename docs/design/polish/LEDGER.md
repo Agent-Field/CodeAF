@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 06:37Z_
+_2026-09-03 06:46Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -97,23 +97,23 @@ _2026-09-03 06:37Z_
 - `P4`    high CLOSED `/help`
 - `P5`    high CLOSED The search place has no slash-command door, and `/spend` opens something else
 - `P6`    high CLOSED The search empty state reports what search is and never what to do
-- `P7`    med  open   The manual listing wraps a long title into the name column and invents a page called `later`
+- `P7`    med  CLOSED The manual listing wraps a long title into the name column and invents a page called `later`
 - `P8`    med  CLOSED The command palette draws a fixed eight of fifty-two rows and never says the other forty-four exist
 - `P9`    med  CLOSED The memory place's empty state says what memory is and never what to do, and its hint promises shelf verbs on a page with no shelves
-- `P10`   med  open   The spend place's empty state never says that nothing has been spent, and names no next act
+- `P10`   med  CLOSED The spend place's empty state never says that nothing has been spent, and names no next act
 - `P11`   med  open   Memory's and search's teaching prose is truncated with an ellipsis rather than wrapped, so a sentence is unreadable on a narrow frame
 - `P12`   med  open   Memory's and search's body rows sit one cell left of every other place's
 - `P13`   med  open   `/help` spells one chord for macOS on every platform
-- `P14`   med  open   The map promises `→ verbs on this row` on places that have none
+- `P14`   med  CLOSED The map promises `→ verbs on this row` on places that have none
 - `P15`   med  CLOSED The first-run block and the greeting that replaces it are centred by two different rules, so the wordmark jumps when setup ends
-- `P16`   med  open   The first-run screen's refusal line is whatever Go error the writer produced, printed raw
+- `P16`   med  CLOSED The first-run screen's refusal line is whatever Go error the writer produced, printed raw
 - `P17`   low  open   The wordmark's last glyph has no right stroke and reads as a clipped letter
 - `P18`   low  open   A search that finds nothing reports the emptiness and nothing else
 - `P19`   low  open   Three more places' hint lines promise row verbs over a body that has no rows
-- `P20`   low  open   The entry note dumps the absolute transcript path over four wrapped lines
+- `P20`   low  CLOSED The entry note dumps the absolute transcript path over four wrapped lines
 - `P21`   low  open   `ctrl+r` appears twice on the key sheet with two different meanings
-- `P22`   low  open   The unknown-command refusal is written in machinery register
-- `P23`   low  open   `?` is bound to nothing and is advertised nowhere; help is reachable only by typing a slash command
+- `P22`   low  CLOSED The unknown-command refusal is written in machinery register
+- `P23`   low  CLOSED `?` is bound to nothing and is advertised nowhere; help is reachable only by typing a slash command
 
 ## home — [audit-home.md](audit-home.md)
 
