@@ -1193,6 +1193,12 @@ ellipsis at some widths and with nothing at all at others — so the same answer
 in one window and truncated in the next. There is no key that pans a block sideways and
 never was, so the cut simply lost the bytes.
 
+A URL or a path is not broken at the reading measure. A link is something you copy
+whole, not something you read along, so one too long for the measure is left on a row of
+its own and given the width of the whole column. Only a token longer than the column
+itself is broken, and then at the column, flush against the divider — the same place a
+fence, a table and a quoted passage already break.
+
 ## Markdown at phone width
 
 Phone width (under 60 columns) is the tier where a **table** is not the prose renderer's

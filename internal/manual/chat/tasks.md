@@ -1762,14 +1762,19 @@ background.
 this window's own live work, and the window next door are read together and joined on the
 conversation and the id, with the freshest of them winning.
 
-**Nothing is folded away.** Every row the window holds has a line, and the page scrolls —
+**A family can be folded away.** Where it is, the section's own heading says so —
+`done today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
+line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
 there is more under them. The row the cursor is on never fades wherever it sits, and a list
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting what is on the page, such as
+At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+not the rows drawn, which is why it can read a larger number than you can count on the
+screen when a family is folded. The section heading is where that difference is said. It
+reads such as
 `2 needs your look · 3 running · 12 done today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 

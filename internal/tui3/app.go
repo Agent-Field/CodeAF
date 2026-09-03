@@ -722,6 +722,11 @@ type (
 )
 
 type app struct {
+	// ruler measures a string the way the RENDERER will draw it rather than the
+	// way this package would prefer to read it. The two disagree about a
+	// variation-selector emoji and a flag, and the rail bent two cells wherever
+	// one appeared (cellwidth.go).
+	ruler cellRuler
 	ctx   context.Context
 	agent Agent
 	fresh func() (Agent, string, error)
@@ -2547,6 +2552,13 @@ func (a *app) Init() tea.Cmd {
 // here costs one tick on the frames where anything is owed and nothing at all on
 // the rest, because [app.wake] answers nil to a clock that is already running.
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// THE TERMINAL'S ANSWER ABOUT HOW WIDE AN EMOJI IS, taken before anything
+	// else looks at the message. bubbletea acts on this same report to switch
+	// its own renderer and passes it through to us, so reading it here is how
+	// the layout and the paint end up measuring one frame the same way.
+	if mode, ok := msg.(tea.ModeReportMsg); ok {
+		a.ruler.noteModeReport(mode)
+	}
 	model, cmd := a.update(msg)
 	// A TASK BRIEF BEING SHAPED IS THE SECOND THING ARMED HERE, and it is the
 	// colder start of the two. Both doors onto the forming block — `/task` typed

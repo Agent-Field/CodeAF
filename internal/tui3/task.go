@@ -5450,7 +5450,12 @@ func (a *app) railJoin(text, rail string) string {
 		return text
 	}
 	body := a.bodyWidth()
-	switch width := ansi.StringWidth(text); {
+	// MEASURED THE WAY IT WILL BE DRAWN. `ansi.StringWidth` reads a
+	// variation-selector emoji and a flag as two cells; the renderer under us
+	// draws them as one unless the terminal answered mode 2027, so padding
+	// computed the first way left the rail two cells short on exactly those rows
+	// and straight everywhere else (cellwidth.go).
+	switch width := a.ruler.cells(text); {
 	case width < body:
 		text += strings.Repeat(" ", body-width)
 	case width > body:

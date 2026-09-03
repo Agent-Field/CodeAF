@@ -483,3 +483,42 @@ a ZWJ family, a VS16 pair, a flag pair, a CJK run and a combining acute one to a
 line under a plain ASCII control line, plus an unbreakable link and path and a
 question tuned to fill the column at 120 AND at 160. `frames/km-widths-*` are
 captured from it.
+
+
+## fixed — row 13, which the measure lane declined and proved
+
+**Row 13 — the rail bends under a variation-selector emoji and a flag, and NOT
+under a ZWJ family.** The declining lane's mechanism was right and its proof
+stands: the layout measures with `ansi.StringWidth` (grapheme widths) while the
+renderer beneath composes its grid with `ansi.WcWidth`, and the two disagree
+about exactly two things.
+
+**What I did NOT do is hardcode `ansi.WcWidth`,** which was the proven one-line
+fix. It is right on tmux and WRONG on a terminal that answers mode 2027, where
+the renderer switches to grapheme widths and the layout would then be the one
+that is out of step — the same defect with its sign flipped. bubbletea passes
+the terminal's answer through to this model as a `tea.ModeReportMsg` after
+acting on it itself, so the surface can hold the same fact the renderer acted on
+instead of guessing: `internal/tui3/cellwidth.go`'s `cellRuler`, fed in
+`app.Update`, read at `task.go`'s `railJoin`. It starts at `ansi.WcWidth`
+because that is what the renderer starts at, so a frame drawn before the
+handshake finishes is measured the way it is drawn.
+
+Test: `TestTheRailStandsInOneColumnWhateverIsWrittenBesideIt`
+(`railbend_test.go`), which asserts the thing a person asserts by looking —
+every row puts the rail in the same column — **under BOTH readings a terminal
+can give**. Verified by reverting to each hardcoding in turn: `ansi.StringWidth`
+fails the never-answered half at column 88 against 90, `ansi.WcWidth` fails the
+mode-2027 half at 92 against 90. Neither hardcoding can pass it, which is the
+whole reason it is written twice.
+
+The substitution belongs at every layout site in this package that has to line
+up with a drawn column; the rail is done because it is the one where being wrong
+is a bent line down the frame.
+
+### The manual, in the same change
+`internal/manual/chat/tasks.md` — `**Nothing is folded away.**` predated the
+family fold and was false; and the foot was described as counting rows when it
+counts WORK, which is the whole of row T13. `screen.md` — the unbreakable-token
+rule. Both went into EXISTING sections; no new `## ` heading, which has hijacked
+retrieval three times in this wave.

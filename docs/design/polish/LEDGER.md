@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 08:41Z_
+_2026-09-03 08:45Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
