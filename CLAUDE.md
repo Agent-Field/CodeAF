@@ -231,11 +231,13 @@ two more that were never written down, and it was fixed rather than described
 beside it is now a bug report, not a known shape: **reproduce it, do not rerun it
 in isolation and move on.**
 
-**The laws run on every pull request.** `make test-laws` is every test that reads
-the tree itself with `go/ast` or `go/parser`, found by that import
-(`scripts/laws.sh`) and run in about twenty seconds; the pull-request gate runs it
-and the full suite of every package the change touched. Write a structural test
-with that import and it is on the gate the day it lands.
+**The laws and the touched packages run on every pull request, and both block.**
+`make test-laws` is every test that reads the tree itself with `go/ast` or
+`go/parser`, found by that import (`scripts/laws.sh`) and run in about twenty
+seconds; `touched packages` is the full suite of every package the change touched,
+with `-count=1`; `check` is green only when both are. Write a structural test with
+that import and it is on the gate the day it lands. A red `touched packages` on
+your pull request is yours to read before anything merges.
 
 **The tmux TUI suite** is the only test that drives the real binary in a real
 terminal against a real model, and it is how a wave verifies that the surface
