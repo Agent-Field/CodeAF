@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a task's where is not a decision; isolation falls out of the ground, and un-isolation is judged from the person's words
+title: a task's where is not a decision; isolation is judged from their words
 pr: 565
 surface: [engine, chat]
 invalidates:
