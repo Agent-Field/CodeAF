@@ -638,8 +638,14 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// forked, so simply returning the error would leave exactly the orphan the
 	// refusal exists to prevent — a process running for a session that has
 	// left, with no row, no id and no round that will ever kill it.
+	//
+	// The kill reaches the whole GROUP, not just the shell, because a shell
+	// that has already forked a compiler would otherwise leave the compiler
+	// behind. Start has just returned, so there is a process to name: on unix
+	// that is `kill(-pid)` against the session this job leads, and on Windows
+	// it is `taskkill /T` against the process group it was given.
 	if err := r.add(started); err != nil {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil, err
 	}
 
