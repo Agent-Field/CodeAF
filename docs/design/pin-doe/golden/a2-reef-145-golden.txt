@@ -1,0 +1,45 @@
+                                                                                                              │ + /task
+  · carrying its own work on: $1                                                                              │
+  · esc interrupts · ctrl+c twice quits                                                                       │ + /standing
+                                                                                                              │
+› [paste 1 · 83 lines]                                                                                        │
+                                                                                                              │
+  · done when · All new and existing tests pass with `pytest`; the `_authorized` function in                  │
+  reef/service/auth.py uses `partition(" ")` and `scheme.lower() != "bearer"`; a test file contains at least  │
+  four cases (Bearer, bearer, BEARER, mixed case) all authenticating the same valid token; existing token     │
+  case-sensitivity and token rotation tests remain unchanged and green.                                       │
+  · anthropic cannot serve this model; routing on auto for this model until you pin again                     │
+  ·· connecting · 0.3s                                                                                        │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │
+                                                                                                              │ Σ $0.0001 · 1.4k tok
+                                                                                                              │ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────── esc interrupt ─
+
+                                                                                                                                      ⠿ high
+ ›
+work · deepseek-v4-flash · connecting · 0.3s                          one model · $0.0001 · 5.2k/1M · 1% · 10 tok/s · YOLO · ⠇ working · 25s

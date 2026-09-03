@@ -1,0 +1,19 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:06:27.862 a998313f start -     anthropic      -    -       
+17:06:27.911 a998313f end   -     anthropic      404  49      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:06:27.912 05eb5b26 start -     DigitalOcean   -    -      hedged arms=2 
+17:06:54.271 05eb5b26 end   -     DigitalOcean   200  26359  hedged arms=2 
+17:06:54.273 0c932a33 start turn  CoreWeave      -    -       
+17:07:59.887 0c932a33 end   turn  CoreWeave      200  65614   
+17:07:59.895 d5a62b72 start turn  CoreWeave      -    -       
+17:08:06.744 d5a62b72 end   turn  CoreWeave      200  6849    
+17:08:06.746 7ccd7d85 start turn  CoreWeave      -    -       
+17:08:10.032 7ccd7d85 end   turn  CoreWeave      200  3286    
+17:08:10.347 29bb0f92 start turn  CoreWeave      -    -       
+17:08:14.341 29bb0f92 end   turn  CoreWeave      200  3994    the reply was the model's own internal markup instead of an answer and was cut
+17:08:14.342 0e107a3e start turn  CoreWeave      -    -       
+17:08:16.918 0e107a3e end   turn  CoreWeave      200  2576    
+17:08:16.921 d517b3c8 start -     Alibaba        -    -       
+17:08:19.655 d517b3c8 end   -     Alibaba        200  2733    
+17:08:19.655 c1da0b85 start reflex Baidu          -    -       
+17:08:21.052 c1da0b85 end   reflex Baidu          200  1396    

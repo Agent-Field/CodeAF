@@ -1,0 +1,135 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:27:53.873 09103087 start -     anthropic      -    -       
+17:27:53.944 09103087 end   -     anthropic      404  71      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:27:53.944 ffc80de3 start -     DigitalOcean   -    -      hedged arms=2 
+17:28:16.267 ffc80de3 end   -     DigitalOcean   200  22322  hedged arms=2 
+17:28:16.269 58025c71 start turn  CoreWeave      -    -       
+17:28:38.285 58025c71 end   turn  CoreWeave      200  22017   
+17:28:38.344 810ef38f start turn  CoreWeave      -    -       
+17:28:43.374 810ef38f end   turn  CoreWeave      200  5030    
+17:28:43.380 5b86d6fe start turn  CoreWeave      -    -       
+17:28:47.351 5b86d6fe end   turn  CoreWeave      200  3971    
+17:28:47.353 ff08e1d0 start turn  CoreWeave      -    -       
+17:28:54.797 ff08e1d0 end   turn  CoreWeave      200  7444    
+17:28:54.801 0dcefe36 start turn  CoreWeave      -    -       
+17:29:07.055 0dcefe36 end   turn  CoreWeave      200  12254   
+17:29:07.058 d5b2abd1 start turn  CoreWeave      -    -       
+17:29:26.984 d5b2abd1 end   turn  CoreWeave      200  19926   
+17:29:26.991 dee35019 start turn  CoreWeave      -    -       
+17:29:30.205 dee35019 end   turn  CoreWeave      200  3214    
+17:29:30.210 94bbeffe start turn  CoreWeave      -    -       
+17:29:34.639 94bbeffe end   turn  CoreWeave      200  4430    
+17:29:35.183 8b8e6360 start turn  CoreWeave      -    -       
+17:29:41.445 8b8e6360 end   turn  CoreWeave      200  6263    
+17:29:41.908 ceaa3de8 start turn  CoreWeave      -    -       
+17:29:47.035 ceaa3de8 end   turn  CoreWeave      200  5128    
+17:29:48.833 66dd2748 start turn  CoreWeave      -    -       
+17:30:03.817 342fd5fb start turn  CoreWeave      -    -       
+17:30:15.829 cee901c5 start turn  CoreWeave      -    -       
+17:30:24.702 f2fa28c9 start turn  CoreWeave      -    -       
+17:30:28.611 f2fa28c9 end   turn  CoreWeave      200  3911    
+17:30:28.615 f9a20c36 start turn  CoreWeave      -    -       
+17:30:32.652 462072fa start turn  CoreWeave      -    -       
+17:30:40.051 6bc5e7bf start turn  CoreWeave      -    -       
+17:30:46.095 65922c29 start turn  CoreWeave      -    -       
+17:30:58.994 07108cfc start turn  CoreWeave      -    -       
+17:31:02.160 07108cfc end   turn  CoreWeave      200  3168    
+17:31:02.165 01e41cca start turn  CoreWeave      -    -       
+17:31:05.316 01e41cca end   turn  CoreWeave      200  3151    
+17:31:05.321 abb56996 start turn  CoreWeave      -    -       
+17:31:09.484 abb56996 end   turn  CoreWeave      200  4164    
+17:31:09.502 c645ecd6 start turn  CoreWeave      -    -       
+17:31:12.438 c645ecd6 end   turn  CoreWeave      200  2938    
+17:31:12.445 1e25b55e start turn  CoreWeave      -    -       
+17:31:33.424 447e6bb9 start -     StreamLake     -    -       
+17:31:33.425 081106ba start -     Baidu          -    -       
+17:31:34.690 447e6bb9 end   -     StreamLake     200  1266    
+17:31:34.691 3f8b2d73 start -     StreamLake     -    -       
+17:31:40.008 3f8b2d73 end   -     StreamLake     200  5317    
+17:31:40.047 081106ba end   -     Baidu          200  6623    
+17:31:40.065 7d5f09d7 start -     Baidu          -    -       
+17:31:43.246 7d5f09d7 end   -     Baidu          200  3181    
+17:32:40.246 23adab39 start task  CoreWeave      -    -       
+17:32:43.116 fc623bd5 start task  NextBit        -    -      hedged arms=2 
+17:32:43.305 2bb05842 start task  NextBit        -    -      hedged arms=2 
+17:32:44.379 2bb05842 end   task  NextBit        -    1073   hedged arms=2 Post "https://openrouter.ai/api/v1/chat/completions": context canceled
+17:32:44.389 698c467e start task  CoreWeave      -    -       
+17:32:50.124 698c467e end   task  CoreWeave      200  5735    
+17:32:50.126 a40c5bb5 start task  CoreWeave      -    -       
+17:33:09.527 a40c5bb5 end   task  CoreWeave      200  19401   
+17:33:09.530 316547d5 start task  anthropic      -    -       
+17:33:09.576 316547d5 end   task  anthropic      404  46      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:33:09.577 13f46134 start task  CoreWeave      -    -      hedged arms=2 
+17:33:19.580 66a14312 start task  NextBit        -    -      hedged arms=3 
+17:33:27.480 66a14312 end   task  NextBit        200  7901   hedged arms=3 
+17:33:27.481 13f46134 end   task  CoreWeave      200  17904  hedged arms=3 decode stream: context canceled
+17:33:27.494 e7b81a00 start task  CoreWeave      -    -       
+17:33:45.883 e7b81a00 end   task  CoreWeave      200  18389   
+17:33:45.886 32fff2fa start task  CoreWeave      -    -       
+17:33:56.776 6b6966fc start task  CoreWeave      -    -       
+17:34:15.756 a1521555 start task  CoreWeave      -    -       
+17:34:40.112 a1521555 end   task  CoreWeave      200  24357   
+17:34:40.124 69a67c5c start task  CoreWeave      -    -       
+17:35:03.124 a6090707 start task  CoreWeave      -    -       
+17:35:15.638 dda5df7f start task  CoreWeave      -    -       
+17:35:26.261 1abdca75 start task  CoreWeave      -    -       
+17:35:39.134 d2c9e6da start task  NextBit        -    -       
+17:35:55.072 2861b044 start task  CoreWeave      -    -       
+17:36:00.140 2861b044 end   task  CoreWeave      200  5072    
+17:36:00.141 576a4a0f start -     Baidu          -    -       
+17:36:00.637 576a4a0f end   -     Baidu          200  495     
+17:36:00.741 bfd4dc36 start turn  CoreWeave      -    -       
+17:36:06.190 00879be1 start turn  CoreWeave      -    -       
+17:36:16.085 193ef770 start turn  CoreWeave      -    -       
+17:36:20.621 96ef2abc start turn  CoreWeave      -    -       
+17:36:29.749 2d97a557 start turn  CoreWeave      -    -       
+17:36:33.035 de60946e start turn  CoreWeave      -    -       
+17:36:36.107 1df5ba78 start turn  CoreWeave      -    -       
+17:36:50.212 1df5ba78 end   turn  CoreWeave      200  14105   
+17:36:52.539 ae8427c0 start turn  CoreWeave      -    -       
+17:36:55.748 48b3c5af start turn  CoreWeave      -    -       
+17:37:02.196 ac34ff2e start turn  CoreWeave      -    -       
+17:37:08.069 94919f1f start turn  CoreWeave      -    -       
+17:37:11.782 23feca1a start turn  CoreWeave      -    -       
+17:37:23.446 ab55a266 start turn  CoreWeave      -    -       
+17:37:29.918 ab55a266 end   turn  CoreWeave      200  6474    
+17:37:29.920 6ed9dfe8 start -     NextBit        -    -       
+17:37:30.490 6ed9dfe8 end   -     NextBit        200  570     
+17:37:30.597 3e5edafe start turn  CoreWeave      -    -       
+17:37:34.788 78a171d0 start turn  CoreWeave      -    -       
+17:37:37.798 b906309e start turn  CoreWeave      -    -       
+17:37:41.320 b906309e end   turn  CoreWeave      200  3523    
+17:37:41.328 20f82b5c start turn  CoreWeave      -    -       
+17:37:44.763 0e8ae781 start turn  CoreWeave      -    -       
+17:37:49.117 1fe7fd47 start turn  NextBit        -    -       
+17:37:52.750 1fe7fd47 end   turn  NextBit        200  3633    
+17:38:01.935 ef870da4 start turn  anthropic      -    -       
+17:38:02.022 ef870da4 end   turn  anthropic      404  88      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:38:02.025 ec751b03 start turn  CoreWeave      -    -      hedged arms=2 
+17:38:09.139 ec751b03 end   turn  CoreWeave      200  7115   hedged arms=2 
+17:38:09.143 ddc2896d start turn  CoreWeave      -    -       
+17:38:17.441 d61a412a start turn  CoreWeave      -    -       
+17:38:24.881 57e5d296 start turn  CoreWeave      -    -       
+17:38:35.052 2d6f0a75 start turn  CoreWeave      -    -       
+17:38:40.341 e4eb7d18 start turn  CoreWeave      -    -       
+17:38:46.458 3c1cdf8a start turn  CoreWeave      -    -       
+17:38:49.682 8f3b64a5 start turn  CoreWeave      -    -       
+17:38:53.711 12df5ac8 start turn  CoreWeave      -    -       
+17:38:56.524 31ef0b85 start turn  CoreWeave      -    -       
+17:39:09.848 1b78eb53 start turn  CoreWeave      -    -       
+17:39:13.854 1b78eb53 end   turn  CoreWeave      200  4007    
+17:39:13.859 34fb8af0 start turn  CoreWeave      -    -       
+17:39:41.712 4f942f0a start turn  CoreWeave      -    -       
+17:40:11.426 fafcf9a7 start -     Baidu          -    -       
+17:40:11.428 82dc0447 start -     Baidu          -    -       
+17:40:12.267 fafcf9a7 end   -     Baidu          200  840     
+17:40:14.012 82dc0447 end   -     Baidu          200  2585    
+17:41:55.347 37949b57 start task  CoreWeave      -    -       
+17:42:00.990 0e625296 start task  CoreWeave      -    -       
+17:42:04.096 b56e7905 start task  CoreWeave      -    -       
+17:42:08.265 49de49b0 start task  CoreWeave      -    -       
+17:42:09.537 ff56a2be start task  CoreWeave      -    -       
+17:42:10.925 2e4f05a1 start task  CoreWeave      -    -       
+17:42:21.804 bb128982 start task  CoreWeave      -    -       
+17:42:36.231 bb128982 end   task  CoreWeave      200  14427   
+17:42:36.234 de81e747 start task  CoreWeave      -    -       

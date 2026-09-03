@@ -1,0 +1,25 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:17:22.947 9fca0c51 start -     anthropic      -    -       
+17:17:22.998 9fca0c51 end   -     anthropic      404  51      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:17:22.998 7867344a start -     DigitalOcean   -    -      hedged arms=2 
+17:17:42.960 7867344a end   -     DigitalOcean   200  19962  hedged arms=2 
+17:17:42.963 5467c6f7 start turn  CoreWeave      -    -       
+17:18:04.062 5467c6f7 end   turn  CoreWeave      200  21100   
+17:18:04.066 8d0efe4f start turn  CoreWeave      -    -       
+17:18:08.379 8d0efe4f end   turn  CoreWeave      200  4314    
+17:18:08.381 81cfe65e start turn  CoreWeave      -    -       
+17:18:11.211 81cfe65e end   turn  CoreWeave      200  2830    
+17:18:11.215 984a249c start turn  CoreWeave      -    -       
+17:18:26.174 984a249c end   turn  CoreWeave      200  14960   
+17:18:26.190 7cbc8531 start turn  CoreWeave      -    -       
+17:18:31.558 7cbc8531 end   turn  CoreWeave      200  5369    
+17:18:31.861 d90b65c4 start turn  CoreWeave      -    -       
+17:18:53.675 d90b65c4 end   turn  CoreWeave      200  21814   
+17:18:53.678 320f2f90 start turn  CoreWeave      -    -       
+17:18:56.936 320f2f90 end   turn  CoreWeave      200  3259    
+17:18:57.214 c80c8787 start turn  CoreWeave      -    -       
+17:19:01.565 c80c8787 end   turn  CoreWeave      200  4353    
+17:19:01.567 616baf2e start -     Alibaba        -    -       
+17:19:07.734 616baf2e end   -     Alibaba        200  6166    
+17:19:07.735 e65d15c2 start reflex StreamLake     -    -       
+17:19:11.830 e65d15c2 end   reflex StreamLake     200  4095    

@@ -1,0 +1,45 @@
+def _all_after_dag_id_to_kw_only(cls, fields: list[attrs.Attribute]):                                         │ tasks
+    i = iter(fields)                                                                                          │ ✓ ◇ paste 1               #1
+    f = next(i)                                                                                               │ + /task
+    if f.name != "dag_id":                                                                                    │
+        raise RuntimeError("dag_id was not the first field")                                                  │ + /standing
+    yield f                                                                                                   │
+                                                                                                              │
+    for f in i:                                                                                               │
+        yield f.evolve(kw_only=True)                                                                          │
+                                                                                                              │
+                                                                                                              │
+@attrs.define(field_transformer=_all_after_dag_id_to_kw_only)                                                 │
+class Base:                                                                                                   │
+    dag_id: str                                                                                               │
+    has_default: str = "default"                                                                              │
+                                                                                                              │
+                                                                                                              │
+@attrs.define()                                                                                               │
+class Subclass(Base):                                                                                         │
+    other: bool                                                                                               │
+                                                                                                              │
+                                                                                                              │
+x = Subclass(dag_id="foo", other=False)                                                                       │
+                                                                                                              │
+print(repr(x))                                                                                                │
+print(attrs.__version__)                                                                                      │
+```                                                                                                           │
+                                                                                                              │
+Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete  │
+tests to make them pass.                                                                                      │
+                                                                                                              │
+```"                                                                                                          │
+Repro runs correctly, full suite passes. Done.                                                                │
+                                                                                                              │
+One-line fix: attrs = list(field_transformer(cls, attrs)) in _transform_attrs.                                │
+Previously the generator was consumed once by the validation loop, leaving attr_names to                      │
+build an empty __attrs_attrs__ tuple — so subclassing saw no base fields to inherit.                          │ Σ $0.15 · 2.6M tok · 1 done
+  · ⟲ 36.9k cached · saved $0.0024                                                                            │ ctrl+. earlier
+                                                                             · 16:53 · 14s · 2 tools · $0.12 ·│ ❯ ctrl+g hide
+
+─ main ───────────────────────────────────────────────────────────────────────────────────────────────────────────── / shows every command ─
+
+                                                                                                                                      ⠿ high
+ ›
+field_transformer subclass init bug · deepseek-v4-flash · via baidu · 1.0s                            $0.15 · 37.1k/1M · 4% ▁▁ · YOLO · idle

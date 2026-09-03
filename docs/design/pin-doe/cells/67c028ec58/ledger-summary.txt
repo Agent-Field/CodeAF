@@ -1,0 +1,106 @@
+# one line per ledger row: time id phase tag lane status ms [hedged/arms] error(first 100 chars)
+17:56:42.425 c11b2a1c start -     anthropic      -    -       
+17:56:42.489 c11b2a1c end   -     anthropic      404  63      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+17:56:42.489 e38058d0 start -     StreamLake     -    -      hedged arms=2 
+17:56:59.173 e38058d0 end   -     StreamLake     200  16684  hedged arms=2 
+17:56:59.174 1fa22978 start -     Baidu          -    -       
+17:57:11.256 1fa22978 end   -     Baidu          200  12082   
+17:57:11.258 8c8ea9de start turn  CoreWeave      -    -       
+17:57:17.063 8c8ea9de end   turn  CoreWeave      200  5805    
+17:57:17.072 7bbc3a21 start turn  CoreWeave      -    -       
+17:57:21.069 7bbc3a21 end   turn  CoreWeave      200  3997    
+17:57:21.083 82aff38c start turn  CoreWeave      -    -       
+17:57:26.825 82aff38c end   turn  CoreWeave      200  5742    
+17:57:26.827 c1fc30b8 start turn  CoreWeave      -    -       
+17:57:45.485 c1fc30b8 end   turn  CoreWeave      200  18658   
+17:57:45.488 40a20888 start turn  CoreWeave      -    -       
+17:57:53.470 40a20888 end   turn  CoreWeave      200  7983    
+17:57:53.481 8723eb39 start turn  CoreWeave      -    -       
+17:57:56.195 8723eb39 end   turn  CoreWeave      200  2715    
+17:57:56.199 458ccdba start turn  CoreWeave      -    -       
+17:58:01.032 458ccdba end   turn  CoreWeave      200  4833    
+17:58:01.035 345a11d4 start turn  CoreWeave      -    -       
+17:58:12.848 345a11d4 end   turn  CoreWeave      200  11813   
+17:58:12.852 51d20cd1 start turn  CoreWeave      -    -       
+17:58:17.482 9cad06fb start turn  CoreWeave      -    -       
+17:58:26.259 9cad06fb end   turn  CoreWeave      200  8777    
+17:58:27.815 8f8859a8 start turn  CoreWeave      -    -       
+17:58:32.435 34a15b6f start turn  CoreWeave      -    -       
+17:58:44.938 8bd32385 start turn  CoreWeave      -    -       
+17:58:50.297 087c3dba start turn  CoreWeave      -    -       
+17:58:53.218 087c3dba end   turn  CoreWeave      200  2922    
+17:59:04.051 c74888bb start turn  CoreWeave      -    -       
+17:59:09.238 c74888bb end   turn  CoreWeave      200  5187    
+17:59:09.243 c1f5b68f start turn  CoreWeave      -    -       
+17:59:32.812 c1f5b68f end   turn  CoreWeave      200  23571   
+17:59:33.409 729e6d73 start turn  CoreWeave      -    -       
+17:59:42.732 777daeeb start turn  CoreWeave      -    -       
+18:00:00.127 0de89b97 start turn  CoreWeave      -    -       
+18:00:13.104 1b7ea6dd start turn  CoreWeave      -    -       
+18:00:47.024 bc7a6589 start turn  CoreWeave      -    -       
+18:01:20.013 45103b58 start turn  CoreWeave      -    -       
+18:01:23.993 40a0c2ff start turn  CoreWeave      -    -       
+18:01:28.216 90b7ea4a start -     StreamLake     -    -       
+18:01:28.217 cdccf95c start -     Baidu          -    -       
+18:01:31.301 cdccf95c end   -     Baidu          200  3085    
+18:01:31.311 59dd8353 start -     Baidu          -    -       
+18:01:33.598 90b7ea4a end   -     StreamLake     200  5382    
+18:01:34.011 59dd8353 end   -     Baidu          200  2699    
+18:01:50.248 319a5982 start turn  anthropic      -    -       
+18:01:50.313 319a5982 end   turn  anthropic      404  69      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:01:50.317 b5fcd0d3 start turn  CoreWeave      -    -      hedged arms=2 
+18:01:50.365 b5fcd0d3 end   turn  CoreWeave      404  51     hedged arms=2 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:01:50.369 45630ba5 start turn  Phala          -    -      hedged arms=3 
+18:01:50.420 45630ba5 end   turn  Phala          404  54     hedged arms=3 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:02:31.572 4c15cac3 start task  Azure          -    -       
+18:03:43.871 4c15cac3 end   task  Azure          200  72298   
+18:03:43.881 815a2f2d start task  Azure          -    -       
+18:04:05.254 815a2f2d end   task  Azure          200  21373   
+18:04:05.257 a6de02fd start task  Azure          -    -       
+18:05:44.965 a6de02fd end   task  Azure          200  99708   
+18:05:44.967 0b7e52a6 start task  Azure          -    -       
+18:05:54.422 43a3b967 start task  Azure          -    -       
+18:06:01.198 3485b1db start task  Azure          -    -       
+18:06:25.265 5f8dc2b7 start task  NextBit        -    -       
+18:06:29.663 684df61c start task  Azure          -    -       
+18:06:37.211 eb314593 start task  Azure          -    -       
+18:06:50.471 34207a8c start task  anthropic      -    -       
+18:06:50.504 34207a8c end   task  anthropic      404  33      API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:06:50.505 2e75d0b1 start task  Azure          -    -      hedged arms=2 
+18:06:50.530 2e75d0b1 end   task  Azure          404  25     hedged arms=2 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:06:50.531 d7af78ae start task  NextBit        -    -      hedged arms=3 
+18:06:50.555 d7af78ae end   task  NextBit        404  24     hedged arms=3 API error (404): No allowed providers are available for the selected model. Providers serving deepse
+18:06:50.588 e93dad41 start turn  DeepInfra      -    -       
+18:06:55.443 5133ed04 start turn  DeepInfra      -    -       
+18:06:59.605 5133ed04 end   turn  DeepInfra      200  4165    
+18:06:59.622 0cdcafce start turn  DeepInfra      -    -       
+18:07:03.774 0cdcafce end   turn  DeepInfra      200  4155    
+18:07:04.108 1d1eac64 start turn  DeepInfra      -    -       
+18:07:06.672 1d1eac64 end   turn  DeepInfra      200  2568    
+18:07:06.678 50390002 start turn  DeepInfra      -    -       
+18:07:17.516 786f4040 start turn  DeepInfra      -    -       
+18:07:20.854 786f4040 end   turn  DeepInfra      200  3341    
+18:07:20.868 19f496e3 start turn  DeepInfra      -    -       
+18:07:30.986 19f496e3 end   turn  DeepInfra      200  10121   
+18:07:30.999 a2d70c54 start turn  DeepInfra      -    -       
+18:07:37.659 a2d70c54 end   turn  DeepInfra      200  6661    
+18:07:37.667 b6ad5ae4 start turn  DeepInfra      -    -       
+18:07:54.910 95ed55d4 start turn  DeepInfra      -    -       
+18:08:03.663 88cb0eb6 start turn  DeepInfra      -    -       
+18:08:38.031 92e78b3e start turn  DeepInfra      -    -       
+18:08:40.547 160fa0ef start turn  DeepInfra      -    -       
+18:08:42.856 160fa0ef end   turn  DeepInfra      200  2311    
+18:08:42.864 15b6c81e start turn  DeepInfra      -    -       
+18:09:17.480 dd5b051d start turn  DeepInfra      -    -       
+18:09:21.192 73cf504f start turn  DeepInfra      -    -       
+18:09:24.902 73cf504f end   turn  DeepInfra      200  3713    
+18:09:24.906 55575cd6 start reflex StreamLake     -    -       
+18:09:30.200 55575cd6 end   reflex StreamLake     200  5293    
+18:09:46.944 bf9ac151 start turn  DeepInfra      -    -       
+18:09:50.376 bf9ac151 end   turn  DeepInfra      200  3434    
+18:09:50.381 099c407f start turn  DeepInfra      -    -       
+18:10:04.970 753ccced start turn  DeepInfra      -    -       
+18:10:17.721 64f4cd97 start -     StreamLake     -    -       
+18:10:17.721 99072a6a start -     Baidu          -    -       
+18:10:19.769 99072a6a end   -     Baidu          200  2048    
+18:10:23.509 64f4cd97 end   -     StreamLake     200  5788    
