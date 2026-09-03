@@ -181,7 +181,12 @@ With no prompt written out, it reads the prompt from whatever is piped in.
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
 and the machine-readable result says which — it carries the worker's text, the reason it
-stopped, what it used, and the files it made.
+stopped, what it used, and the files it made. **A run that failed also carries `error`**:
+the reason in the same words a person would read on the error stream, so a script reading
+only standard output can learn why and not just that. It says `"stop":"error"` and that
+field together, and a run that answered carries no `error` key at all rather than an empty
+one. The same object is what `-o <file>` writes, so the file, standard output and the
+error stream cannot disagree about why a run fell over.
 
 `--plan-model` is accepted only so that every command you can run without the screen takes
 the same flags. `exec` plans nothing, so naming it changes nothing.
