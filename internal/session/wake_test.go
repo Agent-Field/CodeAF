@@ -461,7 +461,7 @@ func TestOwedJobExitLandsAtTheNextStepBoundaryOnce(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	first.wait(t)
-	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output")
+	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output", false)
 	close(first.release)
 	collect(t, events)
 
@@ -628,9 +628,9 @@ func TestTwoJobNotesInOneWindowAreOneWake(t *testing.T) {
 	// The registry's own reporting seam (jobs.go's reap calls exactly this), so
 	// the two notes land in a known order rather than at the mercy of two
 	// processes exiting.
-	agent.jobs.notify("job 1 exited 1: connection refused")
+	agent.jobs.notify("job 1 exited 1: connection refused", false)
 	<-inFlight
-	agent.jobs.notify("job 2 exited 1: connection refused")
+	agent.jobs.notify("job 2 exited 1: connection refused", false)
 	close(release)
 
 	select {
