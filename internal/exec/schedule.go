@@ -662,17 +662,13 @@ func boundInput(result string, artifacts []string, limit int) string {
 // fallbackBrief covers nodes the planner never wrote an instruction for.
 // Synthesis nodes are the normal case: the harness owns them, so it owns their
 // instruction too rather than asking a model to invent one.
+//
+// The composition itself is the planner's, because the planner reaches the same
+// question from the other side — a brief call that would not answer leaves a
+// node to be composed for while the graph is still being built — and two
+// compositions would be two answers to one question. See plan.ComposedBrief.
 func fallbackBrief(node *plan.Node) string {
-	if node.Kind == plan.KindSynthesis {
-		return "Several separate pieces of work have been completed and their results are above. " +
-			"Bring them together into the one finished outcome the goal asked for. " +
-			"Where they disagree, resolve it explicitly rather than averaging it away. " +
-			"Where they have been done separately and now need to work as a whole, make that so. " +
-			"Do not redo work that is already finished — everything you need is above or in the " +
-			"files it names. If the outcome is a document, write it out; if it is something that " +
-			"has to work, check that it does."
-	}
-	return node.Summary
+	return plan.ComposedBrief(*node)
 }
 
 func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time, retries map[int]int) {

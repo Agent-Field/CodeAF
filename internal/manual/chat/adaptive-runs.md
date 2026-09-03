@@ -928,6 +928,23 @@ the run goes on to deliver, be reviewed, and land like any other — **with the 
 checklist it already read off your request**, so a job that fell back here is still held to
 the behaviours you stated rather than only to how its answer reads.
 
+## When the run says a brief could not be written — a plan already drawn is kept
+
+You only see that line when **no plan was drawn at all**. Planning is seven or eight model
+calls, some of them one per node, and a fault in a late one is not a reason to throw away
+the shape the earlier ones found. A plan that exists is run as drawn.
+
+The one that used to do this is the per-node instruction. Every piece of work is handed its
+own written instruction, and that is one model call per node; when one of those came back
+cut, a six-step plan was discarded and the whole job ran as a single worker. It no longer
+is. **A failed instruction is asked for once more, and if the second try fails too, that
+one node is given an instruction composed from what the plan already knows about it** — its
+title, what the plan said it is for, and the files it is expected to touch. The other nodes
+keep their written ones and the plan keeps its shape.
+
+Nothing is hidden: the composed instruction and the reason no model wrote it are both kept
+with the job, so a run can be read back afterwards and the composed ones picked out.
+
 ## What the review is allowed to hold you to — the request, the method, and what was promised
 
 A review may only ask for things that were promised **before the work started**: your own

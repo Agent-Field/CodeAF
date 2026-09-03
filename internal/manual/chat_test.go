@@ -752,6 +752,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"the run said the brief could not be written, what happened", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
 		// person watching a run that has not drawn anything yet. Both are asked
 		// with the screen in front of them, in the words the screen gave them.

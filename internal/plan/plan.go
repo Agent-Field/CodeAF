@@ -768,13 +768,23 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// Everything that was still moving has now stopped.
 	announce(graph, options, settled, briefs, start, func(*Node) bool { return true })
 
-	briefUsage, briefErr := briefs.apply(graph)
+	// What apply returns is the internal fault the guard caught and nothing
+	// else — a call that would not answer is composed for rather than reported
+	// — and guard.Note has already written it to the log. It is deliberately
+	// not joined into the return below; see the law there.
+	briefUsage, _ := briefs.apply(graph)
 	graph.Usage.merge(briefUsage)
 	if options.Briefs {
 		report("brief", time.Since(start), plural(len(graph.writtenLeaves()), "leaf"))
 	}
 
-	return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
+	// THE LAW: STRUCTURE THE PLANNER HAS ALREADY FOUND IS NEVER DISCARDED FOR A
+	// DOWNSTREAM FAULT. A brief is one leaf's instruction and never the graph's
+	// right to exist, so nothing the brief pass could not write travels out on
+	// this return — which every caller reads as "there is no plan", and which
+	// once cost a drawn six-node graph its life over a single reply. Every leaf
+	// carries an instruction either way: see briefWriter.launch.
+	return graph, errors.Join(groundErr, reachErr, fanErr, bindErr, sizeErr, auditErr)
 }
 
 // withinOneWorker asks the ruler about a single node without letting the
