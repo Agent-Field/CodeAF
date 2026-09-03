@@ -1680,6 +1680,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+
+		// PAIRING, ASKED BY SOMEBODY WHO WATCHED IT CONTRADICT ITSELF. The machine
+		// used to say "paired" before it had written the device into its list, so a
+		// first `--at` on a slow disk could be told in the next breath that the
+		// device had been stopped. It cannot any more, and the words a person brings
+		// to that are the two sentences they just read on their own screen.
+		{"it said paired and then that the device was stopped, what happened?", "reaching-this-machine-without-ssh"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

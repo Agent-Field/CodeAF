@@ -165,13 +165,18 @@ func (h *Host) pair(stream io.ReadWriteCloser) {
 		h.say("a device tried to pair and there was no code to pair with")
 		return
 	}
-	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now())
+	// THE BOOK IS WRITTEN INSIDE THE EXCHANGE, before the reply that tells the
+	// device it is paired — see pairAsMachine. It is passed in rather than done
+	// here for exactly that reason: done here it would be done one reply too
+	// late, and the device's own next connection could find the book empty.
+	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now(), h.Devices.Admit)
 	if err != nil {
+		var write notWrittenDown
+		if errors.As(err, &write) {
+			h.say("could not write down that pairing: " + write.Error())
+			return
+		}
 		h.say("a device tried to pair with the wrong code")
-		return
-	}
-	if err := h.Devices.Admit(admitted); err != nil {
-		h.say("could not write down that pairing: " + err.Error())
 		return
 	}
 	// One code pairs one device. A person who wants a second device reads the

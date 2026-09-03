@@ -88,3 +88,19 @@ func Busy() error {
 func Stopped() string {
 	return "this device has been stopped on that machine — pair it again from there"
 }
+
+// notWrittenDown marks the one pairing failure that is this machine's own disk
+// rather than the digits somebody typed.
+//
+// IT NEVER LEAVES THIS MACHINE. The last message of the pairing carries a key
+// and a name and has carried nothing else in any build, so there is no sentence
+// a machine can put on the wire here without changing what that message is; a
+// machine that cannot write the pairing down therefore hangs up, exactly as it
+// does for a wrong code. What this type is for is the other end of that: the
+// line printed on the screen of the machine somebody is actually sitting at,
+// which is where a full disk or a bad path can be acted on, and which would
+// otherwise have said the person mistyped six digits.
+type notWrittenDown struct{ err error }
+
+func (n notWrittenDown) Error() string { return n.err.Error() }
+func (n notWrittenDown) Unwrap() error { return n.err }
