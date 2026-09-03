@@ -758,6 +758,15 @@ type checkpointMeter struct {
 	carriedOn int
 	// marks is how many of the ladder's rungs have already fired.
 	marks int
+	// shareSpent says the wall's share has already opened its door in this turn,
+	// so that a handover the two minds declined is not asked for again at every
+	// boundary after (turnwall.go's [Agent.pastTurnWallShare] claims it).
+	//
+	// IT LIVES ON THIS METER BECAUSE THE THING IT LATCHES IS A FACT ABOUT ONE
+	// TURN, which is what everything else here is: the share bounds the stretch
+	// ONE answer spends inline, and a latch that outlived the turn would let a
+	// session's second long turn run to the wall unwatched.
+	shareSpent bool
 	// firstAt is where the FIRST rung stands when the pre-turn race has already
 	// said this message reads like work, and zero on every ordinary turn — see
 	// [checkpointMeter.tighten].
@@ -2287,6 +2296,16 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 	// work it already has out is not a round of work, and the ladder does not move
 	// for it ([checkpointMeter.round]).
 	mark := meter.round(!roundWasWatching(calls))
+	// AND THE WALL IS ASKED AT THE BOUNDARIES THE LADDER HAS NOTHING TO SAY
+	// ABOUT. Under a steward with a wall, an inline stretch is bounded by a share
+	// of it as well as by the two counts, because a turn that reads and runs tests
+	// for twelve minutes crosses neither and the run is out of clock all the same
+	// (turnwall.go). THE ORDER IS THE ENFORCEMENT: a boundary that crossed a rung
+	// takes the mark ladder below and is never asked the clock, so the two
+	// readings can neither race nor be paid for twice at one step.
+	if wallShareIsAsked(mark, calls) && a.pastTurnWallShare(meter, started) {
+		return a.checkpointOverWallShare(ctx, hub, turn, started, model, meter.rounds, meter.raced, taken)
+	}
 	if mark == 0 {
 		return false
 	}

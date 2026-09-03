@@ -858,6 +858,20 @@ func (s *Steward) Budget() Budget {
 	return budget
 }
 
+// since is how long ago something happened ON THE CLOCK THIS STEWARD MEASURES
+// ITS WALL WITH.
+//
+// IT EXISTS SO THAT A SHARE OF THE WALL AND THE WALL ITSELF ARE READ OFF ONE
+// CLOCK (turnwall.go's [Agent.pastTurnWallShare]). Two clocks over one ceiling
+// are two answers to how much is left, and the second of them is always the one
+// a test cannot move.
+func (s *Steward) since(moment time.Time) time.Duration {
+	s.mu.Lock()
+	now := s.now
+	s.mu.Unlock()
+	return now().Sub(moment)
+}
+
 // Report turns one landing into the next attempt's brief, and it is the road a
 // failed unit of work now has instead of a sentence addressed to nobody.
 //
