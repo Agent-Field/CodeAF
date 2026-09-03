@@ -29,6 +29,15 @@ const (
 		"fire the parallel review propose_tasks > gh PR to origin/dev > make build for the binary"
 	productionDrawing = productionHandable + " | " + productionOwn
 
+	// productionFused is the line the mark reader drew on the FIRST attempt of a
+	// real-model run with two pieces out, and it is the first drawing in this file
+	// that a model actually produced under those conditions. Its second part names
+	// both held pieces — and names them `task1+2`, which is a spelling no fixture
+	// here was written with.
+	productionFusedOwn  = "(three: parallel docs content) > (merge task1+2 branches) > (review all) > (open PR)"
+	productionFusedKept = "(one: write headers to docs/one two three)"
+	productionFused     = productionFusedKept + " | " + productionFusedOwn
+
 	// productionChain is the line the mark reader ACTUALLY drew on the real-model
 	// run, and it is a different shape from the one the incident report quotes: a
 	// CHAIN, with no top-level bar in it at all.
@@ -126,6 +135,19 @@ func TestADrawingTravelsWithoutTheWorkThisConversationIsStillHolding(t *testing.
 			shape: "integrate 4 branches | write the docs",
 			held:  heldPieces(heldPiece{4, "alpha branch groundwork"}),
 			kept:  "integrate 4 branches | write the docs",
+		},
+		{
+			// THE FIRST DRAWING IN THIS FILE A MODEL ACTUALLY WROTE with two pieces
+			// out. The second part waits on both of them and calls them `task1+2` —
+			// which arrives here as the tokens `task1` and `2`, because
+			// [normalizedWords] keeps digits inside a word. A reading that only knew
+			// the bare `task` saw no noun, read nothing, and let this part travel
+			// whole on the measured run.
+			name:      "the fused spelling a real model wrote",
+			shape:     productionFused,
+			held:      heldPieces(heldPiece{1, "the header pass"}, heldPiece{2, "the content pass"}),
+			kept:      productionFusedKept,
+			remainder: productionFusedOwn,
 		},
 		{
 			// A CHAIN IS ONE JOB, AND A ONE-PART DRAWING NEVER TRAVELS.
@@ -327,6 +349,9 @@ func TestANumberNamesAPieceOnlyWhereItStandsBesideTheNoun(t *testing.T) {
 		heldPiece{4, "the folder picker rewrite"},
 		heldPiece{8, "trees"},
 	)
+	// early is the ledger the fused rows are read against — the two pieces the
+	// real-model run was holding when its reader wrote `task1+2`.
+	early := heldPieces(heldPiece{1, "the header pass"}, heldPiece{2, "the content pass"})
 	for _, one := range []struct {
 		name  string
 		text  string
@@ -334,6 +359,17 @@ func TestANumberNamesAPieceOnlyWhereItStandsBesideTheNoun(t *testing.T) {
 		names bool
 	}{
 		{"a number beside the noun", "tasks 4 and 8 still out", out, true},
+		// THE SPELLING A REAL MODEL WROTE. The noun and its first id are fused into
+		// one token and the run carries on from there, so this names both pieces.
+		{"the noun with its id written onto it", "merge task1+2 branches", early, true},
+		{"the plural with an id written onto it", "tasks1 and 2 are still out", early, true},
+		// AND A FUSED ID IS STILL ONLY AN ID. It names the piece it names, and this
+		// conversation is holding two others.
+		{"a fused id for a piece that is not out", "merge task1+2 branches", out, false},
+		// AND A WORD THAT MERELY BEGINS WITH THE LETTERS IS ANOTHER WORD. Matching a
+		// prefix would withhold work over the name of a screen.
+		{"a longer word that starts with the noun", "taskboard 1 and 2 are stale", early, false},
+		{"the noun inside a word that is not it", "tasking 1 and 2 out", early, false},
 		{"one number beside the singular noun", "wait for task 4 to land", out, true},
 		{"a list held together by joiners", "tasks 1, 4 and 9 are still running", out, true},
 		{"a quantity, with the noun elsewhere in the text", "run the 4 tests, then finish the task", out, false},

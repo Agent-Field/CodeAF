@@ -180,13 +180,46 @@ func namesHeldWork(text string, held []heldPiece) bool {
 // with joiners between them. A joiner only continues a run that has already
 // produced a number — `the task and 4 tests` opens on a joiner and names nothing
 // — and anything that is neither ends the run.
+//
+// AND THE NOUN WITH ITS ID FUSED ONTO IT IS STILL THE NOUN, which is not a
+// generalisation anybody reasoned their way to — it is a spelling a real model
+// wrote on this road, on its first attempt, with two pieces out:
+//
+//	(one: write headers to docs/one two three) | (three: parallel docs content) >
+//	(merge task1+2 branches) > (review all) > (open PR)
+//
+// `task1+2` reaches this as the two tokens `task1` and `2`, because
+// [normalizedWords] keeps digits inside a word and reads the plus as a space. A
+// reading that only knew the bare token saw no noun at all, read nothing, and let
+// a part naming BOTH held pieces travel whole — `kept` came back empty on that
+// run, and what caught it was the ask door downstream rather than the reduction.
+// So `task1` anchors and yields its own id, and the run then continues from it
+// exactly as it does after a spaced noun, which makes `task1+2` the {1, 2} it
+// plainly says. THE READING HAS TO SURVIVE THE SPELLINGS A MODEL ACTUALLY USES,
+// not the ones a fixture is written with.
+//
+// AND IT IS THE NOUN AND ITS PLURAL AND NOTHING ELSE. `taskboard` and `tasking`
+// begin with the same letters and are not this program's word for a piece of
+// work; matching a prefix rather than the whole word would buy a reading that
+// withholds work over the name of a screen.
 func numbersBesideTheNoun(words []string) map[uint64]bool {
 	var ids map[uint64]bool
+	remember := func(id uint64) {
+		if ids == nil {
+			ids = make(map[uint64]bool, 2)
+		}
+		ids[id] = true
+	}
 	for index, word := range words {
-		if word != heldPieceNoun && word != heldPieceNounPlural {
+		fused, isFused := nounWithIDFused(word)
+		if !isFused && word != heldPieceNoun && word != heldPieceNounPlural {
 			continue
 		}
 		numbered := false
+		if isFused {
+			remember(fused)
+			numbered = true
+		}
 		for _, next := range words[index+1:] {
 			if heldPieceJoiners[next] {
 				if numbered {
@@ -198,14 +231,31 @@ func numbersBesideTheNoun(words []string) map[uint64]bool {
 			if err != nil {
 				break
 			}
-			if ids == nil {
-				ids = make(map[uint64]bool, 2)
-			}
-			ids[id] = true
+			remember(id)
 			numbered = true
 		}
 	}
 	return ids
+}
+
+// nounWithIDFused reads one token that is this program's word for a piece of work
+// with an id written straight onto it — `task1`, and `tasks1` for the model that
+// writes the plural — and answers the id it names.
+//
+// THE WHOLE WORD AND NOT A PREFIX. What is left after the noun has to be digits
+// and nothing else, so `taskboard` and `tasking` are words about other things and
+// answer nothing at all.
+func nounWithIDFused(word string) (uint64, bool) {
+	for _, noun := range [2]string{heldPieceNoun, heldPieceNounPlural} {
+		digits, cut := strings.CutPrefix(word, noun)
+		if !cut || digits == "" {
+			continue
+		}
+		if id, err := strconv.ParseUint(digits, 10, 64); err == nil {
+			return id, true
+		}
+	}
+	return 0, false
 }
 
 const (
