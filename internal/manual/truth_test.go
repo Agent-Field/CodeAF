@@ -190,13 +190,16 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// without the screen plans a campaign around, and the page states both,
 		// so both are answerable to the line the command's own help prints them
 		// from.
-		fact: "how many turns one worker gets", owner: "`aforge exec`'s --turns default",
-		value:  strconv.Itoa(flagNumber(t, "../../cmd/aforge/exec.go", "turns")),
+		fact: "how many turns one worker gets", owner: "`aforge exec`'s --max-turns default",
+		value:  strconv.Itoa(flagNumber(t, "../../cmd/aforge/exec.go", "max-turns")),
 		quotes: []quotedIn{{"adaptive-runs", "it stops itself after %s turns"}},
 	}, {
 		// Spelled in threes on the page for the reason the answer room above is.
-		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --budget default",
-		value:  grouped(flagNumber(t, "../../cmd/aforge/exec.go", "budget")),
+		// `--budget` was renamed `--token-budget`: *budget* is a word about
+		// money everywhere else in this product, so a token count wearing it
+		// read as dollars.
+		fact: "how many tokens one worker gets", owner: "`aforge exec`'s --token-budget default",
+		value:  grouped(flagNumber(t, "../../cmd/aforge/exec.go", "token-budget")),
 		quotes: []quotedIn{{"adaptive-runs", "when the run has spent %s tokens"}},
 	}, {
 		// THE SPENDING TABLE IS SIX ROWS OF SHIPPED FIGURES, and four of them

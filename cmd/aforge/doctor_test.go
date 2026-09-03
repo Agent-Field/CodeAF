@@ -64,7 +64,13 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 	}
 	text := output.String()
 	for _, want := range []string{
-		"brain", path, "desktop · pid 4321", "standing watch", "installed",
+		// `store` and `background timer` were `brain` and `standing watch`.
+		// Nobody looking for where their data lives searches for a brain, and
+		// `standing watch` is the RESIDENT's vocabulary — a word the chat's own
+		// manual is forbidden to use, so the manual could not quote this row
+		// and stay legal. What the row measures, in a developer's words, is
+		// what is running, since when, and whether it still answers.
+		"store", path, "desktop · pid 4321", "background timer", "installed",
 		"last wake 2m ago", "next check in 3m", "$3.40 today · rail $20.00",
 		"1 active charter · 1 pending question",
 	} {
@@ -72,7 +78,7 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)
 		}
 	}
-	for _, forbidden := range []string{"daemon", "launchd", "systemd", "service"} {
+	for _, forbidden := range []string{"daemon", "launchd", "systemd", "service", "brain", "standing watch"} {
 		if strings.Contains(strings.ToLower(text), forbidden) {
 			t.Fatalf("doctor output contains %q:\n%s", forbidden, text)
 		}

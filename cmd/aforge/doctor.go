@@ -63,7 +63,7 @@ func runDoctor(args []string) error {
 // watch.
 func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
 	flags := commandFlags("doctor")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchS
 	if watch != nil {
 		status, err := watch.Status()
 		if err != nil {
-			return doctorSnapshot{}, fmt.Errorf("standing watch status is unavailable")
+			return doctorSnapshot{}, fmt.Errorf("the background timer's state is unavailable")
 		}
 		snapshot.Watch = status
 	}
@@ -222,10 +222,24 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		standingParts = append(standingParts, fmt.Sprintf("%d pending %s",
 			snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question")))
 	}
+	// ── TWO LABELS THAT NAMED THE MACHINERY AND NOT THE MEASUREMENT ─────────
+	//
+	// `brain` was this row's word for the file the journal and every derived
+	// table live in. Nobody looking for where their data is searches for
+	// *brain*, and `--db`'s own help already called the same file a store.
+	//
+	// `standing watch` was the row about the background timer, and it is the
+	// RESIDENT's vocabulary — a different product in this binary, with a corpus
+	// of its own. A test forbids the chat's manual from speaking that word, so
+	// the manual could not quote doctor's own output and stay legal: the page
+	// had to describe the row in other words and hope a reader recognised it.
+	// The label moved and the ban stayed. What this row measures, in a
+	// developer's words, is what is running, since when, and whether it still
+	// answers — which is a background timer, and says so.
 	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
-		"brain", brain,
+		"store", brain,
 		"resident", snapshot.Resident,
-		"standing watch", watch,
+		"background timer", watch,
 		"spend", spend)
 	if standing := strings.Join(standingParts, " · "); standing != "" {
 		block += fmt.Sprintf("%-16s %s\n", "standing", standing)

@@ -25,32 +25,114 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// runExecute is `aforge run`, and `aforge run` MEANS ONE THING NOW: run one
+// saved program.
+//
+// It used to mean two unrelated commands wearing one word — `aforge run
+// <graph.json>` executed a static plan and `aforge run subharness <name>` ran a
+// saved program — and the code admitted it out loud, in a `longerCommands`
+// table whose entire job was to stop `aforge run --help` printing the wrong
+// synopsis (usage.go). The pipeline is `aforge plan run <plan.json>` now, and
+// this door reads its argument to keep both old spellings working for one
+// release:
+//
+//   - a leading `subharness` is the old spelling of this very command;
+//   - a first positional that NAMES A FILE ON DISK is the old spelling of
+//     `aforge plan run`, because a plan is a file and a program is a registry
+//     name. The positional is found through the union of both doors' flag sets
+//     ([namesAPlanFile]), so `--input in.json` cannot be mistaken for it;
+//   - anything else is a program name, which is what `run` means from here on.
 func runExecute(args []string) error {
-	// `aforge run subharness <name>` is a different program from `aforge run
-	// <graph.json>` and is handed over before a single flag is read, because the
-	// two share no flag at all: one executes a graph written to a file, the other
-	// runs one typed program once (subharness_run.go). Everything below this line
-	// is byte for byte what it was.
 	if len(args) > 0 && args[0] == "subharness" {
-		return runSubharnessCommand(args[1:])
+		return renamedTo("run subharness <name>", "run <name>", args[1:], runSubharnessCommand)
 	}
-	flags := commandFlags("run")
-	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
-	output := flags.String("o", "", "write the completed graph as JSON to this file")
-	concurrency := flags.Int("j", 32, "how many leaves may run at once")
-	maxTurns := flags.Int("turns", 200, "runaway backstop on iterations per leaf (clamped to the executor's own backstop)")
-	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
-	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
-	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
-	yesSpend := flags.Bool("yes-spend", false, "preauthorize raising today's dollar rail when reached")
+	if namesAPlanFile(args) {
+		return renamedTo("run <plan.json>", "plan run <plan.json>", args,
+			func(args []string) error { return runGraph("plan run", args) })
+	}
+	return runSubharnessCommand(args)
+}
+
+// namesAPlanFile reports whether this invocation's first positional argument is
+// a file that exists — which is what tells the old `aforge run <plan.json>`
+// apart from the new `aforge run <program>`.
+//
+// The positional is found the way every other door finds one: by asking A FLAG
+// SET which tokens are flags and which of those consume the token after them
+// ([reorder]). The set here is the UNION of both doors' flags, so
+// `aforge run myprogram --input in.json` finds `myprogram` rather than the
+// input file that happens to be sitting on disk beside it.
+func namesAPlanFile(args []string) bool {
+	union := commandFlags("run")
+	union.String("dir", "", "")
+	union.String("w", "", "")
+	union.String("out", "", "")
+	union.String("o", "", "")
+	union.Int("parallel", 0, "")
+	union.Int("j", 0, "")
+	union.Int("max-turns", 0, "")
+	union.Int("turns", 0, "")
+	union.Int("token-budget", 0, "")
+	union.Int("budget", 0, "")
+	union.Int("total-token-budget", 0, "")
+	union.Int("run-budget", 0, "")
+	union.Bool("no-method", false, "")
+	union.Bool("contracts", false, "")
+	union.Bool("yes-spend", false, "")
+	union.String("model", "", "")
+	union.String("plan-model", "", "")
+	union.String("input", "", "")
+	union.String("journal", "", "")
+	union.Bool("json", false, "")
+	ordered := reorder(union, args)
+	for index, token := range ordered {
+		if token != "--" {
+			continue
+		}
+		if index+1 >= len(ordered) {
+			return false
+		}
+		info, err := os.Stat(ordered[index+1])
+		return err == nil && info.Mode().IsRegular()
+	}
+	return false
+}
+
+// runGraph executes a plan file exactly as it is written: `aforge plan run`.
+func runGraph(name string, args []string) error {
+	flags := commandFlags(name)
+	workspace := flags.String("dir", "", "the directory to work in (default ./aforge-<goal hash>)")
+	shorthandFlag(flags, "w", "dir")
+	output := flags.String("out", "", "write the completed plan as JSON to this file")
+	shorthandFlag(flags, "o", "out")
+	concurrency := flags.Int("parallel", 32, "how many steps may run at once")
+	shorthandFlag(flags, "j", "parallel")
+	maxTurns := flags.Int("max-turns", 200, "runaway backstop on iterations per step (clamped to the executor's own backstop)")
+	renamedFlag(flags, "turns", "max-turns")
+	maxTokens := flags.Int("token-budget", 150000, "token budget per step — the limit that actually binds")
+	renamedFlag(flags, "budget", "token-budget")
+	runBudget := flags.Int("total-token-budget", 0, "token budget for the whole run; once passed, nothing new starts and steps in flight land (0 = per-step budgets only)")
+	renamedFlag(flags, "run-budget", "total-token-budget")
+	// A BOOLEAN THAT DEFAULTS ON GETS A NEGATIVE SPELLING. This was
+	// `--contracts`, defaulting true, so the only way to turn it off was
+	// `--contracts=false` — a form nothing else in this binary needs — and the
+	// thing it turned off was named after the machinery rather than after what
+	// it is: a working method for each step.
+	noMethod := flags.Bool("no-method", false, "do not write a working method for each step before running")
+	contractsOff := invertedFlag{off: noMethod}
+	flags.Var(&contractsOff, "contracts", hiddenRenamed+"no-method")
+	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
 	model := flags.String("model", "", modelFlagHelp)
-	planModel := flags.String("plan-model", "", "model for briefs, contracts, and recalibration, when different from the work model ("+planLadderHelp+")")
+	planModel := flags.String("plan-model", "", "model for instructions, working methods, and recalibration, when different from the work model ("+planLadderHelp+")")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
+	contracts := new(bool)
+	*contracts = !*noMethod
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge run <graph.json> [-w dir] [-j 8]")
+		return fmt.Errorf("usage: aforge plan run <plan.json> [--dir dir] [--parallel 8]")
 	}
 	data, err := os.ReadFile(rest[0])
 	if err != nil {

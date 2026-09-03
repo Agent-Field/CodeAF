@@ -7,24 +7,32 @@ it, and there are five kinds:
 
 ```
 talk to it              chat · resume
-hand it work            do "<task>" · exec "<prompt>" · run subharness <name>
-read a plan by hand     plan "<goal>" · show <graph.json> · revise <file> "…" · run <graph.json>
-look at what happened   why self · why <node-id> · notebook · competence · services ·
+hand it work            do "<task>" · exec "<prompt>" · run <program>
+look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
-housekeeping            cache · cache clean · rebuild · wake · serve · devices
+housekeeping            cache · cache clean · rebuild · wake · serve · devices · help env
+plan work by hand       plan new "<goal>" · plan show <plan.json> ·
+                        plan revise <plan.json> "…" · plan run <plan.json>
 ```
+
+`aforge --help` prints them under those five headings, in that order, then five worked
+examples. **The environment table is not on that page**: it is `aforge help env`, because
+it is a reference somebody consults and it used to be more than half of what `--help`
+printed.
 
 Two more exist and are deliberately kept out of the help text, because nothing types them
 by hand: **`aforge engine`** is the far half of `chat --host`, started by ssh, and
 **`aforge tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
 
-`aforge help`, `--help` and `-h` all print the same thing: every command, then the
-environment table. Every verb also answers `<verb> --help` with its own line and its flags.
+`aforge help`, `--help` and `-h` all print the same thing: every command under its group,
+then the examples. `aforge help env` prints the environment table. Every verb also answers
+`<verb> --help` with its own line and its flags, and `aforge plan --help` answers with all
+four of its subcommands.
 
 ## What $? means after a headless one-shot — the codes it leaves with
 
-**One table, and `aforge do`, `aforge exec` and `aforge run subharness` all leave on it.**
+**One table, and `aforge do`, `aforge exec` and `aforge run` all leave on it.**
 This is what `$?` holds after a one-shot, and it is the thing a script should branch on:
 
 | `$?` | what it means |
@@ -36,7 +44,7 @@ This is what `$?` holds after a one-shot, and it is the thing a script should br
 | 4 | it needs an answer from you and nobody was there |
 
 The three commands used to have three tables, and two of them meant opposite things by the
-same number: `do` exit 1 was "nothing usable came back" and `run subharness` exit 1 was "it
+same number: `do` exit 1 was "nothing usable came back" and `aforge run` exit 1 was "it
 could not be run at all", while `exec` returned 2, 3, 4, 5 and 6 and never returned 1. If
 you have a script written against the old numbers, `AFORGE_EXIT_CODES=legacy` puts `exec`'s
 back for one release — see below — and the rest is in
@@ -56,7 +64,7 @@ Asking for help is never a failure: `--help` on any verb exits 0.
 
 ## The --json result object — one shape, three commands
 
-`--json` on `aforge do`, `aforge exec` and `aforge run subharness` prints **one object on
+`--json` on `aforge do`, `aforge exec` and `aforge run` prints **one object on
 stdout, always parseable, printed even when the run failed**:
 
 ```json
@@ -90,8 +98,8 @@ stdout, always parseable, printed even when the run failed**:
 **Within a release a field is never removed and never changes meaning; new fields may
 appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
 
-`--json` on `aforge plan` and `aforge revise` is a different thing: it is the graph itself,
-the same bytes `-o` would write. `aforge logs --json` is a third: one JSON object per line,
+`--json` on `aforge plan new` and `aforge plan revise` is a different thing: it is the plan
+itself, the same bytes `--out` would write. `aforge logs --json` is a third: one JSON object per line,
 byte-for-byte what is on disk.
 
 ## The old --json field names — deliverable, text, elapsed_ms, settled
@@ -117,7 +125,7 @@ record every refusal as a success.
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
 be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. `aforge run subharness` carries `output`, which is the typed answer whole,
+`subharness`. `aforge run` carries `output`, which is the typed answer whole,
 and `report`, and `incomplete` when it did not finish.
 
 ## Keeping exec's old numbers for one release — the legacy switch
@@ -146,13 +154,22 @@ runner.** Unlike everything else on this page that only reads, it spends: it mak
 calls.
 
 ```
-aforge wake [--db path] [--max-seconds N]
+aforge wake [--db path] [--timeout 2m]
 ```
 
-`--max-seconds` defaults to **120**. It is a wall in whole seconds, not a duration —
-`--max-seconds 5m` is a parse error — and zero or less is refused with
-`wake max-seconds must be positive`. Inside that wall it takes at most **32** passes, and
-stops early the moment a pass changes nothing.
+`--timeout` defaults to **2m**. It takes a duration — `--timeout 5m`, `--timeout 90s` — and
+a bare number is still read as seconds, so `--timeout 120` is the same wall. Zero or less
+is refused at the flag: `--timeout: must be positive`. Inside that wall it takes at most
+**32** passes, and stops early the moment a pass changes nothing.
+
+The flag used to be `--max-seconds`, which was the same wall spelled a third way and in the
+unit rather than in the quantity: `aforge wake --max-seconds 5m` was a parse error on a
+machine where `aforge do --timeout 5m` works. **`--max-seconds` still works for one
+release** and says so on stderr the first time it is used:
+
+```
+note: `--max-seconds` is now `--timeout` — the old spelling works for one more release.
+```
 
 **It defers to a live one.** If something else already holds the role for that store, it
 prints one line and does nothing:
@@ -387,8 +404,8 @@ safe in a shell prompt, a CI step or a bug report.
 `models` reads the measured ratings on this machine and also reaches the network for the
 model catalog, but spends nothing of yours.
 
-**These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`, `plan`,
-`revise` and `wake`. Without a key each fails at the door with the same two lines:
+**These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`,
+`plan new`, `plan revise`, `plan run` and `wake`. Without a key each fails at the door with the same two lines:
 
 ```
 aforge needs a model to work with.
@@ -401,28 +418,85 @@ first — `cache clean` wants the word `clean` typed out, `rebuild` wants `y` �
 skips the question on both. The other three act at once, and all three can be undone: a
 retracted belief restores, a stopped service starts again, a revoked device pairs again.
 
-## Reading a plan by hand — writing a task graph to a file with plan, show and revise
+## Reading a plan by hand — aforge plan new, show, revise and run
 
-The plan pipeline writes a task graph to a file you can read, edit and diff, then runs it
-exactly as written. It is a real feature and it is not what most people want.
+`aforge plan` writes a plan to a file you can read, edit and diff, then runs it exactly as
+written. It is a real feature and it is not what most people want, because nothing aforge
+learns mid-flight can change a plan that is already frozen.
 
 ```
-aforge plan "<goal>" [-o graph.json] [-w dir] [--json] [--model slug] [--plan-model slug]
-aforge show <graph.json>
-aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json]
-aforge run <graph.json> [-w dir] [-j 8] [-o done.json]
+aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json] [--instructions]
+                         [--passes auto|off|N] [--model slug] [--plan-model slug]
+aforge plan show <plan.json>
+aforge plan revise <plan.json> "<what happened>" [--done 1,2,3] [--out plan.json]
+aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]
+                            [--max-turns N] [--token-budget N] [--total-token-budget N]
+                            [--no-method]
 ```
 
-`aforge show` is the reader. It takes a graph file and prints `goal:` and then the plan as
-a table: the commitments it settled on, the stages, one row per step with what it waits
-for, and the briefs under them. It reads a file and nothing else, so it needs no key and
-spends nothing. With no file it says `usage: aforge show <graph.json>`.
+`aforge plan show` is the reader. It takes a plan file and prints `goal:` and then the plan
+as a table: the commitments it settled on, the stages, one row per step with what it waits
+for, and the instructions under them. It reads a file and nothing else, so it needs no key
+and spends nothing. With no file it says `usage: aforge plan show <plan.json>`.
 
-`revise` takes the same file and an account of what happened, and writes back a plan
-changed in the light of it; `--done` names the steps that already landed.
+`aforge plan revise` takes the same file and an account of what happened, and writes back a
+plan changed in the light of it; `--done` names the steps that already landed.
 
-This is a different thing from `run subharness <name>`, which runs a saved program on typed
-input and shares only the word `run`.
+`aforge plan run` executes the file. `--parallel` is how many steps run at once,
+`--max-turns` a backstop per step, `--token-budget` a token wall per step and
+`--total-token-budget` one for the whole run, and `--no-method` skips writing a working
+method for each step before it runs.
+
+This is a different thing from `aforge run <program>`, which runs a saved program on typed
+input. The two used to share the word `run` and share nothing else.
+
+## The old spellings — what happened to plan, show, revise and run
+
+**`run` used to mean two unrelated commands.** `run graph.json` executed a static plan and
+`run subharness <name>` ran a saved program. It means the saved program now, matching
+`/subharness <name>` in the chat, and the pipeline moved under the one noun its four verbs
+all act on:
+
+| what you used to type | what it is called now |
+| --- | --- |
+| `aforge run subharness <name>` | `aforge run <name>` |
+| `aforge run <plan.json>` | `aforge plan run <plan.json>` |
+| `aforge plan "<goal>"` | `aforge plan new "<goal>"` |
+| `aforge show <plan.json>` | `aforge plan show <plan.json>` |
+| `aforge revise <plan.json> "…"` | `aforge plan revise <plan.json> "…"` |
+
+**Every old spelling still works for one release.** It is absent from `--help`, it does
+exactly what it always did, and it prints one line on stderr the first time it is used:
+
+```
+note: `aforge run subharness <name>` is now `aforge run <name>` — the old spelling works for one more release.
+```
+
+**That line is on stderr and never on stdout**, so `run <name> --json | jq` keeps parsing.
+The two are told apart by what you named: a first argument that is a file which exists is
+the old pipeline spelling, and anything else is a program.
+
+## Which flags moved — budget, turns, brief, contracts, ensemble
+
+Some flag names moved in the same change, for the same reason: one concept, one spelling,
+on every command.
+
+| what you used to type | what it is called now | why |
+| --- | --- | --- |
+| `--budget N` | `--token-budget N` | *budget* is a word about **money** everywhere else here — `AFORGE_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
+| `--run-budget N` | `--total-token-budget N` | the same, for the whole-run wall |
+| `--turns N` | `--max-turns N` | it is a limit, and every other limit says so |
+| `--max-seconds N` | `--timeout 2m` | one duration flag, one spelling, on `do`, `exec`, `plan run` and `wake` |
+| `--brief` | `--instructions` | it writes a self-contained instruction for every step |
+| `--contracts=false` | `--no-method` | a boolean that defaults on needs a negative spelling, and what it turns off is a **working method** |
+| `--ensemble 0\|-1\|N` | `--passes auto\|off\|N` | a tri-state is words, not magic integers |
+| `-w`, `-o`, `-j` | `--dir`, `--out`, `--parallel` | the single letters are shorthands and **keep working forever**, silently; the long names are what is printed |
+
+Each renamed flag says the same one line on stderr the first time it is used, and each old
+spelling goes away after one release. `--plan-model` on `exec` is the odd one: that command
+plans nothing, so the flag is still accepted and now says
+`note: exec does not plan — --plan-model has no effect here.` rather than quietly doing
+nothing.
 
 ## Is this install healthy — aforge doctor, and where it keeps things
 
@@ -433,10 +507,24 @@ short block of labelled rows. It needs no key and spends nothing.
 aforge doctor [--db path]
 ```
 
-The first row names the store file and how big it is — `/home/you/.aforge/graph.db · 496 KiB`,
-or `· not created` on a machine that has not made one yet. Under it are what is holding
-that store, how the background checks are doing, the day's spending against the limit, and
-where the model-call log is with what it weighs.
+Every row is labelled in the words a developer would search for:
+
+```
+store            /home/you/.aforge/graph.db · 496 KiB
+resident         this terminal while open
+background timer not installed · last wake not yet
+spend            rail $20.00
+model calls      /home/you/.aforge/logs/calls.jsonl · 26 KiB
+```
+
+`store` names the file the journal and every derived table live in, and how big it is —
+`· not created` on a machine that has not made one yet. `background timer` is the row about
+the five-minute pass: whether it is installed, when it last woke, when it next checks, and
+`· checks look stalled` when an installed one has not woken for several cadences. `spend`
+is the day against its limit, and `model calls` is where the call log is and what it
+weighs. Two of those labels used to be `brain` and `standing watch`; nobody looking for
+where their data lives searches for a brain, and the other named a piece of a different
+product.
 
 **It leaves out what it has not measured.** A machine that has spent nothing today prints
 the limit and no figure beside it, rather than `$0.00` — a zero nobody measured reads as a
@@ -455,9 +543,12 @@ that, and of what a mistyped command is answered with, is on the *commands* page
 
 Two things that account does not cover:
 
-- **The doors that parse no flags at all answer the gesture too.** `aforge show`,
+- **The doors that parse no flags at all answer the gesture too.** `aforge plan show`,
   `aforge models` and `aforge cache` take a positional or nothing, and each reads `--help`
-  as the question rather than as an argument. `aforge show --help` used to answer
+  as the question rather than as an argument. `aforge plan show --help` used to answer
   `open --help: no such file or directory` — a filesystem error about a flag.
+- **`help env` is the environment table.** It moved off `--help` when that page was 127
+  lines and more than half of them were this table, so the last thing on the screen after
+  asking what the commands are was `AFORGE_CALL_LOG_BODIES`.
 - **`aforge manual --help` answers differently on purpose.** It prints the list of pages,
   because the list is what that command can be asked for.

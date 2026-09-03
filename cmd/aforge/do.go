@@ -19,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
@@ -196,25 +197,32 @@ func runDo(args []string) error {
 	flags := commandFlags("do")
 	database := flags.String("db", "", "work in this durable store instead of a private one")
 	keep := flags.Bool("keep", false, "keep the private store instead of deleting it on the way out")
-	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
+	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
+	shorthandFlag(flags, "w", "dir")
 	wall := wallFlag{wall: defaultDoWall}
 	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept for one release)")
 	asJSON := flags.Bool("json", false, jsonFlagHelp)
-	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
+	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
+	// A FLAG IS DOCUMENTED BY WHAT IT DOES, NOT BY WHAT IT SETS. These two said
+	// "…; sets AFORGE_CONTEXT_FILL_PCT for this run", which is the
+	// implementation, and hard-coded their defaults in prose while their own
+	// DefValue was 0 — two spellings of one number, and one of them would drift.
+	// The figures are interpolated from the constants that own them now.
 	contextFill := flags.Int("context-fill", 0,
-		"how full a model's context window may get before it is compacted, in percent (default 60, clamped 10-90); "+
-			"sets AFORGE_CONTEXT_FILL_PCT for this run")
+		"how full a model's context window may get before it is compacted, in percent "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultFillPercent)+", clamped 10-90)")
 	completionReserve := flags.Int("completion-reserve", 0,
-		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
-			"sets AFORGE_COMPLETION_RESERVE for this run")
+		"tokens every call keeps free for its answer and its reasoning "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultCompletionReserveTokens)+")")
 	debug := flags.Bool("debug", false,
-		"keep the full record of this errand — call bodies, tool calls and the choices made — "+
+		"keep the full record of this run — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
 	// can make a call, so that every record this errand leaves names the same
 	// run. The folder is announced on the way out and only when something was

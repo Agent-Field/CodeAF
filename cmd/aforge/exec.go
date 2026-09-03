@@ -13,28 +13,59 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
 func runExec(args []string) error {
 	flags := commandFlags("exec")
-	workspace := flags.String("w", ".", "workspace directory")
+	workspace := flags.String("dir", ".", "the directory to work in, edited in place")
+	shorthandFlag(flags, "w", "dir")
 	system := flags.String("system", "", "working method for the agent")
-	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
-	maxTokens := flags.Int("budget", 150000, "token budget for the agent (env AFORGE_EXEC_BUDGET)")
-	timeout := flags.Int("timeout", 0, "hard wall in seconds (env AFORGE_EXEC_TIMEOUT; default: scale from the token budget)")
+	// `--turns` and `--budget` are `--max-turns` and `--token-budget` now, on
+	// this door and on `aforge plan run` alike. `budget` is a word about MONEY
+	// everywhere else in this product — AFORGE_DAILY_BUDGET, /budget,
+	// --max-cost — so `--budget 150000` read as $150,000 exactly once, and the
+	// once was enough. The bound is unchanged; only its spelling is.
+	maxTurns := flags.Int("max-turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
+	renamedFlag(flags, "turns", "max-turns")
+	maxTokens := flags.Int("token-budget", 150000, "token budget for this run (env AFORGE_EXEC_BUDGET)")
+	renamedFlag(flags, "budget", "token-budget")
+	// A DURATION FLAG TAKES A DURATION, on every door that has one. This was an
+	// integer of seconds while `aforge do --timeout 15m` worked, so the same
+	// flag with the same job took two types and the difference showed up at the
+	// door of a long unattended run (wall.go). A bare number is still seconds.
+	wall := wallFlag{}
+	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds); "+
+		"env AFORGE_EXEC_TIMEOUT; unset, it scales from the token budget")
 	model := flags.String("model", "", modelFlagHelp)
-	planModel := flags.String("plan-model", "", "accepted for headless model-pin parity; exec performs no planning")
-	contextFill := flags.Int("context-fill", 0, "context compaction threshold in percent (default 60)")
-	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
+	// `--plan-model` IS GONE FROM THIS DOOR. It was accepted "for headless
+	// model-pin parity" and documented as doing nothing, which teaches a harness
+	// author a wrong thing quietly: a flag list is read as a list of things that
+	// have an effect, and somebody pins a planning model on a thousand calls and
+	// measures the wrong thing. It is still parsed, so a script that passes it
+	// keeps running, and it now says on stderr that it changed nothing.
+	planModel := flags.String("plan-model", "", hiddenRenamed+"plan-model")
+	contextFill := flags.Int("context-fill", 0,
+		"how full a model's context window may get before it is compacted, in percent "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultFillPercent)+", clamped 10-90)")
+	completionReserve := flags.Int("completion-reserve", 0,
+		"tokens every call keeps free for its answer and its reasoning "+
+			"(default "+strconv.Itoa(ctxbudget.DefaultCompletionReserveTokens)+")")
 	asJSON := flags.Bool("json", false, jsonFlagHelp)
-	output := flags.String("o", "", "write the machine-readable result to this file")
+	output := flags.String("out", "", "write the machine-readable result to this file")
+	shorthandFlag(flags, "o", "out")
 	debug := flags.Bool("debug", false,
 		"keep the full record of this run — call bodies, tool calls and the choices made — "+
 			"in a folder of its own under the state root (env AFORGE_DEBUG)")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
+	}
+	noteRenamedFlags(flags)
+	if typedFlags(flags)["plan-model"] {
+		fmt.Fprintln(os.Stderr, "note: exec does not plan — --plan-model has no effect here.")
+		*planModel = ""
 	}
 	// THE RUN ID IS MINTED AT THE DOOR, once per invocation and before anything
 	// can make a call, so every record this run leaves names the same run. The
@@ -44,14 +75,11 @@ func runExec(args []string) error {
 	}
 	traced := openDebugRecord("exec", *model, *workspace)
 	defer trace.Announce(traced, os.Stderr)
-	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
+	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, &wall); err != nil {
 		return err
 	}
 	if *maxTurns <= 0 || *maxTokens <= 0 {
-		return fmt.Errorf("exec turns and budget must be positive")
-	}
-	if *timeout < 0 {
-		return fmt.Errorf("exec timeout must not be negative")
+		return fmt.Errorf("--max-turns and --token-budget must be positive")
 	}
 	if err := applyContextLaw(*contextFill, *completionReserve); err != nil {
 		return err
@@ -83,8 +111,8 @@ func runExec(args []string) error {
 
 	ctx, stopSignals := signal.NotifyContext(traced, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	deadline := execDeadline(*maxTokens, *timeout)
-	if *timeout > 0 {
+	deadline := execDeadline(*maxTokens, int(wall.wall/time.Second))
+	if wall.wall > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, deadline)
 		defer cancel()
@@ -163,9 +191,9 @@ var execEnvFallbacks = []struct {
 	variable string
 	what     string
 }{
-	{flag: "turns", variable: "AFORGE_EXEC_TURNS", what: "turn cap"},
-	{flag: "budget", variable: "AFORGE_EXEC_BUDGET", what: "token budget"},
-	{flag: "timeout", variable: "AFORGE_EXEC_TIMEOUT", what: "number of seconds"},
+	{flag: "max-turns", variable: "AFORGE_EXEC_TURNS", what: "turn cap"},
+	{flag: "token-budget", variable: "AFORGE_EXEC_BUDGET", what: "token budget"},
+	{flag: "timeout", variable: "AFORGE_EXEC_TIMEOUT", what: "duration or number of seconds"},
 }
 
 // applyExecEnv fills in the walls the caller did not name.
@@ -180,24 +208,35 @@ var execEnvFallbacks = []struct {
 // A variable that is set but is not a number is an error rather than a shrug.
 // The alternative is a harness that thinks it capped a run at 60 seconds
 // because of a typo it will never see, and measures the wrong thing all night.
-func applyExecEnv(flags *flag.FlagSet, getenv func(string) string, maxTurns, maxTokens, timeout *int) error {
-	typed := make(map[string]bool, 3)
-	flags.Visit(func(f *flag.Flag) { typed[f.Name] = true })
-	targets := map[string]*int{"turns": maxTurns, "budget": maxTokens, "timeout": timeout}
+func applyExecEnv(flags *flag.FlagSet, getenv func(string) string, maxTurns, maxTokens *int, wall *wallFlag) error {
+	// TYPED IS READ THROUGH THE ALIASES (rename.go). A person who typed the old
+	// `--budget` named the same wall as one who typed `--token-budget`, and an
+	// environment variable that overruled the first and not the second would be
+	// exactly the silent overrule this whole function is written to prevent.
+	typed := typedFlags(flags)
+	targets := map[string]*int{"max-turns": maxTurns, "token-budget": maxTokens}
 	for _, fallback := range execEnvFallbacks {
-		target, ok := targets[fallback.flag]
-		if !ok || typed[fallback.flag] {
+		if typed[fallback.flag] {
 			continue
 		}
 		raw := strings.TrimSpace(getenv(fallback.variable))
 		if raw == "" {
 			continue
 		}
+		if fallback.flag == "timeout" {
+			// The wall reads the same spellings from the environment that it
+			// reads from the flag, so a campaign that set `2m` in one place is
+			// not refused in the other.
+			if err := wall.Set(raw); err != nil {
+				return fmt.Errorf("%s: %q is not a %s", fallback.variable, raw, fallback.what)
+			}
+			continue
+		}
 		value, err := strconv.Atoi(raw)
 		if err != nil {
 			return fmt.Errorf("%s: %q is not a %s", fallback.variable, raw, fallback.what)
 		}
-		*target = value
+		*targets[fallback.flag] = value
 	}
 	return nil
 }

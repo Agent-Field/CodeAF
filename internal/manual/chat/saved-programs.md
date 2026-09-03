@@ -184,14 +184,21 @@ nobody has run says nothing there rather than "never run".
 The general worker is not on the list. It is what you get when you pick nothing, not
 something you pick.
 
-## Running one without the chat — aforge run subharness
+## Running one without the chat — aforge run
 
 ```
-aforge run subharness <name> --input <file.json>
-aforge run subharness <name> --input -          # read the input from a pipe
+aforge run <name> --input <file.json>
+aforge run <name> --input -          # read the input from a pipe
 ```
 
-Optional: `-w <dir>` for the directory to work in, `--model <slug>` for the work model,
+**This was `aforge run subharness <name>`.** `run` used to name two unrelated commands —
+the saved-program runner and the static plan pipeline — and it names only this one now,
+matching `/subharness <name>` in the chat. The old spelling still works for one release,
+is absent from `--help`, and prints one line on stderr the first time it is used:
+`note: \`aforge run subharness <name>\` is now \`aforge run <name>\` — the old spelling
+works for one more release.` The pipeline is `aforge plan run <plan.json>`.
+
+Optional: `--dir <dir>` for the directory to work in (`-w` still works), `--model <slug>` for the work model,
 `--journal <path>` to append every call the run makes to a file, one JSON object per line,
 and `--json` for the one result object `aforge do` and `aforge exec` also print.
 

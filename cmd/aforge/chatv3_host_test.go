@@ -148,12 +148,13 @@ func TestAnOverlongStateRootLosesOnlyMultiplexing(t *testing.T) {
 
 // The flag exists and is documented in exactly one place: `aforge chat -h`.
 func TestHostFlagIsOnTheChatUsage(t *testing.T) {
-	err := openChatV3("chat", []string{"--help"}, false)
-	if err == nil {
-		return
-	}
-	if !strings.Contains(err.Error(), "flag: help requested") {
-		t.Fatalf("chat --help = %v", err)
+	// ASKING FOR HELP IS NOT A FAILURE, so this door hands back an exit status
+	// of ZERO rather than the flag package's own internal string, and the usage
+	// has already gone to stdout (usage.go). The old assertion looked for
+	// `flag: help requested`, which is the very sentence that stopped being
+	// printed at anybody.
+	if code := exitCodeOf(openChatV3("chat", []string{"--help"}, false)); code != 0 {
+		t.Fatalf("`aforge chat --help` left with %d, want 0", code)
 	}
 }
 

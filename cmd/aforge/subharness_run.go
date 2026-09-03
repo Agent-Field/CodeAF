@@ -16,8 +16,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/substore"
 )
 
-// `aforge run subharness <name> --input <file.json|->` is one program, run once,
-// with nobody watching.
+// `aforge run <program> --input <file.json|->` is one program, run once, with
+// nobody watching. It was `aforge run subharness <name>` until `run` stopped
+// meaning two things, and that spelling still works for one release
+// (rename.go).
 //
 // It is the third of the three doors docs/SUBHARNESS-PRD.md §9 names, and it is
 // the one with NO TASK SURFACE AT ALL — no roster row, no room, no intake card,
@@ -57,10 +59,11 @@ import (
 // above the seam needs a provider key, a workspace and a network; everything
 // below it needs a registry, some bytes, and two writers.
 func runSubharnessCommand(args []string) error {
-	flags := commandFlags("run subharness")
+	flags := commandFlags("run")
 	input := flags.String("input", "",
 		`the typed input, as a JSON file — "-" reads it from what is piped in`)
-	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
+	workspace := flags.String("dir", "", "the directory to work in, edited in place (default: the current directory)")
+	shorthandFlag(flags, "w", "dir")
 	model := flags.String("model", "", modelFlagHelp)
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
@@ -68,9 +71,10 @@ func runSubharnessCommand(args []string) error {
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	rest := flags.Args()
 	if len(rest) < 1 {
-		return fmt.Errorf("usage: aforge run subharness <name> --input <file.json|->")
+		return fmt.Errorf("usage: aforge run <program> --input <file.json|->")
 	}
 	name := strings.TrimSpace(rest[0])
 	// The input is read before anything is built, because a run with no input is

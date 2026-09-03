@@ -58,11 +58,25 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 		{"do", runDo},
 		{"exec", runExec},
 		{"run", runExecute},
-		{"plan", runPlan},
-		{"revise", runRevise},
+		{"plan", runPlanCommand},
+		{"plan new", func(args []string) error { return runPlanNew("plan new", args) }},
+		{"plan show", func(args []string) error { return runShow("plan show", args) }},
+		{"plan revise", func(args []string) error { return runRevise("plan revise", args) }},
+		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
 		{"services", runServices},
 		{"models", runModels},
-		{"show", runShow},
+		// The two old top-level spellings. They still open, and asking one for
+		// help says NOTHING on stderr: `--help` runs nothing, so there is no run
+		// for the rename notice to be about, and a Makefile that probes the
+		// binary still reads a clean stderr (rename.go).
+		{"show", func(args []string) error {
+			return renamedTo("show <plan.json>", "plan show <plan.json>", args,
+				func(args []string) error { return runShow("plan show", args) })
+		}},
+		{"revise", func(args []string) error {
+			return renamedTo("revise <plan.json>", "plan revise <plan.json>", args,
+				func(args []string) error { return runRevise("plan revise", args) })
+		}},
 	} {
 		t.Run(door.name, func(t *testing.T) {
 			out, errs := captureUsage(t)
@@ -79,7 +93,13 @@ func TestAskingForHelpIsNotAFailure(t *testing.T) {
 			if strings.Contains(printed, "flag: help requested") {
 				t.Fatalf("`aforge %s --help` printed Go's own internal string:\n%s", door.name, printed)
 			}
-			if !strings.Contains(printed, "aforge "+door.name) {
+			named := door.name
+			if door.name == "show" || door.name == "revise" {
+				// An old spelling answers with the line of the command it is
+				// now called, which is the whole point of keeping it.
+				named = "plan " + door.name
+			}
+			if !strings.Contains(printed, "aforge "+named) {
 				t.Fatalf("`aforge %s --help` never names the command it is about:\n%s", door.name, printed)
 			}
 			if errs.Len() != 0 {
@@ -191,16 +211,31 @@ func TestAMissingGoalShowsTheCommandAndNotTheWholeTable(t *testing.T) {
 // ONE SOURCE OF TRUTH: a command's shape is written once, in the table `aforge
 // --help` prints, and every per-command usage is a reading of that table.
 func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
-	if shape := usageForCommand("do"); !strings.Contains(shape, "exit 0 the whole of it stands") {
+	// The ladder is interpolated into the table from envelope.go's one rung
+	// list, so this asks for the line that is actually there rather than for a
+	// second spelling of it.
+	if shape := usageForCommand("do"); !strings.Contains(shape, exitLadderLine) {
 		t.Fatalf("`do`'s usage lost the exit ladder that is written in usageText:\n%s", shape)
 	}
-	// `aforge run subharness` is dispatched somewhere else entirely, and its
-	// line is not `aforge run`'s.
-	if shape := usageForCommand("run"); strings.Contains(shape, "subharness") {
-		t.Fatalf("`run`'s usage borrowed the subharness runner's line:\n%s", shape)
+	// `aforge run` MEANS ONE THING: run a saved program. It used to mean that
+	// and the graph runner both, and `longerCommands` existed to stop this very
+	// lookup returning the wrong one of the two.
+	if shape := usageForCommand("run"); !strings.Contains(shape, "--input") {
+		t.Fatalf("`run`'s usage is not the saved-program runner's:\n%s", shape)
 	}
-	if shape := usageForCommand("run subharness"); !strings.Contains(shape, "--input") {
-		t.Fatalf("`run subharness` has no line of its own:\n%s", shape)
+	if shape := usageForCommand("run"); strings.Contains(shape, "plan.json") {
+		t.Fatalf("`run`'s usage still borrows the plan runner's line:\n%s", shape)
+	}
+	// And the pipeline's four verbs are one group: `aforge plan --help` answers
+	// with all four, each of them answers with its own.
+	group := usageForCommand("plan")
+	for _, verb := range []string{"aforge plan new", "aforge plan show", "aforge plan revise", "aforge plan run"} {
+		if !strings.Contains(group, verb) {
+			t.Fatalf("`aforge plan --help` does not offer %q:\n%s", verb, group)
+		}
+	}
+	if shape := usageForCommand("plan run"); !strings.Contains(shape, "--parallel") {
+		t.Fatalf("`plan run` has no line of its own:\n%s", shape)
 	}
 	if shape := usageForCommand("nosuchcommand"); shape != "" {
 		t.Fatalf("a command with no line in the table invented one:\n%s", shape)
@@ -223,10 +258,16 @@ func TestTheUsageNamesEveryFlagAPersonCanType(t *testing.T) {
 // page spelled out `do`'s and `run subharness`'s.
 func TestExecsExitLadderIsWrittenWhereACallerLooks(t *testing.T) {
 	shape := usageForCommand("exec")
-	for _, want := range []string{"exit 0", "· 2 ", "· 3 ", "· 4 ", "· 5 ", "· 6 "} {
+	// The five rungs of the ONE ladder every headless verb leaves on
+	// (envelope.go), not exec's old six. The old numbers are still reachable
+	// behind AFORGE_EXIT_CODES=legacy, and that is said on the same line.
+	for _, want := range []string{"exit 0", "· 1 ", "· 2 ", "· 3 ", "· 4 "} {
 		if !strings.Contains(shape, want) {
 			t.Fatalf("`aforge exec`'s usage does not say what %q means:\n%s", strings.TrimSpace(want), shape)
 		}
+	}
+	if !strings.Contains(shape, "AFORGE_EXIT_CODES=legacy") {
+		t.Fatalf("`aforge exec`'s usage never names the hatch back to its old numbers:\n%s", shape)
 	}
 }
 
@@ -239,7 +280,7 @@ func TestProbingAFlaglessCommandWithHelpIsNotAnError(t *testing.T) {
 		name string
 		run  func([]string) error
 	}{
-		{"show", runShow},
+		{"plan show", func(args []string) error { return runShow("plan show", args) }},
 		{"models", runModels},
 		{"cache", runCache},
 	} {

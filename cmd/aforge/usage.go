@@ -95,7 +95,7 @@ func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 		fmt.Fprint(w, rows)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "run `aforge --help` for every command and the environment table.")
+	fmt.Fprintln(w, "run `aforge --help` for every command, `aforge help env` for the environment table.")
 }
 
 // flagRows writes a flag set the way the usage table spells flags — two dashes
@@ -106,6 +106,14 @@ func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 func flagRows(flags *flag.FlagSet) string {
 	var rows strings.Builder
 	flags.VisitAll(func(f *flag.Flag) {
+		// A HIDDEN FLAG IS NOT PRINTED. An old spelling kept working for one
+		// release, and a single letter kept working forever, are both flags a
+		// door answers to and neither is a flag a person should be taught to
+		// type — printing them would make `--budget` and `--token-budget` read
+		// as two knobs (rename.go).
+		if _, _, hidden := hiddenFlag(f); hidden {
+			return
+		}
 		placeholder, usage := flag.UnquoteUsage(f)
 		// Two dashes for a word and one for a letter, which is exactly how the
 		// table spells them: `--json`, `--timeout`, `-w`.
@@ -160,12 +168,24 @@ func wrapAt(text string, width int) []string {
 	return lines
 }
 
-// longerCommands are the two spellings that begin with another command's whole
-// name and are dispatched somewhere else entirely. They are the only reason
-// [commandLine] has to look past the words it was asked about: without them
-// `aforge run --help` would print the subharness runner's line as though it
-// were its own.
-var longerCommands = []string{"run subharness", "cache clean"}
+// longerCommands are the spellings that begin with another command's whole name
+// and are dispatched somewhere else entirely. They are the only reason
+// [commandLine] has to look past the words it was asked about.
+//
+// `run subharness` WAS THE FIRST ENTRY AND IS GONE, because the thing it was
+// working around is gone. Its whole job was to stop `aforge run --help`
+// printing the saved-program runner's line as though it were the graph
+// runner's, and a verb whose help needs a special case to say which of two
+// commands it is, is a verb wearing two meanings: `run` now means one thing —
+// run a saved program — and the static pipeline is `aforge plan new|show|
+// revise|run`, four lines that all begin `aforge plan` and therefore cannot be
+// mistaken for `aforge run`'s.
+//
+// `cache clean` STAYS, and it is a different shape: `aforge cache` and `aforge
+// cache clean` are one noun with two verbs on it, not one word meaning two
+// things, and without this entry `aforge cache --help` would print the
+// destructive command's line under the harmless one's name.
+var longerCommands = []string{"cache clean"}
 
 // usageForCommand lifts one command's lines out of [usageText].
 //

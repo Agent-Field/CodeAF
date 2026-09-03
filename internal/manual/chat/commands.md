@@ -1836,9 +1836,10 @@ there is no `aforge lgos`. did you mean `aforge logs`?
 run `aforge --help` for every command
 ```
 
-Two lines, not the whole book — the command list and the environment table are behind
-`aforge --help`, where you can read them without the answer scrolling off the top.
+Two lines, not the whole book — the command list is behind `aforge --help`, and the
+environment table behind `help env` on the same door, where either can be read without the
+answer scrolling off the top.
 
-`aforge do` and `aforge plan` with nothing after them say `no goal given` and print **that
-command's** line, not every command's. Pipe the task in instead if it is long:
+`aforge do` and `aforge plan new` with nothing after them say `no goal given` and print
+**that command's** line, not every command's. Pipe the task in instead if it is long:
 `echo "the task" | aforge do`.

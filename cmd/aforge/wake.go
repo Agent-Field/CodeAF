@@ -83,17 +83,23 @@ func runWake(args []string) error {
 
 func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	flags := commandFlags("wake")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
-	maxSeconds := flags.Int("max-seconds", defaultWakeMaxSeconds, "maximum resident pass duration")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
+	// A WALL IS `--timeout` ON EVERY DOOR THAT HAS ONE. This was
+	// `--max-seconds`, which is the same concept spelled a third way and in the
+	// unit rather than in the quantity — so `aforge wake --max-seconds 5m` was a
+	// parse error on a machine where `aforge do --timeout 5m` works (wall.go).
+	wall := wallFlag{wall: time.Duration(defaultWakeMaxSeconds) * time.Second}
+	flags.Var(&wall, "timeout", "hard wall on the pass, as a duration such as 2m (a bare number is seconds)")
+	renamedFlag(flags, "max-seconds", "timeout")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	noteRenamedFlags(flags)
 	if flags.NArg() != 0 {
-		return fmt.Errorf("usage: aforge wake [--db path] [--max-seconds N]")
+		return fmt.Errorf("usage: aforge wake [--db path] [--timeout 2m]")
 	}
-	if *maxSeconds <= 0 {
-		return fmt.Errorf("wake max-seconds must be positive")
-	}
+	maxSeconds := new(int)
+	*maxSeconds = int(wall.wall / time.Second)
 	path, err := expandHome(strings.TrimSpace(*database))
 	if err != nil {
 		return err

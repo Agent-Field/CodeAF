@@ -15,7 +15,7 @@ schema, and a person needs to know which command actually thinks.
 ## 1. `aforge do` — one errand, the whole living brain
 
 ```
-aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout D]
+aforge do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--context-fill N] [--completion-reserve N]
 ```
@@ -25,26 +25,26 @@ removed — the same compile, the same contracts, the same delivery gate, the
 same just-in-time repair when a cited gap earns another round, the same replan
 when a leaf runs out of room.
 
-It is *not* `plan` + `run`. That pair compiles a graph once, writes it to a
-file, and executes exactly what the file says. Everything aforge learned about
-doing jobs happens **after** the plan is written, and a frozen graph cannot do
-any of it. Use `plan`/`run` to read or hand-edit a plan; use `do` to get work
-done.
+It is *not* `plan new` + `plan run`. That pair compiles a plan once, writes it
+to a file, and executes exactly what the file says. Everything aforge learned
+about doing jobs happens **after** the plan is written, and a frozen plan cannot
+do any of it. Use `aforge plan` to read or hand-edit a plan; use `do` to get
+work done.
 
 ### Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-w dir` | the current directory | The directory it works in, **edited in place**. Not an output folder — it opens what is there and leaves nothing behind that you did not ask for. |
-| `-db path` | a private temp store, deleted on exit | Work in this durable store instead. This is how state survives across runs. |
-| `-keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
-| `-timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `-timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
+| `--dir dir` | the current directory | The directory it works in, **edited in place**. Not an output folder — it opens what is there and leaves nothing behind that you did not ask for. `-w` is the shorthand and keeps working forever. |
+| `--db path` | a private temp store, deleted on exit | Work in this durable store instead. This is how state survives across runs. |
+| `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
+| `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
-| `--yes-spend` | off | Approve a plan whose price crosses the consent threshold. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
+| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `aforge plan run`. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
 | `--model slug` | the ladder below | The work model for this run. |
 | `--plan-model slug` | the ladder below | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
-| `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
-| `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Sets `AFORGE_COMPLETION_RESERVE` for this run. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
+| `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
+| `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 
 Flags may appear after the task text; `do` reorders its own arguments. Naming
 neither context flag touches the environment at all, so a wrapper script that
@@ -117,8 +117,8 @@ implicit is something `do` will decide for you and tell you it decided.
 ### Which models a run uses — one ladder, four rungs
 
 The two seats — the model that **works** and the model that **plans** — resolve
-the same way at every headless door (`do`, `exec`, `plan`, `run`, `revise`,
-`run subharness`). First rung that answers wins, per seat:
+the same way at every headless door (`do`, `exec`, `run`, `plan new`,
+`plan revise`, `plan run`). First rung that answers wins, per seat:
 
 | | work seat | plan seat |
 | --- | --- | --- |
@@ -156,22 +156,28 @@ models: work anthropic/whatever (--model) · plan follows the work model (defaul
 so a campaign can verify what actually ran instead of trusting the shell it
 launched from. `do --json` carries the same four facts as fields.
 
-### Exit codes — the verdict
+### Exit codes — one ladder, and it is the same one on all three commands
 
-| Code | Name | Means |
+| Code | `stop` | Means |
 | --- | --- | --- |
-| `0` | success | The errand settled and the whole of the work stands. |
-| `1` | failed | It did not work — including *nothing was attempted*. |
-| `2` | partial | Something usable is above and it is not the whole of what was asked for. |
+| `0` | `done` | It is done, and what is on stdout is the answer. |
+| `1` | `error` | It could not be run at all — no key, bad arguments, the store would not open, the workspace could not be made, no resident took it. Nothing was attempted and nothing was spent. |
+| `2` | `incomplete` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. |
+| `3` | `price`, `deadline` | A limit you set stopped it — the wall (`--timeout`), or a plan price that crossed the consent threshold with no `--yes-spend`. The work was going when it was cut off; raise the limit and run it again. |
+| `4` | `question` | It stopped to ask and nobody was there. The question is on stderr verbatim and in `blocked_on`. |
 
-`2` has three causes and they are one fact: **the deliverable did not land
-whole.** The wall arrived first; or the delivery gate — the judge that asks
-whether the person who asked would accept this — rejected the deliverable and
-stood by the rejection; or part of the job failed or was cancelled, which the
-deliverable itself says out loud ("Not all of this landed: 1 of 2 parts
-finished"). Each of the last two used to print that shortfall to stdout and
-leave `0` under it, so a harness reading the code — the contract — recorded them
-as work that stands.
+**This moved.** `do` used to return 0, 1 and 2 only, where `1` meant everything
+from "nothing was attempted" to "it asked a question" to "the price was refused",
+and `2` meant both "the delivery did not land whole" and "the wall came first".
+Those are five different situations and a script could branch on none of them.
+The whole before-and-after, per command, is
+`docs/design/polish/envelope-and-exits.md`.
+
+`2`'s causes are one fact: **the deliverable did not land whole.** The delivery
+gate — the judge that asks whether the person who asked would accept this —
+rejected the deliverable and stood by the rejection; or part of the job failed
+or was cancelled, which the deliverable itself says out loud ("Not all of this
+landed: 1 of 2 parts finished").
 
 A gate verdict the system overruled is **not** a rejection: a gap the one polish
 pass closed, and a gap refused as ungrounded or as already closed, exit `0`.
@@ -185,51 +191,74 @@ over it, but refusing a citation cannot make a file appear, so a refused
 mechanical gate exits `2`, not `0`. Every other refusal says a judge was wrong
 about the text; this one says the plan promised a file that is not there.
 
-**The exit code is the verdict; `settled` is not.** `settled` says only that
+**Read `ok` or the exit code; `settled` is neither.** `settled` says only that
 nothing this process is waiting for can still move. The two disagree in exactly
 one honest way: an errand stopped by a question is **over** (`settled: true`)
-and **did nothing** (`exit 1`). A caller that reads `deliverable` and ignores
-the exit code will record an interactive question as the answer to the task —
-this happened, and `blocked_on` exists so it cannot happen again.
+and **did nothing** (`ok: false`, exit `4`). A caller that reads `answer` and
+ignores the exit code will record an interactive question as the answer to the
+task — this happened, and `blocked_on` exists so it cannot happen again.
 
-| `settled` | exit | Situation |
-| --- | --- | --- |
-| `true` | `0` | Worked, whole. |
-| `true` | `1` | Refused or asked back — `blocked_on` carries the question, `deliverable` is empty. |
-| `true` | `2` | Delivered, but not whole — the gate rejected it, or parts of it did not land. `deliverable` says which. |
-| `false` | `1` | The price crossed the threshold and was not approved; nothing was bought. |
-| `false` | `2` | Hit the wall. Partial work; `blocked_on` is set if a question was standing behind the wall. |
+| `settled` | `ok` | exit | Situation |
+| --- | --- | --- | --- |
+| `true` | `true` | `0` | Worked, whole. |
+| `true` | `false` | `4` | Asked back — `blocked_on` carries the question, `answer` is empty. |
+| `true` | `false` | `2` | Refused, or delivered and not whole — the gate rejected it, or parts of it did not land. `answer` says which. |
+| `false` | `false` | `3` | The price crossed the threshold and was not approved; nothing was bought. Or the wall arrived. |
+| `false` | `false` | `4` | The wall arrived with a question standing behind it. |
 
-### The `--json` object
+### The `--json` object — ONE shape, on `do`, `exec` and `run` alike
 
 ```json
 {
-  "deliverable": "the answer, in full — never a receipt, never a pointer",
-  "artifacts": ["/abs/path/to/any/file/it/made"],
-  "spend": 0.0731,
-  "nodes": 6,
+  "ok": true,
+  "stop": "done",
+  "answer": "the answer, in full — never a receipt, never a pointer",
+  "files": ["/abs/path/to/any/file/it/made"],
+  "error": "",
+  "spend_usd": 0.0731,
+  "tokens": {"in": 18422, "out": 1130},
   "seconds": 184.2,
-  "settled": true,
-  "blocked_on": "the question it could not answer, verbatim",
-  "learned": ["what one worker told the others mid-flight"],
   "model": "deepseek/deepseek-v4-flash",
-  "plan_model": "qwen/qwen3.8-27b",
-  "model_source": "crew frugal",
-  "plan_model_source": "crew frugal"
+  "steps": 6
 }
 ```
 
 | Field | Contract |
 | --- | --- |
-| `deliverable` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
-| `artifacts` | Absolute paths to files the run produced. |
-| `spend` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
-| `nodes` | How many graph nodes the errand came to. A structural read of how large the work turned out to be. |
+| `ok` | The work stands. True on exactly the runs that exit `0`. |
+| `stop` | Why it ended, in one word: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question`. **This is the field to read.** The exit code says how much is wrong; `stop` says what. |
+| `answer` | The final state of the work, whole and to its last byte. Never a plan, a pointer, or a progress receipt. Empty when `blocked_on` is set. |
+| `files` | Absolute paths to files the run produced. Always a list, never `null`. |
+| `error` | Why it could not be run at all, in the same words stderr carried. **Always present**, and empty on a run that started. |
+| `spend_usd` | Dollars **this run** cost — measured as the delta of today's spend across the run, not a per-call estimate. |
+| `tokens` | `{"in": …, "out": …}`. |
 | `seconds` | Wall clock. |
-| `settled` | Nothing pending can still move. See the matrix above — this is not a verdict. |
-| `blocked_on` | Omitted unless the run was stopped by a question. Non-empty **only** alongside a non-zero exit and an empty deliverable. |
+| `model` | The model the work ran on. |
+| `steps` | How many pieces of work ran. A saved program does not count them and reports `0`. |
+
+**The old field names are still printed, beside the new ones, for one release**,
+so nothing that reads them breaks today: `deliverable` → `answer`, `artifacts` →
+`files`, `spend` → `spend_usd`, `nodes` → `steps`. `exec`'s `text`, `turns`,
+`elapsed_ms` and `usage` are the same story on that command.
+
+**`settled` is not the old name of `ok` and is not deprecated.** It means
+"nothing this run is waiting for can still move", which is *true* of a run that
+asked a question and did nothing. Reading one as the other records every refusal
+as a success.
+
+**The one reader this genuinely broke** is a caller that tested for the
+*presence* of `error` to detect failure. It used to be `omitempty`; it is always
+there now. Test its value, or read `ok`.
+
+Fields that belong to `do` and stay: `spend_work` and `spend_overhead` — what
+the work cost against what it cost to decide what the work should be —
+`blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
+`subharness`.
+
+| Field | Contract |
+| --- | --- |
+| `blocked_on` | The question it could not answer, verbatim. Non-empty **only** alongside a non-zero exit and an empty `answer`. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
-| `model` / `plan_model` | The two seats this run actually used. `plan_model` is empty when planning rode the work model. |
 | `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `AFORGE_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
 
 ### Stream discipline
@@ -264,11 +293,11 @@ liveness laws for the bounds.
 
 ### The store, and how state survives
 
-With no `-db`, each run gets a private store in a temp directory that is
+With no `--db`, each run gets a private store in a temp directory that is
 **deleted on the way out**. Isolation is the point of a one-shot: a task run
 this way must not inherit half a conversation's assumptions.
 
-Pass `-db path` to keep the graph. Two runs sharing one `-db` share the task
+Pass `--db path` to keep the store. Two runs sharing one `--db` share the task
 graph, the notebook, and the job blackboard — the second run knows what the
 first learned. That is the seam an experiment about memory across tasks is
 measured at.
@@ -293,25 +322,25 @@ root with `AFORGE_HOME`.
 ### Spending consent
 
 A plan whose estimated price crosses the threshold stops and asks. Headless
-there is nobody to ask, so the run ends `settled: false`, `exit 1`, with the
-estimate on stderr and nothing bought. Pass `--yes-spend` (or
-`AFORGE_PREAUTHORIZE_SPEND=1`) to pre-approve. The daily dollar rail is
+there is nobody to ask, so the run ends `stop: "price"`, `ok: false`, **exit 3**,
+with the estimate on stderr and nothing bought. Pass `--yes-spend` (or
+`AFORGE_PREAUTHORIZE_SPEND=1`) to pre-approve. The day's spending limit is
 `AFORGE_DAILY_BUDGET` (`0` = unlimited) and applies regardless.
 
 ---
 
-## 2. `aforge exec` — one linear worker, no graph
+## 2. `aforge exec` — one linear worker, no plan
 
 ```
-aforge exec ["<prompt>"] [-w dir] [--system text]
-            [--turns N] [--budget N] [--timeout seconds]
-            [--model slug] [--plan-model slug]
+aforge exec ["<prompt>"] [--dir dir] [--system text]
+            [--max-turns N] [--token-budget N] [--timeout D]
+            [--model slug]
             [--context-fill N] [--completion-reserve N]
-            [--json] [-o file]
+            [--json] [--out file]
 ```
 
 `exec` runs **one** agent with the tool loop and nothing else: no compile, no
-graph, no contracts, no delivery gate, no replan, no journal, no resident lease.
+plan, no working methods, no delivery gate, no replan, no journal, no lease.
 It is the bottom of the product — the same executor a leaf runs on — exposed
 directly.
 
@@ -330,19 +359,31 @@ harness passes anything with newlines in it.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-w dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. |
+| `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
-| `--turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
-| `--budget N` | `150000` | Token budget for the whole run. Hitting it exits `2`. |
-| `--timeout N` | scaled from `--budget` | Hard wall in seconds. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `4`. |
+| `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
+| `--token-budget N` | `150000` | Token budget for the whole run. Hitting it exits `3`. |
+| `--timeout D` | scaled from `--token-budget` | Hard wall, as a duration: `15m`, `2h`, `90s`. A bare number is read as seconds, so `--timeout 900` keeps working. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `3`. |
 | `--model slug` | the ladder in section 1 | The work model. `exec` opens with the same `models:` line on stderr, naming its one seat and the rung that chose it. |
-| `--plan-model slug` | — | Accepted so a headless caller can pin both slots the same way for every command. `exec` plans nothing, so it changes no behaviour. |
-| `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run. |
-| `--completion-reserve N` | `65536` | Tokens kept free for the answer and its reasoning. Sets `AFORGE_COMPLETION_RESERVE` for this run. |
+| `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. |
+| `--completion-reserve N` | `65536` | Tokens kept free for the answer and its reasoning. |
 | `--json` | off | Print the envelope below instead of the plain text. |
-| `-o file` | — | Also write the envelope to this file. Independent of `--json`: the file is always the JSON. |
+| `--out file` | — | Also write the envelope to this file. Independent of `--json`: the file is always the JSON. `-o` is the shorthand. |
 
 Flags may appear after the prompt text; `exec` reorders its own arguments.
+
+**Three flag names moved, and every old spelling still works for one release.**
+`--turns` is `--max-turns`, `--budget` is `--token-budget` — *budget* is a word
+about money everywhere else in this product, so `--budget 150000` read as
+$150,000 — and `-w`/`-o` became `--dir`/`--out` with the letters kept forever as
+shorthands. A renamed spelling prints ONE line on **stderr** the first time it is
+used and is absent from `--help`; a shorthand says nothing, because it is not
+going away. The notice is never on stdout, so `--json | jq` keeps parsing.
+
+**`--plan-model` is gone from this door.** It was accepted "for headless
+model-pin parity" and documented as doing nothing, which teaches a harness author
+a wrong thing quietly. It is still parsed, so a script passing it keeps running,
+and it now says `note: exec does not plan — --plan-model has no effect here.`
 
 ### The walls can come from the environment
 
@@ -352,17 +393,18 @@ threading them onto every call:
 
 | Variable | Flag it stands in for | Units |
 | --- | --- | --- |
-| `AFORGE_EXEC_TURNS` | `--turns` | iterations |
-| `AFORGE_EXEC_BUDGET` | `--budget` | tokens |
-| `AFORGE_EXEC_TIMEOUT` | `--timeout` | seconds |
+| `AFORGE_EXEC_TURNS` | `--max-turns` | iterations |
+| `AFORGE_EXEC_BUDGET` | `--token-budget` | tokens |
+| `AFORGE_EXEC_TIMEOUT` | `--timeout` | a duration, or a bare number of seconds |
 
-**A flag that was typed always wins** — including `--turns 200`, which is a
+**A flag that was typed always wins** — including `--max-turns 200`, which is a
 decision even though 200 is also the default. A variable that is set but is not
 a number stops the run and names itself, rather than being silently dropped: a
 campaign that thinks it capped every call because of an unnoticed typo measures
-the wrong thing all night. A variable set to an out-of-range value meets exactly
-the guard the flag has always had (turns and budget must be positive, timeout
-must not be negative).
+the wrong thing all night, and an old spelling counts as typed. A variable set to
+an out-of-range value meets exactly the guard the flag has (turns and budget must
+be positive; a timeout of zero or less is refused at the flag, naming the
+variable that held it).
 
 ### Stream discipline
 
@@ -372,77 +414,96 @@ otherwise, one trailing newline either way. Every diagnostic goes to **stderr**,
 including the provider error behind a failed run. A harness may parse stdout
 whole; it never has to strip anything out of it.
 
-### The `--json` envelope
+### The `--json` envelope — the same object `do` and `run` print
 
 ```json
 {
-  "text": "the answer, in full",
+  "ok": true,
   "stop": "done",
-  "usage": {
-    "calls": 12,
-    "prompt_tokens": 48213,
-    "completion_tokens": 3110,
-    "cached_tokens": 41984,
-    "cost": 0.0731
-  },
-  "artifacts": ["/abs/path/to/any/file/it/wrote"],
-  "turns": 9,
-  "elapsed_ms": 184213
+  "answer": "the answer, in full",
+  "files": ["/abs/path/to/any/file/it/wrote"],
+  "error": "",
+  "spend_usd": 0.0731,
+  "tokens": {"in": 48213, "out": 3110},
+  "seconds": 184.2,
+  "model": "deepseek/deepseek-v4-flash",
+  "steps": 9
 }
 ```
 
-| Field | Contract |
-| --- | --- |
-| `text` | The deliverable, whole. Empty is possible and is what exit `6` is about. |
-| `stop` | Why the loop ended, in the executor's own vocabulary: `done`, `budget`, `turn-cap`, `deadline`, `error`, `empty`, `overrun`, `promote`, `paused`, `cancelled`. The exit code is the verdict; this is the reason. |
-| `usage` | Calls made and tokens moved, with `cached_tokens` counting prompt tokens served from the provider's cache and `cost` in dollars. Always present. |
-| `artifacts` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. |
-| `turns` | Iterations of the tool loop. |
-| `elapsed_ms` | Wall clock in milliseconds. |
+It is the object in section 1, field for field — `exec` and `do` used to print
+two different shapes with no vocabulary in common, so a harness wrapping both
+wrote two readers and the second one was written wrong.
 
-`-o file` writes this same object whether or not `--json` was passed, so a
+| Field | Contract, where `exec` differs from section 1 |
+| --- | --- |
+| `answer` | The deliverable, whole. Empty is possible, and it is now `stop: "incomplete"` and exit `2` rather than the old `stop: "done"` and exit `6`. |
+| `stop` | `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`. The executor's own endings that are not rungs of their own — `empty`, `overrun`, `promote`, `paused`, `cancelled` — still pass through under their own names and land on exit `2`. |
+| `steps` | Iterations of the tool loop. This is what `turns` was. |
+| `seconds` | Wall clock. This is what `elapsed_ms` was, in seconds. |
+| `files` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. This is what `artifacts` was. |
+| `tokens`, `spend_usd` | What `usage` carried, split into the two facts a campaign actually reports. |
+
+**Every old name is still printed beside the new one for one release** — `text`,
+`turns`, `elapsed_ms`, `artifacts`, and the whole `usage` object — so nothing
+that reads them breaks today. The full before-and-after is
+`docs/design/polish/envelope-and-exits.md`.
+
+**One value moved and was not preserved.** `exec` used to report
+`"stop": "done"` for a run that finished having produced no text at all. It says
+`"stop": "incomplete"` now, because the old value said the work was done about a
+run with nothing to show.
+
+`--out file` writes this same object whether or not `--json` was passed, so a
 caller can keep stdout for the prose and still get the machine record.
 
 ### Exit codes
 
+`exec` leaves on the **same ladder as `do` and `run`** — the table in section 1.
+
 | Code | `stop` | Means |
 | --- | --- | --- |
 | `0` | `done` | The worker stopped asking for tools and had something to say. |
-| `2` | `budget` | The token budget ran out. `text` holds whatever it had. |
-| `3` | `turn-cap` | The turn cap ran out. Partial. |
-| `4` | `deadline` | The wall clock ran out. Partial. |
-| `5` | `error` **and everything else** | See below. |
-| `6` | `done` | It finished cleanly with an empty `text`. |
+| `1` | `error` | It could not be run at all: the provider failed, the key was missing, the model id was rejected. |
+| `2` | `incomplete` | It ran and did not finish — including finishing with nothing to show, and every ending without a rung of its own (`cancelled`, `paused`, `promote`, `split`, `empty`, `overrun`). |
+| `3` | `budget`, `turn-cap`, `deadline` | A limit you set stopped it: the token budget, the turn cap, or the wall. `answer` holds whatever it had. |
 
-`5` is the catch-all, and that is deliberate: **every stop reason without a code
-of its own falls through to it** — `error`, `empty`, `overrun`, `promote`,
-`paused`, `cancelled`, and any reason added later. A run that failed outright
-exits `5` whatever `stop` says, with the provider's own sentence on stderr.
+**This moved a long way, and there is a hatch.** `exec` used to return 2 for the
+budget, 3 for the turn cap, 4 for the wall, 5 for an error *and every
+unclassified ending*, and 6 for a run with nothing to show — and it never
+returned `1`, which is what every other command in the binary returns for "could
+not be run at all". That is the whole reason its numbers moved.
 
-Two rows are easy to confuse and are not the same fact. Exit `6` is
-`stop: "done"` with nothing in `text` — the loop ended normally and produced no
-deliverable. `stop: "empty"` is a *call* that succeeded and returned nothing,
-and it exits `5` like every other unclassified reason.
+```bash
+AFORGE_EXIT_CODES=legacy aforge exec "…"
+```
 
-The rule for a harness is the same as for `do`: **read the exit code, not the
-text.** `text` on a non-zero exit is partial work, not an answer.
+restores exactly the old 2/3/4/5/6 **for one release** and changes nothing else:
+not `do`, not `run`, not one field of the envelope, not one word on stderr. It
+is not a general compatibility mode.
+
+The rule for a harness is the same as for `do`: **read the exit code, or `stop`,
+never `answer` alone.** `answer` on a non-zero exit is partial work, not an
+answer. `stop` is the field to move a script to: it names why a run ended in a
+word, it is the same word on all three commands, and it is not going to move
+again.
 
 ### What `exec` deliberately does not do
 
-- **No `-db`, no journal, no notebook, no blackboard.** Nothing a run learns
+- **No `--db`, no journal, no notebook, no blackboard.** Nothing a run learns
   survives it, and two runs share nothing. If you want state across calls, that
-  is `do -db`.
-- **No daily dollar rail and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
-  consulted here; `--budget` is the only ceiling, and it is counted in tokens.
-  A campaign driving `exec` is responsible for its own spend.
+  is `do --db`.
+- **No daily spending limit and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
+  consulted here; `--token-budget` is the only ceiling, and it is counted in
+  tokens. A campaign driving `exec` is responsible for its own spend.
 - **No resident lease.** It never waits for another aforge and never hands work
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
-- **Scratch lands in `-w`.** `exec` gives the worker no separate scratch
+- **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
   directory, so the harness's own machinery — `.aforge/`, `.obs/` — is written
-  into the workspace beside the work product. Point `-w` at a directory you are
-  willing to have written into, not at a repository you want left clean.
+  into the workspace beside the work product. Point `--dir` at a directory you
+  are willing to have written into, not at a repository you want left clean.
 
 `exec` still reads the state root for two things: the model catalog cache and,
 if you have one there, a persisted API key. `AFORGE_HOME` moves both.
@@ -455,7 +516,7 @@ if you have one there, a persisted API key. `AFORGE_HOME` moves both.
 
 ```bash
 aforge do "fix the failing test in ./pkg/parse" \
-  -w "$PWD" --json --yes-spend -timeout 900
+  --dir "$PWD" --json --yes-spend --timeout 15m
 ```
 
 **A sequence of tasks that must remember each other** — the store is what
@@ -464,8 +525,8 @@ it:
 
 ```bash
 for task in "$@"; do
-  aforge do "$task" -db "$RUN/store/graph.db" -w "$RUN/repo" \
-    --json --yes-spend -timeout 900 >> "$RUN/results.jsonl"
+  aforge do "$task" --db "$RUN/store/graph.db" --dir "$RUN/repo" \
+    --json --yes-spend --timeout 15m >> "$RUN/results.jsonl"
 done
 ```
 
@@ -473,17 +534,20 @@ done
 
 ```bash
 AFORGE_HOME="$(mktemp -d)" AFORGE_DAILY_BUDGET=5 \
-  aforge do "$TASK" -w "$REPO" --json --yes-spend
+  aforge do "$TASK" --dir "$REPO" --json --yes-spend
 ```
 
-**Reading the verdict correctly:**
+**Reading the ending correctly** — branch on `stop`, which is one word and the
+same word on all three commands:
 
 ```bash
 aforge do "$TASK" --json --yes-spend > out.json
-case $? in
-  0) jq -r .deliverable out.json ;;
-  2) echo "wall hit; partial:"; jq -r .deliverable out.json ;;
-  *) jq -r '.blocked_on // "failed"' out.json ;;   # never .deliverable here
+case "$(jq -r .stop out.json)" in
+  done)               jq -r .answer out.json ;;
+  incomplete)         echo "part of it does not stand:"; jq -r .answer out.json ;;
+  deadline|price)     echo "a limit stopped it:";        jq -r .answer out.json ;;
+  question)           jq -r .blocked_on out.json ;;      # never .answer here
+  *)                  jq -r .error out.json ;;
 esac
 ```
 
@@ -494,20 +558,22 @@ esac
 | Command | What it is for |
 | --- | --- |
 | `aforge chat --once "<text>" [--model slug] [--yolo] [--one-model] [--reasoning level] [--no-compact]` | One conversational turn, non-interactively: the chat surface's brain with the surface removed. See below — it is a different shape from `do`. |
-| `aforge plan "<goal>" [-o graph.json] [--json] [--brief] [--ensemble N]` | Compile a goal to a graph file. For reading and editing a plan by hand. |
-| `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
-| `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
-| `aforge show <graph.json>` | Print a graph. |
-| `aforge exec ["<prompt>"] [-w dir] [--turns N] [--budget N] [--timeout N] [--json] [-o file]` | One linear worker with no graph behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
+| `aforge plan new "<goal>" [--out plan.json] [--json] [--instructions] [--passes auto\|off\|N]` | Compile a goal to a plan file. For reading and editing a plan by hand. |
+| `aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
+| `aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]` | Re-plan from what actually happened. |
+| `aforge plan show <plan.json>` | Print a plan. |
+| `aforge run <program> --input <file.json\|->` | Run one saved program on typed input. Section 1's exit ladder and envelope. This was `aforge run subharness <name>`. |
+| `aforge exec ["<prompt>"] [--dir dir] [--max-turns N] [--token-budget N] [--timeout D] [--json] [--out file]` | One linear worker with no plan behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
 | `aforge version` | The build this binary was cut from. `--version` and `-v` say the same thing. Answers with no API key set, because probing for the binary must not be a configuration problem. |
-| `aforge wake [--max-seconds N]` | One full resident pass — evaluate sentinels, fire what is due, journal it, exit. What the standing watch timer runs. |
-| `aforge doctor` | Five rows: brain and size, who is resident, watch state, today's spend against the rail, active goals and pending questions. |
+| `aforge wake [--timeout 2m]` | One full background pass — evaluate sentinels, fire what is due, journal it, exit. What the five-minute timer runs. |
+| `aforge doctor` | Labelled rows: `store` and its size, who is resident, the `background timer` and when it last woke, today's spend against the limit, active goals and pending questions. |
 | `aforge competence` / `aforge why self` | The measured competence map; today's self-spend receipts. |
-| `aforge why <node-id>` | One leaf's turn-by-turn record: what it said, which tools it called with what arguments, what came back, and how it ended. |
+| `aforge why <task-id>` | One piece of work's turn-by-turn record: what it said, which tools it called with what arguments, what came back, and how it ended. |
 | `aforge notebook [retract\|restore <seq>]` | Inspect, search, and retract beliefs. |
 | `aforge services [stop <name>]` | Long-running processes it was asked to keep. |
 | `aforge models` | The router ledger — ratings and how many observations back each. |
 | `aforge rebuild [--yes]` | Discard every derived table and replay the journal. |
+| `aforge help env` | The environment table: every variable and its default. It moved off `aforge --help`, which was 127 lines with more than half of them this table. |
 
 ### `aforge chat --once` — one turn, and what it is not
 
@@ -580,7 +646,7 @@ ended.
 
 ## 5. Environment
 
-The full list is `aforge --help`. What matters headless:
+The full list is `aforge help env`. What matters headless:
 
 | Variable | Default | Why a harness cares |
 | --- | --- | --- |
@@ -588,7 +654,7 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_MODEL` | see `--help` | The work model. `--model` overrides per run; unset, the profile's crew answers before the built-in default — see the ladder in section 1. |
 | `AFORGE_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset, the profile's crew mastermind answers; with no crew written, the work model plans too. |
 | `AFORGE_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
-| `AFORGE_DAILY_BUDGET` | `20.0` | Daily dollar rail; `0` is unlimited. A run that hits the rail stops. |
+| `AFORGE_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
 | `AFORGE_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
 | `AFORGE_HOME` | `~/.aforge` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
 | `AFORGE_PROFILE_DIR` | `AFORGE_HOME` | Where measured behaviour is kept. |
@@ -598,9 +664,10 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
 | `AFORGE_REASONING` | `off` | Planning-call reasoning effort. |
 | `AFORGE_EXEC_REASONING` | model default | Executor-call reasoning effort. |
-| `AFORGE_EXEC_TURNS` | unset | `aforge exec` only: the turn cap when `--turns` was not passed. |
-| `AFORGE_EXEC_BUDGET` | unset | `aforge exec` only: the token budget when `--budget` was not passed. |
-| `AFORGE_EXEC_TIMEOUT` | unset | `aforge exec` only: the wall in seconds when `--timeout` was not passed. A typed flag always wins over all three; see section 2. |
+| `AFORGE_EXEC_TURNS` | unset | `aforge exec` only: the turn cap when `--max-turns` was not passed. |
+| `AFORGE_EXEC_BUDGET` | unset | `aforge exec` only: the token budget when `--token-budget` was not passed. |
+| `AFORGE_EXEC_TIMEOUT` | unset | `aforge exec` only: the wall when `--timeout` was not passed, as a duration or a bare number of seconds. A typed flag always wins over all three; see section 2. |
+| `AFORGE_EXIT_CODES` | unset | `legacy` restores `aforge exec`'s old 2/3/4/5/6 exit codes for one release and changes nothing else. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
 that row reads read-only in the sheet rather than fighting your shell.
@@ -611,7 +678,7 @@ that row reads read-only in the sheet rather than fighting your shell.
 
 Rules that came from getting them wrong:
 
-- **Read the exit code, never `deliverable` alone.** An empty deliverable with
+- **Read `stop` or the exit code, never `answer` alone.** An empty answer with
   `blocked_on` set is a task that was never attempted; scoring it as a wrong
   answer overstates capability failure and hides an unanswered question.
 - **The task string is the prompt under test.** `do` runs it verbatim, so a
@@ -619,7 +686,7 @@ Rules that came from getting them wrong:
   quietly repairing a bad one, and no campaign is comparing two runs on two
   differently-reworded asks. What you leave implicit gets assumed and declared,
   not asked back about; if that matters to your score, say it in the ask.
-- **Report `seconds` and `spend` from the JSON**, not from your own wall clock
+- **Report `seconds` and `spend_usd` from the JSON**, not from your own wall clock
   around the process — they are measured inside the run, and `spend` is a real
   ledger delta.
 - **Do not change host, model, or `AFORGE_MODELS` mid-campaign.** Wall clock and
@@ -638,9 +705,9 @@ Rules that came from getting them wrong:
   with different crews are two configurations, not one. Record `model_source`
   and `plan_model_source` beside the score, or point every cell at one
   `AFORGE_PROFILE_DIR`.
-- **`-timeout` is part of the result.** A cell that hit the wall measured the
+- **`--timeout` is part of the result.** A cell that hit the wall measured the
   wall as much as the work. Report the timeout rate beside the score or the
   score is not what it appears to be.
-- **One `-db` per experimental unit.** Sharing a store across units that were
+- **One `--db` per experimental unit.** Sharing a store across units that were
   meant to be independent leaks learning between them; giving each unit a fresh
   store when the experiment is *about* memory erases the effect being measured.

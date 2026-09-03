@@ -144,20 +144,25 @@ func TestExecTask(t *testing.T) {
 	}
 }
 
-// execFlagsForTest builds the three walls exactly as runExec does, so the tests
-// below exercise the real flag package rather than a stand-in for it — the
-// whole contract turns on flag.Visit reporting what was typed.
-func execFlagsForTest(t *testing.T, args ...string) (*flag.FlagSet, *int, *int, *int) {
+// execFlagsForTest builds the three walls exactly as runExec does — the printed
+// spellings AND the hidden old ones — so the tests below exercise the real flag
+// package rather than a stand-in for it. The whole contract turns on flag.Visit
+// reporting what was typed, and on the aliases resolving to the printed name
+// before it is read (rename.go).
+func execFlagsForTest(t *testing.T, args ...string) (*flag.FlagSet, *int, *int, *wallFlag) {
 	t.Helper()
 	flags := flag.NewFlagSet("exec", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	maxTurns := flags.Int("turns", 200, "")
-	maxTokens := flags.Int("budget", 150000, "")
-	timeout := flags.Int("timeout", 0, "")
+	maxTurns := flags.Int("max-turns", 200, "")
+	renamedFlag(flags, "turns", "max-turns")
+	maxTokens := flags.Int("token-budget", 150000, "")
+	renamedFlag(flags, "budget", "token-budget")
+	wall := &wallFlag{}
+	flags.Var(wall, "timeout", "")
 	if err := flags.Parse(args); err != nil {
 		t.Fatalf("parse %v: %v", args, err)
 	}
-	return flags, maxTurns, maxTokens, timeout
+	return flags, maxTurns, maxTokens, wall
 }
 
 func fakeEnv(pairs map[string]string) func(string) string {
@@ -166,32 +171,41 @@ func fakeEnv(pairs map[string]string) func(string) string {
 
 // With nothing in the environment the defaults have to survive untouched.
 func TestApplyExecEnvLeavesDefaultsAlone(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t)
-	if err := applyExecEnv(flags, fakeEnv(nil), turns, budget, timeout); err != nil {
+	flags, turns, budget, wall := execFlagsForTest(t)
+	if err := applyExecEnv(flags, fakeEnv(nil), turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 200 || *budget != 150000 || *timeout != 0 {
-		t.Fatalf("turns/budget/timeout = %d/%d/%d, want 200/150000/0", *turns, *budget, *timeout)
+	if *turns != 200 || *budget != 150000 || wall.wall != 0 {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 200/150000/0s", *turns, *budget, wall.wall)
 	}
 }
 
 // The point of the fallback: a harness sets the walls once for a campaign.
 func TestApplyExecEnvFillsWallsNobodyPassed(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t)
+	flags, turns, budget, wall := execFlagsForTest(t)
 	env := fakeEnv(map[string]string{
 		"AFORGE_EXEC_TURNS":   "3",
 		"AFORGE_EXEC_BUDGET":  " 20000 ",
 		"AFORGE_EXEC_TIMEOUT": "150",
 	})
-	if err := applyExecEnv(flags, env, turns, budget, timeout); err != nil {
+	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 3 || *budget != 20000 || *timeout != 150 {
-		t.Fatalf("turns/budget/timeout = %d/%d/%d, want 3/20000/150", *turns, *budget, *timeout)
+	if *turns != 3 || *budget != 20000 || wall.wall != 150*time.Second {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 3/20000/2m30s", *turns, *budget, wall.wall)
 	}
 	// And the wall the environment named is the wall the run actually gets.
-	if got := execDeadline(*budget, *timeout); got != 150*time.Second {
+	if got := execDeadline(*budget, int(wall.wall/time.Second)); got != 150*time.Second {
 		t.Fatalf("deadline = %s, want 150s", got)
+	}
+	// THE VARIABLE READS A DURATION TOO, because the flag it stands in for does.
+	// AFORGE_EXEC_TIMEOUT=2m was a refusal on a machine where --timeout 2m works.
+	flags, turns, budget, wall = execFlagsForTest(t)
+	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "2m"}), turns, budget, wall); err != nil {
+		t.Fatalf("AFORGE_EXEC_TIMEOUT=2m was refused: %v", err)
+	}
+	if wall.wall != 2*time.Minute {
+		t.Fatalf("AFORGE_EXEC_TIMEOUT=2m gave %s, want 2m0s", wall.wall)
 	}
 }
 
@@ -200,51 +214,62 @@ func TestApplyExecEnvFillsWallsNobodyPassed(t *testing.T) {
 // to distinguish and the one an implementation reading only the value gets
 // wrong.
 func TestApplyExecEnvNeverOverrulesATypedFlag(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t,
-		"-turns", "200", "-budget", "9000", "-timeout", "42")
+	flags, turns, budget, wall := execFlagsForTest(t,
+		"-max-turns", "200", "-token-budget", "9000", "-timeout", "42")
 	env := fakeEnv(map[string]string{
 		"AFORGE_EXEC_TURNS":   "3",
 		"AFORGE_EXEC_BUDGET":  "20000",
 		"AFORGE_EXEC_TIMEOUT": "150",
 	})
-	if err := applyExecEnv(flags, env, turns, budget, timeout); err != nil {
+	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 200 || *budget != 9000 || *timeout != 42 {
-		t.Fatalf("turns/budget/timeout = %d/%d/%d, want 200/9000/42", *turns, *budget, *timeout)
+	if *turns != 200 || *budget != 9000 || wall.wall != 42*time.Second {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 200/9000/42s", *turns, *budget, wall.wall)
+	}
+	// AND THE OLD SPELLING IS THE SAME DECISION. A person who typed --budget
+	// named the wall as surely as one who typed --token-budget, and an
+	// environment variable that overruled the first and not the second would be
+	// the silent overrule this whole fallback is guarded against.
+	flags, turns, budget, wall = execFlagsForTest(t, "-budget", "9000")
+	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
+		t.Fatal(err)
+	}
+	if *budget != 9000 {
+		t.Fatalf("--budget 9000 became %d — the old spelling did not count as typed", *budget)
 	}
 }
 
 // One flag typed, the others left to the environment: the fallback is per-wall,
 // not all-or-nothing.
 func TestApplyExecEnvIsPerWall(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t, "-budget", "9000")
+	flags, turns, budget, wall := execFlagsForTest(t, "-token-budget", "9000")
 	env := fakeEnv(map[string]string{
 		"AFORGE_EXEC_TURNS":   "3",
 		"AFORGE_EXEC_BUDGET":  "20000",
 		"AFORGE_EXEC_TIMEOUT": "150",
 	})
-	if err := applyExecEnv(flags, env, turns, budget, timeout); err != nil {
+	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 3 || *budget != 9000 || *timeout != 150 {
-		t.Fatalf("turns/budget/timeout = %d/%d/%d, want 3/9000/150", *turns, *budget, *timeout)
+	if *turns != 3 || *budget != 9000 || wall.wall != 150*time.Second {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want 3/9000/2m30s", *turns, *budget, wall.wall)
 	}
 }
 
 // A variable that is set but empty is not a value; it must not become one.
 func TestApplyExecEnvIgnoresEmptyVariables(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t)
+	flags, turns, budget, wall := execFlagsForTest(t)
 	env := fakeEnv(map[string]string{
 		"AFORGE_EXEC_TURNS":   "",
 		"AFORGE_EXEC_BUDGET":  "   ",
 		"AFORGE_EXEC_TIMEOUT": "",
 	})
-	if err := applyExecEnv(flags, env, turns, budget, timeout); err != nil {
+	if err := applyExecEnv(flags, env, turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
-	if *turns != 200 || *budget != 150000 || *timeout != 0 {
-		t.Fatalf("turns/budget/timeout = %d/%d/%d, want the defaults", *turns, *budget, *timeout)
+	if *turns != 200 || *budget != 150000 || wall.wall != 0 {
+		t.Fatalf("max-turns/token-budget/timeout = %d/%d/%s, want the defaults", *turns, *budget, wall.wall)
 	}
 }
 
@@ -252,7 +277,10 @@ func TestApplyExecEnvIgnoresEmptyVariables(t *testing.T) {
 // thinks it capped every call at 150 seconds because of an unnoticed typo
 // measures the wrong thing all night.
 func TestApplyExecEnvRefusesNonNumericValues(t *testing.T) {
-	for _, variable := range []string{"AFORGE_EXEC_TURNS", "AFORGE_EXEC_BUDGET", "AFORGE_EXEC_TIMEOUT"} {
+	// AFORGE_EXEC_TIMEOUT is not on this list any more and `2m` is not the typo
+	// to probe it with: the wall reads durations now, on the flag and in the
+	// environment alike, so `2m` is a value there and `later` is the typo.
+	for _, variable := range []string{"AFORGE_EXEC_TURNS", "AFORGE_EXEC_BUDGET"} {
 		flags, turns, budget, timeout := execFlagsForTest(t)
 		err := applyExecEnv(flags, fakeEnv(map[string]string{variable: "2m"}), turns, budget, timeout)
 		if err == nil {
@@ -262,33 +290,47 @@ func TestApplyExecEnvRefusesNonNumericValues(t *testing.T) {
 			t.Fatalf("%s error = %q, want it to name the variable", variable, err)
 		}
 	}
+	flags, turns, budget, wall := execFlagsForTest(t)
+	err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "later"}), turns, budget, wall)
+	if err == nil || !strings.Contains(err.Error(), "AFORGE_EXEC_TIMEOUT") {
+		t.Fatalf("AFORGE_EXEC_TIMEOUT=later answered %v, want a refusal naming the variable", err)
+	}
 }
 
 // Out-of-range values from the environment land in exactly the same guard the
 // flags have always had, so there is one rule about what a wall may be.
 func TestApplyExecEnvValuesStillMeetTheFlagGuards(t *testing.T) {
-	flags, turns, budget, timeout := execFlagsForTest(t)
-	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TURNS": "0"}), turns, budget, timeout); err != nil {
+	flags, turns, budget, wall := execFlagsForTest(t)
+	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TURNS": "0"}), turns, budget, wall); err != nil {
 		t.Fatal(err)
 	}
 	if *turns > 0 {
-		t.Fatalf("turns = %d, want the environment's 0 to reach the guard", *turns)
+		t.Fatalf("max-turns = %d, want the environment's 0 to reach the guard", *turns)
 	}
-	flags, turns, budget, timeout = execFlagsForTest(t)
-	if err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "-1"}), turns, budget, timeout); err != nil {
-		t.Fatal(err)
-	}
-	if *timeout != -1 {
-		t.Fatalf("timeout = %d, want the environment's -1 to reach the guard", *timeout)
+	// THE WALL'S GUARD MOVED INTO THE WALL. A negative timeout used to be
+	// carried past this function to a check further in; the duration flag
+	// refuses it here, naming the variable that held it, which is one refusal
+	// instead of two readings of one rule (wall.go).
+	flags, turns, budget, wall = execFlagsForTest(t)
+	err := applyExecEnv(flags, fakeEnv(map[string]string{"AFORGE_EXEC_TIMEOUT": "-1"}), turns, budget, wall)
+	if err == nil || !strings.Contains(err.Error(), "AFORGE_EXEC_TIMEOUT") {
+		t.Fatalf("AFORGE_EXEC_TIMEOUT=-1 answered %v, want a refusal naming the variable", err)
 	}
 }
 
 // The help text is where a harness author finds out the variables exist.
 func TestUsageMentionsExecEnvironmentFallbacks(t *testing.T) {
+	// The environment table moved out of `--help` and into `aforge help env`
+	// when `--help` was 127 lines and more than half of them were this table.
+	// So the variables are looked for where they now are, and `--help` is held
+	// to naming the door that carries them.
 	for _, variable := range []string{"AFORGE_EXEC_TIMEOUT", "AFORGE_EXEC_BUDGET", "AFORGE_EXEC_TURNS"} {
-		if !strings.Contains(usageText, variable) {
-			t.Fatalf("usageText does not mention %s", variable)
+		if !strings.Contains(environmentText, variable) {
+			t.Fatalf("`aforge help env` does not mention %s", variable)
 		}
+	}
+	if !strings.Contains(usageText, "aforge help env") {
+		t.Fatal("`aforge --help` never says where the environment table went")
 	}
 }
 

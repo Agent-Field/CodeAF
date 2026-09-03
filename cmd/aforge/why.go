@@ -18,7 +18,7 @@ func runWhy(args []string) error {
 
 func runWhyTo(args []string, output io.Writer, now time.Time) error {
 	flags := commandFlags("why")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}

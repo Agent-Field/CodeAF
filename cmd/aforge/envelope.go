@@ -10,12 +10,12 @@ import (
 )
 
 // ONE EXIT LADDER AND ONE RESULT ENVELOPE, for every headless verb this binary
-// has: `aforge do`, `aforge exec`, and `aforge run subharness`.
+// has: `aforge do`, `aforge exec`, and `aforge run`.
 //
 // THIS FILE IS THE WHOLE OF BOTH CONTRACTS. It exists because there used to be
 // three exit tables, each written where its own command was, and two of them
 // said the opposite thing with the same number: `do` exit 1 meant "nothing
-// usable came back", `run subharness` exit 1 meant "it could not be run at
+// usable came back", `aforge run` exit 1 meant "it could not be run at
 // all", and `exec` returned 2, 3, 4, 5 and 6 and never returned 1. A script
 // that branched across any two of them branched WRONG on at least one, and
 // there was no way to read the code and find out which — the tables were three

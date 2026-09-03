@@ -116,3 +116,198 @@ Counts: **10 high · 15 med · 4 low · 29 rows.**
   (doctor.go:202-213) — `$0.00 today` gone, counts dropped when zero.
 - **`--yolo` needing `--max-hours` or `--max-cost` before it will carry work on
   by itself** (chatv3.go:92-96) — a posture and a budget kept as two decisions.
+
+---
+
+## fixed
+
+The rename lane. Every row below is closed in `cmd/aforge/`, with a named test
+and a capture from a binary built on `ui/polish-v0` against a throwaway demo
+home. `frames/cmd-help-before.txt` and `frames/cmd-renames-after.txt` are the
+two to read first; the rename's own before/after table is written into
+`envelope-and-exits.md` beside the sibling lane's, because a person with a
+script needs both in one place.
+
+**Row 9 — `run` names two unrelated commands, and `longerCommands` exists to
+tell them apart.**
+Files: `cmd/aforge/main.go` (the dispatch, `runPlanCommand`, `runPlanNew`,
+`runRevise`, `runShow`), `cmd/aforge/run.go` (`runExecute`, `namesAPlanFile`,
+`runGraph`), `cmd/aforge/subharness_run.go`, `cmd/aforge/rename.go` (new),
+`cmd/aforge/usage.go` (`longerCommands`).
+`aforge run <program>` is the one meaning of `run`, matching `/subharness <name>`
+in the chat. The static pipeline is `aforge plan new | show | revise | run` — the
+noun is **plan**, not `graph`, because a developer plans work, shows the plan,
+revises the plan and runs it, and `graph` is how the engine thinks. Today's four
+verbs map one-to-one onto the four; no fifth was needed.
+`longerCommands` lost its `run subharness` entry and kept `cache clean`, and the
+comment says why: `cache` is one noun with two verbs on it, which is a different
+shape from one word meaning two things.
+Test: `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow`,
+`TestACommandsUsageIsReadOutOfTheOneTable` (rewritten: `run`'s usage is the
+saved-program runner's, and `aforge plan --help` offers all four subcommands).
+Capture: `frames/cmd-renames-after.txt`, `frames/cmd-plan-run-help-after.txt`.
+
+**Row 7 — `--budget` means tokens while *budget* means dollars everywhere else.**
+Files: `cmd/aforge/exec.go`, `cmd/aforge/run.go`, `cmd/aforge/rename.go`.
+The token bound is **`--token-budget`** on `exec` and on `plan run`, and the
+whole-run wall is **`--total-token-budget`**. `--budget` and `--run-budget` keep
+their old behaviour as hidden aliases for one release. `AFORGE_EXEC_BUDGET` reads
+through to the new name, and an old spelling still counts as *typed* so the
+variable cannot silently overrule it.
+Test: `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow`,
+`TestApplyExecEnvNeverOverrulesATypedFlag` (extended with the old spelling),
+`TestOneConceptIsSpelledOneWayOnEveryDoor`.
+Capture: `frames/cmd-renames-after.txt` (`--budget` → the notice on stderr, the
+envelope on stdout, `jq -r .answer` reading it).
+
+**Row 8 — `--timeout` is a duration on `do` and an integer of seconds on `exec`.**
+Files: `cmd/aforge/exec.go`, `cmd/aforge/wake.go`.
+`exec` takes the same `wallFlag` `do` has, so `--timeout 15m` works on both and a
+bare number is still seconds. `AFORGE_EXEC_TIMEOUT` reads durations too — it was
+a refusal on a machine where the flag it stands in for accepts them. `wake`'s
+`--max-seconds` is `--timeout`, hidden for one release.
+Test: `TestApplyExecEnvFillsWallsNobodyPassed` (extended: `AFORGE_EXEC_TIMEOUT=2m`),
+`TestApplyExecEnvValuesStillMeetTheFlagGuards`,
+`TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow`.
+Capture: `frames/cmd-renames-after.txt` (the `--timeout 45s` run).
+
+**Row 11 — `-w`, `-o` and `-j` have no long spelling at all.**
+Files: `cmd/aforge/do.go`, `exec.go`, `run.go`, `main.go`, `subharness_run.go`,
+`rename.go`.
+`--dir`, `--out` and `--parallel` are the printed names. The letters are
+**shorthands, not deprecations**: they keep working forever and say nothing,
+which is a different lifetime from a rename and therefore a different function
+(`shorthandFlag` against `renamedFlag`).
+Test: `TestASingleLetterShorthandKeepsWorkingAndSaysNothing`,
+`TestNoOldSpellingIsPrintedByHelp`.
+
+**Row 12 — `exec --plan-model` is accepted and documented as doing nothing.**
+File: `cmd/aforge/exec.go`. It is off the printed flag list. A script that passes
+it keeps running and is told once, on stderr:
+`note: exec does not plan — --plan-model has no effect here.`
+Test: `TestOneConceptIsSpelledOneWayOnEveryDoor` (it is no longer a printed flag).
+
+**Row 16 — `--yes-spend` is documented as two different things on two commands.**
+Files: `cmd/aforge/main.go` (`yesSpendFlagHelp`), `do.go`, `run.go`. One sentence:
+*spend past today's limit and past the plan-price question, without stopping to
+ask.* `rail` went with the old wording.
+Test: `TestOneConceptIsSpelledOneWayOnEveryDoor` (the concept table).
+
+**Row 17 — `--ensemble` is a tri-state integer with two magic values.**
+Files: `cmd/aforge/passes.go` (new), `main.go`. `--passes auto|off|<n>`,
+defaulting `auto`, refusing `1` by name rather than letting it fall through the
+old encoding. `--ensemble` is hidden for one release.
+Test: `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow`.
+
+**Row 18 — `--contracts` and `--brief` are one concept under two machinery names.**
+Files: `cmd/aforge/run.go`, `main.go`, `rename.go` (`invertedFlag`).
+`plan run --no-method` (default off, so no `=false` form is needed) and
+`plan new --instructions`. `--contracts` is kept as an *inverted* hidden alias,
+because `--contracts=false` and `--no-method` are one instruction spelled with
+opposite words.
+Test: `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow`.
+
+**Row 19 — `--context-fill` and `--completion-reserve` document themselves by the
+environment variable they set.**
+Files: `cmd/aforge/do.go`, `exec.go`. The env-var clause is gone and the figures
+are interpolated from `ctxbudget.DefaultFillPercent` and
+`ctxbudget.DefaultCompletionReserveTokens`, so the printed default and the real
+one are one fact. **The `DefValue` stays 0 deliberately**: zero is how these two
+flags say "leave the law alone", and giving them a non-zero default would make
+every run set the environment.
+Test: `TestOneConceptIsSpelledOneWayOnEveryDoor` (the machinery scan).
+
+**Row 2 — `aforge run --help` says "leaf" or "leaves" six times.**
+File: `cmd/aforge/run.go`. Every one is *step*. The scan that keeps it that way
+is structural rather than a grep, so it covers flags nobody has written yet.
+Test: `TestOneConceptIsSpelledOneWayOnEveryDoor` (the machinery scan bans
+`leaf`, `leaves`, `spine`, `seat`, `sheet`, `rail`, `brain`, `charter`,
+`verdict`, `errand`, `ensemble`, `contract`, `panel` from any printed flag's help
+sentence; `lane` is the ruled exception and `node` is exempted in one place, with
+the reason written at the exemption).
+
+**Row 3 — `aforge why <node-id>` help says "show what one leaf actually did".**
+File: `cmd/aforge/main.go` (`usageText`). It is `aforge why <task-id>`, "show
+what one piece of work actually did". The verb itself is another lane's rename.
+Capture: `frames/cmd-help-after.txt`.
+
+**Row 22 — `brain` is the word `doctor` uses for the store.**
+Files: `cmd/aforge/doctor.go`, `main.go`. The row is `store`, and `--db`'s help is
+one shared constant, `storeFlagHelp` — "the store to work in" — on all seven
+doors that had three sentences for it.
+Test: `TestDoctorShowsSharedCalmStatusRows` (now forbids `brain` outright),
+`TestOneConceptIsSpelledOneWayOnEveryDoor`.
+Capture: `frames/cmd-doctor-before.txt` → `frames/cmd-doctor-after.txt`.
+
+**`standing watch` in `doctor` — the coordinator's ruling, not a numbered row.**
+File: `cmd/aforge/doctor.go`. The label is **`background timer`**: what the row
+measures, in a developer's words, is what is running, since when, and whether it
+still answers. `standing watch` is the resident's vocabulary, which a test
+forbids the chat's corpus from using, so the manual could not quote doctor's own
+output and stay legal — the label moved and the ban stayed. The new label is
+quoted on `internal/manual/chat/running-from-the-terminal.md`, in the section
+that had to describe the row in other words.
+Test: `TestDoctorShowsSharedCalmStatusRows` (forbids `standing watch`),
+`TestTheChatManualDoesNotSpeakOfTheResident` (unchanged, and still green).
+Capture: `frames/cmd-doctor-before.txt` → `frames/cmd-doctor-after.txt`.
+
+**Rows 1, 23, 24, 25 — the front page.**
+File: `cmd/aforge/main.go` (`usageText`, `environmentText`, `usage`).
+The opening line is the manual's own sentence — *an agent you talk to, and hand
+work to when you walk away* — and the package doc changed with it. The commands
+are five headed groups in most-reached-for order with adjacent forms of one verb
+together, followed by five worked examples. The environment table is
+**`aforge help env`**, and `--help` names that door in its last line.
+127 lines → 105, of which none is an environment variable. (105 rather than
+COMMANDS.md's estimated sixty: what is left is the command table itself, whose
+continuation prose is most of it.)
+**The examples are indented FOUR spaces, not two**, and that is load-bearing:
+two is what a command row is written with, and `usageForCommand` lifts a
+per-command synopsis out of this same table by matching `  aforge ` — so an
+example at that indent was printed under `aforge do --help` as though it were
+part of `do`'s shape. It was, for one build.
+Test: `TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable`,
+`TestTheEnvironmentTableHasItsOwnDoor`,
+`TestUsageMentionsExecEnvironmentFallbacks` (rewritten to look where the table
+now is).
+Capture: `frames/cmd-help-before.txt` (127 lines) →
+`frames/cmd-help-after.txt` (105) and `frames/cmd-help-env-after.txt`.
+
+**cli-24 — `docs/HEADLESS.md` documents `exec`'s old exit table and old envelope.**
+File: `docs/HEADLESS.md`. §1's exit codes, §1's `--json` object, §2's flags,
+§2's environment fallbacks, §2's envelope, §2's exit codes, §3's four recipes,
+§4's command table and §5's environment are all on the ladder and the envelope
+the sibling lane landed, and on the spellings this one landed.
+Test: `TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas` — every field
+of the one envelope, the hatch, and a refusal on the old six-code table and on
+every retired flag spelling.
+
+### Not fixed here, and why
+
+- **Rows 4, 13, 14, 15, 20, 21, 26, 27, 28, 29** are other lanes' or other
+  passes'. Row 4's gate landed earlier in this wave
+  (`internal/manual/terminalverbs_test.go`) and the new `aforge plan`
+  subcommands are on its page.
+- **Row 10 (`seat` on stderr)** lives in `internal/config/seats.go`, which is
+  outside this lane's files.
+- **Row 5 and row 6** are the sibling lane's and were already landed.
+
+### Three stale tests this lane found and fixed
+
+They were red on a clean tree before this change and are not in
+`.github/known-red.txt`, so they were caused by earlier commits on this branch
+and would have been read as this lane's breakage:
+
+- `TestACommandsUsageIsReadOutOfTheOneTable` and
+  `TestExecsExitLadderIsWrittenWhereACallerLooks` asked `usageText` for exec's
+  old six-code ladder and for a `do` sentence the envelope lane replaced.
+- `TestTheSubharnessFlagIsNotAFlag` read the flag package's own sentence out of
+  the returned error, which became an `exitStatus` when a bad flag was put on
+  the first rung of the one ladder. The refusal is on stderr; the test reads it
+  there now.
+- `TestHostFlagIsOnTheChatUsage` looked for `flag: help requested`, the internal
+  string that stopped being printed when asking for help stopped being a failure.
+
+`.github/known-red.txt` is unchanged: `TestTickWalksTheItemsAndWritesAWakeLine`
+and `TestTickLeavesQuietlyWhenAWindowIsAlreadyKeepingWatch` are the only reds
+left in `./cmd/aforge/` and both are on it.

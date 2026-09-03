@@ -234,10 +234,144 @@ wrongly:
 
 ---
 
+## The rename, before and after — `run` stopped meaning two things
+
+**This landed after the envelope above, in the same wave, and it moves what a script
+TYPES rather than what it reads.** It is written here rather than only in
+`audit-commands.md` because a person with a harness in production needs both halves in
+one place: the numbers and fields changed under them, and so did four of the words.
+
+`aforge run` used to be two unrelated commands wearing one verb — `aforge run
+<graph.json>` drove the static pipeline, `aforge run subharness <name>` ran a saved
+program — and the code admitted it: `cmd/aforge/usage.go` carried a `longerCommands` table
+whose only job was to stop `aforge run --help` printing the wrong synopsis. `run` means
+the saved program now, matching `/subharness <name>` in the chat, and the pipeline moved
+under **`plan`**, the noun its four verbs all act on.
+
+### The verbs
+
+| what you used to type | what it is now |
+| --- | --- |
+| `aforge run subharness <name> --input …` | `aforge run <name> --input …` |
+| `aforge run <graph.json>` | `aforge plan run <plan.json>` |
+| `aforge plan "<goal>"` | `aforge plan new "<goal>"` |
+| `aforge show <graph.json>` | `aforge plan show <plan.json>` |
+| `aforge revise <graph.json> "…"` | `aforge plan revise <plan.json> "…"` |
+
+Today's four pipeline verbs mapped one-to-one onto `new`, `show`, `revise` and `run`, so
+no fifth was needed. `longerCommands` kept only `cache clean` — one noun with two verbs on
+it is a different shape from one word meaning two things.
+
+### The flags
+
+| what you used to type | on | what it is now | why |
+| --- | --- | --- | --- |
+| `--budget <n>` | `exec`, `plan run` | `--token-budget <n>` | *budget* is a word about **money** everywhere else here — `AFORGE_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
+| `--run-budget <n>` | `plan run` | `--total-token-budget <n>` | the same, for the whole-run wall |
+| `--turns <n>` | `exec`, `plan run` | `--max-turns <n>` | it is a limit, and every other limit says so |
+| `--max-seconds <n>` | `wake` | `--timeout <duration>` | one duration flag on `do`, `exec`, `plan run` and `wake` |
+| `--timeout <seconds>` | `exec` | `--timeout <duration>` | same name, and now the same TYPE as `do`'s. A bare number is still seconds |
+| `--brief` | `plan new` | `--instructions` | it writes a self-contained instruction for every step |
+| `--contracts=false` | `plan run` | `--no-method` | a boolean that defaults on needs a negative spelling |
+| `--ensemble 0\|-1\|N` | `plan new` | `--passes auto\|off\|N` | a tri-state is words, not magic integers |
+| `--plan-model` | `exec` | — | it never did anything; it is still parsed and now says so |
+| `-w`, `-o`, `-j` | everywhere | `--dir`, `--out`, `--parallel` | the letters are **shorthands and keep working forever**, silently |
+
+`--db`'s help is one sentence on all seven doors that take it — "the store to work in" —
+and `aforge doctor`'s first row is labelled `store` rather than `brain`. Its third row is
+`background timer` rather than `standing watch`.
+
+### What a script sees
+
+**Every old spelling still works for one release**, does exactly what it always did, and is
+absent from `--help`. Each one prints **one line, on stderr**, the first time it is used:
+
+```
+note: `aforge run subharness <name>` is now `aforge run <name>` — the old spelling works for one more release.
+note: `--budget` is now `--token-budget` — the old spelling works for one more release.
+```
+
+**The notice is never on stdout**, so an old spelling beside `--json` still hands `jq` a
+parseable object — captured from a real binary in
+`frames/cmd-renames-after.txt`. A single-letter shorthand prints nothing at all, because it
+is not going away; that is the difference between `shorthandFlag` and `renamedFlag` in
+`cmd/aforge/rename.go`.
+
+`aforge run <something>` tells its two old meanings apart by what was named: a first
+positional that is **a file which exists** is the pipeline spelling, and anything else is a
+program. The positional is found through the union of both doors' flag sets
+(`namesAPlanFile`), so `aforge run myprogram --input in.json` is not confused by the input
+file sitting on disk beside it.
+
+An old flag spelling **counts as typed**: `aforge exec --budget 9000` is a decision, and
+`AFORGE_EXEC_BUDGET` does not overrule it — which is the same law the environment
+fallbacks were guarded by all along, read through the aliases.
+
+### Where it lives, and what holds it
+
+- `cmd/aforge/rename.go` — the notice, its writer, and the two kinds of hidden flag. The
+  mark is carried in the flag's own (never printed) usage string rather than in a map keyed
+  by flag set, so there is no state to clean up.
+- `cmd/aforge/passes.go` — `--passes auto|off|<n>`.
+- `cmd/aforge/vocabulary_test.go`:
+  - `TestAnOldSpellingStillWorksAndSaysWhatItIsCalledNow` — thirteen old spellings, each
+    routed, each saying ONE line naming the new spelling and the release it goes in.
+  - `TestNoOldSpellingIsPrintedByHelp` — the front page, the environment page and seven
+    per-command pages, read as one body of text.
+  - `TestASingleLetterShorthandKeepsWorkingAndSaysNothing`.
+  - `TestARenameNoticeNeverReachesTheJSONOnStdout` — with `--json` actually on, asserting
+    stdout parses and holds not one word of the notice.
+  - `TestOneConceptIsSpelledOneWayOnEveryDoor` — reads every flag declaration in
+    `cmd/aforge` with `go/ast`: no retired spelling is a printed flag, no machinery word
+    reaches a printed help sentence, and the four concepts that span doors reach for one
+    shared constant. That import is what puts it on the pull-request gate.
+  - `TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable`,
+    `TestTheEnvironmentTableHasItsOwnDoor`.
+  - `TestHeadlessDocumentsTheLadderAndTheEnvelopeItActuallyHas` — `docs/HEADLESS.md` on
+    the envelope and the ladder above, and refusing the old six-code table.
+- `internal/manual/chat/running-from-the-terminal.md` — two new sections, *The old
+  spellings* and *Which flags moved*, plus the plan pipeline and `doctor`'s new labels.
+  `saved-programs.md`, `adaptive-runs.md`, `models-and-cost.md`, `lanes.md` and
+  `commands.md` carry the same words.
+
+### For the change entry
+
+`invalidates:` lines, written as statements somebody now believes wrongly:
+
+- `aforge run <graph.json>` runs a task graph and `aforge run subharness <name>` runs a
+  saved program — `aforge run <program>` is the only meaning of `run` now, and the
+  pipeline is `aforge plan new | show | revise | run`. Both old spellings work for one
+  release and say so on stderr.
+- `aforge plan`, `aforge show` and `aforge revise` are top-level commands — they are
+  `aforge plan new`, `aforge plan show` and `aforge plan revise`; the bare spellings work
+  for one release.
+- `--budget` and `--turns` are how `aforge exec` and the plan runner take their token and
+  turn walls — they are `--token-budget` and `--max-turns`; `--run-budget` is
+  `--total-token-budget`.
+- `aforge exec --timeout` takes an integer of seconds — it takes a duration, like `do`'s,
+  and a bare number is still seconds. `AFORGE_EXEC_TIMEOUT` reads durations too.
+- `aforge wake --max-seconds` is the wall — it is `--timeout`, and it takes a duration.
+- `aforge plan --ensemble 0|-1|N` and `aforge run --contracts=false` — they are
+  `--passes auto|off|<n>` and `--no-method`.
+- `aforge exec --plan-model` is accepted for parity — it is off the flag list, still
+  parsed, and says `exec does not plan — --plan-model has no effect here`.
+- `-w`, `-o` and `-j` are the only spellings — `--dir`, `--out` and `--parallel` are what
+  `--help` prints; the letters keep working forever.
+- `aforge --help` prints the environment table — it prints five headed groups and five
+  examples; the table is `aforge help env`.
+- `aforge doctor` prints a `brain` row and a `standing watch` row — they are `store` and
+  `background timer`.
+- `docs/HEADLESS.md` documents `exec`'s 2/3/4/5/6 and a `text`/`elapsed_ms`/`usage`
+  object — it documents the one ladder and the one envelope.
+
+---
+
 ## Not in this change
 
-- `docs/HEADLESS.md` still documents `exec`'s old exit table and its old envelope. It is
-  another lane's file in this wave (audit row cli-24) and needs the same edit.
-- The flag renames COMMANDS.md asks for around these verbs — `--budget` →
-  `--token-budget`, `--timeout` as a duration on `exec`, `run <program>` — are separate
-  rows and separate lanes.
+- The verb renames `COMMANDS.md` §7 ranks second — `aforge why self` → `aforge spend` and
+  `aforge why <node-id>` → `aforge tasks <id>` — are a separate row and a separate lane.
+  `why`'s help line lost `leaf` and `<node-id>` here; the verb itself did not move.
+- `seat` reaching a person on stderr (audit row 10) lives in `internal/config/seats.go`,
+  outside the rename lane's files.
+- `plan run`'s preamble going to stdout where `do`'s goes to stderr (audit row 14) and
+  its second copy of the models line (row 15) are rows of their own.

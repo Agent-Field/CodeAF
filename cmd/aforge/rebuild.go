@@ -27,7 +27,7 @@ func runRebuild(args []string) error {
 
 func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	flags := commandFlags("rebuild")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	yes := flags.Bool("yes", false, "skip the confirmation prompt")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err

@@ -24,7 +24,7 @@ func runNotebook(args []string) error {
 
 func runNotebookTo(args []string, output io.Writer, now time.Time) error {
 	flags := commandFlags("notebook")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}

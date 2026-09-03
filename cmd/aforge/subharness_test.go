@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
-	"flag"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,19 +81,26 @@ func TestExecutorForAlwaysResolvesToSomething(t *testing.T) {
 // program that had stopped taking the flag while still advertising it would be
 // telling everybody to type something that fails.
 func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
+	// THE REFUSAL IS ON STDERR AND THE EXIT IS 1. A flag that could not be read
+	// is the first rung of the one ladder — nothing was attempted — so the door
+	// hands back an exit status rather than a sentence, and the sentence itself
+	// has already gone to stderr where a caller reads failures (envelope.go,
+	// usage.go).
+	_, said := captureUsage(t)
 	err := runDo([]string{"--subharness", "linear", "fix the failing test"})
-	if err == nil {
-		t.Fatal("do accepted --subharness")
+	if code := exitCodeOf(err); code != 1 {
+		t.Fatalf("do accepted --subharness (exit %d)", code)
 	}
-	if !strings.Contains(err.Error(), "flag provided but not defined") {
-		t.Fatalf("do answered %q, want the flag package's own not-defined error", err)
+	if !strings.Contains(said.String(), "flag provided but not defined") {
+		t.Fatalf("do answered %q, want the flag package's own not-defined error", said.String())
 	}
-	if !errors.Is(err, flag.ErrHelp) && !strings.Contains(err.Error(), "subharness") {
-		t.Fatalf("the error does not name what was typed: %q", err)
+	if !strings.Contains(said.String(), "subharness") {
+		t.Fatalf("the refusal does not name what was typed: %q", said.String())
 	}
-	if err := runExecute([]string{"--subharness", "linear", "graph.json"}); err == nil ||
-		!strings.Contains(err.Error(), "flag provided but not defined") {
-		t.Fatalf("run answered %v, want the flag package's own not-defined error", err)
+	_, said = captureUsage(t)
+	if code := exitCodeOf(runExecute([]string{"--subharness", "linear", "a-program"})); code != 1 ||
+		!strings.Contains(said.String(), "flag provided but not defined") {
+		t.Fatalf("run answered %q, want the flag package's own not-defined error", said.String())
 	}
 
 	for _, banned := range []string{"--subharness", "Workers:"} {
@@ -109,13 +114,17 @@ func TestTheSubharnessFlagIsNotAFlag(t *testing.T) {
 		t.Fatalf("the usage text still names a worker: %q", word.FindString(usageText))
 	}
 
-	// The saved-program door is a different feature and still opens. `run
-	// subharness` with nothing after it answers with its own usage line, which
-	// is proof the word routed to runSubharnessCommand rather than to the graph
-	// runner.
-	err = runExecute([]string{"subharness"})
-	if err == nil || !strings.Contains(err.Error(), "aforge run subharness <name>") {
-		t.Fatalf("`run subharness` answered %v, want the saved-program usage", err)
+	// The saved-program door is what `aforge run` MEANS now, and the old
+	// `run subharness` spelling still reaches it. Either one with no program
+	// after it answers with the saved-program usage, which is proof the word
+	// routed to runSubharnessCommand and not to the plan runner.
+	for _, spelling := range [][]string{{"subharness"}, {}} {
+		_, said := captureUsage(t)
+		err := runExecute(spelling)
+		if err == nil || !strings.Contains(err.Error(), "aforge run <program>") {
+			t.Fatalf("`aforge run %v` answered %v, want the saved-program usage", spelling, err)
+		}
+		_ = said
 	}
 }
 

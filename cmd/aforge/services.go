@@ -11,7 +11,7 @@ import (
 
 func runServices(args []string) error {
 	flags := commandFlags("services")
-	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
