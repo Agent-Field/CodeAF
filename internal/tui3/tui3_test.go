@@ -5,9 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,7 +45,15 @@ import (
 // AFORGE_HOME is the one seam that moves every path (internal/home), and HOME
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
-func TestMain(m *testing.M) { os.Exit(runTests(m)) }
+func TestMain(m *testing.M) {
+	code := runTests(m)
+	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
+	// write to, so the count at the end is the running total of what the harness
+	// gave up on — the measure that took #399 from a guess to a number. It is
+	// printed rather than asserted: it moves with which tests ran.
+	fmt.Fprintf(os.Stderr, "tui3: %d goroutines still parked at the end of the run\n", runtime.NumGoroutine())
+	os.Exit(code)
+}
 
 // runTests is TestMain's body as a function with a return value, so the
 // temporary root is still removed on the way out — os.Exit runs no deferred
@@ -251,9 +265,203 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 		default:
 			return []tea.Msg{produced}
 		}
-	case <-time.After(150 * time.Millisecond):
+	case <-time.After(budgetFor(cmd)):
 		return nil
 	}
+}
+
+// THE LAW: A HARNESS PAYS NOTHING FOR A TICK THAT CANNOT REACH IT, AND IT KNOWS
+// BY NAME WHICH OF ITS COMMANDS WILL NEVER ANSWER. The budget above was one
+// number for every command, and three quarters of this package's wall clock was
+// spent running it out: 2415 commands were dropped at 150ms each over a full
+// run, 362s of the 478s the package took, and each drop left one goroutine
+// blocked on a channel nobody would ever write to (806 of the 886 alive at the
+// end). CI's per-binary ceiling is eight minutes and the package reached it
+// (#399).
+//
+// WHAT WAS BELIEVED, AND WHAT IS TRUE. The reading that opened #399 was that the
+// fakes never feed the surface's wait channels, so a waiter could be answered
+// with nil the moment it was recognised, spawning nothing. That is false, and
+// measurably so: over one subset of this package [waitEvent] returned a real
+// event on 28 of 118 calls and bubbletea's tick fired on 451 of 593. Dropping
+// the recognised names outright fails better than thirty tests. These commands
+// DO answer; the fakes hand back a buffered channel and the events in it are
+// what the streaming tests assert on.
+//
+// SO THE WAITERS KEEP THE FULL [cmdBudget], and this file deliberately holds no
+// knob to shorten it. When a waiter answers it answers from a channel that
+// already holds the value, in microseconds — but "in microseconds" is a claim
+// about the scheduler, not about the code, and this suite runs beside others on
+// a loaded machine. A budget tuned to that claim turns a delivered event into a
+// drop the day the box is busy, which is a load-shaped red on dev for nobody's
+// change: the exact failure #399 exists to remove. The waiters are named here so
+// that the seam which will remove the guessing — fakes that own and close their
+// own channels, so a waiter ENDS rather than parks — has one place to work from,
+// and so that a new waiter cannot be added without meeting this note.
+//
+// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all. A
+// tick is a real timer, so the surface's own constants decide it: the shortest
+// are the paint clock and [resizeGrace] at 80ms and taskmention's at 100ms, and
+// every tick at 150ms or longer — the polls, [homeEvery], [farRoomEvery],
+// [hostPingEvery] and their kind — is dropped today and would be dropped whatever
+// the harness did. [tickBudget] sits above the longest tick that still delivers
+// and below the shortest that never does, so it takes back the wait on the polls
+// and changes nothing that arrives.
+const (
+	// cmdBudget is what every command gets that is not a tick, the waiters
+	// included: unchanged, so nothing real is dropped faster than it was before.
+	cmdBudget = 150 * time.Millisecond
+	// tickBudget is what bubbletea's tick gets. It clears the 100ms tick — the
+	// longest one this package has that fires — with room for a loaded machine,
+	// and stops short of the 150ms debounce, which the old budget already raced.
+	tickBudget = 120 * time.Millisecond
+)
+
+// teaTickSymbol is bubbletea's tick closure, as the runtime spells it. It is
+// pinned rather than pattern-matched, and [TestTheHarnessKnowsEveryCommandThatCannotAnswer]
+// builds a real tick and fails if an upgrade moves the symbol.
+const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
+
+// blockingCommands is THE ONE TABLE. It names every command in this package that
+// parks on a channel a test's fakes usually never write to and never close.
+//
+// IT DOES NOT PRICE ANYTHING — see the note above [cmdBudget] for why shortening
+// a waiter's budget is a bet on the scheduler. It is the enumeration the fix
+// after this one works from: when the fakes own and close their channels, these
+// are the commands that stop parking, and this list is how that change knows it
+// has covered them all. [TestTheHarnessKnowsEveryCommandThatCannotAnswer] holds
+// it to the surface's own source so it cannot rot in the meantime.
+var blockingCommands = []string{
+	"pumpShaping",
+	"waitDesign",
+	"waitEvent",
+	"waitPilot",
+	"waitRoom",
+	"waitRun",
+	"waitSteerLane",
+	"waitStir",
+	"waitTask",
+	"waitWake",
+	"watchDesigns",
+	"watchDriving",
+	"watchFollowing",
+	"watchRuns",
+	"watchTasks",
+	"watchWakes",
+}
+
+// budgetFor prices one command. Only the tick is priced apart, by the runtime
+// symbol behind the closure.
+func budgetFor(cmd tea.Cmd) time.Duration {
+	if cmdSymbol(cmd) == teaTickSymbol {
+		return tickBudget
+	}
+	return cmdBudget
+}
+
+// cmdSymbol is the fully qualified name of the function behind a command.
+func cmdSymbol(cmd tea.Cmd) string {
+	fn := runtime.FuncForPC(reflect.ValueOf(cmd).Pointer())
+	if fn == nil {
+		return ""
+	}
+	return fn.Name()
+}
+
+// TestTheHarnessKnowsEveryCommandThatCannotAnswer reads the surface's own source
+// and fails when it has grown a waiting command [blockingCommands] does not
+// name. THE TABLE CANNOT BE KEPT BY HAND — it is the enumeration the fakes seam
+// will work from, and a waiter missing from it is a waiter that seam will leave
+// parking, which is how #399 grew to eight minutes without anyone adding a slow
+// test.
+//
+// The family is named by shape: a function whose name begins wait, pump or watch
+// and whose one result is a tea.Cmd. That is what every command in this package
+// that parks on a channel is called, and the naming is worth keeping for that
+// reason alone.
+func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
+	// The tick symbol is a string in a table and bubbletea is a dependency that
+	// moves, so it is checked against a tick this test builds itself.
+	built := cmdSymbol(tea.Tick(time.Hour, func(time.Time) tea.Msg { return nil }))
+	if built != teaTickSymbol {
+		t.Fatalf("teaTickSymbol is %q but bubbletea's tick is now %q — every tick in the package is being billed the full %s", teaTickSymbol, built, cmdBudget)
+	}
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(f os.FileInfo) bool {
+		return !strings.HasSuffix(f.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatalf("reading the surface's source: %v", err)
+	}
+	known := map[string]bool{}
+	for _, name := range blockingCommands {
+		known[name] = true
+	}
+	found := map[string]bool{}
+	ticks := 0
+	for _, pkg := range pkgs {
+		for path, file := range pkg.Files {
+			ast.Inspect(file, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Tick" {
+						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "tea" {
+							ticks++
+						}
+					}
+					return true
+				}
+				fn, ok := n.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || !waitingName(fn.Name.Name) || !returnsOneCmd(fn) {
+					return true
+				}
+				found[fn.Name.Name] = true
+				if !known[fn.Name.Name] {
+					t.Errorf("%s declares %s, which returns a tea.Cmd that waits, and blockingCommands does not name it — add %q to blockingCommands in tui3_test.go, or the seam that is to replace the budget cannot bill it correctly and it goes on parking a goroutine per call", filepath.Base(path), fn.Name.Name, fn.Name.Name)
+				}
+				return true
+			})
+		}
+	}
+	if ticks == 0 {
+		t.Errorf("nothing in the package calls tea.Tick any more, so teaTickSymbol and tickBudget are dead — delete them")
+	}
+	var stale []string
+	for _, name := range blockingCommands {
+		if !found[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale)
+	if len(stale) > 0 {
+		t.Errorf("blockingCommands names %s, which the surface no longer declares — remove the line", strings.Join(stale, ", "))
+	}
+}
+
+// waitingName is the shape of a command that parks: wait, pump or watch, then a
+// capital.
+func waitingName(name string) bool {
+	for _, prefix := range []string{"wait", "pump", "watch"} {
+		rest, cut := strings.CutPrefix(name, prefix)
+		if cut && rest != "" && rest[0] >= 'A' && rest[0] <= 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+// returnsOneCmd reports whether a declaration's only result is a tea.Cmd, which
+// is what tells a waiting command apart from a predicate like app.waiting.
+func returnsOneCmd(fn *ast.FuncDecl) bool {
+	if fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
+		return false
+	}
+	sel, ok := fn.Type.Results.List[0].Type.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Cmd" {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && id.Name == "tea"
 }
 
 // newTestApp pins the colour profile AND the glyph tier. A test inherits
