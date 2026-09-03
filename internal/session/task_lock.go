@@ -19,14 +19,12 @@ package session
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
@@ -88,7 +86,7 @@ func lockGitRoot(place Place, root string) func() {
 			// The unlock is belt-and-braces, as sessionfile.go's is: closing the
 			// descriptor drops the flock on its own. It is stated here so a reader
 			// can see the release at the place it happens.
-			_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+			_ = filelock.Unlock(file)
 			_ = file.Close()
 		}
 		gitRoot.Unlock()
@@ -112,7 +110,7 @@ func claimGitRoot(place Place, root string) *os.File {
 	}
 	deadline := time.Now().Add(gitRootPatience)
 	for {
-		err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		err := filelock.Lock(file, true, true)
 		if err == nil {
 			return file
 		}
@@ -174,5 +172,5 @@ func gitRootLockFile(root string) string {
 // against the filesystem not doing locks at all. EAGAIN on Linux and
 // EWOULDBLOCK on darwin are the same value and the one answer that means held.
 func isLockHeld(err error) bool {
-	return errors.Is(err, unix.EWOULDBLOCK)
+	return filelock.IsBusy(err)
 }

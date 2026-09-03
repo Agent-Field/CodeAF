@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
 
 // ── the working copy ────────────────────────────────────────────────────────
@@ -147,17 +147,17 @@ func TestTheGitRootLockIsVisibleToAnotherProcess(t *testing.T) {
 	release := lockGitRoot(Place{}, root)
 	other := otherWindowsLock(t, Place{}, root)
 	defer other.Close()
-	if err := unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == nil {
+	if err := filelock.Lock(other, true, true); err == nil {
 		t.Fatal("another window took the lock while this one held it")
-	} else if !isLockHeld(err) {
+	} else if !filelock.IsBusy(err) {
 		t.Skipf("this filesystem does not do locks: %v", err)
 	}
 
 	release()
-	if err := unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := filelock.Lock(other, true, true); err != nil {
 		t.Fatalf("the lock was not released: %v", err)
 	}
-	_ = unix.Flock(int(other.Fd()), unix.LOCK_UN)
+	_ = filelock.Unlock(other)
 }
 
 // And the loser waits rather than failing: a second session's merge is ordinary
@@ -167,11 +167,7 @@ func TestTheGitRootLockWaitsForTheOtherWindow(t *testing.T) {
 
 	other := otherWindowsLock(t, Place{}, root)
 	defer other.Close()
-	// The descriptor is read here rather than in the goroutine: the deferred
-	// Close would otherwise be a write to the file while the goroutine is
-	// reading it, which is a race in the test and nothing to do with the lock.
-	fd := int(other.Fd())
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := filelock.Lock(other, true, true); err != nil {
 		t.Skipf("this filesystem does not do locks: %v", err)
 	}
 
@@ -179,7 +175,7 @@ func TestTheGitRootLockWaitsForTheOtherWindow(t *testing.T) {
 	released := make(chan struct{})
 	go func() {
 		time.Sleep(held)
-		_ = unix.Flock(fd, unix.LOCK_UN)
+		_ = filelock.Unlock(other)
 		close(released)
 	}()
 

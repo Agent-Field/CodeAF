@@ -55,6 +55,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 const (
@@ -337,7 +338,14 @@ func (j *job) signal(sig syscall.Signal) {
 		j.stop()
 		return
 	}
-	signalGroup(j.cmd, sig)
+	if j.cmd == nil || j.cmd.Process == nil {
+		return
+	}
+	if sig == syscall.SIGKILL {
+		_ = processgroup.Kill(j.cmd.Process.Pid)
+		return
+	}
+	_ = processgroup.Terminate(j.cmd.Process.Pid)
 }
 
 // ── the registry ────────────────────────────────────────────────────────────
@@ -617,7 +625,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// that insists on the keyboard — is refused instead of painting over the
 	// person's frame. That was measured, not imagined: two review CLIs run as
 	// jobs drew their own output across the top of a running conversation.
-	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(process)
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 
@@ -630,8 +638,14 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// forked, so simply returning the error would leave exactly the orphan the
 	// refusal exists to prevent — a process running for a session that has
 	// left, with no row, no id and no round that will ever kill it.
+	//
+	// The kill reaches the whole GROUP, not just the shell, because a shell
+	// that has already forked a compiler would otherwise leave the compiler
+	// behind. Start has just returned, so there is a process to name: on unix
+	// that is `kill(-pid)` against the session this job leads, and on Windows
+	// it is `taskkill /T` against the process group it was given.
 	if err := r.add(started); err != nil {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil, err
 	}
 
@@ -1224,22 +1238,6 @@ func jobShell() (string, []string) {
 		return bash, []string{"-c"}
 	}
 	return "sh", []string{"-c"}
-}
-
-// signalGroup signals the job's whole process group, falling back to the
-// process itself if the group is already gone.
-//
-// It is only ever called for a job whose state is still running, so the pid has
-// not been reaped and cannot have been recycled onto somebody else's process.
-func signalGroup(command *exec.Cmd, signal syscall.Signal) {
-	if command.Process == nil {
-		return
-	}
-	if pgid, err := syscall.Getpgid(command.Process.Pid); err == nil {
-		_ = syscall.Kill(-pgid, signal)
-		return
-	}
-	_ = command.Process.Signal(signal)
 }
 
 // waitExitCode extracts an exit code from cmd.Wait's error, -1 when the process

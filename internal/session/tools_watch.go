@@ -69,10 +69,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 const (
@@ -655,12 +655,12 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	// unchanged (a session leader leads its own group), and a tick's child that
 	// opens /dev/tty is refused rather than drawing on the person's frame
 	// (jobs.go states the measured case).
-	process.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	processgroup.ConfigureDetached(process)
 	// The timeout kills the whole GROUP, not just the shell: a tick that ran
 	// `sleep 600 | grep x` leaves two processes, and killing the parent alone
 	// would leak the rest of them once per tick, forever.
 	process.Cancel = func() error {
-		signalGroup(process, syscall.SIGKILL)
+		_ = processgroup.Kill(process.Process.Pid)
 		return nil
 	}
 	// And the wait is bounded too, because output is copied from a pipe a

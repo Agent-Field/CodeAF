@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"golang.org/x/sys/unix"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -3168,12 +3168,12 @@ func (l *homeLab) hold(transcript string) {
 	if err != nil {
 		l.t.Fatal(err)
 	}
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := filelock.Lock(file, true, true); err != nil {
 		file.Close()
 		l.t.Fatalf("could not hold %s: %v", transcript, err)
 	}
 	l.t.Cleanup(func() {
-		unix.Flock(int(file.Fd()), unix.LOCK_UN)
+		filelock.Unlock(file)
 		file.Close()
 	})
 }

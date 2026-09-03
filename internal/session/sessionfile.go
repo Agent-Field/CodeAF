@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"golang.org/x/sys/unix"
 )
 
 // The session file is JSONL: one header line, then one line per COMPLETED
@@ -1242,11 +1242,11 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 // certain. So an unsupported lock opens unlocked, and the caller carries
 // locked=false so Close does not unlock what it never took.
 func lockSessionFile(file *os.File, path string) (bool, error) {
-	err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	err := filelock.Lock(file, true, true)
 	switch {
 	case err == nil:
 		return true, nil
-	case errors.Is(err, unix.EWOULDBLOCK):
+	case filelock.IsBusy(err):
 		// EAGAIN on Linux, EWOULDBLOCK on darwin — the same value, and the one
 		// answer that means "somebody else holds this".
 		return false, &SessionLockedError{Path: path}
@@ -2445,7 +2445,7 @@ func (s *sessionFile) Close() error {
 	}
 	if s.locked {
 		s.locked = false
-		_ = unix.Flock(int(s.file.Fd()), unix.LOCK_UN)
+		_ = filelock.Unlock(s.file)
 	}
 	return s.file.Close()
 }
@@ -2474,10 +2474,10 @@ func InUse(path string) bool {
 		return false
 	}
 	defer file.Close()
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return errors.Is(err, unix.EWOULDBLOCK)
+	if err := filelock.Lock(file, true, true); err != nil {
+		return filelock.IsBusy(err)
 	}
-	_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	_ = filelock.Unlock(file)
 	return false
 }
 
