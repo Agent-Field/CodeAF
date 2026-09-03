@@ -1855,7 +1855,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` |
+| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its third screen, `what may aforge spend?` |
@@ -1917,6 +1917,12 @@ nothing new, and asks you to top it up, finish on what is done, or stop.
 If you want to see where you stand before anything asks, `today` at the top of the
 Spending tab and `/cost` are the two readings — `/cost` is this conversation, `today` is
 the whole machine since midnight.
+
+The machine's day is drawn in **three** places and they are **one reading of one file**:
+`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+5`), and the
+green figure on the **top line of every place** — `$3.42 / $500.00`, beside the clock. All
+three sum the same rows of the machine ledger, so they cannot come apart, and the top line
+says the same thing whichever place you are standing on.
 
 ## What does per plan mean — the limit that asks instead of stopping
 

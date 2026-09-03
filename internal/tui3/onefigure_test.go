@@ -96,7 +96,8 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 		t.Fatalf("read the ledger: %v", err)
 	}
 	now := time.Now()
-	reading := readSpend(lines, session.LastDays(now, spendWindowDays), now)
+	reading := readSpend(lines, session.LastDays(now, spendWindowDays), now).
+		todayed(spendDayTotal(lines, now))
 	row := plain(reading.railsRow(a.width, newPalette(tokens.NoColor, false)))
 	if !strings.Contains(row, want) {
 		t.Fatalf("the /spend place's pointer line reads %q, want it to carry %q", row, want)
