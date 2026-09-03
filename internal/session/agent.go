@@ -1031,6 +1031,27 @@ type userMessage struct {
 	// carried before it existed.
 	steer *turnSteer
 
+	// crossed is what the record keeps about a line the person sent ACROSS to
+	// this agent from the room they were standing in (task_room.go's
+	// [Agent.SteerTask]) — the instant they sent it, and the engine's own one-fact
+	// account of what the sending did.
+	//
+	// IT IS THE HALF OF `steered` THE FILE NEEDS. `steered` is read while the line
+	// is on the queue, to keep a runner from closing on top of it; this is read
+	// once, where the line is written down, so that a page reopened tomorrow
+	// draws a correction as a correction instead of as a second brief — which is
+	// what it did, because a delivered line was journaled as a plain user message
+	// and nothing on it said otherwise.
+	//
+	// It carries `Consumed: true` on every line, and that is the promise
+	// [Agent.SteerTask] actually makes: the words were DELIVERED to an agent that
+	// was listening. What the node then does with them is the node's turn to
+	// take, and the record does not pretend to know it.
+	//
+	// Nil on every message that is not one, which is every message but a steer
+	// into a node.
+	crossed *SteerMark
+
 	// batchKey names repeated ambient updates that collapse to their count and
 	// newest fact at a boundary. Today only watches set it: their complete tick
 	// history already lives behind `jobs output`, and copying every delta into
@@ -1120,8 +1141,74 @@ func briefNote(text string) userMessage {
 // steerNote is a line the PERSON said into a running node. It owes an answer
 // like every wake note does, and it is not the session's own words, which is the
 // whole of the difference (see [userMessage.steered]).
-func steerNote(text string) userMessage {
-	return userMessage{message: textMessage("user", text), wake: true, steered: true}
+//
+// THE INSTANT IS TAKEN HERE because here is the closest this package stands to
+// the keypress: the line is on the queue from this moment and the boundary that
+// reads it may be a minute away, and the file's own timestamp is when the line
+// was WRITTEN, which is the right answer to a different question
+// ([journalSteer] makes the same distinction for the other door).
+//
+// waiting is the engine's own second answer about the node this is going to
+// ([Agent.SteerTask]): it had handed its work out and parked on the reports, so
+// this line is what wakes it.
+func steerNote(text string, waiting bool) userMessage {
+	return userMessage{
+		message: textMessage("user", text), wake: true, steered: true,
+		crossed: &SteerMark{At: time.Now(), Consumed: true, Landing: SteerDelivered(waiting)},
+	}
+}
+
+// SteerDelivered is the ONE FACT about what sending a line to a node did, and it
+// is authored HERE — by the engine that did the sending — rather than by
+// whichever surface happens to be drawing the page.
+//
+// THE SURFACE DRAWS IT VERBATIM AND NEVER ITS OWN WORD FOR IT, which is why this
+// is exported: the room draws the clause the instant [Agent.SteerTask] answers,
+// and the record keeps the same sentence for whoever opens the page tomorrow. A
+// surface with its own spelling would be a second author of one fact, and the
+// live page and the replayed page would quietly stop agreeing.
+//
+// waiting is [Agent.SteerTask]'s own second answer: the node had handed its work
+// out and parked on the reports, so this line is what wakes it.
+func SteerDelivered(waiting bool) string {
+	if waiting {
+		return steerWokeWord
+	}
+	return steerDeliveredWord
+}
+
+// The two sentences a delivery can carry, and there is no third.
+const (
+	// steerDeliveredWord is the ordinary case, and it says the one thing the
+	// person cannot see for themselves: the words crossed to another agent and
+	// did not vanish on the way. It is a word and not a sentence because that is
+	// the whole of the news.
+	steerDeliveredWord = "delivered"
+	// steerWokeWord is the truer fact when the node had said everything it had to
+	// say and parked on the pieces it handed out (task_run.go's [TaskGraph.park]):
+	// the line does not land in a step the node was about to take, it starts one.
+	// Without it the page goes quiet for a moment after the person presses enter,
+	// which is exactly the page they would see if the words had gone nowhere.
+	steerWokeWord = "it was waiting on its pieces — your line wakes it"
+)
+
+// steerRecord is what the JOURNAL keeps about this line when it is a correction
+// the person typed into work that was already moving — spliced into this turn
+// (steer.go's [Agent.Steer]) or carried across to a node (task_room.go's
+// [Agent.SteerTask]) — and nil for every other message, which is nearly all of
+// them.
+//
+// THE TWO DOORS PRODUCE ONE MARK BECAUSE THE PERSON DID ONE THING. What differs
+// between them is what was promised and that is inside the mark, not around it:
+// a splice says the turn in flight carried the words, a delivery says another
+// agent was handed them. Reading one shape here is what lets the record — and
+// every page built on it — treat a correction as a correction wherever it was
+// typed.
+func (u userMessage) steerRecord() *SteerMark {
+	if u.steer != nil {
+		return &SteerMark{At: u.steer.note.At, Consumed: true, Landing: u.steer.note.Landing}
+	}
+	return u.crossed
 }
 
 // empty reports whether there is nothing here to record. It is the shape a
@@ -1736,14 +1823,14 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		a.file.appendNote(user.message, user.replyTags)
 		return
 	}
-	if user.steer != nil {
-		// A SPLICED SENTENCE IS MARKED AS ONE. The transcript keeps it an ordinary
-		// user message, which is what the model has to read it as; the journal
-		// keeps the one bit that says it did not open the turn it sits in, plus
-		// the instant and landing account, so a resume can draw it as the person's
-		// own line with the same muted clause rather than as a new question
-		// (steer.go, sessionfile.go's [sessionEntry.Steer]).
-		a.file.appendSteer(kept, user.steer.note)
+	if mark := user.steerRecord(); mark != nil {
+		// A CORRECTION IS MARKED AS ONE, whichever door carried it. The transcript
+		// keeps it an ordinary user message, which is what the model has to read it
+		// as; the journal keeps the one bit that says it did not open the turn it
+		// sits in, plus the instant and the landing account, so a page reopened
+		// tomorrow draws it as the person's own correction rather than as a new
+		// question (steer.go, task_room.go, sessionfile.go's [sessionEntry.Steer]).
+		a.file.appendSteer(kept, *mark)
 		a.stampUserLocked(messageContentText(kept))
 		return
 	}
@@ -2274,8 +2361,8 @@ func (a *Agent) enqueueAmbient(note userMessage) bool {
 // be dropped outright if none ever did. This is the same release a report makes
 // ([Agent.postTaskNews]) without the report — the runner wakes, finds a line on
 // the queue and re-enters the model with it.
-func (a *Agent) enqueueSteeredLine(text string) bool {
-	return a.enqueueNote(steerNote(text))
+func (a *Agent) enqueueSteeredLine(text string, waiting bool) bool {
+	return a.enqueueNote(steerNote(text, waiting))
 }
 
 // steeringHeld reports whether a line the PERSON typed is on this agent's queue
@@ -3061,6 +3148,30 @@ type DisplayEntry struct {
 	Tool string // set when the entry is one call in a batch
 	Hint string // the call's gloss, as the tool cluster rendered it
 
+	// CallID is the provider's own identity for a tool entry's call, exactly as
+	// the record holds it, and "" for every entry that is not a call.
+	//
+	// IT IS THE ONLY THING A LIVE END CAN PAIR ON. A page opened on work already
+	// running draws its rows out of the record and then keeps listening; the end
+	// that arrives a second later has to land on the row that is already there,
+	// or the same call is drawn twice — once running forever, once finished. The
+	// id is what the two halves have in common, so it is carried rather than
+	// dropped at the shaping.
+	CallID string
+
+	// Answered is whether the record already holds the RESULT of this call.
+	//
+	// IT IS DERIVED FROM AN ABSENCE, and the absence is load-bearing: the
+	// assistant message is journaled BEFORE its batch runs (loop.go), so a
+	// session read while a call is in flight names the asking and nothing else. A
+	// surface that drew every recorded call as finished would tell a person the
+	// work is further along than it is.
+	//
+	// It is a field of its own rather than `Output != ""` because a call that
+	// returned nothing and a call that has not returned are different facts and a
+	// page speaks about them differently.
+	Answered bool
+
 	// Args and Output are a TOOL entry's payload, in exactly the two shapes a
 	// live surface already holds them in ([Event.Args] and [Event.Output]): the
 	// arguments the model sent, compacted onto one line and capped, and the text
@@ -3262,16 +3373,19 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			Steer: journal.steerMark(msg),
 		})
 		for _, call := range msg.ToolCalls {
+			result, answered := results[call.ID]
 			entries = append(entries, DisplayEntry{
-				Role: "tool",
-				Tool: call.Function.Name,
-				Hint: gloss(call),
+				Role:   "tool",
+				Tool:   call.Function.Name,
+				CallID: call.ID,
+				Hint:   gloss(call),
 				// The same two renderings a live row is drawn from (loop.go),
 				// applied to the same fields the journal kept: a replayed row and
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
-				Args:   argsText(call),
-				Output: capOutput(results[call.ID]),
+				Args:     argsText(call),
+				Output:   capOutput(result),
+				Answered: answered,
 			})
 		}
 	}

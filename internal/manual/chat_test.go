@@ -463,6 +463,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long did that call take in the task", "reading-a-task-page"},
 		{"why does the task page say the model went quiet mid-reply", "reading-a-task-page"},
 		{"guardian allowed on my task page", "reading-a-task-page"},
+		// THE CLAUSE ON A CORRECTION, asked by somebody who has just watched it
+		// appear and fade (#252). They are not looking for "steering" — the word
+		// on their screen is `delivered`, and it is beside words they typed
+		// themselves, so that is what they type.
+		{"what does delivered mean after the message I typed into a task", "reading-a-task-page"},
+		{"I steered a task that was waiting on its pieces, what is the line after my words", "tasks"},
 
 		// The second wave, added after probing the corpus the way it is
 		// actually queried. Each of these reached the wrong page until the

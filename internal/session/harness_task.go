@@ -140,7 +140,7 @@ type designSeat struct {
 	id uint64
 	// room is the live lane a person in the room is reading, and thread is the
 	// child whose journal that room's HISTORY is read back out of when somebody
-	// opens the design again later (internal/tui3's readRoomJournal).
+	// opens the design again later (internal/tui3's roomReplay).
 	room   *taskRoom
 	thread *Agent
 }
@@ -1071,7 +1071,7 @@ func harnessThreadOpening(goal string) string {
 // answers them. Everything recorded reaches both — [Agent.record] appends to the
 // model's context AND to the journal the room is read out of — except this: the
 // surfaces skip system-role messages when they turn a transcript into a page
-// (internal/tui3's readRoomJournalTail switches on user, assistant and tool;
+// (internal/tui3's replayBlocks switches on user, assistant and tool;
 // agent.go's shapeEntries drops "system" outright). So a system message is
 // exactly the thing this file needed and did not have — text the model reasons
 // from that a person is never shown — and the transport takes it mid-transcript

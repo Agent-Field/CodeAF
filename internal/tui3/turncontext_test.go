@@ -62,8 +62,11 @@ func TestTheContextIsTakenFromTheSessionAtTheMomentTheTurnStarts(t *testing.T) {
 	a.steer()
 
 	said := a.room.entries[len(a.room.entries)-1]
-	if said.kind != entryUser {
-		t.Fatalf("the last block in the room is %v, want the person's own line", said.kind)
+	// It is an ELBOW in a room — a correction to work already running, not a new
+	// question (steerelbow.go, #252) — and the mark rides it exactly as it rides
+	// the person's own block out in the conversation.
+	if said.kind != entrySteer {
+		t.Fatalf("the last block in the room is %v, want the person's own correction", said.kind)
 	}
 	if said.context != word {
 		t.Fatalf("the block carries %q, want the context the engine published", said.context)
@@ -134,8 +137,11 @@ func TestAnOrdinaryTasksRoomNamesNoContext(t *testing.T) {
 	if got := a.turnContext(); got != "" {
 		t.Fatalf("an unnamed node named a context: %q", got)
 	}
-	if drawn := roomText(a); strings.Contains(drawn, turnContextSep) {
-		t.Fatalf("an ordinary node's room drew a context clause:\n%s", drawn)
+	// The row says what the sending did and NOTHING about where the words went:
+	// the delivery receipt is every clause an ordinary node's correction wears.
+	if drawn := elbowRowIn(a, "try the other parser"); drawn !=
+		glyphSteer+"try the other parser"+steerClauseSep+session.SteerDelivered(false) {
+		t.Fatalf("an ordinary node's room drew something other than the receipt: %q", drawn)
 	}
 }
 

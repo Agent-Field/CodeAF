@@ -1,12 +1,7 @@
 package tui3
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"errors"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -354,7 +349,7 @@ const (
 	// is not the same fact as nothing is left of it. A node that is queued has
 	// journaled nothing because it has not started, and one that has just started
 	// has journaled nothing because its first message is still being written
-	// ([readRoomJournal] reads a file the node is filling in), so BOTH of the
+	// ([session.ReadTranscript] reads a file the node is filling in), so BOTH of the
 	// landed words above would be a lie — one saying a file was lost that was
 	// never written, the other saying work finished that has not begun.
 	//
@@ -515,7 +510,8 @@ func (a *app) openRoom(id uint64, title string) {
 		title = taskIDWord(id)
 	}
 	room := a.newRoom(id, title)
-	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal, !a.hosted())
+	room.entries, room.turn = a.roomRecord(
+		session.ReadTranscript(doors.TaskJournal(id)), roomTail)
 	a.room = room
 	prefetch := a.prefetchRoomPictures()
 	// AND THE HISTORY IS MARKED WITH THE CONTEXT IT HAPPENED IN (turncontext.go).
@@ -606,7 +602,8 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 	}
 	a.room.loading = false
 	if msg.err == nil {
-		a.room.entries, a.room.turn = readRoomJournalBytes(msg.record.Journal, a.pal, roomTail, !a.hosted())
+		a.room.entries, a.room.turn = a.roomRecord(
+			session.ReadTranscriptBytes(msg.record.Journal), roomTail)
 	}
 	a.room.resolveUnfinished()
 	a.roomTouched()
@@ -804,287 +801,22 @@ func (a *app) openRoomAt(i int) bool {
 	return false
 }
 
-// ── the journal, replayed ───────────────────────────────────────────────────
-
-// journalLine is the slice of internal/session's session file this room reads.
+// ── the record, replayed ───────────────────────────────────────────────────
 //
-// It is parsed HERE rather than asked for because there is no door for it: the
-// journal is a real session file, the package that writes it exposes its shape
-// only through an agent that has the file OPEN, and a room must be able to read
-// the transcript of a node whose agent belongs to somebody else. The fields
-// below are the ones a page draws and nothing else — an unknown line kind, an
-// unknown role and a field this build does not know are all skipped rather than
-// guessed at, which is what makes an older or a newer file readable.
-type journalLine struct {
-	Type       string        `json:"type"`
-	Role       string        `json:"role"`
-	Content    string        `json:"content"`
-	ToolCalls  []journalCall `json:"toolCalls"`
-	ToolCallID string        `json:"toolCallId"`
-	// Parts are the message's non-text content parts as the journal kept them —
-	// WHERE the bytes were, never the bytes (session's sessionfile.go). The path
-	// is the only field a page needs: it keeps the marker's name and supplies the
-	// same thumbnail the conversation draws (attach.go's [chipMarkers]).
-	Parts []journalPart `json:"parts"`
-}
-
-type journalCall struct {
-	ID       string `json:"id"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
-}
-
-type journalPart struct {
-	Type string `json:"type"`
-	Path string `json:"path"`
-}
-
-// readRoomJournal turns a node's session file into the page's blocks, oldest
-// last, and reports how many turns it counted.
+// THE VIEW NEVER PARSES A RECORD AGAIN. This file used to hold a second reader
+// of internal/session's session file — its own line struct, its own scanner, its
+// own list of which roles exist, and hand-copied duplicates of two display caps
+// that package does not export — and it was the copy that fell behind: it knew
+// `user` and `assistant` and nothing else, so a line the session had MARKED came
+// back as an ordinary question and yesterday's correction read as a second
+// brief.
 //
-// It is [app.replay] over a file instead of over an open agent (replay.go), and
-// it is deliberately the same shaping internal/session does for a resumed
-// conversation (agent.go's shapeEntries, which this mirrors): the results are
-// INDEXED FIRST and then the messages are walked, because a call's arguments
-// ride the assistant message that made it and its result is a separate message
-// keyed by the call's id. One pass to index, one to shape.
-//
-// TOOL RESULTS ARE KEPT, which is the whole of what makes a call on this page
-// expandable. They were skipped when a room row was one dim line — there was
-// nothing for a payload to open into — and skipping them now would leave a page
-// of rows that hover, click, and open onto nothing (replay.go's [replayInert]
-// says why that is the one thing a row must never do).
-//
-// A MISSING RESULT IS A CALL THAT HAS NOT COME BACK, and it is drawn as one. It
-// is the only thing on this page derived from an ABSENCE, and the absence is
-// load-bearing: internal/session writes the assistant message before the tool
-// batch runs, so a node caught mid-call journals the asking and nothing else.
-//
-// A path that is empty, missing or unreadable is not an error and draws nothing:
-// the journal is EVIDENCE, not a prerequisite (internal/session says so where it
-// mints the path), and a room that refused to open because a file was not there
-// would be refusing to show the live work as well.
-func readRoomJournal(path string, pal palette, picturesHere bool) ([]entry, int) {
-	return readRoomJournalTail(path, pal, roomTail, picturesHere)
-}
-
-// readRoomJournalTail lets another bounded page choose its own rendered-line
-// window. A non-positive block limit keeps every block; the caller still owns
-// its final line cap after wrapping.
-func readRoomJournalTail(path string, pal palette, limit int, picturesHere bool) ([]entry, int) {
-	lines := readJournalLines(path)
-	return shapeRoomJournal(lines, pal, limit, picturesHere)
-}
-
-func readRoomJournalBytes(data []byte, pal palette, limit int, picturesHere bool) ([]entry, int) {
-	return shapeRoomJournal(scanJournalLines(bytes.NewReader(data)), pal, limit, picturesHere)
-}
-
-func shapeRoomJournal(lines []journalLine, pal palette, limit int, picturesHere bool) ([]entry, int) {
-	// The results, indexed by the call each one answered. A result with no id is
-	// skipped rather than kept under "", for the reason session's own index skips
-	// it: it is a message no call can claim.
-	results := make(map[string]string, 8)
-	for _, line := range lines {
-		if line.Role == "tool" && line.ToolCallID != "" {
-			results[line.ToolCallID] = line.Content
-		}
-	}
-
-	var out []entry
-	turn := 0
-	for _, line := range lines {
-		text := strings.TrimSpace(line.Content)
-		switch line.Role {
-		case "user":
-			// The pictures are part of what was said, so a message that was only a
-			// picture is still a message: the markers alone are the line
-			// (replay.go's [replayUserLine], whose rule this is).
-			said, pictures := journalUserText(text, line.Parts, pal)
-			if said == "" {
-				continue
-			}
-			// The turn counter moves with the person's messages, exactly as it does
-			// in the conversation: it is what groups a cluster and what ctrl+o folds.
-			// A node's first "message" is the instruction it was given, so a page
-			// opens on turn one the way a conversation does.
-			turn++
-			// AND THE FIRST OF THEM IS THE INSTRUCTION THIS NODE WAS GIVEN, marked
-			// here because here is where it is knowable: it is the message that
-			// opened turn one, and everything after it is somebody steering work that
-			// was already running. It is the one message on this surface that folds,
-			// and brieffold.go states why.
-			out = append(out, entry{
-				kind: entryUser, text: said, turn: turn, brief: turn == 1,
-				pictures: pictures, picturesHere: picturesHere,
-			})
-
-		case "assistant":
-			if text != "" {
-				out = append(out, entry{
-					kind: entryAssistant, text: text, turn: turn, settled: true,
-				})
-			}
-			for _, call := range line.ToolCalls {
-				name := strings.TrimSpace(call.Function.Name)
-				if name == "" {
-					continue
-				}
-				// A CALL WITH NO RESULT UNDER IT HAS NOT COME BACK, and the file is
-				// the only thing that can say so. internal/session writes the
-				// assistant message BEFORE the tool batch runs (its loop.go), so a
-				// node caught mid-call journals the asking and nothing else — and a
-				// page that drew every journaled call as finished told a person the
-				// work was further along than it is, then left the row inert when the
-				// real end arrived on the live lane with nothing to land on.
-				//
-				// The clock is NOT invented to go with it: began stays zero, so the
-				// row shows no age (toolview.go). Nobody measured when it started.
-				output, answered := results[call.ID]
-				status := toolRunning
-				if answered {
-					status = toolOK
-				}
-				out = append(out, entry{
-					kind: entryTool, tool: name, turn: turn, status: status,
-					// THE PROVIDER'S ID IS KEPT because it is the call's identity in the
-					// file, and it is what any pairing by id has to pair on. Nothing
-					// pairs on it today: the end events this row is waiting for carry no
-					// id (session's loop.go), so [claimRunning] matches on the
-					// payload and then on the name.
-					callID: call.ID,
-					// UNPARSED, exactly as a replayed call carries it: everything the
-					// expansion shows is derived from these two at render time
-					// (toolview.go), so a call on a page and a call in the conversation
-					// go through one renderer and cannot disagree.
-					detail: toolDetail{
-						Args:   journalArgs(call.Function.Arguments),
-						Output: journalOutput(output),
-					},
-				})
-			}
-
-		case "thinking", "reasoning":
-			if text != "" {
-				out = append(out, entry{kind: entryThinking, text: text, turn: turn, settled: true})
-			}
-		}
-	}
-	if limit > 0 && len(out) > limit {
-		out = out[len(out)-limit:]
-	}
-	return out, turn
-}
-
-// readJournalLines is the file, parsed. An unknown line kind, an unknown role
-// and a field this build does not know are all skipped rather than guessed at,
-// which is what makes an older or a newer file readable.
-func readJournalLines(path string) []journalLine {
-	if strings.TrimSpace(path) == "" {
-		return nil
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	return scanJournalLines(file)
-}
-
-func scanJournalLines(reader io.Reader) []journalLine {
-	var out []journalLine
-	scan := bufio.NewScanner(reader)
-	// A journaled message can be a whole file's content, and the default token
-	// is 64k. The cap is what one line may weigh, not what the file may.
-	scan.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for scan.Scan() {
-		var line journalLine
-		if err := json.Unmarshal(scan.Bytes(), &line); err != nil {
-			continue // a torn last line, or a kind this build does not know
-		}
-		if line.Type != "message" {
-			continue
-		}
-		out = append(out, line)
-	}
-	return out
-}
-
-// journalUserText is one journaled message as the person sent it: their words,
-// and the names of the pictures that went with them. It is [replayUserLine]'s
-// rule applied to what a FILE kept rather than to what an open agent answered —
-// same markers, same separator — because a message drawn one way in the
-// conversation and another way on a page is two records of one thing.
-func journalUserText(text string, parts []journalPart, pal palette) (string, []string) {
-	pictures := make([]chip, 0, len(parts))
-	for _, part := range parts {
-		if part.Type != journalPartImage {
-			continue
-		}
-		if path := strings.TrimSpace(part.Path); path != "" {
-			pictures = append(pictures, chip{path: path})
-		}
-	}
-	return userLine(text, pictures, pal), chipPaths(pictures)
-}
-
-// journalPartImage is the one non-text part a person's message can carry today,
-// spelled as session's journal spells it (sessionfile.go's journalPartImage).
-const journalPartImage = "image"
-
-// journalArgs and journalOutput are session's two display renderings, applied to
-// what the file kept (loop.go's argsText and capOutput). They are restated here
-// rather than imported because they are unexported there — and they are restated
-// EXACTLY, because the caps are what every width and every "… N more bytes" on
-// an expanded row is measured against.
-func journalArgs(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	var compacted bytes.Buffer
-	if err := json.Compact(&compacted, []byte(raw)); err == nil {
-		raw = compacted.String()
-	}
-	return clipBytes(raw, journalArgsLimit)
-}
-
-func journalOutput(text string) string {
-	if len(text) <= journalOutputLimit {
-		return text
-	}
-	cut := journalOutputLimit
-	for cut > 0 && !runeStart(text[cut]) {
-		cut--
-	}
-	return text[:cut] + "… (" + itoa(len(text)-cut) + " more bytes)"
-}
-
-// The two display caps, from internal/session's loop.go: 8k of arguments
-// (because an edit's diff is computed from them and a shorter cap produced the
-// wrong number) and 4k of result (a screen or two, which is what an expanded row
-// is for).
-const (
-	journalArgsLimit   = 8192
-	journalOutputLimit = 4000
-)
-
-// clipBytes cuts at a byte budget without splitting a rune.
-func clipBytes(text string, n int) string {
-	if len(text) <= n {
-		return text
-	}
-	cut := n - len("…")
-	for cut > 0 && !runeStart(text[cut]) {
-		cut--
-	}
-	return text[:cut] + "…"
-}
-
-func runeStart(b byte) bool { return b&0xC0 != 0x80 }
+// The reading is internal/session's now ([session.ReadTranscript] and
+// [session.ReadTranscriptBytes], which answer the same [session.DisplayEntry]
+// shape a live conversation is drawn from), and the shaping is replay.go's one
+// walk ([app.replayBlocks], under [roomReplay]). One record, one reading, one
+// shaping — so a mark the engine writes cannot be a mark this page fails to
+// know about (#252).
 
 // ── the live lane ───────────────────────────────────────────────────────────
 
@@ -1283,35 +1015,36 @@ func (a *app) steer() tea.Cmd {
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
-	// A STEERED LINE OPENS A TURN, the way a person's message opens one in the
-	// conversation (attach.go's [app.submit] path, render.go's turn counter): it
-	// is what groups the calls that answer it into one cluster and what ctrl+o
-	// folds. The chips are not spent here — a room's box sends words, and the tray
-	// belongs to the conversation.
+	// A STEERED LINE IS A CORRECTION AND NOT A NEW QUESTION, so it draws as the
+	// elbow the conversation draws one as (steerelbow.go) and OPENS NO TURN.
+	//
+	// A task page is one question — the instruction at the top of it — and
+	// everything said on the page after that bends work that is already moving.
+	// Drawn as an ordinary message it bumped a counter nobody had opened a turn
+	// on, and, worse, it was journaled and replayed as a question: yesterday's
+	// correction reopened as a second brief. The chips are not spent here — a
+	// room's box sends words, and the tray belongs to the conversation.
 	room.collapseThought()
-	room.turn++
-	// AND THE LINE SAYS WHERE IT WENT, when the node it went to is a named place
-	// rather than work being watched (turncontext.go). It is taken here, at the
-	// instant the engine took the words, because that is when it is true.
-	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn, context: a.turnContext()})
-	// AND WHEN THE NODE WAS WAITING ON ITS OWN PIECES, THE ROOM SAYS SO. Such a
-	// node has said everything it had to say and parked on the work it handed out
-	// (internal/session's task_room.go): the line wakes it rather than landing in
-	// a step it was about to take, so the page goes quiet for a moment first. A
-	// room that drew the person's line and nothing else here is the same page
-	// they would see if the words had gone nowhere.
-	if waiting {
-		a.roomNote(steerWokeWord)
-	}
-	return a.edited()
+	// AND THE LINE SAYS WHAT THE SENDING DID, in the engine's own words. The
+	// crossing to another agent is the fact this clause exists for: the page can
+	// stay silent for a long moment afterwards — for as long as the node's
+	// current step runs, and longer when it had parked on the pieces it handed
+	// out — and silence is what the person would also see if the words had gone
+	// nowhere at all.
+	//
+	// It is CONSUMED at once because that is the whole of what this door
+	// promises: [session.Agent.SteerTask] delivers the line to an agent that was
+	// listening, and what the node does with it next is the node's turn to take.
+	now := a.now()
+	a.roomSaid(entry{kind: entrySteer, turn: room.turn, context: a.turnContext(),
+		steer: &steerElbow{
+			words: line, at: now, consumed: true, landed: now,
+			receipt: session.SteerDelivered(waiting),
+		}})
+	// The two wakeups the clause's fade needs and no ticker, which is [fadeTicks]'
+	// whole bargain (steerelbow.go takes the same two for the same reason).
+	return tea.Batch(a.edited(), fadeTicks())
 }
-
-// steerWokeWord is what the room says when the line it just took is the thing
-// that woke the node. It is the surface's own dim line and not the engine's
-// sentence, because it is about this page: what the person is looking at is a
-// task with nothing running in it, and the next thing they see will be their own
-// words being read.
-const steerWokeWord = "it was waiting on its pieces — your line wakes it"
 
 // ── the steer guard ─────────────────────────────────────────────────────────
 //

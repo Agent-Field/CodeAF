@@ -79,7 +79,7 @@ func TestADesignRoomHearsTheDesignerThinkAndNeverSeesTheJSON(t *testing.T) {
 }
 
 // AND THE JOURNAL KEEPS THE STORY, NOT THE TRANSPORT. A room reopened tomorrow
-// is read off the node's journal (internal/tui3's readRoomJournal), so what is
+// is read off the node's journal (internal/tui3's roomReplay), so what is
 // written there is what the design will be read as: the draft named and sized,
 // why it is shaped that way, what it answers to, and the card in a fence.
 func TestADesignsMilestonesAreKeptInTheNodesJournal(t *testing.T) {
@@ -225,7 +225,7 @@ func TestTheRoomsCopyOfThePageIsTheFencedCardAlone(t *testing.T) {
 
 // AND THE MODEL STILL HAS THE PAGE, one message along and out of sight. The
 // surfaces draw a transcript by role and skip "system" (internal/tui3's
-// readRoomJournalTail, agent.go's shapeEntries), which is the whole mechanism:
+// roomReplay, agent.go's shapeEntries), which is the whole mechanism:
 // the thread reasons off the real page, and the room never draws it.
 func TestTheThreadReasonsFromAPageTheRoomNeverDraws(t *testing.T) {
 	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
