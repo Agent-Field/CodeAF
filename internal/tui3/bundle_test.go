@@ -1845,10 +1845,14 @@ func TestALongNameDoesNotChangeTheLegend(t *testing.T) {
 	}
 }
 
-// THE NARROW LADDER: the microcopy goes before the branch, and below the tight
-// floor the branch goes too — the name is the last fact standing, because it is
-// the only one a person cannot read off the pane behind this one.
-func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
+// THE NARROW LADDER: THE BRANCH GOES BEFORE THE DOOR. It used to be the other
+// way round, and the phone tier paid for it — under the tight floor the hint
+// slot went silent AND the branch was dropped, so the line was refused at both
+// ends and drew a bare rule with nothing written on it, at the one width where
+// a newcomer most needs to be told that `/` opens the list of everything this
+// surface can be told to do. A branch is on the shell prompt behind this pane;
+// the door is written nowhere else on a frame this narrow.
+func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 	// The branch is long enough that the two cannot share an eighty-column frame.
@@ -1860,8 +1864,11 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	a.branch, a.branchDirty = branch, false
 
 	tight := plain(a.legend(60))
-	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
-		t.Fatalf("a tight frame kept its furniture: %q", tight)
+	if strings.Contains(tight, "feature/") {
+		t.Fatalf("a tight frame kept the branch: %q", tight)
+	}
+	if !strings.Contains(tight, microcopy) {
+		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
 	if strings.Contains(tight, "porting the parser") {
 		t.Fatalf("the tight legend repeated identity: %q", tight)
@@ -2361,9 +2368,10 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		// telemetry cannot both fit with a barrier between them — and everything
 		// else is still on.
 		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend gives up its facts and the meter keeps
-		// the number alone.
-		{width: 60, delta: false, sp: false, branch: false, mic: false, rows: 2},
+		// Below the tight floor the legend gives up THE BRANCH and keeps the
+		// door — the one fact on this line a person cannot read off the pane
+		// behind it — and the meter keeps the number alone.
+		{width: 60, delta: false, sp: false, branch: false, mic: true, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
 		if len(rows) != tc.rows {

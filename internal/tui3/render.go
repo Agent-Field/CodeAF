@@ -325,7 +325,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// used to open on the very next row, wedged against the question the way no
 	// answer wedges against the block above it. Together the three are the whole
 	// of the state this pass carries.
-	wasCluster, wasBlock, wasUser := false, false, false
+	wasCluster, wasBlock, wasUser, wasNote := false, false, false, false
 	gap := func() {
 		if len(out) > 0 {
 			for range spacingBlockRows {
@@ -367,7 +367,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(d, f)), entry: -1, hit: hitWorkFold, turn: f.key})
 			if !open {
 				i = f.answer - 1
-				wasCluster, wasBlock, wasUser = false, false, false
+				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
 			wasUser = false
@@ -392,7 +392,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				gap()
 			}
 			out = a.clusterRows(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser = true, false, false
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
 			i = end - 1
 			continue
 		}
@@ -410,7 +410,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			gap()
 			out = a.doneCluster(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser = false, true, false
+			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
 			i = end - 1
 			continue
 		}
@@ -423,7 +423,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				out = append(out, row{text: text, entry: i, hit: hit})
 			}
-			wasCluster, wasBlock, wasUser = false, true, false
+			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
 			continue
 		}
 
@@ -436,7 +436,18 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// above it would read as part of that paragraph — which is exactly the
 		// defect park.go's block was built to end, arriving through the other door
 		// (steerelbow.go).
-		if wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
+		// AND THE SURFACE'S OWN VOICE OPENS ON A BLANK ROW. A note leads with `· `
+		// at the conversation's indent, which is exactly the glyph and the column
+		// a markdown bullet lands on — so under an answer that ends in a list,
+		// `· 3 standing orders here — /standing` read as the model's fourth
+		// bullet. The one boundary a transcript must draw is WHO IS TALKING, and
+		// a blank row is what this surface already spends on every other change
+		// of speaker (the rules around it). A RUN OF NOTES IS ONE BLOCK: the
+		// blank is bought where the voice changes, not between two lines of the
+		// same voice, or the opening frame's three notes would arrive as three
+		// paragraphs.
+		if (e.kind == entryNote && !wasNote) ||
+			wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
 			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
@@ -526,6 +537,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			})
 		}
 		wasCluster = false
+		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
 		// kind of block: a divider between the question and the reply carries the
@@ -999,9 +1011,20 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// ([app.noteBlock]). The one shape that asks for it is a subharness card,
 		// where the indent under a lane is what says the step belongs to that lane
 		// — and [wrap] laid every one of those flat against the margin.
-		body := wrap(e.text, width-2)
+		// AND IT IS WRAPPED TO THE ROOM THE ROW ACTUALLY HAS, which is the frame
+		// less BOTH of the leads it wears: the note's own "· " marker
+		// ([noteLead]) and THE INDENT LAW's gutter, which this pass gives every
+		// note afterwards ([app.deckRows] — a note is work by [workEntry]). It
+		// was wrapped at the marker alone, so every row came out two cells wider
+		// than the column it is drawn in, and [app.railJoin] cut the overhang
+		// back with an ellipsis — which ate three characters out of the MIDDLE of
+		// a path, silently, with the row below carrying on from after the gap. A
+		// note is where this surface names its own files (below); a path that
+		// comes out wrong with nothing saying so is worse than one not shown.
+		room := width - noteLead - workIndentCols(width)
+		body := wrap(e.text, room)
 		if e.block {
-			body = noteBlockLines(e.text, width-2)
+			body = noteBlockLines(e.text, room)
 		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
@@ -1283,6 +1306,24 @@ const (
 	retryWord = " trying again"
 )
 
+// awaitingReply is THE ONE READING two rows of this surface take of the same
+// moment: a request is out and nothing has come back from it yet ([app.awaited],
+// app.go, which the event loop anchors on both edges).
+//
+// IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
+// kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
+// fast the model is writing ([app.burnSegment], and the served rider's own
+// figure). Those were two readings of one moment, taken from different signals —
+// the rate counts a whole turn's output tokens over the whole turn's wall time,
+// so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
+// two rows under this surface saying nothing had come back. A person watching a
+// stalled turn read two of this program's own sentences saying opposite things,
+// at the exact moment they were deciding whether to interrupt. SILENCE IS
+// SILENCE ON BOTH ROWS, and it is one predicate so the two cannot drift again.
+func (a *app) awaitingReply() bool {
+	return a.state == stateWorking && !a.awaited.IsZero() && !a.running()
+}
+
 // waitingWords is the dim tail on the pulse while a model request is
 // outstanding and the stream has said nothing at all against it, or "" when
 // there is nothing to say — no turn running, a call spinning, the stream
@@ -1293,7 +1334,7 @@ const (
 // paint, in the spelling every other live clock on this surface uses
 // ([countUpWord], toolview.go), and costs the surface no wakeup of its own.
 func (a *app) waitingWords() string {
-	if a.state != stateWorking || a.awaited.IsZero() || a.running() {
+	if !a.awaitingReply() {
 		return ""
 	}
 	waited := time.Since(a.awaited)
@@ -1735,7 +1776,27 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 		a.modelSpan = span
 		return left, parts, true
 	}
-	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap && dropSegment(&parts) {
+	// THE LADDER RUNS THROUGH THE LEFT CLUSTER AND NOT ONLY ALONG THE RIGHT ONE
+	// ([riderRung]). Each turn of this loop gives up the cheapest thing left:
+	// the segments ranked under the rider, then the rider's own widest spelling,
+	// then the segments above it. The identity is asked with the columns the row
+	// ACTUALLY has left, and only when there are some — [app.identityParts]
+	// reads a width of zero or less as "no bound at all" and would hand back the
+	// longest rider there is.
+	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap {
+		if dropSegmentUnder(&parts, riderRung) {
+			continue
+		}
+		if room := width - hudWidth(parts) - hudGap; room > 0 {
+			if shorter, shorterSpan := a.identityParts(room); ansi.StringWidth(shorter) < ansi.StringWidth(left) {
+				left, span = shorter, shorterSpan
+				a.modelSpan = span
+				continue
+			}
+		}
+		if !dropSegment(&parts) {
+			break
+		}
 	}
 	if room := width - hudWidth(parts) - hudGap; ansi.StringWidth(left) > room {
 		left, span = a.identityParts(room)
@@ -1990,7 +2051,12 @@ func (a *app) servedRiderAt(width int) string {
 	// from the last turn standing on an idle status line read as a live figure
 	// nobody was producing — a person sat looking at "92 tok/s" over a chat
 	// that was doing nothing.
-	if sighting.Rate > 0 && a.state == stateWorking {
+	// AND IT DOES NOT RIDE WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK,
+	// for [app.burnSegment]'s reason and out of the same reading: the served
+	// rate is the layer's figure for a stretch that is over, and drawn beside
+	// the pulse's "nothing has come back yet" it is the same contradiction said
+	// by a second row.
+	if sighting.Rate > 0 && a.state == stateWorking && !a.awaitingReply() {
 		fields = append(fields, rowSay(tokenWord(int(sighting.Rate))+" tok/s"))
 	}
 	if words := rowLed(fields, roomFor(room)); words != "" {
@@ -2170,15 +2236,53 @@ func (a *app) openSegment() string {
 //	         conversation is doing
 var dropOrder = []hudSeg{segDelta, segCrew, segOpen, segCache, segETA, segBurn, segKeeping, segAmbient, segCost, segCtx}
 
+// riderRung is where THE IDENTITY CLUSTER'S OWN RIDER stands on [dropOrder].
+//
+// It is not a [hudSeg] and it cannot be one — it is part of the left cluster,
+// not a segment of the right — so it is named by the rung it sits immediately
+// under: everything below [segKeeping] on the ladder goes before the rider is
+// asked for a shorter spelling, and everything from [segKeeping] up survives
+// until it has given one. That places it exactly where the evidence put it: the
+// watch count, the bill and the context meter each vanished and came back
+// mid-turn as the phase words on the left grew and shrank, on the one row whose
+// stillness is the whole reason it keeps a `$0.00`. A rider has a shorter TRUE
+// spelling to fall back on ([app.identityParts] ladders it, and drops it
+// outright at the bottom); a number has only presence or absence, so the
+// spelling goes first.
+const riderRung = segKeeping
+
 // dropSegment removes the least important segment still present, and reports
 // whether it found one to remove.
 func dropSegment(parts *[]hudPart) bool {
 	for _, kind := range dropOrder {
-		for i, part := range *parts {
-			if part.kind == kind {
-				*parts = append((*parts)[:i], (*parts)[i+1:]...)
-				return true
-			}
+		if dropKind(parts, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropSegmentUnder is the same walk stopped at a rung: the least important
+// segment still present that is ranked BELOW it, and false once everything
+// under that rung is already gone.
+func dropSegmentUnder(parts *[]hudPart, rung hudSeg) bool {
+	for _, kind := range dropOrder {
+		if kind == rung {
+			return false
+		}
+		if dropKind(parts, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropKind removes one named segment if the row is carrying it.
+func dropKind(parts *[]hudPart, kind hudSeg) bool {
+	for i, part := range *parts {
+		if part.kind == kind {
+			*parts = append((*parts)[:i], (*parts)[i+1:]...)
+			return true
 		}
 	}
 	return false
@@ -2431,11 +2535,30 @@ func (a *app) burnSegment() string {
 	if elapsed < time.Second {
 		return a.holdBurn("")
 	}
+	// AND A RATE IS NOT DRAWN WHILE THIS SURFACE IS SAYING NOTHING HAS COME BACK
+	// ([app.awaitingReply] states the whole of why). The figure below is the
+	// turn's output over the turn's wall time, which is a fact about a stretch
+	// that has already ended once the stream has gone quiet — and the pulse two
+	// rows up is meanwhile naming what is being waited on.
+	if a.awaitingReply() {
+		return a.holdBurn("")
+	}
 	written := a.outputTokens - a.turnOutStart
 	if written <= 0 {
 		return a.holdBurn("")
 	}
-	return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + " tok/s")
+	// THE EMPTINESS LAW IS ASKED OF THE FIGURE THAT IS DRAWN, not of the count
+	// behind it. One output token over a sixty-second turn is a positive count
+	// and a rate that rounds to nothing, and `0 tok/s` is the least informative
+	// cell on the frame at the moment a person is deciding whether to interrupt.
+	// This line's one sanctioned exception to the law is `$0.00`, whose width
+	// keeps the segments beside it from jumping sideways; a rate has no such
+	// claim, so a zero one draws NOTHING, like every other zero on this surface.
+	rate := burnStep(int(float64(written) / elapsed.Seconds()))
+	if rate <= 0 {
+		return a.holdBurn("")
+	}
+	return a.holdBurn(tokenWord(rate) + " tok/s")
 }
 
 // ── THE STEADY FIGURE ───────────────────────────────────────────────────────
@@ -3051,14 +3174,21 @@ func (a *app) placePath(hard int) string {
 	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.tilde, hard)))
 }
 
-// legendRight is the hint slot: the state's own keys when it has any, the
-// input's two affordances when it does not, and nothing at all on a tight
-// frame — where the cells are worth more to the conversation's name than to a
-// reminder.
+// legendRight is the hint slot: the state's own keys when it has any, and the
+// input's own affordances when it does not.
+//
+// IT SPEAKS AT EVERY WIDTH, and it used to go silent under [hudTight] on the
+// reasoning that the cells were worth more to the conversation's name. That was
+// exactly backwards. The narrow tier is where a newcomer most needs to be told
+// that `/` opens a list of everything this surface can be told to do, and it was
+// the ONE tier where they were never told it exists: with this slot empty and
+// the branch dropped at the other end ([app.legendLeft]), the line was refused
+// at both ends and fell back to a bare rule with nothing written on it at all.
+// The tight frame gives up THE BRANCH — which the shell prompt behind this one
+// still says — and keeps the door. Nothing here forces the slot on: the ladder
+// in [app.legend] still tries each rung and falls back to the plain rule when a
+// frame genuinely has no room for one.
 func (a *app) legendRight(width int) string {
-	if width < hudTight {
-		return ""
-	}
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
@@ -3290,6 +3420,18 @@ func (a *app) hintWord() string {
 		// under the box named `a` as allow while the block above it named `a` as
 		// always — one keystroke, two readings, and the wrong one widens a
 		// permission.
+		//
+		// AND IT NAMES THE ALWAYS KEY ONLY WHERE THAT KEY WOULD ACT. A stuck
+		// question borrows this lane to ask about a TURN, and the engine drops a
+		// tool-session scope on it — so the offer above leaves `[a]` off
+		// (consent.go's [app.consentOffer], from this same `memo` field) and the
+		// press does nothing. A hint that named it anyway would be this line
+		// promising a keystroke the block above it has already refused. It went
+		// unseen until this wave for one reason: the slot was silent under
+		// [hudTight], and that is the width the case is met at.
+		if len(a.asks) > 0 && !a.asks[0].memo {
+			return "y allow · n deny"
+		}
 		return "y allow · n deny · a always"
 	case a.railHold:
 		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
@@ -3416,6 +3558,31 @@ func shortPath(dir, home string, hard int) string {
 		parts[i] = initialOf(part)
 	}
 	return strings.Join(parts, "/")
+}
+
+// tildePath is the same path with the person's home written as `~`, and nothing
+// else touched.
+//
+// IT IS [shortPath]'S FIRST STEP ON ITS OWN, and it is separate because the two
+// answer different questions. That one is for a LEGEND — a cell of a status row
+// where the last segment is the whole message and the parents may be spent down
+// to initials. This one is for a path in the transcript, where the surface names
+// one of its own files and somebody may be about to select it and paste it into
+// a shell: `~` is the one abbreviation that survives that, because the shell
+// expands it back. Every other segment is left exactly as it is.
+func tildePath(path, home string) string {
+	path = strings.TrimSpace(path)
+	home = strings.TrimRight(strings.TrimSpace(home), "/")
+	if path == "" || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+"/") {
+		return "~" + strings.TrimPrefix(path, home)
+	}
+	return path
 }
 
 // initialOf is one path segment, cut to what identifies it: its first rune, or

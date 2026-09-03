@@ -2348,10 +2348,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.note(notice)
 	}
 	if a.resumed && a.file != "" {
-		// The journal is named with its machine on a remote session, for /status's
-		// reason (statusnote.go): a path a person is shown is a path they may go
-		// looking for, and this one is not on their disk.
-		a.note("resumed " + a.hostedPath(a.file))
+		a.note(a.resumedNote())
 	}
 	// The opening line says the two keys the status line has no room for. The
 	// other two — /help and ctrl+o — moved to that line's right end this wave
@@ -2408,6 +2405,56 @@ func newApp(ctx context.Context, opts Options) *app {
 // does — and the facts are named rather than recognized, because a note is prose
 // to this surface and only the line that wrote it knows otherwise.
 func (a *app) noteLandingKeys() { a.noteFacts(landingKeysWord, "esc", "ctrl+c") }
+
+// resumedWord opens the line a session says on the frame it opens over a
+// conversation that already existed.
+const resumedWord = "resumed"
+
+// resumedNote is that whole line, and WHAT IT SAYS IS WHICH CONVERSATION.
+//
+// It used to say where the journal file lives, absolutely, and that was the
+// first thing on the page: four to six wrapped rows of transcript path above the
+// person's own first message, a fifth of a sixty-column screen, broken into
+// seventeen-character stubs. It is a machine's fact standing where a person's
+// first impression goes, and the fact somebody actually wants at that moment is
+// that this is the conversation they left off in — which is its NAME.
+//
+// THE PATH IS NOT LOST, IT IS ASKED FOR: `/status` carries it on its `file` row
+// (statusnote.go), whole, with its machine on a remote session, which is where a
+// person who wants to go and look for the file goes.
+//
+// The ladder ends on the path all the same, because a line that named nothing
+// would be worse than a long one — and there it is written against `$HOME`
+// ([tildePath]) so the commonest journal comes back inside one row, and with its
+// machine on a remote session for /status's reason: a path a person is shown is
+// a path they may go looking for, and this one is not on their disk.
+func (a *app) resumedNote() string {
+	if name := a.resumedName(); name != "" {
+		return resumedWord + " · " + name
+	}
+	return resumedWord + " " + a.hostedPath(tildePath(a.file, a.tilde))
+}
+
+// resumedName is what to call the conversation that just opened: the name it
+// gave itself, and failing that the opening of the first thing the person said
+// in it.
+//
+// IT IS THE RESUME PICKER'S OWN LADDER minus its last rung (resume.go's
+// [humanName]), and it stops one rung early on purpose: that page falls back to
+// the transcript's file name because it is choosing BETWEEN conversations and
+// owes every row something, while this line has a better answer for that case —
+// the path itself, said once, below.
+func (a *app) resumedName() string {
+	if name := a.sessionName(); name != "" {
+		return name
+	}
+	for _, e := range a.entries {
+		if e.kind == entryUser && strings.TrimSpace(e.text) != "" {
+			return openingName(e.text)
+		}
+	}
+	return ""
+}
 
 var _ tea.Model = (*app)(nil)
 
@@ -5747,6 +5794,23 @@ func (a *app) slash(line string) tea.Cmd {
 		// want, and a command that took a project name would be asking a person
 		// to remember what home exists to show them (home.go).
 		return a.showPage(pageHome)
+
+	case "search":
+		// THE TYPED DOOR ONTO THE SEARCH PLACE, and it takes no argument on
+		// purpose. The place IS a box — typing in it searches and the read goes
+		// out when the box has been quiet for a moment (place_search.go) — so a
+		// query handed in at the command line would be a second way of asking the
+		// same question that could rank its answers differently from the one the
+		// person then keeps typing into.
+		return a.showPage(pageSearch)
+
+	case "spend":
+		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
+		// was an alias of /cost until this wave, so the one guess a developer makes
+		// for "what has this cost" printed one conversation's figures and never
+		// mentioned the machine-wide ledger. /cost still answers this conversation
+		// and says so on its own row (commands.go).
+		return a.showPage(pageSpend)
 
 	case "connect":
 		// Two words for one list, the way /settings answers to three (the second
