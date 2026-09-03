@@ -171,6 +171,16 @@ func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	if !c.routingRefusal(model, refusal.Status, []byte(refusal.Body)) {
 		return laneRefusal{}
 	}
+	// A REFUSAL ABOUT A LIST IMPLICATES NO MACHINE — the second half of the law
+	// [velocityLedger.keepTheSetServable] enforces on the way out, standing here
+	// on the way back. This sentence says an ignore list emptied the set, so the
+	// demanded lane was never asked and never answered; filing it as that lane's
+	// refusal would pace the machine, write it out of the serving set, and widen
+	// the very list that caused the refusal, so the next request is refused
+	// sooner. The list is what has to change, and it does, at the seam above.
+	if ignoredEverything([]byte(refusal.Body)) {
+		return laneRefusal{Kind: refusalRouting}
+	}
 	demanded = strings.TrimSpace(demanded)
 	return laneRefusal{Kind: refusalRouting, Lane: demanded, Terminal: demanded != ""}
 }

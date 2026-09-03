@@ -213,6 +213,15 @@ A refusal is final for that machine, immediately:
   demand for one machine is the first thing dropped — and the answer usually
   arrives from wherever the router picks.
 
+**And one refusal is about nobody at all.** When the router answers `All
+providers have been ignored`, no machine was ever asked: a list had removed the
+whole set before the request left — either aforge's own running list of slow and
+unavailable machines, or the ignored providers set on your account. Nothing is
+taken away from any machine on that answer, because a machine that never got the
+request has said nothing about it. aforge stops sending the list that emptied
+the set for that model and the next request lands, so this is at most one wasted
+round trip in a session rather than every request for five minutes.
+
 The row keeps up with all of it. `refused · trying parasail…` while the answer
 is moving, and if parasail refuses too the promise is **taken back** rather than
 left standing: the row reads `parasail refused`, which is what actually
