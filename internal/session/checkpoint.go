@@ -679,20 +679,40 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // with it.
 const checkpointCarryOnCap = 3
 
+// checkpointCarriedOnSeen bounds how much of what was observed reaches the line
+// above. It is a NOTICE and not a brief: the whole of what was read is already in
+// the turn the note is about, and a dim one-liner that wraps four times is a line
+// nobody finishes.
+const checkpointCarriedOnSeen = 200
+
 // checkpointCarriedOnNote is the ONE line a person reads when an ask has been
 // carried on as many times as it is going to be.
 //
 // It is the sixth in the register ([checkpointCarryOnNote] names four of the
 // others): an observation, a middle dot, a promise, all lowercase, no full stop.
-// WHAT IT OBSERVES IS THE HONEST THING — the ask really is still not finished,
-// which is what the reading just said — and what it promises is that the
-// harness is going to stop pushing rather than push a fourth time.
+//
+// WHAT IT OBSERVES IS WHAT WAS ACTUALLY READ, and that is the whole of #468's
+// fifth law. It used to say "it is still not finished" as a FACT — a claim about
+// the work that nobody had taken a reading of, written on a road whose only
+// observation was the same unmet set three times over. So it names what the
+// reading showed instead ([Decision.Observed]: the items the checks and the
+// landings left unmet, or the reader's own line), and lets whoever is reading the
+// note judge it.
 //
 // It is a function and not a constant because the number in it is
 // [checkpointCarryOnCap] and a number written twice is a number that will drift.
-func checkpointCarriedOnNote() string {
-	return fmt.Sprintf("carried on %d times and it is still not finished · stopping here rather than carrying on again",
-		checkpointCarryOnCap)
+func checkpointCarriedOnNote(observed []string) string {
+	// NOTHING OBSERVED IS SAID AS NOTHING OBSERVED. It is the shape a session
+	// with no second model to read with would reach if it ever got here, and a
+	// note that invented a reason on its behalf would be the sentence this
+	// function was rewritten to remove.
+	seen := clip(strings.Join(observed, "; "), checkpointCarriedOnSeen)
+	if seen == "" {
+		return fmt.Sprintf("carried on %d times and nothing was read back · stopping here rather than carrying on again",
+			checkpointCarryOnCap)
+	}
+	return fmt.Sprintf("carried on %d times · the last reading showed: %s · stopping here rather than carrying on again",
+		checkpointCarryOnCap, seen)
 }
 
 // checkpointCarryOnLead opens the synthetic continuation the running model is
@@ -1313,6 +1333,57 @@ func unbracket(stage string) string {
 	return strings.TrimSpace(stage[1 : len(stage)-1])
 }
 
+// markReaderAbsent reports that THIS INSTALL HAS NOBODY TO READ A MARK WITH, and
+// writes that down once for the session.
+//
+// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN (CLAUDE.md), and this road
+// had it exactly the wrong way round. [roles.RoleMarkReader] answers to the crew
+// alone, so a profile with no mastermind resolves to nothing at all — and every
+// mark and every end-of-turn reading still made the call, failed in under two
+// milliseconds, and journaled itself as a mark that FAILED. A run under one model
+// wrote that row on every round of an evening, which reads in the file exactly
+// like a mastermind that was there and could not be reached (#468).
+//
+// IT ASKS THE LADDER THE SAME QUESTION [Agent.callRole] IS ABOUT TO ASK IT, in
+// the same words, so the two can never disagree about whether there is a reader:
+// the pin, then the tier, then the floor — which is empty for a crew-only caller
+// unless `--one-model` put the conversation's own model there (auxiliary.go).
+// A session with no client at all is the same answer for the other reason.
+func (a *Agent) markReaderAbsent() bool {
+	a.mu.Lock()
+	source, client, floor := a.config.RolesSource, a.client, ""
+	if a.config.OneModel {
+		floor = a.model
+	}
+	a.mu.Unlock()
+	if client != nil {
+		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
+			return false
+		}
+	}
+	a.noteReaderAbsent()
+	return true
+}
+
+// noteReaderAbsent writes the absence into the journal ONCE FOR THE SESSION.
+//
+// ONCE, because it is a fact about the INSTALL and not about this round: a line
+// per round would be the same failed-mark spam the absence was found in, wearing
+// an honest word. The row carries no model, no cost and no duration, which is the
+// emptiness law doing the rest of the work — there was no call, so there are no
+// figures about one.
+func (a *Agent) noteReaderAbsent() {
+	a.mu.Lock()
+	if a.readerAbsentNoted {
+		a.mu.Unlock()
+		return
+	}
+	a.readerAbsentNoted = true
+	file := a.file
+	a.mu.Unlock()
+	file.appendMark(journalMark{Decision: checkpointDecisionNoReader})
+}
+
 // readMark is the sidecar: ONE call, at one mark, asking somebody who is not the
 // running model what is left of this turn.
 //
@@ -1341,6 +1412,10 @@ func unbracket(stage string) string {
 // no retry and no repair turn: the next mark will ask again if the turn is still
 // running, and the ceiling stands behind all of them.
 func (a *Agent) readMark(ctx context.Context) checkpointRead {
+	// A READER THAT CANNOT WORK IS ABSENT, NOT FAILING, so nothing is attempted.
+	if a.markReaderAbsent() {
+		return checkpointRead{}
+	}
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
@@ -1464,6 +1539,11 @@ const (
 	checkpointDecisionSplit    = "split"
 	checkpointDecisionContinue = "continue"
 	checkpointDecisionFailed   = "failed"
+	// checkpointDecisionNoReader is the ONE row a session with no second model
+	// writes ([Agent.noteReaderAbsent]). It is a different fact from `failed` and
+	// the file has to be able to tell them apart: one is a reader that could not
+	// be reached, the other is an install that never had one.
+	checkpointDecisionNoReader = "no reader"
 	// checkpointDecisionWrote is the write seam's own word (writeseam.go). It is
 	// distinct from the ceiling's because the two moments are different facts
 	// about a turn — one outran the reading, one outran the small edit — and a
@@ -2448,7 +2528,7 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// unfinished, and would say so out loud on the turn where the model had
 	// finally finished it.
 	if meter.carriedOn >= checkpointCarryOnCap {
-		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote()})
+		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote(decision.Observed)})
 		return false, false
 	}
 	// THE METER IS CHARGED BEFORE THE CONTINUATION IS WRITTEN, so a re-open that
@@ -2641,6 +2721,14 @@ func turnBroke(response *ai.Response) bool {
 // AND IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
 // side-call to a different model that the person did not ask for.
 func (a *Agent) readRemains(ctx context.Context) string {
+	// AND THE QUESTION IS NOT ASKED WHEN THERE IS NOBODY TO ASK IT OF. The empty
+	// answer below is what every failure produces, so an install with no second
+	// model used to reach it through a failed call on every single round — the
+	// same "" for "nothing left" and for "nothing answered", bought each time
+	// (#468). It is the same reading [Agent.readMark] takes, one road over.
+	if a.markReaderAbsent() {
+		return ""
+	}
 	digest := checkpointDigest(a.taskRequest(), a.snapshot())
 	if digest == "" {
 		return ""

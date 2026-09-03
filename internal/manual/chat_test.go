@@ -427,6 +427,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
 		{"how do I start aforge", "starting-aforge"},
+		// The unattended run that would not finish, asked the four ways somebody
+		// meets it: the line it stopped on, the loop they watched, the note at
+		// the cap, and the check it kept failing over a file they never wrote a
+		// check for (#468).
+		{"it stopped and said the same thing was still left", "starting-aforge"},
+		{"it kept repeating the same thing", "starting-aforge"},
+		{"why does it say carry on", "tasks"},
+		{"it said a file does not pass", "starting-aforge"},
+		{"a task waiting on one that did not finish", "starting-aforge"},
 		// The isolation people meet as a bug: the task read the committed file
 		// and they are looking at an edited one.
 		{"the task did not see my unsaved changes", "how-tasks-run"},

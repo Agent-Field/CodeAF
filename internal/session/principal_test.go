@@ -479,3 +479,161 @@ func TestAWatchedSessionStillWaitsForThePersonsAnswer(t *testing.T) {
 func standingProbe() *StandingNotice {
 	return &StandingNotice{Item: standing.Item{Words: "tell me when a piece of work stalls"}}
 }
+
+// ── #468: WHAT LANDED AND WHAT RAN OUTRANK WHAT WAS SAID ────────────────────
+
+// A LANDING THAT COVERS THE ASK IS FINISHED, WHATEVER A READER STILL HAS TO SAY.
+//
+// The measured run had its task merged home with every check green and was
+// carried on past it for the rest of its wall, because a line a sidecar wrote
+// about the TRANSCRIPT sat above the work in the order of the decision. The line
+// is still worth having when something really is left; it is not evidence about
+// work that is done.
+func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
+	const reader = "the ledger files still look unfinished to me"
+	settled := Remains{
+		Said:       "The port is merged and the suite is green.",
+		Reader:     reader,
+		Acceptance: "the ledger merges home and its own tests pass",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "merge the ledger home", State: TaskDone}},
+		Checks:     []CheckRun{{Command: "go test ./ledger", Passed: true}},
+	}
+	if got := budgetLeft(t).Decide(settled); got.Verb != DecideDone {
+		t.Fatalf("a landed, checked ask was carried on over a reader's line: %+v", got)
+	}
+	// AND A LANDING THAT DID NOT FINISH IS EXACTLY AS IT WAS: the work says
+	// something is left, and the reader's own words are what the next attempt
+	// opens on because they are the more specific account of it.
+	unfinished := settled
+	unfinished.Landings = []Landing{{ID: 1, Title: "merge the ledger home", State: TaskFailed}}
+	got := budgetLeft(t).Decide(unfinished)
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("a unit of work that did not finish was called finished: %+v", got)
+	}
+	if got.Brief != reader {
+		t.Fatalf("the carry-on lost the reader's own words:\n got %q\nwant %q", got.Brief, reader)
+	}
+}
+
+// A STANDSTILL IS A STOP, NOT A THIRD GO.
+//
+// The evidence that a run is getting somewhere is that what is left CHANGES. The
+// measured run wrote one byte-identical brief four times in a hundred seconds and
+// then wrote it until its hours were up, because the only counter over it lived
+// on the turn's meter and every landing built a fresh one.
+func TestTheSameThingLeftTwiceRunningStopsTheRun(t *testing.T) {
+	steward := budgetLeft(t)
+	stuck := Remains{
+		Acceptance: "every handler answers",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
+	}
+	if first := steward.Decide(stuck); first.Verb != DecideCarryOn {
+		t.Fatalf("the first reading of something unfinished did not carry on: %+v", first)
+	}
+	second := steward.Decide(stuck)
+	if second.Verb != DecideStop {
+		t.Fatalf("the same thing left twice running was carried on again: %+v", second)
+	}
+	if !strings.Contains(second.Reason, "wire the handlers did not finish") {
+		t.Fatalf("the stop does not say what is still left: %q", second.Reason)
+	}
+	if !strings.Contains(second.Reason, "saying it again would not change it") {
+		t.Fatalf("the stop does not say it stopped rather than repeat itself: %q", second.Reason)
+	}
+	// AND IT HOLDS AGAINST A FRESH TURN. The floor lives on the goal owner, so
+	// nothing a new turn builds for itself can talk it back into working.
+	moved := stuck
+	moved.Landings = append(moved.Landings, Landing{ID: 2, Title: "port the parser", State: TaskFailed})
+	if again := steward.Decide(moved); again.Verb != DecideStop {
+		t.Fatalf("a goal owner that stopped at a standstill was restarted: %+v", again)
+	}
+}
+
+// AND A SET THAT MOVED IS NOT A STANDSTILL, which is the other half: a run
+// making progress on a second problem is a run that gets another go.
+func TestSomethingNewLeftIsNotAStandstill(t *testing.T) {
+	steward := budgetLeft(t)
+	stuck := Remains{
+		Acceptance: "every handler answers",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
+	}
+	steward.Decide(stuck)
+	moved := stuck
+	moved.Landings = append([]Landing{}, stuck.Landings...)
+	moved.Landings = append(moved.Landings, Landing{ID: 2, Title: "port the parser", State: TaskFailed})
+	got := steward.Decide(moved)
+	if got.Verb != DecideCarryOn {
+		t.Fatalf("a run with something new left was stopped as a standstill: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "port the parser did not finish") {
+		t.Fatalf("the brief does not name what is newly left:\n%s", got.Brief)
+	}
+}
+
+// WORK THAT IS STILL RUNNING IS NEITHER DONE NOR A STANDSTILL.
+//
+// A graph holding one finished unit and one still going used to read exactly like
+// a graph holding one finished unit: the unsettled node was dropped on the way out
+// and nothing downstream could tell. So a stopped turn could be called finished
+// over the top of work that was still moving — and a settled failure beside it
+// looked like the same thing twice running while the session was in fact waiting.
+func TestWorkStillRunningIsNeitherDoneNorAStandstill(t *testing.T) {
+	steward := budgetLeft(t)
+	inFlight := Remains{
+		Acceptance: "the parser is ported and the tests are written",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "port the parser", State: TaskDone}},
+		Running:    []string{"write the tests"},
+	}
+	first := steward.Decide(inFlight)
+	if first.Verb != DecideCarryOn {
+		t.Fatalf("an ask with work still going did not carry on: %+v", first)
+	}
+	if !strings.Contains(first.Brief, "write the tests is still running") {
+		t.Fatalf("the brief does not say what is still going:\n%s", first.Brief)
+	}
+	// AND THE SAME READING AGAIN IS STILL NOT A STANDSTILL, because nothing about
+	// it says the session is repeating itself — it says the session is waiting.
+	if second := steward.Decide(inFlight); second.Verb != DecideCarryOn {
+		t.Fatalf("a session waiting on its own work was stopped as a standstill: %+v", second)
+	}
+	// AND THE WORK COMING HOME IS WHAT LETS IT FINISH.
+	landed := inFlight
+	landed.Running = nil
+	landed.Landings = append(landed.Landings, Landing{ID: 2, Title: "write the tests", State: TaskDone})
+	if got := steward.Decide(landed); got.Verb != DecideDone {
+		t.Fatalf("an ask whose work all came home was not allowed to finish: %+v", got)
+	}
+}
+
+// A DONE ANSWER FORGETS WHAT WAS LEFT LAST TIME.
+//
+// The floor under carrying on is about ONE STRETCH of it. A session that carried
+// on, then finished, then met the same gap again is meeting it for the first time
+// since — and a floor that remembered across the finish would stop it on that
+// first carry-on and call a run that was working a run that had stalled.
+func TestADoneAnswerForgetsWhatWasLeftLastTime(t *testing.T) {
+	steward := budgetLeft(t)
+	stuck := Remains{
+		Acceptance: "every handler answers",
+		Landed:     true,
+		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
+	}
+	if got := steward.Decide(stuck); got.Verb != DecideCarryOn {
+		t.Fatalf("the first reading of something unfinished did not carry on: %+v", got)
+	}
+	if got := steward.Decide(Remains{Landed: true, Landings: []Landing{{ID: 2, State: TaskDone}}}); got.Verb != DecideDone {
+		t.Fatalf("a finished ask was not allowed to finish: %+v", got)
+	}
+	if got := steward.Decide(stuck); got.Verb != DecideCarryOn {
+		t.Fatalf("the first carry-on after a finished ask was stopped as a standstill: %+v", got)
+	}
+	// AND THE FLOOR IS STILL THERE UNDER THE NEW STRETCH: the second identical
+	// reading of it stops, exactly as the first stretch's did.
+	if got := steward.Decide(stuck); got.Verb != DecideStop {
+		t.Fatalf("the floor did not come back under the new stretch: %+v", got)
+	}
+}
