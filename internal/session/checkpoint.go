@@ -3177,13 +3177,15 @@ type checkpointHandover struct {
 // it wrote down last time, ends here with its reason instead of paying for a
 // handover and a task nobody will read.
 //
-// AND THE READING AND THE SEAL ARE ONE STEP. The flight is read again, under the
-// graph's own lock, in the line before the turn is sealed: a task admitted in
-// between — by a landing, by another window — is work this session has that the
-// reading did not, and a turn sealed over it would be an ending declared across
-// live work. When there is any, the work moves instead. The goal owner has still
-// stopped and says so at the next ending; what it does not get to do is seal a
-// turn over something that started while it was deciding.
+// AND THE READING AND THE SEAL ARE ONE STEP, taken without letting go of the
+// graph's lock in between ([Agent.sealTurnWithNothingMoving]): a task admitted
+// between the two — by a landing, by another window — is work this session has
+// that the reading did not, and a turn sealed over it would be an ending declared
+// across live work. So a stop over work that is moving becomes the carry-on it
+// actually is, the work moves onto a task as it always did, and the goal owner
+// says the same thing again at the next ending. THE ONE EXCEPTION IS THE
+// BUDGET'S OWN STOP ([Decision.Spent]): a run that has spent its hours cannot buy
+// the wait, so it seals over the moving work and says out loud that it did.
 //
 // AND A PERSON'S SESSION NEVER REACHES ANY OF IT. [Agent.steward] is the gate,
 // so an attended turn hands over precisely as it always has and nothing new is
@@ -3205,19 +3207,89 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 	// said is the model's own last words, so a principal that reads them is shown
 	// what this session said rather than a blank where its voice should be.
 	decision := a.decideHandover(ctx, a.readRemains(ctx), checkpointLastSaid(a.snapshot()))
+	// THE ROW IS WRITTEN ON THE WAY OUT, whichever road is taken from here. What
+	// the goal owner made of an ending includes what became of its answer — a
+	// stop the moving work turned back into a carry-on is a different thing to
+	// have decided than a stop — and a row written before the flight was read
+	// could not say which of the two happened.
+	defer func() { a.journalDecision(decision) }()
 	if decision.Verb != DecideStop {
 		return checkpointHandover{}, false
 	}
-	if _, _, flight := a.landings(); len(flight.moving) > 0 {
+	usage, moving, sealed := a.sealTurnWithNothingMoving(decision.Spent, *turn, started, model)
+	if !sealed {
+		decision = heldForMovingWork(decision)
 		return checkpointHandover{}, false
+	}
+	if len(moving) > 0 {
+		decision.Reason += stopLeftItMovingTail
 	}
 	note := checkpointStoppedNote + decision.Reason
 	hub.send(Event{Kind: EventNotice, Text: note})
 	a.record(textMessage("assistant", note))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
+	hub.send(Event{Kind: EventTurnDone, Usage: usage})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)
 	return checkpointHandover{moved: true, decision: checkpointCeilingStopped}, true
+}
+
+// stopLeftItMovingTail is said by the one stop that may end a turn over work
+// that is still going, so neither the person's line nor the journal's row claims
+// a quiet ending it did not have ([Decision.Spent]).
+const stopLeftItMovingTail = " · work was still going and was left where it was"
+
+// heldForMovingWork turns a stop the moving work would not let end the turn into
+// the carry-on it actually became.
+//
+// THE ROW HAS TO SAY WHAT HAPPENED, not what was first answered: the work moved
+// onto a task and the session went on, so a row reading `stop` beside it would be
+// the journal disagreeing with the transcript. The reason says why the stop was
+// not taken, which is the only part of the original answer still worth keeping —
+// the goal owner has not changed its mind, and says so again at the next ending.
+func heldForMovingWork(decision Decision) Decision {
+	return Decision{
+		Verb:     DecideCarryOn,
+		Brief:    decision.Brief,
+		Reason:   stopHeldReason,
+		Observed: decision.Observed,
+	}
+}
+
+// stopHeldReason is why a stop did not end the turn it was answered at.
+const stopHeldReason = "work is still going, so it was not stopped here"
+
+// sealTurnWithNothingMoving is [Agent.endTurnUnderSteward]'s seal, AND THE
+// READING THAT ALLOWS IT, IN ONE STEP.
+//
+// The flight used to be read with the graph's lock taken and let go again, and
+// the turn sealed a few lines later: a task admitted in the gap — by a landing
+// coming home, by another window, by this turn's own last batch — was work the
+// session had that the reading did not, and the turn was sealed over it. So the
+// lock is held ACROSS BOTH: nothing can be admitted between the answer and the
+// ending it justifies, because admitting takes the same lock (task_run.go).
+//
+// ONE STOP IS ALLOWED TO SEAL ANYWAY, and it is the budget's ([Decision.Spent]).
+// A run that has spent its hours or its money cannot buy the wait: letting the
+// moving work finish is more of exactly the thing that ran out. What it owes
+// instead is the truth about it, which is why the moving work is handed back to
+// the caller and said out loud ([stopLeftItMovingTail]).
+//
+// WHAT IS HELD UNDER THE LOCK IS THE SEAL AND NOTHING ELSE. [Agent.sealTurn]
+// takes the agent's own lock and writes the journal's usage line; the notice, the
+// transcript line and the naming call all happen after this returns, so nothing
+// that fans an event out to a surface is waiting on the task graph.
+func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.Time, model string) (Usage, []string, bool) {
+	graph := a.tasker()
+	if graph == nil {
+		return a.sealTurn(turn, started, model), nil, true
+	}
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	moving := graph.flightLocked().moving
+	if len(moving) > 0 && !spent {
+		return Usage{}, moving, false
+	}
+	return a.sealTurn(turn, started, model), moving, true
 }
 
 // decideHandover puts a handover to the principal, and it is
@@ -3236,14 +3308,15 @@ func (a *Agent) endTurnUnderSteward(ctx context.Context, hub *eventHub, turn *Us
 // that stopped is the ending most likely to leave a mess, and whoever comes to
 // look at the tree afterwards is owed it however the run ended.
 //
-// AND THE ANSWER IS JOURNALED WHICHEVER IT IS, so the file says what the goal
-// owner made of every ending rather than only of the ones it acted on.
+// AND THE ANSWER IS JOURNALED BY THE CALLER, whichever it is: the row says what
+// the goal owner made of every ending rather than only of the ones it acted on,
+// and it is written where what BECAME of the answer is also known
+// ([Agent.endTurnUnderSteward]).
 func (a *Agent) decideHandover(ctx context.Context, reader, said string) Decision {
 	decision := a.who().Decide(a.remainsFor(said, reader))
 	if decision.Verb == DecideStop {
 		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
 	}
-	a.journalDecision(decision)
 	return decision
 }
 

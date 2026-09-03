@@ -6518,7 +6518,7 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, la
 	}
 	saved, problem := stagedPaths(dir)
 	if problem != "" {
-		return nil, "", refusalFromGit(problem), errors.New(problem)
+		return nil, "", askTheTree(dir), errors.New(problem)
 	}
 	if len(saved) == 0 {
 		// Nothing the node wrote is different from HEAD, which is the ordinary
@@ -6532,14 +6532,16 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, la
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", message); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
-		// could not make, a rule the repository holds — and those are refusals a
-		// second answer can get past, so the reading defaults to the work and only
-		// the words that name the PLACE say otherwise ([refusalFromGit]).
-		return saved, "", refusalFromGit(firstLine(out)), fmt.Errorf("git commit: %s", firstLine(out))
+		// could not make, a ref it could not lock, a rule the repository holds —
+		// and those are refusals a second answer can get past. Which of the two
+		// this was is asked of the TREE rather than read out of git's sentence
+		// ([askTheTree]): a tree that still takes a write is a tree worth
+		// accepting into again, whatever the sentence said.
+		return saved, "", askTheTree(dir), fmt.Errorf("git commit: %s", firstLine(out))
 	}
 	head, err := git(dir, "rev-parse", "HEAD")
 	if err != nil {
-		return saved, "", refusalFromGit(firstLine(head)), fmt.Errorf("git rev-parse: %s", firstLine(head))
+		return saved, "", askTheTree(dir), fmt.Errorf("git rev-parse: %s", firstLine(head))
 	}
 	return saved, strings.TrimSpace(head), refusedNothing, nil
 }
@@ -6677,7 +6679,7 @@ func stageTaskWork(dir string, wrote []string) (string, landingRefusal) {
 	if problem == "" {
 		return "", refusedNothing
 	}
-	return problem, refusalFromGit(problem)
+	return problem, askTheTree(dir)
 }
 
 // stageableWork turns the run's record of what it wrote into pathspecs git can

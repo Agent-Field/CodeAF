@@ -1,9 +1,11 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // task_land_unsaved.go is one law for both landing roads: A LANDING THAT COULD
@@ -55,7 +57,8 @@ func cameHome(merge string) bool {
 // sentence. [stageTaskWork] asks git whether the place is a repository at all and
 // answers that arm outright; [taskTree.landMirror] knows a folder that would not
 // take the lay is the folder refusing; and the one arm where only git's prose
-// exists is read ONCE, by [refusalFromGit], at the seam that holds it.
+// exists puts the question to the tree itself ([askTheTree]) rather than reading
+// it back out of git's prose.
 type landingRefusal uint8
 
 const (
@@ -67,27 +70,74 @@ const (
 	refusedByTheTree
 )
 
-// refusalFromGit reads git's own words for the refusals that are about WHERE the
-// work is rather than about the work, and it is the ONE place in this package
-// that reads them.
+// askTheTree asks THE REPOSITORY ITSELF whether it can still be written to, and
+// it is how a landing that could not be saved is told apart from a place that
+// will refuse it again.
 //
-// EVERYTHING IT DOES NOT RECOGNISE IS THE WORK, which is the safe side of the
-// answer: an unrecognised failure keeps the landing on the road it has always
-// taken — back to somebody, with the branch kept and another answer allowed —
-// rather than settling a node on a guess.
-func refusalFromGit(problem string) landingRefusal {
-	said := strings.ToLower(problem)
-	// The place, in the words the tools that refuse it actually use: a directory
-	// that is no repository, a mount that will not be written, a disk with
-	// nothing left on it.
-	for _, mark := range []string{
-		"not a git repository",
-		"read-only file system",
-		"permission denied",
-		"no space left on device",
-		"disk quota exceeded",
+// ── IT USED TO READ GIT'S PROSE, AND PROSE IS NOT EVIDENCE ──────────────────
+//
+// The five phrases that name a place git will not write — no repository, a
+// read-only mount, a permission, a full disk, a quota — turn up in sentences
+// that are about the WORK just as readily. A hook that prints "permission
+// denied" and refuses the commit, a path with `read-only file system` in its
+// name, a message quoting an error somebody else's tool produced: each of those
+// is answerable, and each of them was being settled for good on the strength of
+// a substring (#513). A landing settled wrongly this way cannot be accepted
+// again, which is the one mistake on this road that a person cannot undo.
+//
+// ── SO THE QUESTION IS A WRITE, WHICH IS THE THING THAT WAS REFUSED ─────────
+//
+// A scratch file is created inside the repository's own git directory and
+// removed again. A tree that takes it is a tree a second answer could get past,
+// whatever git said about the first; a tree that refuses it with the errno of a
+// read-only mount, a permission, a disk with nothing left on it or a quota is
+// the PLACE refusing, and it will refuse the same way next time.
+//
+// AND ANYTHING ELSE IS THE WORK. A probe that fails for a reason nobody
+// recognises keeps the landing on the road it has always taken — back to
+// somebody, with the branch kept and another answer allowed — rather than
+// settling a node on a guess. The one tree refusal that is NOT asked here is a
+// directory that is no repository at all: [stageTaskWork] already asks git that
+// as a question and answers it where it happens.
+func askTheTree(dir string) landingRefusal {
+	// THE GIT DIRECTORY IS ASKED FOR BY NAME rather than assumed to be `dir/.git`,
+	// because a node works in a worktree, where `.git` is a FILE naming the real
+	// directory somewhere under the parent repository. A tree that will not say
+	// where it keeps itself is probed where it stands, which is the safe side of
+	// the answer: an unrecognised failure is the work.
+	place := dir
+	if out, err := git(dir, "rev-parse", "--absolute-git-dir"); err == nil {
+		if named := strings.TrimSpace(out); named != "" {
+			place = named
+		}
+	}
+	scratch, err := os.CreateTemp(place, ".aforge-write-")
+	if err != nil {
+		return refusalFromWrite(err)
+	}
+	name := scratch.Name()
+	_ = scratch.Close()
+	_ = os.Remove(name)
+	return refusedByTheWork
+}
+
+// refusalFromWrite reads the ERRNO of a refused write, which is the one account
+// of a refusal that nobody wrote in prose.
+//
+// The four kinds are the place refusing in the only ways a place can: the mount
+// is read-only, the permission is not there, the disk is full, the quota is
+// spent. Everything else — a name that is already taken, a directory that moved
+// under us, anything the operating system spells some other way — is left as the
+// work, so an unfamiliar failure keeps a landing answerable.
+func refusalFromWrite(err error) landingRefusal {
+	for _, refusing := range []error{
+		syscall.EROFS,
+		syscall.EACCES,
+		syscall.EPERM,
+		syscall.ENOSPC,
+		syscall.EDQUOT,
 	} {
-		if strings.Contains(said, mark) {
+		if errors.Is(err, refusing) {
 			return refusedByTheTree
 		}
 	}

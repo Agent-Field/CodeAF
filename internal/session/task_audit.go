@@ -678,6 +678,19 @@ func checkerStalled(bound time.Duration) string {
 	return "one call ran " + bound.String() + " without answering and was abandoned"
 }
 
+// checkerWindowClosed is what a person reads BESIDE the first attempt's own
+// account when there was no time left to ask again.
+//
+// It is a second clause rather than a second sentence, and it is never a
+// replacement: the landing has to say both what was asked and why it was not
+// asked again, and a line that only said the window closed would be the harness
+// claiming nobody was asked when somebody was ([Agent.auditNode]).
+const checkerWindowClosed = "the window closed before a second"
+
+// checkerWindowClosedTail is how it joins the account it goes beside, in the
+// separator every other run of evidence on a card already uses.
+const checkerWindowClosedTail = " · " + checkerWindowClosed
+
 // ── the checking window, and one call inside it ─────────────────────────────
 
 // auditPace is ONE node's checking window and the bound on one call inside it.
@@ -733,10 +746,19 @@ func (p auditPace) bound(now time.Time) (time.Duration, bool) {
 	if left < p.floor {
 		return 0, false
 	}
-	if left < p.call {
-		return left, true
+	bound := p.call
+	if left < bound {
+		bound = left
 	}
-	return p.call, true
+	// AND A BOUND OF NOTHING IS NOT A CALL. A window small enough for the shares
+	// to divide down to zero — a test's window, a door that answered in
+	// nanoseconds — would otherwise pass the floor above and submit a request on
+	// a context that has already expired, and the person would then read that a
+	// call stalled when no call was ever made.
+	if bound <= 0 {
+		return 0, false
+	}
+	return bound, true
 }
 
 // noVerdict is the answer to everything that went wrong before a verdict could
@@ -774,6 +796,24 @@ func noVerdict(why, said string) auditVerdict {
 // AND IT SAYS IT ONCE. The ladder asks at most twice ([Agent.auditNode]), so
 // this is reached at most once per node, and the copy is what keeps a verdict
 // somebody else is holding from growing a line under them.
+// andTheWindowClosed keeps what one attempt found and says that there was no
+// time for another.
+//
+// IT GOES ON THE FIRST LINE rather than under it, which is what [onTheSecondTry]
+// does and the difference between the two is who reads them. Which try answered
+// is a fact about the harness's evening and belongs last; why the checking
+// stopped where it did is part of the reason the work is being taken as it
+// stands, and the one line that reason quotes is the first ([takenAsItStands]).
+func (v auditVerdict) andTheWindowClosed() auditVerdict {
+	if len(v.evidence) == 0 {
+		return noVerdict(checkerWindowClosed, "")
+	}
+	evidence := append([]string{}, v.evidence...)
+	evidence[0] += checkerWindowClosedTail
+	v.evidence = evidence
+	return v
+}
+
 func (v auditVerdict) onTheSecondTry() auditVerdict {
 	v.evidence = append(append([]string{}, v.evidence...), checkedOnTheSecondTry)
 	return v
@@ -903,6 +943,15 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		// The NODE was killed, not the audit. There is nobody to ask again and
 		// nothing to ask about; the caller reads ctx itself and tells that story.
 		return verdict
+	}
+	// AND A SECOND CALL THAT CANNOT BE MADE DOES NOT ERASE THE FIRST. What is
+	// left of the window is asked HERE, before a fresh checker is built, because
+	// what the first attempt found is the only account there is of where the time
+	// went: a retry that answered `nobody could check it` in its place would tell
+	// a person nobody was asked, when somebody was asked and abandoned.
+	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
+		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
 	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
 	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, files, claim, open, log)

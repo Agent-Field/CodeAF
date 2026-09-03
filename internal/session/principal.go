@@ -307,6 +307,13 @@ type Decision struct {
 	Brief    string
 	Reason   string
 	Observed []string
+	// Spent marks the ONE stop that is about money and hours rather than about
+	// the work: the budget is gone. It is read where a stop may have to end a
+	// turn over work that is still moving ([Agent.endTurnUnderSteward]), which
+	// only this stop may do — SPENDING IS THE THING A BUDGET FORBIDS, and
+	// waiting for the moving work to come home is more of exactly what ran out.
+	// Every other stop is about the work and can afford to let the work finish.
+	Spent bool
 }
 
 // carryOn, done and stop are the three constructors, so no caller in this
@@ -316,6 +323,13 @@ func carryOn(brief string, observed ...string) Decision {
 }
 func done() Decision              { return Decision{Verb: DecideDone} }
 func stop(reason string) Decision { return Decision{Verb: DecideStop, Reason: reason} }
+
+// stopSpent is the budget's own stop, and it is spelled apart from [stop]
+// because the two are answered differently over work that is still moving
+// ([Decision.Spent]).
+func stopSpent(reason string) Decision {
+	return Decision{Verb: DecideStop, Reason: reason, Spent: true}
+}
 
 // ── THE PERSON ──────────────────────────────────────────────────────────────
 
@@ -635,7 +649,7 @@ func (s *Steward) Decide(r Remains) Decision {
 		return stop(stopped)
 	}
 	if spent, why := s.Budget().Exhausted(); spent {
-		return stop(why)
+		return stopSpent(why)
 	}
 	unmet := r.unmet()
 	if len(unmet) == 0 {

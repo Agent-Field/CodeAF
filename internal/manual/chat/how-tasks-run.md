@@ -482,6 +482,15 @@ the file out. The difference is which failure it was: the tree would not take th
 all, or the work and your own copy disagree. Before this, both went back to the card, and a
 measured run accepted the same task three times and got the same refusal three times.
 
+**Which one it was is settled by trying the folder, never by reading the message.** Git says
+"Permission denied" when it cannot lock a branch's ref in a folder you can write to
+perfectly well, and a hook of yours can print anything it likes. So when a commit is
+refused, aforge writes a scratch file into the repository and removes it again: if that
+works the refusal is about the **work**, the task comes back for your look, and accepting it
+after you have cleared whatever was in the way is worth doing. Only a folder that will not
+take that write — a read-only mount, a permission, a full disk, a quota — settles the task
+where it stands.
+
 ## What a task can do while it runs
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
@@ -1578,11 +1587,19 @@ That is a fact about the evening and not about the work: the check's answer is t
 answer, reached on the same tree, and nothing about the task is different for having taken
 two goes.
 
+Sometimes there is no time for a second call: closing one checker and building another
+takes some of the window too, and a call that would get less than a tenth of it is not made
+at all — a bound that small guarantees the non-answer it would then be blamed for. The card
+keeps the first call's account and says why there was no second:
+
+```
+one call ran 2m30s without answering and was abandoned · the window closed before a second
+```
+
 **Why the bound exists.** Without it, one hung stream could eat the whole five minutes on
 its own — measured at 183 seconds on one call, with no refusal and no error — and the check
 was then never asked a second time at all, while the task landed saying nobody could check
-it in five minutes. With the bound, a window that closes means the checking really was
-tried twice.
+it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
