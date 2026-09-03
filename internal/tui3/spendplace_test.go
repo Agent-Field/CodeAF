@@ -229,6 +229,14 @@ func spendLab(t *testing.T, lines []session.UsageLine) *app {
 		t.Fatal(err)
 	}
 	a := placeApp(t)
+	// THE LAB OPENS ON THE FIXTURE'S CLOCK, NOT THE WALL'S. [app.openSpend]
+	// windows the ledger with session.LastDays(a.now(), 14), which is arithmetic
+	// on the moment of the open, while every line above is written on a fixed
+	// August 2026 date — so a lab left on the wall clock passes only until the
+	// fixture drifts out of the fortnight. It did: at midnight on 2026-09-03 the
+	// $21.40 line on August 20 fell out of the window and the two tests below
+	// went red on a clean tree with no merge behind it.
+	a.clock = func() time.Time { return spendTestNow }
 	a.usageLedger = path
 	a.showPage(pageSpend)
 	return a
