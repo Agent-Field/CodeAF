@@ -177,6 +177,18 @@ func ceilingRefusal(payload []byte) bool {
 // endpointRefusalPhrase reports whether a refusal is one already KNOWN to be
 // this class by its words. Ordinary language, ordinary answer: when the router
 // says one of these, nothing further has to be established.
+// ignoredEverything is the router reporting that an IGNORE LIST removed every
+// endpoint before it asked any of them — this process's own list, or the
+// account's standing one, which is why the sentence ends by naming the setting.
+//
+// IT IS A FACT ABOUT A LIST AND NEVER ABOUT A MACHINE, which is the whole
+// reason it is asked separately from the phrase table above: the table says
+// "this class of refusal", and the strike path needs to know something else,
+// that there is no lane here to blame.
+func ignoredEverything(body []byte) bool {
+	return strings.Contains(strings.ToLower(string(body)), "all providers have been ignored")
+}
+
 func endpointRefusalPhrase(payload []byte) bool {
 	text := strings.ToLower(string(payload))
 	for _, phrase := range endpointRefusalPhrases {

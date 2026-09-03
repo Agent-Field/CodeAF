@@ -263,6 +263,22 @@ the moment the surface stops spelling a sentence the suite waits for. That gate
 exists because the suite silently rotted for a week after the home redesign
 (#184); if you respell a person-facing string, expect it to name you.
 
+**The router's own laws** have one live-key test beside the fake-router suites,
+because a claim about how many machines are behind a model is a claim about the
+world and no fixture can answer it:
+
+```sh
+go test -tags e2e ./internal/provider/ -run TestRealRouter -v   # ~45s, a fraction of a cent
+```
+
+It thins a real serving set — striking every machine it sees answer until its own
+vetoes cover all of them — and asserts the router refuses that at most once. On
+2026-09-03 against `deepseek/deepseek-v4-flash` and its sixteen machines, dev
+`713945e3b` paid 8 refusals over 36 calls and the fix paid 1 over 23 (#586). It
+SKIPS green without `OPENROUTER_API_KEY`; the package's `TestMain` re-roots
+`AFORGE_HOME`, so the profile's key is not found and the variable is the way in.
+`internal/lane` has the sibling live test, `-run TestReal`.
+
 **Remote access** (`--host`, `--at`, attachments) has three layers, and they are cheap:
 
 ```sh
