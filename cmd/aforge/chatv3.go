@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/leave"
 	"github.com/Agent-Field/aforge-v2/internal/openrouterauth"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -2117,12 +2119,37 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
 func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
+	// The leaving road stands before session opening because opening can take
+	// time, and a signal there would otherwise take the default disposition and
+	// skip every defer — the whole of #471. Cancelling the turn is all the
+	// leaving work needed here: the deferred agent.Close below settles the tasks
+	// and checkpoint. Defers run last-in-first-out, so Close runs before this
+	// road stands down and keeps the second signal live through a close that can
+	// take the turn's grace plus two job rounds.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var leaving atomic.Bool
+	// A leaving somebody asked for is not a failure to report: a person who
+	// typed kill -INT is not owed an "error: context canceled" line, and the
+	// manual promises the surface the same clean status-0 exit.
+	reported := func(failure error) error {
+		if leaving.Load() {
+			return nil
+		}
+		return failure
+	}
+	stopLeaving := leave.On(func() {
+		leaving.Store(true)
+		cancel()
+	}, nil)
+	defer stopLeaving()
+
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
 	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	agent.SetReasoning(level)
 	if notice != "" {
@@ -2132,7 +2159,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
-		return err
+		return reported(err)
 	}
 	// wrote tracks whether the reply has begun, so a tool line never opens the
 	// output with a stray blank line and never lands mid-sentence.
@@ -2177,7 +2204,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		}
 	}
 	newline()
-	return failure
+	return reported(failure)
 }
 
 // v3RecentSessionSlots bounds one listing. Twenty is far more than the four the
