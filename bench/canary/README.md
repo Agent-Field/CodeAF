@@ -62,7 +62,7 @@ The unit is a **cell**: one issue, one door, one clone, one home, one grade.
    tiers and the approval posture are written to the one model under test.
 4. **One door.** `do`: `aforge do "<issue>" -w <clone> -json -yes-spend -model M
    -plan-model M -timeout 900`. `chat`: the binary in a tmux window standing in
-   the clone, `aforge chat -yolo -one-model -model M -max-cost 1`, the issue
+   the clone, `aforge chat -yolo -one-model -model M -max-cost 1 -max-hours H` (H is the wall minus a 60 s margin, in hours, so aforge ends on its own law before the rig clock stops watching), the issue
    pasted as a bracketed paste, enter. Nothing on the screen is trusted to say
    the turn is over: it is over when the journal holds a non-aux `usage` seal,
    the call log shows nothing in flight, the status line reads idle, and the
