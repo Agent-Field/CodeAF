@@ -587,3 +587,23 @@ func TestARefusalOfOurOwnRequestIsNotRetried(t *testing.T) {
 		t.Fatalf("calls = %d, want exactly one: the refusal is the answer", len(client.seen))
 	}
 }
+
+func TestIdenticalTimeoutsStopTheRound(t *testing.T) {
+	space := workspace(t)
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c0", "sh", `{"cmd":"sleep 2","t":1}`)},
+		{call("c1", "sh", `{"cmd":"sleep 2","t":1}`)},
+		{call("c2", "sh", `{"cmd":"sleep 2","t":1}`)},
+	}}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 99, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(outcome.Stop), "stuck-timeout") {
+		t.Fatalf("stop = %s, want stuck-timeout", outcome.Stop)
+	}
+	if len(client.seen) > 3 {
+		t.Fatalf("got %d model calls, want at most 3 (no fourth attempt)", len(client.seen))
+	}
+}

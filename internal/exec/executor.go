@@ -594,6 +594,18 @@ const (
 	// the growth journal, and letting both fire on one settlement would spend
 	// two rounds on one decision.
 	StopSplit StopReason = "split"
+
+	// StopStuckTimeout is recorded when three identical timeouts of the same
+	// command end the round: the command does not finish here, and repeating it
+	// further would only burn the wall. It is separate from StopDeadline because
+	// the clock still has time, and from StopError because the provider did not
+	// fail — the command is simply not one that returns inside the timeout the
+	// tool runs it with.
+	StopStuckTimeout StopReason = "stuck-timeout"
+
+	// MaxIdenticalTimeouts is how many identical timed-out tool calls (same
+	// command text, same timeout) the loop tolerates before ending the round.
+	MaxIdenticalTimeouts = 3
 )
 
 // OutOfRoom reports that this ending is a leaf THAT WAS STILL WORKING when

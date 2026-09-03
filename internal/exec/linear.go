@@ -737,6 +737,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
+	// A per-round tally of identical command timeouts. When any command
+	// reaches MaxIdenticalTimeouts, the round stops: the command does not
+	// finish here, and repeating it further would only burn the wall.
+	stuckTally := map[string]int{}
 	// The no-progress guard catches a leaf that is spending turns without
 	// advancing: repeating the same tool call, going many turns without
 	// writing anything or learning anything new, or simply running past any
@@ -1105,6 +1109,21 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// ever run needs the ask.
 		for index, call := range calls {
 			outcome.record(call, results[index].IsError)
+		}
+
+		// Identical-timeout tally: when the same command times out
+		// MaxIdenticalTimeouts times in one round, stop the round.
+		for index, call := range calls {
+			if results[index].TimedOut {
+				key := call.Function.Name + " " + call.Function.Arguments
+				stuckTally[key]++
+				if stuckTally[key] == MaxIdenticalTimeouts {
+					landing = 1
+					landingStop = StopStuckTimeout
+					trace.note(fmt.Sprintf("command %q timed out %d times — stopping the round (limit: %d)",
+						call.Function.Name, stuckTally[key], MaxIdenticalTimeouts))
+				}
+			}
 		}
 
 		trace.turn(outcome.Turns, response, calls, results, "")

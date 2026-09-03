@@ -398,6 +398,11 @@ type Result struct {
 	// remains valid on every OpenAI-compatible backend.
 	Followup []ai.ContentPart
 	Usage    Usage
+	// TimedOut is set when a command was terminated by its own deadline
+	// rather than finishing or failing on its own. It is the typed fact the
+	// round loop reads to detect identical repeated timeouts, without
+	// matching the error string.
+	TimedOut bool
 }
 
 func errorf(format string, args ...any) Result {
@@ -1448,7 +1453,7 @@ func (r shellRun) trustworthy(class rtk.Class) bool {
 func (r shellRun) result(seconds int) Result {
 	if r.timedOut {
 		out := errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
-		out.shape, out.bounded = shapeCommand, r.bounded
+		out.shape, out.bounded, out.TimedOut = shapeCommand, r.bounded, true
 		return out
 	}
 	if r.detached {
