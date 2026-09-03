@@ -1195,7 +1195,12 @@ func hedgeLaneFrom(ctx context.Context) string {
 // request is that it goes somewhere else; a router free to fall back could
 // answer it from the lane that is already stalling, and the race would be two
 // requests to the same machine. `only` is the field that says so, and the
-// preference is otherwise left exactly as the encoder built it.
+// preference otherwise keeps the encoder's remaining filters.
+//
+// A DEMAND CARRIES NO PRICE CEILING. The chooser already priced this machine
+// through the frontier's own gate, and a second cap can only contradict that
+// decision — refusing the demanded lane for a price it already passed, then
+// teaching the serving ledger that the innocent lane cannot serve the model.
 func hedgePreference(prefs *providerPrefs, knobs callKnobs) *providerPrefs {
 	if knobs.hedgeLane == "" {
 		return prefs
@@ -1208,5 +1213,6 @@ func hedgePreference(prefs *providerPrefs, knobs callKnobs) *providerPrefs {
 	hedged.Only = []string{knobs.hedgeLane}
 	hedged.Order = nil
 	hedged.AllowFallbacks = &no
+	hedged.MaxPrice = nil
 	return &hedged
 }

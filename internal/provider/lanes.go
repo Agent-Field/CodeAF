@@ -350,6 +350,11 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 	// left to sort, the ledger's order comes off because it is a ranking over
 	// machines this request may not use, and `allow_fallbacks` goes to false
 	// because a fallback is precisely the thing a pin refuses.
+	//
+	// THE PRICE CEILING COMES OFF TOO. The chooser's frontier already admitted
+	// and priced the demanded machine; applying the router's coarser model-list
+	// ceiling afterwards can only contradict that decision and make a serving
+	// lane look as though it refused the model.
 	if len(choice.Only) > 0 {
 		only := make([]string, 0, len(choice.Only))
 		for _, lane := range choice.Only {
@@ -361,6 +366,7 @@ func (c *Client) applyLaneChoice(prefs *providerPrefs, model string, knobs callK
 			no := false
 			prefs.Only, prefs.Order, prefs.Sort = only, nil, ""
 			prefs.AllowFallbacks = &no
+			prefs.MaxPrice = nil
 			return
 		}
 	}
