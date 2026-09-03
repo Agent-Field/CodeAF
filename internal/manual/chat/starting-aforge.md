@@ -211,6 +211,14 @@ thing twice, and stopped itself for going round in circles one second after tidy
 that reader names a gap instead, the run carries on into it, and being finished is settled
 by running your checks over the tree either way.
 
+**And a file is your work only while its content still differs from what it was before the
+edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
+never popped leaves the path written and nothing in the tree, so none of them counts as
+finished work. A stash the run took itself and never popped is said out loud as well —
+`1 stash entry holds work that is not in the tree` — and the run carries on rather than
+finishing over it; a stash you already had before the run started is yours and is never
+counted, and neither is the one a landing takes to set your uncommitted work aside.
+
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
 **A check is yours only if your run turned it red.** On a run with a budget, aforge runs

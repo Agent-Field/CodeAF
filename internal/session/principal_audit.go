@@ -312,8 +312,15 @@ func (a *Agent) rememberChange(change fileChange) {
 	a.rememberChanged(change)
 }
 
-// rememberChanged keeps one modified file so the session knows it put work on
-// the deliverable with its own hands.
+// rememberChanged keeps one modified file — AND WHAT WAS IN IT BEFORE
+// ([fileChange.before]) — so the session knows it put work on the deliverable
+// with its own hands, and can still tell later whether that work is there.
+//
+// THE FIRST SIGHTING OF A PATH IS THE ONE THAT STANDS, which is why the loop
+// below returns rather than overwriting. A turn's ledger is minted fresh at
+// episode-init, so the second turn to edit a file digests the FIRST turn's
+// result as its before; keeping the earliest entry keeps the digest that was
+// taken before this session had written anything there at all.
 //
 // IT IS NEVER WRITTEN TO THE JOURNAL'S CREATED LINE, whose whole value is the
 // word created ([journalCreated]), and it is not journaled at all: the only
@@ -339,9 +346,27 @@ func (a *Agent) rememberChanged(change fileChange) {
 }
 
 // changedInDeliverable says whether a file this session modified is under the
-// deliverable tree and still a file there. A path outside the tree is a note or
-// a scratch file, not the work; a path that has since gone is not work anybody
-// can point at.
+// deliverable tree, still a file there, AND STILL HOLDING DIFFERENT CONTENT
+// FROM WHAT IT HELD BEFORE THE WRITE. A path outside the tree is a note or a
+// scratch file, not the work; a path that has since gone is not work anybody
+// can point at; and a path whose content is back where it started is not work
+// either, whatever the ledger remembers about it having been written.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// This used to ask about the PATH alone, and a path is not a change. The attrs
+// cell (canary 2026-09-03) edited `src/attr/_make.py`, ran the suite, then ran
+// `git stash` to compare its work against the baseline and never popped it. The
+// tree at the end held none of the fix; the ledger still held the path; Made was
+// true; the door said `finishing here · what was asked is done` over zero changed
+// files. A revert and an edit that writes a file back to what it was fail the
+// same way, silently, and always did.
+//
+// A FILE WITH NO BEFORE-DIGEST IS STILL COUNTED, which is the conservative side
+// and the deliberate one. "" is what an absent file, an unreadable one and a
+// path no pre-action ever saw all digest as ([fileDigest]), and a file that has
+// content now differs from all three. The reading this must never give is a
+// session that really did the work being told it made nothing.
 func (a *Agent) changedInDeliverable() bool {
 	tree := a.deliverableTree()
 	if tree == "" {
@@ -357,11 +382,176 @@ func (a *Agent) changedInDeliverable() bool {
 		if !underTree(tree, change.path) {
 			continue
 		}
-		if info, err := os.Lstat(change.path); err == nil && info.Mode().IsRegular() {
-			return true
+		// AND THE PATH IS RESOLVED BEFORE IT IS READ, because the ledger's own
+		// digest was taken through any link there is: os.Stat and os.Open follow
+		// one, so a write through an in-tree symlink to an in-tree regular file
+		// has a perfectly good before-digest, and an Lstat here rejected it as
+		// "not a regular file" and never counted it. CONTAINMENT IS STILL
+		// UNAFFECTED: [underTree] canonicalises both sides, so a link under the
+		// workspace pointing OUT of it was already excluded above.
+		resolved := canonicalPath(change.path)
+		info, err := os.Stat(resolved)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
 		}
+		if fileDigest(resolved) == change.before {
+			continue
+		}
+		return true
 	}
 	return false
+}
+
+// stashEntry is one line of `git stash list` as this reading needs to read it:
+// the entry's own commit, which is what tells one entry from another across two
+// readings, and the message it was pushed with, which is what tells the
+// harness's own entries from a person's.
+type stashEntry struct {
+	sha     string
+	subject string
+}
+
+// stashList is the deliverable tree's stash, whole, and WHETHER IT WAS READ AT
+// ALL.
+//
+// THE SECOND ANSWER IS NOT A FORMALITY. A reading that failed and a repository
+// with no stash in it are the same empty list, and they mean opposite things: an
+// empty list from a tree that answered is knowledge, and an empty list from a
+// git that is not installed, a directory that is not a repository yet, or a call
+// that fell over is the absence of it. Collapsed into one value, a failed
+// BEFORE-reading marked the baseline as taken and every entry the run later
+// found counted as its own ([Agent.readStashBefore]).
+//
+// NOT A REPOSITORY, OR NO GIT AT ALL, IS THEREFORE `nil, false` AND SAYS
+// NOTHING: neither is evidence about anybody's work, and the honest answer is
+// silence rather than a sentence about a stash nobody has.
+//
+// THE FORMAT IS ASKED FOR RATHER THAN PARSED OUT OF THE DEFAULT LINE, which
+// spells the message after a colon inside a subject that already holds one
+// (`stash@{0}: On main: fixing it`). A tab cannot appear in a sha and does not
+// survive into a stash subject, so it is the one separator that cannot be
+// mistaken for content.
+func stashList(tree string) ([]stashEntry, bool) {
+	if strings.TrimSpace(tree) == "" {
+		return nil, false
+	}
+	out, err := git(tree, "stash", "list", "--format=%H%x09%s")
+	if err != nil {
+		return nil, false
+	}
+	var entries []stashEntry
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		sha, subject, _ := strings.Cut(line, "\t")
+		entries = append(entries, stashEntry{sha: strings.TrimSpace(sha), subject: subject})
+	}
+	return entries, true
+}
+
+// readStashBefore photographs the stash the tree ALREADY HELD, at the same
+// moment the checks are photographed ([Agent.openBaseline]).
+//
+// IT IS TAKEN IN FRONT OF THE TURN AND THE CHECKS ARE NOT, and what separates
+// them is what each costs. A declared check is an arbitrary shell command and
+// can take as long as a suite takes, so it runs on its own and the turn starts.
+// This is one ref read, and the whole of what it is worth is being certainly
+// BEFORE the work: a reading taken on a goroutine could land after the session's
+// own first `git stash`, which is the one entry it exists to be able to
+// subtract.
+func (a *Agent) readStashBefore() {
+	entries, read := stashList(a.deliverableTree())
+	if !read {
+		// A READING THAT DID NOT HAPPEN IS NOT AN EMPTY STASH. Leaving the flag
+		// down is what makes the terminal reading say nothing at all, rather
+		// than treat everything it finds later as this run's own doing.
+		return
+	}
+	held := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		held[entry.sha] = true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stashBefore, a.stashBeforeRead = held, true
+}
+
+// stashedWork counts the stash entries THIS RUN PUT THERE: work the session
+// took out of the deliverable tree and did not put back.
+//
+// IT IS ASKED ONCE, AT THE TERMINAL READING, and never on the turn loop
+// ([Agent.terminalAudit]). It is a process, and the only moment its answer can
+// change anything is the one where a principal is about to say the ask is
+// finished.
+//
+// ── WHAT IS SUBTRACTED, AND WHY EACH ────────────────────────────────────────
+//
+// A STASH THAT WAS ALREADY THERE IS THE PERSON'S AND NOT OURS. It is the law the
+// checks already live under ([Remains.WasFailing]) — a run may only be held to
+// what it did itself — and without it a repository whose owner stashed something
+// last week would be told at every single ending that work was left outside the
+// tree, and could never say done. That is a false positive that bites somebody
+// who did nothing wrong, so the before-reading is subtracted by sha.
+//
+// AND THE GROUND LADDER'S OWN ENTRIES ARE NOT WORK LEFT LYING ABOUT. A landing
+// that has to merge into a ground holding uncommitted work sets that work aside
+// with `git stash push` and puts it back on every road out of there
+// ([taskTree.carryGroundWork]). The window is short and every road pops, but a
+// terminal reading taken inside it would see the harness's own entry and answer
+// carry on over a finished run. They are told apart by the message the push
+// itself was given — [groundStashMessage], reused rather than copied, so a
+// respelling cannot make this quietly stop matching.
+//
+// AND WITH NO BEFORE-READING, NOTHING IS COUNTED. Nobody then knows which
+// entries appeared since, so the honest answer about the stash is silence rather
+// than a guess — which is [Remains.BaselineRead]'s own law, applied to the other
+// reading this session takes of the tree it started with.
+func (a *Agent) stashedWork() int {
+	a.mu.Lock()
+	before, read := a.stashBefore, a.stashBeforeRead
+	a.mu.Unlock()
+	if !read {
+		return 0
+	}
+	found, read := stashList(a.deliverableTree())
+	if !read {
+		return 0
+	}
+	entries := 0
+	for _, entry := range found {
+		if before[entry.sha] || isGroundStash(entry.subject) {
+			continue
+		}
+		entries++
+	}
+	return entries
+}
+
+// isGroundStash says an entry is one the ground ladder pushed for a landing.
+//
+// IT IS THE SHAPE OF THE SUBJECT AND NOT THE WORDS ANYWHERE IN IT. A person
+// whose own stash message happens to quote the sentence — "before I ask aforge:
+// your own work, set aside to land the parser" — is describing their own work,
+// and swallowing it would be this reading going quiet about exactly the entry it
+// exists to name. So the match is anchored:
+//
+//   - `git stash push -m <message>` writes the subject `On <branch>: <message>`,
+//     and `On (no branch): <message>` on a detached head. Measured against git
+//     rather than assumed. A ref name cannot contain a colon, so the first `: `
+//     ends the lead-in.
+//   - What follows it has to BEGIN with [groundStashMessage]'s invariant head —
+//     the constant reused, never copied, so a respelling cannot make this
+//     quietly stop matching. The branch name is that message's tail and is not
+//     known here.
+//   - A plain `git stash` writes `WIP on <branch>: <sha> <subject>`, which does
+//     not open with `On ` and is therefore never stripped and never matched.
+func isGroundStash(subject string) bool {
+	subject = strings.TrimSpace(subject)
+	if lead, rest, found := strings.Cut(subject, ": "); found && strings.HasPrefix(lead, "On ") {
+		subject = rest
+	}
+	return strings.HasPrefix(subject, groundStashMessage(""))
 }
 
 // reconciliation is what the sweep found: what belongs to the answer, and what
@@ -523,6 +713,11 @@ func (a *Agent) openBaseline(ctx context.Context) {
 	if taken {
 		return
 	}
+	// AND THE STASH THE TREE ALREADY HELD IS PHOTOGRAPHED HERE, in front of the
+	// turn, because it is one ref read and because the whole of what it is worth
+	// is being certainly before the work ([Agent.readStashBefore]). The checks
+	// below cannot be taken in front of the turn, and are not.
+	a.readStashBefore()
 	checks := a.sessionChecks()
 	if len(checks) == 0 {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
@@ -741,16 +936,22 @@ func (a *Agent) journalBaseline(red, unread, moved []string) {
 	})
 }
 
-func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation) {
+// AND IT READS THE STASH, which is the third thing a person would have looked
+// at. Work the session pushed onto `git stash` is work that is not in the tree,
+// and every other reading here — the checks, the reconciliation, the ledger —
+// reads a tree it is missing from without noticing ([stashedWork]).
+func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, int) {
 	// THE BEFORE-READING IS WAITED FOR HERE AND NOWHERE ELSE. What these checks
 	// answer is about to be subtracted from it, and a terminal answer of done
 	// taken over a red check nobody could attribute would ship red work as
 	// finished ([Agent.awaitBaseline]).
 	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
-	found := reconcile(a.createdList(), a.deliverableTree())
-	a.journalChecks(ran)
-	return ran, found
+	tree := a.deliverableTree()
+	found := reconcile(a.createdList(), tree)
+	stashed := a.stashedWork()
+	a.journalChecks(ran, stashed)
+	return ran, found, stashed
 }
 
 // sweepSession carries out what [reconcile] sorted, and it is called at the END
@@ -771,11 +972,17 @@ func (a *Agent) sweepSession(found reconciliation) reconciliation {
 // journalChecks writes down what the tree said about itself, because a session
 // that was checked and a session that was taken at its word read identically in
 // the journal before this line existed.
-func (a *Agent) journalChecks(ran []CheckRun) {
-	if len(ran) == 0 {
+//
+// THE STASH RIDES ON THIS ROW RATHER THAN ON ONE OF ITS OWN. It is a fact from
+// the same reading, taken at the same moment, and a second row kind for one
+// integer would make a reader join two lines to learn what one terminal audit
+// found. A session with no checks and a stash still writes the row: the stash is
+// the news, and the empty check list beside it is true.
+func (a *Agent) journalChecks(ran []CheckRun, stashed int) {
+	if len(ran) == 0 && stashed == 0 {
 		return
 	}
-	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked"}
+	moment := journalPrincipal{Who: principalWord(a.who()), Event: "checked", Stashed: stashed}
 	for _, check := range ran {
 		moment.Checks = append(moment.Checks, check.Command)
 		if !check.Passed {
