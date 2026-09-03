@@ -167,7 +167,17 @@ hurry:
 **`settled` is not the old name of `ok`, and it is not going away.** It means "nothing this
 run is waiting for can still move", which is true of a run that asked a question and did
 nothing: `settled: true` with `ok: false` and exit 4. Reading the one as the other would
-record every refusal as a success.
+record every refusal as a success. A broken finished tree is the one ending that answers
+that sentence false; *Why settled can be false* below gives its exact shape.
+
+## Why settled can be false — the tree does not build or the run left code broken
+
+A run that hands back a tree its own check could not collect is not settled: the tree does
+not build, it left the code broken, and repairing it is still work waiting to move. That
+run says `settled: false`, `ok: false`, `stop: "incomplete"`, and leaves with exit 2. Its
+answer includes the check's own sentence about what could not be read.
+
+## Fields that belong only to one command
 
 Some fields belong to one command and stay. `aforge do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
