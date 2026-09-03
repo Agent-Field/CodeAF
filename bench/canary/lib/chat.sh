@@ -35,6 +35,9 @@ fi
 
 CHAT_POLL="${CHAT_POLL:-3}"
 CHAT_QUIET="${CHAT_QUIET:-20}"
+# How far inside the rig's wall aforge's own wall sits (seconds): the session
+# gets to end on its own law and write its ending before the rig stops watching.
+CHAT_WALL_MARGIN=${CHAT_WALL_MARGIN:-60}
 CHAT_STALL="${CHAT_STALL:-420}"
 CHAT_FRAME_WAIT="${CHAT_FRAME_WAIT:-60}"
 
@@ -67,8 +70,16 @@ canary_chat() {
   # `noframe` and nothing else, and the reason is here or nowhere.
   tmux new-session -d -s "$name" -c "$work" "sleep $((wall + 300))" 2>>"$out/tmux.err"
   tmux resize-window -t "=$name" -x 140 -y 45
+  # THE RIG'S CLOCK IS THE BACKSTOP, NOT THE ENDING. aforge is given its own
+  # wall, CHAT_WALL_MARGIN seconds inside the rig's, so an unattended session
+  # ends on its own law ("hours ran out") and the tmux clock only catches a
+  # session that ignored it. Before this line every --yolo chat cell ran with a
+  # money ceiling and no wall at all (Budget().Wall was 0), and every chat
+  # `wall` verdict up to the 713945e3 table was the tmux clock; see #407.
+  local hours
+  hours=$(python3 -c "print(round(max($wall - $CHAT_WALL_MARGIN, 60) / 3600, 4))")
   tmux respawn-window -k -t "=$name" -c "$work" \
-    "env AFORGE_HOME='$home' PATH='$PATH' TERM=xterm-256color '$bin' chat -yolo -one-model -model '$model' -max-cost '$cap'"
+    "env AFORGE_HOME='$home' PATH='$PATH' TERM=xterm-256color '$bin' chat -yolo -one-model -model '$model' -max-cost '$cap' -max-hours '$hours'"
 
   # The composer has to be up before it can be typed at; the status line's
   # idle word is the frame that says so.
