@@ -1824,24 +1824,6 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		})
 	}
 
-	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
-	// dwell skips instant batches; anything that runs longer gets a cheap line
-	// while it is still live. The child context is cancelled on return so a late
-	// answer cannot rewrite a settled caption.
-	if len(calls) > 0 {
-		captionCtx, disarmCaption := context.WithCancel(ctx)
-		defer disarmCaption()
-		go func() {
-			timer := time.NewTimer(captionDwell)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-				a.maybeCaption(captionCtx, hub, calls, rendered)
-			case <-captionCtx.Done():
-			}
-		}()
-	}
-
 	// AND THE CLOCK MOVES WITH THE BATCH. A tool round is the longest wait in
 	// this package by a wide margin — a `go test` runs for minutes where a
 	// request runs for seconds — and until this line the phase clock went quiet
@@ -3690,7 +3672,6 @@ func (a *Agent) addFoldedUsageAs(response *ai.Response, model string, calls int,
 // neither says what was being asked for.
 const (
 	auxRoleTitle    = "title"
-	auxRoleCaption  = "caption"
 	auxRoleTaskName = "taskname"
 	// auxRoleIntake is the third for the same reason the first two are: the form
 	// a subharness is launched on is something a person SEES, and a field filled
