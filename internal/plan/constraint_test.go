@@ -205,3 +205,62 @@ func TestAClaimTimeChildIsMintedInsideItsParentsSpec(t *testing.T) {
 		t.Fatalf("the parent overwrote what the division decided: %+v", written.Nodes[0].Spec)
 	}
 }
+
+// A CHAIN OF STAGES IS MINTED INSIDE ITS PARENT'S SPEC LIKE ANY OTHER
+// DIVISION. The direct stage branch returns before the ordinary fan-out seam,
+// so this keeps that earlier return from becoming a way for a sequential job
+// to lose the rules, criterion and method its parent already settled.
+func TestAStagedChildIsMintedInsideItsParentsSpec(t *testing.T) {
+	client := &stagePlanner{
+		stages: `{"stages":[{"title":"Read","summary":"Read what is there.","needs":[]},` +
+			`{"title":"Change","summary":"Make the change.","needs":[1]}]}`,
+		sizes: `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`,
+	}
+	graph := &Graph{Goal: "carry the whole thing to an end", Stages: []Stage{{Title: "Work"}}, NextID: 1}
+	parent := graph.Add(Node{Stage: 1, Title: "Work", Summary: "Carry the whole thing to an end",
+		Size: SizeOversized})
+	graph.Node(parent).Spec = Spec{
+		Instruction: "own every unit the gather listed",
+		Method:      "read what exists before writing anything",
+		Done:        Done{Produces: []string{"a per-unit note"}},
+		Constraints: []Constraint{{Text: "Change no files.", Kind: ConstraintNoWrites}},
+		Accept:      []Point{{Behaviour: "every unit has a note", Quote: "a note for each unit"}},
+	}
+
+	sub, _, err := ExpandOne(t.Context(), client, graph, parent,
+		Options{MaxDepth: 4, NodeBudget: 40}, ClaimContext{})
+	if err != nil {
+		t.Fatalf("ExpandOne: %v", err)
+	}
+	if len(sub.Nodes) < 2 {
+		t.Fatalf("the expansion produced %d nodes; the fixture draws two stages", len(sub.Nodes))
+	}
+	for _, node := range sub.Nodes {
+		if len(node.Spec.Constraints) != 1 || node.Spec.Constraints[0].Text != "Change no files." {
+			t.Fatalf("%q was minted outside the rule: %+v", node.Title, node.Spec.Constraints)
+		}
+		if len(node.Spec.Done.Produces) != 1 || node.Spec.Done.Produces[0] != "a per-unit note" {
+			t.Fatalf("%q was minted with no criterion: %+v", node.Title, node.Spec.Done)
+		}
+		if node.Spec.Method != "read what exists before writing anything" {
+			t.Fatalf("%q was minted with no working method: %q", node.Title, node.Spec.Method)
+		}
+		if strings.Contains(node.Spec.Instruction, "own every unit") {
+			t.Fatalf("%q inherited its parent's whole assignment: %q", node.Title, node.Spec.Instruction)
+		}
+	}
+	// THE CHECKLIST STILL ANSWERS TO THE NODE THAT DELIVERS. A chain has one
+	// sink, its last link, and that is the one difference from the fan-out
+	// above: the request's behaviours land on "Change" alone, never on the
+	// reading stage before it, so one gap buys one repair round and not one per
+	// link.
+	for _, node := range sub.Nodes {
+		held := len(node.Spec.Accept) != 0
+		if node.Title == "Change" && !held {
+			t.Fatalf("the last link delivers and was minted with no checklist: %+v", node.Spec)
+		}
+		if node.Title != "Change" && held {
+			t.Fatalf("%q was held to the whole request's behaviours: %+v", node.Title, node.Spec.Accept)
+		}
+	}
+}
