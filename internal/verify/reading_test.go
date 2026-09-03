@@ -73,3 +73,82 @@ func TestOnlyTheChecksThisWorkTurnedRedAreRegressed(t *testing.T) {
 		t.Errorf("a photograph nobody finished claimed %#v; nobody looked is not no regression", half)
 	}
 }
+
+// A READING KILLED AT ITS BUDGET IS NOT RETAKEN OVER THE SAME SCOPE. A second
+// identical attempt cannot finish where the first did not, and it spends the
+// same eighth of the wall to find that out.
+func TestACutReadingIsNotRetakenOverTheSameScope(t *testing.T) {
+	// The whole suite, cut. There is no narrower scope to fall to — the
+	// selection is everything the entrypoint covers — so the answer stands.
+	whole := Reading{
+		CutAfter: 2 * time.Minute, Budget: 2 * time.Minute,
+		Strategy: Strategy{Command: "go test -json ./...", Scope: ScopeWhole},
+	}
+	if whole.Retakeable() {
+		t.Error("a whole reading cut at its budget was queued to be run again whole")
+	}
+	// And a scoped one whose measured pace affords no file at all inside the
+	// budget is the same refusal one level down: two files cost two minutes
+	// between them, the budget is thirty seconds, and there is no selection
+	// smaller than one file to retake over.
+	same := Reading{
+		CutAfter: 2 * time.Minute, Budget: 30 * time.Second,
+		Strategy: Strategy{
+			Base:     "python3 -m pytest -rA",
+			Selected: []string{"tests/test_log.py", "tests/test_widget.py"},
+			Scope:    "touched packages (2 files)",
+		},
+	}
+	if same.Retakeable() {
+		t.Errorf("a cut reading was retaken over the %d files that were just killed",
+			len(same.Strategy.Selected))
+	}
+	// And where the pace affords a strictly smaller reading, it is still taken:
+	// forty files cut at 113 seconds narrow to twenty, which is a different
+	// reading and a real one.
+	narrower := Reading{
+		CutAfter: 113 * time.Second, Budget: 113 * time.Second,
+		Strategy: Strategy{
+			Base:     "python3 -m pytest -rA",
+			Selected: make([]string, 40),
+			Scope:    "touched packages (40 files)",
+		},
+	}
+	if !narrower.Retakeable() {
+		t.Error("a cut reading with a smaller selection to fall to was inherited as settled")
+	}
+}
+
+// THE READING OF A TREE NOTHING CHANGED IS THE READING SOMEBODY ALREADY TOOK OF
+// IT. The suite would be run a second time over identical bytes for an identical
+// roster, which is what the measured errand paid two minutes for, four times.
+func TestAnUnchangedTreeInheritsTheReadingBeforeTheWork(t *testing.T) {
+	before := Reading{
+		Taken: true,
+		Before: Result{
+			Reported: []string{"TestCard", "TestCatalog"},
+			Failing:  []string{"TestCatalog"},
+		},
+	}
+	settled, ok := before.OnAnUnchangedTree()
+	if !ok {
+		t.Fatal("a reading of an unchanged tree could not stand as the reading of it")
+	}
+	if !settled.AfterTaken || len(settled.After.Reported) != 2 {
+		t.Fatalf("the reading before the work did not stand as the reading after it: %#v", settled)
+	}
+	// It settles nothing it did not measure: a check that was red before the
+	// work is not a check the work broke.
+	if regressed := settled.Regressed(); len(regressed) != 0 {
+		t.Errorf("an unchanged tree produced a regression: %#v", regressed)
+	}
+	// And there is nothing to stand where nobody looked, or where a real second
+	// reading has already been taken.
+	if _, ok := (Reading{Unread: "this project declares no way of checking itself"}).
+		OnAnUnchangedTree(); ok {
+		t.Error("a reading nobody took was offered as the reading of a finished tree")
+	}
+	if _, ok := settled.OnAnUnchangedTree(); ok {
+		t.Error("a tree that was actually read a second time had its reading overwritten")
+	}
+}

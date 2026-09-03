@@ -47,7 +47,7 @@ func TestAGovernorRefusesTheRoundAndNeverTheReviewsFinding(t *testing.T) {
 	// open. See verify.RememberBaseline.
 	verify.ForgetBaselines()
 	revision.ForgetChecklists()
-	verify.RememberBaseline(workspace, verify.JobKey(dryRunRequest), verify.Reading{Taken: true})
+	verify.RememberBaseline(workspace, verify.JobKey(dryRunRequest), "", verify.Reading{Taken: true})
 
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{

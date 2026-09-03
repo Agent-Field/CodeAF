@@ -92,10 +92,20 @@ func (f Focus) Within(dir string) Focus {
 //     CamelCase and snake_case are two spellings of one name and a leading
 //     underscore is Python's mark for a private module.
 //
+// And a fourth, which is a place rather than a file: A DIRECTORY THE REQUEST
+// SPELLS AND THE WORKSPACE HOLDS IS A SUBJECT, and the package it is stands as
+// the scope of the reading. `go test ./internal/subharness/ -count=1` names one
+// package of a repository of two hundred, and until this it named nothing at
+// all. See namedDirectories and heldPlaces.
+//
 // Unresolved entries are kept as they were: they cost nothing and a caller may
 // have handed a path this walk could not reach.
 func Locate(root string, focus Focus) Focus {
 	wanted := map[string][]int{}
+	// The places it spells, settled against the disk, FIRST — everything below
+	// is keyed by position in this focus, so a drop has to happen before an
+	// index is taken of it.
+	focus = heldPlaces(root, focus)
 	located := append(Focus{}, focus...)
 	found := map[int][]string{}
 	for index, entry := range focus {
@@ -175,6 +185,45 @@ func Locate(root string, focus Focus) Focus {
 	return resolved
 }
 
+// heldPlaces is the focus with the places it spells settled against the disk:
+// what the workspace holds is kept, and what it does not is dropped.
+//
+// It is asked ONLY of an entry that spells a path and names no file extension,
+// which is the one shape this reader has to be strict about. A request is prose,
+// and prose has slashes in it — "and/or", the tail of a URL, a fraction — so a
+// place taken on its spelling alone would put a directory called `and` in the
+// focus and aim a reading at whatever check happens to sit under it. A path with
+// an extension keeps the older rule and is kept unresolved: a caller may hand a
+// file this program cannot see from here, and a name that resolves to nothing
+// costs nothing downstream.
+func heldPlaces(root string, focus Focus) Focus {
+	held := make(Focus, 0, len(focus))
+	for _, entry := range focus {
+		clean := strings.TrimSpace(entry)
+		spelled := strings.ContainsAny(clean, "/\\")
+		if !spelled || filepath.IsAbs(clean) || filepath.Ext(clean) != "" ||
+			pathHeld(root, filepath.ToSlash(clean)) {
+			held = append(held, entry)
+		}
+	}
+	return held
+}
+
+// pathHeld says the workspace holds this relative path at all, and heldDirectory
+// says it holds it as a directory. Both are one stat, and they are two names for
+// one question because the two callers ask it for different reasons: one is
+// deciding whether a spelled place is real, the other whether a subject is a
+// place rather than a file.
+func pathHeld(root, slashed string) bool {
+	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(slashed)))
+	return err == nil
+}
+
+func heldDirectory(root, slashed string) bool {
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(slashed)))
+	return err == nil && info.IsDir()
+}
+
 // locateLimit bounds how many files one name may resolve to.
 //
 // A name is a name because it is distinctive, so a handful is the honest answer
@@ -240,6 +289,38 @@ func NamedPaths(text string) []string {
 	return names
 }
 
+// namedDirectory matches a token that reads as a PLACE rather than as a file: a
+// path with a slash in it and no extension on the end — `./internal/subharness/`,
+// `packages/happy-dom`, `src/textual/widgets`. The shape is deliberately loose,
+// because prose contains slashes too ("and/or", a URL's tail), and nothing here
+// decides anything: a spelled place is a subject only once [Locate] has found
+// that the workspace actually holds it as a directory.
+//
+// It exists because a request that names a package named NOTHING as far as this
+// reader was concerned. The measured errand said `go test ./internal/subharness/
+// -count=1`, which spells its subject as plainly as a request ever does; the
+// only reader looking for paths wanted a dot and an extension, the only reader
+// looking for names wanted CamelCase or snake_case, and `subharness` is neither.
+// So the focus came out empty, the ladder had one whole rung, and the run
+// photographed 4,587 tests nine times over a request about seventeen files.
+var namedDirectory = regexp.MustCompile(`(?:\./)?\w[\w\-.]*(?:/[\w\-.]+)+/?`)
+
+// namedDirectories lists, in order and without repeats, the places a piece of
+// text spells. They are candidates and never answers — see [Locate].
+func namedDirectories(text string) []string {
+	var places []string
+	seen := map[string]bool{}
+	for _, match := range namedDirectory.FindAllString(text, -1) {
+		clean := strings.Trim(strings.TrimPrefix(strings.TrimSpace(match), "./"), "/")
+		if clean == "" || filepath.Ext(clean) != "" || seen[strings.ToLower(clean)] {
+			continue
+		}
+		seen[strings.ToLower(clean)] = true
+		places = append(places, clean)
+	}
+	return places
+}
+
 // subjectSpellings are the two ways a repository's own name for a thing is
 // written inside a sentence: CamelCase with at least two segments, and
 // snake_case with at least two segments. Both are DISTINCTIVE by construction —
@@ -266,13 +347,30 @@ const namedSubjectLimit = 64
 // alone was empty, no package was ever chosen, and the whole reading was taken
 // at the repository root and killed at its ceiling.
 //
+// The third half is the repair for the one measured here. A REQUEST THAT NAMES
+// A DIRECTORY HAS NAMED ITS SCOPE, and a directory is spelled with slashes and
+// no extension, so neither of the two readers above could see one: the errand
+// that said `go test ./internal/subharness/ -count=1` produced an empty focus
+// and a reading of the whole repository. See namedDirectories.
+//
 // Nothing here decides anything on its own: a name is only a subject once
-// [Locate] has matched it, whole, to a file the workspace holds.
+// [Locate] has matched it, whole, to a file or a directory the workspace holds.
 func NamedSubjects(text string) []string {
 	named := NamedPaths(text)
 	seen := make(map[string]bool, len(named))
 	for _, name := range named {
 		seen[strings.ToLower(name)] = true
+	}
+	for _, place := range namedDirectories(text) {
+		key := strings.ToLower(place)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		named = append(named, place)
+		if len(named) >= namedSubjectLimit {
+			return named
+		}
 	}
 	for _, spelling := range subjectSpellings {
 		for _, match := range spelling.FindAllString(text, -1) {
@@ -834,6 +932,19 @@ func focusShape(root string, focus Focus) change {
 		}
 		clean = filepath.ToSlash(filepath.Clean(clean))
 		if clean == "." || strings.HasPrefix(clean, "..") {
+			continue
+		}
+		// A DIRECTORY THE REQUEST NAMED IS THE PLACE ITSELF, NOT A FILE IN ITS
+		// PARENT. Read as a file, `internal/subharness` would touch the
+		// directory `internal` — which holds no check of its own — and
+		// contribute the stem `subharness`, which no test file in the package is
+		// named after. Read as the place it is, every check inside it is a check
+		// the request asked for, which is what the request said. Nothing else is
+		// derived from it: a place is not a module, so it names no import and
+		// carries no stem, and the reading stays the package rather than growing
+		// to every package that imports it.
+		if heldDirectory(root, clean) {
+			shape.dirs[clean] = true
 			continue
 		}
 		dir, base := pathDir(clean), lastSegment(clean)
