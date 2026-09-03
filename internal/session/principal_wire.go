@@ -209,12 +209,19 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			continue
 		}
 		settled++
-		report, _, _, _ := node.leavings()
+		report, changed, _, merge := node.leavings()
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
 			State:  state,
 			Report: report,
+			// WHY IT ENDED AND WHAT IT TOUCHED, so a reader of what is left can
+			// tell a gap in the ask from a sibling that died on the wire, and
+			// from one whose work somebody else has since brought home
+			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
+			Ending: node.endingNow(),
+			Files:  changed,
+			Merged: merge == mergeMerged,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -461,5 +468,8 @@ func landingFromNotice(notice TaskNotice) Landing {
 		State:     notice.State,
 		Report:    notice.Report,
 		Signature: landingSignature(notice.State, notice.Report),
+		Ending:    notice.Ending,
+		Files:     notice.Changed,
+		Merged:    notice.Merge == mergeMerged,
 	}
 }

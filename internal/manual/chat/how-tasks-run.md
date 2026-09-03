@@ -1495,7 +1495,8 @@ read them.
 yours, and the report leads with the task's own account of the work, with what it was
 checked on under it — no lead word at all.
 
-**Halted.** `task 7 lost the connection: <title>`, `task 7 went in circles: <title>`,
+**Halted.** `task 7 lost the connection: <title>`,
+`task 7 the model provider refused it: <title>`, `task 7 went in circles: <title>`,
 `task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`,
 `task 7 would not write its notes down: <title>`. Nothing was found wrong with the work; the
 branch is kept and the task can be run again from it. The rail draws these with `!` (see the
@@ -2121,7 +2122,7 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, went in circles, out of steps, why does it say not accepted under my task, blocked by another task, would not write its notes down
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, the model provider refused it, went in circles, out of steps, why does it say not accepted under my task, blocked by another task, would not write its notes down
 
 A task that did not finish keeps its branch, and the row under its name on the rail says
 **why** it stopped. The same words lead the task's card. They are three kinds of news:
@@ -2133,6 +2134,10 @@ A task that did not finish keeps its branch, and the row under its name on the r
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, and then one more worker was run on the same
     model in the same working copy; this row means both were spent.
+  - `the model provider refused it — branch kept`: the model provider would not serve the
+    request at all — an API error, a model that is not there, a route with no provider left.
+    Nothing was found out about the work, and on a run with a budget this does **not** count
+    as part of what is still left to do.
   - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
     ended the turn (its last words are `this turn is going in circles · stopping here
     with anything remaining left undone`). Repetition is the whole of it: the same call
@@ -2194,7 +2199,8 @@ Endings are checked in a fixed order, and the first match wins:
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
 | 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
 | 6 | The connection to the model dropped — a reset, a closed socket — after the call's own retries and one more worker on the same model | `lost the connection to the model: <err>` |
-| 6b | The run errored | `it ended with an error: <err>` |
+| 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
+| 6c | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
 | 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |

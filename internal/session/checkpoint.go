@@ -2601,6 +2601,7 @@ const checkpointStoppedNote = "stopping here · "
 func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision {
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
+	a.journalAbsorbed(remains)
 	decision := principal.Decide(remains)
 	if decision.Verb == DecideDone && remains.Acceptance != "" {
 		checks, found := a.terminalAudit(ctx)
@@ -2625,6 +2626,42 @@ func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision
 	}
 	a.journalDecision(decision)
 	return decision
+}
+
+// journalAbsorbed writes down every unit of work that stopped counting as
+// unfinished because somebody else did it and brought it home.
+//
+// A GAP THAT CLOSES WITHOUT ANYBODY DECIDING ANYTHING HAS TO SAY WHO CLOSED IT.
+// The reading below simply stops naming an absorbed unit ([Remains.absorbedBy]),
+// so without this line the file would show a run that carried on over a gap and
+// then stopped mentioning it, with nothing anywhere saying why — which is the
+// exact shape of the failure this whole change is about, in the other direction.
+//
+// AND EACH IS SAID ONCE. The reading is taken at the end of every reply and the
+// answer does not change, so a row per turn would be one fact written thirty
+// times. What is already written down is remembered for the life of the session.
+func (a *Agent) journalAbsorbed(remains Remains) {
+	lines := remains.absorbed()
+	if len(lines) == 0 || a.steward() == nil {
+		return
+	}
+	a.mu.Lock()
+	file := a.file
+	if a.absorbed == nil {
+		a.absorbed = map[string]bool{}
+	}
+	fresh := lines[:0:0]
+	for _, line := range lines {
+		if !a.absorbed[line] {
+			a.absorbed[line] = true
+			fresh = append(fresh, line)
+		}
+	}
+	a.mu.Unlock()
+	if file == nil || len(fresh) == 0 {
+		return
+	}
+	file.appendPrincipal(journalPrincipal{Who: "steward", Event: "absorbed", Kept: fresh})
 }
 
 // journalDecision writes down what the goal owner decided, because a run that
@@ -3392,7 +3429,9 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // and it is written where what BECAME of the answer is also known
 // ([Agent.endTurnUnderSteward]).
 func (a *Agent) decideHandover(ctx context.Context, reader, said string) Decision {
-	decision := a.who().Decide(a.remainsFor(said, reader))
+	remains := a.remainsFor(said, reader)
+	a.journalAbsorbed(remains)
+	decision := a.who().Decide(remains)
 	if decision.Verb == DecideStop {
 		a.sweepSession(reconcile(a.createdList(), a.deliverableTree()))
 	}

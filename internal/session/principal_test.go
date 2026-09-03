@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
@@ -160,6 +162,155 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 	}
 	if !strings.Contains(decision.Brief, "wire the handlers did not finish") {
 		t.Fatalf("the brief does not name the unfinished work:\n%s", decision.Brief)
+	}
+}
+
+// ── what is left is read from the tree, not from a sibling's death (#513) ───
+
+// A UNIT THAT DIED ON THE WIRE FOUND NOTHING OUT, SO IT IS NOT WORK THAT IS
+// LEFT.
+//
+// The reef cell: the parent wrote `tests/reef_service/test_auth.py` itself, went
+// green on its own check and merged home. Its child — the unit that was to write
+// that very file — had died an hour earlier on an API 404, which is a fact about
+// who served the request and about nothing else. It was read as "Add focused
+// tests … did not finish", and the run carried on over a finished tree until its
+// wall.
+func TestASiblingThatDiedOnTheWireIsNotWorkThatIsLeft(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{
+				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true,
+				Files: []string{"tests/reef_service/test_auth.py", "reef/service/auth.py"},
+			},
+			{
+				ID: 3, Title: "Add focused tests for case-insensitive bearer scheme",
+				State: TaskFailed, Ending: TaskEndingUpstream,
+				Report: "it ended with an error: API error (404): All providers have been ignored",
+				Files:  []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+		Checks: []CheckRun{{Command: "pytest", Passed: true}},
+	})
+	if decision.Verb != DecideDone {
+		t.Fatalf("a finished tree was carried on over a sibling that died on the wire: %+v", decision)
+	}
+}
+
+// AND THE CLASS IS READ OFF THE ERROR'S OWN TYPE, WHICH IS WHY IT NEEDED A WORD
+// OF ITS OWN.
+//
+// A provider refusing the request is not a dropped connection: it is terminal,
+// so [diedOnTheWire] answers false for it and the node used to end as
+// [TaskEndingError] — the same word as a working copy that could not be made.
+// [terminalProviderFailure] is the typed reading that tells them apart, on the
+// error's Go type and never on its sentence.
+func TestAProviderRefusalIsToldFromAnErrorAndFromTheWire(t *testing.T) {
+	refused := &provider.APIError{Status: 404, Message: "All providers have been ignored"}
+	if !terminalProviderFailure(refused) {
+		t.Fatal("a provider that refused the request was not read as one")
+	}
+	if diedOnTheWire(refused) {
+		t.Fatal("a terminal refusal was read as a dropped connection")
+	}
+	// AND AN ORDINARY FAILURE IS NEITHER, so it keeps the ending it had and stays
+	// a finding about the work.
+	ours := errors.New("mkdir /nowhere/tree: read-only file system")
+	if terminalProviderFailure(ours) {
+		t.Fatal("a working copy that could not be made was blamed on the provider")
+	}
+	if !(Landing{State: TaskFailed, Ending: TaskEndingError}).aboutTheWork() {
+		t.Fatal("an ordinary failure stopped being a finding about the work")
+	}
+	for _, ending := range []TaskEnding{TaskEndingWire, TaskEndingUpstream} {
+		if (Landing{State: TaskFailed, Ending: ending}).aboutTheWork() {
+			t.Fatalf("a node that ended %q was read as a finding about the work", ending)
+		}
+	}
+}
+
+// AND A UNIT THAT FAILED AT THE WORK IS STILL WORK THAT IS LEFT.
+//
+// This is the control, and it is the whole risk of the clause above: a check
+// that found gaps, a loop guard, a threshold, a working copy that could not be
+// made are all findings ABOUT THE JOB, and nothing about them is answered by
+// somebody else's afternoon.
+func TestAUnitThatFailedAtTheWorkIsStillLeft(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Landed:     true,
+		Landings: []Landing{
+			{ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true},
+			{
+				ID: 3, Title: "Add focused tests for case-insensitive bearer scheme",
+				State: TaskFailed, Ending: TaskEndingRefused,
+				Files: []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+		Checks: []CheckRun{{Command: "pytest", Passed: true}},
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a unit the check refused was called finished: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "Add focused tests for case-insensitive bearer scheme did not finish") {
+		t.Fatalf("the brief does not name the unfinished work:\n%s", decision.Brief)
+	}
+}
+
+// AND A UNIT WHOSE WORK SOMEBODY ELSE BROUGHT HOME IS ABSORBED, AND THE FILE
+// SAYS BY WHOM.
+//
+// The failed unit's only file is on the person's branch, put there by a unit
+// that finished and merged. Naming it as unfinished sends the run back to write
+// a file that is already written. What the reading may not do is close a gap
+// silently, so the absorption is a line of its own.
+func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
+	remains := Remains{
+		Landed: true,
+		Landings: []Landing{
+			{
+				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true,
+				Files: []string{"tests/reef_service/test_auth.py", "reef/service/auth.py"},
+			},
+			{
+				ID: 3, Title: "Add focused tests", State: TaskFailed, Ending: TaskEndingSteps,
+				Files: []string{"tests/reef_service/test_auth.py"},
+			},
+		},
+	}
+	if left := remains.unmet(); len(left) != 0 {
+		t.Fatalf("work already on the person's branch is still being asked for: %q", left)
+	}
+	said := remains.absorbed()
+	if len(said) != 1 || !strings.Contains(said[0], "Add focused tests was absorbed by bearer case sensitivity") {
+		t.Fatalf("the absorption is not said whole: %q", said)
+	}
+
+	// AND THE THREE WAYS IT IS REFUSED. A unit that changed nothing cannot be
+	// shown to be done; a landing that finished and could not come home is not
+	// the tree holding anything; and half of somebody's work is not their work.
+	nothingChanged := remains
+	nothingChanged.Landings[1].Files = nil
+	if left := nothingChanged.unmet(); len(left) != 1 {
+		t.Fatalf("a unit that changed nothing was absorbed anyway: %q", left)
+	}
+	nothingChanged.Landings[1].Files = []string{"tests/reef_service/test_auth.py"}
+
+	neverCameHome := remains
+	neverCameHome.Landings[0].Merged = false
+	if left := neverCameHome.unmet(); len(left) != 1 {
+		t.Fatalf("a landing that never came home absorbed another: %q", left)
+	}
+	neverCameHome.Landings[0].Merged = true
+
+	halfDone := remains
+	halfDone.Landings[1].Files = []string{"tests/reef_service/test_auth.py", "reef/service/scopes.py"}
+	if left := halfDone.unmet(); len(left) != 1 {
+		t.Fatalf("a unit half of whose work was done was absorbed: %q", left)
 	}
 }
 

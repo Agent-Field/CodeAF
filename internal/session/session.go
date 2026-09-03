@@ -1758,6 +1758,11 @@ type Agent struct {
 	// the node so the graph's own struct stays what it is — the person's work —
 	// and so a node that nothing classified simply has no entry.
 	tallies map[uint64]*taxonomy.Tally
+
+	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
+	// so one unit of work whose job somebody else did is said once rather than
+	// at the end of every reply for the rest of the run.
+	absorbed map[string]bool
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string

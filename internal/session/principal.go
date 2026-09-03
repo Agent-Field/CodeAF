@@ -184,6 +184,42 @@ type Landing struct {
 	State     TaskState
 	Report    string
 	Signature string
+
+	// Ending is WHY a failed landing stopped where it did, in the harness's own
+	// typed word ([TaskEnding]). It is here for one question: whether this
+	// failure is a finding about the WORK at all ([Landing.aboutTheWork]).
+	Ending TaskEnding
+
+	// Files is what this unit of work changed, worktree-relative and in the
+	// words its own ledger uses. It answers whether a failed unit's work exists
+	// on the tree anyway, having been done by somebody else
+	// ([Remains.absorbedBy]).
+	Files []string
+
+	// Merged says the work came home — not merely that the node said done, but
+	// that what it made is on the person's own branch. Only a merged landing may
+	// absorb a failed one, because a landing that finished and could not come
+	// home is not the tree holding anything.
+	Merged bool
+}
+
+// aboutTheWork reports whether this landing's failure says anything about the
+// job at all.
+//
+// A NODE THAT DIED ON THE WIRE OR WAS REFUSED BY THE PROVIDER FOUND NOTHING OUT.
+// The connection dropped, or an upstream would not serve the request: neither is
+// evidence that the ask is unfinished, and reading one as a gap is the harness
+// mistaking its own bad afternoon for a fact about the work. Measured (#513):
+// the reef cell's third task died on an API 404, its parent had already written
+// the very file it was for and merged it home with its own check green, and the
+// run carried on for the rest of its wall over a finished tree because a dead
+// sibling was still being counted as work that did not finish.
+//
+// EVERY OTHER ENDING IS THE WORK'S and is left exactly as it was — a check that
+// found gaps, a loop guard, a threshold, a person stopping it, a working copy
+// that could not be made.
+func (l Landing) aboutTheWork() bool {
+	return l.Ending != TaskEndingWire && l.Ending != TaskEndingUpstream
 }
 
 // unsatisfied reports a landing that did not finish the work it was given.
@@ -266,6 +302,15 @@ func (r Remains) unmet() []string {
 		if !landing.unsatisfied() {
 			continue
 		}
+		// WHAT IS LEFT IS READ FROM THE TREE, NOT FROM A SIBLING'S DEATH. A unit
+		// that never found anything out is not a gap in the ask, and neither is
+		// one whose work another unit has since done and brought home.
+		if !landing.aboutTheWork() {
+			continue
+		}
+		if r.absorbedBy(landing) != "" {
+			continue
+		}
 		if title := strings.TrimSpace(landing.Title); title != "" {
 			out = append(out, title+" did not finish")
 			continue
@@ -279,6 +324,75 @@ func (r Remains) unmet() []string {
 		out = append(out, check.Command+" does not pass")
 	}
 	return out
+}
+
+// absorbedBy names the landing that already did this one's work, and "" when
+// nothing did.
+//
+// A UNIT'S WORK IS ITS FILES. A failed unit whose every file has since been
+// changed by a unit that finished AND came home is not a gap in the ask: the
+// thing it was for is on the person's branch, put there by somebody else, and
+// naming it as unfinished sends the run back to write a file that is already
+// written. In the reef cell the parent wrote its child's only file itself, went
+// green on its own check and merged — and the child, dead on the wire, was still
+// read as work outstanding.
+//
+// IT IS DELIBERATELY STRICT IN THREE WAYS. A failed unit that changed NOTHING is
+// never absorbed, because nothing of it can be shown to be done. Only a landing
+// that is both done and MERGED may absorb, because work that finished and could
+// not come home is not the tree holding anything. And every file must be
+// covered: a unit half of whose work somebody else did is a unit with work left.
+//
+// THE WHOLE SET IS READ RATHER THAN WHAT CAME AFTER, because a landing carries
+// no clock and the question is not who was first — it is whether the file is
+// home NOW. The reef cell settles that on its own: the unit that absorbed the
+// dead one has the lower id and landed later.
+func (r Remains) absorbedBy(failed Landing) string {
+	if len(failed.Files) == 0 {
+		return ""
+	}
+	for _, landing := range r.Landings {
+		if landing.ID == failed.ID || landing.State != TaskDone || !landing.Merged {
+			continue
+		}
+		if !covers(landing.Files, failed.Files) {
+			continue
+		}
+		return workWord(landing.Title, landing.ID)
+	}
+	return ""
+}
+
+// absorbed is every "<title> was absorbed by <title>" this reading found, for
+// the journal: a unit that stopped counting as unfinished without anybody
+// deciding anything must say who did its work, or the file records a gap that
+// closed for no reason anybody can read afterwards.
+func (r Remains) absorbed() []string {
+	var out []string
+	for _, landing := range r.Landings {
+		if !landing.unsatisfied() || !landing.aboutTheWork() {
+			continue
+		}
+		if by := r.absorbedBy(landing); by != "" {
+			out = append(out, workWord(landing.Title, landing.ID)+" was absorbed by "+by)
+		}
+	}
+	return out
+}
+
+// covers reports whether every one of want appears in have. The lists are a
+// handful of paths each, so the walk is the honest shape.
+func covers(have, want []string) bool {
+	held := make(map[string]bool, len(have))
+	for _, path := range have {
+		held[strings.TrimSpace(path)] = true
+	}
+	for _, path := range want {
+		if !held[strings.TrimSpace(path)] {
+			return false
+		}
+	}
+	return true
 }
 
 // DecisionVerb is one of the three answers there are to a turn that stopped.

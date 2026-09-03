@@ -174,6 +174,27 @@ None of this applies to a session you are sitting in front of: your turn's work 
 task exactly as it always has, nothing is decided for you, and the two readers agreeing
 still leaves your answer where it is.
 
+## What counts as still left · a task that died on the wire · it kept working after everything was finished
+
+**What is left is read from the tree, not from a task's death.** A run with a budget looks
+at every piece of work at the end of each reply and asks what stands between it and
+finished. Two kinds of dead task do **not** count:
+
+- **One that died on the connection or was refused by the model provider.** A dropped
+  stream, an API error, a model that is not there: nothing was found out about the job, so
+  it is not evidence that anything is unfinished. Every other ending still counts — a check
+  that found gaps, a loop that went round, a step limit, a working copy that could not be
+  made, one you stopped yourself.
+- **One whose files somebody else wrote and brought home.** If every file a dead task was
+  going to change has since been changed by a task that finished **and** merged, the thing
+  it was for is on your branch already, and asking for it again would rewrite a file that is
+  already written. It has to be every file and the other task has to have merged; half of
+  somebody's work is still work.
+
+Measured before this: a task died on an API 404 an hour before its parent wrote the very
+file it was for, went green and merged. The run read the dead sibling as a gap in the ask
+and carried on over a finished tree until its wall ran out.
+
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
 An unattended run with a budget looks at the work at the end of every reply: which

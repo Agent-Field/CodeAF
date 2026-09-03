@@ -2704,6 +2704,14 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	}
 }
 
+// endingNow is [TaskNode.endingLocked] for a caller that does not hold the
+// graph, which is every reader outside the task engine.
+func (n *TaskNode) endingNow() TaskEnding {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.endingLocked()
+}
+
 // endingLocked is the ending a notice and a record carry, with the graph held.
 // A node a person stopped carries [TaskEndingStopped] whether or not anything
 // wrote it — the flag was the whole of that fact before the ending existed, and
@@ -3017,6 +3025,8 @@ func haltedVerb(ending TaskEnding) string {
 	switch ending {
 	case TaskEndingWire:
 		return "lost the connection"
+	case TaskEndingUpstream:
+		return "the model provider refused it"
 	case TaskEndingCircling:
 		return "went in circles"
 	case TaskEndingBlocked:
@@ -3731,6 +3741,19 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 		if diedOnTheWire(runErr) {
 			node.end(TaskEndingWire)
 			node.finish(withReport("lost the connection to the model: "+runErr.Error(), report), changed, tree.branch, merge)
+			return TaskFailed, true
+		}
+		// AND A PROVIDER THAT REFUSED THE REQUEST IS THE SAME NEWS AS THE WIRE,
+		// however different the sentence reads. Nothing was learned about the
+		// work — an API error, a refusal, a model that is not there — so the
+		// ending is classed for what it was ([TaskEndingUpstream]) and a reader
+		// of what is left knows not to count it as a gap in the ask. The
+		// question is put to the error's own TYPE and never to its words
+		// ([terminalProviderFailure]), and the person's sentence is unchanged:
+		// what they need is the provider's own account of the refusal.
+		if terminalProviderFailure(runErr) {
+			node.end(TaskEndingUpstream)
+			node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
 		node.end(TaskEndingError)
