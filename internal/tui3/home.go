@@ -690,6 +690,17 @@ type homeView struct {
 	// nothing at the two wider tiers and vanish whole below them
 	// (homeattention.go).
 	tier homeTier
+	// room is how many rows THIS FRAME gave the column, settled by the draw
+	// before the column is built exactly as [homeView.tier] is
+	// (place_home.go's [placeHome.body]). The list is capped by it — as many
+	// rows as the frame can hold, never fewer than [switcherShown] — and a
+	// column that never asked was a home that drew eight conversations on a
+	// fifty-row terminal and left twenty-eight rows blank under them.
+	//
+	// ZERO IS "NOBODY HAS DRAWN A FRAME YET", not a column of no rows: a
+	// reading built before the first draw is the reading this surface made
+	// before the height was ever in scope.
+	room int
 	// reading is the resting list as switcher.go read it — the ledger, the
 	// ranked rows, the fold — and every line of [homeView.lines] built from it
 	// points into this (place_home.go). It is replaced whole with those lines,
@@ -727,6 +738,12 @@ type homeView struct {
 	standRoot string
 	bar       []hudSpan
 	barRow    int
+
+	// liftedItems is the standing items the phone's triage sections have already
+	// drawn, keyed by [phoneItemKey], so [homeView.projectBlock] does not draw
+	// them a second time under their own project (homephone.go's second law).
+	// It is nil at every wider tier, where nothing is lifted.
+	liftedItems map[string]bool
 
 	// bandOpen is which list-shaped bands of the right column a person opened,
 	// by band and subject (homebands.go). It dies with the screen.
@@ -1719,6 +1736,15 @@ func (h *homeView) projectBlock(hit homeHit, query string) {
 		shownItems, folded := standSplit(h.items[hit.project.Dir], h.itemsOpen[hit.project.Dir])
 		itemsFolded = folded
 		for _, view := range shownItems {
+			// AND A ROW APPEARS ONCE (homephone.go's second law). The phone's
+			// triage sections lift the items that need somebody or are firing
+			// right now to the top of the screen, and an item drawn there is
+			// not drawn again down here. The map is empty on every wider frame,
+			// where the zones are a summary rather than a second copy of the
+			// row.
+			if h.liftedItems[phoneItemKey(hit.project, view)] {
+				continue
+			}
 			if standHot(view) {
 				hot = append(hot, view)
 				continue
@@ -2809,6 +2835,10 @@ func (h *homeView) rebuild() {
 // disagree. The phone's inbox is homephone.go's; every wider frame is
 // [homeView.buildWorld]'s, untouched.
 func (h *homeView) buildFor() {
+	// NOTHING IS LIFTED UNTIL A SHAPE LIFTS IT. Only the phone's inbox takes
+	// rows out of their projects, and a map left standing from the frame before
+	// this one would silence a row on a screen that never lifted it.
+	h.liftedItems = nil
 	// bridge lane: whichever shape the column takes, THE ONE MOVING CELL is
 	// chosen with the lines rather than at the draw (homespinner.go). It is
 	// settled here, in the one place both fillers pass through, for the reason

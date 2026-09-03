@@ -22,6 +22,12 @@ The line over the question reads `setting up · 1 of 3`; with only one thing mis
 reads `setting up`. The foot says what `enter` does right now — `enter takes balanced`,
 `enter keeps $500`, `enter connects in browser` — and what `esc` does now.
 
+**On a window too short for the whole block the explanation is what goes**, a line at a
+time from the bottom of the prose up, and the wordmark with it if it comes to that. The
+question, the `›` box you type into and the foot naming `enter` and `esc` are the last
+three rows to be given up, so a twelve-row split pane still shows a screen you can answer
+and leave.
+
 ## Set up my api key — the openrouter key step, and what happens with no key
 
 On a local interactive launch using aforge's built-in model endpoint, the first step reads

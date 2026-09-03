@@ -51,3 +51,158 @@ appear inside comments and tests that pin their absence. The banned machinery wo
 17. The resting foot promises `tab next place` on a frame drawing one place — /home/santosh/af-polish/internal/tui3/home.go:256 (`homeRestHint = homeFootWord + " · tab next place"`), which is a constant and never asks the bar what it drew — at 60 columns the strip has collapsed to ` home` (row 10 above) and the foot still names the places, so the one line that could rescue the collapsed bar instead reads as a hint about rooms that are not on screen; the key itself still works, so this is a wording defect rather than a dead key — fix shape: at a width where the bar dropped words, the clause earns its cells by naming what it reaches (`tab · 7 places`) — sev: low — frames: `home-idle.60x30.txt` (lines 2 and 30)
 
 18. The card's four readings are separated by blank rows that a short card pays for twice — /home/santosh/af-polish/internal/tui3/place_home.go:519-542 (`cardBandsOf` groups) and home.go's `homeCardStack` — at 160×24 the card draws 15 rows of content across rows 5-19 with three blank separators, then the list beside it ends at row 14 and both columns leave rows 20-21 empty above the rule; the rhythm is right and the arithmetic is right, but the two columns end at different heights with no relationship between them, which reads as one column having been cut — worth noting only because fixing row 2 (the list growing to the room) makes the columns end together and this stops being visible — fix shape: none on its own; verify after row 2 lands — sev: low — frames: `home-short.160x24.txt` (rows 14 and 19)
+
+---
+
+## fixed
+
+This pass took rows 1, 2, 4, 5, 6, 7 and 9. Every fix is pinned by a named test
+in `internal/tui3`, and every one was verified on a frame captured from the real
+binary against the demo home — the `-after` frames sit beside the originals in
+`docs/design/polish/frames/`.
+
+**Row 1 — the product has one name, and it is `aforge`.**
+`styles.go`'s `product` is now `"aforge"`; `pulse.go`'s second spelling
+(`pulseName`) is deleted and the pulse line reads the one constant.
+`welcome.go` grew the two letterforms the name needed (`r`, `g`), and
+`firstrun.go`'s six sentences interpolate `product` instead of spelling the name
+a seventh through twelfth time. Files: `internal/tui3/styles.go`,
+`internal/tui3/pulse.go`, `internal/tui3/welcome.go`, `internal/tui3/firstrun.go`,
+`internal/tui3/home_test.go`; manual: `starting-aforge.md`, `screen.md`,
+`commands.md`, `empty-screen.md` (the wordmark's own ASCII drawing included).
+Tests: `TestTheProductIsNamedOnceAndItIsTheNameYouType`,
+`TestTheWordmarkCanSpellTheProductsWholeName`,
+`TestTheFirstScreensWordmarkAndItsProseNameOneProduct`
+(`internal/tui3/productname_test.go`). Frames:
+`home-firstrun.{120x40,80x24,60x30}.txt` → `home-firstrun-after.{120x40,80x24,60x30}.txt`.
+
+**Row 2 (H1) — the list grows to the frame, and eight is the floor.**
+`switcherView` gained a `room`, handed in by `place_home.go`'s `buildSwitch`
+from the room `placeHome.body` was given (less the errands standing over the
+reading); `switcherReading.capAtRest` returns what is left of the frame under
+what is already on it, never fewer than `switcherShown`, and the grouped view
+settles its cap against the headings it will spend. `switcherShown` finally has
+the doc comment it never had. The reading stays PURE — a reading given no room
+draws exactly what it drew before, which is what keeps every existing fixture
+true. Files: `internal/tui3/switcher.go`, `internal/tui3/place_home.go`,
+`internal/tui3/home.go`; manual: `home.md` (six passages that said "eight rows").
+Tests: `TestTheListGrowsToTheFrameAndIsNeverShorterThanEight`,
+`TestAGrownListStillPaysForItsOwnHeadings`,
+`TestHomeDrawsAsManyConversationsAsTheFrameHolds`
+(`internal/tui3/switcherroom_test.go`). Frames:
+`home-idle.{120x40,140x45,160x50}.txt` → `home-idle-after.{120x40,140x45,160x50}.txt`
+— seventeen conversations on the 120x40 frame where twelve used to be eight and a fold.
+
+**Row 4 — the name is whole before any fact gets a cell.**
+`switcherPaintRow`'s give-way loop measures the whole title instead of an
+eight-cell floor, so the facts drop until the name fits and the eight survives
+only as the last resort — which is where `rowPlan.fit` stops too. The row was
+NOT routed through `rowPlan`/`rowHalves`: that fitter joins its facts with
+` · ` and this list joins them with a space, so the change would have re-spelled
+every row on home and every needle the e2e suite waits for. The guard is the
+audit's own first fix shape; the shared fitter is a wave of its own.
+Files: `internal/tui3/switcher.go`. Tests:
+`TestTheNameIsWholeBeforeAnyFactGetsACell`,
+`TestAWideFrameKeepsTheNoteBesideTheWholeName`,
+`TestANameTooLongForTheFrameTakesTheRowAlone`
+(`internal/tui3/switcherrow_test.go`). Frames: `home-idle.100x30.txt` (line 6,
+`? tell me when CI goe…`) → `home-idle-after.100x30.txt` (line 6, the whole name).
+
+**Row 5 (H3a) — the card's place line spends the fact, not the address.**
+`homeCardPlace` fits the address alone and hangs the repository's clause off
+what is left, dropping it WHOLE rather than slicing the path's head off. Two
+clauses are reserved out of the address's cells rather than ranked behind it:
+`that folder is gone`, which is the statement that there is no checkout, and the
+door word (`here`, `open in another window`), which is what the key under the
+person's finger will do. Files: `internal/tui3/place_home.go`; manual: `home.md`
+(the place line's own bullet). Tests:
+`TestTheCardsPlaceLineSpendsTheFactsBeforeTheAddress`,
+`TestARefusalAboutTheAddressTravelsWithTheAddress`
+(`internal/tui3/cardplace_test.go`). Frames: `home-idle.200x50.txt` (line 6,
+`…rge-v2 · master, 3 files dirty · open in another window`) →
+`home-idle-after.200x50.txt`, `home-short-after.160x24.txt`.
+
+**Row 6 (H3b) — a card row never prices a name it had to cut.**
+`bandSidesWithSeparator` shares its row while the label fits WHOLE beside the
+tail; a label that had to be cut takes the row and the fact goes to the line
+under it — the two-line branch that was already there, fired by the right
+question. The caller's floor survives as the last resort, for a label too long
+for a row of its own, where a second line would be spent for nothing.
+Files: `internal/tui3/homebands.go`. Test:
+`TestACardRowNeverPricesANameItHadToCut` (`internal/tui3/bandsides_test.go`).
+Frames: `home-short.160x24.txt` (line 12, `✓ Port the picker onto the ne… $0.31`)
+→ `home-work-after.160x24.txt`.
+
+**Row 7 — a short first run keeps its box and its way out.**
+The setup block now gives up rows from its MIDDLE, last one first: the prose and
+then the wordmark, never the question, the `›` box or the keys line. `setupTrim`
+is the whole of it, and the caret rides the trim; a block still too tall after
+every soft row has gone loses its HEAD rather than its foot. Files:
+`internal/tui3/firstrun.go`; manual: `getting-started.md`. Tests:
+`TestAShortWindowKeepsTheSetupsBoxAndItsWayOut`,
+`TestATallWindowStillDrawsTheWholeSetupBlock`
+(`internal/tui3/firstrun_short_test.go`). Frames:
+`home-firstrun-tiny.120x12.txt` → `home-firstrun-tiny-after.120x12.txt`
+(the `›` box and `enter connects in browser · paste a key · esc not now` are both
+on the frame), `home-firstrun-short-after.120x16.txt`.
+
+**Row 9 — a standing item is drawn once on the phone.**
+`phoneLifted` gained an `items` set, `phoneWaiting` and `phoneRunning` record
+into it, and `projectBlock` skips what the triage sections already drew — the
+map is hung on the view because that block is shared with every wider frame and
+is nil there. Files: `internal/tui3/homephone.go`, `internal/tui3/home.go`.
+Test: `TestAPhoneInboxDrawsAStandingItemOnlyOnce`
+(`internal/tui3/switcherrow_test.go`). Frames: `home-phone.50x30.txt` (rows 4-5
+against 8-9) → `home-phone-after.50x30.txt` — the duplicate is gone and two
+conversations came back into the project block with the rows it freed.
+
+### skipped, and why
+
+- **Row 3 (H2)** — moving `homeSwitchFull` from 120 to ~96 so the card arrives
+  near 136 columns. The arithmetic is a layout call the audit's fix shape
+  proposes but does not settle: it moves a tier boundary the whole home is laid
+  out against (`homebridge_test.go` pins that ladder width by width), and it is
+  entangled with row 4 — the note now gives way to the name, so how many cells a
+  row still wants at 120 has changed under the audit's measurement. It wants its
+  own pass, with frames at 130, 136 and 140.
+- **Row 8** (`esc not now` ends first run for good) — the audit itself offers two
+  fixes with different meanings: rename the key, or stop writing `setup_seen_at`
+  until the last step. Which one is right is a product decision about whether the
+  crew and budget questions are ever asked again, and neither the audit nor the
+  code settles it. Note that `setupKeysWord` already says `esc skips setup` on
+  four of its six branches, so whoever takes this row is reconciling two
+  spellings as well as the behaviour.
+- **Rows 10, 11, 12** — `pages.go` and `pulse.go`'s segment ladder, held by the
+  hint-line lane this wave.
+- **Rows 13 through 18** — sev: med and low, and outside this pass's brief. Row
+  18 (the card and the list ending at different heights) should be re-read now
+  that row 2 has landed: the two columns end together on the `-after` frames.
+
+### what other lanes should know
+
+- **The list is settled by the DRAW.** `placeHome.body` hands the room to the
+  reading and rebuilds when it moves, so `a.home.lines` is the list of a window
+  with no height until one frame has been drawn. A test that opens home and reads
+  the lines without drawing is reading the old shape; `switchLab.open` draws one
+  frame for exactly this reason.
+- **A fold now hides what the frame could not have shown anyway.** Opening it
+  puts the rows on the list, where `↓` reaches them, and not necessarily on the
+  visible frame — assertions that opened a fold and looked for a row on the
+  frame were rewritten to look at the list.
+
+### tests that pinned the old cap, and what they say now
+
+Seven existing tests asserted the eight-row ceiling or the joined place line.
+None of them was weakened; each was given the frame its subject actually needs,
+and the change is stated in the test's own comment.
+
+| test | what changed |
+| --- | --- |
+| `TestHomeFoldsTheWholeMachinesQuietTailBehindOneDoor` | 100×17, where the floor is what is left, so the eight it is about are the eight it gets |
+| `TestTheOneFoldOpensAndFoldsOnEveryGesture` | 100×17, and the row it follows is the FIRST behind the fold |
+| `TestTheOneFoldOpensAndClosesOnTheArrows` | 120×19, and the hidden row is looked for on the list rather than on the frame |
+| `TestHomesOneFoldIsADoorBothWays`, `TestTheFoldLeavesTheCursorOnTheLineThatOpenedIt` | 120×19 (`switchLab.open` now draws one frame, so the lines are the frame's) |
+| `TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed` | 200×17 — the card tier, and short |
+| `TestTheRightArrowIsNotSeizedOnARowWithNoVerbs` | 120×17, with one frame drawn before the lines are read |
+| `TestAMatchBehindTheCollapseIsFoundAnyway` | 100×17 |
+| `TestHoveringAnotherProjectsRowReadsThatProjectsRepository` | the card is drawn wide enough for a forty-character temporary directory AND a branch; the drop at 36 cells is the layout law, not a lost reading |

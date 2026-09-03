@@ -67,9 +67,6 @@ import (
 // The words the pulse says, quoted in internal/manual/chat/home.md exactly as
 // they are spelled here.
 const (
-	// pulseName is the left of the line: this program, which is what the screen
-	// is a dashboard OF.
-	pulseName = "aforge"
 	// pulseWantWord follows the count of things that have stopped on a person —
 	// `2 want you`. It is the design's own words (SCREEN 2b), and they are the
 	// right ones for the reason the whole vocabulary law gives: `2 needs person`
@@ -110,7 +107,11 @@ func (a *app) pulseLine(width int, pal palette) string {
 	// with, so it still reads as the line's head — and keeps the WEIGHT, which is
 	// what says "this is the title" on a sixteen-colour terminal that has no rungs
 	// to spend.
-	name := " " + pal.bold(pal.muted(pulseName))
+	// AND IT IS THE ONE NAME, READ OFF THE ONE CONSTANT (styles.go's [product]).
+	// This line used to hold a second spelling of its own (`pulseName`), which is
+	// how the surface came to greet a fresh install with `openaf` in the wordmark
+	// and `aforge` in the prose under it.
+	name := " " + pal.bold(pal.muted(product))
 	tail := strings.Join(a.pulseSegments(a.now(), pal), pulseGap)
 	if tail == "" {
 		return name

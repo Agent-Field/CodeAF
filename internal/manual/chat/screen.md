@@ -270,6 +270,10 @@ when that turn also has a foreground command that can be kept, or `↑↓ · ent
 while a list is open. A waiting message changes the final clause to
 `esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
+**A question that cannot remember its answer loses the `a always` clause**, on this line and
+on the offer above it: a stuck turn is asked about with a scope aforge cannot save, so the
+key would do nothing and neither line names it. The slot reads `y allow · n deny` there.
+
 It only ever names a key that **works right now**, and that includes the terminal: the
 `shift+enter` clause is not drawn on a terminal that cannot tell that chord apart from a
 plain `enter`, because a hint for a key that could never arrive would be the surface lying
@@ -282,6 +286,12 @@ The running-turn clauses always have this order: send, `shift+enter`, background
 When the right side is tight, aforge removes whole clauses from the right until the line
 fits. At 70 columns at least the first fitting clause remains; a running turn never loses
 the slot merely because every clause would not fit.
+
+**Under 70 columns the LEFT end gives up the branch and the slot keeps its keys.** A branch
+is on the shell prompt in the pane behind this one; `/ commands` is written nowhere else on
+a frame that narrow, and this line used to go blank at both ends there — a rule with nothing
+on it, at the width where being told about `/` matters most. Only a frame with no room for a
+label at either end falls back to the plain rule.
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -1992,7 +2002,7 @@ question hue inside a conversation**.
 **The accent budget is one thing per screen, and it is always the live one.** Whatever is
 running, selected, hovered, or waiting on you takes the accent — the row under the
 cursor, the room you are standing in, the spinner, `waiting on you`, the tab you are on.
-Headings and section labels do not: the `openaf` wordmark in the welcome box, the name on
+Headings and section labels do not: the `aforge` wordmark in the welcome box, the name on
 home's top line, and every band heading on a card are **structure**, and
 structure wears muted or dim. So a screen with nothing waiting on you has no accent on it
 at all, and the moment something does want you there is exactly one place your eye goes.
@@ -2861,7 +2871,7 @@ aforge sets the terminal's window title, which is what your terminal shows on th
 in the cmd-tab switcher, and in a tmux or screen window name. It says which aforge this
 is: the project folder first, then the conversation's own name once it has one, joined
 with a dot — `myproject · porting the parser`. Before the conversation names itself the
-tab is just the project, and with no workspace at all it says `openaf`.
+tab is just the project, and with no workspace at all it says `aforge`.
 
 The project comes first on purpose: tabs truncate from the right, so when the bar is
 narrow the part that tells your aforge windows apart is the part that survives. The

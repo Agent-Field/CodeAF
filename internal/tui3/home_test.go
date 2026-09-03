@@ -257,7 +257,7 @@ func TestHomeListsEveryProjectAndItsConversations(t *testing.T) {
 	text := homeText(a)
 	// The screen names itself with the program's own name now, on the pulse line
 	// at the top of it (pulse.go).
-	for _, want := range []string{pulseName, "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
+	for _, want := range []string{product, "alpha", "beta", "Porting the Resume Picker", "Pricing Research"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("home does not mention %q:\n%s", want, text)
 		}
@@ -607,6 +607,12 @@ func TestHomeFoldsTheWholeMachinesQuietTailBehindOneDoor(t *testing.T) {
 		}
 	}
 	a := lab.app(mine)
+	// A FRAME TOO SHORT TO HOLD TWELVE ROWS, because the cap is the frame's now
+	// and never a bare number: the list draws as many conversations as the column
+	// can hold and folds only what is genuinely still under them (switcher.go's
+	// [switcherShown] is the FLOOR). At sixteen rows the floor is what is left,
+	// which is the eight this test is about.
+	a.width, a.height = 100, 17
 	a.openHome()
 	text := homeText(a)
 	if !strings.Contains(text, "more, quiet since") {
@@ -1067,8 +1073,11 @@ func TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed(t *testing
 
 	a := lab.app(mine)
 	// A card tier, because the last thing this test asks is that the row the
-	// first `↓` finds has a card, and there is none below [homeCardMin].
-	a.width, a.height = 200, 24
+	// first `↓` finds has a card, and there is none below [homeCardMin]; and a
+	// SHORT one, because the list draws as many rows as the frame can hold now
+	// (switcher.go's [switcherView.room]) and a tall window over thirteen
+	// conversations has nothing left to fold.
+	a.width, a.height = 200, 17
 	a.openHome()
 	// The window's own conversation is adopted into the world ([app.readWorld])
 	// but it has never been spoken in, so it sorts to the very bottom of the
@@ -1451,6 +1460,10 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	lab.session("-tmp-alpha", "cccc000000000001", "buried treasure", "/tmp/alpha", now.Add(-40*time.Hour))
 
 	a := lab.app(mine)
+	// A FRAME THE ROWS DO NOT FIT IN, because the resting list draws as many as
+	// the column can hold now and folds only what is genuinely under them
+	// (switcher.go's [switcherShown] is the floor, not the cap).
+	a.width, a.height = 100, 17
 	a.openHome()
 	if !strings.Contains(homeText(a), "more") {
 		t.Fatal("nothing was collapsed, so this proves nothing")
@@ -1499,7 +1512,11 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 			fmt.Sprintf("filler %02d", i), work, now.Add(-time.Duration(i+1)*time.Hour))
 	}
 	a := lab.app(mine)
-	a.width, a.height = 100, 30
+	// A FRAME THE THIRTEEN ROWS DO NOT FIT IN, because the list draws as many as
+	// the column can hold now and folds only what is genuinely under them
+	// (switcher.go's [switcherShown] is the floor, not the cap). At seventeen
+	// rows the floor is what is left, so the fold stands over five.
+	a.width, a.height = 100, 17
 	a.openHome()
 
 	// onTheFold stands the cursor on the fold wherever the last rebuild left it,
@@ -1515,8 +1532,11 @@ func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
 		t.Fatalf("the list has no fold to press:\n%s", homeText(a))
 	}
 	// hidden is the row the fold is standing over, which must be off the list
-	// while it is shut and on it once it is open.
-	const hidden = "Filler 11"
+	// while it is shut and on it once it is open. It is the FIRST row behind the
+	// fold: what a fold hides is now exactly what the frame had no room for, so
+	// the row that comes back when it opens is the one the window can just
+	// reach.
+	const hidden = "Filler 07"
 
 	onTheFold()
 	if strings.Contains(homeText(a), hidden) {

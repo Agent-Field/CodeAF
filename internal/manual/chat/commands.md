@@ -1484,9 +1484,26 @@ The tabs, in order:
 Session · Context · Workspace · Display · Spending · Safety · Tasks · Providers · Connections
 ```
 
-**Session** — the rows this conversation carries that belong nowhere else: "memory",
-"fallback models", and the four ssh rows a `--host` conversation rides on ("ssh reuse",
-"ssh heartbeat", "ssh missed heartbeats", "ssh traffic").
+## The settings tab strip on a narrow terminal
+
+The nine tabs need about 96 columns. On anything narrower the strip **scrolls** rather
+than being cut: the tab you are standing on is always drawn and always inked, its
+neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
+saying there is more that way. `←` and `→` still walk the nine one at a time, and the
+strip follows.
+
+It anchors left while you are near `Session` and right while you are near `Connections`,
+so both ends of the walk look exactly like a strip that fits. A tab the strip could not
+draw cannot be clicked, because nothing on this surface acts on something you cannot see.
+
+**Session** — the rows this conversation carries that belong nowhere else: "memory" and
+"fallback models". Two rows, and that is the honest size of it.
+
+The four ssh rows a `--host` conversation rides on ("ssh reuse", "ssh heartbeat", "ssh
+missed heartbeats", "ssh traffic") are **not** here any more — they are on **Workspace**.
+Every one of them lands on the next launch rather than on the conversation in front of
+you, so they are a fact about this machine and not about this session. Nothing you saved
+moved: the keys they are stored under are unchanged.
 
 The five models aforge uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
@@ -1507,8 +1524,15 @@ the conversation already open.
 **Workspace** — this machine and this project: what aforge does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
 "tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
-secret", "slack sign-in id". **It holds no money row at all** — every one of those moved to
-Spending.
+secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
+missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
+moved to Spending.
+
+The ssh rows are here because "what may aforge reach on your behalf" is this tab's own
+question, and a link to another machine is that question asked about a machine rather
+than about a service. They are not on the tab named **Connections**: that one is the
+catalog of third-party accounts you sign in to, and it is built from the account list
+rather than from the settings registry.
 
 **"background checks"** is on by default: one small timer under your own login checks
 your reminders, watches and routines every 5 minutes with no window open. Off removes it
@@ -1526,6 +1550,39 @@ after", "task countdown", "who settles work that needs a look".
 **Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
 work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task
 model".
+
+## What the number on a settings row is counted in
+
+Every row that shows a number shows what the number counts, so a whole tab can be read
+without moving the cursor onto each row. The unit is part of the value:
+
+| Row | Reads | Counted in |
+| --- | --- | --- |
+| ssh reuse | `300s` | seconds a connection stays reusable after its channel closes |
+| ssh heartbeat | `3s` | seconds of silence before ssh asks whether the far machine is there |
+| ssh missed heartbeats | `3` | unanswered heartbeats — the label says what is counted |
+| approval countdown | `10s` | seconds an approval question waits before it answers no |
+| background after | `30s` | seconds a foreground command runs before it becomes a job |
+| task countdown | `15s` | seconds a proposed task waits for you before it starts |
+| compact at | `60%` | how much of the model's window is filled before compaction |
+| answer room | `65536 tok` | tokens every call keeps free for its answer |
+| working set | `160000 tok` | tokens of material kept quoted in front of a worker |
+| context reuse | `250%` | shares of one whole context a job may re-send — 100% is once |
+| memory floor | `1536 MB` | megabytes that must be free before another task starts |
+| busy machine | `1.5 per core` | the load average per core at which new tasks wait |
+| tenure after | `3 clean firings` | clean firings a standing charter needs to earn tenure |
+| chat width | `50%` | the chat pane's share of the frame while the task rail is open |
+
+A row whose label already names what is counted — "task repair rounds", "tasks at once",
+"ssh missed heartbeats" — shows the figure alone rather than saying the word twice.
+
+**A row takes its unit back.** The box a value is typed into opens on the bare figure, and
+typing the unit back in is accepted: `120s` on "ssh reuse" and `120` both save 120
+seconds. Anything else is refused in the row's own words.
+
+**A duration row is different and always was.** "quiet before practice" and "arrival brief
+after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `0` turns them
+off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
 "input history", "keep drafts", "task column", "hints" — the one-line tips above the
@@ -1584,6 +1641,11 @@ A settings row is one of four kinds.
 `enter save · empty clears · esc cancel`. A secret row shows bullets, and an unchanged
 mask counts as no change — so pressing enter on a row you only looked at does not
 overwrite your key.
+
+The line above the box says which row you are changing **and what it will take**, in the
+same words the row refuses in: `per conversation · an amount in dollars, like 5 or 2.50 —
+or none for no limit`, `ssh reuse · a whole number`, `guardian · one of: off, on`. A row
+that only takes text says nothing extra, because "text" is not a fact about a row.
 
 **select** — enter opens the model picker itself, the same component `/model` opens, in
 the list's place. It is filtered to the question that row asks: "looking" only offers

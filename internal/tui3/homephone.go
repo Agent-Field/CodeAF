@@ -174,7 +174,12 @@ func (h *homeView) buildPhone() {
 		h.buildWorld()
 		return
 	}
-	lifted := phoneLifted{rows: map[string]bool{}, errands: map[*homeExchange]bool{}}
+	lifted := phoneLifted{rows: map[string]bool{}, items: map[string]bool{}, errands: map[*homeExchange]bool{}}
+	// THE ITEMS THE SECTIONS TAKE ARE HUNG ON THE VIEW, because the block that
+	// would draw them again is [homeView.projectBlock], which is shared with
+	// every wider frame and may not be handed a phone's bookkeeping. It is nil
+	// everywhere else, and nil is "nothing was lifted".
+	h.liftedItems = lifted.items
 	h.phoneSection(homePhoneWaitingWord, homePhoneWaitingKey, h.phoneWaiting(lifted))
 	h.phoneSection(homePhoneRunningWord, homePhoneRunningKey, h.phoneRunning(lifted))
 	h.phoneSection(homePhoneNewsWord, homePhoneNewsKey, h.phoneNews())
@@ -205,9 +210,22 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 
 // phoneLifted is what the triage sections took, so the projects under them do
 // not say it twice (this file's second law).
+//
+// THERE ARE THREE KINDS OF ROW ON THIS SCREEN AND ALL THREE ARE RECORDED. For a
+// wave there were only two: a standing item lifted into `waiting on you` was
+// drawn again under its own project four rows later, which on a twenty-six-row
+// phone frame spent four rows saying one thing twice — on the one tier that has
+// no rows to spare, against the law this file's own header states.
 type phoneLifted struct {
 	rows    map[string]bool
+	items   map[string]bool
 	errands map[*homeExchange]bool
+}
+
+// phoneItemKey names one standing item where it is drawn: a watch belongs to a
+// project, and two projects may hold items that answer to the same id.
+func phoneItemKey(project session.Project, view StandingItemView) string {
+	return project.Dir + "\x00" + view.Item.ID
 }
 
 // phoneWaiting is everything on this machine that has stopped and is asking for
@@ -225,6 +243,7 @@ func (h *homeView) phoneWaiting(lifted phoneLifted) []homeLine {
 	for _, project := range h.everyProject() {
 		for _, view := range h.items[project.Dir] {
 			if strings.TrimSpace(view.Item.NeedsPerson) != "" {
+				lifted.items[phoneItemKey(project, view)] = true
 				out = append(out, h.itemLine(project, view))
 			}
 		}
@@ -268,6 +287,7 @@ func (h *homeView) phoneRunning(lifted phoneLifted) []homeLine {
 	for _, project := range h.everyProject() {
 		for _, view := range h.items[project.Dir] {
 			if view.Running && strings.TrimSpace(view.Item.NeedsPerson) == "" {
+				lifted.items[phoneItemKey(project, view)] = true
 				out = append(out, h.itemLine(project, view))
 			}
 		}

@@ -183,9 +183,11 @@ heading is saying it.
 
 Press it again and the flat ranked list comes back.
 
-- **The rows are chosen before they are grouped.** Home still draws eight rows and a fold;
-  grouping arranges the rows it was going to draw, so a project whose only conversation is
-  behind the fold has no heading either.
+- **The rows are chosen before they are grouped.** Home still draws as many rows as the
+  window holds and then a fold; grouping arranges the rows it was going to draw, so a
+  project whose only conversation is behind the fold has no heading either. The project
+  headings are paid for out of the same window, so a grouped list shows a few rows fewer
+  than a flat one on the same screen.
 - **A heading is not a row.** `↑`/`↓` walk straight over the project names; there is
   nothing to open on one and no card for one.
 - **It is remembered for as long as aforge is running** — closing home and opening it
@@ -213,9 +215,10 @@ typed or at phone width, because then this list is not what is on the screen.
 `alt+q` never hides a row that wants you. That is what it is for: on a machine with two
 questions and eighteen quiet conversations it leaves the two.
 
-## Where did the rest of my chats go — eight rows and one fold
+## Where did the rest of my chats go — the list fills the window, then one fold
 
-**Home draws eight rows and then one fold over everything else:**
+**Home draws as many conversations as the window can hold — never fewer than eight — and
+then one fold over everything else:**
 
 ```
 ▸ 15 more, quiet since aug 21
@@ -229,10 +232,12 @@ becomes `▾`; `enter` or `←` folds them back. The hint under the box says
 `enter or → show them · esc close`, and `enter or ← fold them away · esc close` while it
 is open. The fold line stays on screen while it is open, because it is the way back.
 
-**The eight are the eight that want you most** — the top of the ranked list — so the fold
-never hides a question or a running task while showing something quiet. And **typing sees
-straight through it**: a search has no cap and no fold, and matches every conversation on
-the machine including the ones the fold was holding.
+**The rows drawn are the ones that want you most** — the top of the ranked list — so the
+fold never hides a question or a running task while showing something quiet. **A tall
+terminal folds less, and a fifty-row window over a dozen conversations has nothing to fold
+at all**; a short one still draws eight, which is the floor, and folds the rest. And
+**typing sees straight through it**: a search has no cap and no fold, and matches every
+conversation on the machine including the ones the fold was holding.
 
 ## What needs me — the ? rows at the top of home
 
@@ -423,7 +428,11 @@ the next begins (*How much air is on the card*).
   the address is the title's second line rather than a fact of its own, carries the repository — the branch and the dirty count
   as one clause, `master, 1 file dirty`, and `that folder is gone` in its place where the
   directory is not there any more — then the door word: `here` for the conversation this
-  window is holding, `open in another window` for one somebody else has;
+  window is holding, `open in another window` for one somebody else has. **On a card too
+  narrow for all three the repository's clause is what goes**, whole, and the address keeps
+  its cells: the address is the only thing on the card that says which checkout, and the
+  door word is what the key under your finger will do. A path longer than the card is still
+  cut, and it is cut from the LEFT, so the folder's own name survives;
 - **`it is stopped on you`**, the question in its own words, and the keys that answer it
   from here. A digit sends the answer without opening anything, and `enter open and talk`
   on the end of that row is the third thing you can do with it — open the conversation that
@@ -530,9 +539,9 @@ this window's own project sorts first. Press `alt+g` again for the flat list.
 list, ranked by what wants you first, with its project as a tag on the row. There is no
 `elsewhere` rule, no folded block of other projects and no per-project fold.
 
-What *is* folded is the **tail of the one list**: eight rows, then
-`▸ 15 more, quiet since aug 21`, which `enter` or `→` opens (*Where did the rest of my
-chats go*).
+What *is* folded is the **tail of the one list**: as many rows as the window holds — eight
+at the very least — and then `▸ 15 more, quiet since aug 21`, which `enter` or `→` opens
+(*Where did the rest of my chats go*).
 
 **To see the projects again, press `alt+g`.** The rows are drawn in blocks under dim
 project headings, this window's own project first. It is a view of the same rows and not a
@@ -777,8 +786,8 @@ What home does say about size is on the **section line**:
 
 That is every conversation on the machine, from every project, the put-away ones excepted.
 Press `alt+g` and the rows are grouped under their projects, so the rows in a block are that
-project's — bearing in mind that home draws eight rows and a fold, so the quiet ones behind
-the fold are not in the block until you open it.
+project's — bearing in mind that home draws what the window holds and then a fold, so the
+quiet ones behind the fold are not in the block until you open it.
 
 Where to go for the whole figure instead:
 
@@ -1434,8 +1443,9 @@ without the command being run (see *Asking from home*).
 ## How do I see the collapsed sessions — …13 more
 
 **There is one fold on home and it is at the foot of the whole list**, not one per project:
-`▸ 15 more, quiet since aug 21`. Home draws the eight rows that want you most and puts
-everything else behind that line.
+`▸ 15 more, quiet since aug 21`. Home draws as many of the rows that want you most as the
+window can hold — eight at the least — and puts everything else behind that line, so a tall
+terminal folds little and often nothing.
 
 **That line is a door.** Put the cursor on it and press `enter` or `→` and every row is
 drawn, with no cap at all; the mark becomes `▾`, and `enter` or `←` folds them back.

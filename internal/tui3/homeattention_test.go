@@ -161,7 +161,10 @@ func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 // from a project's own tail.
 func TestTheOneFoldOpensAndClosesOnTheArrows(t *testing.T) {
 	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
+	// A FRAME THE LIST CANNOT FILL, because the list now grows to the frame it is
+	// given (switcher.go's [switcherView.room]) and a forty-row window over twelve
+	// conversations has nothing left to fold.
+	a := lab.open(120, 19)
 	foldAt := func() int {
 		for at, line := range a.home.lines {
 			if line.kind == homeSwitchFold {
@@ -171,17 +174,32 @@ func TestTheOneFoldOpensAndClosesOnTheArrows(t *testing.T) {
 		t.Fatalf("the list drew no fold at all:\n%s", homeText(a))
 		return homeNoLine
 	}
+	// AND THE ROW THE FOLD STANDS OVER IS LOOKED FOR ON THE LIST RATHER THAN ON
+	// THE FRAME. What a fold hides is now exactly what the window could not have
+	// shown anyway, so opening it puts the rows on the list — where `↓` reaches
+	// them — and not necessarily on the visible frame.
+	onTheList := func(title string) bool {
+		for _, line := range a.home.lines {
+			if line.kind == homeSession && strings.Contains(homeName(line.row), title) {
+				return true
+			}
+		}
+		return false
+	}
 	a.home.cursor = foldAt()
 	if !strings.Contains(homeText(a), "more, quiet since") {
 		t.Fatalf("the fold does not say what it stands for:\n%s", homeText(a))
 	}
+	if onTheList("Quiet Chat I") {
+		t.Fatalf("the shut fold is standing over a row that is on the list anyway:\n%s", homeText(a))
+	}
 	a.homeKey(key("right"))
-	if !strings.Contains(homeText(a), "Quiet Chat I") {
+	if !onTheList("Quiet Chat I") {
 		t.Fatalf("→ did not open the fold:\n%s", homeText(a))
 	}
 	a.home.cursor = foldAt()
 	a.homeKey(key("left"))
-	if strings.Contains(homeText(a), "Quiet Chat I") {
+	if onTheList("Quiet Chat I") {
 		t.Fatalf("← did not fold the tail back away:\n%s", homeText(a))
 	}
 }
