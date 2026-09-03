@@ -451,6 +451,9 @@ func (a *Agent) openBaseline(ctx context.Context) {
 	a.mu.Lock()
 	taken := a.baselineTaken
 	a.baselineTaken = true
+	if a.baselineDone == nil {
+		a.baselineDone = make(chan struct{})
+	}
 	a.mu.Unlock()
 	if taken {
 		return
@@ -551,8 +554,46 @@ func treeRecord(tree string) []string {
 func (a *Agent) closeBaseline(red []string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.baselineRead {
+		return
+	}
 	a.baselineRed = red
 	a.baselineRead = true
+	if a.baselineDone != nil {
+		close(a.baselineDone)
+	}
+}
+
+// awaitBaseline waits for the reading, and it is called at ONE moment: the
+// terminal one, where the checks are about to be run and subtracted.
+//
+// EVERY OTHER READING GOES ON WITHOUT IT. The reading is in the background so
+// nothing waits for it ([Agent.openBaseline]), and a mid-run reading with no
+// baseline simply counts no check either way. But the terminal reading is the
+// one that can say DONE, and saying it over a red check nobody could attribute
+// would ship red work as finished — so this is the moment to pay for the answer,
+// and the run is ending anyway.
+//
+// A SESSION THAT NEVER STARTED ONE CLOSES IT EMPTY AND CARRIES ON. A watched
+// session, a unit test, an ask with no runnable check: there is nothing coming,
+// so waiting would be waiting forever. Empty means nothing is KNOWN to have been
+// already red, and every red then counts — which is the safe side of a terminal
+// answer.
+func (a *Agent) awaitBaseline(ctx context.Context) {
+	a.mu.Lock()
+	read, started, done := a.baselineRead, a.baselineTaken, a.baselineDone
+	a.mu.Unlock()
+	if read {
+		return
+	}
+	if !started || done == nil {
+		a.closeBaseline(nil)
+		return
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }
 
 // baselineRedChecks is what this session found already failing before it worked,
@@ -579,6 +620,11 @@ func (a *Agent) journalBaseline(red, moved []string) {
 }
 
 func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation) {
+	// THE BEFORE-READING IS WAITED FOR HERE AND NOWHERE ELSE. What these checks
+	// answer is about to be subtracted from it, and a terminal answer of done
+	// taken over a red check nobody could attribute would ship red work as
+	// finished ([Agent.awaitBaseline]).
+	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
 	found := reconcile(a.createdList(), a.deliverableTree())
 	a.journalChecks(ran)

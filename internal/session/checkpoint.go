@@ -2598,7 +2598,7 @@ const checkpointStoppedNote = "stopping here · "
 // its deliverable is left lying there whether or not this particular turn was
 // the last one, and a tidy that only ran on a clean ending would never run on
 // the runs that need it.
-func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision {
+func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said string) Decision {
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
 	a.journalAbsorbed(remains)
@@ -2606,6 +2606,12 @@ func (a *Agent) decideRemains(ctx context.Context, reader, said string) Decision
 	if decision.Verb == DecideDone && remains.Acceptance != "" {
 		checks, found := a.terminalAudit(ctx)
 		remains.Checks = checks
+		// AND THE BASELINE IS RE-READ WITH THEM. The reading above was assembled
+		// before the checks ran, when the before-reading may not have landed;
+		// [Agent.terminalAudit] waits for it, so by here it has, and a reading
+		// still carrying the old "not yet" would count nothing against the tree
+		// it has just measured.
+		remains.WasFailing, remains.BaselineRead = a.baselineRedChecks()
 		decision = principal.Decide(remains)
 		// AND THE SWEEP HAPPENS ONLY AT AN ENDING. A principal that reads the
 		// checks and carries on may be about to read the very files this would
@@ -2766,18 +2772,18 @@ func turnBroke(response *ai.Response) bool {
 //
 // AND IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
 // side-call to a different model that the person did not ask for.
-func (a *Agent) readRemains(ctx context.Context) string {
+func (a *Agent) readRemains(ctx context.Context) readerLine {
 	// AND THE QUESTION IS NOT ASKED WHEN THERE IS NOBODY TO ASK IT OF. The empty
 	// answer below is what every failure produces, so an install with no second
 	// model used to reach it through a failed call on every single round — the
 	// same "" for "nothing left" and for "nothing answered", bought each time
 	// (#468). It is the same reading [Agent.readMark] takes, one road over.
 	if a.markReaderAbsent() {
-		return ""
+		return readerLine{}
 	}
 	digest := checkpointDigest(a.taskRequest(), a.snapshot())
 	if digest == "" {
-		return ""
+		return readerLine{}
 	}
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
@@ -2785,17 +2791,47 @@ func (a *Agent) readRemains(ctx context.Context) string {
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
 		ai.WithMaxTokens(checkpointSketchTokens))
 	if err != nil || response == nil {
-		return ""
+		return readerLine{}
 	}
 	a.addAuxiliaryUsage(response, reader, 1)
 	said := strings.TrimSpace(response.Text())
-	if declaresNothingLeft(said) || !briefIsProse(said) {
-		return ""
+	if declaresNothingLeft(said) {
+		// THE READER SAYING NOTHING IS LEFT IS A FACT, NOT A SILENCE. It used to
+		// be spelled with the same empty string as "there was nobody to ask" and
+		// "the call failed", and the three are not the same news: only this one is
+		// a second reader agreeing that the work is finished, and only this one
+		// may let a session that did its work INLINE reach done
+		// ([Remains.finishedSomething], #513).
+		return readerLine{answered: true, nothingLeft: true}
+	}
+	if !briefIsProse(said) {
+		return readerLine{answered: true}
 	}
 	// ONE LINE, because that is what was asked for and because what the harness
 	// does with it is hand it to a model as the thing still to do. A reader that
 	// wrote an essay is clipped to its first line rather than argued with.
-	return clip(firstLine(said), checkpointSketchBytes)
+	return readerLine{said: clip(firstLine(said), checkpointSketchBytes), answered: true}
+}
+
+// readerLine is what the mark reader answered about what is left, in the three
+// states it actually has.
+//
+// THE EMPTY STRING USED TO MEAN ALL THREE. "Nobody was asked", "the call failed"
+// and "a reader looked and said nothing is left" all came back as "", and the
+// third is the only one that is evidence about the work. A session that did its
+// whole job inline — no task, nothing to land — has no settled landing to prove
+// it finished anything, so the reader agreeing is the only second opinion there
+// is, and collapsing it into silence is what left one measured run reading
+// "nothing has been finished yet" over a green tree it had just written
+// ([Remains.finishedSomething], #513).
+type readerLine struct {
+	// said is what is still left, in the reader's own words, and "" when it said
+	// nothing is left or was never asked.
+	said string
+	// answered says a reader was asked and replied at all.
+	answered bool
+	// nothingLeft says the reply was that nothing is left.
+	nothingLeft bool
 }
 
 // endsAskingThePerson reports that a turn's last words put a question to whoever
@@ -3428,7 +3464,7 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // the goal owner made of every ending rather than only of the ones it acted on,
 // and it is written where what BECAME of the answer is also known
 // ([Agent.endTurnUnderSteward]).
-func (a *Agent) decideHandover(ctx context.Context, reader, said string) Decision {
+func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said string) Decision {
 	remains := a.remainsFor(said, reader)
 	a.journalAbsorbed(remains)
 	decision := a.who().Decide(remains)

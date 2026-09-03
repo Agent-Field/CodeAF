@@ -174,7 +174,7 @@ None of this applies to a session you are sitting in front of: your turn's work 
 task exactly as it always has, nothing is decided for you, and the two readers agreeing
 still leaves your answer where it is.
 
-## What counts as still left · a task that died on the wire · it kept working after everything was finished
+## What counts as still left · a task that died on the wire · it kept working after everything was finished · it says nothing has been finished yet when it did the work itself
 
 **What is left is read from the tree, not from a task's death.** A run with a budget looks
 at every piece of work at the end of each reply and asks what stands between it and
@@ -194,6 +194,15 @@ finished. Two kinds of dead task do **not** count:
 Measured before this: a task died on an API 404 an hour before its parent wrote the very
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
+
+**And work aforge did itself counts as finished work.** The question is not only "did a
+task come home": a session that made the change and wrote the tests **inline**, with no
+task at all, has finished something — as long as the second reader agrees nothing is left.
+Before this, a run that did the whole job in the conversation read `nothing has been
+finished yet` at the end of every reply over a tree it had just written, said the same
+thing twice, and stopped itself for going round in circles one second after tidying up. If
+that reader names a gap instead, the run carries on into it, and being finished is settled
+by running your checks over the tree either way.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 

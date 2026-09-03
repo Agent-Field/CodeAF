@@ -392,9 +392,11 @@ func TestAHandoverTheGoalOwnerAsksForIsNeverDropped(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			// BOTH MINDS SAY THE WORK IS FINISHED: the sketch reads `(done)` and
-			// the dowry ask is answered with the remains token.
+			// the dowry ask is answered with the remains token. THE GOAL OWNER
+			// DOES NOT — its own reader names a gap, which is the disagreement
+			// this test is about.
 			completer := &scriptedCompleter{
-				steps: writingSteps(12, checkpointDoneSketch, checkpointNothingLeft),
+				steps: gapReadingSteps(12, checkpointDoneSketch, checkpointNothingLeft, theGapTheReaderNamed),
 			}
 			agent, transcript := seamAgent(t, completer, unattended)
 			ran := make(ranNodes, 2)
@@ -429,7 +431,7 @@ func TestAHandoverTheGoalOwnerAsksForIsNeverDropped(t *testing.T) {
 			if node == nil {
 				t.Fatal("the handover started no node")
 			}
-			if !strings.Contains(node.spec.brief, "nothing has been finished yet") {
+			if !strings.Contains(node.spec.brief, theGapTheReaderNamed) {
 				t.Fatalf("the task runs on %q, want the goal owner's own remainder", node.spec.brief)
 			}
 			if lines := closedJournal(t, agent, transcript); !strings.Contains(lines, `"decision":"carry on"`) {
@@ -467,6 +469,31 @@ func TestTheCeilingUnderAStewardJournalsItsDecision(t *testing.T) {
 	if !strings.Contains(lines, `"decision":"carry on"`) {
 		t.Fatalf("the goal owner's answer at the ceiling reached no line of the journal:\n%s", lines)
 	}
+}
+
+// theGapTheReaderNamed is what the goal owner's own reader answers when it is
+// asked what is left, so a session whose running model says nothing remains
+// still has somebody saying otherwise.
+const theGapTheReaderNamed = "three call sites still use the old name"
+
+// gapReadingSteps is [writingSteps] with the goal owner's reading answered
+// separately from the handover's: the dowry ask still gets the remains token and
+// the mark still draws its sketch, and the question "what is left" gets a gap.
+// They are different asks and a fixture that answers them with one string cannot
+// put the two readers in disagreement.
+func gapReadingSteps(count int, sketch, brief, left string) []step {
+	writing := writingSteps(count, sketch, brief)
+	steps := make([]step, len(writing))
+	for index := range writing {
+		inner := writing[index]
+		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForRemains(messages) {
+				return textResponse(left), nil
+			}
+			return inner(ctx, messages)
+		}
+	}
+	return steps
 }
 
 // seamAgent is [writeSeamAgent] with the one knob these two arms turn: whether

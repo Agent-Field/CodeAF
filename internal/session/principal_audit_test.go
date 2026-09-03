@@ -140,11 +140,48 @@ func TestAPersonsStoppedTurnTakesNoSecondReading(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
 	agent.hearAsk("write the parser; check it with `touch " + marker + "`")
 
-	if got := agent.decideRemains(context.Background(), "", "all done"); got.Verb != DecideDone {
+	if got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "all done"); got.Verb != DecideDone {
 		t.Fatalf("a person's stopped turn did not end: %+v", got)
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a person's session ran a check nobody asked it to run")
+	}
+}
+
+// AND A SESSION THAT DID THE WHOLE JOB INLINE REACHES THE CHECK AT ALL.
+//
+// The reef cell wrote the fix and its tests itself and never started a task, so
+// the reading said "nothing has been finished yet" over a green tree and the run
+// stopped at a standstill. With the reader agreeing that nothing is left, the
+// work it MADE is finished work — and what that buys is not a done answer taken
+// on trust but the second reading: the session's declared checks are run against
+// the tree, and they are what actually settles it.
+func TestInlineWorkWithNoTasksReachesTheTerminalCheck(t *testing.T) {
+	tree := t.TempDir()
+	made := filepath.Join(tree, "test_auth.py")
+	if err := os.WriteFile(made, []byte("def test_scheme():\n    assert True\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(tree, "the-check-ran")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("fix the bearer scheme; check it with `touch " + marker + "`")
+	steward.setAcceptance("the scheme is case-insensitive and `touch " + marker + "` passes")
+	// The session's own hands: one file, made by this session, under the tree.
+	agent.rememberCreated(fileChange{path: made, shown: "test_auth.py", created: true})
+
+	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true},
+		"The scheme parsing is fixed and the tests pass.")
+
+	if got.Verb != DecideDone {
+		t.Fatalf("a session that wrote the whole fix itself was carried on: %+v", got)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("the terminal check never ran over the work the session made: %v", err)
 	}
 }
 
@@ -166,7 +203,7 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	// is under test here is the reading taken after one has already landed.
 	landOne(agent, TaskDone, "port the parser", "")
 
-	got := agent.decideRemains(context.Background(), "", "That completes the port.")
+	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("a tree that fails its own check was allowed to finish: %+v", got)
 	}
@@ -339,7 +376,7 @@ func principalLines(t *testing.T, mutate func(*Config)) string {
 		}
 	})
 	agent.hearAsk("port the parser")
-	agent.decideRemains(context.Background(), "the handlers are still unwired", "I have made a start.")
+	agent.decideRemains(context.Background(), readerLine{said: "the handlers are still unwired", answered: true}, "I have made a start.")
 	if err := agent.Close(); err != nil {
 		t.Fatalf("closing: %v", err)
 	}
@@ -372,7 +409,7 @@ func TestARunThatStoppedOnItsBudgetStillPicksUpAfterItself(t *testing.T) {
 	agent.mu.Unlock()
 	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
 
-	got := agent.decideRemains(context.Background(), "there is plenty left to do", "I have made a start.")
+	got := agent.decideRemains(context.Background(), readerLine{said: "there is plenty left to do", answered: true}, "I have made a start.")
 	if got.Verb != DecideStop {
 		t.Fatalf("a spent budget did not stop the run: %+v", got)
 	}
@@ -398,7 +435,7 @@ func TestARunThatIsCarryingOnKeepsItsOwnWorkingMaterial(t *testing.T) {
 	})
 	agent.rememberCreated(fileChange{path: working, shown: working, created: true})
 
-	got := agent.decideRemains(context.Background(), "the handlers are still unwired", "I have made a start.")
+	got := agent.decideRemains(context.Background(), readerLine{said: "the handlers are still unwired", answered: true}, "I have made a start.")
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("the run did not carry on: %+v", got)
 	}
@@ -485,7 +522,7 @@ func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
 	// check that can be run passes, and there is no permanent failure left over
 	// from a span nobody could ever have typed.
 	landOne(agent, TaskDone, "bump the version", "")
-	got := agent.decideRemains(context.Background(), "", "The version is bumped.")
+	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The version is bumped.")
 	if got.Verb != DecideDone {
 		t.Fatalf("a finished ask was carried on: %+v", got)
 	}
@@ -532,7 +569,7 @@ func TestQueuedBehindWorkThatSettledShortIsStuckAndNotMoving(t *testing.T) {
 
 	// AND WHAT IS STUCK IS PART OF WHAT IS LEFT, so the same reading twice
 	// running is a standstill and the run stops — which is the whole defect.
-	remains := agent.remainsFor("That completes the port.", "")
+	remains := agent.remainsFor("That completes the port.", readerLine{})
 	steward := agent.steward()
 	if got := steward.Decide(remains); got.Verb != DecideCarryOn {
 		t.Fatalf("an ask with work that will not start was not carried on: %+v", got)

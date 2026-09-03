@@ -168,6 +168,89 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 	}
 }
 
+// ── a session that changed the deliverable has finished something (#513) ────
+
+// WORK THIS SESSION DID WITH ITS OWN HANDS IS FINISHED WORK, WITH THE READER
+// AGREEING.
+//
+// The reef cell did the whole fix inline — the change, a 196-line test file, 43
+// tests green — and never started a task. [Remains.Landed] is a reading of the
+// task graph, so it stayed false over that tree, "nothing has been finished yet"
+// was the first line of both briefs, and the standstill compared two identical
+// briefs and stopped the run over green work one second after tidying up.
+//
+// THE READER IS THE WITNESS AND IT IS REQUIRED. A session's own files are not
+// evidence about themselves; what makes inline work count is somebody who did
+// not write them saying nothing is left.
+func TestInlineWorkWithTheReaderAgreeingIsFinishedWork(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:           "The scheme parsing is fixed and the tests pass.",
+		Acceptance:     "the bearer scheme is case-insensitive and the suite passes",
+		Made:           true,
+		ReaderSaysDone: true,
+	})
+	if decision.Verb != DecideDone {
+		t.Fatalf("a session that wrote the whole fix itself was told it had finished nothing: %+v", decision)
+	}
+
+	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked, and one
+	// whose call failed, both answer the same silence, and silence is not
+	// agreement.
+	alone := steward.Decide(Remains{
+		Said:       "The scheme parsing is fixed and the tests pass.",
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Made:       true,
+	})
+	if alone.Verb != DecideCarryOn {
+		t.Fatalf("a session graded its own inline work with nobody agreeing: %+v", alone)
+	}
+	if !strings.Contains(alone.Brief, "nothing has been finished yet") {
+		t.Fatalf("the brief does not say what is missing:\n%s", alone.Brief)
+	}
+}
+
+// AND A READER NAMING A GAP IN A SESSION WITH NOTHING ON THE RAIL IS A GAP.
+//
+// #468's law — a settled landing outranks a reading of the transcript — stands
+// where there IS a landing. With none, the reader is the only account of the work
+// anybody has, so what it says is left is left.
+func TestAReaderNamingAGapWithNoTasksCarriesTheRunOn(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:       "I have fixed the parsing.",
+		Reader:     "the scopes are still parsed case-sensitively",
+		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
+		Made:       true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a gap the reader named was passed over: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
+		t.Fatalf("the brief does not carry the reader's own words:\n%s", decision.Brief)
+	}
+}
+
+// AND A SESSION THAT MADE NOTHING IS STILL A SESSION THAT HAS FINISHED NOTHING.
+//
+// The control, and the sentence people actually read: no task, no files, nothing
+// to point at. Whatever the transcript sounds like, the answer is the one it
+// always was.
+func TestASessionWithNothingMadeAndNothingLandedHasFinishedNothing(t *testing.T) {
+	steward := budgetLeft(t)
+	decision := steward.Decide(Remains{
+		Said:           "That completes the port. Everything is wired up.",
+		Acceptance:     "the parser handles every fixture",
+		ReaderSaysDone: true,
+	})
+	if decision.Verb != DecideCarryOn {
+		t.Fatalf("a session that finished nothing was called finished: %+v", decision)
+	}
+	if !strings.Contains(decision.Brief, "nothing has been finished yet") {
+		t.Fatalf("the brief does not say what is missing:\n%s", decision.Brief)
+	}
+}
+
 // ── what is left is read from the tree, not from a sibling's death (#513) ───
 
 // A UNIT THAT DIED ON THE WIRE FOUND NOTHING OUT, SO IT IS NOT WORK THAT IS

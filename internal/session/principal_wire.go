@@ -388,17 +388,32 @@ func landingSignature(state TaskState, report string) string {
 // once, at the one moment their answer can change anything: after a principal
 // has said the ask is met (principal_audit.go). Everything here is a read of
 // what the session already holds.
-func (a *Agent) remainsFor(said, reader string) Remains {
+func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	landings, landed, flight := a.landings()
 	remains := Remains{
 		Said:       said,
-		Reader:     reader,
+		Reader:     reader.said,
 		Acceptance: a.who().Acceptance(),
 		Landings:   landings,
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
 	}
+	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
+	// job inline never settles a task, so [Remains.Landed] — which is a reading of
+	// the graph and nothing else — stays false over a tree it has just written, and
+	// "nothing has been finished yet" was the first line of both briefs the
+	// standstill then compared (#513). What it made is the session's own ledger,
+	// sorted into the deliverable exactly as the tidy sorts it (principal_audit.go's
+	// [reconcile]), and it counts only WITH the reader agreeing — a session's own
+	// files are not a second opinion about themselves
+	// ([Remains.finishedSomething]).
+	//
+	// IT IS FILES THIS SESSION CREATED, not every file it touched: a modified file
+	// is somebody else's file with our changes in it and this build's ledger
+	// deliberately does not keep one ([Agent.rememberCreated]).
+	remains.Made = len(reconcile(a.createdList(), a.deliverableTree()).kept) > 0
+	remains.ReaderSaysDone = reader.nothingLeft
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run
 	// once, after a principal has said the ask is met, and a baseline attached at

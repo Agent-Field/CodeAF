@@ -1769,6 +1769,9 @@ type Agent struct {
 	// having been started ([Agent.openBaseline] runs it in the background) and
 	// not the same as the list being non-empty (a clean tree reads as no red).
 	baselineRead bool
+	// baselineDone is closed when the reading lands, so the one moment that has
+	// to have it can wait ([Agent.awaitBaseline]).
+	baselineDone chan struct{}
 
 	// absorbed remembers every line [Agent.journalAbsorbed] has already written,
 	// so one unit of work whose job somebody else did is said once rather than

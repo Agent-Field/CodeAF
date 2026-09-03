@@ -273,10 +273,32 @@ type Remains struct {
 	Landings   []Landing
 	Checks     []CheckRun
 
-	// Landed says whether this session has finished ANY unit of work. A session
-	// that has landed nothing has not finished an ask, whatever a reader of its
-	// transcript makes of it, and [Steward.Decide] refuses to call that done.
+	// Landed says whether this session has finished ANY unit of work THROUGH A
+	// TASK. A session that has landed nothing has not finished an ask, whatever a
+	// reader of its transcript makes of it, and [Steward.Decide] refuses to call
+	// that done.
 	Landed bool
+
+	// Made says this session put work on the deliverable WITH ITS OWN HANDS —
+	// files it created under the tree, no task involved.
+	//
+	// A SESSION THAT CHANGED THE DELIVERABLE HAS FINISHED SOMETHING. Landed is a
+	// reading of the task graph, so a run that did the whole job inline had it
+	// false over a green tree: one measured cell wrote the fix and a 196-line test
+	// file, went green on 43 tests, never started a task, and read "nothing has
+	// been finished yet" at the end of both of its replies — the same first line
+	// twice, which is the standstill's fingerprint, so it stopped over finished
+	// work one second after tidying up (#513).
+	Made bool
+
+	// ReaderSaysDone says the mark reader was asked and answered that NOTHING IS
+	// LEFT — which is not the same as Reader being empty, because that is also
+	// what silence looks like ([readerLine]).
+	//
+	// IT IS THE SECOND OPINION Made HAS TO HAVE. A session's own files are not
+	// evidence about themselves: what makes inline work count as finished work is
+	// somebody who is not the writer looking at the session and saying so.
+	ReaderSaysDone bool
 
 	// Running names the units of work that are IN FLIGHT — started, or queued
 	// behind something that is — in the words a person reads them by.
@@ -327,11 +349,25 @@ type Remains struct {
 	WasFailing []string
 }
 
+// finishedSomething answers the first question [Remains.unmet] asks: has this
+// session finished ANYTHING at all?
+//
+// TWO ROADS, AND THE SECOND ONE NEEDS A WITNESS. A unit of work that came home
+// through a task is finished work on its own account — something ran it,
+// something checked it, and the graph says so. Work this session did with its
+// own hands is finished work only with the mark reader agreeing that nothing is
+// left: the session grading its own inline edits is the one reading this whole
+// file exists to stop relying on, and the reader is the only party to the
+// question that did not write the files.
+func (r Remains) finishedSomething() bool {
+	return r.Landed || (r.Made && r.ReaderSaysDone)
+}
+
 // unmet lists, in a person's words, what stands between this and finished. An
 // empty answer is the only thing that may become [DecideDone].
 func (r Remains) unmet() []string {
 	var out []string
-	if !r.Landed {
+	if !r.finishedSomething() {
 		out = append(out, "nothing has been finished yet")
 	}
 	for _, title := range r.Running {
@@ -340,6 +376,19 @@ func (r Remains) unmet() []string {
 	// The blocked lines arrive as whole sentences, because what a stuck unit of
 	// work is waiting on is the only useful thing anybody can say about it.
 	out = append(out, r.Blocked...)
+	// AND WITH NO TASK IN THE PICTURE, THE READER'S LINE IS PART OF WHAT IS LEFT.
+	//
+	// #468's law is that a settled landing and a check that ran outrank a reading
+	// of the transcript, and it stands: where a unit of work came home, the
+	// reader's opinion about it is not asked here. But a session that did the
+	// whole job inline has no landing for the line to outrank, and the reader is
+	// then the only account of the work anybody has — so a reader naming a gap in
+	// a session with nothing on the rail is a gap, and the run carries on into it.
+	if len(r.Landings) == 0 {
+		if line := strings.TrimSpace(r.Reader); line != "" {
+			out = append(out, line)
+		}
+	}
 	for _, landing := range r.Landings {
 		if !landing.unsatisfied() {
 			continue
