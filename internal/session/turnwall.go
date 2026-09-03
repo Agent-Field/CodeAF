@@ -150,7 +150,8 @@ func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) boo
 func (a *Agent) checkpointOverWallShare(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, taken *Decision) bool {
 	read := a.readMark(ctx)
 	a.journalMarkRead(read, 0, rounds, checkpointDecisionRanLong)
-	return a.handOverRunningTurn(ctx, hub, turn, started, model, turnWallShareNote, verdict, read, taken).moved
+	return a.handOverRunningTurn(ctx, hub, turn, started, model,
+		turnWallShareNote, checkpointSeamWall, rounds, verdict, read, taken).moved
 }
 
 // wallShareIsAsked reports whether this step boundary is one the share may be

@@ -80,6 +80,13 @@ func TestATurnPastTheShareOfTheWallHandsOver(t *testing.T) {
 	if !strings.Contains(lines, `"decision":"carry on"`) {
 		t.Fatalf("the goal owner's answer to this ending reached no line of the journal:\n%s", lines)
 	}
+	// AND THE ENDING ROW NAMES THIS DOOR. The row is written where the ending is
+	// decided and carries the seam that took it (checkpoint.go's seam words), and
+	// a bench reading the file afterwards tells a turn the clock moved from one
+	// the counters moved by that word alone.
+	if !strings.Contains(lines, `"seam":"`+checkpointSeamWall+`"`) {
+		t.Fatalf("the ending row does not say it was taken at the wall's share:\n%s", lines)
+	}
 }
 
 // AND SHORT OF THE SHARE — OR EXACTLY ON IT — NOTHING HAPPENS AND NOTHING IS

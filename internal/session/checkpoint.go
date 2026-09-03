@@ -1633,10 +1633,16 @@ const (
 //
 // A ROW WITH NO SEAM PREDATES THIS and is a ceiling by construction, because the
 // ceiling was the only writer (sessionfile.go's [journalCeiling]).
+//
+// AND THE WALL'S SHARE IS A FOURTH DOOR (turnwall.go), spelled apart from the
+// other three for the same reason they are spelled apart from each other: a bench
+// reading the file has to tell a turn the clock moved from a turn the counters
+// moved, and it can only do that if the row says so.
 const (
 	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
+	checkpointSeamWall    = "wall"
 )
 
 // ── the carry ladder ────────────────────────────────────────────────────────
