@@ -113,7 +113,11 @@ func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 		fmt.Fprint(w, rows)
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "run `aforge --help` for every command, `aforge help env` for the environment table.")
+	// EIGHTY CELLS, like every other line of help this binary prints. The
+	// longer spelling of this sentence — "…for the environment table." — drew
+	// eighty-three, so the one line under every per-command page was the one
+	// line on it that wrapped.
+	fmt.Fprintln(w, "run `aforge --help` for every command, `aforge help env` for the variables.")
 }
 
 // flagRows writes a flag set the way the usage table spells flags — two dashes

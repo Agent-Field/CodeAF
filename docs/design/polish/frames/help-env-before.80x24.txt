@@ -1,0 +1,29 @@
+# `aforge help env` BEFORE — laid out to 116 cells
+# 66 lines printed, 83 rows drawn on an 80-column terminal.
+# Below is the first screenful — 24 rows — folded where the TERMINAL
+# puts the break, which is the only fold a reader actually sees.
+#------------------------------------------------------------------------------
+aforge — the environment
+
+Every variable below is read at launch. A variable set here always wins over the
+`/settings` sheet in the chat, and that row reads read-only in the sheet rather
+than fighting your shell.
+
+  OPENROUTER_API_KEY   required
+  AFORGE_MODEL         default ~deepseek/deepseek-v4-flash-latest
+  AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
+                       replans, working methods, and the delivery gate on a
+                       stronger model while a smaller one does the steps; --mode
+l
+                       and --plan-model do the same per run.
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
+                       calls cascade — cheapest model first, escalating when a
+                       verifier catches a failure. Either a comma-separated list
+                       of slugs, or a path to a JSON file:
+                         AFORGE_MODELS=google/gemma-3-12b-it,~deepseek/deepseek-
+v4-flash-latest,moonshotai/kimi-k2.6
+                         AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json across
+                       runs; see them with `aforge models`.
+  AFORGE_REASONING     planning calls: off (default), low, medium, high
+  AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium

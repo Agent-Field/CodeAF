@@ -1,0 +1,29 @@
+# `aforge --help` AFTER — laid out to 80 cells
+# 110 lines printed, 110 rows drawn on an 80-column terminal.
+# Below is the first screenful — 24 rows — folded where the TERMINAL
+# puts the break, which is the only fold a reader actually sees.
+#------------------------------------------------------------------------------
+aforge — an agent you talk to, and hand work to when you walk away
+
+Talk to it — a surface you sit in front of
+  aforge
+      open the conversation this directory was last having
+  aforge chat [--model slug] [--reasoning level] [--session path] [--yolo]
+              [--host host[:path]] [--at name[:path]] [--once "text"]
+              [--no-compact] [--one-model] [--no-host] [--debug]
+      --no-host runs the conversation in this process rather than on this
+      workspace's session host; --debug keeps the whole record of the run
+  aforge resume
+      pick an earlier conversation by name and open it — the same list is
+      /resume inside the chat
+
+Hand it work — nobody is watching, the answer is on stdout
+  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
+              [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--context-fill 60] [--completion-reserve 65536] [--debug]
+      do one task and exit — the same living agent the chat runs, with nobody
+      watching. What you type is the goal, and it is run verbatim
+      exit 0 done · 1 could not be run at all · 2 ran and did not finish
+      · 3 a limit you set stopped it · 4 needed an answer and nobody was there
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
+              [--token-budget N] [--timeout 15m] [--model slug]

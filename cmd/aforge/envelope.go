@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ONE EXIT LADDER AND ONE RESULT ENVELOPE, for every headless verb this binary
@@ -95,8 +96,8 @@ const (
 )
 
 // exitRung is one row of the table. The meaning is a full sentence because it
-// is the sentence: `internal/manual/chat/exit-codes-and-json.md` prints these
-// words and so does the before/after in docs/design/polish/envelope-and-exits.md.
+// is the sentence: `internal/manual/chat/running-from-the-terminal.md` prints
+// these words and so does docs/design/polish/envelope-and-exits.md.
 type exitRung struct {
 	Code exitStatus
 	// Meaning is what the number means, in the words a person reads.
@@ -149,17 +150,48 @@ var exitLadder = []exitRung{
 	},
 }
 
-// exitLadderLine is the ladder in one line, for the help table. It is BUILT
-// FROM THE TABLE rather than typed out beside each verb, because it used to be
-// typed out beside each verb and the three copies disagreed — which is the
-// defect this whole file exists to close.
-var exitLadderLine = func() string {
-	var parts []string
+// exitLadderHelp is the ladder as the help table prints it. It is BUILT FROM
+// THE TABLE rather than typed out beside each verb, because it used to be typed
+// out beside each verb and the three copies disagreed — which is the defect this
+// whole file exists to close.
+//
+// IT IS FOLDED, AND FOLDED ON THE SEPARATOR. Five rungs spelled in words is a
+// hundred and thirty-nine cells, and `aforge --help` is laid out for an
+// eighty-column terminal, so the one line had to become two. The fold is only
+// ever taken BEFORE a `· `, so every `· <number> ` reads whole on the line it
+// lands on — a rung split across the break would be a rung a reader scanning
+// for their exit code never finds.
+//
+// The first line carries no indent, because the help table's own literal
+// supplies it; every line after it is indented to [helpTextColumn], which is
+// the column that table writes a description at.
+var exitLadderHelp = foldedExitLadder(helpTextColumn, helpWidth)
+
+// foldedExitLadder writes the ladder to fit `width` display cells with `indent`
+// spaces in front of every line, the first excepted.
+func foldedExitLadder(indent, width int) string {
+	units := []string{"exit"}
 	for _, rung := range exitLadder {
-		parts = append(parts, fmt.Sprintf("%d %s", int(rung.Code), rung.Short))
+		separator := "· "
+		if int(rung.Code) == 0 {
+			separator = ""
+		}
+		units = append(units, fmt.Sprintf("%s%d %s", separator, int(rung.Code), rung.Short))
 	}
-	return "exit " + strings.Join(parts, " · ")
-}()
+	room := width - indent
+	lines := []string{units[0]}
+	for _, unit := range units[1:] {
+		last := len(lines) - 1
+		// A new line is opened only at a `· `, never inside a rung.
+		if !strings.HasPrefix(unit, "· ") ||
+			ansi.StringWidth(lines[last])+1+ansi.StringWidth(unit) <= room {
+			lines[last] += " " + unit
+			continue
+		}
+		lines = append(lines, unit)
+	}
+	return strings.Join(lines, "\n"+strings.Repeat(" ", indent))
+}
 
 // exitFor is the only reader of the table, and therefore the only place in this
 // binary where a stop reason becomes an exit code.
@@ -207,8 +239,8 @@ func legacyExitCodes() bool {
 
 // legacyExitCodesHelp is the one line `--help` carries about the hatch. It is
 // spelled once so the manual page and the flag table cannot disagree.
-const legacyExitCodesHelp = `"legacy" restores ` + "`aforge exec`" + `'s old 2/3/4/5/6 exit codes for one
-                       release, and changes nothing else`
+const legacyExitCodesHelp = `"legacy" restores ` + "`aforge exec`" + `'s old 2/3/4/5/6 exit
+                       codes for one release, and changes nothing else`
 
 // jsonFlagHelp is the ONE sentence `--json` is described with, on `do`, `exec`
 // and `run` alike. It is spelled once for the same reason modelFlagHelp is: the

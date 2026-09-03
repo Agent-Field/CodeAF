@@ -1,0 +1,29 @@
+# `aforge --help` BEFORE — laid out to 164 cells
+# 108 lines printed, 167 rows drawn on an 80-column terminal.
+# Below is the first screenful — 24 rows — folded where the TERMINAL
+# puts the break, which is the only fold a reader actually sees.
+#------------------------------------------------------------------------------
+aforge — an agent you talk to, and hand work to when you walk away
+
+Talk to it — a surface you sit in front of
+  aforge                 open the conversation this directory was last having
+  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:
+path]]
+              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-
+model]
+              [--no-host] [--debug]
+                         --no-host opens the conversation in this process instea
+d of attaching
+                         to this workspace's session host; --debug keeps the who
+le record of the
+                         run — call bodies, tool calls, the choices made — under
+ the state root
+                         --session names a transcript FILE to resume, not an id 
+and not
+                         the word "new": a path that does not exist yet is a new
+                         conversation written there, and no --session at all res
+umes
+                         this directory's most recent
+  aforge resume          pick an earlier conversation by name and open it
+                         the same list is /resume inside the chat
+

@@ -317,9 +317,29 @@ a terminal before asking; that is right.
 ### Help
 
 `aforge --help` is **the commands, grouped under the five headings of §2, then
-five examples, and nothing else** — sixty lines, one screen and a bit. It is 127
-lines today and more than half of it is the environment table
-(`docs/design/polish/frames/cmd-help.txt`).
+five examples, and nothing else**. It was 127 lines and more than half of it was
+the environment table (`docs/design/polish/frames/cmd-help.txt`).
+
+**And it is laid out to EIGHTY DISPLAY CELLS, which is the measure that turned
+out to matter.** This section first asked for "sixty lines, one screen and a
+bit", and that was the wrong number to ask for: the page that replaced the
+127-line one was 108 lines and drew **167 rows**, because its longest line was
+164 cells and a terminal folded every second one mid-word at a break nobody
+chose. Lines are not what a reader scrolls. So the law is on the drawn width,
+and the count that has to come down is rows:
+
+- Nothing drawn as help exceeds eighty cells — the front page, the environment
+  table, and the one line printed under every per-command page alike.
+- A command's synopsis begins at column 2 and folds, when it must, to column 14.
+- **Its description sits UNDER it at column 6, never beside it.** A right-hand
+  description column cannot survive eighty cells here: these synopses carry
+  whole flag lists, so the text would start at column 30 on `models` and at
+  column 0 on `do` — which is the two conventions the page already had.
+- The exit ladder folds only ever BEFORE a `· `, so no rung is split across the
+  break.
+
+It is 110 lines drawing 110 rows (`frames/help-after.80x24.txt`), against 167
+(`frames/help-before.80x24.txt`).
 
 The environment table moves to **`aforge help env`**. It is a reference; it is
 consulted, not read; and putting it under `--help` means the last thing on a

@@ -176,23 +176,30 @@ everywhere else in this product, so a token count wearing it read as dollars.
 
 Two of those carry figures worth knowing: it stops itself after 200 turns, and it stops
 when the run has spent 150,000 tokens. Either one ending the run is a stop, not a failure,
-and the machine-readable result says which — it carries the worker's text, the reason it
-stopped, what it used, and the files it made. **A run that failed also carries `error`**:
-the reason in the same words a person would read on the error stream, so a script reading
-only standard output can learn why and not just that.
+and the machine-readable result says which — it carries the worker's `answer`, the reason
+it stopped, what it used, and the files it made. **A run that failed also carries
+`error`**: the reason in the same words a person would read on the error stream, so a
+script reading only standard output can learn why and not just that.
 
-**Its exit code is a six-rung ladder**, and it is written in `aforge --help` beside the
-command: `0` it answered · `2` the token budget ran out · `3` the turn cap came first ·
-`4` the wall came first · `5` it could not be run at all · `6` it stopped with nothing to
-say. `5` is the one to watch for — a bad model id or a missing key lands there, and it is
-not a crash.
+**Its exit code is the one ladder every headless command leaves on**, and it is written in
+`aforge --help` beside the command: `0` done · `1` it could not be run at all · `2` it ran
+and did not finish · `3` a limit you set stopped it · `4` it needed an answer and nobody
+was there. Which limit stopped it is in `stop`. **`1` means nothing ran at all** — a
+missing key, or a model id the provider rejected before the first call — so a run that
+started, spent money and then fell over leaves with `2`, not `1`.
 
-`--plan-model` is accepted only so that every command you can run without the screen takes
-the same flags. `exec` plans nothing, so naming it changes nothing.
+`aforge exec` used to leave on six rungs of its own — `2` the token budget, `3` the turn
+cap, `4` the wall, `5` an error, `6` nothing to say — and never returned `1`. Setting
+`AFORGE_EXIT_CODES=legacy` puts those old numbers back for one release and changes nothing
+else.
+
+`--plan-model` is still taken so that a command line written before it went away keeps
+working. `exec` plans nothing, so naming it changes nothing, and it says so once on the
+error stream.
 
 Without `--json`, standard output is the worker's own text and nothing else. It opens on the
-error stream with one seat rather than two — `models: work <model> (crew frugal)` — because
-only one of them runs anything.
+error stream naming one model rather than two — `models: work <model> (crew frugal)` —
+because only one of them runs anything.
 
 ## What one costs and what happens when the money runs out
 

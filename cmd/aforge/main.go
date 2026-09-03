@@ -238,6 +238,28 @@ func run() error {
 	}
 }
 
+// The layout law, because a page nobody can read is a page nobody reads:
+//
+//   - NOTHING DRAWS WIDER THAN [helpWidth] CELLS. Eighty is the width a
+//     terminal opens at, and this page used to run to a hundred and sixty-four
+//     — so every second line was soft-wrapped mid-word by the terminal, at a
+//     break the writer never chose, and the hanging indent stopped aligning
+//     the moment it happened. A hundred and eight lines drew a hundred and
+//     sixty-seven rows.
+//   - A COMMAND'S SYNOPSIS BEGINS AT COLUMN 2 and folds, when it must, to
+//     column 14 — under the verb, so the flags stay one column.
+//   - ITS DESCRIPTION SITS UNDER IT AT [helpTextColumn], never beside it. A
+//     right-hand column was tried and cannot survive eighty cells: the
+//     synopses here carry whole flag lists, so the text column would start at
+//     thirty on the short verbs and at zero on the long ones, which is the two
+//     conventions this page already had.
+//
+// TestEveryHelpPageFitsAnEightyColumnTerminal holds the first of those.
+const (
+	helpWidth      = 80
+	helpTextColumn = 6
+)
+
 // usageText is what `aforge --help` prints, and it is FIVE HEADED GROUPS AND
 // FIVE EXAMPLES AND NOTHING ELSE.
 //
@@ -264,101 +286,100 @@ func run() error {
 var usageText = `aforge — an agent you talk to, and hand work to when you walk away
 
 Talk to it — a surface you sit in front of
-  aforge                 open the conversation this directory was last having
-  aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]]
-              [--at name[:path]] [--once "text"] [--no-compact] [--yolo] [--one-model]
-              [--no-host] [--debug]
-                         --no-host opens the conversation in this process instead of attaching
-                         to this workspace's session host; --debug keeps the whole record of the
-                         run — call bodies, tool calls, the choices made — under the state root
-                         --session names a transcript FILE to resume, not an id and not
-                         the word "new": a path that does not exist yet is a new
-                         conversation written there, and no --session at all resumes
-                         this directory's most recent
-  aforge resume          pick an earlier conversation by name and open it
-                         the same list is /resume inside the chat
+  aforge
+      open the conversation this directory was last having
+  aforge chat [--model slug] [--reasoning level] [--session path] [--yolo]
+              [--host host[:path]] [--at name[:path]] [--once "text"]
+              [--no-compact] [--one-model] [--no-host] [--debug]
+      --no-host runs the conversation in this process rather than on this
+      workspace's session host; --debug keeps the whole record of the run
+  aforge resume
+      pick an earlier conversation by name and open it — the same list is
+      /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
-  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m] [--json] [--yes-spend]
-                       [--model slug] [--plan-model slug] [--context-fill 60]
-                       [--completion-reserve 65536] [--debug]
-                         do one task and exit — the same living agent the chat runs, with nobody watching
-                         the task is run verbatim: what you type is the goal, and what it has to assume it declares
-                         ` + exitLadderLine + `
-  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N] [--token-budget N]
-                         [--timeout 15m] [--model slug] [--context-fill N]
-                         [--completion-reserve N] [--json] [--out file] [--debug]
-                         run one worker for one pass, with no planning at all
-                         ` + exitLadderLine + `
-                         why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy restores
-                         exec's old 2/3/4/5/6 for one release
-  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug] [--journal path]
-                       [--json]
-                         run one saved program, with nobody watching: typed input in,
-                         its account and its typed output on stdout, everything else on stderr
-                         a question it was not told how to answer stops it rather than being guessed
-                         ` + exitLadderLine + `
-                         the three differ by how much thinking happens before the work starts:
-                         do plans and may split the job, exec does not plan, run follows a
-                         plan somebody already saved
+  aforge do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
+              [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--context-fill 60] [--completion-reserve 65536] [--debug]
+      do one task and exit — the same living agent the chat runs, with nobody
+      watching. What you type is the goal, and it is run verbatim
+      ` + exitLadderHelp + `
+  aforge exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
+              [--token-budget N] [--timeout 15m] [--model slug]
+              [--context-fill N] [--completion-reserve N] [--json]
+              [--out file] [--debug]
+      run one worker for one pass, with no planning at all
+      ` + exitLadderHelp + `
+      why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy
+      restores exec's old 2/3/4/5/6 for one release
+  aforge run  <program> --input <file.json|-> [--dir dir] [--model slug]
+              [--journal path] [--json]
+      run one saved program: typed input in, its typed output on stdout. A
+      question it was not told how to answer stops it rather than being guessed
+      ` + exitLadderHelp + `
+      the three differ by how much thinking happens first: do plans and may
+      split the job, exec does not plan, run follows a plan somebody saved
 
 Look at what happened — read-only, no key, nothing spent
-  aforge why self [--db path]   show today's self-spend receipts
-  aforge why <task-id> [--db path]  show what one piece of work actually did: its turns, the
-                                tools it called with what arguments, what came back,
-                                and how it ended
-  aforge logs [--tail 40] [--follow] [--path] [--json]
-              [--run id] [--call id] [--tag t] [--model m] [--node n] [--body id]
-                                every model call aforge made — what was asked, which lane
-                                answered, what came back, and which ones are still in
-                                flight. The filters are exact and combine; --json prints
-                                the rows as they are on disk; --body prints one call's
-                                recorded request and reply. Prompts are not in the line.
-                                AFORGE_CALL_LOG=off turns it off, or names a file.
-  aforge models                 the models this machine will use, and what each has been measured at
-  aforge doctor [--db path]     is this install healthy, and where does it keep things
-  aforge manual                 every page of aforge's own manual, one per line
-  aforge manual <page>          print that page as it is written
-  aforge manual "<question>"    the sections that answer it, each labelled with the
-                                page and heading it came from. No key, no model call,
-                                nothing spent — the same pages the chat reads, whole.
-  aforge version                print the build this binary was cut from
-                                (--version and -v say the same thing)
+  aforge why self [--db path]
+      show today's self-spend receipts
+  aforge why <task-id> [--db path]
+      what one piece of work did — its turns, tools, arguments, how it ended
+  aforge logs [--tail 40] [--follow] [--path] [--json] [--run id]
+              [--call id] [--tag t] [--model m] [--node n] [--body id]
+      every model call aforge made — what was asked, which lane answered, what
+      came back. The filters are exact and combine; --json prints the rows as
+      they are on disk, --body one call's bodies. AFORGE_CALL_LOG=off is off
+  aforge models
+      the models this machine will use, and what each has been measured at
+  aforge doctor [--db path]
+      is this install healthy, and where does it keep things
+  aforge manual
+      every page of aforge's own manual, one per line
+  aforge manual <page> | "<question>"
+      that page printed whole, or the sections that answer a question
+  aforge version
+      print the build this binary was cut from (--version and -v say the same)
 
 Housekeeping — changes state on disk or on the network
-  aforge cache                  what the shared build cache holds, and how big it is
-  aforge cache clean [--yes]    delete ~/.aforge/cache to free disk. It prints the size and
-                                path, then asks you to type "` + cacheCleanWord + `" — --yes skips the
-                                question for scripts. Conversations are never touched.
-  aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
+  aforge cache
+      what the shared build cache holds, and how big it is
+  aforge cache clean [--yes]
+      delete ~/.aforge/cache to free disk. It prints the size and path, then
+      asks you to type "` + cacheCleanWord + `" — --yes skips that. Conversations are untouched
+  aforge rebuild [--db path] [--yes]
+      discard every derived table and replay the journal
   aforge serve [--workspace path] [--relay url]
-                                be reachable from your other devices without ssh: this machine
-                                dials out, prints the name it answers to, and shows a pairing
-                                code for a new device
-  aforge devices                list the devices paired with this machine
+      be reachable from your other devices without ssh, with a pairing code
+  aforge devices
+      list the devices paired with this machine
   aforge devices revoke <name> [--all]
-                                stop one device from opening a conversation here — or, with
-                                --all, every device answering to that name. It needs a new
-                                pairing code to come back.
-  aforge notebook [--db path]   what it has learned, and what it has been corrected on
+      stop one device opening a conversation here; --all, every device of that
+      name
+  aforge notebook [--db path]
+      what it has learned, and what it has been corrected on
   aforge notebook retract|restore <seq> [--db path]
-  aforge competence [--db path] [--model slug]   what it has been measured as good at
-  aforge services [--db path]   long-running processes it was asked to keep
+  aforge competence [--db path] [--model slug]
+      what it has been measured as good at
+  aforge services [--db path]
+      long-running processes it was asked to keep
   aforge services stop <name> [--db path]
-  aforge wake [--db path] [--timeout 2m]   run one full background pass by hand and exit
-  aforge help env               the environment table: every variable and its default
+  aforge wake [--db path] [--timeout 2m]
+      run one full background pass by hand and exit
+  aforge help env
+      the environment table: every variable and its default
 
 Plan work by hand — a plan you can read, edit and diff
-  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json] [--instructions]
-                       [--passes auto|off|N] [--model slug] [--plan-model slug]
+  aforge plan new "<goal>" [--out plan.json] [--dir dir] [--json]
+              [--instructions] [--passes auto|off|N] [--model slug]
+              [--plan-model slug]
   aforge plan show <plan.json>
-  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3] [--out plan.json]
-                       [--model slug] [--plan-model slug]
-  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json] [--yes-spend]
-                       [--model slug] [--plan-model slug]
-                         the by-hand pipeline: a plan written to a file, then executed
-                         exactly as written. It is not what most people want — nothing
-                         it learns mid-flight can change a plan that is already frozen.
+  aforge plan revise <plan.json> "<what happened>" [--done 1,2,3]
+              [--out plan.json] [--model slug] [--plan-model slug]
+  aforge plan run <plan.json> [--dir dir] [--parallel 8] [--out done.json]
+              [--yes-spend] [--model slug] [--plan-model slug]
+      a plan written to a file, then executed exactly as written. It is not
+      what most people want: nothing learnt mid-flight moves a frozen plan
 
 Examples:
     aforge                                open the conversation you were having
@@ -368,7 +389,7 @@ Examples:
     aforge chat --host devbox:~/src/api   the chat here, the work over there
 
 Every command answers ` + "`aforge <command> --help`" + ` with its own line and its flags.
-The environment table — every AFORGE_ variable and its default — is ` + "`aforge help env`" + `.`
+The environment table is ` + "`aforge help env`" + ` — every variable and its default.`
 
 // environmentText is the reference half of the old `--help`: every variable a
 // person can set, and what it defaults to.
@@ -378,6 +399,13 @@ The environment table — every AFORGE_ variable and its default — is ` + "`af
 // ([config.DefaultDailyBudgetUSD] and the rest). They were typed out by hand
 // once, and every one of them was stale by the time somebody read it — which is
 // the one-source-of-truth law's own worked example.
+//
+// IT KEEPS THE SAME EIGHTY-CELL LAW AS [usageText]. A reference table is the
+// one page a person reads with their eyes rather than their memory, and this
+// one ran to a hundred and sixteen cells: a variable's name in one column and
+// its sentence soft-wrapped back under the name, which is the shape of a table
+// that has stopped being one. The name is at column 2 and the sentence at
+// column 23, or on the next line at column 23 when the name reaches past it.
 var environmentText = `aforge — the environment
 
 Every variable below is read at launch. A variable set here always wins over the
@@ -387,39 +415,42 @@ than fighting your shell.
   OPENROUTER_API_KEY   required
   AFORGE_MODEL         default ` + config.DefaultModel + `
   AFORGE_PLAN_MODEL    unset: the work model plans too. Set it to run planning,
-                       replans, working methods, and the delivery gate on a
-                       stronger model while a smaller one does the steps; --model
-                       and --plan-model do the same per run.
-  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel and
-                       calls cascade — cheapest model first, escalating when a
-                       verifier catches a failure. Either a comma-separated list
-                       of slugs, or a path to a JSON file:
-                         AFORGE_MODELS=google/gemma-3-12b-it,~deepseek/deepseek-v4-flash-latest,moonshotai/kimi-k2.6
-                         AFORGE_MODELS=~/.aforge/models.json
-                       Ratings accumulate in ~/.aforge/router-ledger.json across
-                       runs; see them with ` + "`aforge models`" + `.
+                       replans, working methods and the delivery gate on a
+                       stronger model while a smaller one does the steps;
+                       --model and --plan-model do the same per run.
+  AFORGE_MODELS        unset: one model, exactly as above. Set it to a panel
+                       and calls cascade — cheapest model first, escalating
+                       when a verifier catches a failure. Either a
+                       comma-separated list of slugs, or a path to a JSON file:
+                       AFORGE_MODELS=google/gemma-3-12b-it,~moonshotai/kimi-k2.6
+                       AFORGE_MODELS=~/.aforge/models.json
+                       Ratings accumulate in ~/.aforge/router-ledger.json
+                       across runs; see them with ` + "`aforge models`" + `.
   AFORGE_REASONING     planning calls: off (default), low, medium, high
-  AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
-  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall when --timeout is not passed,
-                       as a duration or a bare number of seconds. AFORGE_EXEC_BUDGET
-                       and AFORGE_EXEC_TURNS do the same for --token-budget and
-                       --max-turns. A flag that was typed always wins; these exist
-                       so a harness can set the walls once for a campaign instead
-                       of on every call.
+  AFORGE_EXEC_REASONING
+                       executor calls: model default (unset), off, low, medium,
+                       high
+  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall when --timeout is not
+                       passed, as a duration or a bare number of seconds.
+                       AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do the same for
+                       --token-budget and --max-turns. A flag that was typed
+                       always wins; these exist so a harness can set the walls
+                       once for a campaign instead of on every call.
   AFORGE_EXIT_CODES    ` + legacyExitCodesHelp + `
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total steps
   AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
   AFORGE_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
                        and waits for your word (0 = never asks)
-  AFORGE_IMAGE_MODEL          image-generation model (catalog-resolved by default)
-  AFORGE_SPEECH_MODEL         speech-synthesis model (catalog-resolved by default)
-  AFORGE_MUSIC_MODEL          music-generation model (catalog-resolved by default)
-  AFORGE_VIDEO_MODEL          video-generation model (catalog-resolved by default)
-  AFORGE_VISION_MODEL         image-inspection proxy model (talk/work/catalog-resolved by default)
-  AFORGE_DOC_ENGINE           auto (default), local, free, or ocr document-reading rung
-  AFORGE_PRACTICE_BUDGET  ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
-  AFORGE_PRACTICE_IDLE  20m  quiet period before self-practice
+  AFORGE_IMAGE_MODEL   image-generation model (catalog-resolved by default)
+  AFORGE_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
+  AFORGE_MUSIC_MODEL   music-generation model (catalog-resolved by default)
+  AFORGE_VIDEO_MODEL   video-generation model (catalog-resolved by default)
+  AFORGE_VISION_MODEL  image-inspection proxy (talk, work, catalog-resolved)
+  AFORGE_DOC_ENGINE    auto (default), local, free or ocr document reading
+  AFORGE_PRACTICE_BUDGET
+                       ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
+  AFORGE_PRACTICE_IDLE 20m  quiet period before self-practice
   AFORGE_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   AFORGE_MAX_HOURS     how many hours an unattended chat --yolo session may
                        carry its own work on (default none: it stops when the
@@ -427,20 +458,24 @@ than fighting your shell.
   AFORGE_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.
-  AFORGE_PREAUTHORIZE_SPEND  1 spends past the day's limit without a headless stdin prompt
+  AFORGE_PREAUTHORIZE_SPEND
+                       1 spends past the day's limit without stopping a
+                       headless run to ask
   AFORGE_HOME          the whole state root — journal, workspace, CAS, craft,
-                       profiles, catalog, skills (default ~/.aforge). Move it to
-                       run a disposable store that touches nothing of yours.
+                       profiles, catalog, skills (default ~/.aforge). Move it
+                       to run a disposable store that touches nothing of yours.
   AFORGE_PROFILE_DIR   where measured behaviour is kept (default AFORGE_HOME)
   AFORGE_CALL_LOG      the model-call log (default <profile>/logs/calls.jsonl).
-                       "off" writes nothing; any other value is the file to write.
+                       "off" writes nothing; any other value is the file to
+                       write.
   AFORGE_CALL_LOG_BODIES=1
-                       also record each call's whole request and response — your
-                       prompts included. Off by default, and for one run at a time.
+                       also record each call's whole request and response —
+                       your prompts included. Off by default, and for one run
+                       at a time.
 
-The user-facing knobs above — budgets, rhythm, the document rung, the vision and
-media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists them to
-the profile's config.json.
+The user-facing knobs above — budgets, rhythm, the document reader, the vision
+and media slots — are also the ` + "`/settings`" + ` sheet in the chat, which persists
+them to the profile's config.json.
 
 Run ` + "`aforge --help`" + ` for every command.`
 

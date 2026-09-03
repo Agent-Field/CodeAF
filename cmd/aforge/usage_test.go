@@ -212,9 +212,10 @@ func TestAMissingGoalShowsTheCommandAndNotTheWholeTable(t *testing.T) {
 // --help` prints, and every per-command usage is a reading of that table.
 func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
 	// The ladder is interpolated into the table from envelope.go's one rung
-	// list, so this asks for the line that is actually there rather than for a
-	// second spelling of it.
-	if shape := usageForCommand("do"); !strings.Contains(shape, exitLadderLine) {
+	// list, so this asks for the text that is actually there rather than for a
+	// second spelling of it. It is two lines rather than one because five rungs
+	// spelled in words do not fit an eighty-column terminal (exitLadderHelp).
+	if shape := usageForCommand("do"); !strings.Contains(shape, exitLadderHelp) {
 		t.Fatalf("`do`'s usage lost the exit ladder that is written in usageText:\n%s", shape)
 	}
 	// `aforge run` MEANS ONE THING: run a saved program. It used to mean that
