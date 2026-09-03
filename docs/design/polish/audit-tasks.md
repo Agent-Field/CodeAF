@@ -70,3 +70,125 @@ is a colour row.
 16. The jobs section's overflow line wears a fold mark on something that does not fold — `internal/tui3/jobsview.go:209` (`jobEarlierLine` draws `jobFoldMark(false, pal)`, and its own doc comment at `:206` says "it is not a fold and it opens nothing") — `▸ 4 earlier` under a section whose head is also `▸` invites a keypress that does nothing, which is the one state this surface is not allowed to be in; `fix shape`: drop the mark and draw the count alone (`4 earlier`), indented under the rows it counts — the head's `▸` then means exactly one thing on that section — sev: low — frames: none (no job in the demo home; read from source)
 
 17. The clock changes grain between the row and the page it opens — `internal/tui3/tasksplace.go:705` (`sinceAt` → `5h`, `8d`) against `internal/tui3/taskrecord.go:564` (`countUpWord` → `6m 0s`, `4m 0s`) — the list says how long ago and the page says how long it ran, which are genuinely two facts, but `6m 0s` spends four cells on a zero the emptiness law would strike anywhere else, and reads at a glance as a third kind of number; `fix shape`: `countUpWord` drops a zero seconds component when a minutes component is present, so `6m 0s` becomes `6m` and `4m 30s` is untouched — sev: low — frames: docs/design/polish/frames/task-page-done.120x40.txt, task-page-refused.120x40.txt
+
+---
+
+## fixed
+
+Landed on `ui/polish-v0` by the tasks fix lane. Every row below was verified by
+capture on the seeded demo home, at 160x50, 120x40, 80x24 and 60x30; the `-after`
+frames stand beside the originals in `docs/design/polish/frames/`.
+
+**Row 1 — the name is whole before any fact gets a cell.** `tasksRow` is off its
+bespoke drop loop and on `rowfit.go`: it builds a `rowPlan{primary:
+tasksLabel(entry), fields: …}` and fits it, and the loop, `tasksCell`,
+`tasksOmit`, `tasksFixedWidth` and the `tasksDrop` ladder are deleted. The detail
+sentence carries a short spelling (`rowSay("2 files · Annual is the default…",
+"2 files")`) so it degrades instead of ending the tail. At 60 columns every one of
+the ten names is now whole.
+files: `internal/tui3/tasksplace.go`
+test: `TestTheTaskNameIsWholeBeforeAnyFactGetsACell`
+frames: `task-list.{160x50,120x40,80x24,60x30}.txt` → `task-list-after.{160x50,120x40,80x24,60x30}.txt`
+
+**Row 4 — the facts are joined by ` · ` and ranked.** Falls out of row 1:
+`rowTail` joins with `rowSep`, and the row's own painter (`tasksPaintTail`) inks
+each fact and each separator so the money hue survives a tail that may not be
+painted whole. The ranking is `tasksFacts`: the shut fold's count, the note, the
+age, the money, the conversation, what came of it, the kind.
+files: `internal/tui3/tasksplace.go`
+test: `TestTheFactsOnATaskRowAreJoinedByOneSeparator`
+frames: as row 1
+
+**Row 2 and row 14 — sections named by time hold their rows in time order.**
+`readTasks` sorts each section through `tasksInTimeOrder`: roots newest first,
+each root's workers newest first under it, families whole. `done today` now reads
+`1h, 2h, 5h, 5h`. Row 14 is the same fix — a section ordered by its own rows'
+stamps cannot be moved by somebody opening a conversation.
+files: `internal/tui3/tasksplace.go`
+test: `TestEachTasksSectionReadsNewestFirst`
+frames: `task-list.120x40.txt` → `task-list-after.120x40.txt`, `task-fold-open-after.160x50.txt`
+
+**Row 3 — a filter that matches nothing no longer makes the page lie.**
+`tasksReading` carries `whole`/`wholeCost`, counted in `readTasks` before any
+query, and `head` reads those. Typing `zzz` still draws `work aforge ran on its
+own. 10 pieces of work, $2.21 between them.`; the news that nothing matches stays
+on the note line.
+files: `internal/tui3/tasksplace.go`
+test: `TestAFilterThatMatchesNothingStillCountsThePlace`
+frames: `task-filter-none.120x40.txt` → `task-filter-none-after.120x40.txt`
+
+**Row 6 and the fold's count — both figures said in words.** The head is
+`work aforge ran on its own. 10 pieces of work since aug 20, $2.21 between
+them.`, with the noun from the same `plural` helper and `1 piece of work` right
+too; a frame too narrow for the whole sentence drops the spend clause rather than
+letting the line be cut mid-figure. `+3 under` is now `holds 3 more`, and it
+leads the tail instead of trailing it after a bare space.
+files: `internal/tui3/tasksplace.go`, `internal/manual/chat/tasks.md`
+test: `TestTheTasksHeadAndItsFoldsSayTheirFiguresInWords`
+frames: `task-list.{120x40,60x30}.txt` → `task-list-after.{120x40,60x30}.txt`
+
+**Row 7 — a stopped row is no longer dated `now`.** `tasksAgeField` splits the
+case `tasksNote` already distinguishes. The audit's `entry.StartedAt` does not
+exist — the index holds one stamp, `EndedAt`, and it is zero on exactly these
+rows — so the row draws its note and **no age**, which is the emptiness law's own
+answer and the second half of the audit's fix shape. The phone card's tail asks
+the same function.
+files: `internal/tui3/tasksplace.go`
+test: `TestARowNobodyIsRunningIsNotDatedNow`
+frames: `task-list-after.{160x50,120x40}.txt` (`incomplete · The Certificate Rotation`)
+
+**Row 12 — a worker does not repeat its root's conversation.** `tasksRow` takes
+the laid-out line rather than the work alone, so the two facts about where a row
+SITS — the fold it holds shut and the root that has already named their
+conversation — come from the layout that decided them. The cells go to the names.
+files: `internal/tui3/tasksplace.go`
+test: `TestAnOpenedFamilyNamesItsConversationOnce`
+frames: `task-fold-open.160x50.txt` → `task-fold-open-after.160x50.txt`
+
+**Row 8 — one state word on both surfaces.** `tasksMiddle`'s failed branch takes
+`taskStateWord`'s answer and puts the reason after it (`failed · the package
+manager refused the archive`), with the state word alone as its short spelling.
+The list and the page cannot drift.
+files: `internal/tui3/tasksplace.go`
+test: `TestTheListAndThePageSayOneWordAboutWorkThatFailed`
+frames: `task-page-refused-after.120x40.txt`, `task-list-after.120x40.txt`
+
+**Row 9 — work that failed is not reported as having landed.**
+`taskCardEndWord` makes the verb follow the state the segment before it named:
+`done · landed 3h ago`, `failed · stopped 8d ago`.
+files: `internal/tui3/taskrecord.go`, `internal/manual/chat/tasks.md`
+test: `TestTheListAndThePageSayOneWordAboutWorkThatFailed` (second half)
+frames: `task-page-refused.120x40.txt` → `task-page-refused-after.120x40.txt`
+
+**Row 10 — the task's page names the conversation it came out of.**
+`taskCardSourceLine` asks the reading's own ladder (`tasksRowFor`) so the card
+and the row cannot name two different conversations, and draws `out of Porting
+the Picker` between the outcome and the spend facts. Nothing known, nothing
+drawn.
+files: `internal/tui3/taskrecord.go`, `internal/manual/chat/tasks.md`
+test: `TestTheTaskPageNamesTheConversationItCameOutOf`
+frames: `task-page-done.120x40.txt` → `task-page-done-after.120x40.txt`, `task-page-incomplete-after.120x40.txt`
+
+### Not fixed here, and why
+
+- **Row 5** (the blank rows under the list and the page) — the shared filler is
+  `pages.go`, held by another lane.
+- **Row 11** (`jobPageEnding` prints the engine's enum) and **row 16** (the jobs
+  overflow line wears a fold mark) — `jobsview.go`/`jobpage.go`, not this lane's
+  files.
+- **Row 13** (the shut fold's count moves to the LEFT of the mark) — **half
+  done**. The count is now a sentence and leads the tail, so the mark and the
+  count read as one claim about the row rather than as a fact among the facts.
+  Drawing it *inside* the family column (`▸ 3 ✓ Count the tabs…`) was left alone:
+  that column is exactly two cells on every row of the page, and widening it on
+  the rows that fold would leave every glyph on the page ragged. That is a design
+  call the audit's fix shape does not settle.
+- **Rows 15 and 17** (`esc back` named twice; `6m 0s` spends four cells on a
+  zero) — sev: low, and outside the brief for this pass.
+
+### The manual, in the same change
+
+`internal/manual/chat/tasks.md` carries the head sentence, the row's layout law,
+the fold's count (its `## ` heading included, with the old `+3 under` spelling
+kept in the body so somebody searching for what they used to see still lands on
+the page), the card's source line and the `landed`/`stopped` verb.

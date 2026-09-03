@@ -1678,10 +1678,18 @@ pages here take the frame — the settings panel, this one, and `/home` — and 
 them is ever up**: opening any one closes the other two.
 
 It opens on one sentence saying what it is holding — for example
-`work aforge ran on its own. 148 since aug 11, $34.10 of it.` The count is every row on
-the page, the date is the far edge of the time window, and the money is what those rows
-are known to have cost. A window with no known start drops the `since`, and rows nobody
-priced drop the money: zero means "nobody published a price", never "free".
+`work aforge ran on its own. 148 pieces of work since aug 11, $34.10 between them.` The
+count is every row the time window holds, the date is the far edge of that window, and the
+money is what those rows are known to have cost. One row reads `1 piece of work … $0.27 of
+it.` A window with no known start drops the `since`, and rows nobody priced drop the money:
+zero means "nobody published a price", never "free". **A frame too narrow for the whole
+sentence drops the money clause** rather than cutting the line, because half a figure is a
+wrong number.
+
+**The count is a claim about the PLACE and never about what you have typed.** With a filter
+on, the sentence goes on counting every row the window holds — a word that matches nothing
+does not make the machine's history empty. What matched is said on the note line at the
+bottom instead: `filter · zzz · nothing matches`.
 
 **When the time window holds none of it, that sentence says `work aforge ran on its own.
 nothing since jul 29.`** — in words, because a `0` there is the figure the emptiness law
@@ -1696,12 +1704,25 @@ Under it, **four sections, in the order you act on them**: `needs your look`, `r
 conversation started sits beside one another window is running and one a session you closed
 last week finished, filed by what you would do about it next.
 
-Each row is one line: a state glyph, the name, then — as the width allows — the
-conversation or project it came out of, what it is doing or what it came to, its kind
-(`adaptive`, `saved shape`, or `job`), what it cost, and how long ago. A row another window
-is running says `another window` on the right, with that window's own name after it when it
-has settled on one. A row that still claims `running` with **no** window behind it says
-`incomplete` — nobody judged the work, the window simply went.
+Each row is one line: a state glyph, then **the name, whole**, and then a dim tail of
+facts joined by ` · ` — how long ago, what it cost, the conversation or project it came out
+of, what it is doing or what it came to, and its kind (`adaptive`, `saved shape`, or `job`).
+
+**The name keeps every cell it asks for before a fact gets one**, and is shortened only
+where the frame cannot hold it alone; the facts behind it are dropped from the end as the
+frame narrows, and a long sentence of detail is said shorter (`2 files`) before it is
+dropped. So a narrow terminal shows the same facts a wide one does, with the end missing —
+never a different tail, and never a name you cannot match.
+
+A row another window is running says `another window`, with that window's own name after it
+when it has settled on one. A row that still claims `running` with **no** window behind it
+says `incomplete` and **carries no age at all** — nobody judged the work, the window simply
+went, and nothing in the record dates a row that never landed. Work that failed says the
+same word its own page says, with the reason after it: `failed · the package manager
+refused the archive`.
+
+**The sections are in time order, newest first**, and a family stays whole: the root is
+placed by its own stamp and the workers stand under it in theirs.
 
 **A section with nothing in it is not drawn at all**, heading and all. **The sections are
 separated by a blank line** and by nothing else — no rule, no dashes, no alternating
@@ -1972,34 +1993,40 @@ Clicking a row does what `enter` on it does, on the **first** press — the page
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## What does +3 under mean — work that split into workers is folded on the task page, the family tree
+## What does holds 3 more mean — the count on a folded row, work that split into workers, the family tree
 
 **A piece of work that handed itself out is one row, not nine.** The root is on the page and
 the workers are folded under it, shut:
 
 ```
 today
-  ▸ port the parser              a report · 3 files      +3 under
-    rename the flag              a report · 1 file
+  ▸ port the parser              3 files · a report      holds 3 more
+    rename the flag              1 file · a report
 ```
+
+The shut row used to say `+3 under`; it says `holds 3 more` now, because this surface says
+what things are in words rather than in arithmetic with a preposition for a noun.
 
 **`→` opens it**, and the workers appear underneath, connected:
 
 ```
 today
-  ▾ port the parser              a report · 3 files
-  ├ port the lexer               a report · 1 file
-  ├ port the tests               a report · 2 files
+  ▾ port the parser              3 files · a report
+  ├ port the lexer               1 file · a report
+  ├ port the tests               2 files · a report
   └ port the docs                a report
-    rename the flag              a report · 1 file
+    rename the flag              1 file · a report
 ```
+
+**A worker does not repeat its root's conversation.** The root names the conversation the
+family came out of and the rows under it spend those cells on their own names instead.
 
 **`←` folds it back up.** The foot of the page says which you are being offered:
 `→ what ran under it` on a shut family, `← fold it back up` on an open one.
 
 Every family opens **shut**. A page of four hundred tasks with every family expanded is the
-clutter the fold exists to remove — and the shut row says `+3 under`, so you can see what
-opening it would be worth without opening it.
+clutter the fold exists to remove — and the shut row says `holds 3 more`, so you can see
+what opening it would be worth without opening it.
 
 The two cells in front of every row are the family column, and they **appear only when
 there is a family on the page**. On a machine that has never split work up, nothing on the
@@ -2073,6 +2100,7 @@ What opens is a full-screen card over the same page, with the list still underne
 
  Added the guard and the regression test; the parser suite passes.
 
+ out of Fixing the importer
  anthropic/claude-sonnet-4.5 · $0.42 · 12k tok
  3 files changed
 
@@ -2087,10 +2115,18 @@ What opens is a full-screen card over the same page, with the list still underne
 ```
 
 Top to bottom: the title; the state it came home in, when it landed and how long it ran;
-the outcome sentence; what it ran on and what it spent; how many files it changed; where it
-left the work and where the story is; and then **the last thing the task itself said** —
-the whole report, read off that task's own journal, of which the outcome above is the first
-sentence.
+the outcome sentence; the conversation it came out of; what it ran on and what it spent;
+how many files it changed; where it left the work and where the story is; and then **the
+last thing the task itself said** — the whole report, read off that task's own journal, of
+which the outcome above is the first sentence.
+
+- **`out of <conversation>` names where the work came from**, spelled the way the row on the
+  list spells it, so the page is never a smaller answer than the row that opened it. It is
+  the project's name where nothing has titled the conversation yet, and it is left off
+  where nothing knows either.
+- **Work that failed did not land.** The clock clause follows the state in front of it:
+  `done · landed 3h ago`, and `failed · stopped 8d ago` — `landed` is this program's word
+  for work that arrived, and it was drawn over a run nothing came of.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running

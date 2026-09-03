@@ -520,6 +520,14 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 	}
 
 	var facts []string
+	// WHERE IT CAME OUT OF, because the page a person opens to learn MORE may
+	// not know less than the row they opened it from. The row carries the
+	// conversation (tasksplace.go's [tasksFacts]); the card dropped it, and on a
+	// machine with three projects and twelve conversations `Port the picker onto
+	// the new list` alone does not say which codebase it touched.
+	if line := a.taskCardSourceLine(entry); line != "" {
+		facts = append(facts, pal.dim(fit(line, width)))
+	}
 	if line := taskCardSpendLine(entry); line != "" {
 		facts = append(facts, pal.dim(fit(line, width)))
 	}
@@ -553,7 +561,7 @@ func (a *app) taskCardBody(entry session.TaskIndexEntry, width int) []string {
 func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 	segs := []string{taskStateWord(entry, a.recordRuns(&entry))}
 	if !entry.EndedAt.IsZero() {
-		segs = append(segs, "landed "+session.TaskAgeWord(a.now().Sub(entry.EndedAt))+" ago")
+		segs = append(segs, taskCardEndWord(entry)+" "+session.TaskAgeWord(a.now().Sub(entry.EndedAt))+" ago")
 	}
 	// THE CLOCK IS WRITTEN WHEN THE WORK LANDS and is zero on every row that has
 	// not, so a row still claiming to be running says nothing about how long —
@@ -565,6 +573,42 @@ func (a *app) taskCardWhenLine(entry session.TaskIndexEntry) string {
 		}
 	}
 	return strings.Join(segs, railSep)
+}
+
+// taskCardSourceLine is the conversation this work came out of, spelled the way
+// the row that opened the card spells it: the conversation's own title, and the
+// project when nothing has titled the conversation yet.
+//
+// IT ASKS THE READING'S OWN LADDER ([tasksRowFor]) rather than a second one, so
+// the card and the row cannot name two different conversations for one piece of
+// work. Where nothing knows the conversation the line is not drawn — the
+// emptiness law, and `out of ` with nothing after it is a preposition standing
+// in for a fact.
+func (a *app) taskCardSourceLine(entry session.TaskIndexEntry) string {
+	row := tasksRowFor(a.taskSheet.world, a.taskSheet.mine, entry)
+	source := strings.TrimSpace(row.Title)
+	if source == "" {
+		source = strings.TrimSpace(row.Project)
+	}
+	if source == "" {
+		return ""
+	}
+	return "out of " + source
+}
+
+// taskCardEndWord is what the clock clause CALLS the end, and it follows the
+// state the segment in front of it has just named.
+//
+// WORK THAT FAILED DID NOT LAND. `landed` is this codebase's own word for work
+// that ARRIVED, and the refused task's page opened `failed · landed 8d ago ·
+// ran 4m 0s` — six words telling a person both that nothing came of the run and
+// that it came home. The stamp is the same either way; only the verb over it
+// was wrong.
+func taskCardEndWord(entry session.TaskIndexEntry) string {
+	if entry.Status == string(session.TaskFailed) {
+		return "stopped"
+	}
+	return "landed"
 }
 
 // taskCardSpendLine is what the work ran on and what it cost. The model is

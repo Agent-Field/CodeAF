@@ -710,7 +710,7 @@ func (p *tasksPlace) window(a *app, key string) bool {
 	// is the one predicate standing and spend ask as well (placeprose.go's
 	// [placeWindowFits]).
 	width, _ := a.size()
-	arrows, grain := placeWindowFits(width, p.reading.head(false), p.reading.win)
+	arrows, grain := placeWindowFits(width, p.reading.head(width, false), p.reading.win)
 	if !arrows {
 		return false
 	}
