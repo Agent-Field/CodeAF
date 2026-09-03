@@ -16,15 +16,70 @@ of those cost a lane a day.
 
 ---
 
-**N1 — the gate refused, and its refusal named a file change that never
-happened.**
-`shows:` a refusal is the most-read sentence this product writes, and one that
-describes work that did not occur is worse than no refusal: the person goes
-looking for the change. The surface half is that the refusal text is printed
-without anything having checked it against what is on the tree.
-`engine:` why the gate believed a file changed.
-*Not verified here* — I have no capture of it. **The first job on this row is to
-reproduce it and keep the frame**, not to start editing refusal text.
+**N1 — the gate's refusal opens on a fact it invented, and buries the one thing
+a person can act on.**
+
+**VERIFIED, with the frame.** The trial kept it rather than describing it —
+`bench/worker-trial/captures/510-run1-stream.log` on branch
+`trial/aforge-as-worker` @`25cb52250` (worktree `~/af-trial`), with the two leaf
+records beside it and the analysis in that directory's `README.md`. The live
+store is `/home/santosh/.aforge/runs/aforge-do-1923110067`. The sentence, as a
+person saw it:
+
+```
+gate: refused — CLAUDE.md — The only file this run changed is CLAUDE.md; no
+leaf-harness change was implemented. There is no per-round counter of identical
+timed-out tool calls, no new stop-reason kind distinct from the wall and wire
+failure carrying command and count, no exported threshold constant, no
+scripted-brain acceptance test, and no docs/changes/unreleased/ entry for PR
+510. The worker's own message says it stopped 'before implementing'. The file of
+record, CLAUDE.md, performs none of the required behaviour. — no more work could
+be started on it  41m17s
+```
+
+**The verdict is right and almost every clause is true.** The run delivered
+nothing. But it changed NO files — `git status` was empty, and both leaf records
+show zero `write` calls, zero `edit` calls and no shell redirect across 156
+commands. So the refusal opens on something that did not happen, and closes on a
+sentence BUILT from it.
+
+`engine:` why the gate believed a file changed. Not ours, and being filed
+separately — **and the wording is wrong independently of it.** Even with the
+invented fact removed, the three faults below stand.
+
+`shows:` three, and the fix for all of them is one shape.
+
+1. **It leads with its weakest claim and buries its strongest.** The true,
+   enumerated, actionable part — what is MISSING — sits in the middle of ninety
+   words. A person skims the first clause, believes a file was touched, and goes
+   looking for a diff that does not exist.
+2. **`the file of record` is machinery vocabulary**, and it is load-bearing in
+   the one sentence a skimmer reads twice. It names nothing a person can open.
+3. **`— no more work could be started on it` is the outcome**, and it is the
+   least prominent thing in the line, tacked on after an em-dash at the end.
+
+**THE SHAPE TO WRITE IT IN IS ALREADY ON THE NEXT LINE.** Directly underneath,
+the same refusal says `no check exercises — <the check> — and 27 more`, and the
+trial's own reading is that this was the only part it could act on without going
+digging. Fact, then the quoted thing, then the count. So:
+
+- **Lead with the outcome.** `refused` and what that means for the work, first.
+- **Then the strongest TRUE fact**, which is what is absent — quote ONE of them
+  whole and count the rest, exactly as the line below does. A reader who wants
+  the other four goes to the record; a reader who wants to know whether to look
+  at all is finished in one line.
+- **State the tree as a fact, never as a premise.** `no files changed` is a
+  thing to check and report, not a clause to build an argument on top of.
+- **No `file of record`.**
+
+Which gives something of this shape, and a lane taking this row should treat it
+as the target rather than the wording:
+
+```
+gate: refused — nothing the brief asked for is there — no per-round counter of
+identical timed-out tool calls — and 4 more · no files changed · 41m17s
+```
+
 — sev: high
 
 **N2 — `do --json` carries no `exit_code`, and the stream never prints one.**
