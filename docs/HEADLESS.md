@@ -274,7 +274,7 @@ deliverable otherwise. Everything else goes to **stderr**: the `models:` line th
 run opens with, the kept-store path, the "another aforge is resident" notice, the
 price refusal, and the quiet line.
 
-The quiet line is a structural read of the graph (no model call, one line)
+The quiet line is a structural read of the plan (no model call, one line)
 emitted after 30 seconds of silence, because a wedged run and a run thinking
 hard look identical from outside. Redirect stderr if you want it; do not parse
 stdout around it, because it is never there.
@@ -304,7 +304,7 @@ With no `--db`, each run gets a private store in a temp directory that is
 this way must not inherit half a conversation's assumptions.
 
 Pass `--db path` to keep the store. Two runs sharing one `--db` share the task
-graph, the notebook, and the job blackboard — the second run knows what the
+plan, the notebook, and the job blackboard — the second run knows what the
 first learned. That is the seam an experiment about memory across tasks is
 measured at.
 
@@ -598,10 +598,10 @@ esac
 
 ### `aforge plan` — exit `2` means the plan is not settled
 
-`plan` writes and prints its graph whatever it thinks of it: a plan with one
-leaf too big for the worker that will run it is still the best account of the
-goal anyone has, and `-o` and `--json` produce exactly the same bytes they
-always did.
+`aforge plan new` writes and prints its plan whatever it thinks of it: a plan
+with one step too big for the worker that will run it is still the best account
+of the goal anyone has, and `--out` and `--json` produce exactly the same bytes
+they always did.
 
 What the exit code says is whether the planning finished. **A node sized
 `oversized` that carries an `undivided` reason is a piece of planning that did
@@ -613,13 +613,13 @@ with one line per node on **stderr**:
 not settled: North, South, East — no two pieces could be named for it
 ```
 
-Exit `0` therefore means every leaf is one the ruler will stand behind. A
+Exit `0` therefore means every step is one the ruler will stand behind. A
 harness that reads `$?` and stops there is reading the right thing; one that
-reads only "a graph was written" was, until this, told a plan was settled on
+reads only "a plan was written" was, until this, told a plan was settled on
 103 of 273 measured draws where it was not.
 
-An oversized leaf with no reason on it is not this: the split gate collapsing a
-graph writes its own sentence and takes the responsibility, and the door leaves
+An oversized step with no reason on it is not this: the split gate collapsing a
+plan writes its own sentence and takes the responsibility, and the door leaves
 that alone.
 
 ### `aforge chat --once` — one turn, and what it is not
@@ -631,7 +631,7 @@ measuring a job.
 
 It differs from `do` in three ways a harness will trip over:
 
-- **It is one turn, not one errand.** No graph is compiled, so there is no
+- **It is one turn, not one errand.** No plan is compiled, so there is no
   delivery gate, no replan, no `done.json` and no node count. `do`'s "the
   compiler decides the shape" is exactly the thing that is absent here.
 - **There is no `-w`.** The workspace is the process's current directory, so a
