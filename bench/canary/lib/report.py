@@ -30,7 +30,7 @@ import subprocess
 COLUMNS = ["run", "sha", "id", "door", "anchor", "pass", "wall_s", "cost_usd", "ttft_ms",
            "changed_files", "f2p_passed", "f2p_failed", "suite_passed", "suite_failed", "load", "reason",
            "door_verdict", "tests_verdict", "source", "tier", "gate_rounds", "task_done_s", "done_to_wall_s",
-           "mark_fails", "carry_ons", "steward_last", "asked_s", "commits"]
+           "mark_fails", "carry_ons", "steward_last", "asked_s", "commits", "install_constrained"]
 
 
 def cells(run_dirs):
@@ -86,6 +86,11 @@ def row(meta, cell):
         "steward_last": cell.get("steward_last") if cell.get("steward_last") is not None else "",
         "asked_s": cell.get("asked_s") if cell.get("asked_s") is not None else "",
         "commits": cell.get("commits") if cell.get("commits") is not None else "",
+        # `pinned` when the suite installed under the resolution the base was
+        # measured in, `unpinned` when the cell had to fall back, and empty
+        # when the entry named no constraints — a pool written before the
+        # resolution was frozen, where there was nothing to fall back from.
+        "install_constrained": {True: "pinned", False: "unpinned"}.get(cell.get("install_constrained"), ""),
     }
     # Missing measurements stay empty everywhere. In particular, older chat
     # rows may carry an explicit null gate count, which must not print `None`.
@@ -118,6 +123,17 @@ def suite_reading(r, base):
     return "%s/%s" % (r["suite_passed"], r["suite_failed"])
 
 
+def why(r):
+    """The `why` column: the first thing that went wrong, and in front of it
+    `unpinned` when the cell could not build the environment its base was
+    measured in. A row that ran under a resolution nobody measured must say so
+    even when it passed, because the base counts it was read against belong to
+    a different environment."""
+    if r["install_constrained"] != "unpinned":
+        return r["reason"]
+    return "unpinned · " + r["reason"] if r["reason"] else "unpinned"
+
+
 def table(rows, bases=None):
     # `via` is which door was used; `door` is that door's own verdict on its
     # run and `tests` is the pull request's verdict on the tree it left. The two
@@ -138,7 +154,7 @@ def table(rows, bases=None):
         out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
             r["id"], r["door"], provenance(r), r["door_verdict"], r["tests_verdict"], wall, cost, ttft,
             r["changed_files"], f2p, suite, r["gate_rounds"], done_to_wall, r["mark_fails"], r["carry_ons"],
-            r["load"], r["reason"]))
+            r["load"], why(r)))
     return "\n".join(out)
 
 
