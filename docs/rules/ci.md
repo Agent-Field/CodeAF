@@ -25,8 +25,9 @@ endings ratchet in `internal/session` went red on `dev` through two merged pull
 requests with every check green (#372). A structural test — one that reads the
 tree and refuses a shape — decides in under a second and the same on every
 machine, which is the light gate's own definition of what belongs on it. So the
-gate now runs every one of them, found by what they do rather than by a list,
-and runs the packages a change touched in full beside them.
+gate now runs every one of them, found by what they do rather than by a list.
+The packages a change touched run in full on the push to `dev`, not on the
+pull request.
 
 ## What the light gate actually checks
 
