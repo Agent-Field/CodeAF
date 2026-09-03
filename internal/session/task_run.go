@@ -6893,8 +6893,11 @@ func repositoryRoot(dir string) (string, bool) {
 //
 // The list is [tempRoots] and NOT [scratchPath]'s [scratchDirs], which reads the
 // other way round: there a name EXEMPTS a write, here a name REFUSES a ground.
+// A path is made ABSOLUTE BEFORE its symlinks are resolved, and the reason is in
+// [tempRoots]: a relative spelling on either side of the comparison is one
+// filepath.Rel cannot answer, and its error reads as "not inside".
 func climbsOutOfScratch(dir, root string) bool {
-	realDir, realRoot := resolveSymlinks(dir), resolveSymlinks(root)
+	realDir, realRoot := resolveSymlinks(absolutePath(dir)), resolveSymlinks(absolutePath(root))
 	for _, scratch := range tempRoots() {
 		scratch = resolveSymlinks(scratch)
 		if withinDir(scratch, realDir) && !withinDir(scratch, realRoot) {

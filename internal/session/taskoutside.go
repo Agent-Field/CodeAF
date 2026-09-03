@@ -579,10 +579,34 @@ func scratchDirs() []string {
 // set and TMPDIR after that, so a test run's whole scratch tree can sit wherever
 // those two point — including inside somebody's work.
 func tempRoots() []string {
+	roots := scratchDirs()
 	if gotmp := strings.TrimSpace(os.Getenv("GOTMPDIR")); gotmp != "" {
-		return append([]string{gotmp}, scratchDirs()...)
+		roots = append([]string{gotmp}, roots...)
 	}
-	return scratchDirs()
+	// AND EVERY BOUNDARY IS MADE ABSOLUTE HERE, because a relative one is not a
+	// boundary that fails safe — it is a comparison that cannot answer at all.
+	// GOTMPDIR and TMPDIR are whatever somebody exported, os.TempDir hands a
+	// relative TMPDIR straight back, and `git rev-parse --show-toplevel` is
+	// always absolute; [withinDir] asks filepath.Rel, which ERRORS across that
+	// mismatch, and the error reads as "not inside" — so the boundary is skipped
+	// and the climb allowed, in exactly the configuration the law exists for.
+	// filepath.Abs resolves against the process's own working directory, which
+	// is precisely what the OS does with a relative temp root when it makes a
+	// file there, so this is the resolution and not a guess.
+	for i, root := range roots {
+		roots[i] = absolutePath(root)
+	}
+	return roots
+}
+
+// absolutePath is filepath.Abs with the error read as "leave it alone": the one
+// way it fails is a working directory that can no longer be read, and a path
+// left as it was spelled is a better answer there than an empty one.
+func absolutePath(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 // scratchPath reports whether a path is the machine's scratch rather than

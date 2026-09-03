@@ -114,3 +114,21 @@ func TestGOTMPDIRTightensTheGroundLawAndNeverTheWriteGuard(t *testing.T) {
 		t.Fatalf("climbsOutOfScratch(%q, %q) = false — the ground law is not reading GOTMPDIR", work, checkout)
 	}
 }
+
+// A relative temp root is worse than a boundary in the wrong place: it is a
+// boundary that CANNOT ANSWER. filepath.Rel errors when one side is relative and
+// the other absolute — and `git rev-parse --show-toplevel` is always absolute —
+// so a relative GOTMPDIR or TMPDIR would be skipped in silence and the climb
+// allowed. #578 names a relative temp root as its suspected aggravator, because
+// t.Chdir moves the whole process's working directory while other tests are
+// live; this test therefore pins the shape WITHOUT moving anywhere itself.
+func TestEveryTempRootTheGroundLawReadsIsAbsolute(t *testing.T) {
+	t.Setenv("GOTMPDIR", filepath.Join("relative-scratch", ".gotmp"))
+	t.Setenv("TMPDIR", "relative-tmp")
+
+	for _, root := range tempRoots() {
+		if !filepath.IsAbs(root) {
+			t.Fatalf("tempRoots() has the relative boundary %q — filepath.Rel cannot compare it with an absolute repository root, so it would be skipped and the climb allowed", root)
+		}
+	}
+}
