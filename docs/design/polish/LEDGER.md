@@ -7,7 +7,7 @@ costs a developer something, the fix shape and the frames it was seen on.
 
 A row closes on a captured before/after pair and on nothing else.
 
-_2026-09-03 03:43Z_
+_2026-09-03 04:01Z_
 
 ## chat — [audit-chat.md](audit-chat.md)
 
@@ -16,18 +16,18 @@ _2026-09-03 03:43Z_
 - `K3`    high open   The rate on the status line contradicts the pulse two rows above it: `5 tok/s` and `30 tok/s` stand beside "nothing has come back yet"
 - `K4`    high open   Every resumed conversation opens by printing its absolute transcript path across four to six rows of the transcript
 - `K5`    high open   A wrapped notice loses characters where its rows join
-- `K6`    med  open   The status line's right-hand segments are pushed off by the phase narration on its left, so cost, context and the watch count disappear and come back mid-turn
+- `K6`    med  CLOSED The status line's right-hand segments are pushed off by the phase narration on its left, so cost, context and the watch count disappear and come back mid-turn
 - `K7`    med  open   The phase words are drawn twice on the same frame, verbatim, two rows apart
 - `K8`    med  open   The clock in the phase line runs backwards
 - `K9`    med  open   This surface's own notices are indistinguishable from a bullet list the model wrote
 - `K10`   med  open   Below seventy columns the legend is a bare rule with nothing written on it
 - `K11`   med  open   Lines inside a code fence are truncated with `…` and there is no way to see the rest
-- `K12`   low  open   The wrapped rows of a person's message run flush into the sidebar rail with no gutter
-- `K13`   low  open   A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
+- `K12`   low  CLOSED The wrapped rows of a person's message run flush into the sidebar rail with no gutter
+- `K13`   low  CLOSED A ZWJ emoji sequence pushes the sidebar rail four cells right and a VS16 emoji pulls it two cells left
 - `K14`   low  open   One turn counts its tool calls in two words six rows apart
 - `K15`   low  open   A blockquote's gutter bar is the same glyph as the conversation's own right-hand divider
-- `K16`   low  open   The money segment changes width mid-turn and shoves the whole right cluster sideways
-- `K17`   low  open   A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
+- `K16`   low  CLOSED The money segment changes width mid-turn and shoves the whole right cluster sideways
+- `K17`   low  CLOSED A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty
 
 ## cli — [audit-cli.md](audit-cli.md)
 
@@ -117,15 +117,15 @@ _2026-09-03 03:43Z_
 
 ## home — [audit-home.md](audit-home.md)
 
-- `H1`    high open   The first screen of a fresh install brands the product `openaf`, while every screen after it says `aforge`
-- `H2`    high open   **H1.** The list stops at eight rows whatever the terminal's height, so a 40-row window draws 14 rows of content and 22 of nothing while the list is still folded
-- `H3`    high open   **H2.** The right-hand card needs 160 columns and is absent at every ordinary window
-- `H4`    high open   A long note on a list row clips the conversation's **name** to eight cells before a single fact is dropped
-- `H5`    high open   **H3a.** The card's place line is cut from the left, so the project identity is the first thing spent
-- `H6`    high open   **H3b.** Card rows clip the label to keep the tail, so a deliverable's name is spent on a price
-- `H7`    high open   First run on a short terminal loses its input box, its keys and its way out
-- `H8`    high open   `esc not now` ends first run for good, and two of its three questions are never asked again
-- `H9`    high open   A standing item that needs a person is drawn twice on the phone, against that file's own stated law
+- `H1`    high CLOSED The first screen of a fresh install brands the product `openaf`, while every screen after it says `aforge`
+- `H2`    high CLOSED **H1.** The list stops at eight rows whatever the terminal's height, so a 40-row window draws 14 rows of content and 22 of nothing while the list is still folded
+- `H3`    high CLOSED **H2.** The right-hand card needs 160 columns and is absent at every ordinary window
+- `H4`    high CLOSED A long note on a list row clips the conversation's **name** to eight cells before a single fact is dropped
+- `H5`    high CLOSED **H3a.** The card's place line is cut from the left, so the project identity is the first thing spent
+- `H6`    high CLOSED **H3b.** Card rows clip the label to keep the tail, so a deliverable's name is spent on a price
+- `H7`    high CLOSED First run on a short terminal loses its input box, its keys and its way out
+- `H8`    high CLOSED `esc not now` ends first run for good, and two of its three questions are never asked again
+- `H9`    high CLOSED A standing item that needs a person is drawn twice on the phone, against that file's own stated law
 - `H10`   med  open   **H4.** At 60 columns the tab strip collapses from seven places to one, with nothing saying the other six exist
 - `H11`   med  open   **H5.** The hint line is sliced mid-word instead of dropping a whole hint
 - `H12`   med  open   The pulse line is all-or-nothing: it drops every fact rather than the cheapest one
@@ -134,7 +134,22 @@ _2026-09-03 03:43Z_
 - `H15`   med  open   The standing-item hint reads as one key bound to two verbs
 - `H16`   med  open   The scope chip says where your typing lands as a path on one row and as a bare name on the next
 - `H17`   low  open   The resting foot promises `tab next place` on a frame drawing one place
-- `H18`   low  open   The card's four readings are separated by blank rows that a short card pays for twice
+- `H18`   low  CLOSED The card's four readings are separated by blank rows that a short card pays for twice
+
+## jobs — [audit-jobs.md](audit-jobs.md)
+
+- `J1`    high open   A conversation reopened draws none of the background jobs it ran, because the surface has no case for them on the lane the engine replays them on
+- `J2`    high open   A task restored from a checkpoint is dated by when the WINDOW opened plus how long the work ran, which is a landing time in the future
+- `J3`    high open   Work parked on a person's decision is filed under `running` and dated `now`
+- `J4`    high open   A task's identity is cut to three words before any width is known, so a 160-column room header names the work no better than a 24-column rail row
+- `J5`    med  open   The landed card joins the state to the clock with a bare space while joining every other fact with ` · `
+- `J6`    med  open   The word on a landed card for when the work began is `spawned`
+- `J7`    med  open   A task's price is drawn twice on the same home card, four cells apart, in two different inks
+- `J8`    med  open   A conversation whose name carries a combining accent is drawn with the accent silently removed
+- `J9`    med  open   The room's kin line names a child's state with a word that is neither true nor in the vocabulary
+- `J10`   low  open   At 60 columns the room's foot drops every key that answers the decision the room is asking, and one of the four answers goes with it
+- `J11`   med  open   The tasks place offers `stop it` and `open its room` on a row that has nothing to stop and no room to open
+- `J12`   low  open   The status line under a room wraps onto two lines and leaves a hole under the left half
 
 ## settings — [audit-settings.md](audit-settings.md)
 

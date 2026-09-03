@@ -54,3 +54,112 @@ marks all measure correctly.
 16. The money segment changes width mid-turn and shoves the whole right cluster sideways — `internal/tui3/app.go:7617` renders four decimal places under a cent, so a turn passes through `$0.0052` (seven cells) and lands on `$0.01` (five), moving every segment right of it two columns while the person is reading them — the four-place form is right on a receipt and wrong on a line whose stillness is the point — hold the live line at two places and keep the precision for `/cost` and the sheet — sev: low — frames: docs/design/polish/frames/chat-live-t7.120x40.txt, chat-live-t8.120x40.txt
 
 17. A URL or a path is hard-broken at the prose measure while forty columns of the frame sit empty — at 160x50 the answer column stops at 87 cells (right for prose) and the unbreakable tokens break there too, so `…&st` / `ream=true…` splits a link that was going to be copied — the measure cap exists for readability of sentences, and a bare URL is not a sentence — let a single unbreakable token use the full body width before it breaks — sev: low — frames: docs/design/polish/frames/chat-md.160x50.txt, chat-md.120x40.txt
+
+---
+
+## fixed
+
+Nine rows, in the order they were worked. Every fix carries a named test in
+`internal/tui3`; the frames below were captured from `bin/aforge` in a real
+terminal on socket `polish-fixchat`, against the same demo home, with an
+`-after` suffix so the before frames stand beside them.
+
+**1 — a person's own message is drawn whole.** `briefFoldCut` now refuses every
+block that is not a node's instruction, which is the gate `briefFoldHidden` (the
+door and the key) already had. The two are the two ends of one fold, and only
+one of them was firing.
+files: `internal/tui3/brieffold.go`
+test: `TestALongMessageIsNeverCutWithoutADoor` (`internal/tui3/brieffold_test.go`)
+before: `frames/chat-longmsg.120x40.txt` · after: `frames/chat-longmsg-after.120x40.txt`
+(and `.160x50`, `.80x24`, `.60x30`)
+
+**2 — a zero rate draws nothing.** `burnSegment` asks the emptiness law of the
+FIGURE it is about to draw rather than of the token count behind it. `$0.00` is
+untouched: it is this line's one sanctioned zero.
+files: `internal/tui3/render.go`
+test: `TestAZeroRateDrawsNothingOnTheLiveStatusLine` (`internal/tui3/liverate_test.go`)
+before: `frames/chat-late-t4.120x40.txt`
+
+**3 — the rate and the pulse come from one reading.** New `app.awaitingReply`:
+a request is out with nothing back from it. `waitingWords` (the pulse), the burn
+segment and the served rider's own figure all take it, so silence is silence on
+both rows.
+files: `internal/tui3/render.go`
+test: `TestTheRateIsSilentWhileThePulseSaysNothingHasComeBack` (`internal/tui3/liverate_test.go`)
+before: `frames/chat-flow-t11.120x40.txt`
+
+**4 — a resumed conversation opens with its name.** `app.resumedNote` says which
+conversation this is — the session's own name, else the opening of the first
+thing the person said — on one row at every width. The path is asked for on
+`/status`, and the ladder still ends on it, written against `$HOME`, when there
+is no name to give. `internal/manual/chat/sessions-and-rewind.md` gained a
+section saying so.
+files: `internal/tui3/app.go`, `internal/tui3/render.go` (`tildePath`)
+test: `TestAResumedConversationOpensWithItsNameAndNotItsPath` (`internal/tui3/chatnotes_test.go`)
+before: `frames/chat-longmsg.120x40.txt`, `frames/chat-md.160x50.txt` ·
+after: `frames/chat-longmsg-after.120x40.txt`, `frames/chat-md-after.160x50.txt`
+
+**5 — a notice is wrapped to the column it is drawn in.** The note body was
+wrapped at `width-2`, allowing for its own `· ` marker but not for THE INDENT
+LAW's gutter, so every row overshot by two cells and was clipped — eating three
+characters out of the middle of a path. Now `width - noteLead -
+workIndentCols(width)`. Pinned at four widths, and against the rows joining back
+to the text they were given.
+files: `internal/tui3/render.go`
+test: `TestAWrappedNoteFitsTheColumnItIsDrawnIn` (`internal/tui3/chatnotes_test.go`)
+after: `frames/chat-status-after.80x24.txt` (a long path across four note rows,
+no ellipsis, nothing lost at the joins)
+
+**6 — the rider is on the drop ladder.** `statusLayout` gives up, in order: the
+segments ranked under `riderRung`, then the identity rider's widest spelling,
+then the segments above it. The bill, the context meter and the watch count stop
+disappearing and coming back as the phase words grow.
+files: `internal/tui3/render.go` (`riderRung`, `dropSegmentUnder`, `dropKind`)
+test: `TestTheRidersSpellingGoesBeforeTheBillOnTheStatusLine` (`internal/tui3/liverate_test.go`)
+before: `frames/chat-stream-t7.120x40.txt`
+
+**9 — a note does not join the model's list.** A blank row above a note block, so
+this surface's own `· ` line is not read as the model's next bullet; a RUN of
+notes stays one block, so the opening frame's three lines do not become three
+paragraphs.
+files: `internal/tui3/render.go` (`deckRows`)
+test: `TestASurfaceNoteNeverReadsAsTheModelsNextBullet` (`internal/tui3/chatnotes_test.go`)
+before: `frames/chat-md.120x40.txt` · after: `frames/chat-md-after.120x40.txt`
+
+**10 — the narrow legend still names the door.** `legendRight` speaks at every
+width. Under `hudTight` the LEFT end gives up the branch (which the shell prompt
+behind the pane still says) and the slot keeps `/ commands`, which is written
+nowhere else on a frame that narrow. `internal/manual/chat/screen.md` says so,
+and `TestTheLegendDropsTheMicrocopyBeforeTheBranch` was rewritten as
+`TestTheLegendDropsTheBranchBeforeTheCommandsDoor` — it pinned the defect.
+files: `internal/tui3/render.go`, `internal/tui3/bundle_test.go` (the two tests
+that pinned the old order)
+test: `TestTheNarrowLegendStillNamesTheCommandsDoor` (`internal/tui3/chatnotes_test.go`)
+before: `frames/chat-md.60x30.txt` · after: `frames/chat-md-after.60x30.txt`,
+`frames/chat-longmsg-after.60x30.txt`
+
+**bonus, found by 10** — widening the hint slot showed it promising a key the
+block above it had already refused: a stuck question (`Memo` false) is asked
+with a scope aforge cannot save, the offer leaves `[a]` off, and the slot said
+`a always` anyway. It now reads the same field the offer reads. Nobody had seen
+it because the slot was silent at the only width that question is met at.
+files: `internal/tui3/render.go` (`hintWord`), `internal/manual/chat/screen.md`
+test: `TestTheHintSlotNamesTheAlwaysKeyOnlyWhereItWouldAct` (`internal/tui3/chatnotes_test.go`)
+
+### not fixed, and why
+
+- **7 (the phase drawn twice)** — the audit's rule ("the pulse when the turn is
+  forming, the rider otherwise") is a real design call about which of two rows
+  loses its words in every state, and today's behaviour is pinned by several
+  tests in `phase_test.go` that state the opposite ranking as law
+  (`TestThePhaseClockOutranksTheWaitAndTheSilence`,
+  `TestTheServedSegmentDegradesByWhatItsPartsAreWorth`). Rewriting those is a
+  decision, not a polish. Row 6 takes most of its cost off the telemetry.
+- **8 (the phase clock runs backwards)** — `internal/tui3/phase.go`, another
+  lane's file this wave.
+- **11 (a fence's lines are truncated with no door)** — `internal/tui3/codeview.go`.
+- **14 (`1 tool call` vs `1 tool`)** — `internal/tui3/workfold.go` and
+  `internal/tui3/timestamps.go`.
+- **15 (the blockquote bar is the dock's glyph)** — `internal/tui2/tokens/code.go`.
+- **12, 13, 16, 17** — `sev: low`, and this lane stopped at the med rows. 16 is
+  `internal/tui3/app.go:7617` and is a one-line change for whoever takes it.

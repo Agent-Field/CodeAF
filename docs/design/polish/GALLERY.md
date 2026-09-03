@@ -9,6 +9,12 @@ each has a `.ans` twin beside it carrying the colour.
 
 | surface | size | before | after |
 | --- | --- | --- | --- |
+| `chat-longmsg` | 120x40 | [before](frames/chat-longmsg.120x40.txt) | [after](frames/chat-longmsg-after.120x40.txt) |
+| `chat-longmsg` | 60x30 | [before](frames/chat-longmsg.60x30.txt) | [after](frames/chat-longmsg-after.60x30.txt) |
+| `chat-md` | 160x50 | [before](frames/chat-md.160x50.txt) | [after](frames/chat-md-after.160x50.txt) |
+| `chat-md` | 120x40 | [before](frames/chat-md.120x40.txt) | [after](frames/chat-md-after.120x40.txt) |
+| `chat-md` | 80x24 | [before](frames/chat-md.80x24.txt) | [after](frames/chat-md-after.80x24.txt) |
+| `chat-md` | 60x30 | [before](frames/chat-md.60x30.txt) | [after](frames/chat-md-after.60x30.txt) |
 | `help-empty-memory` | 160x50 | [before](frames/help-empty-memory.160x50.txt) | [after](frames/help-empty-memory-after.160x50.txt) |
 | `help-empty-memory` | 80x24 | [before](frames/help-empty-memory.80x24.txt) | [after](frames/help-empty-memory-after.80x24.txt) |
 | `help-empty-search` | 160x50 | [before](frames/help-empty-search.160x50.txt) | [after](frames/help-empty-search-after.160x50.txt) |
@@ -31,6 +37,7 @@ each has a `.ans` twin beside it carrying the colour.
 | `home-idle` | 120x40 | [before](frames/home-idle.120x40.txt) | [after](frames/home-idle-after.120x40.txt) |
 | `home-idle` | 80x24 | [before](frames/home-idle.80x24.txt) | [after](frames/home-idle-after.80x24.txt) |
 | `home-idle` | 60x30 | [before](frames/home-idle.60x30.txt) | [after](frames/home-idle-after.60x30.txt) |
+| `set-session` | 120x40 | [before](frames/set-session.120x40.txt) | [after](frames/set-session-after.120x40.txt) |
 | `task-filter-none` | 120x40 | [before](frames/task-filter-none.120x40.txt) | [after](frames/task-filter-none-after.120x40.txt) |
 | `task-fold-open` | 160x50 | [before](frames/task-fold-open.160x50.txt) | [after](frames/task-fold-open-after.160x50.txt) |
 | `task-list` | 160x50 | [before](frames/task-list.160x50.txt) | [after](frames/task-list-after.160x50.txt) |
@@ -80,9 +87,7 @@ Either a surface no lane has reached, or one the audit found already right.
 - `chat-live-t7` — [120x40](frames/chat-live-t7.120x40.txt)
 - `chat-live-t8` — [120x40](frames/chat-live-t8.120x40.txt)
 - `chat-live-t9` — [120x40](frames/chat-live-t9.120x40.txt)
-- `chat-longmsg` — [120x40](frames/chat-longmsg.120x40.txt) · [60x30](frames/chat-longmsg.60x30.txt)
 - `chat-longmsg-ctrlo` — [120x40](frames/chat-longmsg-ctrlo.120x40.txt)
-- `chat-md` — [160x50](frames/chat-md.160x50.txt) · [120x40](frames/chat-md.120x40.txt) · [80x24](frames/chat-md.80x24.txt) · [60x30](frames/chat-md.60x30.txt)
 - `chat-md-light` — [120x40](frames/chat-md-light.120x40.txt)
 - `chat-md-lightterm` — [120x40](frames/chat-md-lightterm.120x40.txt)
 - `chat-probe` — [120x40](frames/chat-probe.120x40.txt)
@@ -104,7 +109,6 @@ Either a surface no lane has reached, or one the audit found already right.
 - `chat-stream-t7` — [120x40](frames/chat-stream-t7.120x40.txt)
 - `chat-stream-t8` — [120x40](frames/chat-stream-t8.120x40.txt)
 - `chat-stream-t9` — [120x40](frames/chat-stream-t9.120x40.txt)
-- `chat-transcript` — [160x50](frames/chat-transcript.160x50.txt) · [80x24](frames/chat-transcript.80x24.txt) · [60x30](frames/chat-transcript.60x30.txt)
 - `cli-help` — no standard size
 - `cmd-palette` — [120x40](frames/cmd-palette.120x40.txt)
 - `help-badcommand` — [160x50](frames/help-badcommand.160x50.txt)
@@ -130,10 +134,13 @@ Either a surface no lane has reached, or one the audit found already right.
 - `home-firstrun-esc` — [120x40](frames/home-firstrun-esc.120x40.txt)
 - `home-grouped` — [120x40](frames/home-grouped.120x40.txt)
 - `home-open` — [120x40](frames/home-open.120x40.txt)
+- `main-home` — [120x40](frames/main-home.120x40.txt)
 - `memory` — [120x40](frames/memory.120x40.txt)
 - `search` — [120x40](frames/search.120x40.txt)
-- `seed-boot` — [120x40](frames/seed-boot.120x40.txt)
-- `seed-talk` — [120x40](frames/seed-talk.120x40.txt)
+- `seed-home` — [160x50](frames/seed-home.160x50.txt) · [120x40](frames/seed-home.120x40.txt) · [60x30](frames/seed-home.60x30.txt)
+- `seed-room` — [160x50](frames/seed-room.160x50.txt) · [120x40](frames/seed-room.120x40.txt) · [80x24](frames/seed-room.80x24.txt) · [60x30](frames/seed-room.60x30.txt)
+- `seed-talk` — [160x50](frames/seed-talk.160x50.txt) · [120x40](frames/seed-talk.120x40.txt) · [80x24](frames/seed-talk.80x24.txt) · [60x30](frames/seed-talk.60x30.txt)
+- `seed-tasks` — [120x40](frames/seed-tasks.120x40.txt) · [60x30](frames/seed-tasks.60x30.txt)
 - `set-connections` — [120x40](frames/set-connections.120x40.txt)
 - `set-connections-80` — [80x24](frames/set-connections-80.80x24.txt)
 - `set-context` — [120x40](frames/set-context.120x40.txt)
@@ -155,7 +162,6 @@ Either a surface no lane has reached, or one the audit found already right.
 - `set-pulse-tasks1-slow` — [120x40](frames/set-pulse-tasks1-slow.120x40.txt)
 - `set-pulse-tasks8` — [120x40](frames/set-pulse-tasks8.120x40.txt)
 - `set-safety` — [120x40](frames/set-safety.120x40.txt)
-- `set-session` — [120x40](frames/set-session.120x40.txt)
 - `set-set-spending` — [160x50](frames/set-set-spending.160x50.txt) · [80x24](frames/set-set-spending.80x24.txt) · [60x30](frames/set-set-spending.60x30.txt)
 - `set-settings` — [160x50](frames/set-settings.160x50.txt) · [80x24](frames/set-settings.80x24.txt) · [60x30](frames/set-settings.60x30.txt)
 - `set-spend` — [160x50](frames/set-spend.160x50.txt) · [80x24](frames/set-spend.80x24.txt) · [60x30](frames/set-spend.60x30.txt)
