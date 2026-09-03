@@ -142,7 +142,7 @@ func TestAFailedAttemptEndsWithItsFailureNamedAndIsHandedToNobody(t *testing.T) 
 		stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
 	var status exitStatus
-	if !asExitStatus(err, &status) || (status != exitFailed && status != exitPartial) {
+	if !asExitStatus(err, &status) || (status != exitCannotRun && status != exitIncomplete) {
 		t.Fatalf("a run whose every leaf failed left with %v, want exit 1 or 2\nstderr:\n%s",
 			err, stderr.String())
 	}

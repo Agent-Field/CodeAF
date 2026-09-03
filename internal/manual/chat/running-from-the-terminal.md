@@ -22,6 +22,122 @@ Neither draws anything or reads a key.
 `aforge help`, `--help` and `-h` all print the same thing: every command, then the
 environment table. Every verb also answers `<verb> --help` with its own line and its flags.
 
+## What $? means after a headless one-shot — the codes it leaves with
+
+**One table, and `aforge do`, `aforge exec` and `aforge run subharness` all leave on it.**
+This is what `$?` holds after a one-shot, and it is the thing a script should branch on:
+
+| `$?` | what it means |
+| --- | --- |
+| 0 | it is done, and what is on stdout is the answer |
+| 1 | it could not be run at all — no key, bad arguments, the store would not open, the name is not a program |
+| 2 | it ran and did not finish: part of the work does not stand |
+| 3 | a limit you set stopped it — the wall, the token budget, the turn cap, the price |
+| 4 | it needs an answer from you and nobody was there |
+
+The three commands used to have three tables, and two of them meant opposite things by the
+same number: `do` exit 1 was "nothing usable came back" and `run subharness` exit 1 was "it
+could not be run at all", while `exec` returned 2, 3, 4, 5 and 6 and never returned 1. If
+you have a script written against the old numbers, `AFORGE_EXIT_CODES=legacy` puts `exec`'s
+back for one release — see below — and the rest is in
+`docs/design/polish/envelope-and-exits.md`, which sets old and new side by side.
+
+**Exit 3 and exit 2 are different questions.** 3 says the work was going when something you
+set cut it off, so raising `--timeout`, `--token-budget` or `--max-turns` and running it
+again is the remedy. 2 says it got to the end and part of it does not stand, so what came
+back is worth reading before anything is re-run.
+
+**Exit 4 is the one nobody can fix by retrying.** A headless run has no keyboard, so a
+question ends it. The question is printed on stderr verbatim, under `it stopped to ask:`,
+and it is in the `blocked_on` field of `--json`. Answer it inside the ask itself and run it
+again, or bring the work to `aforge` where it can be answered.
+
+Asking for help is never a failure: `--help` on any verb exits 0.
+
+## The --json result object — one shape, three commands
+
+`--json` on `aforge do`, `aforge exec` and `aforge run subharness` prints **one object on
+stdout, always parseable, printed even when the run failed**:
+
+```json
+{
+  "ok": true,
+  "stop": "done",
+  "answer": "…",
+  "files": ["notes.md"],
+  "error": "",
+  "spend_usd": 0.0213,
+  "tokens": {"in": 18422, "out": 1130},
+  "seconds": 91.4,
+  "model": "anthropic/claude-opus-4",
+  "steps": 3
+}
+```
+
+| field | what it holds |
+| --- | --- |
+| `ok` | the work stands. True on exactly the runs that exit 0 |
+| `stop` | why it ended: `done`, `error`, `incomplete`, `budget`, `turn-cap`, `deadline`, `price`, `question` |
+| `answer` | what was produced, in prose. Empty when nothing was |
+| `files` | the paths it wrote. Never null — a run that wrote nothing carries `[]` |
+| `error` | why it could not be run at all, in the same words stderr carried. Empty otherwise |
+| `spend_usd` | what it cost, whole, in dollars |
+| `tokens` | `{"in": …, "out": …}` |
+| `seconds` | wall clock |
+| `model` | the model the work ran on |
+| `steps` | how many pieces of work ran — `do`'s nodes, `exec`'s turns. A saved program does not count them and reports 0 |
+
+**Within a release a field is never removed and never changes meaning; new fields may
+appear.** `stop` is the field to read for *why*; the exit code only says how much is wrong.
+
+`--json` on `aforge plan` and `aforge revise` is a different thing: it is the graph itself,
+the same bytes `-o` would write. `aforge logs --json` is a third: one JSON object per line,
+byte-for-byte what is on disk.
+
+## The old --json field names — deliverable, text, elapsed_ms, settled
+
+**The old names still work, for one release, and then go away.** They are printed beside
+the new ones, so nothing that reads them breaks today and nothing has to be rewritten in a
+hurry:
+
+| old name | read this instead |
+| --- | --- |
+| `deliverable` (`do`), `text` (`exec`) | `answer` |
+| `artifacts` | `files` |
+| `spend` (`do`) | `spend_usd` |
+| `nodes` (`do`), `turns` (`exec`) | `steps` |
+| `elapsed_ms` (`exec`) | `seconds` |
+| `usage` (`exec`) | `tokens` and `spend_usd` |
+
+**`settled` is not the old name of `ok`, and it is not going away.** It means "nothing this
+run is waiting for can still move", which is true of a run that asked a question and did
+nothing: `settled: true` with `ok: false` and exit 4. Reading the one as the other would
+record every refusal as a success.
+
+Some fields belong to one command and stay. `aforge do` carries `spend_work` and
+`spend_overhead` — what the work cost against what it cost to decide what the work should
+be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
+`subharness`. `aforge run subharness` carries `output`, which is the typed answer whole,
+and `report`, and `incomplete` when it did not finish.
+
+## Keeping exec's old numbers for one release — the legacy switch
+
+`aforge exec` used to leave with 2 for the token budget, 3 for the turn cap, 4 for the wall,
+5 for an error and 6 for a run that finished with nothing to show, and it never returned 1.
+Those five numbers all moved when the three commands were put on one table.
+
+Setting `AFORGE_EXIT_CODES=legacy` puts them back:
+
+```
+AFORGE_EXIT_CODES=legacy aforge exec "…"
+```
+
+**It changes nothing else.** Not `aforge do`, not `aforge run`, not one field of `--json`,
+not one word on stderr. It is an escape hatch for scripts already written, it applies to
+`aforge exec` and to nothing else, and it goes away after one release. The thing to change
+the script to is `stop` in `--json`, which names why a run ended in a word rather than a
+number and is the same word on all three commands.
+
 ## What does aforge wake do — running the background pass by hand, once
 
 `aforge wake` does one bounded pass of the work that normally happens on the five-minute

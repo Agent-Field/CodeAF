@@ -73,7 +73,9 @@ func parseCommandFlags(flags *flag.FlagSet, args []string) error {
 		// package's dump of the same list under a different spelling.
 		fmt.Fprintln(usageErr, "error:", err)
 		writeCommandUsage(usageErr, flags)
-		return exitFailed
+		// A flag that could not be read is the first rung of the one ladder:
+		// nothing was attempted, so nothing ran (envelope.go).
+		return exitCannotRun
 	}
 }
 

@@ -192,7 +192,8 @@ aforge run subharness <name> --input -          # read the input from a pipe
 ```
 
 Optional: `-w <dir>` for the directory to work in, `--model <slug>` for the work model,
-`--journal <path>` to append every call the run makes to a file, one JSON object per line.
+`--journal <path>` to append every call the run makes to a file, one JSON object per line,
+and `--json` for the one result object `aforge do` and `aforge exec` also print.
 
 With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
 and it opens by saying which model it took and what chose it.
@@ -202,12 +203,19 @@ There is no task surface and no card here. What comes back:
 | what happened | where it is said | exit code |
 | --- | --- | --- |
 | it finished | the report and the typed answer on stdout | 0 |
-| it did not finish | the reason on stderr, in plain words | non-zero |
+| the name is not a program here | the typo named on stderr, with what there is | 1 |
+| it did not finish | the reason on stderr, in plain words | 2 |
 | it needed a closer look | the long-way line on stderr, then the general worker's answer | 0 if that finished |
-| the name is not a program here | the typo named on stderr, with what there is | non-zero |
+
+Those numbers are the same table `aforge do` and `aforge exec` leave on — 0 done, 1 it
+could not be run at all, 2 it ran and did not finish, 3 a limit you set stopped it, 4 it
+needed an answer and nobody was there. *Commands you type in a terminal* has the whole of
+it, and the `--json` object beside it.
 
 The reason a run did not finish is written for a person to read, and the word for it is
-**incomplete** — the run happened and did not get to the end.
+**incomplete** — the run happened and did not get to the end. Under `--json` that reason is
+the `incomplete` field and the object says `"stop": "incomplete"`; the typed answer is in
+`output`, whole.
 
 ## What is not available yet
 

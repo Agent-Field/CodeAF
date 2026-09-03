@@ -73,32 +73,14 @@ const (
 	defaultResidentWait = 60 * time.Second
 )
 
-// exitStatus ends the process with a particular code and nothing more said. The
-// command has already written its result to the right stream; an "error:" line
-// after an honest partial answer would only be noise.
-type exitStatus int
-
-func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
-
-const (
-	exitFailed exitStatus = 1
-	// exitPartial is the third answer and the one the table always described:
-	// something usable is above, and it is not the whole of what was asked for.
-	// The wall is one way to get here and was for a long time the only one — the
-	// other is a delivery that did not land whole, either because the delivery
-	// gate stood by a rejection of it or because parts of the job failed. Both of
-	// those printed their own shortfall to stdout under exit 0, which is the one
-	// thing a harness reads: "Not all of this landed: 1 of 2 parts finished", and
-	// $? = 0 under it.
-	exitPartial exitStatus = 2
-)
-
-// headlessOutcome is what one errand came to, in the shape --json prints.
+// headlessOutcome is what one errand came to. It is `aforge do`'s own shape,
+// and it is turned into the one machine contract every headless verb returns by
+// [errandEnvelope] on the way out (envelope.go) — nothing marshals this struct.
 //
 // Settled means the errand is over — nothing this process is waiting for can
 // still move — and it is deliberately not a verdict on the work. The verdict is
 // the exit code, and the two disagree in exactly one honest way: an errand
-// stopped by a question is over (settled) and did nothing (exit 1). BlockedOn
+// stopped by a question is over (settled) and did nothing (exit 4). BlockedOn
 // is what tells a machine caller which of those it is holding, and it is why
 // the question never goes in Deliverable: a caller that read the deliverable
 // field recorded an interactive charter card as the answer to a bank
@@ -127,6 +109,12 @@ type headlessOutcome struct {
 	Nodes   int     `json:"nodes"`
 	Seconds float64 `json:"seconds"`
 	Settled bool    `json:"settled"`
+	// tokensIn and tokensOut are the token half of the bill, summed out of the
+	// same journal read that priced the run. They are unexported because they
+	// reach a caller only through the envelope's `tokens` field, which is the
+	// one spelling all three headless verbs share.
+	tokensIn  int
+	tokensOut int
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
@@ -170,12 +158,39 @@ type headlessOutcome struct {
 	// process looks like from the other side of a pipe.
 	Error string `json:"error,omitempty"`
 
-	// status is what the process leaves with. It is decided where the outcome
-	// is produced, because only there is the difference visible between a job
-	// that failed, a price that was refused, and a wall that arrived first —
-	// all three of which are "not a success" and none of which are each other.
-	status exitStatus
+	// stop is WHY THIS RUN ENDED, and it is the only thing this file decides
+	// about the ending. It is set where the outcome is produced, because only
+	// there is the difference visible between a job that failed, a price that
+	// was refused, a question nobody could answer and a wall that arrived first
+	// — four things that are all "not a success" and none of which are each
+	// other. What the process leaves with is not decided here at all: the one
+	// ladder in envelope.go turns this word into a number.
+	stop stopReason
 }
+
+// resolvedStop is this outcome's ending with the one absent case filled in.
+//
+// EVERY ENDING THAT IS NOT A CLEAN ONE NAMES ITSELF — compose defaults to
+// stopDone and each of the four other paths writes its own word — so an outcome
+// that names nothing is a run in which nothing said it had gone wrong. The one
+// exception is an outcome built by hand somewhere that only filled in Error,
+// which is a run that never started.
+//
+// It is one function because the exit code and the envelope's `ok` must be the
+// same fact, and they were read from two places in the shape this replaced.
+func (o headlessOutcome) resolvedStop() stopReason {
+	if o.stop != "" {
+		return o.stop
+	}
+	if strings.TrimSpace(o.Error) != "" {
+		return stopError
+	}
+	return stopDone
+}
+
+// status is what the process leaves with, read off the one exit ladder. There
+// is no second reading of it anywhere in this binary.
+func (o headlessOutcome) status() exitStatus { return exitFor(o.resolvedStop()) }
 
 func runDo(args []string) error {
 	flags := commandFlags("do")
@@ -184,10 +199,7 @@ func runDo(args []string) error {
 	workspace := flags.String("w", "", "the directory to work in, edited in place (default: the current directory)")
 	wall := wallFlag{wall: defaultDoWall}
 	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept for one release)")
-	asJSON := flags.Bool("json", false,
-		"print one machine-readable object instead of the deliverable; settled says the errand is over, "+
-			"the exit code says whether it worked, blocked_on carries a question nobody was here to answer, "+
-			"and error carries the sentence when the run could not start at all")
+	asJSON := flags.Bool("json", false, jsonFlagHelp)
 	yesSpend := flags.Bool("yes-spend", false, "approve a plan whose price crosses the consent threshold")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
@@ -335,8 +347,8 @@ func failedErrand(err error, started time.Time) headlessOutcome {
 		// same rule: the cause and what to do about it, and no wrapped Go
 		// chain (plainwords.go). A caller reading --json and a caller reading
 		// the error stream must not be told two different things.
-		Error:  plainWords(err.Error()),
-		status: exitFailed,
+		Error: plainWords(err.Error()),
+		stop:  stopError,
 	}
 }
 
@@ -541,6 +553,10 @@ func priceErrand(graph *store.Store, session string, openedAt int64, outcome *he
 	outcome.Spend = spend.Cost()
 	outcome.SpendWork = spend.Work.Cost
 	outcome.SpendOverhead = spend.Spine.Cost
+	// AND THE TOKENS OFF THE SAME READ. A caller comparing two runs divides by
+	// these, and taking them from a second query would be a second bill.
+	outcome.tokensIn = spend.Work.PromptTokens + spend.Spine.PromptTokens
+	outcome.tokensOut = spend.Work.CompletionTokens + spend.Spine.CompletionTokens
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing
@@ -724,7 +740,7 @@ func keepPrivateStore(asked, debugging, succeeded bool) bool {
 // nothing to say. A partial is not a success — something did not land, and why
 // it did not is exactly what a person comes back for.
 func errandSucceeded(outcome headlessOutcome, err error) bool {
-	return err == nil && outcome.status == 0
+	return err == nil && outcome.status() == exitDone
 }
 
 // headlessStore decides where this errand lives. The default is a private home
@@ -947,7 +963,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			outcome.Settled, outcome.status = false, exitFailed
+			outcome.Settled, outcome.stop = false, stopPrice
 			outcome.Deliverable = "The plan for this task crosses the spending threshold, so nothing was started."
 			return outcome, nil
 		case <-ctx.Done():
@@ -957,7 +973,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			outcome.Settled, outcome.status = false, exitPartial
+			outcome.Settled, outcome.stop = false, stopDeadline
 			// A wall a question was standing behind is not a slow run. Saying
 			// which of the two it was costs one read and is the difference
 			// between a diagnosable timeout and fifteen minutes of nothing.
@@ -966,6 +982,14 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 				return headlessOutcome{}, questionErr
 			}
 			outcome.BlockedOn = asked
+			// AND A WALL WITH A QUESTION STANDING BEHIND IT IS THE QUESTION'S
+			// ENDING, not the clock's. The clock is what it ran into while
+			// waiting for an answer nobody was here to give, and "raise the
+			// timeout" is the wrong remedy to hand somebody whose run needs a
+			// sentence from them.
+			if asked != "" {
+				outcome.stop = stopQuestion
+			}
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
 				outcome.Deliverable = wallWords(outcome.Artifacts, w.stoppedByHand())
 			}
@@ -1044,7 +1068,7 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 		if err != nil {
 			return headlessOutcome{}, false, err
 		}
-		outcome.Settled, outcome.status = true, exitFailed
+		outcome.Settled, outcome.stop = true, stopIncomplete
 		words := w.refusalWords(command)
 		// A refusal that is a question is not a deliverable, and putting it
 		// there is what made a three-second do-nothing run indistinguishable
@@ -1059,6 +1083,9 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 			words = asked
 		}
 		if asked != "" || rejectedForAnAnswer(command) {
+			// A refusal that is a QUESTION is its own rung: the run needs an
+			// answer and nobody was there to give one.
+			outcome.stop = stopQuestion
 			outcome.BlockedOn, outcome.Deliverable = words, ""
 		} else {
 			// A refusal usually means nothing ran, and then this changes
@@ -1989,6 +2016,10 @@ func (w *settlementWatch) survey() (headlessOutcome, error) {
 func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 	outcome := headlessOutcome{
 		Nodes: len(nodes), Artifacts: []string{},
+		// DONE UNTIL SOMETHING BELOW SAYS OTHERWISE. Every ending this function
+		// can reach that is not a clean one names itself, so the default is the
+		// one it cannot name: the work settled and the deliverable stands.
+		stop: stopDone,
 		// The generalist until a row says otherwise, which is what an empty
 		// column has meant everywhere else since the day it was added.
 		Subharness: exec.LinearSubharness,
@@ -2031,7 +2062,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 		switch {
 		case final.Status == store.Failed || final.Status == store.Cancelled:
-			outcome.status = exitFailed
+			outcome.stop = stopIncomplete
 			outcome.Deliverable = strings.TrimSpace(final.Error)
 			if outcome.Deliverable == "" {
 				outcome.Deliverable = "It did not finish, and no reason was recorded."
@@ -2051,7 +2082,7 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// reads the code — which is the contract, and the only thing a
 			// pipeline reads — recorded them as work that stands.
 			if !w.deliveredWhole(*final) {
-				outcome.status = exitPartial
+				outcome.stop = stopIncomplete
 				w.sayStanding(*final)
 			}
 		}
@@ -2448,7 +2479,7 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
 	if request.asJSON {
-		encoded, err := json.MarshalIndent(outcome, "", "  ")
+		encoded, err := json.MarshalIndent(errandEnvelope(outcome), "", "  ")
 		if err != nil {
 			return err
 		}
@@ -2481,6 +2512,26 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 		fmt.Fprintln(request.stdout, footer)
 	}
 	return errandStatus(outcome)
+}
+
+// errandEnvelope turns what `aforge do` knows into the one machine contract
+// every headless verb returns (envelope.go). It is the ONLY mapping between
+// this file's private shape and what a caller reads, which is what keeps `do`,
+// `exec` and `run` from publishing three different objects again.
+func errandEnvelope(outcome headlessOutcome) resultEnvelope {
+	return buildResultEnvelope(runResult{
+		Stop:      outcome.resolvedStop(),
+		Answer:    outcome.Deliverable,
+		Files:     outcome.Artifacts,
+		Error:     outcome.Error,
+		SpendUSD:  outcome.Spend,
+		TokensIn:  outcome.tokensIn,
+		TokensOut: outcome.tokensOut,
+		Seconds:   outcome.Seconds,
+		Model:     outcome.Model,
+		Steps:     outcome.Nodes,
+		Extra:     legacyErrandFields(outcome),
+	})
 }
 
 // errandFooter is the last line of a headless run, and it draws only what is
@@ -2527,13 +2578,14 @@ func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
 		"say the answer in the ask itself and run it again, or bring it to `aforge` where it can be answered.")
 }
 
-// errandStatus is the contract a script reads: nothing to say means it worked,
-// 1 means the work failed or was refused, 2 means what is above is a partial —
-// the wall came first, the delivery gate rejected it, or parts of it did not
-// land.
+// errandStatus is the contract a script reads, and it reads it off the one exit
+// ladder in envelope.go — 0 done, 1 it could not be run at all, 2 it ran and
+// part of it does not stand, 3 a limit you set stopped it, 4 it needed an
+// answer and nobody was there. Which of the five it is was decided when the
+// outcome was composed, and this only spends it.
 func errandStatus(outcome headlessOutcome) error {
-	if outcome.status == 0 {
+	if outcome.status() == exitDone {
 		return nil
 	}
-	return outcome.status
+	return outcome.status()
 }

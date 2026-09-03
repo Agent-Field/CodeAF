@@ -106,7 +106,7 @@ func TestAnUngroundedGateFailureShipsANoteInsteadOfBuyingARound(t *testing.T) {
 	// its words checks nothing about the world, so the finding is still standing
 	// when the run hands over — see deliveredWhole.
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitPartial {
+	if !asExitStatus(err, &status) || status != exitIncomplete {
 		t.Fatalf("the errand settled whole over a standing finding: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 
@@ -204,8 +204,11 @@ func TestDoJSONCarriesTheWholeOutcome(t *testing.T) {
 }
 
 // A wall that arrives first is not a failure and not a success: what exists is
-// printed, and the exit code says it is a partial.
-func TestDoTimesOutWithAPartialAndCodeTwo(t *testing.T) {
+// printed, and the exit code says A LIMIT YOU SET STOPPED IT — which is the
+// third rung of the one ladder and not the second. It used to be 2, the same
+// number a run whose delivery did not land whole leaves with, so a script could
+// not tell "raise the timeout" apart from "look at what came back".
+func TestDoTimesOutWithALimitCode(t *testing.T) {
 	script := newScriptedBrain(t)
 	script.stall = true
 	defer script.close()
@@ -217,8 +220,8 @@ func TestDoTimesOutWithAPartialAndCodeTwo(t *testing.T) {
 		timeout: 2 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitPartial {
-		t.Fatalf("timeout exit = %v, want exit status 2", err)
+	if !asExitStatus(err, &status) || status != exitLimit {
+		t.Fatalf("timeout exit = %v, want exit status 3", err)
 	}
 	if strings.TrimSpace(stdout.String()) == "" {
 		t.Fatal("a timeout printed nothing at all")
@@ -241,9 +244,12 @@ func TestDoRefusesToBuyAPlanOverTheConsentThreshold(t *testing.T) {
 		task:    "write the release note and include the migration steps",
 		timeout: 20 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
+	// A price you asked to be consulted about is A LIMIT YOU SET, which is the
+	// third rung of the one ladder and not the first: the run was refused, not
+	// unrunnable, and `--yes-spend` is the remedy the rung names.
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitFailed {
-		t.Fatalf("refused spend exit = %v, want exit status 1", err)
+	if !asExitStatus(err, &status) || status != exitLimit {
+		t.Fatalf("refused spend exit = %v, want exit status 3", err)
 	}
 	if !strings.Contains(stderr.String(), "--yes-spend") {
 		t.Fatalf("the refusal never named the way to approve it:\n%s", stderr.String())
@@ -700,7 +706,7 @@ func TestJSONPrintsAnObjectWhenTheErrandCannotEvenStart(t *testing.T) {
 		stdout: &stdout, stderr: &stderr,
 	})
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitFailed {
+	if !asExitStatus(err, &status) || status != exitCannotRun {
 		t.Fatalf("a run that could not start exited %v, want exit status 1", err)
 	}
 	outcome := decodeErrand(t, stdout.String())
@@ -962,12 +968,12 @@ func TestTheAcceptancePassIsBilledToTheSpine(t *testing.T) {
 // is the only stream a pipeline reads, stays empty of it.
 func TestABlockedErrandSaysSoOnStderrAndNowhereElse(t *testing.T) {
 	var stdout, stderr strings.Builder
-	outcome := headlessOutcome{BlockedOn: unanswerableQuestion, status: exitFailed}
+	outcome := headlessOutcome{BlockedOn: unanswerableQuestion, stop: stopQuestion}
 	err := reportErrand(doRequest{asJSON: true, stdout: &stdout, stderr: &stderr}, outcome)
 
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitFailed {
-		t.Fatalf("a blocked errand exited %v, want exit status 1", err)
+	if !asExitStatus(err, &status) || status != exitUnanswered {
+		t.Fatalf("a blocked errand exited %v, want exit status 4", err)
 	}
 	said := stderr.String()
 	if !strings.Contains(said, unanswerableQuestion) {
@@ -1777,7 +1783,7 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 				settleNode(t, graph, "task-1-n2", "", "the invoice API answers 410 Gone")
 				settleNode(t, graph, "task-1", "Here is the reconciliation.", "")
 			},
-			want: exitPartial,
+			want: exitIncomplete,
 		},
 		{
 			name: "the gate stood by its rejection",
@@ -1791,7 +1797,7 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: exitPartial,
+			want: exitIncomplete,
 		},
 		{
 			// The measured shape: a review found the deliverable empty, the
@@ -1812,7 +1818,7 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: exitPartial,
+			want: exitIncomplete,
 		},
 		{
 			// A refusal that checked NOTHING IN THE WORLD. It declines to buy a
@@ -1833,7 +1839,7 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: exitPartial,
+			want: exitIncomplete,
 		},
 		{
 			// And the refusal that DID check the world keeps exiting 0: the file
@@ -1916,8 +1922,8 @@ func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
 				t.Fatalf("the errand never settled: %+v", outcome)
 			}
 			assertErrandIsHonest(t, outcome, errandStatus(outcome))
-			if outcome.status != shape.want {
-				t.Fatalf("exit %d, wanted %d: %+v", outcome.status, shape.want, outcome)
+			if outcome.status() != shape.want {
+				t.Fatalf("exit %d, wanted %d: %+v", outcome.status(), shape.want, outcome)
 			}
 			// Whatever the verdict, the work that did land is still handed over.
 			if strings.TrimSpace(outcome.Deliverable) == "" {

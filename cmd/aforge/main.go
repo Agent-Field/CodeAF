@@ -254,8 +254,7 @@ var usageText = `aforge — build and revise task graphs
                        [--context-fill 60] [--completion-reserve 65536] [--debug]
                          do one task and exit — the same living brain the chat runs, with nobody watching
                          the task is run verbatim: what you type is the goal, and what it has to assume it declares
-                         exit 0 the whole of it stands · 1 nothing usable · 2 partial: the wall came first,
-                         the delivery gate rejected it, or parts of it did not land
+                         ` + exitLadderLine + `
   aforge plan "<goal>" [-o graph.json] [-w dir] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
@@ -265,14 +264,15 @@ var usageText = `aforge — build and revise task graphs
                          [--model slug] [--plan-model slug] [--context-fill N] [--completion-reserve N]
                          [--json] [-o file] [--debug]
                          run one linear worker with no resident planning graph
-                         exit 0 it answered · 2 the token budget ran out · 3 the turn cap came first
-                         · 4 the wall came first · 5 it could not be run at all · 6 it stopped with
-                         nothing to say. --json carries the same reason in its error field.
+                         ` + exitLadderLine + `
+                         why it stopped is in --json's stop field; AFORGE_EXIT_CODES=legacy restores
+                         exec's old 2/3/4/5/6 for one release
   aforge run subharness <name> --input <file.json|-> [-w dir] [--model slug] [--journal path]
+                                [--json]
                          run one subharness as a program, with nobody watching: typed input in,
                          its account and its typed output on stdout, everything else on stderr
                          a question it was not told how to answer stops it rather than being guessed
-                         exit 0 it finished · 1 it could not be run at all · 2 it ran and did not finish
+                         ` + exitLadderLine + `
   aforge show <graph.json>
   aforge models
   aforge notebook [--db path]
@@ -329,6 +329,7 @@ Environment:
                        the same for --budget and --turns. A flag that was typed
                        always wins; these exist so a harness can set the walls
                        once for a campaign instead of on every call.
+  AFORGE_EXIT_CODES    ` + legacyExitCodesHelp + `
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   ` + strconv.Itoa(config.DefaultNodeBudget) + `  hard ceiling on total nodes
   AFORGE_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  daily dollar rail (0 = unlimited)

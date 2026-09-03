@@ -17,27 +17,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/trace"
 )
 
-// execEnvelope is the machine contract for one-shot harness callers. It
-// reports the linear executor's outcome rather than a resident graph summary.
-type execEnvelope struct {
-	Text      string          `json:"text"`
-	Stop      exec.StopReason `json:"stop"`
-	Usage     exec.Usage      `json:"usage"`
-	Artifacts []string        `json:"artifacts"`
-	Turns     int             `json:"turns"`
-	ElapsedMS int64           `json:"elapsed_ms"`
-	// Error is why the run did not work, in the same words a person would have
-	// read on stderr. It is empty on every run that produced an answer.
-	//
-	// It is here because a failure envelope without it says `"stop":"error"`
-	// and nothing else, so a script reading exec's stdout could learn THAT the
-	// run failed and never WHY — the model id was rejected, the key was
-	// missing, the wall arrived — with the only copy of the sentence on a
-	// stream it was not reading. `do --json` shipped this field for exactly
-	// that reason (headlessOutcome.Error, do.go); exec never got it.
-	Error string `json:"error,omitempty"`
-}
-
 func runExec(args []string) error {
 	flags := commandFlags("exec")
 	workspace := flags.String("w", ".", "workspace directory")
@@ -49,7 +28,7 @@ func runExec(args []string) error {
 	planModel := flags.String("plan-model", "", "accepted for headless model-pin parity; exec performs no planning")
 	contextFill := flags.Int("context-fill", 0, "context compaction threshold in percent (default 60)")
 	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
-	asJSON := flags.Bool("json", false, "print a machine-readable result")
+	asJSON := flags.Bool("json", false, jsonFlagHelp)
 	output := flags.String("o", "", "write the machine-readable result to this file")
 	debug := flags.Bool("debug", false,
 		"keep the full record of this run — call bodies, tool calls and the choices made — "+
@@ -136,7 +115,7 @@ func runExec(args []string) error {
 		fmt.Fprintln(os.Stderr, "error:", execFailureWords(runErr))
 	}
 
-	envelope := buildExecEnvelope(outcome, runErr)
+	envelope := buildExecEnvelope(outcome, runErr, settings.Model)
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return err
@@ -160,16 +139,16 @@ func runExec(args []string) error {
 	if outputErr != nil {
 		if runErr != nil {
 			fmt.Fprintln(os.Stderr, "error:", outputErr)
-			return exitStatus(5)
+			return execExit(outcome, runErr)
 		}
 		return outputErr
 	}
 
 	if runErr != nil {
-		return exitStatus(5)
+		return execExit(outcome, runErr)
 	}
-	if code := execExitCode(outcome.Stop, outcome.Text); code != 0 {
-		return exitStatus(code)
+	if code := execExit(outcome, nil); code != exitDone {
+		return code
 	}
 	return nil
 }
@@ -233,7 +212,64 @@ func execDeadline(maxTokens, timeoutSeconds int) time.Duration {
 	return exec.SubharnessFor(exec.LinearSubharness).Deadline(maxTokens)
 }
 
-func execExitCode(stop exec.StopReason, text string) int {
+// execStop says how this run ended, in the ONE vocabulary all three headless
+// verbs speak (envelope.go). It is the whole of exec's opinion about its own
+// ending; what that costs the process is the ladder's business.
+//
+// The executor's own five reasons pass through under their own names, because
+// harnesses read those words out of `--json` and they must not move. The two
+// readings this function adds are the ones a raw StopReason cannot make:
+//
+//   - "done" with nothing to show is INCOMPLETE. The loop stopped asking for
+//     tools and produced no text, which is a run that did not finish however
+//     calmly it ended. This is the old exit 6, and the field it changes is the
+//     one value in `stop` that moves in this change.
+//   - a run that came back with an error and no reason of its own could not be
+//     run at all. Where it DID name a reason — the wall, the budget — that
+//     reason is kept, because the error is what the wall left behind and not
+//     what stopped it.
+func execStop(outcome *exec.Outcome, runErr error) stopReason {
+	if outcome == nil {
+		return stopError
+	}
+	stop := stopReason(outcome.Stop)
+	switch outcome.Stop {
+	case exec.StopDone:
+		if strings.TrimSpace(outcome.Text) == "" {
+			stop = stopIncomplete
+		}
+	case exec.StopBudget, exec.StopTurnCap, exec.StopDeadline, exec.StopError:
+		// Already one of the shared words, spelled identically.
+	default:
+		// promote, paused, cancelled, empty, split, overrun: it ran, and this
+		// is not a rung of its own. The word itself survives in `stop`.
+	}
+	if runErr != nil && stop == stopDone {
+		return stopError
+	}
+	return stop
+}
+
+// execExit is exec's one exit decision, and the ESCAPE HATCH lives in it.
+func execExit(outcome *exec.Outcome, runErr error) exitStatus {
+	if legacyExitCodes() {
+		// EXACTLY THE OLD NUMBERS, taken from the old code path and nothing
+		// else: a run that came back with an error was 5 whatever its stop
+		// reason said, and everything else was execLegacyExitCode's table.
+		if runErr != nil {
+			return exitStatus(5)
+		}
+		return exitStatus(execLegacyExitCode(outcome.Stop, outcome.Text))
+	}
+	return exitFor(execStop(outcome, runErr))
+}
+
+// execLegacyExitCode is `aforge exec`'s exit table AS IT WAS, kept for one
+// release behind AFORGE_EXIT_CODES=legacy and reached from nowhere else. It is
+// deliberately left exactly as it was written rather than rebuilt out of the
+// ladder: its whole job is to be the old numbers, and a version of it derived
+// from the new table would stop being that the first time the table moved.
+func execLegacyExitCode(stop exec.StopReason, text string) int {
 	switch stop {
 	case exec.StopDone:
 		if strings.TrimSpace(text) == "" {
@@ -253,24 +289,30 @@ func execExitCode(stop exec.StopReason, text string) int {
 	}
 }
 
-// buildExecEnvelope is the ONE PLACE the machine contract is built, so the
-// object written to --json, the object written to -o and the sentence printed
-// on stderr cannot drift apart.
-func buildExecEnvelope(outcome *exec.Outcome, runErr error) execEnvelope {
+// buildExecEnvelope maps what the linear executor knows onto the one machine
+// contract every headless verb returns (envelope.go), so the object written to
+// --json, the object written to -o and the sentence printed on stderr cannot
+// drift apart — and so that a tool that reads `aforge do --json` reads this
+// without being rewritten.
+func buildExecEnvelope(outcome *exec.Outcome, runErr error, model string) resultEnvelope {
 	if outcome == nil {
 		outcome = &exec.Outcome{Stop: exec.StopError}
 	}
 	artifacts := make([]string, len(outcome.Artifacts))
 	copy(artifacts, outcome.Artifacts)
-	return execEnvelope{
-		Text:      outcome.Text,
-		Stop:      outcome.Stop,
-		Usage:     outcome.Usage,
-		Artifacts: artifacts,
-		Turns:     outcome.Turns,
-		ElapsedMS: outcome.Elapsed.Milliseconds(),
+	return buildResultEnvelope(runResult{
+		Stop:      execStop(outcome, runErr),
+		Answer:    outcome.Text,
+		Files:     artifacts,
 		Error:     execFailureWords(runErr),
-	}
+		SpendUSD:  outcome.Usage.Cost,
+		TokensIn:  outcome.Usage.PromptTokens,
+		TokensOut: outcome.Usage.CompletionTokens,
+		Seconds:   outcome.Elapsed.Seconds(),
+		Model:     model,
+		Steps:     outcome.Turns,
+		Extra:     legacyExecFields(outcome),
+	})
 }
 
 // execFailureWords is one failure said once, in words a person can act on.

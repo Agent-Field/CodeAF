@@ -30,10 +30,10 @@ func TestAFailedHeadlessRunKeepsItsRecord(t *testing.T) {
 		{name: "a clean run is deleted", keep: false},
 		{name: "a clean run asked to be kept", asked: true, keep: true},
 		{name: "a clean run under the debug switch", debugging: true, keep: true},
-		{name: "a run that failed", outcome: headlessOutcome{status: exitFailed}, keep: true},
-		{name: "a run that landed partial", outcome: headlessOutcome{status: exitPartial}, keep: true},
+		{name: "a run that failed", outcome: headlessOutcome{stop: stopError}, keep: true},
+		{name: "a run that landed partial", outcome: headlessOutcome{stop: stopIncomplete}, keep: true},
 		{name: "a run that never reached an outcome", err: errors.New("the store would not open"), keep: true},
-		{name: "a failure asked to be kept", asked: true, outcome: headlessOutcome{status: exitFailed}, keep: true},
+		{name: "a failure asked to be kept", asked: true, outcome: headlessOutcome{stop: stopError}, keep: true},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			got := keepPrivateStore(row.asked, row.debugging, errandSucceeded(row.outcome, row.err))

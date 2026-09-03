@@ -13,7 +13,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 )
 
-func TestExecExitCode(t *testing.T) {
+// THE ESCAPE HATCH'S OWN TABLE, pinned to the numbers it exists to restore.
+// These are exec's exit codes as they were before the one ladder, and they are
+// reachable only under AFORGE_EXIT_CODES=legacy.
+func TestExecLegacyExitCodeIsTheOldTable(t *testing.T) {
 	tests := []struct {
 		name string
 		stop exec.StopReason
@@ -31,8 +34,8 @@ func TestExecExitCode(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := execExitCode(test.stop, test.text); got != test.want {
-				t.Fatalf("execExitCode(%q, %q) = %d, want %d", test.stop, test.text, got, test.want)
+			if got := execLegacyExitCode(test.stop, test.text); got != test.want {
+				t.Fatalf("execLegacyExitCode(%q, %q) = %d, want %d", test.stop, test.text, got, test.want)
 			}
 		})
 	}
@@ -65,27 +68,50 @@ func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 		Elapsed: 1234 * time.Millisecond,
 	}
 
-	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil))
+	encoded, err := json.Marshal(buildExecEnvelope(outcome, nil, "openai/gpt-5"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"text":"answer","stop":"done","usage":{"calls":2,"prompt_tokens":30,"completion_tokens":12,"cached_tokens":4,"cost":0.125},"artifacts":[],"turns":7,"elapsed_ms":1234}`
-	if string(encoded) != want {
-		t.Fatalf("envelope JSON = %s, want %s", encoded, want)
+	var fields map[string]any
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	// The contract, as envelope.go states it.
+	for name, want := range map[string]any{
+		"ok": true, "stop": "done", "answer": "answer", "error": "",
+		"spend_usd": 0.125, "seconds": 1.234, "model": "openai/gpt-5", "steps": float64(7),
+	} {
+		if got := fields[name]; got != want {
+			t.Fatalf("%s = %v, want %v\n%s", name, got, want, encoded)
+		}
+	}
+	// And the old spellings, still readable for one release.
+	for name, want := range map[string]any{
+		"text": "answer", "turns": float64(7), "elapsed_ms": float64(1234),
+	} {
+		if got := fields[name]; got != want {
+			t.Fatalf("the old field %s = %v, want %v\n%s", name, got, want, encoded)
+		}
+	}
+	if _, ok := fields["usage"]; !ok {
+		t.Fatalf("the old usage object went away in one release:\n%s", encoded)
 	}
 }
 
 func TestBuildExecEnvelopeToleratesNilOutcome(t *testing.T) {
-	encoded, err := json.Marshal(buildExecEnvelope(nil, nil))
+	encoded, err := json.Marshal(buildExecEnvelope(nil, nil, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"text":"","stop":"error","usage":{"calls":0,"prompt_tokens":0,"completion_tokens":0,"cached_tokens":0,"cost":0},"artifacts":[],"turns":0,"elapsed_ms":0}`
-	if string(encoded) != want {
-		t.Fatalf("envelope JSON = %s, want %s", encoded, want)
+	var fields map[string]any
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
 	}
-	if code := execExitCode(buildExecEnvelope(nil, nil).Stop, ""); code != 5 {
-		t.Fatalf("exit code for a nil outcome = %d, want 5", code)
+	if fields["stop"] != string(stopError) || fields["ok"] != false {
+		t.Fatalf("a nil outcome is not reported as unrunnable:\n%s", encoded)
+	}
+	if code := exitFor(buildExecEnvelope(nil, nil, "").Stop); code != exitCannotRun {
+		t.Fatalf("exit code for a nil outcome = %d, want 1", code)
 	}
 }
 
@@ -298,7 +324,7 @@ func TestHeadlessDocumentsExec(t *testing.T) {
 // reason; exec never got it.
 func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	runErr := errors.New("node " + execNodeKey + ": API error (400): nosuch/model-xyz is not a valid model ID")
-	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError}, runErr)
+	envelope := buildExecEnvelope(&exec.Outcome{Stop: exec.StopError}, runErr, "")
 	if envelope.Error == "" {
 		t.Fatal("the failure envelope carries stop=error and no reason at all, so a script can never learn why")
 	}
@@ -320,9 +346,10 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	if !strings.Contains(envelope.Error, "aforge models") {
 		t.Fatalf("the reason never says what to do about it: %q", envelope.Error)
 	}
-	// A run that worked says nothing, and the field is absent from the object
-	// rather than present and empty.
-	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil)
+	// A run that worked says nothing. The KEY IS STILL THERE and empty, which is
+	// the envelope's guarantee: a field is never absent, so a caller reading
+	// `.error` on an older or newer run is never handed null.
+	clean := buildExecEnvelope(&exec.Outcome{Stop: exec.StopDone, Text: "ok"}, nil, "")
 	if clean.Error != "" {
 		t.Fatalf("a run that worked reported an error: %q", clean.Error)
 	}
@@ -330,7 +357,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), `"error"`) {
-		t.Fatalf("a clean run's envelope carries an empty error key:\n%s", encoded)
+	if !strings.Contains(string(encoded), `"error":""`) {
+		t.Fatalf("a clean run's envelope dropped the error key instead of leaving it empty:\n%s", encoded)
 	}
 }

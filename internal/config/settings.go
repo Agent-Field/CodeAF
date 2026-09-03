@@ -1031,6 +1031,26 @@ var OperatorEnvPins = []string{
 	// verified by two cheap validators before it commits; off, the judge's
 	// pass is the final word. Same lifetime as AFORGE_SWARM.
 	"AFORGE_QUORUM",
+	// AFORGE_EXIT_CODES is the migration hatch for the ONE EXIT LADDER
+	// (cmd/aforge/envelope.go). It takes exactly one word, `legacy`, and unset
+	// — which is every ordinary run — means the ladder every headless verb now
+	// leaves on: 0 done, 1 it could not be run at all, 2 it ran and did not
+	// finish, 3 a limit you set stopped it, 4 it needed an answer and nobody
+	// was there. What it decides: whether `aforge exec` returns its OLD
+	// 2/3/4/5/6 instead, so that a harness written against those numbers keeps
+	// working while it is being fixed. It decides nothing about `aforge do`,
+	// nothing about `aforge run subharness`, and nothing about `--json`.
+	//
+	// IT IS PLUMBING AND NOT A ROW, for the reason AFORGE_SWARM and
+	// AFORGE_SPLITGATE are: it is a wave's escape hatch, it lives for one
+	// release and then goes, and that is exactly the lifetime a persisted
+	// setting must not have. A row would also be worse than useless here — a
+	// person who set `legacy` in the sheet once would have their exit codes
+	// quietly rolled back on a machine where the variable is nowhere in sight,
+	// which is the failure the hatch exists to prevent, not to cause. The
+	// scripts that need it set it in the environment beside the command, which
+	// is where a compatibility switch belongs.
+	"AFORGE_EXIT_CODES",
 	// The three numbers the response boundary reads (internal/taxonomy, and
 	// [ResponseAttemptsAt] below). They are plumbing rather than rows for the
 	// reason the context-budget pins are: nobody sets them to express a

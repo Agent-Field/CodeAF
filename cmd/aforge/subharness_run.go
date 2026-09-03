@@ -32,12 +32,18 @@ import (
 // exit code without parsing a word of prose.
 //
 //	exit 0   it finished, and the output above is the shape it promised
-//	exit 2   it ran and did not finish, and stderr says what ran out
 //	exit 1   it could not be made to happen at all
+//	exit 2   it ran and did not finish, and stderr says what ran out
 //
-// THE THREE ENDINGS ARE THE DELIVERABLE and they are decided in exactly one
-// place, [reportSubharnessRun]. A second reading of "done" anywhere in this file
-// would be a second program disagreeing with this one about what happened.
+// THOSE THREE NUMBERS ARE NOT THIS FILE'S TO CHOOSE. They are three rungs of
+// the one exit ladder every headless verb in this binary leaves on, and the
+// table is in envelope.go — this command says WHY it ended, as a [stopReason],
+// and the ladder says what that costs. It used to write its own numbers here,
+// and `do` wrote different ones for the same two facts.
+//
+// THE ENDINGS ARE STILL DECIDED IN EXACTLY ONE PLACE, [reportSubharnessRun]. A
+// second reading of "done" anywhere in this file would be a second program
+// disagreeing with this one about what happened.
 //
 // The vocabulary law reaches every line either stream carries: work is running,
 // finishing, done, incomplete, or needs your look. A run that did not finish is
@@ -58,6 +64,7 @@ func runSubharnessCommand(args []string) error {
 	model := flags.String("model", "", modelFlagHelp)
 	journalPath := flags.String("journal", "",
 		"keep an account of every call this run makes in this file, one JSON object per line")
+	asJSON := flags.Bool("json", false, jsonFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -174,6 +181,7 @@ func runSubharnessCommand(args []string) error {
 	return runSubharness(ctx, subharnessRun{
 		registry: registry, name: name, input: material, journal: journal,
 		stdout: os.Stdout, stderr: os.Stderr,
+		asJSON: *asJSON, model: settings.Model, started: time.Now(),
 		env: func(manifest exec.Manifest) exec.Env {
 			return newHeadlessEnv(client, tools, *policy, manifest, journal, os.Stderr)
 		},
@@ -202,6 +210,17 @@ type subharnessRun struct {
 	journal *runJournal
 	stdout  io.Writer
 	stderr  io.Writer
+	// asJSON prints the one result envelope every headless verb returns
+	// (envelope.go) instead of the report and the typed output, and prints it
+	// EVEN WHEN THE RUN FAILED — a machine contract that only holds on success
+	// is not one a script can be written against.
+	asJSON bool
+	// model is the seat this run sat in, and started is when it began. Both are
+	// facts the envelope carries and neither is otherwise this file's business;
+	// a test driving the endings leaves them empty and the envelope then says
+	// nothing about them rather than guessing.
+	model   string
+	started time.Time
 	// record is told how the run went, once, the moment it lands. Nil is a build
 	// that keeps no history — a test driving the endings, a store that could not
 	// be opened — and a run then simply leaves no note, which is not an error and
@@ -228,9 +247,9 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 			// is right to — a leaf still has work to get done — but somebody who
 			// spelled a name and silently received something else is worse served
 			// than somebody who was told.
-			return noSuchSubharness(run.registry, run.name)
+			return run.sayFailedEnvelope(noSuchSubharness(run.registry, run.name))
 		}
-		return err
+		return run.sayFailedEnvelope(err)
 	}
 	manifest := runner.Manifest()
 	env := exec.Env(exec.UnwiredEnv{})
@@ -265,7 +284,7 @@ func runSubharness(ctx context.Context, run subharnessRun) error {
 			// carried. A note that stayed silent about it would send somebody
 			// back to try the same broken program again tomorrow.
 			run.note(result, err)
-			return err
+			return run.sayFailedEnvelope(err)
 		}
 	}
 	run.note(result, nil)
@@ -312,6 +331,9 @@ func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
 	sayArtifacts(run.stderr, result.Artifacts)
 	sayLedger(run.stderr, run.journal.Ledger())
 	if result.Finished() {
+		if run.asJSON {
+			return run.sayEnvelope(stopDone, result, "")
+		}
 		if report := strings.TrimSpace(result.Report); report != "" {
 			fmt.Fprintln(run.stdout, report)
 		}
@@ -330,15 +352,121 @@ func reportSubharnessRun(run subharnessRun, result exec.RunResult) error {
 		reason = "it stopped without producing what it promised, and without saying why"
 	}
 	fmt.Fprintln(run.stderr, reason)
+	if run.asJSON {
+		return run.sayEnvelope(stopIncomplete, result, reason)
+	}
 	// What the run DID manage still goes to stdout where there is any of it. A
-	// partial answer is the thing exitPartial exists to describe.
+	// partial answer is the thing the incomplete rung exists to describe.
 	if report := strings.TrimSpace(result.Report); report != "" {
 		fmt.Fprintln(run.stdout, report)
 	}
 	if len(bytes.TrimSpace(result.Output)) > 0 && string(result.Output) != "null" {
 		fmt.Fprintln(run.stdout, string(compactJSON(result.Output)))
 	}
-	return exitPartial
+	return exitFor(stopIncomplete)
+}
+
+// sayEnvelope writes the one machine contract (envelope.go) and returns what
+// the process leaves with. It is this command's ONLY mapping between a saved
+// program's result and what a caller reads, which is what stops `run` from
+// growing a third `--json` shape.
+//
+// `answer` is the run's own account of what it did, because that is what
+// `answer` is on the other two verbs; a program that wrote no account carries
+// its typed output there instead, so `jq -r .answer` is never empty on a run
+// that produced something. The typed output is ALWAYS in `output`, whole and
+// unflattened, which is what a script actually wants from a function.
+func (run subharnessRun) sayEnvelope(stop stopReason, result exec.RunResult, incomplete string) error {
+	files := make([]string, 0, len(result.Artifacts))
+	for _, artifact := range result.Artifacts {
+		files = append(files, artifact.Path)
+	}
+	// WHAT IT COST IS ASKED OF THE ONE THING THAT CAN SAY, in the same order
+	// [subharnessRun.note] asks it: a runner that journals its own calls has
+	// already summed them, and adding this command's journal to that would be
+	// counting one run twice.
+	spend := result.Spend
+	if !spend.Reported() {
+		spend = run.journal.Ledger()
+	}
+	answer := strings.TrimSpace(result.Report)
+	output := bytes.TrimSpace(result.Output)
+	if len(output) > 0 && string(output) != "null" {
+		if answer == "" {
+			answer = string(compactJSON(result.Output))
+		}
+	} else {
+		output = nil
+	}
+	extra := map[string]any{}
+	if len(output) > 0 {
+		extra["output"] = json.RawMessage(compactJSON(result.Output))
+	}
+	if report := strings.TrimSpace(result.Report); report != "" {
+		extra["report"] = report
+	}
+	// The reason it did not finish, in the same words stderr just carried. It is
+	// NOT `error`: `error` means the run never produced an answer at all, and a
+	// run that got part of the way did.
+	if incomplete != "" {
+		extra["incomplete"] = incomplete
+	}
+	var seconds float64
+	if !run.started.IsZero() {
+		seconds = time.Since(run.started).Seconds()
+	}
+	envelope := buildResultEnvelope(runResult{
+		Stop: stop, Answer: answer, Files: files,
+		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
+		Seconds: seconds, Model: run.model,
+		// A saved program is one call to one function and does not count steps
+		// the way `do` counts nodes or `exec` counts turns. Nothing renders as
+		// nothing everywhere a person reads; this is a machine contract, where
+		// an absent key is indistinguishable from an older binary, so the field
+		// is present and honest at 0.
+		Steps: 0,
+		Extra: extra,
+	})
+	encoded, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(run.stdout, string(encoded))
+	if code := exitFor(stop); code != exitDone {
+		return code
+	}
+	return nil
+}
+
+// sayFailedEnvelope is the same contract for a run that COULD NOT BE MADE TO
+// HAPPEN — a name that is not a program, a bundle that would not load, a
+// generalist that could not be reached. Under --json the object is printed
+// anyway and the sentence goes in `error`, because a caller reading stdout must
+// never have to tell a crashed process apart from a failed run by the emptiness
+// of the stream.
+func (run subharnessRun) sayFailedEnvelope(err error) error {
+	if !run.asJSON || err == nil {
+		return err
+	}
+	var seconds float64
+	if !run.started.IsZero() {
+		seconds = time.Since(run.started).Seconds()
+	}
+	spend := run.journal.Ledger()
+	envelope := buildResultEnvelope(runResult{
+		Stop: stopError, Error: plainWords(err.Error()),
+		SpendUSD: spend.CostUSD, TokensIn: spend.Input, TokensOut: spend.Output,
+		Seconds: seconds, Model: run.model,
+	})
+	encoded, marshalErr := json.MarshalIndent(envelope, "", "  ")
+	if marshalErr != nil {
+		return err
+	}
+	fmt.Fprintln(run.stdout, string(encoded))
+	// The sentence still reaches stderr through main's own door, so a person
+	// watching and a script parsing are told the same thing.
+	fmt.Fprintln(run.stderr, "error:", plainWords(err.Error()))
+	return exitFor(stopError)
 }
 
 // noSuchSubharness is what somebody who mistyped a name is told: the name they

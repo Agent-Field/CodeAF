@@ -21,7 +21,7 @@ func TestTheHeadlessFooterLeavesOutWhatIsZero(t *testing.T) {
 	var out, errs bytes.Buffer
 	request := doRequest{stdout: &out, stderr: &errs}
 	_ = reportErrand(request, headlessOutcome{
-		Deliverable: "nothing ran", Artifacts: []string{}, status: exitFailed,
+		Deliverable: "nothing ran", Artifacts: []string{}, stop: stopError,
 	})
 	printed := out.String()
 	for _, claim := range []string{"0s", "0 nodes", "$0.0000", "$0.00"} {
