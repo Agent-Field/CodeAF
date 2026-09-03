@@ -621,6 +621,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
+	wallPaceAfter := time.Duration(float64(l.deadline) * wallPaceAt)
 
 	tools := newToolbox(l.workspace, task.leafKey(), l.web, l.history, l.media, l.contextTokens)
 	tools.share = task.Share
@@ -732,16 +733,18 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// stale copy; see observations.
 	carried := newObservations(fade)
 	warned := false
+	wallPaced := false
 	// landing counts the reserved turns left after the node has been told to
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
 	// The no-progress guard catches a leaf that is spending turns without
 	// advancing: repeating the same tool call, going many turns without
-	// writing anything or learning anything new, or simply running past any
-	// honest leaf's measured need. It fires into a conclude directive — the
-	// same landing shape the budget and deadline reserves take — so the
-	// workspace is left consistent and the partial goes out whole. See
+	// writing anything or learning anything new, gathering forever without
+	// changing the workspace, or simply running past any honest leaf's measured
+	// need. The recon signal first asks for the result; every concluding signal
+	// then uses the same landing shape as the budget and deadline reserves, so
+	// the workspace is left consistent and the partial goes out whole. See
 	// noprogress.go for the signals and thresholds.
 	progress := newProgressGuard()
 	// The leaf's own closing. It is armed here, beside the other once-only
@@ -812,6 +815,24 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"land the work safely. In order: make whatever you were changing consistent " +
 					"again; run the single quickest check that would catch breakage; fix only what " +
 					"it reveals. Do not start anything new. Then give your final answer.")})
+		}
+		// A leaf gets one live reading of its own wall while there is still room
+		// to act on it. This follows the deadline landing check so a leaf that has
+		// just entered its reserve hears only the landing reason, and the once-only
+		// flag keeps later turns from paying for the same reading again.
+		if !wallPaced && landing == 0 {
+			left := time.Until(deadline)
+			gone := l.deadline - left
+			if gone > wallPaceAfter {
+				wallPaced = true
+				goneText := wallDurationText(gone)
+				leftText := wallDurationText(left)
+				trace.note("wall pace — " + goneText + " gone, " + leftText + " left")
+				messages = append(messages, ai.Message{Role: "user", Content: text(
+					"The clock for this task now reads " + goneText + " gone and " +
+						leftText + " left. Use the time that remains to produce the result " +
+						"and leave room to check it.")})
+			}
 		}
 		outcome.Steered += readSteering(task, &messages, trace)
 		// Called every turn, but mutating on few of them: decay only fires once
@@ -1242,9 +1263,15 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// not advancing.
 		if landing == 0 {
 			switch progress.observe(calls, results, mutationsBefore, mutationsAfter) {
+			case progressPace:
+				trace.note(progress.reconReason() + " — result asked for")
+				messages = append(messages, ai.Message{Role: "user", Content: text(progress.reconNotice())})
 			case progressConclude:
 				progress.markConcluded()
 				trace.note(progress.noProgressReason() + " — conclude directive injected")
+				if progress.reconNoticeDue() {
+					messages = append(messages, ai.Message{Role: "user", Content: text(progress.reconNotice())})
+				}
 				messages = append(messages, ai.Message{Role: "user", Content: text(noProgressConcludeDirective)})
 			case progressTerminate:
 				outcome.Stop = StopNoProgress
@@ -1568,6 +1595,9 @@ func (l *Linear) brief(task Task) string {
 			"share it (the share tool) before you continue. They are acting on that material as you read this, " +
 			"and what you just learned may be the difference between their answer being right or wrong.")
 	}
+	if wall := wallDurationText(l.deadline); wall != "" {
+		block.WriteString("\n\nYou have " + wall + " of wall-clock time for this task.")
+	}
 	block.WriteString(outputClause(task))
 	return block.String()
 }
@@ -1667,6 +1697,12 @@ func outputClause(task Task) string {
 // land the work.
 const wrapUpAt = 0.7
 
+// wallPaceAt is the fraction of a leaf's wall that may pass before it gets one
+// live clock reading. Half is earlier than the budget's wrap-up fraction because
+// elapsed time cannot be bought back, and it remains far ahead of the bounded
+// deadline landing reserve where the leaf must stop starting work.
+const wallPaceAt = 0.5
+
 // landingTurns is the reserve granted after the budget runs out: enough calls
 // to restore consistency, run one check, and repair one breakage — never
 // enough to keep working. The reserve is what stands between "budget reached"
@@ -1681,6 +1717,27 @@ func deadlineLandingReserve(deadline time.Duration) time.Duration {
 		return 2 * time.Minute
 	}
 	return reserve
+}
+
+// wallDurationText spells a measured wall the same way --timeout accepts it.
+// Whole trailing units carry no information, so they are removed after the
+// reading is rounded to the second; an unknown or zero reading stays absent.
+func wallDurationText(duration time.Duration) string {
+	if duration <= 0 {
+		return ""
+	}
+	duration = duration.Round(time.Second)
+	if duration <= 0 {
+		return ""
+	}
+	spelled := duration.String()
+	if strings.HasSuffix(spelled, "m0s") {
+		spelled = strings.TrimSuffix(spelled, "0s")
+	}
+	if strings.HasSuffix(spelled, "h0m") {
+		spelled = strings.TrimSuffix(spelled, "0m")
+	}
+	return spelled
 }
 
 // cachedTokenWeightPercent is what one re-sent cached prompt token costs

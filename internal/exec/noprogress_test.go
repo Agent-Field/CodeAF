@@ -186,6 +186,34 @@ func TestProgressGuardMutationResetsStagnant(t *testing.T) {
 	}
 }
 
+func TestProgressGuardReconCountResetsOnAMutation(t *testing.T) {
+	g := newProgressGuard()
+	observeRead := func(index, before, after int) progressVerdict {
+		return g.observe(
+			[]ai.ToolCall{call(fmt.Sprintf("read-%d", index), "sh", fmt.Sprintf(`{"cmd":"printf %d"}`, index))},
+			[]Result{{Content: fmt.Sprintf("result-%d", index)}}, before, after,
+		)
+	}
+
+	for index := 0; index < noProgressReconTurns-1; index++ {
+		if got := observeRead(index, 0, 0); got != progressContinue {
+			t.Fatalf("before mutation, turn %d = %d, want continue", index+1, got)
+		}
+	}
+	writeCall := call("write", "write", `{"path":"result.txt","text":"result"}`)
+	if got := g.observe([]ai.ToolCall{writeCall}, []Result{{Content: "wrote result.txt"}}, 0, 1); got != progressContinue {
+		t.Fatalf("mutation verdict = %d, want continue", got)
+	}
+	for index := 0; index < noProgressReconTurns-1; index++ {
+		if got := observeRead(noProgressReconTurns+index, 1, 1); got != progressContinue {
+			t.Fatalf("after mutation, turn %d = %d, want continue", index+1, got)
+		}
+	}
+	if got := observeRead(noProgressReconConclude, 1, 1); got != progressPace {
+		t.Fatalf("complete post-mutation recon span = %d, want pace", got)
+	}
+}
+
 // Test the turn-floor signal: it fires on a fidgeting leaf and leaves a
 // working one alone.
 func TestProgressGuardTurnFloor(t *testing.T) {
